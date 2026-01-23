@@ -19,6 +19,34 @@ export interface Annotation {
   tagId?: number | string;
 }
 
+export interface BrowserStepAction {
+  navigate?: { url: string; new_tab?: boolean };
+  wait?: { seconds: number };
+  input?: { index: number; text: string; clear?: boolean };
+  click?: { index: number };
+  scroll?: { direction?: 'up' | 'down'; amount?: number };
+  screenshot?: boolean;
+  [key: string]: unknown;
+}
+
+export interface BrowserStepProgressData {
+  step_number: number;
+  max_steps: number;
+  url: string;
+  title: string;
+  thinking: string;
+  evaluation: string;
+  memory: string;
+  next_goal: string;
+  actions: BrowserStepAction[];
+  has_screenshot: boolean;
+}
+
+export interface BrowserStepsHistory {
+  steps: BrowserStepProgressData[];
+  isRunning: boolean;
+}
+
 export interface CustomChatMessage {
   id: string;
   role: 'user' | 'bot';
@@ -33,6 +61,8 @@ export interface CustomChatMessage {
     name?: string;
     status?: 'uploading' | 'done' | 'error';
   }>;
+  browserStepProgress?: BrowserStepProgressData | null;
+  browserStepsHistory?: BrowserStepsHistory | null;
 }
 
 export interface ResultItem {

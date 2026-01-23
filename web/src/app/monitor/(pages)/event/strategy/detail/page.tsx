@@ -35,6 +35,8 @@ import BasicInfoForm from './basicInfoForm';
 import MetricDefinitionForm from './metricDefinitionForm';
 import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
+import MetricPreview from './metricPreview';
+import VariablesTable from './variablesTable';
 const defaultGroup = ['instance_id'];
 
 const StrategyOperation = () => {
@@ -55,6 +57,8 @@ const StrategyOperation = () => {
   const users = useRef(commonContext?.userList || []);
   const userList: UserItem[] = users.current;
   const instRef = useRef<ModalRef>(null);
+  const formContainerRef = useRef<HTMLDivElement>(null);
+  const basicInfoRef = useRef<HTMLDivElement>(null);
   const userContext = useUserInfoContext();
   const currentGroup = useRef(userContext?.selectedGroup);
   const groupId = [currentGroup?.current?.id || ''];
@@ -80,6 +84,8 @@ const StrategyOperation = () => {
   const [conditions, setConditions] = useState<FilterItem[]>([]);
   const [noDataAlert, setNoDataAlert] = useState<number | null>(null);
   const [noDataRecovery, setNoDataRecovery] = useState<number | null>(null);
+  const [noDataAlertLevel, setNoDataAlertLevel] = useState<string>('none');
+  const [noDataAlertName, setNoDataAlertName] = useState<string>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [groupBy, setGroupBy] = useState<string[]>(
     getGroupIds(monitorName as string)?.default || defaultGroup
@@ -151,7 +157,13 @@ const StrategyOperation = () => {
         feedbackThreshold(strategyInfo.threshold || []);
         _metricId = strategyInfo.metric_name || null;
       }
-      form.setFieldsValue(initForm);
+      // 设置无数据告警名称默认值
+      const defaultNoDataAlertName = t('monitor.events.noDataAlertNameDefault');
+      setNoDataAlertName(defaultNoDataAlertName);
+      form.setFieldsValue({
+        ...initForm,
+        no_data_alert_name: defaultNoDataAlertName,
+      });
       setMetric(_metricId);
       const instanceIdStr = searchParams.get('instanceId');
       let instanceIds: string[] = [];
@@ -228,6 +240,8 @@ const StrategyOperation = () => {
       enable_alerts,
       no_data_recovery_period,
       calculation_unit,
+      no_data_level,
+      no_data_alert_name,
     } = data;
     form.setFieldsValue({
       ...data,
@@ -249,12 +263,29 @@ const StrategyOperation = () => {
       });
     }
     setNoDataAlert(no_data_period?.value || null);
-    setNodataUnit(no_data_period?.type || '');
+    setNodataUnit(no_data_period?.type || 'min');
     setNoDataRecovery(no_data_recovery_period?.value || null);
     setNoDataRecoveryUnit(no_data_recovery_period?.type || '');
     setUnit(schedule?.type || '');
     setPeriodUnit(period?.type || '');
     setEnableAlerts(enable_alerts?.length ? enable_alerts : ['threshold']);
+    // 设置无数据告警级别和名称
+    if (enable_alerts?.includes('no_data') && no_data_level) {
+      setNoDataAlertLevel(no_data_level as string);
+    } else {
+      setNoDataAlertLevel('none');
+    }
+    // 如果无数据告警名称为空，使用默认值
+    const defaultNoDataAlertName = t('monitor.events.noDataAlertNameDefault');
+    const finalNoDataAlertName =
+      (no_data_alert_name as string) || defaultNoDataAlertName;
+    setNoDataAlertName(finalNoDataAlertName);
+    // 同步更新 form 字段
+    if (!no_data_alert_name) {
+      form.setFieldsValue({
+        no_data_alert_name: defaultNoDataAlertName,
+      });
+    }
   };
 
   const processMetricData = (data: StrategyFields) => {
@@ -307,6 +338,10 @@ const StrategyOperation = () => {
     const target = metrics.find((item) => item.name === val);
     const _labels = (target?.dimensions || []).map((item) => item.name);
     setLabels(_labels);
+    // 在新增模式下，自动设置单位为指标的默认单位
+    if (['builtIn', 'add'].includes(type)) {
+      setCalculationUnit(target?.unit || null);
+    }
   };
 
   const getMetrics = async (params = {}, type = '') => {
@@ -387,6 +422,14 @@ const StrategyOperation = () => {
     setNoDataRecovery(e);
   };
 
+  const handleNoDataAlertLevelChange = (val: string) => {
+    setNoDataAlertLevel(val);
+  };
+
+  const handleNoDataAlertNameChange = (val: string) => {
+    setNoDataAlertName(val);
+  };
+
   const handleThresholdChange = (value: ThresholdField[]) => {
     setThreshold(value);
   };
@@ -410,6 +453,9 @@ const StrategyOperation = () => {
   const createStrategy = () => {
     form?.validateFields().then((values) => {
       const params = cloneDeep(values);
+      delete params._conditions_validator;
+      delete params.no_data_level;
+      delete params.no_data_alert_name;
       const target: any = pluginList.find(
         (item) => item.value === params.collect_type
       );
@@ -444,15 +490,19 @@ const StrategyOperation = () => {
         type: periodUnit,
         value: values.period,
       };
-      if (enableAlerts.includes('no_data')) {
-        params.no_data_period = {
+      // 根据无数据告警级别设置 enable_alerts 和相关参数
+      const isNoDataEnabled = noDataAlertLevel && noDataAlertLevel !== 'none';
+      const _enableAlerts = isNoDataEnabled
+        ? [...new Set([...enableAlerts, 'no_data'])]
+        : enableAlerts.filter((item) => item !== 'no_data');
+
+      if (isNoDataEnabled) {
+        params.no_data_recovery_period = params.no_data_period = {
           type: nodataUnit,
           value: noDataAlert,
         };
-        params.no_data_recovery_period = {
-          type: noDataRecoveryUnit,
-          value: noDataRecovery,
-        };
+        params.no_data_level = noDataAlertLevel;
+        params.no_data_alert_name = noDataAlertName;
       } else {
         params.no_data_period = params.no_data_recovery_period = {};
       }
@@ -461,7 +511,7 @@ const StrategyOperation = () => {
           channelList.find((item) => item.id === params.notice_type_id)
             ?.channel_type || '';
       }
-      params.enable_alerts = enableAlerts;
+      params.enable_alerts = _enableAlerts;
       params.recovery_condition = params.recovery_condition || 0;
       params.group_by = groupBy;
       params.enable = true;
@@ -515,86 +565,125 @@ const StrategyOperation = () => {
             </span>
           )}
         </div>
-        <div className={strategyStyle.form}>
-          <Form form={form} name="basic">
-            <Steps
-              direction="vertical"
-              items={[
-                {
-                  title: t('monitor.events.basicInformation'),
-                  description: (
-                    <BasicInfoForm
-                      source={source}
-                      unit={unit}
-                      onOpenInstModal={openInstModal}
-                      onUnitChange={handleUnitChange}
-                      isTrap={isTrap}
-                    />
-                  ),
-                  status: 'process',
-                },
-                {
-                  title: t('monitor.events.defineTheMetric'),
-                  description: (
-                    <MetricDefinitionForm
-                      pluginList={pluginList}
-                      metric={metric}
-                      metricsLoading={metricsLoading}
-                      labels={labels}
-                      conditions={conditions}
-                      groupBy={groupBy}
-                      periodUnit={periodUnit}
-                      originMetricData={originMetricData}
-                      monitorName={monitorName as string}
-                      onCollectTypeChange={changeCollectType}
-                      onMetricChange={handleMetricChange}
-                      onFiltersChange={setConditions}
-                      onGroupChange={handleGroupByChange}
-                      onPeriodUnitChange={handlePeriodUnitChange}
-                      isTrap={isTrap}
-                    />
-                  ),
-                  status: 'process',
-                },
-                {
-                  title: t('monitor.events.setAlertConditions'),
-                  description: (
-                    <AlertConditionsForm
-                      enableAlerts={enableAlerts}
-                      threshold={threshold}
-                      calculationUnit={calculationUnit}
-                      noDataAlert={noDataAlert}
-                      nodataUnit={nodataUnit}
-                      noDataRecovery={noDataRecovery}
-                      noDataRecoveryUnit={noDataRecoveryUnit}
-                      onEnableAlertsChange={setEnableAlerts}
-                      onThresholdChange={handleThresholdChange}
-                      onCalculationUnitChange={handleCalculationUnitChange}
-                      onNodataUnitChange={handleNodataUnitChange}
-                      onNoDataAlertChange={handleNoDataAlertChange}
-                      onNodataRecoveryUnitChange={
-                        handleNodataRecoveryUnitChange
-                      }
-                      onNoDataRecoveryChange={handleNoDataRecoveryChange}
-                      isTrap={isTrap}
-                    />
-                  ),
-                  status: 'process',
-                },
-                {
-                  title: t('monitor.events.configureNotifications'),
-                  description: (
-                    <NotificationForm
-                      channelList={channelList}
-                      userList={userList}
-                      onLinkToSystemManage={linkToSystemManage}
-                    />
-                  ),
-                  status: 'process',
-                },
-              ]}
-            />
-          </Form>
+        <div className={strategyStyle.form} ref={formContainerRef}>
+          <div className="flex gap-4">
+            <div className="flex-1 min-w-[650px] max-w-[calc(100vw-650px)]">
+              <Form form={form} name="basic">
+                <Steps
+                  direction="vertical"
+                  items={[
+                    {
+                      title: t('monitor.events.basicInformation'),
+                      description: (
+                        <div ref={basicInfoRef}>
+                          <BasicInfoForm
+                            source={source}
+                            unit={unit}
+                            onOpenInstModal={openInstModal}
+                            onUnitChange={handleUnitChange}
+                            isTrap={isTrap}
+                          />
+                        </div>
+                      ),
+                      status: 'process',
+                    },
+                    {
+                      title: t('monitor.events.defineTheMetric'),
+                      description: (
+                        <MetricDefinitionForm
+                          form={form}
+                          pluginList={pluginList}
+                          metric={metric}
+                          metricsLoading={metricsLoading}
+                          labels={labels}
+                          conditions={conditions}
+                          groupBy={groupBy}
+                          periodUnit={periodUnit}
+                          originMetricData={originMetricData}
+                          monitorName={monitorName as string}
+                          onCollectTypeChange={changeCollectType}
+                          onMetricChange={handleMetricChange}
+                          onFiltersChange={setConditions}
+                          onGroupChange={handleGroupByChange}
+                          onPeriodUnitChange={handlePeriodUnitChange}
+                          isTrap={isTrap}
+                        />
+                      ),
+                      status: 'process',
+                    },
+                    {
+                      title: t('monitor.events.alertConditions'),
+                      description: (
+                        <AlertConditionsForm
+                          enableAlerts={enableAlerts}
+                          threshold={threshold}
+                          calculationUnit={calculationUnit}
+                          noDataAlert={noDataAlert}
+                          nodataUnit={nodataUnit}
+                          noDataRecovery={noDataRecovery}
+                          noDataRecoveryUnit={noDataRecoveryUnit}
+                          noDataAlertLevel={noDataAlertLevel}
+                          noDataAlertName={noDataAlertName}
+                          onEnableAlertsChange={setEnableAlerts}
+                          onThresholdChange={handleThresholdChange}
+                          onCalculationUnitChange={handleCalculationUnitChange}
+                          onNodataUnitChange={handleNodataUnitChange}
+                          onNoDataAlertChange={handleNoDataAlertChange}
+                          onNodataRecoveryUnitChange={
+                            handleNodataRecoveryUnitChange
+                          }
+                          onNoDataRecoveryChange={handleNoDataRecoveryChange}
+                          onNoDataAlertLevelChange={
+                            handleNoDataAlertLevelChange
+                          }
+                          onNoDataAlertNameChange={handleNoDataAlertNameChange}
+                          isTrap={isTrap}
+                        />
+                      ),
+                      status: 'process',
+                    },
+                    {
+                      title: t('monitor.events.configureNotifications'),
+                      description: (
+                        <NotificationForm
+                          channelList={channelList}
+                          userList={userList}
+                          onLinkToSystemManage={linkToSystemManage}
+                        />
+                      ),
+                      status: 'process',
+                    },
+                  ]}
+                />
+              </Form>
+            </div>
+            <div className="flex flex-col">
+              <VariablesTable
+                onVariableSelect={(variable: string) => {
+                  const currentAlertName =
+                    form.getFieldValue('alert_name') || '';
+                  form.setFieldsValue({
+                    alert_name: currentAlertName + variable,
+                  });
+                }}
+              />
+              <MetricPreview
+                monitorObjId={monitorObjId}
+                source={source}
+                metric={metric}
+                metrics={metrics}
+                groupBy={groupBy}
+                conditions={conditions}
+                period={form.getFieldValue('period')}
+                periodUnit={periodUnit}
+                algorithm={form.getFieldValue('algorithm')}
+                threshold={threshold}
+                calculationUnit={calculationUnit}
+                scrollContainerRef={formContainerRef}
+                anchorRef={basicInfoRef}
+              />
+            </div>
+          </div>
         </div>
         <div className={strategyStyle.footer}>
           <Button

@@ -24,7 +24,7 @@ const useHandleCopy = () => {
         document.body.removeChild(textArea);
       }
       if (showSuccessMessage) {
-        message.success(t('common.successfulCopied'));
+        message.success(t('common.copySuccess'));
       }
     } catch (error: any) {
       message.error(error + '');

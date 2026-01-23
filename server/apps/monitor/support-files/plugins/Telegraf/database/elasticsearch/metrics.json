@@ -27,7 +27,7 @@
       "display_name": "Active Primary Shards",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Core data availability metric, represents the count of active primary shards; missing primary shards block data read/write; ensure consistency with expected count",
       "query": "elasticsearch_cluster_health_active_primary_shards{__$labels__}"
@@ -38,7 +38,7 @@
       "display_name": "Unassigned Shards",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Core cluster anomaly indicator, represents the count of unassigned shards; investigate if >0; long-term existence reduces data redundancy and availability",
       "query": "elasticsearch_cluster_health_unassigned_shards{__$labels__}"
@@ -50,7 +50,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": ["node_name"],
+      "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "Core JVM memory pressure metric, reflects JVM memory usage; high usage triggers Full GC and cluster lag",
       "query": "elasticsearch_jvm_mem_heap_used_percent{__$labels__}"
     },
@@ -61,7 +61,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "msps",
-      "dimensions": ["node_name"],
+      "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "GC efficiency monitoring metric, reflects GC operation latency; sustained high values indicate high CPU usage by GC, affecting business performance",
       "query": "rate(elasticsearch_jvm_gc_collectors_young_collection_time_in_millis{__$labels__}[5m])"
     },
@@ -72,7 +72,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": ["node_name"],
+      "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "Node storage availability metric, reflects remaining disk space on nodes; disk exhaustion causes node offline",
       "query": "elasticsearch_fs_data_0_available_in_bytes{__$labels__}"
     },
@@ -83,7 +83,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": ["node_name"],
+      "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "Process compute load metric, reflects CPU load of the process; high load degrades cluster read/write performance",
       "query": "elasticsearch_process_cpu_percent{__$labels__}"
     },
@@ -93,8 +93,8 @@
       "display_name": "Open File Descriptors",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
-      "dimensions": ["node_name"],
+      "unit": "counts",
+      "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "File resource monitoring metric, reflects file descriptor usage; approaching system limits affects shard availability",
       "query": "elasticsearch_process_open_file_descriptors{__$labels__}"
     },
@@ -105,7 +105,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": ["node_name"],
+      "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "Memory protection mechanism monitoring, reflects triggers of the memory protection breaker; >0 indicates recent memory shortage",
       "query": "rate(elasticsearch_breakers_fielddata_tripped{__$labels__}[5m])"
     },
@@ -116,7 +116,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": ["node_name"],
+      "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "Request-level memory protection monitoring, reflects triggers of the request-level memory protection breaker; >0 indicates recent request memory overload",
       "query": "rate(elasticsearch_breakers_request_tripped{__$labels__}[5m])"
     },
@@ -126,8 +126,8 @@
       "display_name": "HTTP Current Connections",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
-      "dimensions": ["node_name"],
+      "unit": "counts",
+      "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "HTTP service availability metric, reflects connection usage of the HTTP service; approaching connection limits affects new request acceptance",
       "query": "elasticsearch_http_current_open{__$labels__}"
     },
@@ -138,7 +138,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": ["node_name"],
+      "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "HTTP service traffic metric, reflects recent business request traffic changes; aids in troubleshooting traffic peak issues",
       "query": "rate(elasticsearch_http_total_opened{__$labels__}[5m])"
     },
@@ -148,8 +148,8 @@
       "display_name": "Index Thread Pool Queue Length",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
-      "dimensions": ["node_name"],
+      "unit": "counts",
+      "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "Write performance warning metric, reflects the length of the write request queue; growing queue length indicates insufficient write capacity, causing latency spikes",
       "query": "elasticsearch_thread_pool_index_queue{__$labels__}"
     },
@@ -159,8 +159,8 @@
       "display_name": "Search Thread Pool Queue Length",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
-      "dimensions": ["node_name"],
+      "unit": "counts",
+      "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "Query performance warning metric, reflects the length of the query request queue; growing queue length indicates insufficient query capacity, affecting business experience",
       "query": "elasticsearch_thread_pool_search_queue{__$labels__}"
     }

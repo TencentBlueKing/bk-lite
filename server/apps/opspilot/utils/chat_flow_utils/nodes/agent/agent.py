@@ -1,6 +1,7 @@
 """
 智能体节点
 """
+
 import json
 import time
 from typing import Any, Dict
@@ -122,6 +123,10 @@ class AgentNode(BaseNodeExecutor):
         Returns:
             LLM参数字典
         """
+        # 判断是否为第三方渠道调用，如果是则禁用知识来源显示
+        is_third_party = flow_input.get("is_third_party", False)
+        enable_rag_knowledge_source = False if is_third_party else skill.enable_rag_knowledge_source
+        logger.info(f"is_third_party：{is_third_party}")
         return {
             "llm_model": skill.llm_model_id,
             "skill_prompt": skill.skill_prompt,
@@ -131,7 +136,7 @@ class AgentNode(BaseNodeExecutor):
             "conversation_window_size": skill.conversation_window_size,
             "enable_rag": skill.enable_rag,
             "rag_score_threshold": [{"knowledge_base": int(key), "score": float(value)} for key, value in skill.rag_score_threshold_map.items()],
-            "enable_rag_knowledge_source": skill.enable_rag_knowledge_source,
+            "enable_rag_knowledge_source": enable_rag_knowledge_source,
             "show_think": skill.show_think,
             "tools": skill.tools,
             "skill_type": skill.skill_type,
@@ -201,7 +206,11 @@ class AgentNode(BaseNodeExecutor):
                 logger.info(f"[AgentNode-AGUI] 流式处理完成 - 生成 {chunk_index} 个chunk")
             except Exception as e:
                 logger.error(f"[AgentNode-AGUI] stream error: {e}", exc_info=True)
-                error_data = {"type": "ERROR", "error": f"节点执行错误: {str(e)}", "timestamp": int(time.time() * 1000)}
+                error_data = {
+                    "type": "ERROR",
+                    "error": f"节点执行错误: {str(e)}",
+                    "timestamp": int(time.time() * 1000),
+                }
                 yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
         return generate_agui_stream()

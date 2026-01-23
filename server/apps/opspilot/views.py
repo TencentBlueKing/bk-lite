@@ -96,17 +96,44 @@ def validate_openai_token(token, team=None, is_mobile=False):
     """Validate the OpenAI API token"""
     loader = LanguageLoader(app="opspilot", default_lang="en")
     if not token:
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
+        return False, {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": loader.get("error.no_authorization", "No authorization"),
+                    }
+                }
+            ]
+        }
     token = token.split("Bearer ")[-1]
     user = UserAPISecret.objects.filter(api_secret=token).first()
     if not user:
         if team is None and not is_mobile:
-            return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
+            return False, {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": loader.get("error.no_authorization", "No authorization"),
+                        }
+                    }
+                ]
+            }
         team = team or 0
         client = SystemMgmt()
         result = client.verify_token(token)
         if not result.get("result"):
-            return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
+            return False, {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": loader.get("error.no_authorization", "No authorization"),
+                        }
+                    }
+                ]
+            }
         user_info = result.get("data")
         user = UserAPISecret(
             username=user_info["username"],
@@ -119,16 +146,43 @@ def validate_openai_token(token, team=None, is_mobile=False):
 def validate_header_token(token, bot_id):
     loader = LanguageLoader(app="opspilot", default_lang="en")
     if not token:
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
+        return False, {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": loader.get("error.no_authorization", "No authorization"),
+                    }
+                }
+            ]
+        }
     bot_obj = Bot.objects.filter(id=bot_id, online=True).first()
     if not bot_obj:
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.bot_not_online", "No bot online")}}]}
+        return False, {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": loader.get("error.bot_not_online", "No bot online"),
+                    }
+                }
+            ]
+        }
     token = token.split("Bearer ")[-1]
     client = SystemMgmt()
     # res = client.verify_token(token)
     res = client.get_pilot_permission_by_token(token, bot_id, bot_obj.team)
     if not res.get("result"):
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
+        return False, {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": loader.get("error.no_authorization", "No authorization"),
+                    }
+                }
+            ]
+        }
     return True, {"username": res["data"]["username"]}
 
 
@@ -164,7 +218,16 @@ def get_skill_and_params(kwargs, team, bot_id=None):
         return (
             None,
             None,
-            {"choices": [{"message": {"role": "assistant", "content": loader.get("error.skill_not_found", "No skill")}}]},
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": loader.get("error.skill_not_found", "No skill"),
+                        }
+                    }
+                ]
+            },
         )
     num = kwargs.get("conversation_window_size") or skill_obj.conversation_window_size
     chat_history = [{"message": i["content"], "event": i["role"]} for i in kwargs.get("messages", [])[-1 * num :]]
@@ -199,7 +262,7 @@ def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
         knowledge_titles = {doc_map.get(k, {}).get("name") for k in title_map.keys()}
         last_content = content.strip().split("\n")[-1]
         if "引用知识" not in last_content and knowledge_titles:
-            content += f'\n引用知识: {", ".join(knowledge_titles)}'
+            content += f"\n引用知识: {', '.join(knowledge_titles)}"
     return content
 
 
@@ -339,7 +402,14 @@ def lobe_skill_execute(request):
     )
     if not stream_mode:
         return invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log)
-    return stream_chat(params, skill_obj.name, kwargs, current_ip, user_message, history_log=history_log)
+    return stream_chat(
+        params,
+        skill_obj.name,
+        kwargs,
+        current_ip,
+        user_message,
+        history_log=history_log,
+    )
 
 
 @api_exempt
@@ -374,7 +444,7 @@ def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sen
         return {"content": loader.get("error.no_authorization", "No authorization")}
     bot = Bot.objects.filter(id=bot_id, api_token=api_token).first()
     if not bot:
-        logger.info(f"api_token: {api_token}")
+        logger.info(f"Bot not found for bot_id: {bot_id}")
         return {"content": loader.get("error.bot_not_found", "No bot found")}
     try:
         result = SkillExecuteService.execute_skill(bot, skill_id, user_message, chat_history, sender_id, channel)
@@ -476,7 +546,12 @@ def execute_chat_flow(request, bot_id, node_id):
     """执行ChatFlow流程（支持流式响应）"""
     loader = get_loader(request)
     if not bot_id or not node_id:
-        return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
+        return JsonResponse(
+            {
+                "result": False,
+                "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required."),
+            }
+        )
 
     # 读取请求体
     kwargs = json.loads(request.body)
@@ -507,16 +582,34 @@ def execute_chat_flow(request, bot_id, node_id):
         filter_dict["online"] = True
     bot_obj = Bot.objects.filter(**filter_dict).first()
     if not bot_obj:
-        return JsonResponse({"result": False, "message": loader.get("error.bot_not_online", "No bot online")})
+        return JsonResponse(
+            {
+                "result": False,
+                "message": loader.get("error.bot_not_online", "No bot online"),
+            }
+        )
 
     # 获取Bot的工作流配置
     bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
     if not bot_chat_flow:
-        return JsonResponse({"result": False, "message": loader.get("error.no_chat_flow_configured", "No chat flow configured for this bot.")})
+        return JsonResponse(
+            {
+                "result": False,
+                "message": loader.get(
+                    "error.no_chat_flow_configured",
+                    "No chat flow configured for this bot.",
+                ),
+            }
+        )
 
     # 检查工作流是否有配置数据
     if not bot_chat_flow.flow_json:
-        return JsonResponse({"result": False, "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty.")})
+        return JsonResponse(
+            {
+                "result": False,
+                "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty."),
+            }
+        )
 
     try:
         # 创建ChatFlow引擎 - 使用数据库中的工作流配置
@@ -554,7 +647,7 @@ def execute_chat_flow(request, bot_id, node_id):
         logger.error(f"ChatFlow流程执行失败，bot_id: {bot_id}, node_id: {node_id}, 错误: {str(e)}")
         logger.exception(e)
         # 流式错误响应，参考 llm_view.py
-        return LLMViewSet._create_error_stream_response(str(e))
+        return LLMViewSet.create_error_stream_response(str(e))
 
 
 @api_exempt
@@ -695,4 +788,9 @@ def test(request):
     kwargs = request.GET.dict()
     data = json.loads(request.body) if request.body else {}
     kwargs.update(data)
-    return JsonResponse({"result": True, "data": {"ip": ip, "is_routable": is_routable, "kwargs": kwargs}})
+    return JsonResponse(
+        {
+            "result": True,
+            "data": {"ip": ip, "is_routable": is_routable, "kwargs": kwargs},
+        }
+    )

@@ -84,59 +84,59 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                   channelList.find(
                     (item) => item.id === getFieldValue('notice_type_id')
                   )?.channel_type === 'email' ? (
-                      <Form.Item<StrategyFields>
-                        label={
-                          <span className="w-[100px]">
-                            {t('monitor.events.notifier')}
-                          </span>
-                        }
-                        name="notice_users"
-                        rules={[
-                          {
-                            required: true,
-                            message: t('common.required'),
-                          },
-                        ]}
+                    <Form.Item<StrategyFields>
+                      label={
+                        <span className="w-[100px]">
+                          {t('monitor.events.notifier')}
+                        </span>
+                      }
+                      name="notice_users"
+                      rules={[
+                        {
+                          required: true,
+                          message: t('common.required'),
+                        },
+                      ]}
+                    >
+                      <Select
+                        style={{
+                          width: '100%',
+                        }}
+                        showSearch
+                        allowClear
+                        mode="multiple"
+                        maxTagCount="responsive"
+                        placeholder={t('monitor.events.notifier')}
                       >
-                        <Select
-                          style={{
-                            width: '800px',
-                          }}
-                          showSearch
-                          allowClear
-                          mode="multiple"
-                          maxTagCount="responsive"
-                          placeholder={t('monitor.events.notifier')}
-                        >
-                          {userList.map((item) => (
-                            <Option value={item.id} key={item.id}>
-                              {item.username}
-                            </Option>
-                          ))}
-                        </Select>
-                      </Form.Item>
+                        {userList.map((item) => (
+                          <Option value={item.id} key={item.id}>
+                            {item.username}
+                          </Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
                     ) : (
-                      <Form.Item<StrategyFields>
-                        label={
-                          <span className="w-[100px]">
-                            {t('monitor.events.notifier')}
-                          </span>
-                        }
-                        name="notice_users"
-                        rules={[
-                          {
-                            required: true,
-                            message: t('common.required'),
-                          },
-                        ]}
-                      >
-                        <Input
-                          style={{
-                            width: '800px',
-                          }}
-                          placeholder={t('monitor.events.notifier')}
-                        />
-                      </Form.Item>
+                    <Form.Item<StrategyFields>
+                      label={
+                        <span className="w-[100px]">
+                          {t('monitor.events.notifier')}
+                        </span>
+                      }
+                      name="notice_users"
+                      rules={[
+                        {
+                          required: true,
+                          message: t('common.required'),
+                        },
+                      ]}
+                    >
+                      <Input
+                        style={{
+                          width: '100%',
+                        }}
+                        placeholder={t('monitor.events.notifier')}
+                      />
+                    </Form.Item>
                     )
                 }
               </Form.Item>

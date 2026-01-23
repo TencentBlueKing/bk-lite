@@ -5,7 +5,7 @@
   "scripts": {
     "preinstall": "npx -y only-allow pnpm",
     "generate-workspace": "node scripts/generate-workspace.js",
-    "dev": "next dev --turbo --hostname=0.0.0.0",
+    "dev": "next dev --turbo --hostname=0.0.0.0 --port=3000",
     "build": "next build --turbo",
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
@@ -30,7 +30,7 @@
     "intl-messageformat": "^10.7.7",
     "js-cookie": "^3.0.5",
     "lodash": "^4.17.21",
-    "next": "16.0.7",
+    "next": "16.0.10",
     "next-auth": "4.24.13",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -75,7 +75,7 @@
     "react-devtools": "^6.0.1",
     "sass": "^1.81.0",
     "sass-embedded": "^1.81.0",
-    "storybook": "8.4.6",
+    "storybook": "8.6.15",
     "storybook-addon-mock": "^5.0.0",
     "tailwindcss": "^4.1.13",
     "typescript": "^5"

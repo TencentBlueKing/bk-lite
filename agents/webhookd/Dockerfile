@@ -8,7 +8,7 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
 
 RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list.d/debian.sources
 RUN apt-get update && \
-    apt-get install -y vim  unzip wget curl pkg-config libssl-dev supervisor jq && \
+    apt-get install -y vim  unzip wget curl pkg-config libssl-dev supervisor gettext-base jq && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

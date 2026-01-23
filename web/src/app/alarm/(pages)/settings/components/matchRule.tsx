@@ -120,17 +120,17 @@ const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange }) => {
   };
 
   return (
-    <div className="pl-[2px] border-l border-[#c4c6cc] w-full ml-[13px] mb-[6px]">
+    <div className="pl-[2px] border-l border-[#c4c6cc] w-full ml-[10px] mb-[2px]">
       {policyList.map?.((orItem, index) => (
-        <div key={index} className="relative -left-[15px] pb-[15px]">
+        <div key={index} className="relative -left-[15px] pb-[10px]">
           <div className={`absolute text-center ${styles.ruleOr}`}>或</div>
-          <div className="bg-[var(--color-bg-4)] ml-[33px] relative top-[17px]">
-            <div className="px-[16px] py-[16px] space-y-4">
+          <div className="bg-[var(--color-bg-4)] ml-[33px] relative top-[15px]">
+            <div className="px-[12px] py-[12px] space-y-3">
               {orItem.map((i, ind) => (
                 <div key={ind} className="relative">
-                  <div className={`ml-[10px] flex items-center`}>
+                  <div className={`ml-[8px] flex items-center`}>
                     <div className={styles.ruleAnd}>且</div>
-                    <div className={`${styles.ruleItem} mr-[6px]`}>
+                    <div className={`${styles.ruleItem} mr-[4px]`}>
                       <div className={styles.keySelect}>
                         <Select
                           allowClear
@@ -162,12 +162,12 @@ const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange }) => {
                               <Option key={item.name} value={item.name}>
                                 {item.desc}
                               </Option>
-                            )
+                            ),
                           )}
                         </Select>
                       </div>
                       <div className={styles.valueInput}>
-                        {['level_id', 'source_id'].includes(i.key as string) ? (
+                        {['level', 'source_id'].includes(i.key as string) ? (
                           <Select
                             value={i.value}
                             showSearch
@@ -180,13 +180,13 @@ const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange }) => {
                               onChange?.(updatedPolicyList);
                             }}
                           >
-                            {i.key === 'level_id' &&
+                            {i.key === 'level' &&
                               levelListEvent.map(
                                 ({ level_id, level_display_name }) => (
                                   <Option key={level_id} value={level_id}>
                                     {level_display_name}
                                   </Option>
-                                )
+                                ),
                               )}
                             {i.key === 'source_id' &&
                               sourceList.map((source) => (

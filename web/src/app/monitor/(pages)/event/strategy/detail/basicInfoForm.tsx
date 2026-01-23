@@ -45,7 +45,7 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
       >
         <Input
           placeholder={t('monitor.events.strategyName')}
-          className="w-[800px]"
+          className="w-full"
         />
       </Form.Item>
       <Form.Item<StrategyFields>
@@ -66,7 +66,7 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
         >
           <Input
             placeholder={t('monitor.events.alertName')}
-            className="w-[800px]"
+            className="w-full"
           />
         </Form.Item>
         <div className="text-[var(--color-text-3)] mt-[10px]">
@@ -74,17 +74,30 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
         </div>
       </Form.Item>
       <Form.Item<StrategyFields>
+        required
         label={<span className="w-[100px]">{t('monitor.group')}</span>}
-        name="organizations"
-        rules={[{ required: true, message: t('common.required') }]}
       >
-        <GroupTreeSelector
-          style={{
-            width: '800px',
-            marginRight: '8px',
-          }}
-          placeholder={t('common.group')}
-        />
+        <Form.Item<StrategyFields>
+          name="organizations"
+          noStyle
+          rules={[
+            {
+              required: true,
+              message: t('common.required'),
+            },
+          ]}
+        >
+          <GroupTreeSelector
+            style={{
+              width: '100%',
+              marginRight: '8px',
+            }}
+            placeholder={t('common.group')}
+          />
+        </Form.Item>
+        <div className="text-[var(--color-text-3)] mt-[10px]">
+          {t('monitor.events.setGroup')}
+        </div>
       </Form.Item>
       <Form.Item
         noStyle
@@ -126,45 +139,28 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
         }
       </Form.Item>
       <Form.Item<StrategyFields>
-        required
         label={
           <span className="w-[100px]">
             {t('monitor.events.testingFrequency')}
           </span>
         }
+        name="schedule"
+        rules={[{ required: true, message: t('common.required') }]}
       >
-        <Form.Item
-          name="schedule"
-          noStyle
-          rules={[
-            {
-              required: true,
-              message: t('common.required'),
-            },
-          ]}
-        >
-          <InputNumber
-            min={SCHEDULE_UNIT_MAP[`${unit}Min`]}
-            max={SCHEDULE_UNIT_MAP[`${unit}Max`]}
-            precision={0}
-            addonAfter={
-              <Select
-                value={unit}
-                style={{ width: 120 }}
-                onChange={onUnitChange}
-              >
-                {SCHEDULE_LIST.map((item) => (
-                  <Option key={item.value} value={item.value}>
-                    {item.label}
-                  </Option>
-                ))}
-              </Select>
-            }
-          />
-        </Form.Item>
-        <div className="text-[var(--color-text-3)] mt-[10px]">
-          {t('monitor.events.setFrequency')}
-        </div>
+        <InputNumber
+          min={SCHEDULE_UNIT_MAP[`${unit}Min`]}
+          max={SCHEDULE_UNIT_MAP[`${unit}Max`]}
+          precision={0}
+          addonAfter={
+            <Select value={unit} style={{ width: 120 }} onChange={onUnitChange}>
+              {SCHEDULE_LIST.map((item) => (
+                <Option key={item.value} value={item.value}>
+                  {item.label}
+                </Option>
+              ))}
+            </Select>
+          }
+        />
       </Form.Item>
     </>
   );

@@ -13,6 +13,7 @@ import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { useRouter } from 'next/navigation';
 import ViewModal from './viewModal';
+import MetricDimensionTooltip from './metricDimensionTooltip';
 import {
   ColumnItem,
   ModalRef,
@@ -282,18 +283,35 @@ const ViewList: React.FC<ViewListProps> = ({
               dataIndex: item.key,
               key: item.key,
               width: 300,
-              sorter: (a: any, b: any) => a[item.key] - b[item.key],
-              render: (_: unknown, record: TableDataItem) => (
-                <Progress
-                  className="flex"
-                  strokeLinecap="butt"
-                  showInfo={!!record[item.key]}
-                  format={(percent) => `${percent?.toFixed(2)}%`}
-                  percent={getPercent(record[item.key] || 0)}
-                  percentPosition={{ align: 'start', type: 'outer' }}
-                  size={[260, 20]}
-                />
-              ),
+              sorter: (a: any, b: any) =>
+                a[item.key]?.value - b[item.key]?.value,
+              render: (_: unknown, record: TableDataItem) => {
+                const hasDimensions = target?.dimensions?.length > 1;
+                const size: [number, number] = hasDimensions
+                  ? [220, 20]
+                  : [240, 20];
+                return (
+                  <div className="flex items-center justify-between">
+                    <Progress
+                      className="flex"
+                      strokeLinecap="butt"
+                      showInfo={!!record[item.key]?.value}
+                      format={(percent) => `${percent?.toFixed(2)}%`}
+                      percent={getPercent(record[item.key]?.value || 0)}
+                      percentPosition={{ align: 'start', type: 'outer' }}
+                      size={size}
+                    />
+                    {hasDimensions && (
+                      <MetricDimensionTooltip
+                        metricItem={target}
+                        instanceId={record.instance_id}
+                        metricId={target.id}
+                        monitorObjectId={objectId}
+                      />
+                    )}
+                  </div>
+                );
+              },
             };
           }
           return {
@@ -304,20 +322,41 @@ const ViewList: React.FC<ViewListProps> = ({
             width: 200,
             ...(item.type === 'value'
               ? {
-                sorter: (a: any, b: any) => a[item.key] - b[item.key],
+                sorter: (a: any, b: any) =>
+                  a[item.key]?.value - b[item.key]?.value,
               }
               : {}),
             render: (_: unknown, record: TableDataItem) => {
-              const color = getEnumColor(target, record[item.key]);
+              const color = getEnumColor(target, record[item.key]?.value);
+              const hasDimensions = target?.dimensions?.length > 1;
+              const metricValue = record[item.key]?.value;
+              const metricUnit = record[item.key]?.unit || target?.unit || '';
+              const metricItem: any = {
+                unit: metricUnit,
+                name: target?.name,
+                dimensions: target?.dimensions || [],
+              };
               return (
-                <>
+                <div className="flex items-center justify-between">
                   <span style={{ color }}>
                     <EllipsisWithTooltip
-                      text={getEnumValueUnit(target, record[item.key])}
+                      text={getEnumValueUnit(
+                        metricItem,
+                        metricValue,
+                        metricUnit
+                      )}
                       className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
                     ></EllipsisWithTooltip>
                   </span>
-                </>
+                  {hasDimensions && (
+                    <MetricDimensionTooltip
+                      metricItem={target}
+                      instanceId={record.instance_id}
+                      metricId={target.id}
+                      monitorObjectId={objectId}
+                    />
+                  )}
+                </div>
               );
             },
           };

@@ -112,6 +112,7 @@ NETWORK_INTERFACES_RELATIONS = "network_topo_info_gauge"
 
 PROTOCOL_METRIC_MAP = {
     "mysql": ["mysql_info_gauge"],
+    "postgresql": ["postgresql_info_gauge"],
     "oracle": ["oracle_info_gauge"],
     "mssql": ["mssql_info_gauge"],
 }
@@ -147,6 +148,7 @@ MIDDLEWARE_METRIC_MAP = {
     "rabbitmq": ["rabbitmq_info_gauge"],
     "tomcat": ["tomcat_info_gauge"],
     "consul": ["consul_info_gauge"],
+    "docker": ["docker_info_gauge"],
     "apache": ["apache_info_gauge"],
     "activemq": ["activemq_info_gauge"],
     "weblogic": ["weblogic_info_gauge"],

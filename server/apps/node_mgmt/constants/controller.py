@@ -4,6 +4,9 @@ from apps.node_mgmt.constants.node import NodeConstants
 class ControllerConstants:
     """控制器相关常量"""
 
+    # Windows 安装路径
+    WINDOWS_INSTALL_DIR = "C:\\bklite\\fusion-collectors"
+
     CONTROLLER = [
         {
             "os": "linux",
@@ -15,7 +18,7 @@ class ControllerConstants:
             "os": "windows",
             "name": "Controller",
             "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
-            "version_command": "type C:\\bklite\\fusion-collectors\\VERSION",
+            "version_command": f"type {WINDOWS_INSTALL_DIR}\\VERSION",
         },
     ]
 
@@ -35,6 +38,7 @@ class ControllerConstants:
 
     # Etag缓存时间（秒）
     E_CACHE_TIMEOUT = 60 * 5  # 5分钟
+
 
     # 控制器下发目录
     CONTROLLER_INSTALL_DIR = {

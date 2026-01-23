@@ -2,13 +2,13 @@
   "client_id": "mlops",
   "name": "MLOps",
   "url": "/mlops/manage",
-  "description": "AI end-to-end lifecycle management tool, integrating dataset management and model task training functionalities, enhances the flexibility and efficiency of machine learning.",
+  "description": "app.mlops",
   "icon": "moxingguanli1",
   "tags": [
-    "数据集管理",
-    "数据打标",
-    "模型训练",
-    "模型发布"
+    "tag.dataset_management",
+    "tag.data_labeling",
+    "tag.model_training",
+    "tag.model_release"
   ],
   "menus": [
     {

@@ -240,7 +240,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_total",
-      "query": "disk_total{instance_type=\"os\", __$labels__}",
+      "query": "any(disk_total{instance_type=\"os\", __$labels__}) by (instance_id, device)",
       "display_name": "Disk Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -248,10 +248,6 @@
         {
           "name": "device",
           "description": "磁盘设备"
-        },
-        {
-          "name": "path",
-          "description": "挂载路径"
         }
       ],
       "instance_id_keys": ["instance_id"],
@@ -260,7 +256,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_free",
-      "query": "disk_free{instance_type=\"os\", __$labels__}",
+      "query": "any(disk_free{instance_type=\"os\", __$labels__}) by (instance_id, device)",
       "display_name": "Disk Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -268,10 +264,6 @@
         {
           "name": "device",
           "description": "磁盘设备"
-        },
-        {
-          "name": "path",
-          "description": "挂载路径"
         }
       ],
       "instance_id_keys": ["instance_id"],
@@ -280,7 +272,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_used_percent",
-      "query": "disk_used_percent{instance_type=\"os\", __$labels__}",
+      "query": "any(disk_used_percent{instance_type=\"os\", __$labels__}) by (instance_id, device)",
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -288,10 +280,6 @@
         {
           "name": "device",
           "description": "磁盘设备"
-        },
-        {
-          "name": "path",
-          "description": "挂载路径"
         }
       ],
       "instance_id_keys": ["instance_id"],
@@ -300,7 +288,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_inodes_used_percent",
-      "query": "disk_inodes_used_percent{instance_type=\"os\", __$labels__}",
+      "query": "any(disk_inodes_used_percent{instance_type=\"os\", __$labels__}) by (instance_id, device)",
       "display_name": "Inode Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -308,10 +296,6 @@
         {
           "name": "device",
           "description": "磁盘设备"
-        },
-        {
-          "name": "path",
-          "description": "挂载路径"
         }
       ],
       "instance_id_keys": ["instance_id"],

@@ -1,4 +1,5 @@
 [[inputs.disk]]
+    startup_error_behavior = "retry"
     ignore_fs = ["tmpfs", "devtmpfs", "devfs", "iso9660", "overlay", "aufs", "squashfs"]
     interval = "{{ interval }}s"
     [inputs.disk.tags]

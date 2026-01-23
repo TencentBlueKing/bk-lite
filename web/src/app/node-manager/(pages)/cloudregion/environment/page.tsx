@@ -168,9 +168,9 @@ const EnvironmentPage = () => {
         setGenerateLoading(false);
       }
       // 模拟异步生成脚本
-      getDeployCommand({ proxy_address: proxyIp })
+      getDeployCommand({ cloud_region_id: cloudId })
         .then((res) => {
-          const generatedScript = res?.commands || '';
+          const generatedScript = res || '';
           setScript(generatedScript);
           message.success(
             t('node-manager.cloudregion.environment.generateSuccess')
@@ -260,7 +260,7 @@ const EnvironmentPage = () => {
 
   return (
     <MainLayout>
-      <div className="w-[calc(100vw-288px)] min-w-[1000px] h-full">
+      <div className="h-full w-[calc(100vw-285px)] min-w-[1000px]">
         {/* 环境状态 */}
         <div style={{ marginBottom: 32 }}>
           <div

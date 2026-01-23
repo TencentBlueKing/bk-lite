@@ -3,10 +3,10 @@ import logging
 from django.conf import settings
 from django.contrib import auth
 from django.utils.deprecation import MiddlewareMixin
-from django.utils.translation import gettext as _
 from ipware import get_client_ip
 from rest_framework import status
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,13 @@ class APISecretMiddleware(MiddlewareMixin):
     """API令牌认证中间件"""
 
     API_PASS_ATTR = "api_pass"
-    TOKEN_MISSING_MSG = "token validation failed"
+
+    def _get_loader(self, request=None) -> LanguageLoader:
+        """获取基于用户locale的LanguageLoader"""
+        locale = "en"
+        if request and hasattr(request, "user") and hasattr(request.user, "locale"):
+            locale = request.user.locale or "en"
+        return LanguageLoader(app="core", default_lang=locale)
 
     def process_request(self, request):
         """处理请求的API令牌验证"""
@@ -36,7 +42,11 @@ class APISecretMiddleware(MiddlewareMixin):
 
         except Exception as e:
             logger.error("API令牌验证异常: %s", str(e))
-            return WebUtils.response_error(error_message=_(self.TOKEN_MISSING_MSG), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            loader = self._get_loader(request)
+            return WebUtils.response_error(
+                error_message=loader.get("error.token_validation_failed", "Token validation failed"),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     def _get_api_token(self, request):
         """从请求头中获取API令牌"""
@@ -63,4 +73,7 @@ class APISecretMiddleware(MiddlewareMixin):
         client_ip, _ = get_client_ip(request)
         logger.warning("API令牌验证失败 - IP: %s, 路径: %s", client_ip or "unknown", request.path)
 
-        return WebUtils.response_error(error_message=_(self.TOKEN_MISSING_MSG), status_code=status.HTTP_403_FORBIDDEN)
+        loader = self._get_loader(request)
+        return WebUtils.response_error(
+            error_message=loader.get("error.token_validation_failed", "Token validation failed"), status_code=status.HTTP_403_FORBIDDEN
+        )

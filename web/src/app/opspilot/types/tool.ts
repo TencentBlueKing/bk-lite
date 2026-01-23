@@ -24,6 +24,7 @@ export interface SelectTool {
   id: number;
   name: string;
   icon: string;
+  description?: string;
   kwargs?: { key: string; value: string }[];
 }
 

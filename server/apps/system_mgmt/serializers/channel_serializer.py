@@ -1,8 +1,8 @@
-from apps.core.utils.serializers import I18nSerializer
+from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import Channel, ChannelChoices
 
 
-class ChannelSerializer(I18nSerializer):
+class ChannelSerializer(UsernameSerializer):
     class Meta:
         model = Channel
         fields = "__all__"

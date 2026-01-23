@@ -119,11 +119,20 @@ export const useStudioApi = () => {
   };
 
   /**
-   * Executes a workflow node manually.
+   * Executes a workflow node manually (JSON response).
    * @param payload - The execution payload including message, bot_id, and node_id.
    */
   const executeWorkflow = async (payload: { message?: string; bot_id: string; node_id: string }): Promise<any> => {
     return post(`/opspilot/bot_mgmt/execute_chat_flow/${payload.bot_id}/${payload.node_id}`, { message: payload.message, is_test: true });
+  };
+
+  /**
+   * Gets the SSE URL for executing a workflow node with streaming.
+   * @param botId - The ID of the bot.
+   * @param nodeId - The ID of the node.
+   */
+  const getExecuteWorkflowSSEUrl = (botId: string, nodeId: string): string => {
+    return `/api/proxy/opspilot/bot_mgmt/execute_chat_flow/${botId}/${nodeId}`;
   };
 
   /**
@@ -161,9 +170,10 @@ export const useStudioApi = () => {
   /**
    * Fetches web chat session list for a bot.
    * @param botId - The ID of the bot.
+   * @param nodeId - The ID of the node.
    */
-  const fetchWebChatSessions = async (botId: string | number): Promise<any[]> => {
-    return get('/opspilot/bot_mgmt/chat_application/web_chat_sessions/', { params: { bot_id: botId } });
+  const fetchWebChatSessions = async (botId: string | number, nodeId?: string | number): Promise<any[]> => {
+    return get('/opspilot/bot_mgmt/chat_application/web_chat_sessions/', { params: { bot_id: botId, node_id: nodeId } });
   };
 
   /**
@@ -182,7 +192,14 @@ export const useStudioApi = () => {
   const fetchSkillGuide = async (botId: string, nodeId: string): Promise<any> => {
     return get('/opspilot/bot_mgmt/chat_application/skill_guide/', { params: { bot_id: botId, node_id: nodeId } });
   };
-
+  /**
+   * 删除会话历史
+   * @param nodeId - 节点ID
+   * @param sessionId - 会话ID
+   */
+  const deleteSessionHistory = async (nodeId: string | number, sessionId: string): Promise<any> => {
+    return post('/opspilot/bot_mgmt/chat_application/delete_session_history/', { node_id: nodeId, session_id: sessionId });
+  };
   return {
     fetchLogs,
     fetchWorkflowTaskResult,
@@ -198,6 +215,7 @@ export const useStudioApi = () => {
     fetchConversations,
     fetchActiveUsers,
     executeWorkflow,
+    getExecuteWorkflowSSEUrl,
     getAllUsers,
     fetchWorkflowLogs,
     fetchWorkflowLogDetail,
@@ -205,5 +223,6 @@ export const useStudioApi = () => {
     fetchApplication,
     fetchSessionMessages,
     fetchSkillGuide,
+    deleteSessionHistory,
   };
 };
