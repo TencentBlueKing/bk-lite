@@ -20,5 +20,16 @@
     ],
     "check_skill_type": 1,
     "format_skill_type": 2
+  },
+  {
+    "id": "web_check",
+    "name": "Web 应用巡检助手",
+    "format_skill_name": "Web 应用数据汇总",
+    "description": "Web 应用巡检助手",
+    "tools": [
+      "jenkins"
+    ],
+    "check_skill_type": 1,
+    "format_skill_type": 2
   }
 ]

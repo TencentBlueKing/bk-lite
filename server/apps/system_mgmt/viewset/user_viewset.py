@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
+from apps.rpc.cmdb import CMDB
 from apps.system_mgmt.models import Group, Role, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.services.role_manage import RoleManage
@@ -235,6 +236,8 @@ class UserViewSet(ViewSetUtils):
             )
             cache.delete_many(keys)
 
+            # 同步用户数据到CMDB
+            CMDB().sync_display_fields(users=[{"id": pk, "username": params["username"], "display_name": params.get("lastName")}])
             # 记录操作日志
             log_operation(request, "update", "user", f"编辑用户: {params['username']}")
         return JsonResponse({"result": True})

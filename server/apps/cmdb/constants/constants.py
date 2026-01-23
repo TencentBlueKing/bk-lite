@@ -310,6 +310,10 @@ COLLECT_OBJ_TREE = [
              "type": CollectDriverTypes.PROTOCOL, "tag": ["Agentless", "TCP"], "desc": "采集MySQL关键配置信息",
              "encrypted_fields": ["password"]
              },
+            {"id": "postgresql", "model_id": "postgresql", "name": "PostgreSQL", "task_type": CollectPluginTypes.PROTOCOL,
+             "type": CollectDriverTypes.PROTOCOL, "tag": ["Agentless", "TCP"], "desc": "采集PostgreSQL关键配置信息",
+             "encrypted_fields": ["password"]
+             },
             {
                 "id": "redis",
                 "model_id": "redis",

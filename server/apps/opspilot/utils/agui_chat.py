@@ -109,33 +109,14 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
             chunk_index = 0
             accumulated_content = []
             async for sse_line in graph.agui_stream(request):
-                # 如果 show_think=False，过滤掉工具调用相关事件
-                if not show_think and sse_line.startswith("data: "):
+                # 累积内容用于日志
+                if sse_line.startswith("data: "):
                     try:
                         data_str = sse_line[6:].strip()
                         data_json = json.loads(data_str)
-                        event_type = data_json.get("type", "")
-
-                        # 过滤工具调用相关事件
-                        if event_type in ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]:
-                            continue
-
-                        # 累积文本内容用于日志
-
                         accumulated_content.append(data_json)
                     except (json.JSONDecodeError, ValueError):
                         pass
-                else:
-                    # show_think=True 时，也需要累积内容用于日志
-                    if sse_line.startswith("data: "):
-                        try:
-                            data_str = sse_line[6:].strip()
-                            data_json = json.loads(data_str)
-
-                            # 累积文本内容用于日志
-                            accumulated_content.append(data_json)
-                        except (json.JSONDecodeError, ValueError):
-                            pass
 
                 chunk_index += 1
                 yield sse_line

@@ -82,7 +82,8 @@
         "label": "对外通知",
         "config": {
           "inputParams": "last_message",
-          "outputParams": "last_message"
+          "outputParams": "last_message",
+          "notificationContent": "{{last_message}}"
         },
         "description": ""
       },

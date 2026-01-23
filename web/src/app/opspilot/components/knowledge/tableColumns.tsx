@@ -75,6 +75,12 @@ export const getDocumentColumns = (
     render: (text: string) => convertToLocalizedTime(text),
   },
   {
+    title: t('common.updatedTime'),
+    dataIndex: 'updated_at',
+    key: 'updated_at',
+    render: (text: string) => text ? convertToLocalizedTime(text) : '--',
+  },
+  {
     title: t('knowledge.documents.createdBy'),
     key: 'created_by',
     dataIndex: 'created_by',
@@ -103,8 +109,16 @@ export const getDocumentColumns = (
 
       const color = statusColors[record.train_status?.toString()] || 'geekblue';
       const text = record.train_status_display || '--';
+      const isError = record.train_status === 2;
+      const errorMessage = record.error_message;
 
-      return <Tag color={color}>{text}</Tag>;
+      const tag = <Tag color={color}>{text}</Tag>;
+
+      if (isError && errorMessage) {
+        return <Tooltip title={errorMessage}>{tag}</Tooltip>;
+      }
+
+      return tag;
     },
   },
   ...(activeTabKey === 'web_page' ? [
@@ -261,6 +275,12 @@ export const getQAPairColumns = (
     dataIndex: 'created_at',
     key: 'created_at',
     render: (text: string) => convertToLocalizedTime(text),
+  },
+  {
+    title: t('common.updatedTime'),
+    dataIndex: 'updated_at',
+    key: 'updated_at',
+    render: (text: string) => text ? convertToLocalizedTime(text) : '--',
   },
   {
     title: t('knowledge.documents.createdBy'),

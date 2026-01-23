@@ -3,8 +3,8 @@
  * 负责处理不同类型的 AG-UI 消息
  */
 
-import { AGUIMessage } from '@/app/opspilot/types/chat';
-import { CustomChatMessage } from '@/app/opspilot/types/global';
+import { AGUIMessage, BrowserStepProgressValue } from '@/app/opspilot/types/chat';
+import { CustomChatMessage, BrowserStepProgressData, BrowserStepsHistory } from '@/app/opspilot/types/global';
 import { ToolCallInfo, renderToolCallCard, renderErrorMessage, initToolCallTooltips } from './toolCallRenderer';
 
 export interface MessageUpdateFn {
@@ -23,6 +23,7 @@ export class AGUIMessageHandler {
   private toolCallsRef: Map<string, ToolCallInfo>;
   private botMessage: CustomChatMessage;
   private updateMessages: MessageUpdateFn;
+  private browserStepsHistory: BrowserStepProgressData[] = [];
 
   constructor(
     botMessage: CustomChatMessage,
@@ -33,7 +34,6 @@ export class AGUIMessageHandler {
     this.updateMessages = updateMessages;
     this.toolCallsRef = toolCallsRef;
     
-    // 初始化 tooltip 事件监听（只在浏览器环境执行一次）
     if (typeof window !== 'undefined') {
       initToolCallTooltips();
     }
@@ -42,13 +42,19 @@ export class AGUIMessageHandler {
   /**
    * 更新消息内容
    */
-  private updateMessageContent(content: string) {
+  private updateMessageContent(
+    content: string,
+    browserStepProgress?: BrowserStepProgressData | null,
+    browserStepsHistory?: BrowserStepsHistory | null
+  ) {
     this.updateMessages(prevMessages =>
       prevMessages.map(msgItem =>
         msgItem.id === this.botMessage.id
           ? {
             ...msgItem,
             content,
+            browserStepProgress: browserStepProgress !== undefined ? browserStepProgress : msgItem.browserStepProgress,
+            browserStepsHistory: browserStepsHistory !== undefined ? browserStepsHistory : msgItem.browserStepsHistory,
             updateAt: new Date().toISOString()
           }
           : msgItem
@@ -203,6 +209,41 @@ export class AGUIMessageHandler {
     this.updateMessageContent(this.getFullContent());
   }
 
+  handleBrowserStepProgress(value: BrowserStepProgressValue) {
+    this.clearThinkingPrompt();
+    const stepData = value as BrowserStepProgressData;
+    
+    const existingIndex = this.browserStepsHistory.findIndex(
+      s => s.step_number === stepData.step_number
+    );
+    
+    if (existingIndex >= 0) {
+      this.browserStepsHistory[existingIndex] = stepData;
+    } else {
+      this.browserStepsHistory.push(stepData);
+    }
+    
+    this.browserStepsHistory.sort((a, b) => a.step_number - b.step_number);
+    
+    const history: BrowserStepsHistory = {
+      steps: [...this.browserStepsHistory],
+      isRunning: true
+    };
+    
+    this.updateMessageContent(this.getFullContent(), stepData, history);
+  }
+
+  handleBrowserStepComplete() {
+    if (this.browserStepsHistory.length > 0) {
+      const history: BrowserStepsHistory = {
+        steps: [...this.browserStepsHistory],
+        isRunning: false
+      };
+      const lastStep = this.browserStepsHistory[this.browserStepsHistory.length - 1];
+      this.updateMessageContent(this.getFullContent(), lastStep, history);
+    }
+  }
+
   /**
    * 处理消息并返回是否应该停止
    */
@@ -259,7 +300,14 @@ export class AGUIMessageHandler {
         return true;
 
       case 'RUN_FINISHED':
+        this.handleBrowserStepComplete();
         return true;
+
+      case 'CUSTOM':
+        if (aguiData.name === 'browser_step_progress' && aguiData.value) {
+          this.handleBrowserStepProgress(aguiData.value as BrowserStepProgressValue);
+        }
+        return false;
 
       default:
         console.warn('[AG-UI] Unknown message type:', aguiData.type);

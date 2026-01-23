@@ -336,9 +336,11 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
         message={executionProps.executeMessage}
         result={executionProps.executeResult}
         loading={executionProps.executeLoading}
+        streamingContent={executionProps.streamingContent}
         onMessageChange={executionProps.setExecuteMessage}
         onExecute={executionProps.handleExecuteNode}
-        onClose={() => executionProps.setIsExecuteDrawerVisible(false)}
+        onClose={executionProps.handleCloseDrawer}
+        onStop={executionProps.stopExecution}
       />
     </div>
   );

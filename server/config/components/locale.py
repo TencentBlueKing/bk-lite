@@ -1,8 +1,4 @@
 # 使用时区
-import os
-
-from config.components.base import BASE_DIR
-
 USE_TZ = True
 
 # 时区设置
@@ -23,5 +19,5 @@ LANGUAGES = (
 )
 
 
-# 指定翻译文件的目录
-LOCALE_PATHS = (os.path.join(BASE_DIR, "locale"),)
+# 翻译文件目录（已迁移至 apps/*/language/*.yaml，使用 LanguageLoader）
+# LOCALE_PATHS = (os.path.join(BASE_DIR, "locale"),)
