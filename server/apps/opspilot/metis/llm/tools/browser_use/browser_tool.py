@@ -302,7 +302,7 @@ def _extract_sensitive_data(task: str) -> tuple[Optional[Dict[str, str]], str]:
     """
     if not task:
         return None, task
-
+    logger.info(f"全文task: {task}")
     sensitive_data: Dict[str, str] = {}
     masked_task = task
 
@@ -720,7 +720,13 @@ def _run_async_task(coro):
 
 
 @tool()
-def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig = None) -> Dict[str, Any]:
+def browse_website(
+    url: str,
+    task: Optional[str] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    config: RunnableConfig = None,
+) -> Dict[str, Any]:
     """
     使用AI驱动的浏览器打开网站并执行操作
 
@@ -729,14 +735,26 @@ def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig 
     请在一次调用中描述完整的任务流程，不要拆分成多次调用！
     每次调用结束后浏览器会关闭，多次调用会导致登录状态丢失。
 
-    **正确用法（一次调用完成所有步骤）：**
-    - task="登录系统（用户名xxx，密码xxx），然后点击巡检菜单，执行巡检任务，最后返回巡检结果"
+    **🔐 凭据传递方式（必须使用 username/password 参数）：**
+    当任务需要登录时，必须将用户名密码放在独立参数中，不要写在 task 里：
+
+    ```python
+    browse_website(
+        url="https://example.com/login",
+        username="admin",
+        password="mypassword123",
+        task="使用提供的凭据登录系统，登录成功后点击'系统巡检'菜单，执行巡检并返回结果"
+    )
+    ```
+
+    这样做的好处：
+    1. 凭据会自动安全地传递给浏览器，不会在日志中暴露
+    2. 避免凭据在任务描述中被意外修改或脱敏
+    3. 浏览器会在需要时自动填入正确的用户名和密码
 
     **错误用法（不要这样做）：**
-    - 第一次调用：task="打开登录页面"
-    - 第二次调用：task="输入用户名密码并登录"
-    - 第三次调用：task="点击巡检菜单"
-    这样做会导致每次调用后浏览器关闭，登录状态丢失！
+    - ❌ task="输入用户名admin和密码123456登录" （凭据不要写在task里！）
+    - ❌ 拆分成多次调用（会丢失登录状态）
 
     **何时使用此工具：**
     - 需要与网页进行交互（点击、填表等）
@@ -753,23 +771,27 @@ def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig 
     - 支持流式传递执行进度（通过 step_callback）
 
     **典型使用场景：**
-    1. 登录并执行操作（一次调用完成）：
-       - url="https://example.com/login"
-       - task="使用用户名admin和密码123456登录，登录成功后点击'系统巡检'菜单，执行巡检并返回巡检结果"
+    1. 登录并执行操作：
+       browse_website(
+           url="https://example.com/login",
+           username="admin",
+           password="123456",
+           task="使用提供的凭据登录，登录成功后点击'系统巡检'菜单，执行巡检并返回巡检结果"
+       )
 
-    2. 执行搜索并提取结果：
-       - url="https://www.google.com"
-       - task="搜索'Python教程'，等待结果加载，提取前3个结果的标题和链接"
-
-    3. 完整的表单流程：
-       - url="https://example.com/form"
-       - task="填写用户名为'test'，密码为'test123'，点击登录，等待跳转，然后提取用户信息"
+    2. 执行搜索并提取结果（无需登录）：
+       browse_website(
+           url="https://www.google.com",
+           task="搜索'Python教程'，等待结果加载，提取前3个结果的标题和链接"
+       )
 
     Args:
         url (str): 目标网站URL（必填）
-        task (str, optional): 完整的任务描述，应包含所有需要执行的步骤
+        task (str, optional): 完整的任务描述，应包含所有需要执行的步骤。
+            注意：不要在task中包含用户名密码，请使用username/password参数
+        username (str, optional): 登录用户名。当任务需要登录时必填
+        password (str, optional): 登录密码。当任务需要登录时必填
         config (RunnableConfig): 工具配置（自动传递）
-            - 可通过 config["configurable"]["browser_step_callback"] 传递步骤回调函数
 
     Returns:
         dict: 执行结果
@@ -785,13 +807,8 @@ def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig 
     - 需要稳定的网络连接
     - 某些网站可能有反爬虫机制
     - 确保任务描述清晰具体，包含完整流程
-    - 自动使用调用它的Agent的LLM，如果没有则使用 gpt-4o
     - ⚠️ 不要将连续任务拆分成多次调用，这会导致登录状态丢失
-
-    **与其他工具的区别：**
-    - fetch_html: 仅获取静态HTML，不执行JavaScript
-    - http_get: 仅发送HTTP请求，不渲染页面
-    - browse_website: 完整的浏览器环境，可执行复杂交互
+    - 🔐 凭据必须通过 username/password 参数传递，不要写在 task 中
     """
     configurable = config.get("configurable", {}) if config else {}
     llm_config = configurable.get("graph_request")
@@ -806,7 +823,30 @@ def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig 
             api_key=llm_config.openai_api_key,
             base_url=llm_config.openai_api_base,
         )
+
+        # 从 task 中提取敏感数据
         sensitive_data, masked_task = _extract_sensitive_data(task) if task else (None, task)
+
+        # 合并独立参数中的凭据（优先级更高）
+        # username/password 参数直接传入的凭据会覆盖 task 中提取的同名凭据
+        if username or password:
+            if sensitive_data is None:
+                sensitive_data = {}
+            if username:
+                sensitive_data["x_username"] = username
+                logger.info("从 username 参数添加凭据: x_username=***")
+            if password:
+                sensitive_data["x_password"] = password
+                logger.info("从 password 参数添加凭据: x_password=***")
+
+            # 如果 task 中没有提及凭据占位符，自动添加提示
+            # 这样浏览器 agent 知道有凭据可用
+            if masked_task and "x_username" in sensitive_data and "<secret>x_username</secret>" not in masked_task:
+                # 在 task 开头添加凭据提示
+                credential_hint = "【凭据已提供】用户名: <secret>x_username</secret>"
+                if "x_password" in sensitive_data:
+                    credential_hint += ", 密码: <secret>x_password</secret>"
+                masked_task = f"{credential_hint}。{masked_task}"
 
         # 获取或创建共享的浏览器用户数据目录（基于 thread_id/run_id 缓存，用于保持会话状态）
         user_data_dir = _get_or_create_user_data_dir(config)
@@ -892,6 +932,7 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
             api_key=llm_config.openai_api_key,
             base_url=llm_config.openai_api_base,
         )
+        logger.info(f"selectors: {selectors}")
         if selectors:
             task_parts = ["从页面中提取以下信息："]
             for field, description in selectors.items():
