@@ -4,7 +4,7 @@
   "url": "/log/search",
   "icon": "rizhi2",
   "tags": [
-    "多日志接入","灵活检索","监控告警","权限管控"
+    "tag.multi_log_access", "tag.flexible_search", "tag.monitor_alert", "tag.permission_control"
   ],
   "description": "app.log",
   "menus": [

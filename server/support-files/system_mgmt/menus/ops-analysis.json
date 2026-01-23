@@ -3,7 +3,7 @@
   "name": "OpsAnalysis",
   "url": "/ops-analysis/view",
   "icon": "ops-analysis",
-  "tags": ["仪表盘", "画布", "数据整合"],
+  "tags": ["tag.dashboard", "tag.canvas", "tag.data_integration"],
   "description": "app.ops-analysis",
   "menus": [
     {
