@@ -4,12 +4,12 @@
   "url": "/opspilot/studio",
   "icon": "opspilot",
   "tags": [
-    "智能体",
-    "知识库",
-    "智能机器人",
-    "工具管理"
+    "tag.agent",
+    "tag.knowledge_base",
+    "tag.smart_bot",
+    "tag.tool_management"
   ],
-  "description": "OpsPilot is an AI intelligence platform, based on cutting-edge artificial intelligence technology, integrating machine learning and large model capabilities, supporting diversified scenarios.",
+  "description": "app.opspilot",
   "menus": [
     {
       "name": "Studio",

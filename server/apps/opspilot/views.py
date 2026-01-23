@@ -647,7 +647,7 @@ def execute_chat_flow(request, bot_id, node_id):
         logger.error(f"ChatFlow流程执行失败，bot_id: {bot_id}, node_id: {node_id}, 错误: {str(e)}")
         logger.exception(e)
         # 流式错误响应，参考 llm_view.py
-        return LLMViewSet._create_error_stream_response(str(e))
+        return LLMViewSet.create_error_stream_response(str(e))
 
 
 @api_exempt
@@ -752,12 +752,7 @@ def execute_chat_flow_dingtalk(request, bot_id):
     # 1. 验证Bot ID
     if not bot_id:
         logger.error("钉钉ChatFlow执行失败：缺少Bot ID")
-        return JsonResponse(
-            {
-                "success": False,
-                "message": loader.get("error.missing_bot_id", "Missing bot_id"),
-            }
-        )
+        return JsonResponse({"success": False, "message": loader.get("error.missing_bot_id", "Missing bot_id")})
 
     # 2. 创建工具类实例并验证Bot和工作流配置
     dingtalk_utils = DingTalkChatFlowUtils(bot_id)
@@ -777,21 +772,9 @@ def execute_chat_flow_dingtalk(request, bot_id):
             # 启动Stream客户端
             success = start_dingtalk_stream_client(bot_id, bot_chat_flow, dingtalk_config)
             if success:
-                return JsonResponse(
-                    {
-                        "success": True,
-                        "message": "DingTalk Stream client started successfully",
-                        "mode": "stream",
-                    }
-                )
+                return JsonResponse({"success": True, "message": "DingTalk Stream client started successfully", "mode": "stream"})
             else:
-                return JsonResponse(
-                    {
-                        "success": False,
-                        "message": "Failed to start DingTalk Stream client",
-                        "mode": "stream",
-                    }
-                )
+                return JsonResponse({"success": False, "message": "Failed to start DingTalk Stream client", "mode": "stream"})
     except json.JSONDecodeError:
         pass
 

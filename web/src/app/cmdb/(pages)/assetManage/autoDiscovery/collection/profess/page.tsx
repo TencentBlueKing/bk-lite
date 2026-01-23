@@ -420,6 +420,7 @@ const ProfessionalCollection: React.FC = () => {
       vm: VMTask,
       cloud: CloudTask,
       host: HostTask,
+      db: HostTask,
       middleware: HostTask,
       snmp: SNMPTask,
       protocol: SQLTask,

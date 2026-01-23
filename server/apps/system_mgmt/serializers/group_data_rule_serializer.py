@@ -1,8 +1,8 @@
-from apps.core.utils.serializers import I18nSerializer
+from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import GroupDataRule
 
 
-class GroupDataRuleSerializer(I18nSerializer):
+class GroupDataRuleSerializer(UsernameSerializer):
     class Meta:
         model = GroupDataRule
         fields = "__all__"
