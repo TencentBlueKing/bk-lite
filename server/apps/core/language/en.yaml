@@ -33,3 +33,49 @@ app:
   system-manager: Covering user and organizational role permission management, ensuring resource access security through fine-grained permission control while improving operational efficiency. Provides flexible configuration and management to meet different business needs
   node: Used to centrally manage nodes under various cloud regions and install various probes on each node to collect monitoring data, configuration information, logs and other information
   ops-console: Unified operations console for managing and monitoring all operational activities
+
+# Tag translations (for built-in app tags)
+tag:
+  # system-manager
+  user_management: User Management
+  organization: Organization
+  role_permission: Role Permission
+  general_settings: General Settings
+  # cmdb
+  asset_management: Asset Management
+  auto_discovery: Auto Discovery
+  model_customization: Model Customization
+  # opspilot
+  agent: Agent
+  knowledge_base: Knowledge Base
+  smart_bot: Smart Bot
+  tool_management: Tool Management
+  # monitor
+  multi_object_access: Multi-Object Access
+  quick_search: Quick Search
+  monitor_dashboard: Monitor Dashboard
+  monitor_strategy: Monitor Strategy
+  smart_alert: Smart Alert
+  # node
+  cloud_region: Cloud Region
+  probe_management: Probe Management
+  node_management: Node Management
+  # alarm
+  unified_alarm: Unified Alarm
+  smart_noise_reduction: Smart Noise Reduction
+  incident_escalation: Incident Escalation
+  auto_dispatch: Auto Dispatch
+  # log
+  multi_log_access: Multi-Log Access
+  flexible_search: Flexible Search
+  monitor_alert: Monitor Alert
+  permission_control: Permission Control
+  # mlops
+  dataset_management: Dataset Management
+  data_labeling: Data Labeling
+  model_training: Model Training
+  model_release: Model Release
+  # ops-analysis
+  dashboard: Dashboard
+  canvas: Canvas
+  data_integration: Data Integration

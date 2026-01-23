@@ -3,7 +3,7 @@
   "name": "CMDB",
   "url": "/cmdb/assetSearch",
   "description": "app.cmdb",
-  "tags": ["资产管理","自动发现","模型自定义"],
+  "tags": ["tag.asset_management", "tag.auto_discovery", "tag.model_customization"],
   "menus": [
     {
       "name": "Search",

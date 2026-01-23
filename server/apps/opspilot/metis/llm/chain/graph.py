@@ -257,7 +257,7 @@ class BasicGraph(ABC):
             执行结果或流
         """
         config = {
-            "recursion_limit": 50,
+            "recursion_limit": 100,
             "trace_id": str(uuid.uuid4()),
             "configurable": {
                 "graph_request": request,
@@ -571,7 +571,7 @@ class BasicGraph(ABC):
                 raise RuntimeError("Failed to compile graph: graph is None")
 
             config = {
-                "recursion_limit": 50,
+                "recursion_limit": 100,
                 "trace_id": str(uuid.uuid4()),
                 "configurable": {
                     "graph_request": request,

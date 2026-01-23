@@ -5,10 +5,10 @@
   "description": "app.mlops",
   "icon": "moxingguanli1",
   "tags": [
-    "数据集管理",
-    "数据打标",
-    "模型训练",
-    "模型发布"
+    "tag.dataset_management",
+    "tag.data_labeling",
+    "tag.model_training",
+    "tag.model_release"
   ],
   "menus": [
     {

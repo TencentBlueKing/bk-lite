@@ -722,7 +722,10 @@ class ToolsNodes(BasicNode):
             temp_graph = temp_graph_builder.compile()
 
             # 调用 ReAct 节点
-            result = await temp_graph.ainvoke({"messages": messages[-3:] if len(messages) > 3 else messages}, config=config)
+            # result = await temp_graph.ainvoke({"messages": messages[-3:] if len(messages) > 3 else messages}, config=config)
+            result = await temp_graph.ainvoke(
+                {"messages": messages[-3:] if len(messages) > 3 else messages}, config={**config, "recursion_limit": 100}
+            )
 
             # 提取最后的 AI 消息
             result_messages = result.get("messages", [])

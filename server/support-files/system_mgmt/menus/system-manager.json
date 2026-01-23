@@ -4,10 +4,10 @@
   "url": "/system-manager/user",
   "icon": "system-manager",
   "tags": [
-    "用户管理",
-    "组织架构",
-    "角色权限",
-    "通用设置"
+    "tag.user_management",
+    "tag.organization",
+    "tag.role_permission",
+    "tag.general_settings"
   ],
   "description": "app.system-manager",
   "menus": [

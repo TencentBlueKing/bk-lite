@@ -4,9 +4,9 @@
   "url": "/node-manager/cloudregion",
   "icon": "node",
   "tags": [
-    "云区域",
-    "探针管理",
-    "节点管理"
+    "tag.cloud_region",
+    "tag.probe_management",
+    "tag.node_management"
   ],
   "description": "app.node",
   "menus": [

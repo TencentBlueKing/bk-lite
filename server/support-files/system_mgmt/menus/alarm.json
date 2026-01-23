@@ -4,10 +4,10 @@
   "url": "/alarm/incidents",
   "description": "app.alarm",
   "tags": [
-    "统一告警",
-    "智能降噪",
-    "事故升级",
-    "自动分派"
+    "tag.unified_alarm",
+    "tag.smart_noise_reduction",
+    "tag.incident_escalation",
+    "tag.auto_dispatch"
   ],
   "menus": [
     {

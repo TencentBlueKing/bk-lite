@@ -33,3 +33,49 @@ app:
   system-manager: 涵盖用户和组织角色权限管理，通过精细化权限控制，确保资源访问安全，同时提升操作效率。提供灵活的配置和管理，满足不同业务需求
   node: 用于集中管理各个云区域下的节点，为各个节点安装各类探针，以便进行监控数据、配置信息、日志等信息的采集
   ops-console: 统一运维控制台，用于管理和监控所有运维活动
+
+# 标签翻译 (内置应用标签)
+tag:
+  # system-manager
+  user_management: 用户管理
+  organization: 组织架构
+  role_permission: 角色权限
+  general_settings: 通用设置
+  # cmdb
+  asset_management: 资产管理
+  auto_discovery: 自动发现
+  model_customization: 模型自定义
+  # opspilot
+  agent: 智能体
+  knowledge_base: 知识库
+  smart_bot: 智能机器人
+  tool_management: 工具管理
+  # monitor
+  multi_object_access: 多对象接入
+  quick_search: 快速检索
+  monitor_dashboard: 监控仪表盘
+  monitor_strategy: 监控策略
+  smart_alert: 智能告警
+  # node
+  cloud_region: 云区域
+  probe_management: 探针管理
+  node_management: 节点管理
+  # alarm
+  unified_alarm: 统一告警
+  smart_noise_reduction: 智能降噪
+  incident_escalation: 事故升级
+  auto_dispatch: 自动分派
+  # log
+  multi_log_access: 多日志接入
+  flexible_search: 灵活检索
+  monitor_alert: 监控告警
+  permission_control: 权限管控
+  # mlops
+  dataset_management: 数据集管理
+  data_labeling: 数据打标
+  model_training: 模型训练
+  model_release: 模型发布
+  # ops-analysis
+  dashboard: 仪表盘
+  canvas: 画布
+  data_integration: 数据整合
