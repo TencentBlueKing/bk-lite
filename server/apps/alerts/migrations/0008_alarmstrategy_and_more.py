@@ -43,11 +43,6 @@ class Migration(migrations.Migration):
                 "unique_together": {("name", "strategy_type")},
             },
         ),
-        migrations.RemoveField(model_name="correlationrules", name="aggregation_rules",),
-        migrations.AlterUniqueTogether(name="sessioneventrelation", unique_together=None,),
-        migrations.RemoveField(model_name="sessioneventrelation", name="event",),
-        migrations.RemoveField(model_name="sessioneventrelation", name="session",),
-        migrations.RemoveField(model_name="sessionwindow", name="events",),
         migrations.AddField(
             model_name="alert", name="group_by_field", field=models.CharField(blank=True, help_text="聚合字段", max_length=200, null=True),
         ),
@@ -100,10 +95,5 @@ class Migration(migrations.Migration):
                 help_text="告警状态",
                 max_length=32,
             ),
-        ),
-
-        migrations.DeleteModel(name="AggregationRules",),
-        migrations.DeleteModel(name="CorrelationRules",),
-        migrations.DeleteModel(name="SessionEventRelation",),
-        migrations.DeleteModel(name="SessionWindow",),
+        )
     ]
