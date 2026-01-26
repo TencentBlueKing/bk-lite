@@ -26,8 +26,8 @@ MAX_RETRIES = 4
 MAX_LOGIN_FAILURES = 2  # 登录失败最大重试次数
 
 # 浏览器超时配置（秒），可通过环境变量调整
-BROWSER_LLM_TIMEOUT = int(os.getenv("BROWSER_LLM_TIMEOUT", "30"))  # LLM 调用超时
-BROWSER_STEP_TIMEOUT = int(os.getenv("BROWSER_STEP_TIMEOUT", "30"))  # 单步执行超时（包含导航、页面加载等）
+BROWSER_LLM_TIMEOUT = int(os.getenv("BROWSER_LLM_TIMEOUT", "60"))  # LLM 调用超时
+BROWSER_STEP_TIMEOUT = int(os.getenv("BROWSER_STEP_TIMEOUT", "60"))  # 单步执行超时（包含导航、页面加载等）
 
 # 会话缓存：用于在同一个 Agent 运行周期内共享浏览器用户数据目录
 # 键: thread_id 或 run_id, 值: {"user_data_dir": str, "created_at": float}
