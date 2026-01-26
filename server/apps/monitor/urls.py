@@ -1,7 +1,6 @@
 from rest_framework import routers
 
 from apps.monitor.views.infra import InfraViewSet
-from apps.monitor.views.installer import InstallerViewSet
 from apps.monitor.views.manual_collect import ManualCollect
 from apps.monitor.views.monitor_alert import MonitorAlertVieSet, MonitorEventVieSet
 from apps.monitor.views.monitor_instance import MonitorInstanceVieSet
@@ -46,5 +45,4 @@ router.register(r"api/node_mgmt", NodeMgmtView, basename="NodeMgmtView")
 router.register(r"api/manual_collect", ManualCollect, basename="ManualCollect")
 router.register(r"api/unit", UnitViewSet, basename="UnitViewSet")
 router.register(r"open_api/infra", InfraViewSet, basename="InfraViewSet")
-router.register(r"api/installer", InstallerViewSet, basename="InstallerViewSet")
 urlpatterns = router.urls
