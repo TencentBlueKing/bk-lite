@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.fields import empty
 
-from apps.alerts.constants import AlertStatus, IncidentStatus, NotifyResultStatus
+from apps.alerts.constants import AlertStatus, IncidentStatus, NotifyResultStatus, SessionStatus
 from apps.alerts.models import AlertSource, Alert, Event, Level, AlertAssignment, AlertShield, Incident, SystemSetting, \
     NotifyResult, OperatorLog
 from apps.system_mgmt.models.user import User
@@ -105,7 +105,7 @@ class AlertModelSerializer(serializers.ModelSerializer):
             self.alert_notify_result_map = {}
 
     class Meta:
-        model = Alert
+        model = Alert.objects.exclude(session_status__in=SessionStatus.NO_CONFIRMED)
         exclude = ["events"]
         extra_kwargs = {
             # "events": {"write_only": True},  # events 字段只读

@@ -1,0 +1,14 @@
+{% import 'macros.jinja' as macros %}
+
+SELECT
+  {{ macros.fingerprint_expr(dimensions, strategy_id) }} as fingerprint,
+  {{ macros.effective_dimension(dimensions) }} as effective_group_dimension,
+  {{ macros.dimension_columns(dimensions) }},
+  {{ macros.aggregate_fields() }},
+  '{{ session_end_time }}' as session_end_time
+FROM events_table
+WHERE
+  {{ macros.time_filter(window_start) }}
+  AND {{ macros.event_action_filter() }}
+GROUP BY {{ macros.effective_dimension(dimensions) }}, {{ macros.dimension_columns(dimensions) }}
+HAVING COUNT(*) >= {{ min_event_count | default(1) }}

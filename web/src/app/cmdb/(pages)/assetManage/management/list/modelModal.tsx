@@ -66,6 +66,7 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
 
     useImperativeHandle(ref, () => ({
       showModal: ({ type, modelForm, subTitle, title }) => {
+        const resolvedForm = modelForm || {};
         // 开启弹窗的交互
         setModelVisible(true);
         setSubTitle(subTitle);
@@ -73,11 +74,11 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
         setTitle(title);
         let icon = getIconUrl({ model_id: '', icn: '' });
         if (type === 'edit') {
-          icon = getIconUrl(modelForm);
+          icon = getIconUrl(resolvedForm);
         }
         setModelIcon(icon);
-        setIconId(modelForm.icn || 'icon-cc-host');
-        setModelInfo(modelForm);
+        setIconId(resolvedForm.icn || 'icon-cc-host');
+        setModelInfo(resolvedForm);
       },
     }));
 

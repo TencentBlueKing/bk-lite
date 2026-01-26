@@ -88,10 +88,10 @@ class Command(BaseCommand):
 
     def _init_alerts(self):
         """告警系统资源初始化"""
-        self.stdout.write("告警系统资源初始化...")
-        call_command("init_alert_sources")
-        call_command("init_alert_levels")
-        call_command("create_builtin_rules", "--update")
+        self.stdout.write('告警系统资源初始化...')
+        call_command('init_alert_sources')
+        call_command('init_alert_levels')
+        call_command('init_system_settings')
 
     def _init_operation_analysis(self):
         """运营分析系统资源初始化"""

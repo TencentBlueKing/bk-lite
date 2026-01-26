@@ -17,6 +17,7 @@ import {
   OriginSubGroupItem,
   EnumList,
 } from '@/app/cmdb/types/assetManage';
+import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
 // 查找组织对象
 const findOrganizationById = (arr: Array<any>, targetValue: unknown) => {
@@ -334,12 +335,37 @@ export const getAssetColumns = (config: {
       default:
         return {
           ...columnItem,
-          render: (_: unknown, record: any) => (
-            <EllipsisWithTooltip
-              className="whitespace-nowrap overflow-hidden text-ellipsis"
-              text={record[attrId] || '--'}
-            ></EllipsisWithTooltip>
-          ),
+          render: (_: unknown, record: any) => {
+            // 获取云区域列表（注意获取时机，防止获取到空数组）
+            const cloudOptions = useAssetDataStore.getState().cloud_list;
+            // console.log("test8.25:cloudOptions", cloudOptions);
+
+            // 特殊处理-云区域字段 + modelId=host（主机）时
+            const modelId = record.model_id;
+            if (attrId === 'cloud' && modelId === 'host') {
+              // 原本是字符串格式，需要转换为数字格式
+              const cloudId = +record[attrId];
+              // 查找与Id匹配的云区域中文名
+              const cloudName = cloudOptions.find(
+                (option: any) => option.proxy_id === cloudId
+              );
+              const displayText = cloudName ? cloudName.proxy_name : (cloudName || '--');
+              return (
+                <EllipsisWithTooltip
+                  className="whitespace-nowrap overflow-hidden text-ellipsis"
+                  text={displayText as string}
+                ></EllipsisWithTooltip>
+              )
+            }
+
+            return (
+              <EllipsisWithTooltip
+                className="whitespace-nowrap overflow-hidden text-ellipsis"
+                // 云区域字段特殊处理
+                text={record[attrId] || '--'}
+              ></EllipsisWithTooltip>
+            )
+          },
         };
     }
   });

@@ -5,8 +5,8 @@
 from django_filters import FilterSet, CharFilter
 
 from apps.alerts.constants import AlertStatus
-from apps.alerts.models import AlertSource, Alert, Event, Level, AlertAssignment, AlertShield, Incident, \
-    CorrelationRules, AggregationRules, SystemSetting, OperatorLog
+from apps.alerts.models import AlertSource, Alert, Event, Level, AlertAssignment, AlertShield, Incident, SystemSetting, \
+    OperatorLog, AlarmStrategy
 
 
 class AlertSourceModelFilter(FilterSet):
@@ -166,24 +166,6 @@ class IncidentModelFilter(FilterSet):
         return qs
 
 
-class CorrelationRulesModelFilter(FilterSet):
-    name = CharFilter(field_name="name", lookup_expr="icontains", label="标题")
-    rule_type = CharFilter(field_name="rule_type", lookup_expr="exact", label="类型")
-
-    class Meta:
-        model = CorrelationRules
-        fields = ["name", "rule_type"]
-
-
-class AggregationRulesModelFilter(FilterSet):
-    name = CharFilter(field_name="name", lookup_expr="icontains", label="标题")
-    type = CharFilter(field_name="type", lookup_expr="exact", label="类型")
-
-    class Meta:
-        model = AggregationRules
-        fields = ["name", "type"]
-
-
 class SystemSettingModelFilter(FilterSet):
     search = CharFilter(field_name="key", lookup_expr="exact", label="系统设置键")
 
@@ -204,3 +186,13 @@ class OperatorLogModelFilter(FilterSet):
     class Meta:
         model = OperatorLog
         fields = ["operator", "action", "overview", "created_at_after", "created_at_before"]
+
+
+class AlarmStrategyModelFilter(FilterSet):
+    name = CharFilter(field_name="name", lookup_expr="icontains", label="规则名称")
+    created_at_after = CharFilter(field_name="created_at", lookup_expr="gte", label="创建时间（起始）")
+    created_at_before = CharFilter(field_name="created_at", lookup_expr="lte", label="创建时间（结束）")
+
+    class Meta:
+        model = AlarmStrategy
+        fields = ["name", "created_at_after", "created_at_before"]
