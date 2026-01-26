@@ -18,7 +18,7 @@ import {
   message,
 } from "antd";
 import { TYPE_CONTENT, TYPE_COLOR } from "@/app/mlops/constants";
-import { ColumnItem, ModalRef, Pagination, TableData } from '@/app/mlops/types';
+import { ColumnItem, ModalRef, Pagination, TableData, DatasetType } from '@/app/mlops/types';
 const { Search } = Input;
 
 const TimeSeriesPredict = () => {
@@ -123,10 +123,6 @@ const TimeSeriesPredict = () => {
     { label: t(`datasets.test`), value: 'is_test_data' },
   ];
 
-  useEffect(() => {
-    getDataset();
-  }, [pagination.current, pagination.pageSize]);
-
   const onChange = (checkedValues: string[]) => {
     setSelectedTags(checkedValues);
   };
@@ -143,12 +139,13 @@ const TimeSeriesPredict = () => {
     setLoading(true);
     try {
       const { count, items } = await getTrainDataByDataset({
-        key: 'timeseries_predict',
+        key: DatasetType.TIMESERIES_PREDICT,
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
         page_size: pagination.pageSize
       });
+      
       const _tableData = items?.map((item: any) => {
         return {
           id: item?.id,
@@ -164,15 +161,21 @@ const TimeSeriesPredict = () => {
       });
       setTableData(_tableData as TableData[]);
       setPagination((prev) => {
-        return {
-          ...prev,
-          total: count || 0
+        if (prev.total !== count) {
+          return { ...prev, total: count || 0 };
         }
+        return prev;
       });
+    } catch (e) {
+      console.log(e);
+    } finally {
+      setLoading(false);
     }
-    catch (e) { console.log(e) }
-    finally { setLoading(false); }
-  }, [t, searchParams]);
+  }, [folder_id, getTrainDataByDataset, pagination.current, pagination.pageSize]);
+
+  useEffect(() => {
+    getDataset();
+  }, [getDataset]);
 
   const onUpload = () => {
     const data = {
@@ -186,7 +189,7 @@ const TimeSeriesPredict = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteTrainDataFile(data.id, 'timeseries_predict');
+      await deleteTrainDataFile(data.id, DatasetType.TIMESERIES_PREDICT);
     } catch (e) {
       console.log(e);
     } finally {
@@ -206,7 +209,7 @@ const TimeSeriesPredict = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'timeseries_predict') {
+      if (activeTap === DatasetType.TIMESERIES_PREDICT) {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
@@ -262,7 +265,7 @@ const TimeSeriesPredict = () => {
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['File View']}>
-            <DatasetReleaseList datasetType="timeseries_predict" />
+            <DatasetReleaseList datasetType={DatasetType.TIMESERIES_PREDICT} />
           </PermissionWrapper>
         </div>
       </div>

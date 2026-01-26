@@ -41,21 +41,15 @@ class ObjectDetectionTrainData(MaintainerInfo, TimeInfo):
     )
 
     is_train_data = models.BooleanField(
-        default=False,
-        verbose_name="是否为训练数据",
-        help_text="是否为训练数据"
+        default=False, verbose_name="是否为训练数据", help_text="是否为训练数据"
     )
 
     is_val_data = models.BooleanField(
-        default=False,
-        verbose_name="是否为验证数据",
-        help_text="是否为验证数据"
+        default=False, verbose_name="是否为验证数据", help_text="是否为验证数据"
     )
 
     is_test_data = models.BooleanField(
-        default=False,
-        verbose_name="是否为测试数据",
-        help_text="是否为测试数据"
+        default=False, verbose_name="是否为测试数据", help_text="是否为测试数据"
     )
 
     metadata = models.JSONField(
@@ -105,33 +99,39 @@ class ObjectDetectionTrainData(MaintainerInfo, TimeInfo):
 
     def save(self, *args, **kwargs):
         """保存时自动清理旧的训练数据文件"""
+        from django.db import transaction
         from apps.core.logger import opspilot_logger as logger
 
         if self.pk:
-            try:
-                old_instance = ObjectDetectionTrainData.objects.get(pk=self.pk)
-                old_file = old_instance.train_data
-                new_file = self.train_data
-
-                old_path = old_file.name if old_file else None
-                new_path = new_file.name if new_file else None
-
-                if old_path and old_path != new_path:
-                    try:
-                        old_file.delete(save=False)
-                        logger.info(
-                            f"Deleted old train_data file for ObjectDetectionTrainData {self.pk}: "
-                            f"old={old_path}, new={new_path or 'None'}"
+            with transaction.atomic():
+                try:
+                    old_instance = (
+                        ObjectDetectionTrainData.objects.select_for_update().get(
+                            pk=self.pk
                         )
-                    except Exception as delete_err:
-                        logger.warning(
-                            f"Failed to delete old file '{old_path}': {delete_err}"
-                        )
+                    )
+                    old_file = old_instance.train_data
+                    new_file = self.train_data
 
-            except ObjectDetectionTrainData.DoesNotExist:
-                pass
-            except Exception as e:
-                logger.warning(f"Failed to check old train_data file: {e}")
+                    old_path = old_file.name if old_file else None
+                    new_path = new_file.name if new_file else None
+
+                    if old_path and old_path != new_path:
+                        try:
+                            old_file.delete(save=False)
+                            logger.info(
+                                f"Deleted old train_data file for ObjectDetectionTrainData {self.pk}: "
+                                f"old={old_path}, new={new_path or 'None'}"
+                            )
+                        except Exception as delete_err:
+                            logger.warning(
+                                f"Failed to delete old file '{old_path}': {delete_err}"
+                            )
+
+                except ObjectDetectionTrainData.DoesNotExist:
+                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to check old train_data file: {e}")
 
         super().save(*args, **kwargs)
 
@@ -330,7 +330,7 @@ class ObjectDetectionTrainJob(MaintainerInfo, TimeInfo):
                 logger.warning(f"Failed to delete config file: {e}")
 
         if config_updated:
-            super().save(update_fields=["config_url"])
+            self.__class__.objects.filter(pk=self.pk).update(config_url=self.config_url)
 
     def _sync_config_to_minio(self):
         """将 hyperopt_config 同步上传到 MinIO（自动补全 model 和 mlflow 配置）"""

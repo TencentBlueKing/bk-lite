@@ -1,7 +1,7 @@
 import CustomTable from "@/components/custom-table";
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from "react";
-import { ColumnItem, TableDataItem, Pagination, DatasetReleaseKey } from "@/app/mlops/types";
+import { ColumnItem, TableDataItem, Pagination, DatasetType } from "@/app/mlops/types";
 import useMlopsManageApi from "@/app/mlops/api/manage";
 import { useTranslation } from "@/utils/i18n";
 
@@ -28,7 +28,7 @@ const TableContent = () => {
   }), [searchParams]);
 
   const baseColumns: Record<string, ColumnItem[]> = {
-    'log_clustering': [
+    [DatasetType.LOG_CLUSTERING]: [
       {
         title: '日志内容',
         dataIndex: 'log',
@@ -37,7 +37,7 @@ const TableContent = () => {
         render: (_, record) => { return (<>{record.log}</>) }
       },
     ],
-    'classification': [
+    [DatasetType.CLASSIFICATION]: [
       {
         title: '文本内容',
         dataIndex: 'text',
@@ -84,10 +84,10 @@ const TableContent = () => {
   const getTableData = async () => {
     setLoading(true);
     try {
-      const data = await getTrainDataInfo(id, key as DatasetReleaseKey, true, true);
+      const data = await getTrainDataInfo(id, key as DatasetType, true, true);
       let processedData: TableDataItem[] = [];
 
-      if (key === 'classification') {
+      if (key === DatasetType.CLASSIFICATION) {
         // 文本分类数据
         processedData = data?.train_data;
       } else {

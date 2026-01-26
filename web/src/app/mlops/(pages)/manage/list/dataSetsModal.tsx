@@ -3,7 +3,7 @@ import OperateModal from '@/components/operate-modal';
 import { Form, Input, Button, FormInstance, message } from 'antd';
 import { useState, useImperativeHandle, useEffect, useRef, forwardRef } from 'react';
 import { useTranslation } from '@/utils/i18n';
-import { DatasetReleaseKey, ModalRef } from '@/app/mlops/types';
+import { DatasetType, ModalRef } from '@/app/mlops/types';
 import useMlopsManageApi from '@/app/mlops/api/manage';
 
 interface DatasetModalProps {
@@ -54,9 +54,9 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
       const [tagName] = activeTag;
       const { name, description } = await formRef.current?.validateFields();
       if (type === 'add') {
-        await addDataset(tagName as DatasetReleaseKey, { name, description });
+        await addDataset(tagName as DatasetType, { name, description });
       } else if (type === 'edit') {
-        await updateDataset(formData.id, tagName as DatasetReleaseKey, {
+        await updateDataset(formData.id, tagName as DatasetType, {
           name,
           description
         });

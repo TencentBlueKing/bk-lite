@@ -17,6 +17,7 @@ import { useAuth } from '@/context/auth';
 import JSZip from 'jszip';
 import styles from './index.module.scss'
 import { useTranslation } from '@/utils/i18n';
+import { DatasetType } from '@/app/mlops/types';
 import type { ObjectDetectionMetadata, YOLOAnnotation } from '@/app/mlops/types';
 import { generateUniqueRandomColor } from '@/app/mlops/utils/common';
 
@@ -555,7 +556,7 @@ const ObjectDetection = ({
     setLoading(true);
     try {
       // 1. 获取metadata (不获取train_data，避免大量数据传输)
-      const data = await getTrainDataInfo(id, 'object_detection', false, true);
+      const data = await getTrainDataInfo(id, DatasetType.OBJECT_DETECTION, false, true);
 
       const metadata: ObjectDetectionMetadata = data.metadata || {
         format: 'YOLO',

@@ -23,6 +23,7 @@ import pandas as pd
 import numpy as np
 import requests
 
+
 class ObjectDetectionDatasetViewSet(ModelViewSet):
     """目标检测数据集视图集"""
 
@@ -57,7 +58,7 @@ class ObjectDetectionDatasetViewSet(ModelViewSet):
 class ObjectDetectionTrainDataViewSet(ModelViewSet):
     """目标检测训练数据视图集（重构：支持ZIP文件上传）"""
 
-    queryset = ObjectDetectionTrainData.objects.all()
+    queryset = ObjectDetectionTrainData.objects.select_related("dataset").all()
     serializer_class = ObjectDetectionTrainDataSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ObjectDetectionTrainDataFilter
@@ -145,7 +146,7 @@ class ObjectDetectionTrainDataViewSet(ModelViewSet):
 class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
     """目标检测数据集发布版本视图集"""
 
-    queryset = ObjectDetectionDatasetRelease.objects.all()
+    queryset = ObjectDetectionDatasetRelease.objects.select_related("dataset").all()
     serializer_class = ObjectDetectionDatasetReleaseSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ObjectDetectionDatasetReleaseFilter
@@ -264,7 +265,9 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
 class ObjectDetectionTrainJobViewSet(ModelViewSet):
     """目标检测训练任务视图集"""
 
-    queryset = ObjectDetectionTrainJob.objects.all()
+    queryset = ObjectDetectionTrainJob.objects.select_related(
+        "dataset_version", "dataset_version__dataset"
+    ).all()
     serializer_class = ObjectDetectionTrainJobSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ObjectDetectionTrainJobFilter
@@ -317,20 +320,23 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             minio_secret_key = os.getenv("MINIO_SECRET_KEY", "")
 
             if not minio_endpoint:
+                logger.error("MinIO endpoint not configured")
                 return Response(
-                    {"error": "MinIO 访问端点未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             if not mlflow_tracking_uri:
+                logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "MLflow 访问端点未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             if not minio_access_key or not minio_secret_key:
+                logger.error("MinIO credentials not configured")
                 return Response(
-                    {"error": "MinIO 访问凭证未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -794,7 +800,9 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
 class ObjectDetectionServingViewSet(ModelViewSet):
     """目标检测服务视图集"""
 
-    queryset = ObjectDetectionServing.objects.all()
+    queryset = ObjectDetectionServing.objects.select_related(
+        "train_job", "train_job__dataset_version", "train_job__dataset_version__dataset"
+    ).all()
     serializer_class = ObjectDetectionServingSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ObjectDetectionServingFilter
@@ -1002,8 +1010,9 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             # 获取环境变量
             mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
             if not mlflow_tracking_uri:
+                logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "环境变量 MLFLOW_TRACKER_URL 未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 

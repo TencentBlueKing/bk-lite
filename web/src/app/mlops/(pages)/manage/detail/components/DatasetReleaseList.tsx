@@ -6,7 +6,7 @@ import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import { ModalRef, ColumnItem, DatasetReleaseKey } from '@/app/mlops/types';
+import { ModalRef, ColumnItem, DatasetType } from '@/app/mlops/types';
 import { DATASET_RELEASE_MAP } from '@/app/mlops/constants';
 import DatasetReleaseModal from './DatasetReleaseModal';
 import { useAuth } from "@/context/auth";
@@ -32,10 +32,17 @@ interface DatasetRelease {
 }
 
 interface DatasetReleaseListProps {
-  datasetType: DatasetReleaseKey;
+  datasetType: DatasetType;
 }
 
-const SUPPORTED_DATASET_TYPES = ['timeseries_predict', 'anomaly_detection', 'log_clustering', 'classification', 'image_classification', 'object_detection'];
+const SUPPORTED_DATASET_TYPES = [
+  DatasetType.TIMESERIES_PREDICT,
+  DatasetType.ANOMALY_DETECTION,
+  DatasetType.LOG_CLUSTERING,
+  DatasetType.CLASSIFICATION,
+  DatasetType.IMAGE_CLASSIFICATION,
+  DatasetType.OBJECT_DETECTION
+];
 
 const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) => {
   const { t } = useTranslation();

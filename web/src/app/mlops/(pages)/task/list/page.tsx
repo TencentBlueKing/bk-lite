@@ -13,7 +13,8 @@ import PermissionWrapper from '@/components/permission';
 import TrainTaskModal from './traintaskModal';
 import TrainTaskDrawer from './traintaskDrawer';
 import { useTranslation } from '@/utils/i18n';
-import { ModalRef, ColumnItem, Option, DatasetReleaseKey } from '@/app/mlops/types';
+import { ModalRef, ColumnItem, DatasetType } from '@/app/mlops/types';
+import type { Option } from '@/types';
 import type { TreeDataNode } from 'antd';
 import { TrainJob } from '@/app/mlops/types/task';
 import { TRAIN_STATUS_MAP, TRAIN_TEXT } from '@/app/mlops/constants';
@@ -54,19 +55,19 @@ const TrainTask = () => {
 
   // 抽屉操作映射
   const drawerSupportMap: Record<string, boolean> = {
-    'anomaly_detection': true,
-    'rasa': false,
-    'log_clustering': true,
-    'timeseries_predict': true,
-    'classification': true,
-    'image_classification': true,
-    'object_detection': true
+    [DatasetType.ANOMALY_DETECTION]: true,
+    [DatasetType.RASA]: false,
+    [DatasetType.LOG_CLUSTERING]: true,
+    [DatasetType.TIMESERIES_PREDICT]: true,
+    [DatasetType.CLASSIFICATION]: true,
+    [DatasetType.IMAGE_CLASSIFICATION]: true,
+    [DatasetType.OBJECT_DETECTION]: true
   };
 
   // 数据处理映射
   const dataProcessorMap: Record<string, (data: any) => { tableData: TrainJob[], total: number }> = {
-    'anomaly_detection': (data) => processAnomalyLikeData(data, 'anomaly'),
-    'rasa': (data) => {
+    [DatasetType.ANOMALY_DETECTION]: (data) => processAnomalyLikeData(data, 'anomaly'),
+    [DatasetType.RASA]: (data) => {
       const _data = data.map((item: any) => ({
         id: item.id,
         name: item.name,
@@ -80,11 +81,11 @@ const TrainTask = () => {
       }));
       return { tableData: _data, total: data?.length || 0 };
     },
-    'log_clustering': (data) => processAnomalyLikeData(data, 'log_clustering'),
-    'timeseries_predict': (data) => processAnomalyLikeData(data, 'timeseries_predict'),
-    'classification': (data) => processAnomalyLikeData(data, 'classification'),
-    'image_classification': (data) => processAnomalyLikeData(data, 'image_classification'),
-    'object_detection': (data) => processAnomalyLikeData(data, 'object_detection')
+    [DatasetType.LOG_CLUSTERING]: (data) => processAnomalyLikeData(data, 'log_clustering'),
+    [DatasetType.TIMESERIES_PREDICT]: (data) => processAnomalyLikeData(data, 'timeseries_predict'),
+    [DatasetType.CLASSIFICATION]: (data) => processAnomalyLikeData(data, 'classification'),
+    [DatasetType.IMAGE_CLASSIFICATION]: (data) => processAnomalyLikeData(data, 'image_classification'),
+    [DatasetType.OBJECT_DETECTION]: (data) => processAnomalyLikeData(data, 'object_detection')
   };
 
   const treeData: TreeDataNode[] = [
@@ -95,31 +96,31 @@ const TrainTask = () => {
       children: [
         {
           title: t(`datasets.anomaly`),
-          key: 'anomaly_detection',
+          key: DatasetType.ANOMALY_DETECTION,
         },
         // {
         //   title: t(`datasets.rasa`),
-        //   key: 'rasa'
+        //   key: DatasetType.RASA
         // },
         {
           title: t(`datasets.timeseriesPredict`),
-          key: 'timeseries_predict',
+          key: DatasetType.TIMESERIES_PREDICT,
         },
         {
           title: t(`datasets.logClustering`),
-          key: 'log_clustering',
+          key: DatasetType.LOG_CLUSTERING,
         },
         {
           title: t(`datasets.classification`),
-          key: 'classification'
+          key: DatasetType.CLASSIFICATION
         },
         {
           title: t(`datasets.imageClassification`),
-          key: 'image_classification'
+          key: DatasetType.IMAGE_CLASSIFICATION
         },
         {
           title: t('datasets.objectDetection'),
-          key: 'object_detection'
+          key: DatasetType.OBJECT_DETECTION
         }
       ]
     }
@@ -249,14 +250,14 @@ const TrainTask = () => {
         treeData={treeData}
         showLine
         selectedKeys={selectedKeys}
-        defaultExpandedKeys={['anomaly_detection']}
+        defaultExpandedKeys={[DatasetType.ANOMALY_DETECTION]}
         onSelect={(keys) => setSelectedKeys(keys as string[])}
       />
     </div>
   );
 
   useEffect(() => {
-    setSelectedKeys(['anomaly_detection']);
+    setSelectedKeys([DatasetType.ANOMALY_DETECTION]);
   }, []);
 
   useEffect(() => {
@@ -281,7 +282,7 @@ const TrainTask = () => {
         algorithm: item.algorithm,
         hyperopt_config: item.hyperopt_config
       }
-      if (key === 'classification') {
+      if (key === DatasetType.CLASSIFICATION) {
         const classjob = Object.assign(job, {
           labels: item.labels || []
         });
@@ -319,7 +320,7 @@ const TrainTask = () => {
     const [activeTab] = selectedKeys;
     if (!activeTab) return;
     try {
-      const data = await getDatasetsList({ key: activeTab as DatasetReleaseKey });
+      const data = await getDatasetsList({ key: activeTab as DatasetType });
       const items = data.map((item: DataSet) => ({
         value: item.id,
         label: item.name
@@ -335,13 +336,13 @@ const TrainTask = () => {
     if (!activeTab) return { items: [], count: 0 };
 
     try {
-      if (activeTab === 'rasa') {
+      if (activeTab === DatasetType.RASA) {
         // RASA 特殊处理，不需要分页参数
-        return await getTrainJobList({ key: activeTab as DatasetReleaseKey });
+        return await getTrainJobList({ key: activeTab as DatasetType });
       } else {
         // 其他类型需要分页参数
         const result = await getTrainJobList({
-          key: activeTab as DatasetReleaseKey,
+          key: activeTab as DatasetType,
           name,
           page,
           page_size: pageSize
@@ -390,7 +391,7 @@ const TrainTask = () => {
         return;
       }
 
-      await startTrainTask(record.id, activeTab as DatasetReleaseKey);
+      await startTrainTask(record.id, activeTab as DatasetType);
       message.success(t(`traintask.trainStartSucess`));
     } catch (e) {
       console.log(e);
@@ -416,7 +417,7 @@ const TrainTask = () => {
     }
 
     try {
-      await deleteTrainTask(record.id as string, activeTab as DatasetReleaseKey);
+      await deleteTrainTask(record.id as string, activeTab as DatasetType);
       message.success(t('common.delSuccess'));
     } catch (e) {
       console.log(e);

@@ -18,7 +18,7 @@ import {
   message,
 } from "antd";
 import { TYPE_CONTENT, TYPE_COLOR } from "@/app/mlops/constants";
-import { ColumnItem, ModalRef, Pagination, TableData } from '@/app/mlops/types';
+import { ColumnItem, ModalRef, Pagination, TableData, DatasetType } from '@/app/mlops/types';
 const { Search } = Input;
 
 const ImageClassificationDetail = () => {
@@ -144,7 +144,7 @@ const ImageClassificationDetail = () => {
     setLoading(true);
     try {
       const { count, items } = await getTrainDataByDataset({
-        key: 'image_classification',
+        key: DatasetType.IMAGE_CLASSIFICATION,
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -187,7 +187,7 @@ const ImageClassificationDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteTrainDataFile(data.id, 'image_classification');
+      await deleteTrainDataFile(data.id, DatasetType.IMAGE_CLASSIFICATION);
     } catch (e) {
       console.log(e);
     } finally {
@@ -207,7 +207,7 @@ const ImageClassificationDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'image_classification') {
+      if (activeTap === DatasetType.IMAGE_CLASSIFICATION) {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
@@ -261,7 +261,7 @@ const ImageClassificationDetail = () => {
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['File View']}>
-            <DatasetReleaseList datasetType="image_classification" />
+            <DatasetReleaseList datasetType={DatasetType.IMAGE_CLASSIFICATION} />
           </PermissionWrapper>
         </div>
       </div>

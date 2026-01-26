@@ -53,7 +53,9 @@ class TimeSeriesPredictDatasetViewSet(ModelViewSet):
 
 
 class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
-    queryset = TimeSeriesPredictTrainJob.objects.all()
+    queryset = TimeSeriesPredictTrainJob.objects.select_related(
+        "dataset_version", "dataset_version__dataset"
+    ).all()
     serializer_class = TimeSeriesPredictTrainJobSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = TimeSeriesPredictTrainJobFilter
@@ -105,20 +107,23 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             minio_secret_key = os.getenv("MINIO_SECRET_KEY", "")
 
             if not minio_endpoint:
+                logger.error("MinIO endpoint not configured")
                 return Response(
-                    {"error": "MinIO 访问端点未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             if not mlflow_tracking_uri:
+                logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "MLflow 访问端点未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             if not minio_access_key or not minio_secret_key:
+                logger.error("MinIO credentials not configured")
                 return Response(
-                    {"error": "MinIO 访问凭证未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -572,7 +577,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
 
 
 class TimeSeriesPredictTrainDataViewSet(ModelViewSet):
-    queryset = TimeSeriesPredictTrainData.objects.all()
+    queryset = TimeSeriesPredictTrainData.objects.select_related("dataset").all()
     serializer_class = TimeSeriesPredictTrainDataSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = TimeSeriesPredictTrainDataFilter
@@ -606,7 +611,9 @@ class TimeSeriesPredictTrainDataViewSet(ModelViewSet):
 
 
 class TimeSeriesPredictServingViewSet(ModelViewSet):
-    queryset = TimeSeriesPredictServing.objects.all()
+    queryset = TimeSeriesPredictServing.objects.select_related(
+        "train_job", "train_job__dataset_version", "train_job__dataset_version__dataset"
+    ).all()
     serializer_class = TimeSeriesPredictServingSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = TimeSeriesPredictServingFilter
@@ -970,8 +977,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 获取环境变量
             mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
             if not mlflow_tracking_uri:
+                logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "环境变量 MLFLOW_TRACKER_URL 未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -1345,7 +1353,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
 
 class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
-    queryset = TimeSeriesPredictDatasetRelease.objects.all()
+    queryset = TimeSeriesPredictDatasetRelease.objects.select_related("dataset").all()
     serializer_class = TimeSeriesPredictDatasetReleaseSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = TimeSeriesPredictDatasetReleaseFilter

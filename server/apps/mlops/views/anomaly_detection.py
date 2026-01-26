@@ -52,7 +52,9 @@ class AnomalyDetectionDatasetViewSet(ModelViewSet):
 
 
 class AnomalyDetectionTrainJobViewSet(ModelViewSet):
-    queryset = AnomalyDetectionTrainJob.objects.all()
+    queryset = AnomalyDetectionTrainJob.objects.select_related(
+        "dataset_version", "dataset_version__dataset"
+    ).all()
     serializer_class = AnomalyDetectionTrainJobSerializer
     filterset_class = AnomalyDetectionTrainJobFilter
     pagination_class = CustomPageNumberPagination
@@ -84,20 +86,23 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             minio_secret_key = os.getenv("MINIO_SECRET_KEY", "")
 
             if not minio_endpoint:
+                logger.error("MinIO endpoint not configured")
                 return Response(
-                    {"error": "MinIO 访问端点未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             if not mlflow_tracking_uri:
+                logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "MLflow 访问端点未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             if not minio_access_key or not minio_secret_key:
+                logger.error("MinIO credentials not configured")
                 return Response(
-                    {"error": "MinIO 访问凭证未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -626,7 +631,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
 class AnomalyDetectionTrainDataViewSet(ModelViewSet):
     """异常检测训练数据视图集"""
 
-    queryset = AnomalyDetectionTrainData.objects.all()
+    queryset = AnomalyDetectionTrainData.objects.select_related("dataset").all()
     serializer_class = AnomalyDetectionTrainDataSerializer
     filterset_class = AnomalyDetectionTrainDataFilter
     pagination_class = CustomPageNumberPagination
@@ -656,7 +661,7 @@ class AnomalyDetectionTrainDataViewSet(ModelViewSet):
 class AnomalyDetectionDatasetReleaseViewSet(ModelViewSet):
     """异常检测数据集发布版本视图集"""
 
-    queryset = AnomalyDetectionDatasetRelease.objects.all()
+    queryset = AnomalyDetectionDatasetRelease.objects.select_related("dataset").all()
     serializer_class = AnomalyDetectionDatasetReleaseSerializer
     filterset_class = AnomalyDetectionDatasetReleaseFilter
     pagination_class = CustomPageNumberPagination
@@ -788,7 +793,9 @@ class AnomalyDetectionDatasetReleaseViewSet(ModelViewSet):
 
 
 class AnomalyDetectionServingViewSet(ModelViewSet):
-    queryset = AnomalyDetectionServing.objects.all()
+    queryset = AnomalyDetectionServing.objects.select_related(
+        "train_job", "train_job__dataset_version", "train_job__dataset_version__dataset"
+    ).all()
     serializer_class = AnomalyDetectionServingSerializer
     filterset_class = AnomalyDetectionServingFilter
     pagination_class = CustomPageNumberPagination

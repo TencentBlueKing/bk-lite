@@ -40,20 +40,28 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
     release = None
 
     try:
+        from django.db import transaction
         from apps.mlops.models.object_detection import (
             ObjectDetectionDatasetRelease,
             ObjectDetectionTrainData,
         )
 
-        # 获取发布记录
-        release = ObjectDetectionDatasetRelease.objects.get(id=release_id)
-
-        # 防止重复执行：检查当前状态
-        if release.status in ["published", "failed"]:
-            logger.info(
-                f"任务已结束 - Release ID: {release_id}, 状态: {release.status}, 跳过执行"
+        # 使用行锁防止并发执行
+        with transaction.atomic():
+            release = ObjectDetectionDatasetRelease.objects.select_for_update().get(
+                id=release_id
             )
-            return {"result": False, "reason": f"Task already {release.status}"}
+
+            # 防止重复执行:检查当前状态
+            if release.status in ["published", "failed"]:
+                logger.info(
+                    f"任务已结束 - Release ID: {release_id}, 状态: {release.status}, 跳过执行"
+                )
+                return {"result": False, "reason": f"Task already {release.status}"}
+
+            # 更新状态为processing
+            release.status = "processing"
+            release.save(update_fields=["status"])
 
         dataset = release.dataset
         version = release.version

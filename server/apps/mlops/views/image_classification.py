@@ -56,7 +56,7 @@ class ImageClassificationDatasetViewSet(ModelViewSet):
 class ImageClassificationTrainDataViewSet(ModelViewSet):
     """图片分类训练数据视图集（重构：支持ZIP文件上传）"""
 
-    queryset = ImageClassificationTrainData.objects.all()
+    queryset = ImageClassificationTrainData.objects.select_related("dataset").all()
     serializer_class = ImageClassificationTrainDataSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ImageClassificationTrainDataFilter
@@ -166,7 +166,7 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
 class ImageClassificationDatasetReleaseViewSet(ModelViewSet):
     """图片分类数据集发布版本视图集"""
 
-    queryset = ImageClassificationDatasetRelease.objects.all()
+    queryset = ImageClassificationDatasetRelease.objects.select_related("dataset").all()
     serializer_class = ImageClassificationDatasetReleaseSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ImageClassificationDatasetReleaseFilter
@@ -285,7 +285,9 @@ class ImageClassificationDatasetReleaseViewSet(ModelViewSet):
 class ImageClassificationTrainJobViewSet(ModelViewSet):
     """图片分类训练任务视图集"""
 
-    queryset = ImageClassificationTrainJob.objects.all()
+    queryset = ImageClassificationTrainJob.objects.select_related(
+        "dataset_version", "dataset_version__dataset"
+    ).all()
     serializer_class = ImageClassificationTrainJobSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ImageClassificationTrainJobFilter
@@ -338,20 +340,23 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             minio_secret_key = os.getenv("MINIO_SECRET_KEY", "")
 
             if not minio_endpoint:
+                logger.error("MinIO endpoint not configured")
                 return Response(
-                    {"error": "MinIO 访问端点未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             if not mlflow_tracking_uri:
+                logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "MLflow 访问端点未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             if not minio_access_key or not minio_secret_key:
+                logger.error("MinIO credentials not configured")
                 return Response(
-                    {"error": "MinIO 访问凭证未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -813,7 +818,9 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
 class ImageClassificationServingViewSet(ModelViewSet):
     """图片分类服务视图集"""
 
-    queryset = ImageClassificationServing.objects.all()
+    queryset = ImageClassificationServing.objects.select_related(
+        "train_job", "train_job__dataset_version", "train_job__dataset_version__dataset"
+    ).all()
     serializer_class = ImageClassificationServingSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ImageClassificationServingFilter
@@ -1023,8 +1030,9 @@ class ImageClassificationServingViewSet(ModelViewSet):
             # 获取环境变量
             mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
             if not mlflow_tracking_uri:
+                logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "环境变量 MLFLOW_TRACKER_URL 未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 

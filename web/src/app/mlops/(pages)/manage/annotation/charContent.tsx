@@ -22,7 +22,7 @@ import {
 import LineChart from "@/app/mlops/components/charts/lineChart";
 import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
-import { ColumnItem, DatasetReleaseKey, TableDataItem, } from '@/app/mlops/types';
+import { ColumnItem, TableDataItem, DatasetType } from '@/app/mlops/types';
 import { AnnotationData } from '@/app/mlops/types/manage';
 
 const ChartContent = ({
@@ -105,7 +105,7 @@ const ChartContent = ({
       }
     ];
 
-    if (key === 'anomaly_detection') {
+    if (key === DatasetType.ANOMALY_DETECTION) {
       _columns.push(
         {
           title: t('mlops-common.action'),
@@ -323,7 +323,7 @@ const ChartContent = ({
   const handleLabelData = useCallback((data: any[]) => {
     const _data = cloneDeep(data);
     setCurrentFileData(_data);
-    if (key === 'anomaly_detection') {
+    if (key === DatasetType.ANOMALY_DETECTION) {
       setTableData(_data.filter((item) => item.label === 1));
     } else {
       setTableData(_data);
@@ -338,7 +338,7 @@ const ChartContent = ({
 
     try {
       if (!key) return;
-      const data = await getTrainDataInfo(id as string, key as DatasetReleaseKey, true, true);
+      const data = await getTrainDataInfo(id as string, key as DatasetType, true, true);
 
       handleLabelData(data?.train_data);
     } catch (e) {
@@ -554,10 +554,10 @@ const ChartContent = ({
                     showDimensionTable
                     showDimensionFilter
                     showBrush
-                    allowSelect={key === 'anomaly_detection'}
+                    allowSelect={key === DatasetType.ANOMALY_DETECTION}
                     onXRangeChange={onXRangeChange}
                     onTimeLineChange={onTimeLineChange}
-                    onAnnotationClick={key === 'anomaly_detection' ? onAnnotationClick : undefined}
+                    onAnnotationClick={key === DatasetType.ANOMALY_DETECTION ? onAnnotationClick : undefined}
                   />
                 </div>
               </div>
@@ -598,7 +598,7 @@ const ChartContent = ({
               )}
             </div>
             <div
-              className={`${key === 'anomaly_detection' ? 'w-88.75' : 'w-72.5'} anomaly-container relative`}
+              className={`${key === DatasetType.ANOMALY_DETECTION ? 'w-88.75' : 'w-72.5'} anomaly-container relative`}
               ref={tableContainerRef}
               style={{
                 height: `calc(100vh - 120px)`,
@@ -627,13 +627,13 @@ const ChartContent = ({
                   virtual
                   size="small"
                   rowKey="timestamp"
-                  scroll={{ x: '100%', y: key === 'anomaly_detection' ? tableScrollHeight : 'calc(100vh - 160px)' }}
+                  scroll={{ x: '100%', y: key === DatasetType.ANOMALY_DETECTION ? tableScrollHeight : 'calc(100vh - 160px)' }}
                   columns={colmuns}
                   dataSource={pagedData}
                 />
                 <div className="absolute bottom-0 right-0 flex justify-end gap-2 mb-4">
                   {
-                    key === 'anomaly_detection' && (
+                    key === DatasetType.ANOMALY_DETECTION && (
                       <>
                         <Button className="mr-4" onClick={handleCancel}>{t('common.cancel')}</Button>
                         <PermissionWrapper requiredPermissions={['File Edit']}>

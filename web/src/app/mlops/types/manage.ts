@@ -11,7 +11,7 @@ interface AnomalyTrainData {
   dataset_id: number;
   name: string,
   storage_path: string,
-  metadata: any;
+  metadata: Record<string, unknown>;
   user_id: string;
   latest_status?: TrainingStatus;
 }
@@ -35,10 +35,9 @@ interface TrainData {
 }
 
 interface TrainDataModalProps {
-  options?: any;
+  options?: Record<string, unknown>;
   onSuccess: () => void;
   trainData: TrainData[];
-  [key: string]: any
 }
 
 
@@ -59,7 +58,8 @@ interface AnomalyDataSet {
   has_labels: boolean,
   created_at: string,
   user_id: string,
-  [key: string]: any
+  name?: string,
+  storage_path?: string,
 }
 
 interface LabelData {

@@ -9,6 +9,7 @@ import { LeftOutlined, RightOutlined, PlusOutlined, SearchOutlined, MinusCircleO
 import PermissionWrapper from '@/components/permission';
 import styles from './index.module.scss';
 import { generateUniqueRandomColor } from "@/app/mlops/utils/common";
+import { DatasetType } from '@/app/mlops/types';
 
 interface TrainDataItem {
   image_name: string;
@@ -129,7 +130,7 @@ const ImageContent = () => {
     setLoadingState((prev) => ({ ...prev, imageLoading: true }));
     try {
       // 1. 获取metadata
-      const data = await getTrainDataInfo(id, 'image_classification', false, true);
+      const data = await getTrainDataInfo(id, DatasetType.IMAGE_CLASSIFICATION, false, true);
       const metadata = data.metadata || {};
       
       // 2. 下载ZIP

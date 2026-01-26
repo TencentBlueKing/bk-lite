@@ -5,7 +5,7 @@ import { exportToCSV } from '@/app/mlops/utils/common';
 import useMlopsManageApi from '@/app/mlops/api/manage';
 import { Upload, Button, message, Checkbox, type UploadFile, type UploadProps, Input, Form, FormInstance } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
-import { ModalConfig, ModalRef, TableData } from '@/app/mlops/types';
+import { ModalConfig, ModalRef, TableData, DatasetType } from '@/app/mlops/types';
 import { useSearchParams } from 'next/navigation';
 import JSZip from 'jszip';
 const { Dragger } = Upload;
@@ -15,15 +15,15 @@ interface UploadModalProps {
 }
 
 const SUPPORTED_UPLOAD_TYPES = [
-  'anomaly_detection',
-  'timeseries_predict',
-  'classification',
-  'image_classification',
-  'object_detection',
-  'log_clustering'
+  DatasetType.ANOMALY_DETECTION,
+  DatasetType.TIMESERIES_PREDICT,
+  DatasetType.CLASSIFICATION,
+  DatasetType.IMAGE_CLASSIFICATION,
+  DatasetType.OBJECT_DETECTION,
+  DatasetType.LOG_CLUSTERING
 ] as const;
 
-const IMAGE_TYPES = ['image_classification', 'object_detection'];
+const IMAGE_TYPES = [DatasetType.IMAGE_CLASSIFICATION, DatasetType.OBJECT_DETECTION];
 
 const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) => {
   const { t } = useTranslation();
@@ -39,21 +39,21 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   } = useMlopsManageApi();
 
   const UPLOAD_API: Record<string, (data: FormData) => Promise<any>> = {
-    anomaly_detection: addAnomalyTrainData,
-    timeseries_predict: addTimeSeriesPredictTrainData,
-    image_classification: addImageClassificationTrainData,
-    object_detection: addObjectDetectionTrainData,
-    log_clustering: addLogClusteringTrainData,
-    classification: addClassificationTrainData
+    [DatasetType.ANOMALY_DETECTION]: addAnomalyTrainData,
+    [DatasetType.TIMESERIES_PREDICT]: addTimeSeriesPredictTrainData,
+    [DatasetType.IMAGE_CLASSIFICATION]: addImageClassificationTrainData,
+    [DatasetType.OBJECT_DETECTION]: addObjectDetectionTrainData,
+    [DatasetType.LOG_CLUSTERING]: addLogClusteringTrainData,
+    [DatasetType.CLASSIFICATION]: addClassificationTrainData
   };
 
   const FILE_CONFIG: Record<string, { accept: string; maxCount: number; fileType: string }> = {
-    anomaly_detection: { accept: '.csv', maxCount: 1, fileType: 'csv' },
-    timeseries_predict: { accept: '.csv', maxCount: 1, fileType: 'csv' },
-    image_classification: { accept: 'image/*', maxCount: 10, fileType: 'image' },
-    object_detection: { accept: 'image/*', maxCount: 10, fileType: 'image' },
-    log_clustering: { accept: '.txt', maxCount: 1, fileType: 'txt' },
-    classification: { accept: '.csv', maxCount: 1, fileType: 'csv' },
+    [DatasetType.ANOMALY_DETECTION]: { accept: '.csv', maxCount: 1, fileType: 'csv' },
+    [DatasetType.TIMESERIES_PREDICT]: { accept: '.csv', maxCount: 1, fileType: 'csv' },
+    [DatasetType.IMAGE_CLASSIFICATION]: { accept: 'image/*', maxCount: 10, fileType: 'image' },
+    [DatasetType.OBJECT_DETECTION]: { accept: 'image/*', maxCount: 10, fileType: 'image' },
+    [DatasetType.LOG_CLUSTERING]: { accept: '.txt', maxCount: 1, fileType: 'txt' },
+    [DatasetType.CLASSIFICATION]: { accept: '.csv', maxCount: 1, fileType: 'csv' },
   };
 
   const [visiable, setVisiable] = useState<boolean>(false);
@@ -254,7 +254,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
 
     try {
       // 图片文件名格式验证
-      if (IMAGE_TYPES.includes(activeType)) {
+      if (IMAGE_TYPES.includes(activeType as DatasetType)) {
         const invalidFiles: string[] = [];
         
         validatedFiles.forEach(file => {
@@ -296,7 +296,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
 
       let uploadData: FormData;
 
-      if (IMAGE_TYPES.includes(activeType)) {
+      if (IMAGE_TYPES.includes(activeType as DatasetType)) {
         const { name } = await formRef.current?.validateFields();
         uploadData = await buildFormDataForImages(validatedFiles, name);
       } else {

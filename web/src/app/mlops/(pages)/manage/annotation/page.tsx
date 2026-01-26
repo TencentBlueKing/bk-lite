@@ -13,7 +13,7 @@ import ChartContent from "./charContent";
 import TableContent from "./tableContent";
 import ImageContent from "./imageContent";
 import dynamic from 'next/dynamic';
-import { DatasetReleaseKey } from "@/app/mlops/types";
+import { DatasetType } from "@/app/mlops/types";
 
 const ObjectDetection = dynamic(() => import('./objectDetection'), {
   ssr: false,
@@ -34,9 +34,9 @@ const AnnotationPage = () => {
   // const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isChange, setIsChange] = useState<boolean>(false);
   const [flag, setFlag] = useState<boolean>(true);
-  const chartList = ['anomaly_detection', 'timeseries_predict'];
-  const tableList = ['log_clustering', 'classification'];
-  const imageList = ['image_classification'];
+  const chartList = [DatasetType.ANOMALY_DETECTION, DatasetType.TIMESERIES_PREDICT];
+  const tableList = [DatasetType.LOG_CLUSTERING, DatasetType.CLASSIFICATION];
+  const imageList = [DatasetType.IMAGE_CLASSIFICATION];
 
   useEffect(() => {
     getMenuItems();
@@ -54,7 +54,7 @@ const AnnotationPage = () => {
     setLoadingState((prev) => ({ ...prev, loading: true }));
     try {
       if (dataset && key) {
-        const data = await getTrainDataByDataset({ key: key as DatasetReleaseKey, dataset: dataset });
+        const data = await getTrainDataByDataset({ key: key as DatasetType, dataset: dataset });
         setMenuItems(data)
       }
     } catch (e) {
@@ -99,16 +99,16 @@ const AnnotationPage = () => {
               height: '100%',
             }}
           >
-            {chartList.includes(key) &&
+            {chartList.includes(key as DatasetType) &&
               <ChartContent flag={flag} setFlag={setFlag} isChange={isChange} setIsChange={setIsChange} />
             }
-            {tableList.includes(key) &&
+            {tableList.includes(key as DatasetType) &&
               <TableContent />
             }
-            {imageList.includes(key) &&
+            {imageList.includes(key as DatasetType) &&
               <ImageContent />
             }
-            {key === 'object_detection' && 
+            {key === DatasetType.OBJECT_DETECTION && 
               <ObjectDetection isChange={isChange} setIsChange={setIsChange} />
             }
           </div>

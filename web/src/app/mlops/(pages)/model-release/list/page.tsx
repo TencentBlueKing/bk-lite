@@ -10,9 +10,8 @@ import PageLayout from '@/components/page-layout';
 import TopSection from "@/components/top-section";
 import ReleaseModal from "./releaseModal";
 import PermissionWrapper from '@/components/permission';
-import { ModalRef, Option, Pagination, TableData } from "@/app/mlops/types";
+import { ModalRef, Option, Pagination, TableData, DatasetType } from "@/app/mlops/types";
 import { ColumnItem } from "@/types";
-import { DatasetReleaseKey } from "@/app/mlops/types";
 import { TrainJob } from "@/app/mlops/types/task";
 
 const CONTAINER_STATE_MAP: Record<string, string> = {
@@ -72,31 +71,31 @@ const ModelRelease = () => {
       children: [
         {
           title: t(`datasets.anomaly`),
-          key: 'anomaly_detection',
+          key: DatasetType.ANOMALY_DETECTION,
         },
         // {
         //   title: t(`datasets.rasa`),
-        //   key: 'rasa'
+        //   key: DatasetType.RASA
         // },
         {
           title: t(`datasets.timeseriesPredict`),
-          key: 'timeseries_predict'
+          key: DatasetType.TIMESERIES_PREDICT
         },
         {
           title: t(`datasets.logClustering`),
-          key: 'log_clustering'
+          key: DatasetType.LOG_CLUSTERING
         },
         {
           title: t(`datasets.classification`),
-          key: 'classification'
+          key: DatasetType.CLASSIFICATION
         },
         {
           title: t(`datasets.imageClassification`),
-          key: 'image_classification'
+          key: DatasetType.IMAGE_CLASSIFICATION
         },
         {
           title: t(`datasets.objectDetection`),
-          key: 'object_detection'
+          key: DatasetType.OBJECT_DETECTION
         }
       ]
     }
@@ -186,13 +185,13 @@ const ModelRelease = () => {
 
   // 更新操作映射
   const updateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
-    'anomaly_detection': updateAnomalyServings,
-    'rasa': null, // RASA 类型留空
-    'log_clustering': updateLogClusteringServings,
-    'timeseries_predict': updateTimeSeriesPredictServings,
-    'classification': updateClassificationServings,
-    'image_classification': updateImageClassificationServings,
-    'object_detection': updateObjectDetectionServings
+    [DatasetType.ANOMALY_DETECTION]: updateAnomalyServings,
+    [DatasetType.RASA]: null, // RASA 类型留空
+    [DatasetType.LOG_CLUSTERING]: updateLogClusteringServings,
+    [DatasetType.TIMESERIES_PREDICT]: updateTimeSeriesPredictServings,
+    [DatasetType.CLASSIFICATION]: updateClassificationServings,
+    [DatasetType.IMAGE_CLASSIFICATION]: updateImageClassificationServings,
+    [DatasetType.OBJECT_DETECTION]: updateObjectDetectionServings
   };
 
   const topSection = (
@@ -217,7 +216,7 @@ const ModelRelease = () => {
   }, [selectedKeys])
 
   useEffect(() => {
-    setSelectedKeys(['anomaly_detection']);
+    setSelectedKeys([DatasetType.ANOMALY_DETECTION]);
   }, []);
 
   useEffect(() => {
@@ -242,14 +241,14 @@ const ModelRelease = () => {
     setLoading(true);
     try {
       const params = {
-        key: activeTypes as DatasetReleaseKey,
+        key: activeTypes as DatasetType,
         page: pagination.current,
         page_size: pagination.pageSize,
       };
 
       // 获取任务列表和服务列表
       const [taskList, { count, items }] = await Promise.all([
-        getTrainJobList({ key: activeTypes as DatasetReleaseKey }),
+        getTrainJobList({ key: activeTypes as DatasetType }),
         getServingList(params)
       ]);
 
@@ -276,7 +275,7 @@ const ModelRelease = () => {
 
     setLoading(true);
     try {
-      await startServingContainer(id, activeTypes as DatasetReleaseKey);
+      await startServingContainer(id, activeTypes as DatasetType);
       getModelServings();
     } catch (e) {
       console.log(e);
@@ -292,7 +291,7 @@ const ModelRelease = () => {
 
     setLoading(true);
     try {
-      await stopServingContainer(id, activeTypes as DatasetReleaseKey);
+      await stopServingContainer(id, activeTypes as DatasetType);
       getModelServings();
     } catch (e) {
       console.log(e);
@@ -307,7 +306,7 @@ const ModelRelease = () => {
     if (!activeTypes) return;
 
     try {
-      await deleteServing(id, activeTypes as DatasetReleaseKey);
+      await deleteServing(id, activeTypes as DatasetType);
       getModelServings();
       message.success(t(`common.delSuccess`));
     } catch (e) {

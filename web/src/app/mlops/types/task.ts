@@ -1,22 +1,26 @@
-import { Option } from "."
+import type { Option } from "@/types"
 
 interface TrainJob {
   id: string | number,
   name: string,
-  // type: string,
   status?: string,
   created_at: string,
   train_data_id?: string | number;
   val_data_id?: string | number;
   test_data_id?: string | number;
-  [key: string]: any
+  algorithm?: string;
+  parameters?: string | Record<string, unknown>;
+  dataset_id?: string | number;
+  dataset?: string | number;
+  dataset_version?: string | number;
+  max_evals?: number;
 }
 
 interface TrainTaskModalProps {
-  options?: any;
+  options?: Record<string, unknown>;
   onSuccess: () => void;
   activeTag: string[];
-  [key: string]: any
+  datasetOptions: Option[];
 }
 
 interface AlgorithmParam {
@@ -59,7 +63,7 @@ export interface FieldConfig {
   required?: boolean;
   tooltip?: string;
   placeholder?: string;
-  defaultValue?: any;
+  defaultValue?: string | number | boolean | string[];
   options?: Option[]; // 用于 select/multiSelect
   min?: number; // 用于 inputNumber
   max?: number; // 用于 inputNumber

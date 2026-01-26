@@ -16,7 +16,7 @@ import PageLayout from '@/components/page-layout';
 import TopSection from '@/components/top-section';
 import EntityList from '@/components/entity-list';
 import PermissionWrapper from '@/components/permission';
-import { DatasetReleaseKey, ModalRef } from '@/app/mlops/types';
+import { DatasetType, ModalRef } from '@/app/mlops/types';
 import { DataSet } from '@/app/mlops/types/manage';
 const { confirm } = Modal;
 
@@ -32,13 +32,13 @@ const DatasetManagePage = () => {
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const modalRef = useRef<ModalRef>(null);
   const datasetTypes = [
-    { key: 'anomaly_detection', value: 'anomaly', label: t('datasets.anomaly') },
-    // { key: 'rasa', value: 'rasa', label: t('datasets.rasa') },
-    { key: 'log_clustering', value: 'log_clustering', label: t('datasets.logClustering') },
-    { key: 'timeseries_predict', value: 'timeseries_predict', label: t('datasets.timeseriesPredict') },
-    { key: 'classification', value: 'classification', label: t('datasets.classification') },
-    { key: 'image_classification', value: 'image_classification', label: t('datasets.imageClassification') },
-    { key: 'object_detection', value: 'object_detection', label: t('datasets.objectDetection') }
+    { key: DatasetType.ANOMALY_DETECTION, value: 'anomaly', label: t('datasets.anomaly') },
+    // { key: DatasetType.RASA, value: 'rasa', label: t('datasets.rasa') },
+    { key: DatasetType.LOG_CLUSTERING, value: 'log_clustering', label: t('datasets.logClustering') },
+    { key: DatasetType.TIMESERIES_PREDICT, value: 'timeseries_predict', label: t('datasets.timeseriesPredict') },
+    { key: DatasetType.CLASSIFICATION, value: 'classification', label: t('datasets.classification') },
+    { key: DatasetType.IMAGE_CLASSIFICATION, value: 'image_classification', label: t('datasets.imageClassification') },
+    { key: DatasetType.OBJECT_DETECTION, value: 'object_detection', label: t('datasets.objectDetection') }
   ];
 
   const treeData: TreeDataNode[] = [
@@ -49,38 +49,38 @@ const DatasetManagePage = () => {
       children: [
         {
           title: t(`datasets.anomaly`),
-          key: 'anomaly_detection',
+          key: DatasetType.ANOMALY_DETECTION,
         },
         {
           title: t(`datasets.rasa`),
-          key: 'rasa',
+          key: DatasetType.RASA,
         },
         {
           title: t(`datasets.timeseriesPredict`),
-          key: 'timeseries_predict',
+          key: DatasetType.TIMESERIES_PREDICT,
         },
         {
           title: t(`datasets.logClustering`),
-          key: 'log_clustering',
+          key: DatasetType.LOG_CLUSTERING,
         },
         {
           title: t('datasets.classification'),
-          key: 'classification'
+          key: DatasetType.CLASSIFICATION
         },
         {
           title: t('datasets.imageClassification'),
-          key: 'image_classification'
+          key: DatasetType.IMAGE_CLASSIFICATION
         },
         {
           title: t('datasets.objectDetection'),
-          key: 'object_detection'
+          key: DatasetType.OBJECT_DETECTION
         }
       ]
     },
   ];
 
   useEffect(() => {
-    setSelectedKeys(['anomaly_detection']);
+    setSelectedKeys([DatasetType.ANOMALY_DETECTION]);
   }, []);
 
   useEffect(() => {
@@ -93,7 +93,7 @@ const DatasetManagePage = () => {
     if (!activeTab) return;
     setLoading(true);
     try {
-      const data = await getDatasetsList({ key: activeTab as DatasetReleaseKey, page: 1, page_size: -1 });
+      const data = await getDatasetsList({ key: activeTab as DatasetType, page: 1, page_size: -1 });
       const _data: DataSet[] = data?.map((item: any) => {
         return {
           id: item.id,
@@ -115,20 +115,32 @@ const DatasetManagePage = () => {
   const navigateToNode = (item: any) => {
     const [activeTab] = selectedKeys;
     router.push(
-      `/mlops/manage/detail?folder_id=${item?.id}&folder_name=${item.name}&description=${item.description}&activeTap=${activeTab}&menu=${activeTab === 'rasa' ? 'intent' : ''}`
+      `/mlops/manage/detail?folder_id=${item?.id}&folder_name=${item.name}&description=${item.description}&activeTap=${activeTab}&menu=${activeTab === DatasetType.RASA ? 'intent' : ''}`
     );
   };
 
   const handleDelete = async (id: number) => {
     confirm({
       title: t('datasets.delDataset'),
-      content: t('datasets.delDatasetInfo'),
+      content: (
+        <div>
+          <p>{t('datasets.delDatasetInfo')}</p>
+          <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded">
+            <p className="text-orange-600 font-medium mb-2">⚠️ {t('mlops-common.warning')}</p>
+            <ul className="text-sm text-gray-700 space-y-1 ml-4">
+              <li>• {t('datasets.delWarning1')}</li>
+              <li>• {t('datasets.delWarning2')}</li>
+            </ul>
+          </div>
+        </div>
+      ),
       okText: t('common.confirm'),
+      okType: 'danger',
       cancelText: t('common.cancel'),
       onOk: async () => {
         try {
           const [activeTab] = selectedKeys;
-          await deleteDataset(id, activeTab as DatasetReleaseKey);
+          await deleteDataset(id, activeTab as DatasetType);
           message.success(t('common.delSuccess'));
         } catch (e) {
           console.log(e);

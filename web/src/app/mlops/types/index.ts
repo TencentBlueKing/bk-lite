@@ -1,6 +1,32 @@
 import React from 'react';
 import type { MenuProps } from 'antd';
 
+/**
+ * Dataset types supported by the ML Ops platform
+ * 
+ * @enum {string}
+ * @property {string} ANOMALY_DETECTION - Anomaly detection datasets (异常检测)
+ * @property {string} CLASSIFICATION - Text classification datasets (文本分类)
+ * @property {string} TIMESERIES_PREDICT - Time series prediction datasets (时序预测)
+ * @property {string} LOG_CLUSTERING - Log clustering datasets (日志聚类)
+ * @property {string} IMAGE_CLASSIFICATION - Image classification datasets (图片分类)
+ * @property {string} OBJECT_DETECTION - Object detection datasets (目标检测)
+ * @property {string} RASA - RASA conversational AI datasets (对话机器人)
+ */
+export enum DatasetType {
+  ANOMALY_DETECTION = 'anomaly_detection',
+  CLASSIFICATION = 'classification',
+  TIMESERIES_PREDICT = 'timeseries_predict',
+  LOG_CLUSTERING = 'log_clustering',
+  IMAGE_CLASSIFICATION = 'image_classification',
+  OBJECT_DETECTION = 'object_detection',
+  RASA = 'rasa'
+}
+
+/**
+ * @deprecated Use DatasetType enum instead
+ * This type alias is kept for backward compatibility
+ */
 export type DatasetReleaseKey = 'timeseries_predict' | 'anomaly_detection' | 'log_clustering' | 'classification' | 'image_classification' | 'object_detection';
 
 export interface Option {

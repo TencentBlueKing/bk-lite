@@ -18,7 +18,7 @@ import {
   message,
 } from "antd";
 import { TYPE_CONTENT, TYPE_COLOR } from "@/app/mlops/constants";
-import { ColumnItem, ModalRef, Pagination, TableData } from '@/app/mlops/types';
+import { ColumnItem, ModalRef, Pagination, TableData, DatasetType } from '@/app/mlops/types';
 const { Search } = Input;
 
 const ObjectDetectionDetail = () => {
@@ -144,7 +144,7 @@ const ObjectDetectionDetail = () => {
     setLoading(true);
     try {
       const { count, items } = await getTrainDataByDataset({
-        key: 'object_detection',
+        key: DatasetType.OBJECT_DETECTION,
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -187,7 +187,7 @@ const ObjectDetectionDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteTrainDataFile(data.id, 'object_detection');
+      await deleteTrainDataFile(data.id, DatasetType.OBJECT_DETECTION);
     } catch (e) {
       console.log(e);
     } finally {
@@ -207,7 +207,7 @@ const ObjectDetectionDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'object_detection') {
+      if (activeTap === DatasetType.OBJECT_DETECTION) {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
@@ -261,7 +261,7 @@ const ObjectDetectionDetail = () => {
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['File View']}>
-            <DatasetReleaseList datasetType="object_detection" />
+            <DatasetReleaseList datasetType={DatasetType.OBJECT_DETECTION} />
           </PermissionWrapper>
         </div>
       </div>

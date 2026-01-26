@@ -1,6 +1,6 @@
 import useApiClient from "@/utils/request";
 import { DATASET_MAP, TRAINDATA_MAP } from "@/app/mlops/constants";
-import { DatasetReleaseKey } from "../types";
+import { DatasetType } from "../types";
 
 const useMlopsManageApi = () => {
   const {
@@ -17,7 +17,7 @@ const useMlopsManageApi = () => {
     page = 1,
     page_size = -1
   }: {
-    key: DatasetReleaseKey,
+    key: DatasetType,
     page?: number,
     page_size?: number
   }) => {
@@ -150,7 +150,7 @@ const useMlopsManageApi = () => {
   };
 
   // 获取指定数据集详情
-  const getOneDatasetInfo = async (id: number, key: DatasetReleaseKey) => {
+  const getOneDatasetInfo = async (id: number, key: DatasetType) => {
     return await get(`/mlops/${DATASET_MAP[key]}/${id}/`);
   };
 
@@ -163,7 +163,7 @@ const useMlopsManageApi = () => {
       page = 1,
       page_size = -1
     }: {
-      key: DatasetReleaseKey,
+      key: DatasetType,
       name?: string;
       dataset?: string | number;
       page?: number;
@@ -174,7 +174,7 @@ const useMlopsManageApi = () => {
   };
 
   // 获取指定样本的详情
-  const getTrainDataInfo = async (id: number | string, key: DatasetReleaseKey,include_train_data?: boolean, include_metadata?: boolean) => {
+  const getTrainDataInfo = async (id: number | string, key: DatasetType,include_train_data?: boolean, include_metadata?: boolean) => {
     return await get(`/mlops/${TRAINDATA_MAP[key]}/${id}?include_train_data=${include_train_data}&include_metadata=${include_metadata}`);
   };
 
@@ -184,7 +184,7 @@ const useMlopsManageApi = () => {
   // };
   
   // 新增数据集
-  const addDataset = async (key: DatasetReleaseKey, params: {
+  const addDataset = async (key: DatasetType, params: {
     name: string;
     description: string;
   }) => {
@@ -330,7 +330,7 @@ const useMlopsManageApi = () => {
   };
 
   // 更新数据集
-  const updateDataset = async (id: number, key: DatasetReleaseKey, params: {
+  const updateDataset = async (id: number, key: DatasetType, params: {
     name: string;
     description: string;
   }) => {
@@ -492,7 +492,7 @@ const useMlopsManageApi = () => {
   };
 
   // 删除数据集
-  const deleteDataset = async (id: number, key: DatasetReleaseKey) => {
+  const deleteDataset = async (id: number, key: DatasetType) => {
     return await del(`/mlops/${DATASET_MAP[key]}/${id}`);
   };
 
@@ -537,7 +537,7 @@ const useMlopsManageApi = () => {
   };
 
   // 删除训练样本文件
-  const deleteTrainDataFile = async (id: number, key: DatasetReleaseKey) => {
+  const deleteTrainDataFile = async (id: number, key: DatasetType) => {
     return await del(`/mlops/${TRAINDATA_MAP[key]}/${id}/`);
   };
 

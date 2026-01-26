@@ -1,6 +1,6 @@
 import useApiClient from '@/utils/request';
 import { TRAINJOB_MAP, SERVING_MAP } from '@/app/mlops/constants';
-import { DatasetReleaseKey } from '@/app/mlops/types';
+import { DatasetType } from '@/app/mlops/types';
 interface LabelData {
   timestamp: string;
   value: string;
@@ -37,7 +37,7 @@ const useMlopsModelReleaseApi = () => {
     page,
     page_size,
   }: {
-    key: DatasetReleaseKey,
+    key: DatasetType,
     page?: number,
     page_size?: number
   }) => {
@@ -46,12 +46,12 @@ const useMlopsModelReleaseApi = () => {
 
 
   // 查询单个能力
-  const getOneServingInfo = async (id: number, key: DatasetReleaseKey) => {
+  const getOneServingInfo = async (id: number, key: DatasetType) => {
     return await get(`/mlops/${SERVING_MAP[key]}/${id}/`);
   };
 
   // 查询模型版本列表
-  const getModelVersionList = async (id: number, key: DatasetReleaseKey) => {
+  const getModelVersionList = async (id: number, key: DatasetType) => {
     return await get(`mlops/${TRAINJOB_MAP[key]}/${id}/model_versions`);
   };
 
@@ -220,17 +220,17 @@ const useMlopsModelReleaseApi = () => {
   };
 
   // 删除能力发布
-  const deleteServing = async (id: number, key: DatasetReleaseKey) => {
+  const deleteServing = async (id: number, key: DatasetType) => {
     return await del(`/mlops/${SERVING_MAP[key]}/${id}/`);
   };
 
   // 启动服务容器
-  const startServingContainer = async (id: number, key: DatasetReleaseKey) => {
+  const startServingContainer = async (id: number, key: DatasetType) => {
     return await post(`/mlops/${SERVING_MAP[key]}/${id}/start`);
   };
 
   // 停止服务容器
-  const stopServingContainer = async (id: number, key: DatasetReleaseKey) => {
+  const stopServingContainer = async (id: number, key: DatasetType) => {
     return await post(`/mlops/${SERVING_MAP[key]}/${id}/stop`);
   };
 

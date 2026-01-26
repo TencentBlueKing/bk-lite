@@ -18,7 +18,7 @@ import {
   message,
 } from "antd";
 import { TYPE_CONTENT, TYPE_COLOR } from "@/app/mlops/constants";
-import { ColumnItem, ModalRef, Pagination, TableData } from '@/app/mlops/types';
+import { ColumnItem, ModalRef, Pagination, TableData, DatasetType } from '@/app/mlops/types';
 const { Search } = Input;
 
 const LogDetail = () => {
@@ -140,7 +140,7 @@ const LogDetail = () => {
     setLoading(true);
     try {
       const { count, items } = await getTrainDataByDataset({
-        key: 'log_clustering',
+        key: DatasetType.LOG_CLUSTERING,
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -183,7 +183,7 @@ const LogDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteTrainDataFile(data.id, 'log_clustering');
+      await deleteTrainDataFile(data.id, DatasetType.LOG_CLUSTERING);
     } catch (e) {
       console.log(e);
     } finally {
@@ -203,7 +203,7 @@ const LogDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'log_clustering') {
+      if (activeTap === DatasetType.LOG_CLUSTERING) {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
@@ -259,7 +259,7 @@ const LogDetail = () => {
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['File View']}>
-            <DatasetReleaseList datasetType="log_clustering" />
+            <DatasetReleaseList datasetType={DatasetType.LOG_CLUSTERING} />
           </PermissionWrapper>
         </div>
       </div>

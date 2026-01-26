@@ -1,6 +1,6 @@
 import useApiClient from '@/utils/request';
 import { TRAINJOB_MAP } from '@/app/mlops/constants';
-import { DatasetReleaseKey } from '@/app/mlops/types';
+import { DatasetType } from '@/app/mlops/types';
 
 
 interface TrainTaskParams {
@@ -46,7 +46,7 @@ const useMlopsTaskApi = () => {
     page = 1,
     page_size = -1
   }: {
-    key: DatasetReleaseKey,
+    key: DatasetType,
     name?: string,
     page?: number,
     page_size?: number
@@ -55,7 +55,7 @@ const useMlopsTaskApi = () => {
   };
 
   // 查询指定的训练任务
-  const getOneTrainJobInfo = async (id: number | string, key: DatasetReleaseKey) => {
+  const getOneTrainJobInfo = async (id: number | string, key: DatasetType) => {
     return await get(`/mlops/${TRAINJOB_MAP[key]}/${id}`);
   };
 
@@ -110,7 +110,7 @@ const useMlopsTaskApi = () => {
   };
 
   // 启动训练
-  const startTrainTask = async (id: number | string, key: DatasetReleaseKey) => {
+  const startTrainTask = async (id: number | string, key: DatasetType) => {
     return await post(`/mlops/${TRAINJOB_MAP[key]}/${id}/train/`);
   };
 
@@ -150,13 +150,13 @@ const useMlopsTaskApi = () => {
   };
 
   // 删除训练任务
-  const deleteTrainTask = async (id: string, key: DatasetReleaseKey) => {
+  const deleteTrainTask = async (id: string, key: DatasetType) => {
     return await del(`/mlops/${TRAINJOB_MAP[key]}/${id}/`);
   };
 
   // 创建数据集版本发布（标准方式，从数据集管理页面）
   const createDatasetRelease = async (
-    key: DatasetReleaseKey,
+    key: DatasetType,
     params: {
       dataset: number;
       version: string;
@@ -172,7 +172,7 @@ const useMlopsTaskApi = () => {
 
   // 获取数据集版本列表
   const getDatasetReleases = async (
-    key: DatasetReleaseKey,
+    key: DatasetType,
     params?: { dataset?: number; page?: number; page_size?: number }
   ) => {
     const queryParams = new URLSearchParams();
@@ -183,22 +183,22 @@ const useMlopsTaskApi = () => {
   };
 
   // 获取指定数据集版本信息
-  const getDatasetReleaseByID = async (key: DatasetReleaseKey, id: any) => {
+  const getDatasetReleaseByID = async (key: DatasetType, id: any) => {
     return await get(`/mlops/${key}_dataset_releases/${id}/`);
   };
 
   // 归档数据集版本
-  const archiveDatasetRelease = async (key: DatasetReleaseKey, id: string) => {
+  const archiveDatasetRelease = async (key: DatasetType, id: string) => {
     return await post(`/mlops/${key}_dataset_releases/${id}/archive/`);
   };
 
   // 已归档数据集版本恢复发布
-  const unarchiveDatasetRelease = async (key: DatasetReleaseKey, id: string) => {
+  const unarchiveDatasetRelease = async (key: DatasetType, id: string) => {
     return await post(`/mlops/${key}_dataset_releases/${id}/unarchive/`);
   };
 
   // 删除数据集版本
-  const deleteDatasetRelease = async (key: DatasetReleaseKey, id: string) => {
+  const deleteDatasetRelease = async (key: DatasetType, id: string) => {
     return await del(`/mlops/${key}_dataset_releases/${id}/`);
   };
 

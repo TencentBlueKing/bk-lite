@@ -53,7 +53,9 @@ class ClassificationDatasetViewSet(ModelViewSet):
 
 
 class ClassificationServingViewSet(ModelViewSet):
-    queryset = ClassificationServing.objects.all()
+    queryset = ClassificationServing.objects.select_related(
+        "train_job", "train_job__dataset_version", "train_job__dataset_version__dataset"
+    ).all()
     serializer_class = ClassificationServingSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ClassificationServingFilter
@@ -286,8 +288,9 @@ class ClassificationServingViewSet(ModelViewSet):
             # 获取环境变量
             mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
             if not mlflow_tracking_uri:
+                logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "环境变量 MLFLOW_TRACKER_URL 未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -647,7 +650,7 @@ class ClassificationServingViewSet(ModelViewSet):
 
 
 class ClassificationTrainDataViewSet(ModelViewSet):
-    queryset = ClassificationTrainData.objects.all()
+    queryset = ClassificationTrainData.objects.select_related("dataset").all()
     serializer_class = ClassificationTrainDataSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ClassificationTrainDataFilter
@@ -676,7 +679,9 @@ class ClassificationTrainDataViewSet(ModelViewSet):
 
 
 class ClassificationTrainJobViewSet(ModelViewSet):
-    queryset = ClassificationTrainJob.objects.all()
+    queryset = ClassificationTrainJob.objects.select_related(
+        "dataset_version", "dataset_version__dataset"
+    ).all()
     serializer_class = ClassificationTrainJobSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ClassificationTrainJobFilter
@@ -728,20 +733,23 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             minio_secret_key = os.getenv("MINIO_SECRET_KEY", "")
 
             if not minio_endpoint:
+                logger.error("MinIO endpoint not configured")
                 return Response(
-                    {"error": "MinIO 访问端点未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             if not mlflow_tracking_uri:
+                logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "MLflow 访问端点未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             if not minio_access_key or not minio_secret_key:
+                logger.error("MinIO credentials not configured")
                 return Response(
-                    {"error": "MinIO 访问凭证未配置"},
+                    {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -1127,7 +1135,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
 class ClassificationDatasetReleaseViewSet(ModelViewSet):
     """分类数据集发布版本视图集"""
 
-    queryset = ClassificationDatasetRelease.objects.all()
+    queryset = ClassificationDatasetRelease.objects.select_related("dataset").all()
     serializer_class = ClassificationDatasetReleaseSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = ClassificationDatasetReleaseFilter

@@ -7,6 +7,7 @@ import PermissionWrapper from '@/components/permission';
 import UploadModal from "../../uploadModal";
 import OperateModal from "@/components/operate-modal";
 import DatasetReleaseList from '../DatasetReleaseList';
+import { DatasetType } from '@/app/mlops/types';
 import {
   Input,
   Button,
@@ -138,7 +139,7 @@ const AnomalyDetail = () => {
     setLoading(true);
     try {
       const { count, items } = await getTrainDataByDataset({
-        key: 'anomaly_detection',
+        key: DatasetType.ANOMALY_DETECTION,
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -181,7 +182,7 @@ const AnomalyDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteTrainDataFile(data.id, 'anomaly_detection');
+      await deleteTrainDataFile(data.id, DatasetType.ANOMALY_DETECTION);
     } catch (e) {
       console.log(e);
     } finally {
@@ -205,7 +206,7 @@ const AnomalyDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'anomaly_detection') {
+      if (activeTap === DatasetType.ANOMALY_DETECTION) {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
@@ -261,7 +262,7 @@ const AnomalyDetail = () => {
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['File View']}>
-            <DatasetReleaseList datasetType="anomaly_detection" />
+            <DatasetReleaseList datasetType={DatasetType.ANOMALY_DETECTION} />
           </PermissionWrapper>
         </div>
       </div>

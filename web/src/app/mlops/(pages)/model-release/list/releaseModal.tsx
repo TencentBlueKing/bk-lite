@@ -1,5 +1,5 @@
 'use client';
-import { ModalRef, Option, DatasetReleaseKey } from "@/app/mlops/types";
+import { ModalRef, Option, DatasetType } from "@/app/mlops/types";
 import { forwardRef, useImperativeHandle, useState, useRef, useEffect } from "react";
 import OperateModal from '@/components/operate-modal';
 import { Form, FormInstance, Select, Button, Input, InputNumber, message } from "antd";
@@ -72,57 +72,57 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
         status: formData.status === 'active' ? true : false,
         port: formData.port || undefined // port 为 null 时设置为 undefined，让表单为空
       };
-      getModelVersionListWithTrainJob(formData.train_job, tagName as DatasetReleaseKey);
+      getModelVersionListWithTrainJob(formData.train_job, tagName as DatasetType);
       formRef.current.setFieldsValue(editValues);
     }
   };
 
   const handleAddMap: Record<string, ((params: any) => Promise<void>) | null> = {
-    'anomaly_detection': async (params: any) => {
+    [DatasetType.ANOMALY_DETECTION]: async (params: any) => {
       await addAnomalyServings(params);
     },
-    'rasa': null, // RASA 类型留空
-    'log_clustering': async (params: any) => {
+    [DatasetType.RASA]: null, // RASA 类型留空
+    [DatasetType.LOG_CLUSTERING]: async (params: any) => {
       await addLogClusteringServings(params);
     },
-    'timeseries_predict': async (params: any) => {
+    [DatasetType.TIMESERIES_PREDICT]: async (params: any) => {
       await addTimeseriesPredictServings(params);
     },
-    'classification': async (params: any) => {
+    [DatasetType.CLASSIFICATION]: async (params: any) => {
       await addClassificationServings(params);
     },
-    'image_classification': async (params: any) => {
+    [DatasetType.IMAGE_CLASSIFICATION]: async (params: any) => {
       await addImageClassificationServings(params);
     },
-    'object_detection': async (params: any) => {
+    [DatasetType.OBJECT_DETECTION]: async (params: any) => {
       await addObjectDetectionServings(params);
     },
   };
 
   const handleUpdateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
-    'anomaly_detection': async (id: number, params: any) => {
+    [DatasetType.ANOMALY_DETECTION]: async (id: number, params: any) => {
       await updateAnomalyServings(id, params);
     },
-    'rasa': null, // RASA 类型留空
-    'log_clustering': async (id: number, params: any) => {
+    [DatasetType.RASA]: null, // RASA 类型留空
+    [DatasetType.LOG_CLUSTERING]: async (id: number, params: any) => {
       await updateLogClusteringServings(id, params);
     },
-    'timeseries_predict': async (id: number, params: any) => {
+    [DatasetType.TIMESERIES_PREDICT]: async (id: number, params: any) => {
       await updateTimeSeriesPredictServings(id, params);
     },
-    'classification': async (id: number, params: any) => {
+    [DatasetType.CLASSIFICATION]: async (id: number, params: any) => {
       await updateClassificationServings(id, params);
     },
-    'image_classification': async (id: number, params: any) => {
+    [DatasetType.IMAGE_CLASSIFICATION]: async (id: number, params: any) => {
       await updateImageClassificationServings(id, params);
     },
-    'object_detection': async (id: number, params: any) => {
+    [DatasetType.OBJECT_DETECTION]: async (id: number, params: any) => {
       await updateObjectDetectionServings(id, params);
     },
   };
 
   // 获取训练任务对应的模型列表
-  const getModelVersionListWithTrainJob = async (id: number, key: DatasetReleaseKey) => {
+  const getModelVersionListWithTrainJob = async (id: number, key: DatasetType) => {
     setVersionLoading(true);
     try {
       const data = await getModelVersionList(id, key);
@@ -141,7 +141,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
   };
 
   const onTrainJobChange = (value: number, key: string) => {
-    getModelVersionListWithTrainJob(value, key as DatasetReleaseKey);
+    getModelVersionListWithTrainJob(value, key as DatasetType);
   };
 
   const handleConfirm = async () => {

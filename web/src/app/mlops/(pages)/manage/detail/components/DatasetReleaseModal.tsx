@@ -5,13 +5,13 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useMlopsManageApi from '@/app/mlops/api/manage';
 import useMlopsTaskApi from '@/app/mlops/api/task';
-import { DatasetReleaseKey, ModalRef } from '@/app/mlops/types';
+import { DatasetType, ModalRef } from '@/app/mlops/types';
 
 // const { TextArea } = Input;
 
 interface DatasetReleaseModalProps {
   datasetId: string;
-  datasetType: DatasetReleaseKey;
+  datasetType: DatasetType;
   onSuccess?: () => void;
 }
 

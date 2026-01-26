@@ -89,7 +89,7 @@ export const AlgorithmFieldRenderer: React.FC<AlgorithmFieldRendererProps> = ({
             {...commonProps}
             valuePropName="checked"
           >
-            <Switch defaultChecked={field.defaultValue} size="small" />
+            <Switch defaultChecked={!!field.defaultValue} size="small" />
           </Form.Item>
         );
 
