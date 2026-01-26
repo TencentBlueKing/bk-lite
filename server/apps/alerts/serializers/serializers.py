@@ -65,8 +65,6 @@ class EventModelSerializer(serializers.ModelSerializer):
             "end_time": {"read_only": True},
             "labels": {"write_only": True},
             # "raw_data": {"write_only": True},
-            "search_vector": {"write_only": True},
-            # "labels": {"write_only": True},
         }
 
     @staticmethod
@@ -112,7 +110,6 @@ class AlertModelSerializer(serializers.ModelSerializer):
             "created_at": {"read_only": True},
             "updated_at": {"read_only": True},
             "operator": {"write_only": True},
-            "search_vector": {"write_only": True},
             "labels": {"write_only": True},
         }
 
