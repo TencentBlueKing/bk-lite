@@ -124,6 +124,30 @@ def generate_instance_fingerprint(event_data: Dict[str, Any], fields: List = [])
     return fingerprint
 
 
+def str_to_md5(input_str: str, encoding: str = 'utf-8') -> str:
+    """
+    将字符串转换为MD5哈希值（32位小写）
+
+    Args:
+        input_str: 需要转换的原始字符串
+        encoding: 字符串编码格式，默认utf-8
+
+    Returns:
+        32位小写的MD5哈希字符串
+    """
+    try:
+        # 1. 将字符串转为字节（MD5处理的是字节数据）
+        byte_data = input_str.encode(encoding)
+        # 2. 创建MD5对象并更新数据
+        md5_obj = hashlib.md5()
+        md5_obj.update(byte_data)
+        # 3. 获取16进制哈希值（32位）
+        md5_hex = md5_obj.hexdigest()
+        return md5_hex
+    except UnicodeEncodeError as e:
+        print(f"编码错误：{e}")
+        return ""
+
 def window_size_to_int(window_size: str) -> int:
     """
     将窗口大小字符串转换为整数分钟数

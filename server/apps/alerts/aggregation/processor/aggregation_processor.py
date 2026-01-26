@@ -14,6 +14,7 @@ from apps.alerts.aggregation.query.builder import SQLBuilder
 from apps.alerts.aggregation.engine.connection import DuckDBConnection
 from apps.alerts.aggregation.builder.alert_builder import AlertBuilder
 from apps.core.logger import alert_logger as logger
+from apps.alerts.utils.util import str_to_md5
 
 
 class AggregationProcessor:
@@ -223,6 +224,7 @@ class AggregationProcessor:
 
         for result in aggregation_results:
             try:
+                self._normalize_fingerprint(result)
                 with transaction.atomic():
                     alert = AlertBuilder.create_or_update_alert(
                         aggregation_result=result,
@@ -251,3 +253,13 @@ class AggregationProcessor:
             f"策略 {strategy.name}: 告警处理完成, "
             f"成功={success_count}, 失败={fail_count}, 自动恢复={recovered_count}"
         )
+
+    @staticmethod
+    def _normalize_fingerprint(result: Dict[str, Any]) -> None:
+        fingerprint = result.get("fingerprint")
+        if not fingerprint:
+            return
+        raw_fingerprint = fingerprint.split("|")[-1]
+        result["fingerprint"] = str_to_md5(raw_fingerprint)
+        result["alert_title"] = f"{raw_fingerprint} 发生问题请关注"
+        result["alert_description"] = f"影响范围：{result["alert_description"]}"
