@@ -176,7 +176,9 @@
         "runPackageDesc": "以管理员身份运行安装包，并将安装参数拷贝到安装输入框。",
         "installParams": "安装参数",
         "importantNote": "重要提示",
-        "importantNoteDesc": "安装参数与主机严格绑定，必须确保参数与当前主机信息匹配，禁止交叉混用。"
+        "importantNoteDesc": "安装参数与主机严格绑定，必须确保参数与当前主机信息匹配，禁止交叉混用。",
+        "downloadSuccess": "下载成功",
+        "downloadFailed": "下载失败"
       },
       "editform": {
         "Introduction": "简介",
