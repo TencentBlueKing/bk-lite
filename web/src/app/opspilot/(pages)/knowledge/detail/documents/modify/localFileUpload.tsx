@@ -43,16 +43,19 @@ const LocalFileUpload: React.FC<LocalFileUploadProps> = ({ onFileChange, initial
       'text/plain', // .txt
       'text/markdown',  // .md (standard)
       'text/x-markdown', // .md (non-standard)
-      'text/csv' // .csv
+      'text/csv', // .csv
+      'image/jpeg', // .jpg .jpeg
+      'image/png', // .png
+      'image/webp' // .webp
     ];
-    const allowedExtensions = ['.docx', '.pdf', '.xlsx', '.pptx', '.ppt', '.txt', '.csv', '.md'];
+    const allowedExtensions = ['.docx', '.pdf', '.xlsx', '.pptx', '.ppt', '.txt', '.csv', '.md', '.jpg', '.jpeg', '.png', '.webp'];
     const isAllowedType = allowedTypes.includes(file.type);
-    const isAllowedExtension = allowedExtensions.some(ext => file.name.endsWith(ext));
+    const isAllowedExtension = allowedExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
     if (!isAllowedType && !isAllowedExtension) {
       message.error(`${file.name} ${t('common.fileType')}`);
       return Upload.LIST_IGNORE;
     }
-    return isAllowedType;
+    return isAllowedType || isAllowedExtension;
   };
 
   const handleCustomRequest = async (options: any) => {
@@ -86,7 +89,7 @@ const LocalFileUpload: React.FC<LocalFileUploadProps> = ({ onFileChange, initial
         </p>
         <p className="ant-upload-text">{t('common.uploadText')}</p>
         <p className="ant-upload-hint">
-          {t('common.supports')}: .docx .pdf .xlsx .pptx .ppt .txt .csv .md...
+          {t('common.supports')}: .docx .pdf .xlsx .pptx .ppt .txt .csv .md .jpg .jpeg .png .webp...
         </p>
       </Dragger>
     </div>
