@@ -81,12 +81,12 @@
 }
 
 .tagLabel {
-  color: rgba(0, 0, 0, 0.45);
+  color: #63656e;
   margin-right: 4px;
 }
 
 .tagValue {
-  color: rgba(0, 0, 0, 0.88);
+  color: var(--color-text-2);
   max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;

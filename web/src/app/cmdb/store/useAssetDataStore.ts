@@ -20,6 +20,7 @@ interface AssetDataStore {
   clear: () => FilterItem[];
   update: (index: number, item: FilterItem) => FilterItem[];
   setCaseSensitive: (value: boolean) => void;
+  setQueryList: (items: FilterItem[]) => FilterItem[];
   setCloudList: (list: any[]) => void;
 }
 
@@ -57,6 +58,10 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   },
   setCaseSensitive: (value: boolean) => {
     set({ case_sensitive: value });
+  },
+  setQueryList: (items: FilterItem[]) => {
+    set({ query_list: items });
+    return get().query_list;
   },
   setCloudList: (list: any[]) => {
     set({ cloud_list: list });
