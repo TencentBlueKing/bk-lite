@@ -1,0 +1,52 @@
+{# Macro: Check if all dimensions are non-null #}
+{% macro all_dimensions_present(dimensions) %}
+  {%- for dim_name in dimensions -%}
+    {{ dim_name }} IS NOT NULL{{ " AND " if not loop.last else "" }}
+  {%- endfor -%}
+{% endmacro %}
+
+{# Macro: Build effective grouping dimension (降级逻辑) #}
+{% macro effective_dimension(dimensions) %}
+CASE
+    WHEN {{ all_dimensions_present(dimensions) }} THEN
+      {%- for dim_name in dimensions -%}
+        {{ " " }}COALESCE(CAST({{ dim_name }} AS VARCHAR), ''){{ " || '|' || " if not loop.last else "" }}
+      {%- endfor -%}
+    {{ " " }}ELSE event_id
+  END
+{%- endmacro %}
+
+{# Macro: Build dimension columns for GROUP BY #}
+{% macro dimension_columns(dimensions) %}
+  {%- for dim_name in dimensions -%}
+    {{ dim_name }}{{ ", " if not loop.last else "" }}
+  {%- endfor -%}
+{% endmacro %}
+
+{# Macro: Build fingerprint expression #}
+{% macro fingerprint_expr(dimensions, strategy_id) %}
+  md5(
+    '{{ strategy_id }}' || '|' || {{ effective_dimension(dimensions) }}
+  )
+{% endmacro %}
+
+{# Macro: Aggregate event fields #}
+{% macro aggregate_fields() %}
+  COUNT(*) as event_count,
+  MIN(received_at) as first_event_time,
+  MAX(received_at) as last_event_time,
+  MIN(level) as alert_level,
+  LIST(event_id) as event_ids,
+  FIRST(title) as alert_title,
+  FIRST(description) as alert_description
+{% endmacro %}
+
+{# Macro: Window time filter #}
+{% macro time_filter(window_start) %}
+  received_at >= TIMESTAMP '{{ window_start }}'
+{% endmacro %}
+
+{# Macro: Event action filter (action=created for new events) #}
+{% macro event_action_filter() %}
+  action = 'created'
+{% endmacro %}

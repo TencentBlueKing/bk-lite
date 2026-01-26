@@ -137,10 +137,14 @@ const AssetDataContent = () => {
   );
 
   useEffect(() => {
+    // 主页中当模型为host时，获取云区域选项test8.7
     if (modelId === 'host') {
       getInstanceProxys()
         .then((data: any[]) => {
           setProxyOptions(data || []);
+
+          // 保存云区域列表到前端store
+          useAssetDataStore.getState().setCloudList(data || []);
         })
         .catch(() => {
           setProxyOptions([]);
@@ -795,6 +799,7 @@ const AssetDataContent = () => {
           ),
         },
       ];
+      // tableColumns是表格的列配置，包括action列
       setColumns(tableColumns);
       const actionCol = tableColumns.find((col) => col.key === 'action');
       const ordered = [

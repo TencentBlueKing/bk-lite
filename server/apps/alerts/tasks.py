@@ -10,121 +10,30 @@ from apps.alerts.common.notify.notify import Notify
 from apps.alerts.models import SystemSetting
 from apps.alerts.service.notify_service import NotifyResultService
 from apps.alerts.service.un_dispatch import UnDispatchService
-from apps.alerts.aggregation_v2.tasks.aggregation import schedule_all_rules
 from apps.core.logger import alert_logger as logger
 
 
 @shared_task
 def event_aggregation_alert():
-    """
-    按窗口类型分组执行的聚合任务
-    支持滑动窗口、固定窗口、会话窗口三种类型
-    """
-    logger.info("开始执行多窗口类型聚合任务")
+    """执行告警聚合任务（周期性调度）"""
+    logger.info("开始执行告警聚合任务")
+    from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
 
-    schedule_all_rules()
+    try:
+        processor = AggregationProcessor()
+        processor.process_aggregation()
+        logger.info("告警聚合任务执行完成")
 
-    # try:
-    #     # 移动导入到函数内部避免循环导入
-    #     from apps.alerts.common.rules.rule_manager import create_smart_scheduler
-    #     from apps.alerts.common.aggregation.agg_window import WindowProcessorFactory
-    #     from apps.alerts.common.aggregation.enum import WINDOW_TYPE_PRIORITY
-    #
-    #     processing_stats = {}
-    #
-    #     # 1. 创建智能调度器，判断当前时间应该执行哪些规则
-    #     scheduler = create_smart_scheduler()
-    #     executable_rules = scheduler.get_executable_rules()
-    #
-    #     # 使用配置化的窗口处理优先级
-    #     # window_order = [wt for wt in WINDOW_TYPE_PRIORITY]
-    #     # window_order = ['sliding']  # 用于调试特定窗口类型
-    #     window_order = ['session']  # 用于调试特定窗口类型
-    #
-    #     for window_type in window_order:
-    #         rules_to_execute = executable_rules.get(window_type, [])
-    #         if not rules_to_execute:
-    #             continue
-    #
-    #         logger.info(f"开始处理 {window_type} 窗口类型，规则数量: {len(rules_to_execute)}")
-    #
-    #         try:
-    #             alerts_created, alerts_updated = WindowProcessorFactory.process_window_type_rules(
-    #                 window_type=window_type,
-    #                 rules=rules_to_execute
-    #             )
-    #             processing_stats[window_type] = {
-    #                 'rules_count': len(rules_to_execute),
-    #                 'alerts_created': alerts_created,
-    #                 'alerts_updated': alerts_updated,
-    #                 'status': 'success'
-    #             }
-    #
-    #             logger.info(f"{window_type} 窗口类型处理完成，创建告警: {alerts_created}, 更新告警: {alerts_updated}")
-    #
-    #         except ValueError as e:
-    #             # 参数错误或配置错误
-    #             logger.error(f"{window_type} 窗口配置错误: {str(e)}, 规则列表: {[r.name for r in rules_to_execute]}")
-    #             processing_stats[window_type] = {
-    #                 'rules_count': len(rules_to_execute),
-    #                 'status': 'failed',
-    #                 'error_type': 'config_error',
-    #                 'error': str(e)
-    #             }
-    #         except KeyError as e:
-    #             # 必需字段缺失
-    #             logger.error(f"{window_type} 窗口数据字段缺失: {str(e)}, 规则数量: {len(rules_to_execute)}")
-    #             processing_stats[window_type] = {
-    #                 'rules_count': len(rules_to_execute),
-    #                 'status': 'failed',
-    #                 'error_type': 'missing_field',
-    #                 'error': str(e)
-    #             }
-    #         except Exception as e:
-    #             # 其他未预期错误，记录完整上下文
-    #             import traceback
-    #             logger.error(
-    #                 f"{window_type} 窗口处理异常失败: {str(e)}\n"
-    #                 f"规则数量: {len(rules_to_execute)}\n"
-    #                 f"规则列表: {[r.name for r in rules_to_execute]}\n"
-    #                 f"堆栈跟踪:\n{traceback.format_exc()}"
-    #             )
-    #             processing_stats[window_type] = {
-    #                 'rules_count': len(rules_to_execute),
-    #                 'status': 'failed',
-    #                 'error_type': 'unexpected_error',
-    #                 'error': str(e)
-    #             }
-    #
-    #     # 4. 输出处理统计
-    #     total_created = 0
-    #     total_updated = 0
-    #
-    #     for window_type, stats in processing_stats.items():
-    #         if stats['status'] == 'success':
-    #             created = stats.get('alerts_created', 0)
-    #             updated = stats.get('alerts_updated', 0)
-    #             total_created += created
-    #             total_updated += updated
-    #             logger.info(f"  {window_type}: 规则数={stats['rules_count']}, 新建告警={created}, 更新告警={updated}")
-    #         else:
-    #             logger.error(f"  {window_type}: 规则数={stats['rules_count']}, 处理失败 - {stats['error']}")
-    #
-    #     logger.info(f"多窗口类型聚合任务执行完成，总计: 新建告警={total_created}, 更新告警={total_updated}")
-    #
-    # except ImportError as e:
-    #     # 模块导入失败
-    #     logger.error(f"聚合任务模块导入失败: {str(e)}, 请检查依赖是否安装")
-    #     raise
-    # except Exception as e:
-    #     # 顶层异常捕获，记录完整上下文
-    #     import traceback
-    #     logger.error(
-    #         f"聚合任务执行失败: {str(e)}\n"
-    #         f"执行阶段: 初始化或调度阶段\n"
-    #         f"堆栈跟踪:\n{traceback.format_exc()}"
-    #     )
-    #     raise
+    except Exception as e:
+        logger.exception(f"告警聚合任务执行失败: {e}")
+
+    try:
+        from apps.alerts.aggregation.recovery.timeout_checker import TimeoutChecker
+        confirmed_count = TimeoutChecker.check_session_timeouts()
+        logger.info(f"聚合后会话超时检查完成，确认告警数={confirmed_count}")
+    except Exception as e:
+        logger.exception(f"聚合后会话超时检查失败: {e}")
+        raise
 
 
 @shared_task
@@ -136,6 +45,7 @@ def beat_close_alert():
     try:
         logger.info("开始执行告警自动关闭定时任务")
         from apps.alerts.common.auto_close import AlertAutoClose
+
         auto_closer = AlertAutoClose()
         auto_closer.main()
         logger.info("告警自动关闭定时任务执行完成")
@@ -144,6 +54,7 @@ def beat_close_alert():
         raise
     except Exception as e:
         import traceback
+
         logger.error(
             f"告警自动关闭定时任务执行失败: {str(e)}\n"
             f"堆栈跟踪:\n{traceback.format_exc()}"
@@ -161,8 +72,11 @@ def check_and_send_reminders():
     logger.info("== 开始检查提醒任务 ==")
     try:
         from apps.alerts.service.reminder_service import ReminderService
+
         result = ReminderService.check_and_process_reminders()
-        logger.info(f"== 提醒任务检查完成 == 处理={result.get('processed', 0)}, 成功={result.get('success', 0)}")
+        logger.info(
+            f"== 提醒任务检查完成 == 处理={result.get('processed', 0)}, 成功={result.get('success', 0)}"
+        )
         return result
     except Exception as e:
         logger.error(f"提醒任务检查失败: {str(e)}")
@@ -178,6 +92,7 @@ def cleanup_reminder_tasks():
     logger.info("== 开始清理提醒任务 ==")
     try:
         from apps.alerts.service.reminder_service import ReminderService
+
         cleaned_count = ReminderService.cleanup_expired_reminders()
         logger.info(f"== 提醒任务清理完成 == 清理了{cleaned_count}条记录")
         return cleaned_count
@@ -210,16 +125,27 @@ def sync_notify(params):
         object_id = param.get("object_id", "")
         notify_action_object = param.get("notify_action_object", "alert")
         logger.info(
-            "=== 开始执行通知任务 time={} username_list={}, channel={} ===".format(send_time, username_list,
-                                                                                   channel_type))
-        notify = Notify(username_list=username_list, channel_id=channel_id, title=title, content=content)
+            "=== 开始执行通知任务 time={} username_list={}, channel={} ===".format(
+                send_time, username_list, channel_type
+            )
+        )
+        notify = Notify(
+            username_list=username_list,
+            channel_id=channel_id,
+            title=title,
+            content=content,
+        )
         result = notify.notify()
         result_list.append(result)
         logger.info("=== 通知任务执行完成 send_time={}===".format(send_time))
         if object_id:
-            notify_result_obj = NotifyResultService(notify_users=username_list, channel=channel_type,
-                                                    notify_object=object_id,
-                                                    notify_action_object=notify_action_object, notify_result=result)
+            notify_result_obj = NotifyResultService(
+                notify_users=username_list,
+                channel=channel_type,
+                notify_object=object_id,
+                notify_action_object=notify_action_object,
+                notify_result=result,
+            )
             notify_result_obj.save_notify_result()
 
     return result_list
@@ -233,6 +159,7 @@ def sync_shield(event_list):
     logger.info("== 开始执行屏蔽事件任务 ==")
     try:
         from apps.alerts.common.shield import execute_shield_check_for_events
+
         result = execute_shield_check_for_events(event_list)
         logger.info(f"== 屏蔽事件任务完成 == 处理了{len(event_list)}条事件")
         return result
@@ -247,7 +174,9 @@ def sync_no_dispatch_alert_notice_task():
     周期任务，检查那些未能自动分派的告警，进行系统配置的通知
     """
     logger.info("== 开始执行未分派告警通知任务 ==")
-    setting_activate = SystemSetting.objects.filter(key="no_dispatch_alert_notice", is_activate=True).exists()
+    setting_activate = SystemSetting.objects.filter(
+        key="no_dispatch_alert_notice", is_activate=True
+    ).exists()
     if not setting_activate:
         logger.info("== 未分派告警通知功能未启用，任务执行结束 ==")
         return

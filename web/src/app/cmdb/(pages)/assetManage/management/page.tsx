@@ -11,6 +11,7 @@ import {
   SwitcherOutlined,
   HolderOutlined,
   CopyOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 import Image from 'next/image';
 import assetManageStyle from './index.module.scss';
@@ -376,6 +377,30 @@ const AssetManage = () => {
                         </div>
                       </li>
                     ))}
+                    <li
+                        className={`${assetManageStyle.modelListItem} ${assetManageStyle.addModelCard}`}
+                        key={`add-${item.classification_id}`}
+                      >
+                        <PermissionWrapper
+                          requiredPermissions={['Add Model']}
+                          instPermissions={item.permission}
+                          className="block w-full h-full"
+                        >
+                          <Button
+                            type="dashed"
+                            block
+                            icon={<PlusOutlined />}
+                            className={assetManageStyle.addModelButton}
+                            onClick={() =>
+                              showModelModal('add', {
+                                classification_id: item.classification_id,
+                              })
+                            }
+                        >
+                          {t('Model.addModel')}
+                        </Button>
+                      </PermissionWrapper>
+                    </li>
                   </ul>
                 </div>
               );
