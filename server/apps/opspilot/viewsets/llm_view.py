@@ -132,11 +132,15 @@ class LLMViewSet(AuthViewSet):
             instance.rag_score_threshold_map = score_threshold_map
             knowledge_base_list = KnowledgeBase.objects.filter(id__in=list(score_threshold_map.keys()))
             instance.knowledge_base.set(knowledge_base_list)
+        # 当 enable_rag=False 时，清空知识库和阈值配置
+        if "enable_rag" in params and not params["enable_rag"]:
+            instance.knowledge_base.clear()
+            instance.rag_score_threshold_map = {}
         instance.save()
         return JsonResponse({"result": True})
 
     @staticmethod
-    def _create_error_stream_response(error_message):
+    def create_error_stream_response(error_message):
         """
         创建错误的流式响应
         用于在流式模式下返回错误信息
@@ -192,7 +196,7 @@ class LLMViewSet(AuthViewSet):
                     message = (
                         self.loader.get("error.no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
                     )
-                    return self._create_error_stream_response(message)
+                    return self.create_error_stream_response(message)
 
             current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
             if current_ip:
@@ -211,10 +215,10 @@ class LLMViewSet(AuthViewSet):
             return stream_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
         except LLMSkill.DoesNotExist:
             message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
-            return self._create_error_stream_response(message)
+            return self.create_error_stream_response(message)
         except Exception as e:
             logger.exception(e)
-            return self._create_error_stream_response(str(e))
+            return self.create_error_stream_response(str(e))
 
     @action(methods=["POST"], detail=False)
     @HasPermission("skill_setting-View")
@@ -255,7 +259,7 @@ class LLMViewSet(AuthViewSet):
                     message = (
                         self.loader.get("error.no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
                     )
-                    return self._create_error_stream_response(message)
+                    return self.create_error_stream_response(message)
 
             current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
             if current_ip:
@@ -275,10 +279,10 @@ class LLMViewSet(AuthViewSet):
             return stream_agui_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
         except LLMSkill.DoesNotExist:
             message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
-            return self._create_error_stream_response(message)
+            return self.create_error_stream_response(message)
         except Exception as e:
             logger.exception(e)
-            return self._create_error_stream_response(str(e))
+            return self.create_error_stream_response(str(e))
 
 
 class ObjFilter(FilterSet):

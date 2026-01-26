@@ -5,6 +5,7 @@
 """
 # Shield class for handling event shielding operations.
 """
+
 import datetime
 from typing import List, Dict, Any
 from django.db.models import Q
@@ -23,10 +24,23 @@ class EventShieldOperator(object):
     符合条件的事件和在规定时间内产生的事件将被屏蔽，屏蔽后不会触发通知或其他处理流程。
     """
 
-    def __init__(self, event_id_list: List[str]):
-        self.active_shields = self.get_shields()
+    def __init__(self, event_id_list: List[str], active_shields=None):
+        """
+        初始化事件屏蔽操作器（性能优化版）
+        
+        Args:
+            event_id_list: 事件ID列表
+            active_shields: 预加载的活跃屏蔽策略（可选，避免重复查询）
+        """
+        # 优化：支持传入预加载的屏蔽策略
+        if active_shields is not None:
+            self.active_shields = active_shields
+        else:
+            self.active_shields = self.get_shields()
+        
         if not self.active_shields:
             raise ShieldNotFoundError()
+        
         self.event_received_at = None
         self.event_id_list = event_id_list
         self.events = self.get_event_map()
@@ -40,7 +54,7 @@ class EventShieldOperator(object):
             "resource_id": "resource_id",
             "content": "description",
             "title": "title",
-            "event_id": "event_id"
+            "event_id": "event_id",
         }
 
     def get_event_map(self) -> Dict[int, Event]:
@@ -71,7 +85,7 @@ class EventShieldOperator(object):
                 "total_events": 0,
                 "shielded_events": 0,
                 "unshielded_events": 0,
-                "shield_results": []
+                "shield_results": [],
             }
 
         # 获取所有活跃的屏蔽策略，并预先过滤时间范围
@@ -81,7 +95,7 @@ class EventShieldOperator(object):
             "total_events": len(self.events),
             "shielded_events": 0,
             "unshielded_events": 0,
-            "shield_results": []
+            "shield_results": [],
         }
 
         # 记录已屏蔽的事件ID
@@ -91,7 +105,9 @@ class EventShieldOperator(object):
         for shield in self.active_shields:
             try:
                 # 批量查找匹配该屏蔽策略的事件（排除已屏蔽的）
-                matched_event_ids = self._batch_find_matching_events(shield, shielded_event_ids)
+                matched_event_ids = self._batch_find_matching_events(
+                    shield, shielded_event_ids
+                )
 
                 if not matched_event_ids:
                     continue
@@ -110,7 +126,9 @@ class EventShieldOperator(object):
                 logger.error(f"Error processing shield {shield.id}: {str(e)}")
                 continue
 
-        results["unshielded_events"] = results["total_events"] - results["shielded_events"]
+        results["unshielded_events"] = (
+            results["total_events"] - results["shielded_events"]
+        )
         logger.info(f"Shield check completed: {results}")
         return results
 
@@ -131,7 +149,9 @@ class EventShieldOperator(object):
 
         return time_matched_shields
 
-    def _batch_find_matching_events(self, shield: AlertShield, excluded_ids: set = None) -> List[int]:
+    def _batch_find_matching_events(
+        self, shield: AlertShield, excluded_ids: set = None
+    ) -> List[int]:
         """
         批量查找匹配指定屏蔽策略的事件ID列表
 
@@ -145,7 +165,7 @@ class EventShieldOperator(object):
         # 先过滤活跃状态的事件（未关闭且未屏蔽的事件才需要屏蔽）
         base_queryset = Event.objects.filter(
             event_id__in=self.event_id_list,
-            status=EventStatus.PENDING  # 只屏蔽开放和已确认的事件
+            status=EventStatus.PENDING,  # 只屏蔽开放和已确认的事件
         )
 
         # 排除已屏蔽的事件
@@ -154,7 +174,7 @@ class EventShieldOperator(object):
 
         if shield.match_type == AlertShieldMatchType.ALL:
             # 全部匹配，返回所有活跃的事件
-            return list(base_queryset.values_list('id', flat=True))
+            return list(base_queryset.values_list("id", flat=True))
 
         elif shield.match_type == AlertShieldMatchType.FILTER:
             # 过滤匹配，使用ORM查询
@@ -162,7 +182,9 @@ class EventShieldOperator(object):
 
         return []
 
-    def _orm_filter_events(self, queryset, match_rules: List[List[Dict[str, Any]]]) -> List[int]:
+    def _orm_filter_events(
+        self, queryset, match_rules: List[List[Dict[str, Any]]]
+    ) -> List[int]:
         """
         使用ORM查询过滤匹配规则的事件
 
@@ -174,7 +196,7 @@ class EventShieldOperator(object):
             匹配的事件ID列表
         """
         if not match_rules:
-            return list(queryset.values_list('id', flat=True))
+            return list(queryset.values_list("id", flat=True))
 
         # 最外层是或关系
         final_q = Q()
@@ -209,7 +231,7 @@ class EventShieldOperator(object):
             # 如果没有有效的规则，返回空结果集
             queryset = queryset.none()
 
-        return list(queryset.values_list('id', flat=True))
+        return list(queryset.values_list("id", flat=True))
 
     def _build_single_rule_q(self, rule: Dict[str, Any]) -> Q | None:
         """
@@ -238,7 +260,14 @@ class EventShieldOperator(object):
             elif operator == "not_contains":
                 return ~Q(**{f"{model_field}__icontains": value})
             elif operator == "re":
-                return Q(**{f"{model_field}__regex": value})
+                try:
+                    import re as regex_module
+
+                    regex_module.compile(value)
+                except regex_module.error as e:
+                    logger.error(f"Invalid regex pattern '{value}': {e}")
+                    return None
+                return Q(**{f"{model_field}__iregex": value})
             else:
                 logger.warning(f"Unknown operator: {operator}")
                 return None
@@ -247,7 +276,9 @@ class EventShieldOperator(object):
             logger.error(f"Error building Q object for rule: {str(e)}")
             return None
 
-    def _batch_execute_shield(self, event_ids: List[int], shield: AlertShield) -> List[Dict[str, Any]]:
+    def _batch_execute_shield(
+        self, event_ids: List[int], shield: AlertShield
+    ) -> List[Dict[str, Any]]:
         """
         批量执行事件屏蔽操作
 
@@ -264,39 +295,45 @@ class EventShieldOperator(object):
             with transaction.atomic():
                 # 先获取要屏蔽的事件信息，用于记录结果
                 events_to_shield = Event.objects.filter(
-                    id__in=event_ids,
-                    status=EventStatus.PENDING
-                ).values('id', 'event_id')
+                    id__in=event_ids, status=EventStatus.PENDING
+                ).values("id", "event_id")
 
                 # 批量更新事件状态
                 updated_count = Event.objects.filter(
-                    id__in=event_ids,
-                    status=EventStatus.PENDING
+                    id__in=event_ids, status=EventStatus.PENDING
                 ).update(status=EventStatus.SHIELD)
 
                 # 为每个成功屏蔽的事件记录结果
                 for event_info in events_to_shield:
-                    logger.debug(f"Event {event_info['event_id']} shielded successfully by shield policy {shield.id}")
+                    logger.debug(
+                        f"Event {event_info['event_id']} shielded successfully by shield policy {shield.id}"
+                    )
 
-                    results.append({
-                        "event_id": event_info['id'],
-                        "success": True,
-                        "shield_id": shield.id,
-                        "shield_name": shield.name
-                    })
+                    results.append(
+                        {
+                            "event_id": event_info["id"],
+                            "success": True,
+                            "shield_id": shield.id,
+                            "shield_name": shield.name,
+                        }
+                    )
 
-                logger.info(f"Batch shield completed: {updated_count} events shielded by policy {shield.id}")
+                logger.info(
+                    f"Batch shield completed: {updated_count} events shielded by policy {shield.id}"
+                )
 
         except Exception as e:
             logger.error(f"Error in batch shield: {str(e)}")
             # 如果批量操作失败，为所有事件添加失败记录
             for event_id in event_ids:
-                results.append({
-                    "event_id": event_id,
-                    "success": False,
-                    "message": str(e),
-                    "shield_id": shield.id
-                })
+                results.append(
+                    {
+                        "event_id": event_id,
+                        "success": False,
+                        "message": str(e),
+                        "shield_id": shield.id,
+                    }
+                )
 
         return results
 
@@ -325,10 +362,14 @@ class EventShieldOperator(object):
 
                 # 如果没有配置时间范围，则不符合条件
                 if not start_time_str or not end_time_str:
-                    logger.warning("One-time shield range missing start_time or end_time")
+                    logger.warning(
+                        "One-time shield range missing start_time or end_time"
+                    )
                     return False
 
-                start_time = datetime.datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
+                start_time = datetime.datetime.strptime(
+                    start_time_str, "%Y-%m-%d %H:%M:%S"
+                )
                 end_time = datetime.datetime.strptime(end_time_str, "%Y-%m-%d %H:%M:%S")
 
                 # 转换为带时区的时间
@@ -344,7 +385,9 @@ class EventShieldOperator(object):
 
                 # 如果没有配置时间范围，则不符合条件
                 if not start_time_str or not end_time_str:
-                    logger.warning("Day-time shield range missing start_time or end_time")
+                    logger.warning(
+                        "Day-time shield range missing start_time or end_time"
+                    )
                     return False
 
                 current_time_str = current_time.strftime("%H:%M:%S")
@@ -369,9 +412,17 @@ class EventShieldOperator(object):
 
                 # 只比较时间部分（HH:MM:SS）
                 if len(start_time_str) > 8:  # 包含日期的格式
-                    start_time_str = start_time_str.split(" ")[1] if " " in start_time_str else start_time_str[-8:]
+                    start_time_str = (
+                        start_time_str.split(" ")[1]
+                        if " " in start_time_str
+                        else start_time_str[-8:]
+                    )
                 if len(end_time_str) > 8:  # 包含日期的格式
-                    end_time_str = end_time_str.split(" ")[1] if " " in end_time_str else end_time_str[-8:]
+                    end_time_str = (
+                        end_time_str.split(" ")[1]
+                        if " " in end_time_str
+                        else end_time_str[-8:]
+                    )
 
                 current_time_str = current_time.strftime("%H:%M:%S")
                 return start_time_str <= current_time_str <= end_time_str
@@ -395,9 +446,17 @@ class EventShieldOperator(object):
 
                 # 只比较时间部分（HH:MM:SS）
                 if len(start_time_str) > 8:  # 包含日期的格式
-                    start_time_str = start_time_str.split(" ")[1] if " " in start_time_str else start_time_str[-8:]
+                    start_time_str = (
+                        start_time_str.split(" ")[1]
+                        if " " in start_time_str
+                        else start_time_str[-8:]
+                    )
                 if len(end_time_str) > 8:  # 包含日期的格式
-                    end_time_str = end_time_str.split(" ")[1] if " " in end_time_str else end_time_str[-8:]
+                    end_time_str = (
+                        end_time_str.split(" ")[1]
+                        if " " in end_time_str
+                        else end_time_str[-8:]
+                    )
 
                 current_time_str = current_time.strftime("%H:%M:%S")
                 return start_time_str <= current_time_str <= end_time_str
@@ -420,12 +479,13 @@ class EventShieldOperator(object):
         return self.execute_shield_check()
 
 
-def execute_shield_check_for_events(event_ids: List[str]) -> Dict[str, Any]:
+def execute_shield_check_for_events(event_ids: List[str], active_shields=None) -> Dict[str, Any]:
     """
-    为指定事件列表执行屏蔽检查
+    为指定事件列表执行屏蔽检查（性能优化版）
 
     Args:
         event_ids: 事件ID列表
+        active_shields: 预加载的活跃屏蔽策略（可选，避免重复查询）
 
     Returns:
         执行结果
@@ -436,26 +496,51 @@ def execute_shield_check_for_events(event_ids: List[str]) -> Dict[str, Any]:
             "total_events": 0,
             "shielded_events": 0,
             "unshielded_events": 0,
-            "shield_results": []
+            "shield_results": [],
         }
-    try:
-        operator = EventShieldOperator(event_ids)
-    except ShieldNotFoundError:
-        logger.warning("No active shields found, skipping shield check")
-        return {
-            "total_events": len(event_ids),
-            "shielded_events": 0,
-            "unshielded_events": len(event_ids),
-            "shield_results": []
-        }
-    except EventNotFoundError:
-        logger.warning("No events found for shielding, skipping shield check")
-        return {
-            "total_events": 0,
-            "shielded_events": 0,
-            "unshielded_events": 0,
-            "shield_results": []
-        }
+    
+    # 优化：如果没有传入 active_shields，检查是否有活跃策略
+    if active_shields is None:
+        # 未传入，需要查询
+        try:
+            operator = EventShieldOperator(event_ids)
+        except ShieldNotFoundError:
+            logger.warning("No active shields found, skipping shield check")
+            return {
+                "total_events": len(event_ids),
+                "shielded_events": 0,
+                "unshielded_events": len(event_ids),
+                "shield_results": [],
+            }
+        except EventNotFoundError:
+            logger.warning("No events found for shielding, skipping shield check")
+            return {
+                "total_events": 0,
+                "shielded_events": 0,
+                "unshielded_events": 0,
+                "shield_results": [],
+            }
+    else:
+        # 已传入，直接使用（避免重复查询）
+        if not active_shields or not active_shields.exists():
+            logger.debug("No active shields provided, skipping shield check")
+            return {
+                "total_events": len(event_ids),
+                "shielded_events": 0,
+                "unshielded_events": len(event_ids),
+                "shield_results": [],
+            }
+        try:
+            operator = EventShieldOperator(event_ids, active_shields=active_shields)
+        except EventNotFoundError:
+            logger.warning("No events found for shielding, skipping shield check")
+            return {
+                "total_events": 0,
+                "shielded_events": 0,
+                "unshielded_events": 0,
+                "shield_results": [],
+            }
+    
     result = operator.execute_shield_check()
     logger.info(f"=== Shield check completed: {result} ===")
     return result

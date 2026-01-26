@@ -55,6 +55,5 @@ export interface OperationGuidanceProps {
   ip: string;
   nodeName: string;
   installCommand?: string;
-  downloadUrl?: string;
   nodeData?: any;
 }

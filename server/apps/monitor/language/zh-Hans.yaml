@@ -1,78 +1,78 @@
 monitor_object_metric:
   Minio:
-    cluster_capacity_usable_total_bytes_gauge:
+    minio_cluster_capacity_usable_total_bytes_gauge:
       name: 集群可用总容量
       desc: 集群经过纠删码计算后的可用逻辑存储总容量，反映了考虑冗余后的存储资源规模
-    cluster_capacity_usable_free_bytes_gauge:
+    minio_cluster_capacity_usable_free_bytes_gauge:
       name: 集群可用空闲容量
       desc: 集群可用逻辑存储的空闲容量，用于监控存储使用情况和预测存储需求
-    cluster_drive_online_total_gauge:
+    minio_cluster_drive_online_total_gauge:
       name: 在线驱动器数
       desc: 集群中当前在线可用的存储驱动器数量，反映存储硬件的可用性状态
-    cluster_nodes_online_total_gauge:
+    minio_cluster_nodes_online_total_gauge:
       name: 在线节点数
       desc: 集群中当前在线可用的节点服务器数量，影响集群处理能力和容错能力
-    cluster_health_status_gauge:
+    minio_cluster_health_status_gauge:
       name: 集群健康状态
       desc: 集群整体健康状态，1表示健康，0表示不健康，提供集群运行状况快速概览
-    cluster_health_erasure_set_status_gauge:
+    minio_cluster_health_erasure_set_status_gauge:
       name: 擦除集状态
       desc: 擦除集的状态（1=正常），反映数据冗余集的健康状况，直接影响数据安全性
-    cluster_health_erasure_set_online_drives_gauge:
+    minio_cluster_health_erasure_set_online_drives_gauge:
       name: 擦除集在线驱动器数
       desc: 擦除集中在线驱动器的数量，影响数据可用性和冗余度，确保冗余策略有效性
-    node_cpu_avg_load1_gauge:
+    minio_node_cpu_avg_load1_gauge:
       name: 节点1分钟平均负载
       desc: 节点过去1分钟的平均系统负载，反映短期CPU压力，评估短期性能压力
-    node_cpu_avg_idle_gauge:
+    minio_node_cpu_avg_idle_gauge:
       name: 节点CPU空闲率
       desc: 节点CPU的空闲时间百分比，反映CPU利用率，低空闲率可能表示CPU瓶颈
-    node_mem_used_perc_gauge:
+    minio_node_mem_used_perc_gauge:
       name: 节点内存使用率
       desc: 节点内存使用百分比，反映内存压力，过高使用率可能导致性能下降
-    node_drive_perc_util_gauge:
+    minio_node_drive_perc_util_gauge:
       name: 驱动器使用率
       desc: 单个驱动器的使用百分比，反映存储设备空间使用情况，对容量规划重要
-    node_drive_reads_per_sec_gauge:
+    minio_node_drive_reads_per_sec_gauge:
       name: 驱动器每秒读取次数
       desc: 单个驱动器每秒读取操作次数，反映存储设备读取性能和工作负载
-    node_drive_writes_per_sec_gauge:
+    minio_node_drive_writes_per_sec_gauge:
       name: 驱动器每秒写入次数
       desc: 单个驱动器每秒写入操作次数，反映存储设备写入性能和工作负载
-    node_if_rx_bytes_gauge:
+    minio_node_if_rx_bytes_gauge:
       name: 网络接口接收字节数
       desc: 网络接口接收的数据字节数，反映网络流入流量，监控网络带宽使用
-    node_if_tx_bytes_gauge:
+    minio_node_if_tx_bytes_gauge:
       name: 网络接口发送字节数
       desc: 网络接口发送的数据字节数，反映网络流出流量，监控网络带宽使用
-    node_process_uptime_seconds_gauge:
+    minio_node_process_uptime_seconds_gauge:
       name: 进程运行时间
       desc: MinIO进程运行秒数，反映进程稳定性，长时间运行表示稳定，频繁重启可能有问题
-    node_process_cpu_total_seconds_counter_rate:
+    minio_node_process_cpu_total_seconds_counter_rate:
       name: 进程CPU使用速率
       desc: MinIO进程每秒消耗的CPU时间，反映MinIO服务对CPU资源的实时消耗
-    node_process_resident_memory_bytes_gauge:
+    minio_node_process_resident_memory_bytes_gauge:
       name: 进程常驻内存
       desc: MinIO进程占用的常驻内存大小，反映进程内存使用情况，监控内存泄漏
-    node_go_routine_total_gauge:
+    minio_node_go_routine_total_gauge:
       name: Go协程总数
       desc: MinIO进程中当前的Go协程数量，反映并发处理能力，异常增加可能表示问题
-    s3_requests_incoming_total_gauge:
+    minio_s3_requests_incoming_total_gauge:
       name: 当前传入S3请求数
       desc: 当前正在处理的传入S3 API请求数量，反映当前S3服务负载
-    s3_requests_waiting_total_gauge:
+    minio_s3_requests_waiting_total_gauge:
       name: 等待中S3请求数
       desc: 当前等待处理的S3 API请求数量，反映S3服务处理队列积压情况
-    s3_traffic_received_bytes_counter_rate:
+    minio_s3_traffic_received_bytes_counter_rate:
       name: S3接收流量速率
       desc: S3服务每秒接收的数据流量，反映数据上传速率和网络流入带宽使用
-    s3_traffic_sent_bytes_counter_rate:
+    minio_s3_traffic_sent_bytes_counter_rate:
       name: S3发送流量速率
       desc: S3服务每秒发送的数据流量，反映数据下载速率和网络流出带宽使用
-    s3_requests_rejected_auth_total_counter_rate:
+    minio_s3_requests_rejected_auth_total_counter_rate:
       name: 认证拒绝S3请求速率
       desc: 因认证失败而被拒绝的S3请求每秒数量，反映认证失败频率和安全状况
-    node_scanner_objects_scanned_counter_rate:
+    minio_node_scanner_objects_scanned_counter_rate:
       name: 对象扫描速率
       desc: 扫描器每秒扫描的对象数量，反映存储系统内部维护活动的效率
   Host:
@@ -997,7 +997,7 @@ monitor_object_metric:
     docker_container_net_tx_packets_rate:
       name: 发送数据包速率
       desc: 容器发送的数据包速率，反映网络流出的活跃度
-  Oracle-Exporter:
+  Oracle:
     oracledb_up_gauge:
       name: 运行状态
       desc: 当前Oracle数据库运行状态，0为正常运行，1为运行异常
@@ -1111,11 +1111,11 @@ monitor_object_metric:
       name: 当前连接数
       desc: 当前打开的连接数；接近 max_connections 时会拒绝新连接
     mysql_threads_running:
-      name: 运行中的线程数
-      desc: 当前正在执行查询的线程数，反映并发处理能力
+      name: 活跃线程数
+      desc: 当前正在执行的线程数；反映数据库并发处理能力
     mysql_aborted_connects:
-      name: 中止的连接数
-      desc: 连接尝试失败的次数，可能由权限、网络或配置问题引起
+      name: 中断连接数
+      desc: 连接尝试失败的次数；突增反映权限 / 网络配置问题
     mysql_slow_queries_rate:
       name: 慢查询请求触发速率
       desc: 慢查询请求数量，反映慢查询发生的频率
@@ -1135,17 +1135,17 @@ monitor_object_metric:
       name: 平均行锁等待时间
       desc: 平均行锁等待时间；>50ms 表示锁竞争严重
     mysql_innodb_row_lock_waits_rate:
-      name: 行锁等待速率
-      desc: InnoDB 行锁等待次数
+      name: InnoDB 行锁等待次数速率
+      desc: InnoDB 引擎发生行锁等待的次数
     mysql_innodb_buffer_pool_read_requests_rate:
       name: 缓冲池读取请求速率
       desc: 缓冲池读取请求，反映数据库读取负载
-    mysql_innodb_buffer_pool_disk_reads_rate:
+    mysql_innodb_buffer_pool_reads_rate:
       name: 缓冲池磁盘读取速率
-      desc: 缓冲池磁盘读取次数；值高表示内存不足
+      desc: 缓冲池物理磁盘读取数；过高表示内存不足
     mysql_innodb_buffer_pool_pages_dirty:
-      name: 脏页数
-      desc: 缓冲池中的脏页数（尚未写入磁盘）；表示缓冲池利用情况
+      name: 脏页数量
+      desc: 缓冲池中已修改未写入磁盘的页数；反映内存使用效率
     mysql_innodb_buffer_pool_pages_total:
       name: 缓冲池总页数
       desc: 缓冲池中的总页数；用于计算缓冲池利用率
@@ -1159,8 +1159,8 @@ monitor_object_metric:
       name: 表缓存命中率
       desc: 表缓存命中率；<95% 需调整 table_open_cache 配置
     mysql_table_open_cache_misses_rate:
-      name: 表缓存未命中速率
-      desc: 表打开缓存未命中请求数，反映表缓存命中状况
+      name: 表缓存未命中请求速率
+      desc: 表缓存未命中的请求次数，反映表缓存的命中情况
     mysql_created_tmp_disk_tables_rate:
       name: 磁盘临时表创建速率
       desc: 创建的磁盘临时表数量
@@ -1737,9 +1737,6 @@ monitor_object_metric:
     apache_CacheRetrieveHitCount:
       name: 缓存命中次数
       desc: 缓存检索中成功命中的次数，高命中率表明缓存效率良好，减轻了后端负载
-    process_resident_memory_bytes:
-      name: 进程驻留内存
-      desc: 进程当前占用的物理内存大小，用于监控内存使用情况和识别内存泄漏
   Node:
     node_status_condition:
       name: Node状态
@@ -1881,7 +1878,7 @@ monitor_object_metric:
     redis_total_net_output_bytes_rate:
       name: 网络流出速率
       desc: Redis实例发送网络数据的平均速率，监控输出流量变化，结合业务指标分析响应数据量变化趋势
-    redis_connected_clients:
+    redis_clients:
       name: 客户端连接数
       desc: 当前活跃的客户端连接数量，反映服务并发处理能力，接近最大连接数配置时可能影响新连接建立
     redis_blocked_clients:
@@ -1976,19 +1973,19 @@ monitor_object_metric:
     sqlserver_memory_clerks_size_kb:
       name: 内存Clerk大小
       desc: SQL Server内部内存分配器当前占用的内存大小，用于分析内存使用分布和识别潜在内存泄漏。不同clerk代表不同的内存使用用途。
-    sqlserver_performance_batch_requests_rate:
+    sqlserver_performance_value_rate:
       name: 批处理请求速率
       desc: SQL Server批处理请求的速率，衡量数据库整体吞吐量和负载压力。高请求率表示数据库处理大量查询。
-    sqlserver_performance_page_life_expectancy:
+    sqlserver_page_life_expectancy:
       name: 页生命周期期望
       desc: 数据页在缓冲池中的平均停留时间，反映内存压力。值过低表明内存不足，可能导致频繁的物理IO，影响性能。
-    sqlserver_performance_buffer_cache_hit_ratio:
+    sqlserver_buffer_cache_hit_ratio:
       name: 缓冲区缓存命中率
       desc: 从缓冲池中读取数据页的百分比，反映内存效率。高命中率表明大部分数据请求由内存满足，性能良好。低命中率可能表明需要更多内存。
-    sqlserver_performance_user_connections_rate:
+    sqlserver_user_connections_rate:
       name: 用户连接数
       desc: 当前连接到SQL Server实例的用户数量，反映数据库的并发负载和连接池使用情况。连接数过多可能导致资源争用。
-    sqlserver_performance_lock_wait_time_rate:
+    sqlserver_lock_wait_time_rate:
       name: 锁等待时间
       desc: 锁等待时间的速率，反映数据库的并发争用情况。高值可能表明存在阻塞或锁竞争问题，需要优化事务设计。
     sqlserver_requests_cpu_time_ms_rate:
@@ -2217,7 +2214,7 @@ monitor_object_metric_group:
     Status: 状态
   vCenter:
     Quantity: 数量
-  Oracle-Exporter:
+  Oracle:
     Base: 基础信息
     Activity: 数据库活动
     Wait: 等待时间
@@ -2531,7 +2528,7 @@ monitor_object_plugin:
   Storage SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集存储设备各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 存储设备SNMP通用（Telegraf）
-  Oracle-Exporter:
+  Oracle:
     desc: 通过Oracle Exporter采集器定期采集Oracle运行时长、操作次数、事务提交回滚及各类等待时间等指标。
     name: Oracle（Exporter）
   Scanning Device SNMP General:

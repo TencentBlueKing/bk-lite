@@ -5,20 +5,31 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
-from apps.monitor.models import MonitorInstance, MonitorObject, CollectConfig, MonitorObjectOrganizationRule
+from apps.monitor.models import (
+    MonitorInstance,
+    MonitorObject,
+    CollectConfig,
+    MonitorObjectOrganizationRule,
+)
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.rpc.node_mgmt import NodeMgmt
 
 
 class MonitorInstanceVieSet(viewsets.ViewSet):
-
-    @action(methods=['get'], detail=False, url_path='query_params_enum/(?P<name>[^/.]+)')
+    @action(
+        methods=["get"], detail=False, url_path="query_params_enum/(?P<name>[^/.]+)"
+    )
     def get_query_params_enum(self, request, name):
-        data = InstanceSearch.get_query_params_enum(name, request.GET.get("monitor_object_id"))
+        data = InstanceSearch.get_query_params_enum(
+            name, request.GET.get("monitor_object_id")
+        )
         return WebUtils.response_success(data)
 
-    @action(methods=['get'], detail=False, url_path='(?P<monitor_object_id>[^/.]+)/list')
+    @action(
+        methods=["get"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/list"
+    )
     def monitor_instance_list(self, request, monitor_object_id):
         """非特殊对象的通用列表接口"""
         permission = get_permission_rules(
@@ -27,7 +38,12 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
         )
-        qs = permission_filter(MonitorInstance, permission, team_key="monitorinstanceorganization__organization__in", id_key="id__in")
+        qs = permission_filter(
+            MonitorInstance,
+            permission,
+            team_key="monitorinstanceorganization__organization__in",
+            id_key="id__in",
+        )
         page, page_size = request.GET.get("page", 1), request.GET.get("page_size", 10)
         data = MonitorObjectService.get_monitor_instance(
             int(monitor_object_id),
@@ -38,16 +54,27 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             bool(request.GET.get("add_metrics", False)),
         )
         # 如果有权限规则，则添加到数据中
-        inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
+        inst_permission_map = {
+            i["id"]: i["permission"] for i in permission.get("instance", [])
+        }
         for instance_info in data["results"]:
             if instance_info["instance_id"] in inst_permission_map:
-                instance_info["permission"] = inst_permission_map[instance_info["instance_id"]]
+                instance_info["permission"] = inst_permission_map[
+                    instance_info["instance_id"]
+                ]
             else:
                 instance_info["permission"] = PermissionConstants.DEFAULT_PERMISSION
 
+        if request.GET.get("add_metrics"):
+            MetricsService.convert_instance_list_metrics(
+                int(monitor_object_id), data["results"]
+            )
+
         return WebUtils.response_success(data)
 
-    @action(methods=['post'], detail=False, url_path='(?P<monitor_object_id>[^/.]+)/search')
+    @action(
+        methods=["post"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/search"
+    )
     def monitor_instance_search(self, request, monitor_object_id):
         """特殊搜索接口，特殊对象不通用的查询条件"""
 
@@ -61,7 +88,12 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
         )
-        qs = permission_filter(MonitorInstance, permission, team_key="monitorinstanceorganization__organization__in", id_key="id__in")
+        qs = permission_filter(
+            MonitorInstance,
+            permission,
+            team_key="monitorinstanceorganization__organization__in",
+            id_key="id__in",
+        )
 
         search_obj = InstanceSearch(
             monitor_obj,
@@ -71,22 +103,37 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
         )
         data = search_obj.search()
         # 如果有权限规则，则添加到数据中
-        inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
+        inst_permission_map = {
+            i["id"]: i["permission"] for i in permission.get("instance", [])
+        }
         for instance_info in data["results"]:
             if instance_info["instance_id"] in inst_permission_map:
-                instance_info["permission"] = inst_permission_map[instance_info["instance_id"]]
+                instance_info["permission"] = inst_permission_map[
+                    instance_info["instance_id"]
+                ]
             else:
                 instance_info["permission"] = PermissionConstants.DEFAULT_PERMISSION
+
+        if request.data.get("add_metrics"):
+            MetricsService.convert_instance_list_metrics(
+                int(monitor_object_id), data["results"]
+            )
+
         return WebUtils.response_success(data)
 
-    @action(methods=['post'], detail=False, url_path='(?P<monitor_object_id>[^/.]+)/list_by_primary_object')
+    @action(
+        methods=["post"],
+        detail=False,
+        url_path="(?P<monitor_object_id>[^/.]+)/list_by_primary_object",
+    )
     def list_by_primary_object(self, request, monitor_object_id):
-
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
         if not monitor_obj:
             raise BaseAppException("Monitor object does not exist")
         if monitor_obj.parent_id:
-            raise BaseAppException("Only primary monitor objects support instance search")
+            raise BaseAppException(
+                "Only primary monitor objects support instance search"
+            )
 
         permission = get_permission_rules(
             request.user,
@@ -94,8 +141,12 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
         )
-        qs = permission_filter(MonitorInstance, permission, team_key="monitorinstanceorganization__organization__in",
-                               id_key="id__in")
+        qs = permission_filter(
+            MonitorInstance,
+            permission,
+            team_key="monitorinstanceorganization__organization__in",
+            id_key="id__in",
+        )
 
         search_obj = InstanceSearch(
             monitor_obj,
@@ -105,15 +156,23 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
         )
         data = search_obj.search_by_primary_object()
         # 如果有权限规则，则添加到数据中
-        inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
+        inst_permission_map = {
+            i["id"]: i["permission"] for i in permission.get("instance", [])
+        }
         for instance_info in data["results"]:
             if instance_info["instance_id"] in inst_permission_map:
-                instance_info["permission"] = inst_permission_map[instance_info["instance_id"]]
+                instance_info["permission"] = inst_permission_map[
+                    instance_info["instance_id"]
+                ]
             else:
                 instance_info["permission"] = PermissionConstants.DEFAULT_PERMISSION
         return WebUtils.response_success(data)
 
-    @action(methods=['post'], detail=False, url_path='(?P<monitor_object_id>[^/.]+)/generate_instance_id')
+    @action(
+        methods=["post"],
+        detail=False,
+        url_path="(?P<monitor_object_id>[^/.]+)/generate_instance_id",
+    )
     def generate_monitor_instance_id(self, request, monitor_object_id):
         result = MonitorObjectService.generate_monitor_instance_id(
             int(monitor_object_id),
@@ -122,25 +181,30 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
         )
         return WebUtils.response_success(result)
 
-    @action(methods=['post'], detail=False, url_path='(?P<monitor_object_id>[^/.]+)/check_monitor_instance')
+    @action(
+        methods=["post"],
+        detail=False,
+        url_path="(?P<monitor_object_id>[^/.]+)/check_monitor_instance",
+    )
     def check_monitor_instance(self, request, monitor_object_id):
         MonitorObjectService.check_monitor_instance(
-            int(monitor_object_id),
-            request.data
+            int(monitor_object_id), request.data
         )
         return WebUtils.response_success()
 
-    @action(methods=['get'], detail=False, url_path='autodiscover_monitor_instance')
+    @action(methods=["get"], detail=False, url_path="autodiscover_monitor_instance")
     def autodiscover_monitor_instance(self, request):
         MonitorObjectService.autodiscover_monitor_instance()
         return WebUtils.response_success()
 
-    @action(methods=['post'], detail=False, url_path='remove_monitor_instance')
+    @action(methods=["post"], detail=False, url_path="remove_monitor_instance")
     def remove_monitor_instance(self, request):
         instance_ids = request.data.get("instance_ids", [])
         MonitorInstance.objects.filter(id__in=instance_ids).update(is_deleted=True)
         if request.data.get("clean_child_config"):
-            config_objs = CollectConfig.objects.filter(monitor_instance_id__in=instance_ids)
+            config_objs = CollectConfig.objects.filter(
+                monitor_instance_id__in=instance_ids
+            )
             child_configs, configs = [], []
             for config in config_objs:
                 if config.is_child:
@@ -155,10 +219,12 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             config_objs.delete()
 
         # 同步删除实例关联的分组规则
-        MonitorObjectOrganizationRule.objects.filter(monitor_instance_id__in=instance_ids).delete()
+        MonitorObjectOrganizationRule.objects.filter(
+            monitor_instance_id__in=instance_ids
+        ).delete()
         return WebUtils.response_success()
 
-    @action(methods=['post'], detail=False, url_path='update_monitor_instance')
+    @action(methods=["post"], detail=False, url_path="update_monitor_instance")
     def update_monitor_instance(self, request):
         MonitorObjectService.update_instance(
             request.data.get("instance_id"),
@@ -167,7 +233,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
         )
         return WebUtils.response_success()
 
-    @action(methods=['post'], detail=False, url_path='instances_remove_organizations')
+    @action(methods=["post"], detail=False, url_path="instances_remove_organizations")
     def instances_remove_organizations(self, request):
         """删除监控对象实例组织"""
         instance_ids = request.data.get("instance_ids", [])
@@ -175,7 +241,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
         MonitorObjectService.remove_instances_organizations(instance_ids, organizations)
         return WebUtils.response_success()
 
-    @action(methods=['post'], detail=False, url_path='instances_add_organizations')
+    @action(methods=["post"], detail=False, url_path="instances_add_organizations")
     def instances_add_organizations(self, request):
         """添加监控对象实例组织"""
         instance_ids = request.data.get("instance_ids", [])
@@ -183,7 +249,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
         MonitorObjectService.add_instances_organizations(instance_ids, organizations)
         return WebUtils.response_success()
 
-    @action(methods=['post'], detail=False, url_path='set_instances_organizations')
+    @action(methods=["post"], detail=False, url_path="set_instances_organizations")
     def set_instances_organizations(self, request):
         """设置监控对象实例组织"""
         instance_ids = request.data.get("instance_ids", [])

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, forwardRef, useImperativeHandle } from 'react';
-import { Button, Alert } from 'antd';
+import { Button, Alert, message } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import OperateDrawer from '@/app/node-manager/components/operate-drawer';
 import { ModalRef } from '@/app/node-manager/types';
@@ -10,18 +10,22 @@ import { useTranslation } from '@/utils/i18n';
 import { useHandleCopy } from '@/app/node-manager/hooks';
 import CodeEditor from '@/app/node-manager/components/codeEditor';
 import useControllerApi from '@/app/node-manager/api/useControllerApi';
+import { useAuth } from '@/context/auth';
+import axios from 'axios';
 
 const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
   const { t } = useTranslation();
   const { handleCopy } = useHandleCopy();
   const { getInstallCommand } = useControllerApi();
+  const authContext = useAuth();
+  const token = authContext?.token || null;
   const [visible, setVisible] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [downloadLoading, setDownloadLoading] = useState<boolean>(false);
   const [nodeInfo, setNodeInfo] = useState<OperationGuidanceProps>({
     ip: '',
     nodeName: '',
     installCommand: '',
-    downloadUrl: '',
     nodeData: null,
   });
 
@@ -32,7 +36,6 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
         ip: form?.ip || '',
         nodeName: form?.node_name || '',
         installCommand: '',
-        downloadUrl: form?.downloadUrl || '',
         nodeData: form || null,
       };
       setNodeInfo(newNodeInfo);
@@ -66,14 +69,54 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
     });
   };
 
-  const handleDownload = () => {
-    // 创建一个隐藏的 a 标签来触发下载
-    const link = document.createElement('a');
-    link.href = nodeInfo.downloadUrl;
-    link.download = ''; // 浏览器会使用服务器提供的文件名
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async () => {
+    try {
+      setDownloadLoading(true);
+      const response = await axios({
+        url: '/api/proxy/node_mgmt/api/installer/windows/download/',
+        method: 'GET',
+        responseType: 'blob',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      // 创建Blob对象
+      const blob = new Blob([response.data], {
+        type: response.headers['content-type'] || 'application/zip',
+      });
+      // 尝试从响应头获取文件名
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = 'controller_installer.exe';
+      if (contentDisposition) {
+        // 优先匹配 filename*=UTF-8''xxx 格式
+        let filenameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/i);
+        if (filenameMatch?.[1]) {
+          filename = decodeURIComponent(filenameMatch[1]);
+        } else {
+          // 匹配 filename="xxx" 或 filename=xxx 格式
+          filenameMatch = contentDisposition.match(
+            /filename="([^"]+)"|filename=([^;\s]+)/i
+          );
+          if (filenameMatch) {
+            filename = filenameMatch[1] || filenameMatch[2];
+          }
+        }
+      }
+      // 创建下载链接
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      //   message.success(t('node-manager.cloudregion.node.downloadSuccess'));
+    } catch {
+      message.error(t('node-manager.cloudregion.node.downloadFailed'));
+    } finally {
+      setDownloadLoading(false);
+    }
   };
 
   return (
@@ -110,11 +153,10 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
             <Button
               type="primary"
               icon={<DownloadOutlined />}
-              disabled={!nodeInfo.downloadUrl}
+              loading={downloadLoading}
               onClick={handleDownload}
             >
               {t('node-manager.cloudregion.node.clickDownloadPackage')}
-              {/* (controller_v2.3.5_windows_x64.zip) */}
             </Button>
           </div>
         </div>
@@ -187,7 +229,7 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
         <Alert
           message={t('node-manager.cloudregion.node.importantNote')}
           description={t('node-manager.cloudregion.node.importantNoteDesc')}
-          type="error"
+          type="warning"
           showIcon
           className="mb-[16px]"
         />

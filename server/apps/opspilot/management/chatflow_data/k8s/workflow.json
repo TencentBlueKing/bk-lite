@@ -1,0 +1,129 @@
+{
+  "edges": [
+    {
+      "id": "xy-edge__agents-1768531551936-agents-1768531553421",
+      "source": "agents-1768531551936",
+      "target": "agents-1768531553421"
+    },
+    {
+      "id": "xy-edge__agents-1768531553421-notification-1768531622172",
+      "source": "agents-1768531553421",
+      "target": "notification-1768531622172"
+    },
+    {
+      "id": "xy-edge__celery-1768803261943-agents-1768531551936",
+      "source": "celery-1768803261943",
+      "target": "agents-1768531551936"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "agents-1768531551936",
+      "data": {
+        "type": "agents",
+        "label": "智能体",
+        "config": {
+          "agent": 30,
+          "params": [],
+          "prompt": "",
+          "headers": [],
+          "agentName": "Kubernetes 助手",
+          "inputParams": "last_message",
+          "outputParams": "last_message",
+          "uploadedFiles": []
+        },
+        "description": ""
+      },
+      "type": "agents",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 120
+      },
+      "position": {
+        "x": 490.32238797299317,
+        "y": 513.9500657621418
+      },
+      "selected": false
+    },
+    {
+      "id": "agents-1768531553421",
+      "data": {
+        "type": "agents",
+        "label": "智能体",
+        "config": {
+          "agent": 31,
+          "params": [],
+          "prompt": "",
+          "headers": [],
+          "agentName": "Kubernetes 数据汇总",
+          "inputParams": "last_message",
+          "outputParams": "last_message",
+          "uploadedFiles": []
+        },
+        "description": ""
+      },
+      "type": "agents",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 120
+      },
+      "position": {
+        "x": 889.7717961137184,
+        "y": 514.5667981909502
+      },
+      "selected": false
+    },
+    {
+      "id": "notification-1768531622172",
+      "data": {
+        "type": "notification",
+        "label": "对外通知",
+        "config": {
+          "inputParams": "last_message",
+          "outputParams": "last_message",
+          "notificationContent": "{{last_message}}"
+        },
+        "description": ""
+      },
+      "type": "notification",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 120
+      },
+      "position": {
+        "x": 1202.9877393968263,
+        "y": 512.5843197654588
+      },
+      "selected": false
+    },
+    {
+      "id": "celery-1768803261943",
+      "data": {
+        "type": "celery",
+        "label": "定时触发",
+        "config": {
+          "time": "00:00",
+          "message": "巡检，并输出报告",
+          "frequency": "daily",
+          "inputParams": "last_message",
+          "outputParams": "last_message"
+        },
+        "description": ""
+      },
+      "type": "celery",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 120
+      },
+      "position": {
+        "x": 145,
+        "y": 511.66666666666674
+      },
+      "selected": true
+    }
+  ]
+}

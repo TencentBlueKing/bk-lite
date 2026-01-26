@@ -11,7 +11,12 @@ from django.db import transaction
 
 from apps.alerts.error import AlertNotFoundError
 from apps.alerts.models import Alert, AlertAssignment, OperatorLog
-from apps.alerts.constants import AlertStatus, AlertAssignmentMatchType, LogAction, LogTargetType
+from apps.alerts.constants import (
+    AlertStatus,
+    AlertAssignmentMatchType,
+    LogAction,
+    LogTargetType,
+)
 from apps.alerts.service.alter_operator import AlertOperator
 from apps.alerts.service.reminder_service import ReminderService
 from apps.alerts.service.un_dispatch import UnDispatchService
@@ -70,7 +75,7 @@ class AlertAssignmentOperator:
             "resource_id": "resource_id",
             "content": "content",
             "title": "title",
-            "alert_id": "alert_id"
+            "alert_id": "alert_id",
         }
 
     def get_alert_map(self) -> Dict[int, Alert]:
@@ -94,17 +99,19 @@ class AlertAssignmentOperator:
                 "total_alerts": 0,
                 "assigned_alerts": 0,
                 "failed_alerts": 0,
-                "assignment_results": []
+                "assignment_results": [],
             }
 
         # 获取所有活跃的分派策略
-        active_assignments = AlertAssignment.objects.filter(is_active=True).order_by('created_at')
+        active_assignments = AlertAssignment.objects.filter(is_active=True).order_by(
+            "created_at"
+        )
 
         results = {
             "total_alerts": len(self.alerts),
             "assigned_alerts": 0,
             "failed_alerts": 0,
-            "assignment_results": []
+            "assignment_results": [],
         }
 
         # 记录已分派的告警ID，避免重复分派
@@ -114,13 +121,17 @@ class AlertAssignmentOperator:
         for assignment in active_assignments:
             try:
                 # 批量查找匹配该分派策略的告警（包含时间范围和内容过滤，排除已分派的）
-                matched_alert_ids = self._batch_find_matching_alerts(assignment, assigned_alert_ids)
+                matched_alert_ids = self._batch_find_matching_alerts(
+                    assignment, assigned_alert_ids
+                )
 
                 if not matched_alert_ids:
                     continue
 
                 # 批量执行分派操作
-                assignment_results = self._batch_execute_assignment(matched_alert_ids, assignment)
+                assignment_results = self._batch_execute_assignment(
+                    matched_alert_ids, assignment
+                )
                 results["assignment_results"].extend(assignment_results)
 
                 # 统计结果并记录已分派的告警
@@ -134,7 +145,9 @@ class AlertAssignmentOperator:
                 try:
                     self._batch_create_log(assignment, matched_alert_ids)
                 except Exception as log_error:
-                    logger.error(f"Error creating logs for assignment {assignment.id}: {str(log_error)}")
+                    logger.error(
+                        f"Error creating logs for assignment {assignment.id}: {str(log_error)}"
+                    )
 
             except Exception as e:
                 logger.error(f"Error processing assignment {assignment.id}: {str(e)}")
@@ -165,21 +178,22 @@ class AlertAssignmentOperator:
             )
         OperatorLog.objects.bulk_create(bulk_data)
 
-    def _batch_find_matching_alerts(self, assignment: AlertAssignment, excluded_ids: set = None) -> List[int]:
+    def _batch_find_matching_alerts(
+        self, assignment: AlertAssignment, excluded_ids: set = None
+    ) -> List[int]:
         """
         批量查找匹配指定分派策略的告警ID列表
-        
+
         Args:
             assignment: 分派策略
             excluded_ids: 需要排除的告警ID集合
-            
+
         Returns:
             匹配的告警ID列表
         """
         # 先过滤未分派状态的告警
         base_queryset = Alert.objects.filter(
-            alert_id__in=self.alert_id_list,
-            status=AlertStatus.UNASSIGNED
+            alert_id__in=self.alert_id_list, status=AlertStatus.UNASSIGNED
         )
 
         # 排除已分派的告警
@@ -205,23 +219,27 @@ class AlertAssignmentOperator:
 
         elif assignment.match_type == AlertAssignmentMatchType.FILTER:
             # 过滤匹配，使用ORM查询
-            return self._orm_filter_alerts(time_filtered_queryset, assignment.match_rules or [])
+            return self._orm_filter_alerts(
+                time_filtered_queryset, assignment.match_rules or []
+            )
 
         return []
 
-    def _orm_filter_alerts(self, queryset, match_rules: List[List[Dict[str, Any]]]) -> List[int]:
+    def _orm_filter_alerts(
+        self, queryset, match_rules: List[List[Dict[str, Any]]]
+    ) -> List[int]:
         """
         使用ORM查询过滤匹配规则的告警
-        
+
         Args:
             queryset: 基础查询集
             match_rules: 匹配规则 [[{},{}],[{},{}]]
-            
+
         Returns:
             匹配的告警ID列表
         """
         if not match_rules:
-            return list(queryset.values_list('id', flat=True))
+            return list(queryset.values_list("id", flat=True))
 
         # 最外层是或关系
         final_q = Q()
@@ -256,7 +274,7 @@ class AlertAssignmentOperator:
             # 如果没有有效的规则，返回空结果集
             queryset = queryset.none()
 
-        return list(queryset.values_list('id', flat=True))
+        return list(queryset.values_list("id", flat=True))
 
     def _build_single_rule_q(self, rule: Dict[str, Any]) -> Optional[Q]:
         """
@@ -284,7 +302,14 @@ class AlertAssignmentOperator:
             elif operator == "not_contains":
                 return ~Q(**{f"{model_field}__icontains": value})
             elif operator == "re":
-                return Q(**{f"{model_field}__regex": value})
+                try:
+                    import re as regex_module
+
+                    regex_module.compile(value)
+                except regex_module.error as e:
+                    logger.error(f"Invalid regex pattern '{value}': {e}")
+                    return None
+                return Q(**{f"{model_field}__iregex": value})
             else:
                 logger.warning(f"Unknown operator: {operator}")
                 return None
@@ -293,14 +318,16 @@ class AlertAssignmentOperator:
             logger.error(f"Error building Q object for rule: {str(e)}")
             return None
 
-    def _batch_execute_assignment(self, alert_ids: List[int], assignment: AlertAssignment) -> List[Dict[str, Any]]:
+    def _batch_execute_assignment(
+        self, alert_ids: List[int], assignment: AlertAssignment
+    ) -> List[Dict[str, Any]]:
         """
         批量执行告警分派操作
-        
+
         Args:
             alert_ids: 告警ID列表
             assignment: 分派策略
-            
+
         Returns:
             分派结果列表
         """
@@ -310,76 +337,104 @@ class AlertAssignmentOperator:
         personnel = assignment.personnel or []
         if not personnel:
             for alert_id in alert_ids:
-                results.append({
-                    "alert_id": alert_id,
-                    "success": False,
-                    "message": "No personnel configured for assignment",
-                    "assignment_id": assignment.id
-                })
+                results.append(
+                    {
+                        "alert_id": alert_id,
+                        "success": False,
+                        "message": "No personnel configured for assignment",
+                        "assignment_id": assignment.id,
+                    }
+                )
             return results
 
         try:
             with transaction.atomic():
                 # 批量获取告警实例
-                alerts = Alert.objects.filter(id__in=alert_ids, status=AlertStatus.UNASSIGNED)
+                alerts = Alert.objects.filter(
+                    id__in=alert_ids, status=AlertStatus.UNASSIGNED
+                )
 
                 for alert in alerts:
                     try:
                         # 使用AlertOperator执alert.alert_id行分派操作
-                        operator = AlertOperator(user="admin")  # 假设使用admin用户执行操作
+                        operator = AlertOperator(
+                            user="admin"
+                        )  # 假设使用admin用户执行操作
 
                         # 执行分派操作
                         result = operator.operate(
                             action="assign",
                             alert_id=alert.alert_id,
-                            data={"assignee": personnel, "assignment_id": assignment.id}
+                            data={
+                                "assignee": personnel,
+                                "assignment_id": assignment.id,
+                            },
                         )
-                        logger.debug(f"Alert {alert.alert_id} assigned successfully to {personnel}, result={result}")
+                        logger.debug(
+                            f"Alert {alert.alert_id} assigned successfully to {personnel}, result={result}"
+                        )
 
                         # 创建提醒记录（如果配置了通知频率）
                         if assignment.notification_frequency:
                             operator._create_reminder_record(alert, str(assignment.id))
 
                         logger.info(
-                            "== assignment alert notify start ==, assignment={}, alert_id={}".format(assignment.id,
-                                                                                                     alert.alert_id))
+                            "== assignment alert notify start ==, assignment={}, alert_id={}".format(
+                                assignment.id, alert.alert_id
+                            )
+                        )
                         # 分派成功后 立即发送提醒通知
-                        ReminderService._send_reminder_notification(assignment=assignment, alert=alert)
+                        ReminderService._send_reminder_notification(
+                            assignment=assignment, alert=alert
+                        )
                         logger.info(
-                            "== assignment alert notify end ==, assignment={}, alert_id={}".format(assignment.id,
-                                                                                                   alert.alert_id))
+                            "== assignment alert notify end ==, assignment={}, alert_id={}".format(
+                                assignment.id, alert.alert_id
+                            )
+                        )
 
-                        results.append({
-                            "alert_id": alert.alert_id,
-                            "success": True,
-                            "assignment_id": assignment.id,
-                            "assigned_to": personnel
-                        })
+                        results.append(
+                            {
+                                "alert_id": alert.alert_id,
+                                "success": True,
+                                "assignment_id": assignment.id,
+                                "assigned_to": personnel,
+                            }
+                        )
 
                     except Exception as e:
                         import traceback
-                        logger.error(f"Error executing assignment for alert {alert.alert_id}: {traceback.format_exc()}")
-                        results.append({
-                            "alert_id": alert.alert_id,
-                            "success": False,
-                            "message": str(e),
-                            "assignment_id": assignment.id
-                        })
+
+                        logger.error(
+                            f"Error executing assignment for alert {alert.alert_id}: {traceback.format_exc()}"
+                        )
+                        results.append(
+                            {
+                                "alert_id": alert.alert_id,
+                                "success": False,
+                                "message": str(e),
+                                "assignment_id": assignment.id,
+                            }
+                        )
 
         except Exception as e:
             logger.error(f"Error in batch assignment: {str(e)}")
             # 如果批量操作失败，为所有告警添加失败记录
             for alert_id in alert_ids:
-                results.append({
-                    "alert_id": alert_id,
-                    "success": False,
-                    "message": str(e),
-                    "assignment_id": assignment.id
-                })
+                results.append(
+                    {
+                        "alert_id": alert_id,
+                        "success": False,
+                        "message": str(e),
+                        "assignment_id": assignment.id,
+                    }
+                )
 
         return results
 
-    def _check_time_range(self, config: Dict[str, Any], alert_created_at: datetime = None) -> bool:
+    def _check_time_range(
+        self, config: Dict[str, Any], alert_created_at: datetime = None
+    ) -> bool:
         """
         检查指定时间（默认当前时间或Alert的created_at）是否在配置的时间范围内
 
@@ -448,9 +503,17 @@ class AlertAssignmentOperator:
 
                 # 只比较时间部分（HH:MM:SS）
                 if len(start_time_str) > 8:  # 包含日期的格式
-                    start_time_str = start_time_str.split(" ")[1] if " " in start_time_str else start_time_str[-8:]
+                    start_time_str = (
+                        start_time_str.split(" ")[1]
+                        if " " in start_time_str
+                        else start_time_str[-8:]
+                    )
                 if len(end_time_str) > 8:  # 包含日期的格式
-                    end_time_str = end_time_str.split(" ")[1] if " " in end_time_str else end_time_str[-8:]
+                    end_time_str = (
+                        end_time_str.split(" ")[1]
+                        if " " in end_time_str
+                        else end_time_str[-8:]
+                    )
 
                 check_time_str = check_time.strftime("%H:%M:%S")
                 return start_time_str <= check_time_str <= end_time_str
@@ -474,9 +537,17 @@ class AlertAssignmentOperator:
 
                 # 只比较时间部分（HH:MM:SS）
                 if len(start_time_str) > 8:  # 包含日期的格式
-                    start_time_str = start_time_str.split(" ")[1] if " " in start_time_str else start_time_str[-8:]
+                    start_time_str = (
+                        start_time_str.split(" ")[1]
+                        if " " in start_time_str
+                        else start_time_str[-8:]
+                    )
                 if len(end_time_str) > 8:  # 包含日期的格式
-                    end_time_str = end_time_str.split(" ")[1] if " " in end_time_str else end_time_str[-8:]
+                    end_time_str = (
+                        end_time_str.split(" ")[1]
+                        if " " in end_time_str
+                        else end_time_str[-8:]
+                    )
 
                 check_time_str = check_time.strftime("%H:%M:%S")
                 return start_time_str <= check_time_str <= end_time_str
@@ -507,13 +578,15 @@ def execute_auto_assignment_for_alerts(alert_ids: List[str]) -> Dict[str, Any]:
             "total_alerts": 0,
             "assigned_alerts": 0,
             "failed_alerts": 0,
-            "assignment_results": []
+            "assignment_results": [],
         }
 
     operator = AlertAssignmentOperator(alert_ids)
     result = operator.execute_auto_assignment()
     logger.info(f"=== Auto assignment completed: {result} ===")
-    assignment_alart_ids = [i.get("alert_id") for i in result.get("assignment_results", [])]
+    assignment_alart_ids = [
+        i.get("alert_id") for i in result.get("assignment_results", [])
+    ]
     not_assignment_ids = set(alert_ids) - set(assignment_alart_ids)
     if not_assignment_ids:
         # 去进行兜底分派 使用全局分派 每60分钟分派一次 知道告警被相应后结束
@@ -527,7 +600,12 @@ def not_assignment_alert_notify(alert_ids):
     获取未分派告警通知设置
     :return: SystemSetting 实例
     """
-    alert_instances = list(Alert.objects.filter(alert_id__in=alert_ids, status=AlertStatus.UNASSIGNED))
+    alert_instances = list(
+        Alert.objects.filter(alert_id__in=alert_ids, status=AlertStatus.UNASSIGNED)
+    )
     from apps.alerts.tasks import sync_notify
-    params = UnDispatchService.notify_un_dispatched_alert_params_format(alerts=alert_instances)
+
+    params = UnDispatchService.notify_un_dispatched_alert_params_format(
+        alerts=alert_instances
+    )
     sync_notify.delay(params)

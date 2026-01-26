@@ -31,6 +31,15 @@ def generate_mock_events(num_events=100):
         "resource_id": 1,
         "resource_type": "host",
         "resource_name": "host-1",
+        # 新增字段
+        "service": "monitoring-service",
+        "event_type": 1,  # EventType.ALERT
+        "tags": {},
+        "location": "us-east-1",
+        "action": "created",
+        "rule_id": "cpu_threshold_rule",
+        "event_id": "",  # 将在循环中生成唯一ID
+        "assignee": [],
     }
 
     # 可能的变量值
@@ -67,6 +76,7 @@ def generate_mock_events(num_events=100):
         server_num = random.randint(1, 20)
 
         # 更新事件数据
+        region = random.choice(["us-east", "us-west", "eu-central", "ap-southeast"])
         event["title"] = f"CPU Usage {levels_map[level]}"
         event["description"] = f"CPU usage exceeded {cpu_usage}%"
         event["level"] = level
@@ -74,7 +84,7 @@ def generate_mock_events(num_events=100):
         event["end_time"] = str(end_time)
         event["labels"] = {
             "instance": f"host-{server_num}",
-            "region": random.choice(["us-east", "us-west", "eu-central", "ap-southeast"])
+            "region": region
         }
         event["annotations"] = {
             "alertname": "HighCPUUsage",
@@ -88,6 +98,15 @@ def generate_mock_events(num_events=100):
         event["resource_id"] = server_num
         event["resource_type"] = "host"
         event["resource_name"] = f"host-{server_num}"
+        # 新增字段
+        event["service"] = f"{server_type}-service"
+        event["event_type"] = 1  # EventType.ALERT
+        event["tags"] = {"environment": random.choice(["production", "staging"]), "team": random.choice(["ops", "dev"])}
+        event["location"] = region
+        event["action"] = "created" if event["status"] == "firing" else "resolved"
+        event["rule_id"] = "cpu_threshold_rule"
+        event["event_id"] = f"EVENT-{uuid.uuid4().hex}"
+        event["assignee"] = []
 
         events.append(event)
 
@@ -125,6 +144,15 @@ def generate_jenkins_failure_events(num_pipelines=5):
         "resource_id": 1,
         "resource_type": "jenkins_pipeline",
         "resource_name": "",
+        # 新增字段
+        "service": "jenkins-ci",
+        "event_type": 1,  # EventType.ALERT
+        "tags": {},
+        "location": "jenkins-master",
+        "action": "created",
+        "rule_id": "jenkins_build_failure_rule",
+        "event_id": "",
+        "assignee": [],
     }
 
     pipeline_names = [
@@ -227,6 +255,15 @@ def generate_jenkins_failure_events(num_pipelines=5):
         event["level"] = "1"
         event["resource_id"] = resource_id
         event["resource_name"] = pipeline_name
+        # 新增字段
+        event["service"] = "jenkins-ci"
+        event["event_type"] = 1
+        event["tags"] = {"branch": "main", "environment": "production"}
+        event["location"] = "jenkins-master"
+        event["action"] = "created"
+        event["rule_id"] = "jenkins_build_failure_rule"
+        event["event_id"] = f"EVENT-{uuid.uuid4().hex}"
+        event["assignee"] = []
 
         events.append(event)
 
@@ -264,6 +301,15 @@ def generate_website_monitoring_events(num_websites=3):
         "resource_id": 1,
         "resource_type": "网站拨测",
         "resource_name": "",
+        # 新增字段
+        "service": "website-monitoring",
+        "event_type": 1,  # EventType.ALERT
+        "tags": {},
+        "location": "monitoring-node",
+        "action": "created",
+        "rule_id": "website_availability_rule",
+        "event_id": "",
+        "assignee": [],
     }
 
     websites = [
@@ -295,6 +341,15 @@ def generate_website_monitoring_events(num_websites=3):
         event["value"] = 0  # 异常状态
         event["resource_id"] = i + 1
         event["resource_name"] = website["name"]
+        # 新增字段
+        event["service"] = "website-monitoring"
+        event["event_type"] = 1
+        event["tags"] = {"check_type": "http", "protocol": "https"}
+        event["location"] = random.choice(["monitoring-node-1", "monitoring-node-2"])
+        event["action"] = "created"
+        event["rule_id"] = "website_availability_rule"
+        event["event_id"] = f"EVENT-{uuid.uuid4().hex}"
+        event["assignee"] = []
 
         events.append(event)
 
@@ -310,6 +365,15 @@ def generate_website_monitoring_events(num_websites=3):
         normal_event["external_id"] = str(uuid.uuid4())
         normal_event["value"] = 1  # 正常状态
         normal_event["level"] = "3"
+        # 新增字段
+        normal_event["service"] = "website-monitoring"
+        normal_event["event_type"] = 1
+        normal_event["tags"] = {"check_type": "http", "protocol": "https"}
+        normal_event["location"] = random.choice(["monitoring-node-1", "monitoring-node-2"])
+        normal_event["action"] = "resolved"
+        normal_event["rule_id"] = "website_availability_rule"
+        normal_event["event_id"] = f"EVENT-{uuid.uuid4().hex}"
+        normal_event["assignee"] = []
 
         events.append(normal_event)
 

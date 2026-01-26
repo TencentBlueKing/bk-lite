@@ -1,0 +1,130 @@
+{
+  "edges": [
+    {
+      "id": "xy-edge__celery-1769147109883-agents-1769147112057",
+      "source": "celery-1769147109883",
+      "target": "agents-1769147112057"
+    },
+    {
+      "id": "xy-edge__agents-1769147112057-agents-1769147113425",
+      "source": "agents-1769147112057",
+      "target": "agents-1769147113425"
+    },
+    {
+      "id": "xy-edge__agents-1769147113425-notification-1769147115066",
+      "source": "agents-1769147113425",
+      "target": "notification-1769147115066"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "celery-1769147109883",
+      "data": {
+        "type": "celery",
+        "label": "定时触发",
+        "config": {
+          "time": "00:00",
+          "params": [],
+          "headers": [],
+          "message": "巡检，并输出报告",
+          "frequency": "daily",
+          "inputParams": "last_message",
+          "outputParams": "last_message"
+        },
+        "description": ""
+      },
+      "type": "celery",
+      "measured": {
+        "width": 240,
+        "height": 120
+      },
+      "position": {
+        "x": 287.3579602971927,
+        "y": 334.9404781701914
+      }
+    },
+    {
+      "id": "agents-1769147112057",
+      "data": {
+        "type": "agents",
+        "label": "智能体",
+        "config": {
+          "agent": 1698,
+          "params": [],
+          "prompt": "",
+          "headers": [],
+          "agentName": "Web 应用巡检助手",
+          "inputParams": "last_message",
+          "outputParams": "last_message",
+          "uploadedFiles": []
+        },
+        "description": ""
+      },
+      "type": "agents",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 120
+      },
+      "position": {
+        "x": 643.134657900026,
+        "y": 333.0874664195624
+      },
+      "selected": false
+    },
+    {
+      "id": "agents-1769147113425",
+      "data": {
+        "type": "agents",
+        "label": "智能体",
+        "config": {
+          "agent": 1701,
+          "params": [],
+          "prompt": "",
+          "headers": [],
+          "agentName": "Web 应用数据汇总",
+          "inputParams": "last_message",
+          "outputParams": "last_message",
+          "uploadedFiles": []
+        },
+        "description": ""
+      },
+      "type": "agents",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 120
+      },
+      "position": {
+        "x": 997.1869734883483,
+        "y": 331.02447145554623
+      },
+      "selected": false
+    },
+    {
+      "id": "notification-1769147115066",
+      "data": {
+        "type": "notification",
+        "label": "对外通知",
+        "config": {
+          "inputParams": "last_message",
+          "outputParams": "last_message",
+          "notificationContent": "{{last_message}}"
+        },
+        "description": ""
+      },
+      "type": "notification",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 120
+      },
+      "position": {
+        "x": 1337.9873092206064,
+        "y": 324.3578047888796
+      },
+      "selected": true
+    }
+  ]
+}
+

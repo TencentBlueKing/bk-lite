@@ -29,7 +29,6 @@ import Collapse from '@/components/collapse';
 import GroupModal from './groupModal';
 import MetricModal from './metricModal';
 import { useSearchParams } from 'next/navigation';
-import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
 import { NEED_TAGS_ENTRY_OBJECTS } from '@/app/monitor/constants/integration';
 import { cloneDeep } from 'lodash';
@@ -45,15 +44,12 @@ const Configure = () => {
     deleteMetricsGroup,
   } = useIntegrationApi();
   const { t } = useTranslation();
-  const commonContext = useUserInfoContext();
-  const superRef = useRef(commonContext?.isSuperUser || false);
   const searchParams = useSearchParams();
   const groupName = searchParams.get('name') || '';
   const groupId = searchParams.get('id');
   const pluginID = searchParams.get('plugin_id') || '';
   const groupRef = useRef<ModalRef>(null);
   const metricRef = useRef<ModalRef>(null);
-  const isSuperUser = superRef?.current;
   const [searchText, setSearchText] = useState<string>('');
   const [metricData, setMetricData] = useState<MetricListItem[]>([]);
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
@@ -132,7 +128,7 @@ const Configure = () => {
           >
             <Button
               type="link"
-              disabled={record.is_pre && !isSuperUser}
+              disabled={record.is_pre}
               onClick={() => openMetricModal('edit', record)}
             >
               {t('common.edit')}
@@ -147,7 +143,7 @@ const Configure = () => {
               okButtonProps={{ loading: confirmLoading }}
               onConfirm={() => handleDeleteConfirm(record as MetricItem)}
             >
-              <Button type="link" disabled={record.is_pre && !isSuperUser}>
+              <Button type="link" disabled={record.is_pre}>
                 {t('common.delete')}
               </Button>
             </Popconfirm>

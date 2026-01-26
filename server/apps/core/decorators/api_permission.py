@@ -3,12 +3,18 @@ import os
 from functools import wraps
 from typing import Any, Callable, List, Set, Union
 
-from django.utils.translation import gettext as _
 from django.views.generic.base import View
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
 
 logger = logging.getLogger("app")
+
+
+def _get_loader(request) -> LanguageLoader:
+    """获取基于用户locale的LanguageLoader"""
+    locale = getattr(getattr(request, "user", None), "locale", None) or "en"
+    return LanguageLoader(app="core", default_lang=locale)
 
 
 def _extract_request(args: tuple) -> Any:
@@ -59,7 +65,8 @@ class HasRole(object):
         def wrapper(*args, **kwargs):
             request = _extract_request(args)
             if request is None:
-                return WebUtils.response_403(_("insufficient permissions"))
+                loader = LanguageLoader(app="core", default_lang="en")
+                return WebUtils.response_403(loader.get("error.insufficient_permissions", "Insufficient permissions"))
 
             # 检查API通行证
             if getattr(request, "api_pass", False):
@@ -76,7 +83,8 @@ class HasRole(object):
                     return task_definition(*args, **kwargs)
 
             logger.warning(f"Access denied. Required roles: {self.roles}, user roles: {user_roles}")
-            return WebUtils.response_403(_("insufficient permissions"))
+            loader = _get_loader(request)
+            return WebUtils.response_403(loader.get("error.insufficient_permissions", "Insufficient permissions"))
 
         return wrapper
 
@@ -94,7 +102,13 @@ class HasPermission(object):
 
     def _get_user_permissions(self, request, app_name: str) -> Set[str]:
         """获取用户在指定app下的权限集合"""
-        app_name_map = {"system_mgmt": "system-manager", "node_mgmt": "node", "console_mgmt": "ops-console", "alerts": "alarm","operation_analysis":"ops-analysis"}
+        app_name_map = {
+            "system_mgmt": "system-manager",
+            "node_mgmt": "node",
+            "console_mgmt": "ops-console",
+            "alerts": "alarm",
+            "operation_analysis": "ops-analysis",
+        }
         if not self.app_name:
             app_name = app_name_map.get(app_name, app_name)
         else:
@@ -117,7 +131,8 @@ class HasPermission(object):
         def wrapper(*args, **kwargs):
             request = _extract_request(args)
             if request is None:
-                return WebUtils.response_403(_("insufficient permissions"))
+                loader = LanguageLoader(app="core", default_lang="en")
+                return WebUtils.response_403(loader.get("error.insufficient_permissions", "Insufficient permissions"))
 
             # 检查API通行证
             if getattr(request, "api_pass", False):
@@ -136,6 +151,7 @@ class HasPermission(object):
                 return task_definition(*args, **kwargs)
 
             logger.warning(f"Access denied. App: {app_name}," f" Required permissions: {self.permission}," f"user permissions: {user_permissions}")
-            return WebUtils.response_403(_("insufficient permissions"))
+            loader = _get_loader(request)
+            return WebUtils.response_403(loader.get("error.insufficient_permissions", "Insufficient permissions"))
 
         return wrapper

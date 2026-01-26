@@ -34,6 +34,7 @@ class Bot(MaintainerInfo):
     replica_count = models.IntegerField(verbose_name="副本数量", default=1)
     bot_type = models.IntegerField(default=BotTypeChoice.PILOT, verbose_name="类型", choices=BotTypeChoice.choices)
     instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name="实例ID", db_index=True)
+    is_builtin = models.BooleanField(default=False, verbose_name="是否内置", db_index=True)
 
     def __str__(self):
         return self.name

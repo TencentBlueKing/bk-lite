@@ -46,3 +46,27 @@ export interface ViewDetailProps {
   idValues: string[];
   instanceName: string;
 }
+
+export interface ViewInstanceSearchProps {
+  monitor_object_id: React.Key;
+  instance_id: string;
+  metric_id: string;
+  auto_convert: boolean;
+}
+
+export interface TooltipMetricDataItem {
+  metric: Record<string, string>;
+  value: [number, string];
+}
+
+export interface TooltipDimensionDataItem {
+  label: string;
+  value: string;
+}
+
+export interface MetricDimensionTooltipProps {
+  instanceId: string;
+  metricId: string;
+  monitorObjectId: React.Key;
+  metricItem: MetricItem;
+}

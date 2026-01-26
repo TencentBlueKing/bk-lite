@@ -115,24 +115,18 @@ def search_instances(params):
 
 
 @nats_client.register
-def sync_display_fields(params):
+def sync_display_fields(organizations=None, users=None):
     """
     同步组织/用户的 _display 字段
     
     Args:
-        params: 包含组织或用户变更数据的字典
-            {
-                "organizations": [{"id": 1, "name": "新组织名"}],  # 可选
-                "users": [{"id": 1, "username": "admin", "display_name": "新显示名"}]  # 可选
-            }
+        organizations: 组织变更数据列表 [{"id": 1, "name": "新组织名"}]，可选
+        users: 用户变更数据列表 [{"id": 1, "username": "admin", "display_name": "新显示名"}]，可选
     
     Returns:
         任务提交结果 {"task_id": "uuid", "status": "submitted"}
     """
     from apps.cmdb.display_field.sync import sync_display_fields_for_system_mgmt
-    
-    organizations = params.get("organizations")
-    users = params.get("users")
     
     result = sync_display_fields_for_system_mgmt(
         organizations=organizations,

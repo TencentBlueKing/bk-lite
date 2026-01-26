@@ -4,13 +4,15 @@
 # @Author: windyzhao
 import datetime
 import uuid
+import hashlib
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List
 
 from django.utils import timezone
 
+from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.shield import execute_shield_check_for_events
-from apps.alerts.constants import LevelType
+from apps.alerts.constants import LevelType, EventAction
 from apps.alerts.init_constants import INIT_ALERT_ENRICH
 from apps.alerts.models import AlertSource, Event, Level, SystemSetting
 from apps.alerts.common.source_adapter import logger
@@ -21,7 +23,9 @@ from apps.rpc.cmdb import CMDB
 class AlertSourceAdapter(ABC):
     """告警源适配器基类"""
 
-    def __init__(self, alert_source: AlertSource, secret: str = None, events: List = []):
+    def __init__(
+            self, alert_source: AlertSource, secret: str = None, events: List = []
+    ):
         self.alert_source = alert_source
         self.config = alert_source.config
         self.secret = secret
@@ -46,8 +50,9 @@ class AlertSourceAdapter(ABC):
     def get_event_level() -> tuple:
         """获取事件级别"""
         instance = list(
-            Level.objects.filter(level_type=LevelType.EVENT).order_by("level_id").values_list(
-                "level_id", flat=True)
+            Level.objects.filter(level_type=LevelType.EVENT)
+            .order_by("level_id")
+            .values_list("level_id", flat=True)
         )
 
         return str(max(instance)), [str(i) for i in instance]
@@ -88,7 +93,11 @@ class AlertSourceAdapter(ABC):
                 _value = self.timestamp_to_datetime(_value)
 
             if key == "value":
-                _value = float(_value) if _value and isinstance(_value, str) and _value.isdigit() else _value
+                _value = (
+                    float(_value)
+                    if _value and isinstance(_value, str) and _value.isdigit()
+                    else _value
+                )
 
             result[key] = _value
 
@@ -115,21 +124,63 @@ class AlertSourceAdapter(ABC):
         bulk_events = self.bulk_save_events(events)
         return bulk_events
 
+    @staticmethod
+    def generate_external_id(item: str, resource_name: str, source_id) -> str:
+        components = f"{item or ''}|{resource_name or ''}|{source_id or ''}"
+        return hashlib.md5(components.encode("utf-8")).hexdigest()
+
     def add_base_fields(self, event: Event, alert: Dict[str, Any]):
         """添加基础字段"""
+
         event.source = self.alert_source
         event.raw_data = alert
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
 
+        if not event.external_id or not str(event.external_id).strip():
+            event.external_id = self.generate_external_id(
+                event.item, event.resource_name, self.alert_source.source_id
+            )
+            logger.debug(f"Generated external_id for event: {event.event_id}")
+
     @staticmethod
     def bulk_save_events(events: List[Event]):
-        """批量保存事件"""
-        if events:
-            bulk_create_events = split_list(events, 100)
-            for event_batch in bulk_create_events:
-                Event.objects.bulk_create(event_batch, ignore_conflicts=True)  # 跳过唯一性约束
-            logger.info(f"Bulk saved {len(events)} events.")
-            return bulk_create_events
+        """
+        批量保存事件（性能优化版）
+        
+        优化点：
+        1. 使用 bulk_create 批量入库
+        2. 立即查询返回带 pk 的对象（避免后续重复查询）
+        3. 保持分批逻辑（每批 100 个）
+        
+        Returns:
+            List[List[Event]]: 分批后的事件列表（带 pk）
+        """
+        if not events:
+            return []
+
+        # 1. 分批保存
+        bulk_create_events = split_list(events, 100)
+        all_event_ids = []
+
+        for event_batch in bulk_create_events:
+            Event.objects.bulk_create(
+                event_batch, ignore_conflicts=True
+            )
+            # 收集所有 event_id 用于后续查询
+            all_event_ids.extend([e.event_id for e in event_batch])
+
+        logger.info(f"Bulk saved {len(events)} events.")
+
+        # 2. 优化：立即查询返回带 pk 的对象（1 次查询）
+        # 避免后续 event_operator 需要用 event_id 再查一遍
+        created_events = Event.objects.filter(event_id__in=all_event_ids)
+
+        # 3. 重新分批返回（保持与原来相同的数据结构）
+        created_events_list = list(created_events)
+        result = split_list(created_events_list, 100)
+
+        logger.debug(f"Reloaded {len(created_events_list)} events with pk")
+        return result
 
     def rich_event(self, event: dict):
         """告警丰富"""
@@ -166,6 +217,7 @@ class AlertSourceAdapter(ABC):
             event["labels"].update(cmdb_instance)
         except Exception as err:
             import traceback
+
             logger.error(f"CMDB search_instances failed: {traceback.format_exc()}")
 
     def _transform_alert_to_event(self, add_event: Dict[str, Any]) -> Event:
@@ -180,7 +232,9 @@ class AlertSourceAdapter(ABC):
         """将时间戳转换为datetime对象"""
         # 先转为 naive datetime timestamp 微妙
         try:
-            dt = datetime.datetime.fromtimestamp(int(timestamp) / 1000 if len(timestamp) == 13 else int(timestamp))
+            dt = datetime.datetime.fromtimestamp(
+                int(timestamp) / 1000 if len(timestamp) == 13 else int(timestamp)
+            )
             # 转为 aware datetime（带时区）
             return timezone.make_aware(dt, timezone.get_current_timezone())
         except Exception as e:
@@ -188,14 +242,42 @@ class AlertSourceAdapter(ABC):
             return timezone.now()
 
     @staticmethod
-    def event_operator(events_list):
+    def get_active_shields():
         """
-        event的自动屏蔽
+        获取所有活跃的屏蔽策略（优化：一次性查询，全局复用）
+        
+        Returns:
+            QuerySet 或 None
         """
+        try:
+            from apps.alerts.models import AlertShield
+            shields = AlertShield.objects.filter(is_active=True)
+            if shields.exists():
+                logger.debug(f"加载了 {shields.count()} 个活跃屏蔽策略")
+                return shields
+            return None
+        except Exception as e:
+            logger.error(f"查询活跃屏蔽策略失败: {e}")
+            return None
+
+    def event_operator(self, events_list):
+        """
+        event的自动屏蔽（性能优化版）
+        
+        Args:
+            events_list: 事件批次列表
+        """
+
+        # 优化：预先查询活跃屏蔽策略，避免每批次重复查询
+        active_shields = self.get_active_shields()
+
         for event_list in events_list:
             try:
-                execute_shield_check_for_events([i.event_id for i in event_list])
-            except Exception as err:
+                execute_shield_check_for_events(
+                    [i.event_id for i in event_list],
+                    active_shields=active_shields
+                )
+            except Exception as err: # noqa
                 import traceback
                 logger.error(f"Shield check failed for events:{traceback.format_exc()}")
 
@@ -204,7 +286,39 @@ class AlertSourceAdapter(ABC):
         if not events:
             events = self.events
         bulk_events = self.create_events(events)
+        if not bulk_events:
+            return
         self.event_operator(bulk_events)
+        self.handle_recovery_events(bulk_events)
+
+    @staticmethod
+    def handle_recovery_events(bulk_events):
+        """
+        处理恢复事件：将 RECOVERY/CLOSED 事件关联到对应的 Alert
+        
+        Args:
+            bulk_events: 批量创建的事件列表（分批后的列表）
+        """
+
+        for event_batch in bulk_events:
+            # 过滤出 RECOVERY 和 CLOSED 类型的事件
+            recovery_events = [
+                e for e in event_batch
+                if e.action in [EventAction.RECOVERY, EventAction.CLOSED]
+            ]
+
+            if recovery_events:
+                try:
+                    RecoveryHandler.handle_recovery_events(recovery_events)
+                    logger.info(
+                        f"处理了 {len(recovery_events)} 个恢复事件 "
+                        f"(RECOVERY/CLOSED)"
+                    )
+                except Exception as err:
+                    import traceback
+                    logger.error(
+                        f"Recovery handler failed: {traceback.format_exc()}"
+                    )
 
 
 class AlertSourceAdapterFactory:
@@ -223,7 +337,9 @@ class AlertSourceAdapterFactory:
         """获取适配器实例"""
         adapter_class = cls._adapters.get(alert_source.source_type)
         if not adapter_class:
-            raise ValueError(f"No adapter found for source type: {alert_source.source_type}")
+            raise ValueError(
+                f"No adapter found for source type: {alert_source.source_type}"
+            )
         return adapter_class
 
     @classmethod
