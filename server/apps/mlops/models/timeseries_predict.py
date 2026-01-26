@@ -73,7 +73,7 @@ class TimeSeriesPredictTrainData(MaintainerInfo, TimeInfo):
     def save(self, *args, **kwargs):
         """保存时自动清理旧的训练数据文件"""
         from django.db import transaction
-        from apps.core.logger import opspilot_logger as logger
+        from apps.core.logger import mlops_logger as logger
 
         # 如果是更新操作,检查文件是否变化
         if self.pk:
@@ -245,7 +245,7 @@ class TimeSeriesPredictTrainJob(MaintainerInfo, TimeInfo):
 
     def save(self, *args, **kwargs):
         """保存时自动同步配置到 MinIO（先保存获得 pk，再同步文件）"""
-        from apps.core.logger import opspilot_logger as logger
+        from apps.core.logger import mlops_logger as logger
 
         # 如果仅更新指定字段且不包含配置相关字段，跳过文件同步
         update_fields = kwargs.get("update_fields")
@@ -294,7 +294,7 @@ class TimeSeriesPredictTrainJob(MaintainerInfo, TimeInfo):
         from django.core.files.base import ContentFile
         import json
         import uuid
-        from apps.core.logger import opspilot_logger as logger
+        from apps.core.logger import mlops_logger as logger
 
         # 删除旧文件
         if self.config_url:

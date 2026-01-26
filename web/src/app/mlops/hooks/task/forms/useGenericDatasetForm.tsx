@@ -196,7 +196,7 @@ export const useGenericDatasetForm = ({
         await renderOptions(dataset);
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setLoadingState(prev => ({ ...prev, select: false }));
     }
@@ -220,7 +220,7 @@ export const useGenericDatasetForm = ({
         });
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setLoadingState(prev => ({ ...prev, select: false }));
     }
@@ -272,7 +272,7 @@ export const useGenericDatasetForm = ({
       setIsShow(false);
       onSuccess();
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.error`));
     } finally {
       setLoadingState((prev) => ({ ...prev, confirm: false }));

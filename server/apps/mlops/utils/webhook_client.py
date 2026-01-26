@@ -7,7 +7,7 @@ MLOps 容器化训练模块
 import os
 import requests
 from typing import Optional, Any
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 
 
 class WebhookError(Exception):

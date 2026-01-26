@@ -15,7 +15,7 @@ import pandas as pd
 import numpy as np
 import requests
 
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 from apps.core.decorators.api_permission import HasPermission
 from apps.mlops.models.log_clustering import *
 from apps.mlops.serializers.log_clustering import *
@@ -878,6 +878,27 @@ class LogClusteringServingViewSet(ModelViewSet):
                     {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
+
+            # 解析 model_uri
+            try:
+                model_uri = self._resolve_model_uri(serving)
+            except ValueError as e:
+                logger.error(f"解析 model URI 失败: {e}")
+                serving.container_info = {
+                    "status": "error",
+                    "message": f"解析模型 URI 失败: {str(e)}",
+                }
+                serving.save(update_fields=["container_info"])
+                response.data["container_info"] = serving.container_info
+                response.data["message"] = f"服务已创建但启动失败：{str(e)}"
+                return response
+
+            # 构建 serving ID
+            container_id = f"LogClustering_Serving_{serving.id}"
+
+            logger.info(
+                f"自动启动 serving 服务: {container_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}"
+            )
 
             try:
                 # 调用 WebhookClient 启动服务

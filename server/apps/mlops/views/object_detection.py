@@ -1,6 +1,6 @@
 from config.drf.viewsets import ModelViewSet
 
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 from apps.mlops.models.object_detection import *
 from apps.mlops.serializers.object_detection import *
 from apps.mlops.filters.object_detection import *

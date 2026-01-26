@@ -31,7 +31,7 @@
     "publishFailed": "发布失败",
     "published": "已发布",
     "publishing": "发布中",
-    "waitRelease": "等待发布",
+    "waitRelease": "已禁用",
     "failed": "失败",
     "notStarted": "未开始",
     "inProgress": "进行中",

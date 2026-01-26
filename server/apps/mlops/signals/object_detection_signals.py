@@ -8,7 +8,7 @@ from django.db import transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 from apps.mlops.models.object_detection import (
     ObjectDetectionDatasetRelease,
     ObjectDetectionTrainData,

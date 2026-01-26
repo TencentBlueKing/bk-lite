@@ -1,6 +1,6 @@
 from config.drf.viewsets import ModelViewSet
 from apps.mlops.filters.anomaly_detection import *
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 from apps.core.decorators.api_permission import HasPermission
 from apps.mlops.models.anomaly_detection import *
 from apps.mlops.serializers.anomaly_detection import *

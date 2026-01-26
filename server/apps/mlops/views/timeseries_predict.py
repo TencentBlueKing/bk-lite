@@ -16,7 +16,7 @@ import os
 import pandas as pd
 import numpy as np
 
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 from apps.core.decorators.api_permission import HasPermission
 from apps.mlops.models.timeseries_predict import *
 from apps.mlops.serializers.timeseries_predict import *

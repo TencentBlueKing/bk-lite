@@ -8,7 +8,7 @@ import requests
 import pandas as pd
 import numpy as np
 
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 from apps.core.decorators.api_permission import HasPermission
 from apps.mlops.models.classification import *
 from apps.mlops.serializers.classification import *

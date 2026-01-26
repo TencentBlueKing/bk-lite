@@ -1,7 +1,7 @@
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.image_classification import *
 from rest_framework import serializers
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 
 
 class ImageClassificationDatasetSerializer(AuthSerializer):

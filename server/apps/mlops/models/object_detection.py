@@ -100,7 +100,7 @@ class ObjectDetectionTrainData(MaintainerInfo, TimeInfo):
     def save(self, *args, **kwargs):
         """保存时自动清理旧的训练数据文件"""
         from django.db import transaction
-        from apps.core.logger import opspilot_logger as logger
+        from apps.core.logger import mlops_logger as logger
 
         if self.pk:
             with transaction.atomic():
@@ -295,7 +295,7 @@ class ObjectDetectionTrainJob(MaintainerInfo, TimeInfo):
 
     def save(self, *args, **kwargs):
         """保存时自动同步配置到 MinIO"""
-        from apps.core.logger import opspilot_logger as logger
+        from apps.core.logger import mlops_logger as logger
 
         update_fields = kwargs.get("update_fields")
         config_related_fields = {
@@ -337,7 +337,7 @@ class ObjectDetectionTrainJob(MaintainerInfo, TimeInfo):
         from django.core.files.base import ContentFile
         import json
         import uuid
-        from apps.core.logger import opspilot_logger as logger
+        from apps.core.logger import mlops_logger as logger
 
         if self.config_url:
             try:

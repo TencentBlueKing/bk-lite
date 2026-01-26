@@ -15,7 +15,7 @@ import yaml
 from pathlib import Path
 from collections import defaultdict
 
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 
 
 @shared_task(

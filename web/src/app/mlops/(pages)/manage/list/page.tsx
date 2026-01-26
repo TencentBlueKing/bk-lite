@@ -105,7 +105,7 @@ const DatasetManagePage = () => {
       }) || [];
       setDatasets(_data);
     } catch (e) {
-      console.log(e);
+      console.error(e);
       setDatasets([]);
     } finally {
       setLoading(false);
@@ -143,7 +143,7 @@ const DatasetManagePage = () => {
           await deleteDataset(id, activeTab as DatasetType);
           message.success(t('common.delSuccess'));
         } catch (e) {
-          console.log(e);
+          console.error(e);
           message.error(t(`common.delFailed`));
         } finally {
           getDataSets();

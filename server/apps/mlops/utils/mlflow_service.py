@@ -17,7 +17,7 @@ import numpy as np
 from mlflow.tracking import MlflowClient
 
 from config.components.mlflow import MLFLOW_TRACKER_URL
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 
 
 # ============ 命名构造工具 ============

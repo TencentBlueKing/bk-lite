@@ -44,7 +44,7 @@ class LogClusteringTrainDataSerializer(AuthSerializer):
         自定义返回数据，根据 include_train_data 参数动态控制 train_data 字段
         当 include_train_data=true 时，后端直接读取文本文件并解析为结构化数据返回
         """
-        from apps.core.logger import opspilot_logger as logger
+        from apps.core.logger import mlops_logger as logger
         
         representation = super().to_representation(instance)
         
@@ -99,7 +99,7 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
         """
         自定义创建方法，支持从文件ID创建数据集发布版本
         """
-        from apps.core.logger import opspilot_logger as logger
+        from apps.core.logger import mlops_logger as logger
         
         # 提取文件ID
         train_file_id = validated_data.pop('train_file_id', None)
@@ -119,7 +119,7 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
         
         创建 pending 状态的记录，触发 Celery 任务进行异步处理
         """
-        from apps.core.logger import opspilot_logger as logger
+        from apps.core.logger import mlops_logger as logger
         
         dataset = validated_data.get('dataset')
         version = validated_data.get('version')

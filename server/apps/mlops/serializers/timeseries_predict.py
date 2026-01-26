@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.timeseries_predict import *
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 
 
 class TimeSeriesPredictDatasetSerializer(AuthSerializer):
@@ -101,7 +101,7 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
         自定义返回数据，根据 include_train_data 参数动态控制 train_data 字段
         当 include_train_data=true 时，后端直接读取 CSV 并解析为结构化数据返回
         """
-        from apps.core.logger import opspilot_logger as logger
+        from apps.core.logger import mlops_logger as logger
         import pandas as pd
 
         representation = super().to_representation(instance)

@@ -9,7 +9,7 @@ from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from django_minio_backend import MinioBackend
 
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import mlops_logger as logger
 from apps.mlops.models.log_clustering import (
     LogClusteringDatasetRelease,
     LogClusteringTrainData,
