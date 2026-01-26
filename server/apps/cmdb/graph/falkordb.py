@@ -1249,14 +1249,14 @@ class FalkorDBClient:
                 nodes = getattr(element, "_nodes", [])  # 获取所有节点
                 relationships = getattr(element, "_edges", [])  # 获取所有节点
                 for node in nodes:
-                    entity_map[node.id] = dict(
-                        _id=node.id, _label=node.labels[0], **node.properties
-                    )
+                    props = {k: v for k, v in node.properties.items() if k != "_id"}
+                    entity_map[node.id] = dict(_id=node.id, _label=node.labels[0], **props)
                 for relationship in relationships:
+                    props = {k: v for k, v in relationship.properties.items() if k != "_id"}
                     edge_map[relationship.id] = dict(
                         _id=relationship.id,
                         _label=relationship.relation,
-                        **relationship.properties,
+                        **props,
                     )
 
         edges = list(edge_map.values())
@@ -1276,9 +1276,7 @@ class FalkorDBClient:
         node = {
             "_id": entity["_id"],
             "model_id": entity.get("model_id"),
-            "inst_name": entity.get("inst_name")
-            or entity.get("ip_addr")
-            or str(entity.get("_id")),
+            "inst_name": entity.get("inst_name"),
             "children": [],
         }
 
@@ -1324,14 +1322,14 @@ class FalkorDBClient:
                 nodes = getattr(element, "_nodes", [])
                 relationships = getattr(element, "_edges", [])
                 for node in nodes:
-                    entity_map[node.id] = dict(
-                        _id=node.id, _label=node.labels[0], **node.properties
-                    )
+                    props = {k: v for k, v in node.properties.items() if k != "_id"}
+                    entity_map[node.id] = dict(_id=node.id, _label=node.labels[0], **props)
                 for relationship in relationships:
+                    props = {k: v for k, v in relationship.properties.items() if k != "_id"}
                     edge_map[relationship.id] = dict(
                         _id=relationship.id,
                         _label=relationship.relation,
-                        **relationship.properties,
+                        **props,
                     )
 
         edges = list(edge_map.values())
