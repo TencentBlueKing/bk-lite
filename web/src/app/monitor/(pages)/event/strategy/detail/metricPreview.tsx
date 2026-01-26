@@ -18,6 +18,7 @@ import {
   mergeViewQueryKeyValues,
   renderChart,
 } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 
 const { Option } = Select;
 
@@ -55,6 +56,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   const { t } = useTranslation();
   const { get } = useApiClient();
   const { getInstanceList } = useMonitorApi();
+  const { findUnitNameById } = useUnitTransform();
   const [loading, setLoading] = useState<boolean>(false);
   const [instanceLoading, setInstanceLoading] = useState<boolean>(false);
   const [chartData, setChartData] = useState<ChartData[]>([]);
@@ -428,6 +430,11 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     (item) => item.value !== null && item.value !== undefined
   );
 
+  const showUnit = (val) => {
+    const unitName = findUnitNameById(val);
+    return unitName ? `（${unitName}）` : '';
+  };
+
   return (
     <div
       ref={previewRef}
@@ -470,7 +477,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
           {currentMetric.display_name || metric}
           {(calculationUnit || unit) && (
             <span className="text-[var(--color-text-3)] ml-1">
-              ({calculationUnit || unit})
+              {showUnit(calculationUnit || unit)}
             </span>
           )}
         </div>
@@ -485,8 +492,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
               metric={currentMetric}
               threshold={validThreshold}
               allowSelect={false}
-              showDimensionTable={false}
-              showDimensionFilter={true}
+              showDimensionFilter={false}
             />
           ) : (
             <div className="h-full flex items-center justify-center">
