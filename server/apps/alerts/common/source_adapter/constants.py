@@ -102,7 +102,9 @@ DEFAULT_SOURCE_CONFIG = {
         "resource_type": "resource_type",
         "value": "value",
         "action": "action",
-
+        "service":"service",
+        "tags":"tags",
+        "location":"location"
     },
     "event_fields_desc_mapping": {
         "title": "事件标题, 类型字符串",
@@ -119,5 +121,8 @@ DEFAULT_SOURCE_CONFIG = {
         "resource_id": "资源ID，类型字符串，可选",
         "resource_name": "资源实例名称，类型字符串，可选",
         "resource_type": "资源类型，类型字符串，可选",
+        "service": "事件所属服务",
+        "tags": "事件标签",
+        "location": "事件发生地点"
     }
 }
