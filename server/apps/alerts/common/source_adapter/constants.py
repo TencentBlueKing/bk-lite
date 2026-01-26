@@ -10,7 +10,7 @@ DEFAULT_SOURCE_CONFIG = {
         "source_id": "",
         "events": []
     },
-    "examples":{
+    "examples": {
         "CURL": """
         curl --location --request POST '{url}/api/v1/alerts/api/receiver_data/' \
         --header 'SECRET: {SECRET}' \
@@ -25,6 +25,8 @@ DEFAULT_SOURCE_CONFIG = {
               "item": "jenkins_build_status",
               "level": "1",
               "start_time": "1751964596",
+              "service:"server_01",
+              "location":"shanghai",
               "labels": {
                 "pipeline": "frontend-deploy",
                 "build_number": "7",
@@ -38,7 +40,7 @@ DEFAULT_SOURCE_CONFIG = {
           ]
         }'
         """,
-        "Python":"""
+        "Python": """
         import requests
         import json
         
@@ -54,6 +56,8 @@ DEFAULT_SOURCE_CONFIG = {
                  "item": "jenkins_build_status",
                  "level": "1",
                  "start_time": "1751964596",
+                "service:"server_01",
+                "location":"shanghai",
                  "labels": {
                     "pipeline": "frontend-deploy",
                     "build_number": "7",
@@ -102,9 +106,9 @@ DEFAULT_SOURCE_CONFIG = {
         "resource_type": "resource_type",
         "value": "value",
         "action": "action",
-        "service":"service",
-        "tags":"tags",
-        "location":"location"
+        "service": "service",
+        "tags": "tags",
+        "location": "location"
     },
     "event_fields_desc_mapping": {
         "title": "事件标题, 类型字符串",
