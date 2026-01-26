@@ -5,6 +5,7 @@ from apps.monitor.models import (
     MonitorInstanceOrganization,
     MonitorAlert,
     MonitorInstance,
+    PolicyInstanceBaseline,
 )
 from apps.monitor.tasks.services.policy_scan.metric_query import MetricQueryService
 from apps.monitor.tasks.services.policy_scan.alert_detector import AlertDetector
@@ -21,11 +22,16 @@ class MonitorPolicyScan:
     def __init__(self, policy):
         self.policy = policy
         self.instances_map = self._build_instances_map()
+        self.baselines_map = self._build_baselines_map()
         self.active_alerts = self._get_active_alerts()
 
         self.metric_query_service = MetricQueryService(policy, self.instances_map)
         self.alert_detector = AlertDetector(
-            policy, self.instances_map, self.active_alerts, self.metric_query_service
+            policy,
+            self.instances_map,
+            self.baselines_map,
+            self.active_alerts,
+            self.metric_query_service,
         )
         self.event_alert_manager = EventAlertManager(
             policy, self.instances_map, self.active_alerts
@@ -42,7 +48,7 @@ class MonitorPolicyScan:
         return qs
 
     def _build_instances_map(self):
-        """构建策略适用的实例映射"""
+        """构建策略适用的实例映射: {monitor_instance_id: monitor_instance_name}"""
         if not self.policy.source:
             return {}
 
@@ -57,6 +63,17 @@ class MonitorPolicyScan:
             is_deleted=False,
         )
         return {instance.id: instance.name for instance in instances}
+
+    def _build_baselines_map(self):
+        """构建基准映射: {metric_instance_id: monitor_instance_id}"""
+        if not self.policy.source:
+            return {}
+
+        baselines = PolicyInstanceBaseline.objects.filter(
+            policy_id=self.policy.id,
+            monitor_instance_id__in=self.instances_map.keys(),
+        )
+        return {b.metric_instance_id: b.monitor_instance_id for b in baselines}
 
     def _get_instance_list_by_source(self, source_type, source_values):
         """根据来源类型获取实例列表"""

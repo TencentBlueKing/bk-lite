@@ -129,6 +129,10 @@ class MonitorEvent(models.Model):
     monitor_instance_id = models.CharField(
         db_index=True, max_length=100, verbose_name="监控对象实例ID"
     )
+    metric_instance_id = models.CharField(
+        db_index=True, default="", max_length=255, verbose_name="指标实例ID"
+    )
+    dimensions = models.JSONField(default=dict, verbose_name="维度值")
     created_at = models.DateTimeField(
         db_index=True, auto_now_add=True, verbose_name="事件生成时间"
     )
@@ -173,6 +177,10 @@ class MonitorAlert(TimeInfo):
     monitor_instance_name = models.CharField(
         default="", max_length=100, verbose_name="监控对象实例名称"
     )
+    metric_instance_id = models.CharField(
+        db_index=True, default="", max_length=255, verbose_name="指标实例ID"
+    )
+    dimensions = models.JSONField(default=dict, verbose_name="维度值")
     alert_type = models.CharField(
         db_index=True,
         default="alert",
@@ -238,3 +246,20 @@ class MonitorAlertMetricSnapshot(TimeInfo):
         indexes = [
             models.Index(fields=["alert", "policy_id"]),
         ]
+
+
+class PolicyInstanceBaseline(TimeInfo):
+    """策略实例基准表 - 记录策略监控的所有维度组合，用于无数据检测"""
+
+    policy = models.ForeignKey(
+        MonitorPolicy, on_delete=models.CASCADE, verbose_name="监控策略"
+    )
+    monitor_instance_id = models.CharField(
+        db_index=True, max_length=100, verbose_name="监控实例ID"
+    )
+    metric_instance_id = models.CharField(max_length=255, verbose_name="指标实例ID")
+
+    class Meta:
+        verbose_name = "策略实例基准"
+        verbose_name_plural = "策略实例基准"
+        unique_together = ("policy", "metric_instance_id")

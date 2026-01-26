@@ -10,29 +10,21 @@ from apps.core.logger import celery_logger as logger
 
 
 class AlertDetector:
-    """告警检测服务
-
-    负责:
-    - 阈值告警检测
-    - 无数据告警检测
-    - 告警恢复处理
-    - 告警计数管理
-    """
-
     def __init__(
-        self, policy, instances_map: dict, active_alerts, metric_query_service
+        self,
+        policy,
+        instances_map: dict,
+        baselines_map: dict,
+        active_alerts,
+        metric_query_service,
     ):
         self.policy = policy
         self.instances_map = instances_map
+        self.baselines_map = baselines_map
         self.active_alerts = active_alerts
         self.metric_query_service = metric_query_service
 
     def detect_threshold_alerts(self):
-        """检测阈值告警
-
-        Returns:
-            tuple: (告警事件列表, 正常事件列表)
-        """
         vm_data = self.metric_query_service.query_aggregation_metrics(
             self.policy.period
         )
@@ -49,6 +41,7 @@ class AlertDetector:
             else "",
             "metric_name": self._get_metric_display_name(),
             "instances_map": self.instances_map,
+            "instance_id_keys": self.metric_query_service.instance_id_keys or [],
         }
 
         alert_events, info_events = calculate_alerts(
@@ -56,8 +49,8 @@ class AlertDetector:
         )
 
         if self.policy.source:
-            alert_events = self._filter_events_by_instance_scope(alert_events)
-            info_events = self._filter_events_by_instance_scope(info_events)
+            alert_events = self._filter_events_by_scope(alert_events)
+            info_events = self._filter_events_by_scope(info_events)
 
         if alert_events:
             self._log_alert_events(alert_events, vm_data)
@@ -65,18 +58,12 @@ class AlertDetector:
         return alert_events, info_events
 
     def _get_metric_display_name(self):
-        """获取指标展示名称"""
         metric = self.metric_query_service.metric
         if metric:
             return metric.display_name or metric.name
         return self.policy.query_condition.get("metric_id", "")
 
     def detect_no_data_alerts(self):
-        """检测无数据告警
-
-        Returns:
-            list: 无数据事件列表
-        """
         if not self.policy.no_data_period or not self.policy.source:
             return []
 
@@ -94,16 +81,27 @@ class AlertDetector:
 
         return events
 
-    def _filter_events_by_instance_scope(self, events):
-        """根据实例范围过滤事件"""
+    def _filter_events_by_scope(self, events):
+        if self.baselines_map:
+            return [e for e in events if e["metric_instance_id"] in self.baselines_map]
         return [
-            event
-            for event in events
-            if event["instance_id"] in self.instances_map.keys()
+            e
+            for e in events
+            if self._extract_monitor_instance_id(e["metric_instance_id"])
+            in self.instances_map
         ]
 
+    def _extract_monitor_instance_id(self, metric_instance_id: str) -> str:
+        """从 metric_instance_id 提取 monitor_instance_id（取第一个维度值）"""
+        try:
+            tuple_val = eval(metric_instance_id)
+            if isinstance(tuple_val, tuple) and len(tuple_val) > 0:
+                return str(tuple_val[0])
+        except Exception:
+            pass
+        return metric_instance_id
+
     def _build_no_data_events(self, aggregation_result):
-        """构建无数据事件列表"""
         events = []
         no_data_alert_name = self.policy.no_data_alert_name or "no data"
         monitor_object_name = (
@@ -112,40 +110,82 @@ class AlertDetector:
         metric_name = self._get_metric_display_name()
         no_data_level = self.policy.no_data_level or "warning"
 
-        for instance_id in self.instances_map.keys():
-            if instance_id not in aggregation_result:
-                template_context = {
-                    "instance_id": instance_id,
-                    "metric_instance_id": instance_id,
-                    "monitor_instance_id": instance_id,
-                    "instance_name": self.instances_map.get(instance_id, instance_id),
-                    "monitor_object": monitor_object_name,
-                    "metric_name": metric_name,
-                    "level": no_data_level,
-                    "value": "",
+        baseline_keys = set(self.baselines_map.keys()) if self.baselines_map else set()
+        if not baseline_keys:
+            baseline_keys = {str((mid,)) for mid in self.instances_map.keys()}
+
+        for metric_instance_id in baseline_keys:
+            if metric_instance_id in aggregation_result:
+                continue
+
+            monitor_instance_id = self.baselines_map.get(
+                metric_instance_id
+            ) or self._extract_monitor_instance_id(metric_instance_id)
+            instance_name = self.instances_map.get(
+                monitor_instance_id, monitor_instance_id
+            )
+            dimensions = self._parse_dimensions(metric_instance_id)
+            dimension_str = self._format_dimension_str(dimensions)
+            display_name = (
+                f"{instance_name} - {dimension_str}" if dimension_str else instance_name
+            )
+
+            template_context = {
+                "metric_instance_id": metric_instance_id,
+                "monitor_instance_id": monitor_instance_id,
+                "instance_name": display_name,
+                "monitor_object": monitor_object_name,
+                "metric_name": metric_name,
+                "level": no_data_level,
+                "value": "",
+            }
+            template_context.update(self._build_metric_template_vars(dimensions))
+
+            template = Template(no_data_alert_name)
+            content = template.safe_substitute(template_context)
+
+            events.append(
+                {
+                    "metric_instance_id": metric_instance_id,
+                    "monitor_instance_id": monitor_instance_id,
+                    "dimensions": dimensions,
+                    "value": None,
+                    "level": "no_data",
+                    "content": content,
                 }
-
-                template = Template(no_data_alert_name)
-                content = template.safe_substitute(template_context)
-
-                events.append(
-                    {
-                        "instance_id": instance_id,
-                        "value": None,
-                        "level": "no_data",
-                        "content": content,
-                    }
-                )
+            )
         return events
 
+    def _parse_dimensions(self, metric_instance_id: str) -> dict:
+        try:
+            tuple_val = eval(metric_instance_id)
+            if isinstance(tuple_val, tuple):
+                keys = self.metric_query_service.instance_id_keys or []
+                return {
+                    keys[i]: tuple_val[i] for i in range(min(len(keys), len(tuple_val)))
+                }
+        except Exception:
+            pass
+        return {}
+
+    def _format_dimension_str(self, dimensions: dict) -> str:
+        if not dimensions:
+            return ""
+        first_key = list(dimensions.keys())[0] if dimensions else None
+        sub_dimensions = {k: v for k, v in dimensions.items() if k != first_key}
+        if not sub_dimensions:
+            return ""
+        return ", ".join(f"{k}:{v}" for k, v in sub_dimensions.items())
+
+    def _build_metric_template_vars(self, dimensions: dict) -> dict:
+        return {f"metric__{k}": v for k, v in dimensions.items()}
+
     def _log_alert_events(self, alert_events, vm_data):
-        """记录告警事件日志"""
         logger.info(f"=======alert events: {alert_events}")
         logger.info(f"=======alert events search result: {vm_data}")
         logger.info(f"=======alert events resource scope: {self.instances_map.keys()}")
 
     def _log_no_data_events(self, events, aggregation_metrics):
-        """记录无数据事件日志"""
         logger.info(f"-------no data events: {events}")
         logger.info(f"-------no data events search result: {aggregation_metrics}")
         logger.info(
@@ -153,36 +193,38 @@ class AlertDetector:
         )
 
     def count_events(self, alert_events, info_events):
-        """统计告警和正常事件,更新告警计数器"""
         alerts_map = {
-            alert.monitor_instance_id: alert.id
+            self._get_alert_metric_instance_id(alert): alert.id
             for alert in self.active_alerts
             if alert.alert_type == "alert"
         }
 
         info_alert_ids = {
-            alerts_map[event["instance_id"]]
+            alerts_map[event["metric_instance_id"]]
             for event in info_events
-            if event["instance_id"] in alerts_map
+            if event["metric_instance_id"] in alerts_map
         }
 
         alert_alert_ids = {
-            alerts_map[event["instance_id"]]
+            alerts_map[event["metric_instance_id"]]
             for event in alert_events
-            if event["instance_id"] in alerts_map
+            if event["metric_instance_id"] in alerts_map
         }
 
         self._increment_info_count(info_alert_ids)
         self._clear_info_count(alert_alert_ids)
 
+    def _get_alert_metric_instance_id(self, alert) -> str:
+        if alert.metric_instance_id:
+            return alert.metric_instance_id
+        return str((alert.monitor_instance_id,))
+
     def _clear_info_count(self, alert_ids):
-        """清零告警的正常事件计数"""
         if not alert_ids:
             return
         MonitorAlert.objects.filter(id__in=list(alert_ids)).update(info_event_count=0)
 
     def _increment_info_count(self, alert_ids):
-        """递增告警的正常事件计数"""
         if not alert_ids:
             return
         MonitorAlert.objects.filter(id__in=list(alert_ids)).update(
@@ -190,7 +232,6 @@ class AlertDetector:
         )
 
     def recover_threshold_alerts(self):
-        """处理阈值告警恢复"""
         if self.policy.recovery_condition <= 0:
             return
 
@@ -207,7 +248,6 @@ class AlertDetector:
         )
 
     def recover_no_data_alerts(self):
-        """处理无数据告警恢复"""
         if not self.policy.no_data_recovery_period:
             return
 
@@ -218,15 +258,21 @@ class AlertDetector:
             aggregation_metrics
         )
 
-        instance_ids = set(aggregation_result.keys())
+        metric_instance_ids_with_data = set(aggregation_result.keys())
 
-        MonitorAlert.objects.filter(
-            policy_id=self.policy.id,
-            monitor_instance_id__in=instance_ids,
-            alert_type="no_data",
-            status="new",
-        ).update(
-            status="recovered",
-            end_event_time=self.policy.last_run_time,
-            operator="system",
-        )
+        no_data_alerts = [
+            alert for alert in self.active_alerts if alert.alert_type == "no_data"
+        ]
+
+        alerts_to_recover = []
+        for alert in no_data_alerts:
+            alert_metric_id = self._get_alert_metric_instance_id(alert)
+            if alert_metric_id in metric_instance_ids_with_data:
+                alerts_to_recover.append(alert.id)
+
+        if alerts_to_recover:
+            MonitorAlert.objects.filter(id__in=alerts_to_recover).update(
+                status="recovered",
+                end_event_time=self.policy.last_run_time,
+                operator="system",
+            )
