@@ -1,8 +1,8 @@
 from django.core.management import BaseCommand
 from asgiref.sync import async_to_sync
 
-from apps.core.logger import monitor_logger as logger
-from apps.monitor.constants.installer import WINDOWS_INSTALLER_S3_PATH
+from apps.core.logger import node_logger as logger
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.utils.s3 import upload_file_to_s3
 
 
@@ -24,8 +24,12 @@ class Command(BaseCommand):
 
         try:
             with open(file_path, "rb") as file:
-                async_to_sync(upload_file_to_s3)(file, WINDOWS_INSTALLER_S3_PATH)
-            logger.info(f"Windows 安装器上传成功，S3 路径: {WINDOWS_INSTALLER_S3_PATH}")
+                async_to_sync(upload_file_to_s3)(
+                    file, InstallerConstants.WINDOWS_INSTALLER_S3_PATH
+                )
+            logger.info(
+                f"Windows 安装器上传成功，S3 路径: {InstallerConstants.WINDOWS_INSTALLER_S3_PATH}"
+            )
         except FileNotFoundError:
             logger.error(f"文件不存在: {file_path}")
             raise

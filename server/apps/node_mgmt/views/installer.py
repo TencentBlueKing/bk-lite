@@ -1,13 +1,20 @@
+from asgiref.sync import async_to_sync
 from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 
 from apps.core.utils.web_utils import WebUtils
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.tasks.installer import install_controller, install_collector, uninstall_controller, retry_controller
+from apps.node_mgmt.tasks.installer import (
+    install_controller,
+    install_collector,
+    uninstall_controller,
+    retry_controller,
+)
+from apps.node_mgmt.utils.s3 import download_file_by_s3
 
 
 class InstallerViewSet(ViewSet):
-
     @action(detail=False, methods=["post"], url_path="controller/install")
     def controller_install(self, request):
         task_id = InstallerService.install_controller(
@@ -32,11 +39,11 @@ class InstallerViewSet(ViewSet):
     @action(detail=False, methods=["post"], url_path="controller/retry")
     def controller_retry(self, request):
         retry_controller.delay(
-            request.data["task_id"], 
-            request.data["task_node_ids"], 
+            request.data["task_id"],
+            request.data["task_node_ids"],
             password=request.data.get("password"),
             private_key=request.data.get("private_key"),
-            passphrase=request.data.get("passphrase")
+            passphrase=request.data.get("passphrase"),
         )
         return WebUtils.response_success()
 
@@ -45,15 +52,17 @@ class InstallerViewSet(ViewSet):
     def controller_manual_install(self, request):
         result = []
         for node in request.data["nodes"]:
-            result.append({
-                "cloud_region_id": request.data["cloud_region_id"],
-                "os": request.data["os"],
-                "package_id": request.data["package_id"],
-                "ip": node["ip"],
-                "node_id": node["node_id"],
-                "node_name": node.get("node_name", ""),
-                "organizations": node.get("organizations", []),
-            })
+            result.append(
+                {
+                    "cloud_region_id": request.data["cloud_region_id"],
+                    "os": request.data["os"],
+                    "package_id": request.data["package_id"],
+                    "ip": node["ip"],
+                    "node_id": node["node_id"],
+                    "node_name": node.get("node_name", ""),
+                    "organizations": node.get("organizations", []),
+                }
+            )
         return WebUtils.response_success(result)
 
     @action(detail=False, methods=["post"], url_path="controller/manual_install_status")
@@ -66,7 +75,11 @@ class InstallerViewSet(ViewSet):
     #     restart_controller.delay(request.data)
     #     return WebUtils.response_success()
 
-    @action(detail=False, methods=["post"], url_path="controller/task/(?P<task_id>[^/.]+)/nodes")
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="controller/task/(?P<task_id>[^/.]+)/nodes",
+    )
     def controller_install_nodes(self, request, task_id):
         data = InstallerService.install_controller_nodes(task_id)
         return WebUtils.response_success(data)
@@ -74,11 +87,17 @@ class InstallerViewSet(ViewSet):
     # 采集器
     @action(detail=False, methods=["post"], url_path="collector/install")
     def collector_install(self, request):
-        task_id = InstallerService.install_collector(request.data["collector_package"], request.data["nodes"])
+        task_id = InstallerService.install_collector(
+            request.data["collector_package"], request.data["nodes"]
+        )
         install_collector.delay(task_id)
         return WebUtils.response_success(dict(task_id=task_id))
 
-    @action(detail=False, methods=["post"], url_path="collector/install/(?P<task_id>[^/.]+)/nodes")
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="collector/install/(?P<task_id>[^/.]+)/nodes",
+    )
     def collector_install_nodes(self, request, task_id):
         data = InstallerService.install_collector_nodes(task_id)
         return WebUtils.response_success(data)
@@ -97,3 +116,12 @@ class InstallerViewSet(ViewSet):
             request.data.get("node_name", ""),
         )
         return WebUtils.response_success(data)
+
+    @action(detail=False, methods=["GET"], url_path="windows/download")
+    def windows_download(self, request):
+        file, _ = async_to_sync(download_file_by_s3)(
+            InstallerConstants.WINDOWS_INSTALLER_S3_PATH
+        )
+        return WebUtils.response_file(
+            file, InstallerConstants.WINDOWS_INSTALLER_FILENAME
+        )
