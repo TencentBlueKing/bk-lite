@@ -10,13 +10,13 @@ import {
   MetricItem,
   ThresholdField,
   FilterItem,
-  TableDataItem,
+  TableDataItem
 } from '@/app/monitor/types';
 import { SourceFeild } from '@/app/monitor/types/event';
 import { InstanceItem } from '@/app/monitor/types/search';
 import {
   mergeViewQueryKeyValues,
-  renderChart,
+  renderChart
 } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 
@@ -51,7 +51,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   threshold,
   calculationUnit,
   scrollContainerRef,
-  anchorRef,
+  anchorRef
 }) => {
   const { t } = useTranslation();
   const { get } = useApiClient();
@@ -111,7 +111,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       return {
         instance_id: val,
         instance_name: val,
-        instance_id_values: [val],
+        instance_id_values: [val]
       };
     });
     setInstances(instanceItems);
@@ -182,7 +182,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       'min_over_time',
       'avg_over_time',
       'last_over_time',
-      'count_over_time',
+      'count_over_time'
     ];
     if (overTimeFunctions.includes(algorithm)) {
       // 例如: sum_over_time(metric{labels}[5m])
@@ -205,8 +205,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     const queryList = [
       {
         keys: currentMetric.instance_id_keys || [],
-        values: selectedInst.instance_id_values,
-      },
+        values: selectedInst.instance_id_values
+      }
     ];
     let query = mergeViewQueryKeyValues(queryList);
     // 添加条件维度
@@ -241,7 +241,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     const maxDuration = 604800000; // 7 天
     const duration = Math.max(
       minDuration,
-      Math.min(dynamicDuration, maxDuration),
+      Math.min(dynamicDuration, maxDuration)
     );
     const startTime = now - duration;
     const endTime = now;
@@ -260,7 +260,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       unit: calculationUnit || '',
       start: startTime,
       end: endTime,
-      step,
+      step
     };
   };
 
@@ -276,10 +276,10 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         {
           page: 1,
           page_size: -1,
-          name: '',
+          name: ''
         },
         {
-          signal: abortController.signal,
+          signal: abortController.signal
         }
       );
       const results = data?.results || [];
@@ -316,8 +316,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
             ...inst,
             instance_name: foundInstance.instance_name || inst.instance_id,
             instance_id_values: foundInstance.instance_id_values || [
-              inst.instance_id,
-            ],
+              inst.instance_id
+            ]
           };
         }
       }
@@ -357,7 +357,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         '/monitor/api/metrics_instance/query_range/',
         {
           params,
-          signal: abortController.signal,
+          signal: abortController.signal
         }
       );
       if (currentRequestId !== requestIdRef.current) {
@@ -378,8 +378,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
           instance_id_keys: currentMetric?.instance_id_keys || [],
           dimensions: currentMetric?.dimensions || [],
           title: currentMetric?.display_name || '--',
-          showInstName: true,
-        },
+          showInstName: true
+        }
       ];
       if (!selectedInst) {
         list = [];
@@ -415,7 +415,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     period,
     periodUnit,
     algorithm,
-    calculationUnit,
+    calculationUnit
   ]);
 
   // 清理
@@ -502,7 +502,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
               metric={currentMetric}
               threshold={validThreshold}
               allowSelect={false}
-              showDimensionFilter={false}
+              showDimensionFilter={true}
             />
           ) : (
             <div className="h-full flex items-center justify-center">
