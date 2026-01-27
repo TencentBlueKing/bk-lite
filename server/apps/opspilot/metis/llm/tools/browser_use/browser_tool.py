@@ -585,14 +585,39 @@ async def _browse_website_async(
             # 生产环境使用传入的 headless 参数（默认 True）
             actual_headless = headless
 
+        # 平台特定的启动参数
+        is_debug = getattr(settings, "DEBUG", False)
+
+        # 构建浏览器启动参数 - 根据平台调整
+        browser_args = None
+        if not is_debug:
+            # Linux 服务器环境需要额外参数
+            browser_args = [
+                "--no-sandbox",
+                "--disable-gpu-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--no-xshm",
+                "--no-zygote",
+                "--disable-site-isolation-trials",
+            ]
+            logger.info("Linux 生产环境: 应用 Linux 特定的浏览器参数")
+
         # 初始化 Browser
-        browser = Browser(
-            executable_path=executable_path,
-            headless=actual_headless,
-            # headless=headless,
-            enable_default_extensions=False,
-            user_data_dir=user_data_dir,  # 使用共享的用户数据目录保持会话状态
-        )
+        browser_init_kwargs = {
+            "executable_path": executable_path,
+            "headless": actual_headless,
+            "enable_default_extensions": False,
+            "user_data_dir": user_data_dir,  # 使用共享的用户数据目录保持会话状态
+        }
+
+        # 如果有特定的浏览器参数，添加到初始化参数中
+        if browser_args:
+            browser_init_kwargs["args"] = browser_args
+
+        browser = Browser(**browser_init_kwargs)
+
+        logger.info(f"浏览器已初始化 - headless={actual_headless}, platform_specific_args={bool(browser_args)}")
 
         # 创建 browser-use agent
         # 判断task中是否已经明确包含了URL信息（使用脱敏后的任务判断，避免泄露）

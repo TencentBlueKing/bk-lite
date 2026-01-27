@@ -35,6 +35,27 @@ class LLMViewSet(AuthViewSet):
     filterset_class = LLMFilter
     permission_key = "skill"
 
+    def query_by_groups(self, request, queryset):
+        """重写排序逻辑：置顶优先，再按 ID 倒序"""
+        new_queryset = self.get_queryset_by_permission(request, queryset)
+        return self._list(new_queryset.order_by("-is_pinned", "-id"))
+
+    @action(methods=["POST"], detail=True)
+    @HasPermission("skill_setting-Edit")
+    def toggle_pin(self, request, pk=None):
+        """切换技能置顶状态"""
+        instance = self.get_object()
+        if not request.user.is_superuser:
+            current_team = request.COOKIES.get("current_team", "0")
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
+            if not has_permission:
+                message = self.loader.get("error.permission_update_denied") if self.loader else "You do not have permission to update this instance"
+                return JsonResponse({"result": False, "message": message})
+        instance.is_pinned = not instance.is_pinned
+        instance.save(update_fields=["is_pinned"])
+        return JsonResponse({"result": True, "data": {"is_pinned": instance.is_pinned}})
+
     @action(methods=["GET"], detail=False)
     @HasPermission("skill_list-View")
     def get_template_list(self, request):
@@ -191,7 +212,13 @@ class LLMViewSet(AuthViewSet):
             if not request.user.is_superuser:
                 current_team = request.COOKIES.get("current_team", "0")
                 include_children = request.COOKIES.get("include_children", "0") == "1"
-                has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True, include_children=include_children)
+                has_permission = self.get_has_permission(
+                    request.user,
+                    skill_obj,
+                    current_team,
+                    is_check=True,
+                    include_children=include_children,
+                )
                 if not has_permission:
                     message = (
                         self.loader.get("error.no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
@@ -254,7 +281,13 @@ class LLMViewSet(AuthViewSet):
             if not request.user.is_superuser:
                 current_team = request.COOKIES.get("current_team", "0")
                 include_children = request.COOKIES.get("include_children", "0") == "1"
-                has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True, include_children=include_children)
+                has_permission = self.get_has_permission(
+                    request.user,
+                    skill_obj,
+                    current_team,
+                    is_check=True,
+                    include_children=include_children,
+                )
                 if not has_permission:
                     message = (
                         self.loader.get("error.no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
