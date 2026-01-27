@@ -88,7 +88,7 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
   ];
 
   return (
-    <div className="w-[600px] flex-shrink-0 border border-[var(--color-border-2)] rounded-md p-4 bg-[var(--color-bg-1)] mb-4">
+    <div className="w-full border border-[var(--color-border-2)] rounded-md p-4 bg-[var(--color-bg-1)] shadow-md mb-4">
       <div className="font-medium text-[14px] mb-3">
         {t('monitor.events.optionalVariables')}
       </div>

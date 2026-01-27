@@ -148,6 +148,7 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
         rules={[{ required: true, message: t('common.required') }]}
       >
         <InputNumber
+          className="w-full"
           min={SCHEDULE_UNIT_MAP[`${unit}Min`]}
           max={SCHEDULE_UNIT_MAP[`${unit}Max`]}
           precision={0}

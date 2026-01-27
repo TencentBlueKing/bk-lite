@@ -90,6 +90,8 @@ const StrategyOperation = () => {
   const [groupBy, setGroupBy] = useState<string[]>(
     getGroupIds(monitorName as string)?.default || defaultGroup
   );
+  const [period, setPeriod] = useState<number | null>(null);
+  const [algorithm, setAlgorithm] = useState<string | null>(null);
   const [formData, setFormData] = useState<StrategyFields>({
     threshold: [],
     source: { type: '', values: [] },
@@ -254,6 +256,9 @@ const StrategyOperation = () => {
     setGroupBy(group_by || []);
     feedbackThreshold(thresholdList);
     setCalculationUnit(calculation_unit || null);
+    setPeriod(period?.value || null);
+    setPeriodUnit(period?.type || 'min');
+    setAlgorithm(data.algorithm || null);
     if (source?.type) {
       setSource(source);
     } else {
@@ -267,7 +272,6 @@ const StrategyOperation = () => {
     setNoDataRecovery(no_data_recovery_period?.value || null);
     setNoDataRecoveryUnit(no_data_recovery_period?.type || '');
     setUnit(schedule?.type || '');
-    setPeriodUnit(period?.type || '');
     setEnableAlerts(enable_alerts?.length ? enable_alerts : ['threshold']);
     // 设置无数据告警级别和名称
     if (enable_alerts?.includes('no_data') && no_data_level) {
@@ -338,10 +342,8 @@ const StrategyOperation = () => {
     const target = metrics.find((item) => item.name === val);
     const _labels = (target?.dimensions || []).map((item) => item.name);
     setLabels(_labels);
-    // 在新增模式下，自动设置单位为指标的默认单位
-    if (['builtIn', 'add'].includes(type)) {
-      setCalculationUnit(target?.unit || null);
-    }
+    // 自动设置告警阈值单位为指标的默认单位
+    setCalculationUnit(target?.unit || null);
   };
 
   const getMetrics = async (params = {}, type = '') => {
@@ -399,9 +401,18 @@ const StrategyOperation = () => {
 
   const handlePeriodUnitChange = (val: string) => {
     setPeriodUnit(val);
+    setPeriod(null);
     form.setFieldsValue({
       period: null,
     });
+  };
+
+  const handlePeriodChange = (val: number | null) => {
+    setPeriod(val);
+  };
+
+  const handleAlgorithmChange = (val: string) => {
+    setAlgorithm(val);
   };
 
   const handleNodataUnitChange = (val: string) => {
@@ -566,8 +577,8 @@ const StrategyOperation = () => {
           )}
         </div>
         <div className={strategyStyle.form} ref={formContainerRef}>
-          <div className="flex gap-4">
-            <div className="flex-1 min-w-[650px] max-w-[calc(100vw-650px)]">
+          <div className="flex gap-6">
+            <div className="w-[800px] flex-shrink-0">
               <Form form={form} name="basic">
                 <Steps
                   direction="vertical"
@@ -598,6 +609,7 @@ const StrategyOperation = () => {
                           labels={labels}
                           conditions={conditions}
                           groupBy={groupBy}
+                          period={period}
                           periodUnit={periodUnit}
                           originMetricData={originMetricData}
                           monitorName={monitorName as string}
@@ -605,7 +617,9 @@ const StrategyOperation = () => {
                           onMetricChange={handleMetricChange}
                           onFiltersChange={setConditions}
                           onGroupChange={handleGroupByChange}
+                          onPeriodChange={handlePeriodChange}
                           onPeriodUnitChange={handlePeriodUnitChange}
+                          onAlgorithmChange={handleAlgorithmChange}
                           isTrap={isTrap}
                         />
                       ),
@@ -624,6 +638,10 @@ const StrategyOperation = () => {
                           noDataRecoveryUnit={noDataRecoveryUnit}
                           noDataAlertLevel={noDataAlertLevel}
                           noDataAlertName={noDataAlertName}
+                          metricUnit={
+                            metrics.find((item) => item.name === metric)?.unit ||
+                            null
+                          }
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}
                           onCalculationUnitChange={handleCalculationUnitChange}
@@ -657,7 +675,7 @@ const StrategyOperation = () => {
                 />
               </Form>
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col flex-1 min-w-[400px]">
               <VariablesTable
                 onVariableSelect={(variable: string) => {
                   const currentAlertName =
@@ -674,9 +692,9 @@ const StrategyOperation = () => {
                 metrics={metrics}
                 groupBy={groupBy}
                 conditions={conditions}
-                period={form.getFieldValue('period')}
+                period={period}
                 periodUnit={periodUnit}
-                algorithm={form.getFieldValue('algorithm')}
+                algorithm={algorithm}
                 threshold={threshold}
                 calculationUnit={calculationUnit}
                 scrollContainerRef={formContainerRef}
