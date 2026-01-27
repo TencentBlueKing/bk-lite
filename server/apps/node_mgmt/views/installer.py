@@ -1,4 +1,3 @@
-from asgiref.sync import async_to_sync
 from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 
@@ -11,7 +10,6 @@ from apps.node_mgmt.tasks.installer import (
     uninstall_controller,
     retry_controller,
 )
-from apps.node_mgmt.utils.s3 import download_file_by_s3
 
 
 class InstallerViewSet(ViewSet):
@@ -119,9 +117,7 @@ class InstallerViewSet(ViewSet):
 
     @action(detail=False, methods=["GET"], url_path="windows/download")
     def windows_download(self, request):
-        file, _ = async_to_sync(download_file_by_s3)(
-            InstallerConstants.WINDOWS_INSTALLER_S3_PATH
-        )
+        file, _ = InstallerService.download_windows_installer()
         return WebUtils.response_file(
             file, InstallerConstants.WINDOWS_INSTALLER_FILENAME
         )

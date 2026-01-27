@@ -18,6 +18,12 @@ class SnapshotRecorder:
         self.active_alerts = active_alerts
         self.metric_query_service = metric_query_service
 
+    def _get_alert_metric_instance_id(self, alert) -> str:
+        """获取告警的 metric_instance_id，兼容旧数据"""
+        if alert.metric_instance_id:
+            return alert.metric_instance_id
+        return str((alert.monitor_instance_id,))
+
     def record_snapshots_for_active_alerts(
         self, info_events=None, event_objs=None, new_alerts=None
     ):
@@ -36,23 +42,27 @@ class SnapshotRecorder:
         event_map = {}
         if event_objs:
             for event_obj in event_objs:
-                instance_id = event_obj.monitor_instance_id
-                if instance_id not in event_map:
-                    event_map[instance_id] = []
-                event_map[instance_id].append(event_obj)
+                metric_id = event_obj.metric_instance_id or str(
+                    (event_obj.monitor_instance_id,)
+                )
+                if metric_id not in event_map:
+                    event_map[metric_id] = []
+                event_map[metric_id].append(event_obj)
 
-        new_alert_instance_ids = (
-            {alert.monitor_instance_id for alert in new_alerts} if new_alerts else set()
+        new_alert_metric_ids = (
+            {self._get_alert_metric_instance_id(alert) for alert in new_alerts}
+            if new_alerts
+            else set()
         )
 
         for alert in all_active_alerts:
-            instance_id = alert.monitor_instance_id
-            is_new_alert = instance_id in new_alert_instance_ids
-            related_events = event_map.get(instance_id, [])
-            raw_data = instance_raw_data_map.get(instance_id, {})
+            metric_id = self._get_alert_metric_instance_id(alert)
+            is_new_alert = metric_id in new_alert_metric_ids
+            related_events = event_map.get(metric_id, [])
+            raw_data = instance_raw_data_map.get(metric_id, {})
 
             if not raw_data:
-                raw_data = self._query_fallback_raw_data(instance_id)
+                raw_data = self._query_fallback_raw_data(metric_id)
 
             if related_events or raw_data or is_new_alert:
                 self._update_alert_snapshot(
@@ -64,7 +74,7 @@ class SnapshotRecorder:
                 )
 
     def _build_instance_raw_data_map(self, event_objs, info_events):
-        """构建实例ID到原始数据的映射"""
+        """构建 metric_instance_id 到原始数据的映射"""
         instance_raw_data_map = {}
 
         if event_objs:
@@ -74,22 +84,28 @@ class SnapshotRecorder:
             ).select_related("event")
 
             for raw_data_obj in raw_data_objs:
-                instance_id = raw_data_obj.event.monitor_instance_id
-                instance_raw_data_map[instance_id] = raw_data_obj.data
+                event = raw_data_obj.event
+                metric_id = event.metric_instance_id or str(
+                    (event.monitor_instance_id,)
+                )
+                instance_raw_data_map[metric_id] = raw_data_obj.data
 
         if info_events:
             for event in info_events:
-                instance_id = event["instance_id"]
-                if event.get("raw_data") and instance_id not in instance_raw_data_map:
-                    instance_raw_data_map[instance_id] = event["raw_data"]
+                metric_id = event.get("metric_instance_id", "")
+                if not metric_id:
+                    monitor_id = event.get("monitor_instance_id", "")
+                    metric_id = str((monitor_id,)) if monitor_id else ""
+                if event.get("raw_data") and metric_id not in instance_raw_data_map:
+                    instance_raw_data_map[metric_id] = event["raw_data"]
 
         return instance_raw_data_map
 
-    def _query_fallback_raw_data(self, instance_id):
+    def _query_fallback_raw_data(self, metric_instance_id):
         """查询兜底原始数据（用于历史活跃告警）"""
         fallback_data = self.metric_query_service.query_raw_metrics(self.policy.period)
         for metric_info in fallback_data.get("data", {}).get("result", []):
-            metric_instance_id = str(
+            current_metric_id = str(
                 tuple(
                     [
                         metric_info["metric"].get(i)
@@ -97,7 +113,7 @@ class SnapshotRecorder:
                     ]
                 )
             )
-            if metric_instance_id == instance_id:
+            if current_metric_id == metric_instance_id:
                 return metric_info
         return {}
 
@@ -117,14 +133,15 @@ class SnapshotRecorder:
         has_new_snapshot = False
 
         if is_new_alert and created:
+            metric_id = self._get_alert_metric_instance_id(alert)
             pre_alert_snapshot = self._build_pre_alert_snapshot(
-                alert.monitor_instance_id, snapshot_time
+                metric_id, snapshot_time
             )
             if pre_alert_snapshot:
                 snapshot_obj.snapshots.append(pre_alert_snapshot)
                 has_new_snapshot = True
                 logger.info(
-                    f"Added pre-alert snapshot for alert {alert.id}, instance {alert.monitor_instance_id}"
+                    f"Added pre-alert snapshot for alert {alert.id}, metric_instance {metric_id}"
                 )
 
         if event_objs:
@@ -178,7 +195,7 @@ class SnapshotRecorder:
         else:
             logger.debug(f"No new snapshot data for alert {alert.id}, skipping save")
 
-    def _build_pre_alert_snapshot(self, instance_id, current_snapshot_time):
+    def _build_pre_alert_snapshot(self, metric_instance_id, current_snapshot_time):
         """构建告警前快照数据"""
         period_seconds = period_to_seconds(self.policy.period)
         pre_alert_time = datetime.fromtimestamp(
@@ -189,7 +206,7 @@ class SnapshotRecorder:
         if pre_alert_time < min_time:
             logger.warning(
                 f"Pre-alert time {pre_alert_time} too early for policy {self.policy.id}, "
-                f"skipping pre-alert snapshot for instance {instance_id}"
+                f"skipping pre-alert snapshot for metric_instance {metric_instance_id}"
             )
             return None
 
@@ -218,7 +235,7 @@ class SnapshotRecorder:
 
         raw_data = {}
         for metric_info in pre_alert_metrics.get("data", {}).get("result", []):
-            metric_instance_id = str(
+            current_metric_id = str(
                 tuple(
                     [
                         metric_info["metric"].get(key)
@@ -227,22 +244,19 @@ class SnapshotRecorder:
                 )
             )
 
-            if self.instances_map and metric_instance_id not in self.instances_map:
-                continue
-
-            if metric_instance_id == instance_id:
+            if current_metric_id == metric_instance_id:
                 raw_data = metric_info
                 break
 
         if not raw_data:
             logger.warning(
-                f"No pre-alert data found for policy {self.policy.id}, instance {instance_id} "
+                f"No pre-alert data found for policy {self.policy.id}, metric_instance {metric_instance_id} "
                 f"at time {pre_alert_time.isoformat()}"
             )
             return None
 
         logger.info(
-            f"Built pre-alert snapshot for policy {self.policy.id}, instance {instance_id}"
+            f"Built pre-alert snapshot for policy {self.policy.id}, metric_instance {metric_instance_id}"
         )
         return {
             "type": "pre_alert",
