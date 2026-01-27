@@ -7,6 +7,7 @@ from apps.monitor.models import (
     MonitorInstance,
     PolicyInstanceBaseline,
 )
+from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.tasks.services.policy_scan.metric_query import MetricQueryService
 from apps.monitor.tasks.services.policy_scan.alert_detector import AlertDetector
 from apps.monitor.tasks.services.policy_scan.event_alert_manager import (
@@ -165,6 +166,8 @@ class MonitorPolicyScan:
 
         alert_events, info_events, no_data_events = self._collect_events()
 
+        self._sync_baselines(alert_events, info_events)
+
         events = alert_events + no_data_events
         result = self._create_events_alerts_and_notify(events)
         if result[0] is None:
@@ -172,6 +175,32 @@ class MonitorPolicyScan:
         event_objs, new_alerts = result
 
         self._record_snapshots(info_events, event_objs, new_alerts)
+
+    def _sync_baselines(self, alert_events, info_events):
+        """同步基准表（只增不删）"""
+        if not self.policy.source or not self.instances_map:
+            return
+
+        all_events = alert_events + info_events
+        if not all_events:
+            return
+
+        metric_instances = {}
+        for event in all_events:
+            metric_instance_id = event.get("metric_instance_id", "")
+            monitor_instance_id = event.get("monitor_instance_id", "")
+
+            if not metric_instance_id or not monitor_instance_id:
+                continue
+
+            if monitor_instance_id not in self.instances_map:
+                continue
+
+            if metric_instance_id not in self.baselines_map:
+                metric_instances[metric_instance_id] = monitor_instance_id
+
+        if metric_instances:
+            PolicyBaselineService(self.policy).sync(metric_instances)
 
     def _pre_check(self):
         """前置检查"""
