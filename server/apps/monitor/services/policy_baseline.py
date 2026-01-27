@@ -8,7 +8,6 @@ from apps.monitor.models import (
     MonitorInstanceOrganization,
     PolicyInstanceBaseline,
 )
-from apps.monitor.tasks.services.policy_scan.metric_query import MetricQueryService
 
 logger = logging.getLogger("apps.monitor")
 
@@ -162,6 +161,11 @@ class PolicyBaselineService:
             self.policy.last_run_time = datetime.now(timezone.utc)
 
         try:
+            # Lazy import to avoid circular dependency
+            from apps.monitor.tasks.services.policy_scan.metric_query import (
+                MetricQueryService,
+            )
+
             metric_query_service = MetricQueryService(self.policy, instances_map)
             metric_query_service.set_monitor_obj_instance_key()
 
