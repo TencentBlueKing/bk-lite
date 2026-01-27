@@ -279,15 +279,17 @@ class AggregationProcessor:
         raw_fingerprint = fingerprint.split("|")[-1]
         now_level = result['alert_level']
         global_level = sorted(global_level)
-        critical_level = [global_level[0]]
-        normal_level = global_level[1:]
+        critical_level = [str(i) for i in [global_level[0]]]
+        normal_level = [str(i) for i in global_level[1:]]
         result["fingerprint"] = str_to_md5(raw_fingerprint)
-        if now_level in critical_level:
-            result["alert_title"] = f"{raw_fingerprint} 发生严重问题"
-            result["alert_description"] = f"影响范围：{result["alert_description"]}"
-        if now_level in normal_level:
-            result["alert_title"] = f"{raw_fingerprint} 检测到异常"
-            result["alert_description"] = f"影响范围：{result["alert_description"]}"
+        if str(now_level) in critical_level:
+            if 'EVENT-' not in raw_fingerprint:
+                result["alert_title"] = f"{raw_fingerprint} 发生严重问题"
+                result["alert_description"] = f"影响范围：{result["alert_description"]}"
+        if str(now_level) in normal_level:
+            if 'EVENT-' not in raw_fingerprint:
+                result["alert_title"] = f"{raw_fingerprint} 检测到异常"
+                result["alert_description"] = f"影响范围：{result["alert_description"]}"
             
     @staticmethod
     def _is_existing_alert(fingerprint: str) -> bool:
