@@ -66,7 +66,7 @@ subjectAltName=DNS:${NODE_ID},DNS:localhost,DNS:nats,DNS:traefik,IP:127.0.0.1,IP
 EOF
 
 openssl req -new -key "$WORK/conf/certs/proxy.key" -out "$WORK/proxy.csr" -config "$WORK/proxy.cnf" 2>/dev/null
-openssl x509 -req -in "$WORK/proxy.csr" -CA "$CA_CRT" -CAkey "$CA_KEY" -CAcreateserial \
+openssl x509 -req -in "$WORK/proxy.csr" -CA "$CA_CRT" -CAkey "$CA_KEY" -CAserial "$WORK/ca.srl" -CAcreateserial \
     -out "$WORK/conf/certs/proxy.crt" -days 365 -extensions ext -extfile "$WORK/proxy.cnf" 2>/dev/null
 cp "$CA_CRT" "$WORK/conf/certs/ca.crt"
 
