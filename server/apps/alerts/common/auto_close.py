@@ -2,20 +2,39 @@
 # @File: auto_close.py
 # @Time: 2025/7/29 17:28
 # @Author: windyzhao
+from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from apps.alerts.common.aggregation.util import WindowCalculator
 from apps.alerts.constants import AlertStatus, LogAction, LogTargetType, AlertOperate
-from apps.alerts.models import Alert, CorrelationRules, OperatorLog
+from apps.alerts.models import Alert, AlarmStrategy, OperatorLog
 from apps.alerts.utils.util import split_list
 from apps.core.logger import alert_logger as logger
+
+
+class WindowCalculator:
+    """窗口时间计算器"""
+
+    @staticmethod
+    def parse_time_str(time_str: str) -> timedelta:
+        """解析时间字符串为timedelta对象"""
+        if time_str.endswith('min'):
+            return timedelta(minutes=int(time_str[:-3]))
+        elif time_str.endswith('h'):
+            return timedelta(hours=int(time_str[:-1]))
+        elif time_str.endswith('d'):
+            return timedelta(days=int(time_str[:-1]))
+        elif time_str.endswith('s'):
+            return timedelta(seconds=int(time_str[:-1]))
+        else:
+            # 默认按分钟处理
+            return timedelta(minutes=int(time_str))
 
 
 class AlertAutoClose:
     """
     判断自动关闭告警
-    关闭时间从告警的CorrelationRules的close_time字段获取
+    关闭时间从告警的AlarmStrategy的close_minutes字段获取
     1. 获取所有没有关闭的告警
     2. 获取告警的第一个event和最后一个event的时间
     3. 判断当前时间是否超过了关闭时间
@@ -23,7 +42,7 @@ class AlertAutoClose:
 
     def __init__(self):
         self.alerts = self.get_alerts()
-        self.rule_id_to_correlation_rules = self.build_rule_mapping()
+        self.rule_id_to_strategy = self.build_rule_mapping()
         self.bulk_logs = []
         self.current_time = timezone.now()
 
@@ -36,25 +55,23 @@ class AlertAutoClose:
 
     def build_rule_mapping(self):
         """
-        建立 alert.rule_id 到 CorrelationRules 的映射关系
-        alert.rule_id -> AggregationRules.rule_id -> CorrelationRules
-        提前过滤掉不需要自动关闭的规则，减少后续处理压力
+        建立 alert.rule_id 到 AlarmStrategy 的映射关系
+        提前过滤掉不需要自动关闭的策略，减少后续处理压力
         """
         # 获取所有告警的 rule_id
         rule_ids = list(self.alerts.values_list('rule_id', flat=True).distinct())
 
-        # 通过 AggregationRules 的 rule_id 找到对应的 CorrelationRules
-        # 提前过滤掉 close_time 为空、"0min" 或其他无效值的规则
-        correlation_rules = CorrelationRules.objects.filter(
-            aggregation_rules__rule_id__in=rule_ids,
-            close_time__isnull=False,  # 过滤 close_time 为空的 和 0min 不设置
-        ).exclude(close_time__in=['0min']).prefetch_related('aggregation_rules').distinct()
+        # 查询启用了自动关闭的告警策略
+        # 过滤条件：is_active=True, auto_close=True, close_minutes > 0
+        strategies = AlarmStrategy.objects.filter(
+            id__in=rule_ids,
+            is_active=True,
+            auto_close=True,
+            close_minutes__gt=0
+        )
 
-        # 建立映射字典: rule_id -> CorrelationRules
-        rule_mapping = {}
-        for correlation_rule in correlation_rules:
-            for aggregation_rule in correlation_rule.aggregation_rules.all():
-                rule_mapping[aggregation_rule.rule_id] = correlation_rule
+        # 建立映射字典: rule_id -> AlarmStrategy
+        rule_mapping = {str(strategy.id): strategy for strategy in strategies}
 
         return rule_mapping
 
@@ -66,22 +83,23 @@ class AlertAutoClose:
         """
         return alert.first_event_time, alert.last_event_time
 
-    def should_auto_close(self, alert: Alert, rule: CorrelationRules) -> bool:
+    def should_auto_close(self, alert: Alert, strategy: AlarmStrategy) -> bool:
         """
         判断告警是否应该自动关闭
 
         Args:
             alert: 告警对象
-            rule: 关联规则对象
+            strategy: 告警策略对象
 
         Returns:
             是否应该自动关闭
         """
         try:
-            # 由于在 build_rule_mapping 中已经过滤了无效的 close_time，这里可以简化检查
+            # 由于在 build_rule_mapping 中已经过滤了无效配置，这里可以简化检查
             # 但保留基础检查作为安全措施
-            if not rule.close_time or rule.close_time.lower() == '0min':
-                logger.debug(f"告警 {alert.id} 的规则 {rule.id} 配置为不自动关闭 (close_time={rule.close_time})")
+            if not strategy.auto_close or strategy.close_minutes <= 0:
+                logger.debug(
+                    f"告警 {alert.id} 的策略 {strategy.id} 配置为不自动关闭 (auto_close={strategy.auto_close}, close_minutes={strategy.close_minutes})")
                 return False
 
             # 获取告警的事件时间
@@ -92,10 +110,8 @@ class AlertAutoClose:
                 logger.warning(f"告警 {alert.id} 缺少最后事件时间，无法判断自动关闭条件")
                 return False
 
-            # 计算自动关闭时间点
-            timedelta_close_time_minutes = WindowCalculator.parse_time_str(rule.close_time)
-
-            auto_close_time = last_event_time + timedelta_close_time_minutes
+            # 计算自动关闭时间点（close_minutes是整数分钟数）
+            auto_close_time = last_event_time + timedelta(minutes=strategy.close_minutes)
 
             # 判断是否到达自动关闭时间
             should_close = self.current_time >= auto_close_time
@@ -104,7 +120,7 @@ class AlertAutoClose:
                 logger.info(
                     f"告警 {alert.id} 满足自动关闭条件: "
                     f"最后事件时间={last_event_time}, "
-                    f"关闭时间配置={rule.close_time}分钟, "
+                    f"关闭时间配置={strategy.close_minutes}分钟, "
                     f"自动关闭时间点={auto_close_time}, "
                     f"当前时间={self.current_time}"
                 )
@@ -120,13 +136,13 @@ class AlertAutoClose:
             logger.error(f"判断告警 {alert.id} 是否应该自动关闭时发生错误: {str(e)}")
             return False
 
-    def auto_close_alert(self, alert: Alert, rule: CorrelationRules) -> bool:
+    def auto_close_alert(self, alert: Alert, strategy: AlarmStrategy) -> bool:
         """
         自动关闭告警
 
         Args:
             alert: 要关闭的告警对象
-            rule: 关联规则对象
+            strategy: 告警策略对象
 
         Returns:
             是否成功关闭
@@ -146,7 +162,7 @@ class AlertAutoClose:
                 locked_alert.updated_at = timezone.now()
                 locked_alert.operate = AlertOperate.CLOSE
                 locked_alert.status = AlertStatus.AUTO_CLOSE
-                locked_alert.save(update_fields=['status', 'updated_at'])
+                locked_alert.save(update_fields=['status', 'updated_at', 'operate'])
 
                 # 记录操作日志
                 logs = OperatorLog(
@@ -155,7 +171,7 @@ class AlertAutoClose:
                     operator="system",
                     operator_object="告警处理-自动关闭",
                     target_id=alert.alert_id,
-                    overview=f"告警自动关闭, 告警标题[{alert.title}], 触发规则[{rule.name}], 超时关闭时间[{rule.close_time}]",
+                    overview=f"告警自动关闭, 告警标题[{alert.title}], 触发策略[{strategy.name}], 超时关闭时间[{strategy.close_minutes}分钟]",
                 )
                 self.bulk_logs.append(logs)
 
@@ -185,20 +201,20 @@ class AlertAutoClose:
             logger.info("当前没有需要检查的活跃告警")
             return
 
-        # 检查有效的规则映射数量
-        if not self.rule_id_to_correlation_rules:
-            logger.info("当前没有配置有效自动关闭时间的规则，跳过处理")
+        # 检查有效的策略映射数量
+        if not self.rule_id_to_strategy:
+            logger.info("当前没有配置有效自动关闭时间的策略，跳过处理")
             return
 
         closed_count = 0
         error_count = 0
         total_alerts = self.alerts.count()
 
-        # 只处理有对应规则的告警，进一步减少处理量
-        valid_alerts = self.alerts.filter(rule_id__in=list(self.rule_id_to_correlation_rules.keys()))
+        # 只处理有对应策略的告警，进一步减少处理量
+        valid_alerts = self.alerts.filter(rule_id__in=list(self.rule_id_to_strategy.keys()))
         valid_alert_count = valid_alerts.count()
 
-        logger.info(f"开始检查 {total_alerts} 个活跃告警，其中 {valid_alert_count} 个告警有有效的自动关闭规则")
+        logger.info(f"开始检查 {total_alerts} 个活跃告警，其中 {valid_alert_count} 个告警有有效的自动关闭策略")
 
         # 分批处理，避免一次性处理太多告警导致内存或性能问题
         batch_alerts = split_list(valid_alerts, count=200)
@@ -206,11 +222,11 @@ class AlertAutoClose:
         for alert_list in batch_alerts:
             for alert in alert_list:
                 try:
-                    rule = self.rule_id_to_correlation_rules[alert.rule_id]
+                    strategy = self.rule_id_to_strategy[alert.rule_id]
                     # 判断是否应该自动关闭
-                    if self.should_auto_close(alert, rule):
+                    if self.should_auto_close(alert, strategy):
                         # 执行自动关闭
-                        if self.auto_close_alert(alert, rule):
+                        if self.auto_close_alert(alert, strategy):
                             closed_count += 1
                         else:
                             error_count += 1

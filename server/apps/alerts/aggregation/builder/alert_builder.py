@@ -2,8 +2,8 @@ from typing import Dict, List, Any, Optional
 import uuid
 from django.utils import timezone
 from django.db import transaction
-from apps.alerts.models import Alert, Event, AlarmStrategy
-from apps.alerts.constants import AlertStatus, SessionStatus
+from apps.alerts.models import Alert, Event, AlarmStrategy, Level
+from apps.alerts.constants import AlertStatus, SessionStatus, LevelType
 from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.core.logger import alert_logger as logger
 
@@ -12,6 +12,75 @@ class AlertBuilder:
     # 类级别缓存：存储Alert已关联的event_id集合，避免重复查询
     # 注意：仅在单次聚合任务中有效，不跨任务持久化
     _alert_event_cache: Dict[int, set] = {}
+    
+    # ALERT类型的有效level_id缓存（启动时加载）
+    _valid_alert_levels: Optional[set] = None
+
+    @classmethod
+    def _get_valid_alert_levels(cls) -> set:
+        """
+        获取ALERT类型的有效level_id集合
+        
+        Returns:
+            set: ALERT类型的level_id集合，如{0, 1, 2}
+        """
+        if cls._valid_alert_levels is None:
+            cls._valid_alert_levels = set(
+                Level.objects.filter(level_type=LevelType.ALERT)
+                .values_list('level_id', flat=True)
+            )
+            logger.info(f"加载ALERT类型有效级别: {sorted(cls._valid_alert_levels)}")
+        return cls._valid_alert_levels
+    
+    @classmethod
+    def _map_event_level_to_alert(cls, event_level: Any) -> str:
+        """
+        将EVENT级别映射到ALERT级别
+        
+        级别语义：数字越小越严重 (0=致命 > 1=错误 > 2=预警 > 3=提醒)
+        如果event_level超出ALERT的有效范围，映射到最接近的有效值
+        
+        Args:
+            event_level: Event的level值（可能是字符串或整数）
+            
+        Returns:
+            str: ALERT类型的有效level_id字符串
+        """
+        try:
+            level_id = int(event_level)
+        except (ValueError, TypeError):
+            logger.warning(f"无效的event_level: {event_level}, 使用默认值0(致命)")
+            return "0"
+        
+        valid_levels = cls._get_valid_alert_levels()
+        
+        if not valid_levels:
+            logger.error("未找到ALERT类型的级别配置，使用默认值0(致命)")
+            return "0"
+        
+        # 如果在有效范围内，直接返回
+        if level_id in valid_levels:
+            return str(level_id)
+        
+        # 超出范围，映射到最接近的有效值
+        sorted_levels = sorted(valid_levels)
+        
+        if level_id < sorted_levels[0]:
+            # Event比ALERT最严重的级别还要严重，保持最严重级别
+            mapped_level = sorted_levels[0]
+            logger.debug(f"Event级别{level_id}比ALERT最严重级别还严重，映射到{mapped_level}(最严重)")
+        elif level_id > sorted_levels[-1]:
+            # Event比ALERT最轻微的级别还要轻微，映射到ALERT最轻微级别
+            mapped_level = sorted_levels[-1]
+            logger.warning(
+                f"Event级别{level_id}(更轻微)超出ALERT范围，映射到{mapped_level}(ALERT最轻微级别)"
+            )
+        else:
+            # 在范围内但不存在，向更严重方向取最接近的有效值
+            mapped_level = max(lvl for lvl in sorted_levels if lvl < level_id)
+            logger.debug(f"Event级别{level_id}不存在于ALERT，向严重方向映射到{mapped_level}")
+        
+        return str(mapped_level)
 
     @staticmethod
     def create_or_update_alert(
@@ -68,10 +137,13 @@ class AlertBuilder:
         is_session_alert = window_config.is_session_window
         session_timeout_minutes = getattr(window_config, "session_timeout_minutes", 0)
 
+        # 确保level在ALERT类型的有效范围内
+        mapped_level = AlertBuilder._map_event_level_to_alert(result["alert_level"])
+        
         alert = Alert.objects.create(
             alert_id=alert_id,
             fingerprint=result["fingerprint"],
-            level=result["alert_level"],
+            level=mapped_level,
             title=result["alert_title"] or "聚合告警",
             content=result.get("alert_description") or "",
             status=AlertStatus.UNASSIGNED,
@@ -104,7 +176,8 @@ class AlertBuilder:
             strategy: AlarmStrategy,
     ) -> Alert:
         alert.last_event_time = result["last_event_time"]
-        alert.level = result["alert_level"]  # 更新为最新的最高级别
+        # 确保level在ALERT类型的有效范围内
+        alert.level = AlertBuilder._map_event_level_to_alert(result["alert_level"])
         alert.updated_at = timezone.now()
 
         if alert.is_session_alert and alert.session_status == SessionStatus.OBSERVING:

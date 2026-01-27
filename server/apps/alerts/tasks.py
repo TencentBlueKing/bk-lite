@@ -98,7 +98,41 @@ def cleanup_reminder_tasks():
         return cleaned_count
     except Exception as e:
         logger.error(f"清理提醒任务失败: {str(e)}")
-        return 0
+
+
+@shared_task
+def async_auto_assignment_for_alerts(alert_ids):
+    """
+    异步执行告警自动分配
+    
+    Args:
+        alert_ids: 告警ID列表
+        
+    Returns:
+        执行结果统计
+    """
+    if not alert_ids:
+        logger.info("无告警需要自动分配")
+        return {"total_alerts": 0, "assigned_alerts": 0}
+    
+    logger.info(f"== 开始异步自动分配告警 == 告警数量: {len(alert_ids)}")
+    
+    try:
+        from apps.alerts.common.assignment import execute_auto_assignment_for_alerts
+        
+        result = execute_auto_assignment_for_alerts(alert_ids)
+        logger.info(
+            f"== 异步自动分配完成 == "
+            f"总数={result.get('total_alerts', 0)}, "
+            f"成功={result.get('assigned_alerts', 0)}, "
+            f"失败={result.get('failed_alerts', 0)}"
+        )
+        return result
+        
+    except Exception as e:
+        import traceback
+        logger.error(f"异步自动分配失败: {traceback.format_exc()}")
+        return {"total_alerts": len(alert_ids), "assigned_alerts": 0, "error": str(e)}
 
 
 @shared_task

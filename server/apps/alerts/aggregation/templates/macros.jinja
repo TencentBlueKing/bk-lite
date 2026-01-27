@@ -35,7 +35,7 @@ CASE
   COUNT(*) as event_count,
   MIN(received_at) as first_event_time,
   MAX(received_at) as last_event_time,
-  MIN(level) as alert_level,
+  MIN(CAST(level AS INTEGER)) as alert_level,
   LIST(event_id) as event_ids,
   FIRST(title) as alert_title,
   FIRST(description) as alert_description
