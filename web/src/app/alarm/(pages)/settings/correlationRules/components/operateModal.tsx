@@ -256,17 +256,18 @@ const OperateModal: React.FC<OperateModalProps> = ({ open, currentRow, onClose, 
         <div className="flex gap-3 mb-4">
           {[
             { value: 'smart_denoise', icon: FilterOutlined, labelKey: 'noiseReduction', descKey: 'noiseReductionDesc' },
-            { value: 'missing_detection', icon: AlertOutlined, labelKey: 'missingDetection', descKey: 'missingDetectionDesc' },
+            // { value: 'missing_detection', icon: AlertOutlined, labelKey: 'missingDetection', descKey: 'missingDetectionDesc' },
           ].map(({ value, icon: Icon, labelKey, descKey }) => {
             const isSelected = strategyType === value;
             return (
               <div
                 key={value}
-                className={`relative flex-1 rounded-lg px-3 py-3 cursor-pointer transition-all duration-200 border ${
+                className={`relative rounded-lg px-3 py-3 cursor-pointer transition-all duration-200 border ${
                   isSelected
                     ? 'border-blue-400 bg-gradient-to-br from-blue-50 to-blue-50/30 shadow-md ring-1 ring-blue-200/50'
                     : 'border-gray-200 bg-white hover:border-blue-200 hover:shadow-sm'
                 }`}
+                style={{ width: 'calc(50% - 6px)' }}
                 onClick={() => setStrategyType(value as 'smart_denoise' | 'missing_detection')}
               >
                 {isSelected && (
@@ -392,7 +393,7 @@ const OperateModal: React.FC<OperateModalProps> = ({ open, currentRow, onClose, 
                           tooltip={{ formatter: (val) => `${val} ${t('settings.correlation.min')}` }} />
                       </div>
                       <InputNumber min={1} max={15} value={detectionWindow} onChange={handleWindowChange}
-                        addonAfter={t('settings.correlation.min')} style={{ width: 100 }} />
+                        addonAfter='min' style={{ width: 100 }} />
                     </div>
                   </div>
                 </div>
@@ -411,7 +412,7 @@ const OperateModal: React.FC<OperateModalProps> = ({ open, currentRow, onClose, 
                     </Tooltip>
                   </span>
                   <Form.Item name="self_healing_observation_time" className="mb-0">
-                    <InputNumber min={1} max={1440} addonAfter={t('settings.correlation.min')} style={{ width: 140 }} />
+                    <InputNumber min={1} max={1440} addonAfter='min' style={{ width: 140 }} />
                   </Form.Item>
                 </div>
               )}
@@ -429,7 +430,7 @@ const OperateModal: React.FC<OperateModalProps> = ({ open, currentRow, onClose, 
                     </Tooltip>
                   </span>
                   <Form.Item name="auto_close_time" className="mb-0">
-                    <InputNumber min={1} max={10080} addonAfter={t('settings.correlation.min')} style={{ width: 140 }} />
+                    <InputNumber min={1} max={10080} addonAfter='min' style={{ width: 140 }} />
                   </Form.Item>
                 </div>
               )}
