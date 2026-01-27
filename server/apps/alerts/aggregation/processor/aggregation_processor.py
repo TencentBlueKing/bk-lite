@@ -14,7 +14,9 @@ from apps.alerts.aggregation.query.builder import SQLBuilder
 from apps.alerts.aggregation.engine.connection import DuckDBConnection
 from apps.alerts.aggregation.builder.alert_builder import AlertBuilder
 from apps.core.logger import alert_logger as logger
-
+from apps.alerts.utils.util import str_to_md5
+from apps.alerts.models import Level
+from apps.alerts.constants import LevelType
 
 class AggregationProcessor:
     """
@@ -216,7 +218,10 @@ class AggregationProcessor:
             f"策略 {strategy.name}: 开始创建/更新告警, "
             f"结果数={len(aggregation_results)}"
         )
-
+        alert_levels = list(
+            Level.objects.filter(level_type=LevelType.ALERT)
+            .values("level_id", "level_name", "level_display_name")
+        )
         success_count = 0
         fail_count = 0
         recovered_count = 0
@@ -224,6 +229,7 @@ class AggregationProcessor:
 
         for result in aggregation_results:
             try:
+                self._normalize_fingerprint(result,alert_levels)
                 with transaction.atomic():
                     # 记录是否为新创建的告警
                     fingerprint = result.get("fingerprint")
@@ -260,11 +266,29 @@ class AggregationProcessor:
             f"策略 {strategy.name}: 告警处理完成, "
             f"成功={success_count}, 失败={fail_count}, 自动恢复={recovered_count}"
         )
-
         # 异步执行新创建告警的自动分配（不阻塞聚合流程）
         if new_alert_ids:
             self._schedule_auto_assignment(new_alert_ids)
-
+            
+    @staticmethod
+    def _normalize_fingerprint(result: Dict[str, Any], alert_levels) -> None:
+        fingerprint = result.get("fingerprint")
+        if not fingerprint:
+            return
+        global_level = [str(i['level_id']) for i in alert_levels]
+        raw_fingerprint = fingerprint.split("|")[-1]
+        now_level = result['alert_level']
+        global_level = sorted(global_level)
+        critical_level = [global_level[0]]
+        normal_level = global_level[1:]
+        result["fingerprint"] = str_to_md5(raw_fingerprint)
+        if now_level in critical_level:
+            result["alert_title"] = f"{raw_fingerprint} 发生严重问题"
+            result["alert_description"] = f"影响范围：{result["alert_description"]}"
+        if now_level in normal_level:
+            result["alert_title"] = f"{raw_fingerprint} 检测到异常"
+            result["alert_description"] = f"影响范围：{result["alert_description"]}"
+            
     @staticmethod
     def _is_existing_alert(fingerprint: str) -> bool:
         """

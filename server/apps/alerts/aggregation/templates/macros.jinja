@@ -1,7 +1,7 @@
 {# Macro: Check if all dimensions are non-null #}
 {% macro all_dimensions_present(dimensions) %}
   {%- for dim_name in dimensions -%}
-    {{ dim_name }} IS NOT NULL{{ " AND " if not loop.last else "" }}
+    {{ dim_name }} IS NOT NULL{{ " OR " if not loop.last else "" }}
   {%- endfor -%}
 {% endmacro %}
 
@@ -9,9 +9,12 @@
 {% macro effective_dimension(dimensions) %}
 CASE
     WHEN {{ all_dimensions_present(dimensions) }} THEN
-      {%- for dim_name in dimensions -%}
-        {{ " " }}COALESCE(CAST({{ dim_name }} AS VARCHAR), ''){{ " || '|' || " if not loop.last else "" }}
-      {%- endfor -%}
+      COALESCE(
+      {% for dim_name in dimensions -%}
+        NULLIF(CAST({{ dim_name }} AS VARCHAR), '')
+        {{ ", " if not loop.last else "" }}
+      {%- endfor %}
+    )
     {{ " " }}ELSE event_id
   END
 {%- endmacro %}
@@ -25,9 +28,7 @@ CASE
 
 {# Macro: Build fingerprint expression #}
 {% macro fingerprint_expr(dimensions, strategy_id) %}
-  md5(
     '{{ strategy_id }}' || '|' || {{ effective_dimension(dimensions) }}
-  )
 {% endmacro %}
 
 {# Macro: Aggregate event fields #}
@@ -38,7 +39,7 @@ CASE
   MIN(CAST(level AS INTEGER)) as alert_level,
   LIST(event_id) as event_ids,
   FIRST(title) as alert_title,
-  FIRST(description) as alert_description
+  STRING_AGG(DISTINCT CAST(resource_name AS VARCHAR), ',') as alert_description
 {% endmacro %}
 
 {# Macro: Window time filter #}
