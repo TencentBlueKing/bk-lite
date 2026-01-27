@@ -14,7 +14,7 @@ const NO_DATA_ALERT_OPTIONS = [
   { value: 'none', labelKey: 'noTriggerNoDataAlert' },
   { value: 'critical', labelKey: 'triggerCriticalAlert' },
   { value: 'error', labelKey: 'triggerErrorAlert' },
-  { value: 'warning', labelKey: 'triggerWarningAlert' },
+  { value: 'warning', labelKey: 'triggerWarningAlert' }
 ];
 
 interface AlertConditionsFormProps {
@@ -53,7 +53,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   onNoDataAlertChange,
   onNoDataAlertLevelChange,
   onNoDataAlertNameChange,
-  isTrap,
+  isTrap
 }) => {
   const { t } = useTranslation();
   const commonContext = useCommon();
@@ -87,12 +87,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       (threshold.some((item) => {
         return !item.method;
       }) ||
-        !threshold.some((item) => {
-          return !!item.value || item.value === 0;
-        }) ||
         !calculationUnit)
     ) {
-      return Promise.reject(new Error(t('monitor.events.conditionValidate')));
+      return Promise.reject(new Error(t('monitor.events.thresholdValidate')));
     }
     return Promise.resolve();
   };
@@ -145,8 +142,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   rules={[
                     {
                       required: false,
-                      message: t('common.required'),
-                    },
+                      message: t('common.required')
+                    }
                   ]}
                 >
                   <InputNumber
@@ -209,8 +206,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   rules={[
                     {
                       required: true,
-                      message: t('common.required'),
-                    },
+                      message: t('common.required')
+                    }
                   ]}
                 >
                   <Input

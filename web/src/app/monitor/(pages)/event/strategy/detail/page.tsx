@@ -150,7 +150,8 @@ const StrategyOperation = () => {
         period: 5,
         schedule: 5,
         recovery_condition: 5,
-        collect_type: pluginList[0]?.value
+        collect_type: pluginList[0]?.value,
+        algorithm: 'avg'
       };
       let _metricId = searchParams.get('metricId') || null;
       if (type === 'builtIn') {
@@ -163,6 +164,10 @@ const StrategyOperation = () => {
       // 设置无数据告警名称默认值
       const defaultNoDataAlertName = t('monitor.events.noDataAlertNameDefault');
       setNoDataAlertName(defaultNoDataAlertName);
+      // 设置汇聚方式默认值
+      setAlgorithm(initForm.algorithm);
+      // 设置无数据告警默认值为5分钟
+      setNoDataAlert(5);
       form.setFieldsValue({
         ...initForm,
         no_data_alert_name: defaultNoDataAlertName
@@ -516,7 +521,10 @@ const StrategyOperation = () => {
         params.no_data_level = noDataAlertLevel;
         params.no_data_alert_name = noDataAlertName;
       } else {
-        params.no_data_period = params.no_data_recovery_period = {};
+        const periodValue = noDataAlert
+          ? { type: nodataUnit, value: noDataAlert }
+          : {};
+        params.no_data_period = params.no_data_recovery_period = periodValue;
       }
       if (params.notice_type_id) {
         params.notice_type =
