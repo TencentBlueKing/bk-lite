@@ -497,7 +497,11 @@ export const NodeConfigForm: React.FC<any> = ({
       {nodeType === 'notification' && (
         <>
           <Form.Item name="notificationType" label={t('chatflow.notificationCategory')} initialValue="email" rules={[{ required: true }]}>
-            <Radio.Group onChange={(e) => { setNotificationType(e.target.value); loadChannels(e.target.value); }}>
+            <Radio.Group onChange={(e) => { 
+              setNotificationType(e.target.value); 
+              loadChannels(e.target.value); 
+              form.setFieldsValue({ notificationMethod: undefined });
+            }}>
               <Radio value="email">{t('chatflow.email')}</Radio>
               <Radio value="enterprise_wechat_bot">{t('chatflow.enterpriseWechatBot')}</Radio>
             </Radio.Group>
