@@ -2,6 +2,10 @@
   "common": {
     "edit": "编辑",
     "delete": "删除",
+    "pin": "置顶",
+    "unpin": "取消置顶",
+    "pinSuccess": "置顶成功",
+    "unpinSuccess": "取消置顶成功",
     "detail": "详情",
     "add": "添加",
     "set": "设置",
