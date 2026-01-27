@@ -49,6 +49,7 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
                 acc[item.category] = [];
               }
               acc[item.category].push({
+                ...item,
                 label: item.unit_name,
                 value: item.unit_id,
                 unit: item.display_unit,

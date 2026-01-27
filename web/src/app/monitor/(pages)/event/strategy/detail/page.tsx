@@ -15,13 +15,13 @@ import {
   MetricItem,
   IndexViewItem,
   ThresholdField,
-  FilterItem,
+  FilterItem
 } from '@/app/monitor/types';
 import {
   PluginItem,
   SourceFeild,
   StrategyFields,
-  ChannelItem,
+  ChannelItem
 } from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
@@ -31,7 +31,7 @@ import SelectAssets from '../selectAssets';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useUserInfoContext } from '@/context/userInfo';
 import { cloneDeep } from 'lodash';
-import BasicInfoForm from './basicInfoForm';
+import BasicInfoForm, { BasicInfoFormRef } from './basicInfoForm';
 import MetricDefinitionForm from './metricDefinitionForm';
 import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
@@ -46,7 +46,7 @@ const StrategyOperation = () => {
     getMetricsGroup,
     getMonitorMetrics,
     getMonitorPlugin,
-    getMonitorObject,
+    getMonitorObject
   } = useMonitorApi();
   const { getMonitorPolicy, getSystemChannelList } = useEventApi();
   const commonContext = useCommon();
@@ -59,6 +59,7 @@ const StrategyOperation = () => {
   const instRef = useRef<ModalRef>(null);
   const formContainerRef = useRef<HTMLDivElement>(null);
   const basicInfoRef = useRef<HTMLDivElement>(null);
+  const basicInfoFormRef = useRef<BasicInfoFormRef>(null);
   const userContext = useUserInfoContext();
   const currentGroup = useRef(userContext?.selectedGroup);
   const groupId = [currentGroup?.current?.id || ''];
@@ -71,7 +72,7 @@ const StrategyOperation = () => {
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [source, setSource] = useState<SourceFeild>({
     type: '',
-    values: [],
+    values: []
   });
   const [metric, setMetric] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
@@ -90,26 +91,28 @@ const StrategyOperation = () => {
   const [groupBy, setGroupBy] = useState<string[]>(
     getGroupIds(monitorName as string)?.default || defaultGroup
   );
+  const [period, setPeriod] = useState<number | null>(null);
+  const [algorithm, setAlgorithm] = useState<string | null>(null);
   const [formData, setFormData] = useState<StrategyFields>({
     threshold: [],
-    source: { type: '', values: [] },
+    source: { type: '', values: [] }
   });
   const [threshold, setThreshold] = useState<ThresholdField[]>([
     {
       level: 'critical',
       method: '>',
-      value: null,
+      value: null
     },
     {
       level: 'error',
       method: '>',
-      value: null,
+      value: null
     },
     {
       level: 'warning',
       method: '>',
-      value: null,
-    },
+      value: null
+    }
   ]);
   const [calculationUnit, setCalculationUnit] = useState<string | null>(null);
   const [pluginList, setPluginList] = useState<SegmentedItem[]>([]);
@@ -125,7 +128,7 @@ const StrategyOperation = () => {
         getPlugins(),
         getChannelList(),
         getObjects(),
-        detailId && getStragyDetail(),
+        detailId && getStragyDetail()
       ]).finally(() => {
         setPageLoading(false);
       });
@@ -147,7 +150,7 @@ const StrategyOperation = () => {
         period: 5,
         schedule: 5,
         recovery_condition: 5,
-        collect_type: pluginList[0]?.value,
+        collect_type: pluginList[0]?.value
       };
       let _metricId = searchParams.get('metricId') || null;
       if (type === 'builtIn') {
@@ -162,7 +165,7 @@ const StrategyOperation = () => {
       setNoDataAlertName(defaultNoDataAlertName);
       form.setFieldsValue({
         ...initForm,
-        no_data_alert_name: defaultNoDataAlertName,
+        no_data_alert_name: defaultNoDataAlertName
       });
       setMetric(_metricId);
       const instanceIdStr = searchParams.get('instanceId');
@@ -173,7 +176,7 @@ const StrategyOperation = () => {
       }
       setSource({
         type: 'instance',
-        values: instanceIds,
+        values: instanceIds
       });
     } else {
       dealDetail(formData);
@@ -198,7 +201,7 @@ const StrategyOperation = () => {
   const changeCollectType = (id: string) => {
     getMetrics({
       monitor_object_id: monitorObjId,
-      monitor_plugin_id: id,
+      monitor_plugin_id: id
     });
   };
 
@@ -209,18 +212,18 @@ const StrategyOperation = () => {
 
   const getPlugins = async () => {
     const data = await getMonitorPlugin({
-      monitor_object_id: monitorObjId,
+      monitor_object_id: monitorObjId
     });
     const plugins = data.map((item: PluginItem) => ({
       label: getCollectType(monitorName as string, item.name),
       value: item.id,
-      name: item.name,
+      name: item.name
     }));
     setPluginList(plugins);
     getMetrics(
       {
         monitor_object_id: monitorObjId,
-        monitor_plugin_id: plugins[0]?.value,
+        monitor_plugin_id: plugins[0]?.value
       },
       'init'
     );
@@ -241,7 +244,7 @@ const StrategyOperation = () => {
       no_data_recovery_period,
       calculation_unit,
       no_data_level,
-      no_data_alert_name,
+      no_data_alert_name
     } = data;
     form.setFieldsValue({
       ...data,
@@ -249,17 +252,20 @@ const StrategyOperation = () => {
       recovery_condition: recovery_condition || null,
       schedule: schedule?.value || null,
       period: period?.value || null,
-      query: query_condition?.query || null,
+      query: query_condition?.query || null
     });
     setGroupBy(group_by || []);
     feedbackThreshold(thresholdList);
     setCalculationUnit(calculation_unit || null);
+    setPeriod(period?.value || null);
+    setPeriodUnit(period?.type || 'min');
+    setAlgorithm(data.algorithm || null);
     if (source?.type) {
       setSource(source);
     } else {
       setSource({
         type: '',
-        values: [],
+        values: []
       });
     }
     setNoDataAlert(no_data_period?.value || null);
@@ -267,7 +273,6 @@ const StrategyOperation = () => {
     setNoDataRecovery(no_data_recovery_period?.value || null);
     setNoDataRecoveryUnit(no_data_recovery_period?.type || '');
     setUnit(schedule?.type || '');
-    setPeriodUnit(period?.type || '');
     setEnableAlerts(enable_alerts?.length ? enable_alerts : ['threshold']);
     // 设置无数据告警级别和名称
     if (enable_alerts?.includes('no_data') && no_data_level) {
@@ -283,7 +288,7 @@ const StrategyOperation = () => {
     // 同步更新 form 字段
     if (!no_data_alert_name) {
       form.setFieldsValue({
-        no_data_alert_name: defaultNoDataAlertName,
+        no_data_alert_name: defaultNoDataAlertName
       });
     }
   };
@@ -324,8 +329,8 @@ const StrategyOperation = () => {
       type: 'add',
       form: {
         ...source,
-        id: detailId,
-      },
+        id: detailId
+      }
     });
   };
 
@@ -338,10 +343,8 @@ const StrategyOperation = () => {
     const target = metrics.find((item) => item.name === val);
     const _labels = (target?.dimensions || []).map((item) => item.name);
     setLabels(_labels);
-    // 在新增模式下，自动设置单位为指标的默认单位
-    if (['builtIn', 'add'].includes(type)) {
-      setCalculationUnit(target?.unit || null);
-    }
+    // 自动设置告警阈值单位为指标的默认单位
+    setCalculationUnit(target?.unit || null);
   };
 
   const getMetrics = async (params = {}, type = '') => {
@@ -355,7 +358,7 @@ const StrategyOperation = () => {
           setMetrics(res[1] || []);
           const groupData = res[0].map((item: GroupInfo) => ({
             ...item,
-            child: [],
+            child: []
           }));
           metricData.forEach((metric: MetricItem) => {
             const target = groupData.find(
@@ -393,15 +396,24 @@ const StrategyOperation = () => {
   const handleUnitChange = (val: string) => {
     setUnit(val);
     form.setFieldsValue({
-      schedule: null,
+      schedule: null
     });
   };
 
   const handlePeriodUnitChange = (val: string) => {
     setPeriodUnit(val);
+    setPeriod(null);
     form.setFieldsValue({
-      period: null,
+      period: null
     });
+  };
+
+  const handlePeriodChange = (val: number | null) => {
+    setPeriod(val);
+  };
+
+  const handleAlgorithmChange = (val: string) => {
+    setAlgorithm(val);
   };
 
   const handleNodataUnitChange = (val: string) => {
@@ -463,7 +475,7 @@ const StrategyOperation = () => {
       if (isTrapPlugin) {
         params.query_condition = {
           type: 'pmq',
-          query: params.query,
+          query: params.query
         };
         params.source = {};
         params.algorithm = 'last_over_time';
@@ -472,7 +484,7 @@ const StrategyOperation = () => {
         params.query_condition = {
           type: 'metric',
           metric_id: mertricTarget?.id,
-          filter: conditions,
+          filter: conditions
         };
         params.source = source;
         params.metric_unit = mertricTarget?.unit;
@@ -484,11 +496,11 @@ const StrategyOperation = () => {
       params.monitor_object = monitorObjId;
       params.schedule = {
         type: unit,
-        value: values.schedule,
+        value: values.schedule
       };
       params.period = {
         type: periodUnit,
-        value: values.period,
+        value: values.period
       };
       // 根据无数据告警级别设置 enable_alerts 和相关参数
       const isNoDataEnabled = noDataAlertLevel && noDataAlertLevel !== 'none';
@@ -499,7 +511,7 @@ const StrategyOperation = () => {
       if (isNoDataEnabled) {
         params.no_data_recovery_period = params.no_data_period = {
           type: nodataUnit,
-          value: noDataAlert,
+          value: noDataAlert
         };
         params.no_data_level = noDataAlertLevel;
         params.no_data_alert_name = noDataAlertName;
@@ -566,8 +578,8 @@ const StrategyOperation = () => {
           )}
         </div>
         <div className={strategyStyle.form} ref={formContainerRef}>
-          <div className="flex gap-4">
-            <div className="flex-1 min-w-[650px] max-w-[calc(100vw-650px)]">
+          <div className="flex gap-6">
+            <div className="w-[800px] flex-shrink-0">
               <Form form={form} name="basic">
                 <Steps
                   direction="vertical"
@@ -577,6 +589,7 @@ const StrategyOperation = () => {
                       description: (
                         <div ref={basicInfoRef}>
                           <BasicInfoForm
+                            ref={basicInfoFormRef}
                             source={source}
                             unit={unit}
                             onOpenInstModal={openInstModal}
@@ -585,7 +598,7 @@ const StrategyOperation = () => {
                           />
                         </div>
                       ),
-                      status: 'process',
+                      status: 'process'
                     },
                     {
                       title: t('monitor.events.defineTheMetric'),
@@ -598,6 +611,7 @@ const StrategyOperation = () => {
                           labels={labels}
                           conditions={conditions}
                           groupBy={groupBy}
+                          period={period}
                           periodUnit={periodUnit}
                           originMetricData={originMetricData}
                           monitorName={monitorName as string}
@@ -605,11 +619,13 @@ const StrategyOperation = () => {
                           onMetricChange={handleMetricChange}
                           onFiltersChange={setConditions}
                           onGroupChange={handleGroupByChange}
+                          onPeriodChange={handlePeriodChange}
                           onPeriodUnitChange={handlePeriodUnitChange}
+                          onAlgorithmChange={handleAlgorithmChange}
                           isTrap={isTrap}
                         />
                       ),
-                      status: 'process',
+                      status: 'process'
                     },
                     {
                       title: t('monitor.events.alertConditions'),
@@ -624,6 +640,10 @@ const StrategyOperation = () => {
                           noDataRecoveryUnit={noDataRecoveryUnit}
                           noDataAlertLevel={noDataAlertLevel}
                           noDataAlertName={noDataAlertName}
+                          metricUnit={
+                            metrics.find((item) => item.name === metric)
+                              ?.unit || null
+                          }
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}
                           onCalculationUnitChange={handleCalculationUnitChange}
@@ -640,7 +660,7 @@ const StrategyOperation = () => {
                           isTrap={isTrap}
                         />
                       ),
-                      status: 'process',
+                      status: 'process'
                     },
                     {
                       title: t('monitor.events.configureNotifications'),
@@ -651,20 +671,22 @@ const StrategyOperation = () => {
                           onLinkToSystemManage={linkToSystemManage}
                         />
                       ),
-                      status: 'process',
-                    },
+                      status: 'process'
+                    }
                   ]}
                 />
               </Form>
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col flex-1 min-w-[400px]">
               <VariablesTable
                 onVariableSelect={(variable: string) => {
                   const currentAlertName =
                     form.getFieldValue('alert_name') || '';
                   form.setFieldsValue({
-                    alert_name: currentAlertName + variable,
+                    alert_name: currentAlertName + variable
                   });
+                  // 自动聚焦到告警名称输入框
+                  basicInfoFormRef.current?.focusAlertName();
                 }}
               />
               <MetricPreview
@@ -674,9 +696,9 @@ const StrategyOperation = () => {
                 metrics={metrics}
                 groupBy={groupBy}
                 conditions={conditions}
-                period={form.getFieldValue('period')}
+                period={period}
                 periodUnit={periodUnit}
-                algorithm={form.getFieldValue('algorithm')}
+                algorithm={algorithm}
                 threshold={threshold}
                 calculationUnit={calculationUnit}
                 scrollContainerRef={formContainerRef}

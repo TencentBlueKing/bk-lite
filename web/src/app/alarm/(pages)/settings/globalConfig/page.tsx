@@ -35,6 +35,7 @@ export default function UnallocatedNotificationConfig() {
   const [globalConfigId, setGlobalConfigId] = useState<string | number>('');
   const [updateLoading, setUpdateLoading] = useState(false);
   const [notifyOptions, setNotifyOptions] = useState<NotifyOption[]>([]);
+  const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [channelLoading, setChannelLoading] = useState(false);
   const {
     getGlobalConfig,
@@ -58,9 +59,10 @@ export default function UnallocatedNotificationConfig() {
     setChannelLoading(true);
     try {
       const data: any = await getChannelList({});
+      setChannelList(data);
       const options: NotifyOption[] = data.map((channel: ChannelItem) => ({
         label: channel.name,
-        value: channel.channel_type,
+        value: channel.id.toString(),
       }));
       setNotifyOptions(options);
     } catch (error) {
@@ -79,11 +81,24 @@ export default function UnallocatedNotificationConfig() {
       setLoading(true);
       try {
         const res: GlobalConfig = await getGlobalConfig(
-          'no_dispatch_alert_notice'
+          'no_dispatch_alert_notice',
         );
         const { notify_channel, notify_every, notify_people } = res.value;
-        form.setFieldsValue({ notify_channel, notify_every, notify_people });
-        setConfig({ notify_channel, notify_every, notify_people });
+
+        const notifyChannelIds = (notify_channel || []).map((ch: any) =>
+          ch.id.toString(),
+        );
+
+        form.setFieldsValue({
+          notify_channel: notifyChannelIds,
+          notify_every,
+          notify_people,
+        });
+        setConfig({
+          notify_channel: notifyChannelIds,
+          notify_every,
+          notify_people,
+        });
         setExpanded(res.is_activate ?? false);
         setGlobalConfigId(res.id);
       } catch (error) {
@@ -111,11 +126,16 @@ export default function UnallocatedNotificationConfig() {
     setUpdateLoading(true);
     try {
       const values = await form.validateFields();
+
+      const notifyChannels = (values.notify_channel || [])
+        .map((id: string) => channelList.find((ch) => ch.id.toString() === id))
+        .filter(Boolean);
+
       await updateGlobalConfig(globalConfigId, {
         key: 'no_dispatch_alert_notice',
         is_activate: true,
         value: {
-          notify_channel: values.notify_channel,
+          notify_channel: notifyChannels,
           notify_every: values.notify_every,
           notify_people: values.notify_people,
         },

@@ -6,8 +6,8 @@ from django.utils import timezone
 from django.db import transaction
 
 from apps.alerts.aggregation.recovery.recovery_checker import AlertRecoveryChecker
-from apps.alerts.models import AlarmStrategy, Event
-from apps.alerts.constants import EventAction, AlarmStrategyType
+from apps.alerts.models import AlarmStrategy, Event, Alert
+from apps.alerts.constants import EventAction, AlarmStrategyType, AlertStatus
 from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
 from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.alerts.aggregation.query.builder import SQLBuilder
@@ -225,16 +225,25 @@ class AggregationProcessor:
         success_count = 0
         fail_count = 0
         recovered_count = 0
+        new_alert_ids = []  # 收集新创建的告警ID
 
         for result in aggregation_results:
             try:
                 self._normalize_fingerprint(result,alert_levels)
                 with transaction.atomic():
+                    # 记录是否为新创建的告警
+                    fingerprint = result.get("fingerprint")
+                    is_new_alert = not self._is_existing_alert(fingerprint)
+
                     alert = AlertBuilder.create_or_update_alert(
                         aggregation_result=result,
                         strategy=strategy,
                         group_by_field=",".join(dimensions),
                     )
+
+                    # 如果是新创建的告警，记录ID用于后续自动分配
+                    if is_new_alert:
+                        new_alert_ids.append(alert.alert_id)
 
                     # 检查是否应该自动恢复
                     if AlertRecoveryChecker.check_and_recover_alert(alert):
@@ -257,7 +266,10 @@ class AggregationProcessor:
             f"策略 {strategy.name}: 告警处理完成, "
             f"成功={success_count}, 失败={fail_count}, 自动恢复={recovered_count}"
         )
-
+        # 异步执行新创建告警的自动分配（不阻塞聚合流程）
+        if new_alert_ids:
+            self._schedule_auto_assignment(new_alert_ids)
+            
     @staticmethod
     def _normalize_fingerprint(result: Dict[str, Any], alert_levels) -> None:
         fingerprint = result.get("fingerprint")
@@ -276,3 +288,42 @@ class AggregationProcessor:
         if now_level in normal_level:
             result["alert_title"] = f"{raw_fingerprint} 检测到异常"
             result["alert_description"] = f"影响范围：{result["alert_description"]}"
+            
+    @staticmethod
+    def _is_existing_alert(fingerprint: str) -> bool:
+        """
+        检查指定指纹的活跃告警是否已存在
+        
+        Args:
+            fingerprint: 告警指纹
+            
+        Returns:
+            bool: 存在返回True，否则返回False
+        """
+        return Alert.objects.filter(
+            fingerprint=fingerprint,
+            status__in=AlertStatus.ACTIVATE_STATUS
+        ).exists()
+
+    @staticmethod
+    def _schedule_auto_assignment(alert_ids: List[str]) -> None:
+        """
+        调度告警自动分配任务（异步）
+        
+        使用Celery异步任务，避免阻塞聚合流程
+        
+        Args:
+            alert_ids: 新创建的告警ID列表
+        """
+        try:
+            from apps.alerts.tasks import async_auto_assignment_for_alerts
+
+            logger.info(f"调度自动分配任务，告警数量: {len(alert_ids)}")
+            # 异步调用，立即返回，不阻塞聚合流程
+            async_auto_assignment_for_alerts.delay(alert_ids)
+            logger.debug(f"自动分配任务已提交到队列")
+
+        except Exception as e:  # noqa
+            import traceback
+            logger.error(f"调度自动分配任务失败: {traceback.format_exc()}")
+            # 调度失败不影响聚合主流程
