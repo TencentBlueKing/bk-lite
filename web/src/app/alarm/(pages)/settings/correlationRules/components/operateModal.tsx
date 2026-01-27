@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { useUserInfoContext } from '@/context/userInfo';
-import { QuestionCircleOutlined, CheckOutlined, HolderOutlined, FilterOutlined, AlertOutlined, DownOutlined, RightOutlined } from '@ant-design/icons';
+import { QuestionCircleOutlined, CheckOutlined, HolderOutlined, FilterOutlined, DownOutlined, RightOutlined } from '@ant-design/icons';
 import type { CorrelationRule } from '@/app/alarm/types/settings';
 import {
   Drawer,
