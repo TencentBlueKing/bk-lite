@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Progress } from 'antd';
 import { RightOutlined, CheckCircleFilled, LoadingOutlined } from '@ant-design/icons';
 import { BrowserStepProgressData, BrowserStepAction, BrowserStepsHistory } from '@/app/opspilot/types/global';
@@ -149,6 +149,7 @@ const StepDetail: React.FC<StepDetailProps> = ({ data, isExpanded }) => {
 const BrowserStepProgress: React.FC<BrowserStepProgressProps> = ({ history }) => {
   const { steps, isRunning } = history;
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   const currentStepNumber = steps.length > 0 ? steps[steps.length - 1].step_number : 0;
   const totalSteps = steps.length;
@@ -159,6 +160,15 @@ const BrowserStepProgress: React.FC<BrowserStepProgressProps> = ({ history }) =>
       setExpandedSteps(new Set([steps[steps.length - 1].step_number]));
     }
   }, [currentStepNumber]);
+  
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [steps.length, currentStepNumber]);
   
   const toggleStep = (stepNumber: number) => {
     setExpandedSteps(prev => {
@@ -238,7 +248,7 @@ const BrowserStepProgress: React.FC<BrowserStepProgressProps> = ({ history }) =>
         </div>
       </div>
       
-      <div className="max-h-[400px] overflow-y-auto pr-1">
+      <div ref={scrollContainerRef} className="max-h-[400px] overflow-y-auto pr-1">
         <div className="relative pl-4">
           <div className="absolute left-[7px] top-0 bottom-0 w-0.5 bg-[var(--color-border-1)]" />
           
