@@ -8,7 +8,7 @@ import re
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.constants import HOST_COLLECT_METRIC
-
+from apps.core.logger import cmdb_logger as logger
 
 class HostCollectMetrics(CollectBase):
     def __init__(self, inst_name, inst_id, task_id, *args, **kwargs):
@@ -246,7 +246,10 @@ class HostCollectMetrics(CollectBase):
                                 data[field] = 0 if field in [
                                     "cpu_core", "memory", "disk"] else ""
                         elif callable(key_or_func):
-                            data[field] = key_or_func(index_data, model_id=model_id)
+                            try:
+                                data[field] = key_or_func(index_data, model_id=model_id)
+                            except Exception as e:
+                                logger.error(f"数据处理转换失败 field:{field}, error:{e}")
                         else:
                             data[field] = index_data.get(key_or_func, "")
                     except (KeyError, ValueError, TypeError):
