@@ -27,7 +27,7 @@ const Information: React.FC<InformationProps> = ({
   userList,
   onClose,
   trapData,
-  eventData = [],
+  eventData = []
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -50,7 +50,7 @@ const Information: React.FC<InformationProps> = ({
       icon: monitorItem?.icon || OBJECT_DEFAULT_ICON,
       instance_id: row.monitor_instance_id,
       instance_name: row.monitor_instance_name,
-      instance_id_values: row.instance_id_values,
+      instance_id_values: row.instance_id_values
     };
     const queryString = new URLSearchParams(params).toString();
     const url = `/monitor/view/detail?${queryString}`;
@@ -61,7 +61,7 @@ const Information: React.FC<InformationProps> = ({
     setConfirmLoading(true);
     try {
       await patchMonitorAlert(row.id as string, {
-        status: 'closed',
+        status: 'closed'
       });
       message.success(t('monitor.events.successfullyClosed'));
       onClose();
@@ -96,12 +96,12 @@ const Information: React.FC<InformationProps> = ({
           <div
             className={informationStyle.level}
             style={{
-              borderLeft: `4px solid ${LEVEL_MAP[formData.level]}`,
+              borderLeft: `4px solid ${LEVEL_MAP[formData.level]}`
             }}
           >
             <span
               style={{
-                color: LEVEL_MAP[formData.level] as string,
+                color: LEVEL_MAP[formData.level] as string
               }}
             >
               {LEVEL_LIST.find((item) => item.value === formData.level)
@@ -197,8 +197,8 @@ const Information: React.FC<InformationProps> = ({
                     return (
                       <Descriptions.Item label={key} key={key}>
                         {Array.isArray(value)
-                          ? value[0]?.[1] ?? '--'
-                          : value ?? '--'}
+                          ? (value[0]?.[1] ?? '--')
+                          : (value ?? '--')}
                       </Descriptions.Item>
                     );
                   }
