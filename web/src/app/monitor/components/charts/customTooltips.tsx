@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { TooltipProps } from 'recharts';
 import customTooltipStyle from './index.module.scss';
 import { getEnumValue } from '@/app/monitor/utils/common';
-import { MetricItem } from '@/app/monitor/types';
+import { MetricItem, TableDataItem } from '@/app/monitor/types';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 
 interface CustomToolTipProps extends Omit<TooltipProps<any, string>, 'unit'> {
   unit?: string;
@@ -16,9 +17,23 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
   payload,
   label,
   metric = {},
-  visible = true,
+  unit = '',
+  visible = true
 }) => {
   const { convertToLocalizedTime } = useLocalizedTime();
+  const { findUnitNameById } = useUnitTransform();
+
+  const getValue = useCallback(
+    (item: TableDataItem) => {
+      const value = getEnumValue(metric as MetricItem, item.value);
+      if (value === '--') {
+        return value;
+      }
+      return `${value} ${findUnitNameById(unit)}`;
+    },
+    [metric, unit, getEnumValue, findUnitNameById]
+  );
+
   if (active && payload?.length && visible) {
     // 对payload进行排序
     const sortedPayload = [...payload].sort((a, b) => {
@@ -42,7 +57,7 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
                   height: '10px',
                   backgroundColor: item.color,
                   borderRadius: '50%',
-                  marginRight: '5px',
+                  marginRight: '5px'
                 }}
               ></span>
               {(item.payload.details?.[item.dataKey] || [])
@@ -52,9 +67,7 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
                     : detail.value
                 )
                 .join('-')}
-              <span className="font-[600] ml-[10px]">
-                {getEnumValue(metric as MetricItem, item.value)}
-              </span>
+              <span className="font-[600] ml-[10px]">{getValue(item)}</span>
             </div>
           </div>
         ))}
