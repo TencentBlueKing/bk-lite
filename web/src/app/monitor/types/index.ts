@@ -191,7 +191,7 @@ export interface InstanceParam {
 export interface GroupInfo {
   name?: string;
   description?: string;
-  id?: number;
+  id?: number | string;
 }
 
 export interface ObjectItem {
