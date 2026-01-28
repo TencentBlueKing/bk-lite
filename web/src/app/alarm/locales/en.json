@@ -175,7 +175,7 @@
             "observationTimeTip": "The system will wait X minutes. If the alert automatically recovers during this period, no notification will be sent.",
             "autoClose": "Auto Close",
             "autoCloseTime": "Close Time",
-            "autoCloseTip": "If the generated alert has no changes within 60 minutes, it will be automatically closed",
+            "autoCloseTip": "If the generated alert has no changes within X minutes, it will be automatically closed",
             "service": "Service",
             "location": "Location",
             "resourceName": "Resource Name",

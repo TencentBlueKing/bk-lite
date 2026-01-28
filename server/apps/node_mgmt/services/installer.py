@@ -1,6 +1,9 @@
+from asgiref.sync import async_to_sync
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.database import DatabaseConstants
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import SidecarEnv, Node
 from apps.node_mgmt.models.installer import (
@@ -10,6 +13,7 @@ from apps.node_mgmt.models.installer import (
     CollectorTask,
 )
 from apps.node_mgmt.services.install_token import InstallTokenService
+from apps.node_mgmt.utils.s3 import download_file_by_s3
 
 
 class InstallerService:
@@ -237,3 +241,9 @@ class InstallerService:
                 )
             )
         return result
+
+    @staticmethod
+    def download_windows_installer():
+        return async_to_sync(download_file_by_s3)(
+            InstallerConstants.WINDOWS_INSTALLER_S3_PATH
+        )

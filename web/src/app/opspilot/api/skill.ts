@@ -102,6 +102,14 @@ export const useSkillApi = () => {
     return post('/opspilot/model_provider_mgmt/llm/', payload);
   };
 
+  /**
+   * Toggle pin status for a skill.
+   * @param id - Skill ID.
+   */
+  const togglePin = async (id: string | number): Promise<any> => {
+    return post(`/opspilot/model_provider_mgmt/llm/${id}/toggle_pin/`);
+  };
+
   return {
     fetchInvocationLogs,
     fetchSkill,
@@ -116,5 +124,6 @@ export const useSkillApi = () => {
     fetchSkillTools,
     fetchSkillTemplates,
     createSkill,
+    togglePin,
   };
 };

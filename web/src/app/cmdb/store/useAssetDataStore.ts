@@ -14,11 +14,14 @@ interface AssetDataStore {
   query_list: FilterItem[];
   searchAttr: string;
   case_sensitive: boolean;
+  cloud_list: { proxy_id: string; proxy_name: string }[];
   add: (item: FilterItem) => FilterItem[];
   remove: (index: number) => FilterItem[];
   clear: () => FilterItem[];
   update: (index: number, item: FilterItem) => FilterItem[];
   setCaseSensitive: (value: boolean) => void;
+  setQueryList: (items: FilterItem[]) => FilterItem[];
+  setCloudList: (list: any[]) => void;
 }
 
 //创建store
@@ -27,6 +30,7 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   query_list: [], // 筛选条件列表
   searchAttr: "inst_name", // 当前搜索字段
   case_sensitive: false, // 是否精确匹配（大小写敏感）
+  cloud_list: [], // 云区域列表
 
   // 方法
   add: (item: FilterItem) => {
@@ -54,6 +58,13 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   },
   setCaseSensitive: (value: boolean) => {
     set({ case_sensitive: value });
+  },
+  setQueryList: (items: FilterItem[]) => {
+    set({ query_list: items });
+    return get().query_list;
+  },
+  setCloudList: (list: any[]) => {
+    set({ cloud_list: list });
   },
 }))
 
