@@ -39,7 +39,7 @@ import {
 } from '@/app/cmdb/types/assetManage';
 import { ExportModalRef } from '@/app/cmdb/types/assetData';
 import SearchFilter from './list/searchFilter';
-import FilterBar from './list/FilterBar';
+import FilterBar from './list/filterBar';
 import ImportInst from './list/importInst';
 import FieldModal from './list/fieldModal';
 import SelectInstance from './detail/relationships/selectInstance';
@@ -775,10 +775,13 @@ const AssetDataContent = () => {
                 key={modelId}
                 proxyOptions={proxyOptions}
                 userList={userList}
+                modelId={modelId}
                 attrList={propertyList.filter(
                   (item) => item.attr_type !== 'organization'
                 )}
                 onSearch={handleSearch}
+                onChange={handleFilterBarChange}
+                onFilterChange={handleFilterBarChange}
               />
             </Space>
             <Space>
@@ -820,6 +823,7 @@ const AssetDataContent = () => {
               attrList={propertyList}
               userList={userList}
               proxyOptions={proxyOptions}
+              modelId={modelId}
               onChange={handleFilterBarChange}
               onFilterChange={handleFilterBarChange}
             />

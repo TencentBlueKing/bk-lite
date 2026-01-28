@@ -30,13 +30,13 @@
   font-weight: 400;
   font-style: normal;
   margin-right: 4px;
-  color: #979ba5;
+  color: var(--ant-color-text-secondary);
   line-height: 36px;
 }
 
 .headerLabel {
   font-size: 12px;
-  color: #63656e;
+  color: var(--ant-color-text);
   line-height: 4vh;
 }
 
@@ -54,7 +54,7 @@
   border: 0 !important;
   display: flex;
   align-items: center;
-  background: #f7f7f7;
+  background: var(--ant-color-fill-quaternary);
   padding-right: 5px;
   font-size: 12px;
   margin: auto 0;
@@ -62,26 +62,26 @@
   transition: all 0.2s;
   height: 3vh;
   min-height: 20px;
-  color: #63656e;
+  color: var(--ant-color-text);
 
   &:hover {
     cursor: pointer;
-    background: #dcdee5;
+    background: var(--ant-color-fill-tertiary);
   }
 
   :global(.ant-tag-close-icon) {
-    color: rgb(0, 0, 0);
+    color: var(--ant-color-text);
     margin-left: 4px;
     padding: 0 2px;
 
     &:hover {
-      color: rgb(0, 0, 0);
+      color: var(--ant-color-text);
     }
   }
 }
 
 .tagLabel {
-  color: #63656e;
+  color: var(--ant-color-text);
   margin-right: 4px;
 }
 
@@ -262,4 +262,139 @@
   font-weight: 600;
   color: var(--color-text-2);
   padding-bottom: 10px;
+}
+
+.filterBarWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.saveButton {
+  padding-left: 8px;
+  flex-shrink: 0;
+  color: #3a84ff;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.savedFiltersBar {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  min-height: 32px;
+}
+
+.savedFiltersLabel {
+  display: flex;
+  align-items: center;
+  margin-right: 8px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #63656e;
+}
+
+.savedFiltersIcon {
+  font-size: 12px;
+  color: #faad14;
+  margin-right: 4px;
+}
+
+.savedFiltersTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.savedFilterTag {
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  color: #d48806;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 12px;
+  transition: all 0.2s;
+
+  &:hover {
+    background: #fff1b8;
+    border-color: #ffc53d;
+
+    .savedFilterDeleteIcon {
+      opacity: 1;
+    }
+  }
+}
+
+.savedFilterName {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.savedFilterDeleteIcon {
+  margin-left: 6px;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  color: #d48806;
+
+  &:hover {
+    color: #ad6800;
+  }
+}
+
+.moreFiltersTag {
+  background: #f5f5f5;
+  border: 1px solid #d9d9d9;
+  color: #595959;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 12px;
+
+  &:hover {
+    background: #e6e6e6;
+    border-color: #bfbfbf;
+  }
+}
+
+.moreFiltersIcon {
+  margin-left: 4px;
+  font-size: 10px;
+}
+
+.savedFilterMenuItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-width: 120px;
+  padding: 4px 0;
+
+  span {
+    flex: 1;
+    cursor: pointer;
+  }
+
+  .deleteIcon {
+    margin-left: 12px;
+    color: #999;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+
+    &:hover {
+      color: #ff4d4f;
+    }
+  }
+
+  &:hover .deleteIcon {
+    opacity: 1;
+  }
 }

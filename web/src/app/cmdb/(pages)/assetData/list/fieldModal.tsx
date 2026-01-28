@@ -27,7 +27,7 @@ import { deepClone } from '@/app/cmdb/utils/common';
 import { useInstanceApi } from '@/app/cmdb/api';
 import dayjs from 'dayjs';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import styles from './FilterBar.module.scss';
+import styles from './filterBar.module.scss';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
 interface FieldModalProps {
