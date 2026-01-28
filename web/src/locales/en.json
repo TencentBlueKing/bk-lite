@@ -2,6 +2,10 @@
   "common": {
     "edit": "Edit",
     "delete": "Delete",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "pinSuccess": "Pinned successfully",
+    "unpinSuccess": "Unpinned successfully",
     "detail": "Detail",
     "add": "Add",
     "set": "Set",

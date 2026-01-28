@@ -181,3 +181,605 @@ error:
   knowledge_base_training: 知识库正在训练，无法修改。
   knowledge_base_used_by_skills: 该知识库正在被以下技能使用，无法删除：{skill_names}
   knowledge_base_delete_related_data_failed: 删除关联数据失败，请重试
+tools:
+  kubernetes:
+    name: Kubernetes工具
+    description: |
+      Kubernetes工具模块
+
+      这个模块包含了所有Kubernetes相关的工具函数，按功能分类到不同的子模块中：
+      - resources: 基础资源查询工具
+      - diagnostics: 故障诊断和监控工具
+      - analysis: 配置分析和策略检查工具
+      - utils: 通用辅助函数
+
+      **工具分类：**
+
+      1. 基础资源查询工具：
+         - get_kubernetes_namespaces: 获取命名空间列表
+         - list_kubernetes_pods: 列出Pod
+         - list_kubernetes_nodes: 列出节点
+         - list_kubernetes_deployments: 列出部署
+         - list_kubernetes_services: 列出服务
+         - list_kubernetes_events: 列出事件
+         - get_kubernetes_resource_yaml: 获取资源YAML
+         - get_kubernetes_pod_logs: 获取Pod日志
+
+      2. 故障诊断和监控工具：
+         - get_failed_kubernetes_pods: 获取失败的Pod
+         - get_pending_kubernetes_pods: 获取Pending状态的Pod
+         - get_high_restart_kubernetes_pods: 获取高重启次数的Pod
+         - get_kubernetes_node_capacity: 获取节点容量
+         - diagnose_kubernetes_pod_issues: 诊断Pod问题
+
+      3. 配置分析和策略检查工具：
+         - check_kubernetes_resource_quotas: 检查资源配额
+         - check_kubernetes_network_policies: 检查网络策略
+         - analyze_deployment_configurations: 分析部署配置
+         - check_kubernetes_hpa_status: 检查HPA状态
+
+      4. 故障自愈工具：
+         - restart_pod: 重启Pod
+         - scale_deployment: 扩缩容部署
+         - rollback_deployment: 回滚部署
+    tools:
+      analyze_deployment_configurations:
+        description: 分析 Deployment 配置的合理性，检查每个 Deployment 的资源配置、探针设置、副本策略等，评估配置是否合理并识别潜在问题。
+      analyze_pod_restart_pattern:
+        description: 深度分析Pod重启模式，定位根本原因。分析容器退出码含义、识别CrashLoopBackOff重启模式、关联最近事件，提供针对性修复建议。
+      batch_restart_pods:
+        description: 批量重启Pod，提升运维效率。支持按label selector批量选择Pod或指定Pod名称列表。
+      check_kubernetes_daemonsets:
+        description: 检查DaemonSet状态
+      check_kubernetes_endpoints:
+        description: 检查Service的Endpoints状态，帮助诊断服务发现问题
+      check_kubernetes_hpa_status:
+        description: 检查 HPA (Horizontal Pod Autoscaler) 状态
+      check_kubernetes_ingress:
+        description: 检查Ingress配置和状态
+      check_kubernetes_jobs:
+        description: 检查Job和CronJob状态
+      check_kubernetes_network_policies:
+        description: 检查网络策略配置
+      check_kubernetes_persistent_volumes:
+        description: 检查持久化卷状态和使用情况
+      check_kubernetes_resource_quotas:
+        description: 检查资源配额使用情况
+      check_kubernetes_statefulsets:
+        description: 检查StatefulSet状态
+      check_network_policies_blocking:
+        description: 检查NetworkPolicy是否阻断流量，排查服务间网络连通性问题
+      check_oom_events:
+        description: 检查OOM（Out of Memory）事件，识别内存配置问题
+      check_pod_distribution:
+        description: 检查Pod分布情况，评估高可用性和单点故障风险
+      check_pvc_capacity:
+        description: 检查PVC（持久化存储）使用率，识别磁盘满风险
+      check_scaling_capacity:
+        description: 扩容前的容量校验，避免资源不足导致Pending
+      cleanup_failed_pods:
+        description: 批量清理失败的Pod，释放资源
+      compare_deployment_revisions:
+        description: 对比Deployment版本差异，理解变更内容
+      delete_kubernetes_resource:
+        description: 删除Kubernetes资源，支持优雅终止
+      describe_kubernetes_resource:
+        description: 描述指定的Kubernetes资源，获取资源的详细信息，类似于 kubectl describe
+      diagnose_kubernetes_pod_issues:
+        description: 深度诊断单个Pod的所有问题 - 一站式故障排查
+      diagnose_pending_pod_issues:
+        description: 诊断Pod Pending调度失败的根本原因
+      explain_kubernetes_resource:
+        description: 解释Kubernetes资源类型，提供指定资源类型的详细说明
+      find_configmap_consumers:
+        description: 查找ConfigMap的消费者，评估变更影响范围
+      get_deployment_revision_history:
+        description: 获取Deployment的版本历史，用于回滚决策
+      get_failed_kubernetes_pods:
+        description: 发现集群中所有失败或异常的Pod
+      get_high_restart_kubernetes_pods:
+        description: 发现频繁重启的不稳定Pod
+      get_kubernetes_contexts:
+        description: 获取kubectl上下文信息，显示当前可用的上下文和当前活动的上下文
+      get_kubernetes_namespaces:
+        description: 列出集群中的所有命名空间
+      get_kubernetes_node_capacity:
+        description: 查看集群节点资源容量和使用情况
+      get_kubernetes_orphaned_resources:
+        description: 发现孤立资源（无控制器管理）- 资源清理和审计
+      get_kubernetes_pod_logs:
+        description: 获取Pod容器日志 - 定位应用程序错误
+      get_kubernetes_resource_yaml:
+        description: 获取指定Kubernetes资源的YAML配置
+      get_pending_kubernetes_pods:
+        description: 发现无法调度或启动的Pending状态Pod
+      get_resource_events_timeline:
+        description: 获取资源的事件时间线，追溯问题演变过程
+      kubectl_get_all_resources:
+        description: 查看命名空间的所有主要资源 - 全景视图
+      kubectl_get_resources:
+        description: 高级资源查询 - 类似kubectl get的灵活过滤
+      kubernetes_troubleshooting_guide:
+        description: Kubernetes故障排查指导，基于关键词提供系统化的故障排查指导流程
+      list_kubernetes_api_resources:
+        description: 列出Kubernetes API资源，显示集群中可用的API资源类型
+      list_kubernetes_deployments:
+        description: 列出部署，支持命名空间过滤
+      list_kubernetes_events:
+        description: 列出事件，支持命名空间过滤
+      list_kubernetes_nodes:
+        description: 列出所有节点及其状态
+      list_kubernetes_pods:
+        description: 查看Pod列表和基本状态
+      list_kubernetes_services:
+        description: 列出服务，支持命名空间过滤
+      restart_pod:
+        description: 重启Pod，用于故障恢复或重新加载配置
+      rollback_deployment:
+        description: 回滚Deployment到指定版本，快速恢复服务
+      scale_deployment:
+        description: 扩缩容Deployment或StatefulSet - 应对流量变化
+      trace_service_chain:
+        description: 追踪Service调用链，从Service → Endpoint → Pod，定位流量异常
+      validate_probe_configuration:
+        description: 验证健康检查探针配置，确保服务可靠性
+      verify_kubernetes_connection:
+        description: 验证K8s集群连接和权限 - 故障排查第一步
+      wait_for_pod_ready:
+        description: 等待Pod就绪，验证操作成功
+  ssh:
+    name: SSH工具
+    description: |
+      SSH远程操作工具模块
+
+      这个模块提供了完整的SSH远程操作工具集，用于Agent通过SSH方式对远程设备进行管理和操作。
+      工具按功能分类到不同的子模块中：
+
+      - connection: SSH连接管理工具（连接测试、服务器信息获取）
+      - execute: 命令执行工具（执行命令、脚本、获取输出）
+      - transfer: SFTP文件传输工具（上传、下载、列目录、删除）
+      - batch: 批量操作工具（批量执行命令、批量上传、主机可用性检查）
+      - utils: 通用辅助函数
+
+      **主要特性：**
+      - 支持密码和SSH密钥认证
+      - 支持单机和批量操作
+      - 完整的文件传输功能（SFTP）
+      - 详细的错误处理和结果反馈
+      - 并发执行提高批量操作效率
+
+      **使用场景：**
+      - 远程服务器运维管理
+      - 批量配置部署
+      - 日志收集和分析
+      - 应用部署和更新
+      - 系统监控和巡检
+
+      **工具列表：**
+      - test_ssh_connection: 测试SSH连接
+      - get_ssh_server_info: 获取服务器信息
+      - ssh_execute_command: 执行SSH命令
+      - ssh_execute_script: 执行脚本
+      - upload_file: 上传文件
+      - download_file: 下载文件
+      - batch_execute_commands: 批量执行命令
+      - check_hosts_availability: 检查主机可用性
+    tools:
+      test_ssh_connection:
+        description: 测试SSH连接是否可用，验证认证凭据是否正确，检查SSH服务器是否可达
+      get_ssh_server_info:
+        description: 获取SSH服务器详细信息，包括操作系统、主机名、内核版本、系统架构等
+      ssh_execute_command:
+        description: 在远程SSH服务器上执行命令，支持设置工作目录和环境变量，返回标准输出、标准错误和退出码
+      ssh_execute_script:
+        description: 在远程服务器上执行脚本内容，无需先上传脚本文件，支持多种解释器（bash、sh、python等）
+      ssh_get_command_output:
+        description: 执行命令并只返回标准输出的简化版，适用于快速获取信息的场景
+      upload_file:
+        description: 通过SFTP上传文件到远程服务器，支持自动创建远程目录
+      download_file:
+        description: 从远程服务器下载文件，支持自动创建本地目录
+      list_remote_directory:
+        description: 列出远程目录内容，显示文件和子目录的大小、权限、修改时间等信息
+      delete_remote_file:
+        description: 删除远程服务器上的文件，此操作不可逆，请谨慎使用
+      batch_execute_commands:
+        description: 在多台服务器上批量执行相同的命令，支持并发执行，自动汇总所有服务器的结果
+      batch_upload_files:
+        description: 批量上传文件到多台服务器，支持并发上传，适用于配置分发和脚本部署
+      check_hosts_availability:
+        description: 批量检查SSH主机连接状态，快速定位连接问题，返回可用和不可用主机列表
+  current_time:
+    name: 当前时间
+    description: |
+      日期时间工具模块
+
+      这个模块包含了所有日期时间相关的工具函数：
+      - current_time: 获取当前时间工具
+
+      **工具列表：**
+      - get_current_time: 获取当前系统时间，支持指定时区
+    tools:
+      get_current_time:
+        description: 这个工具可以用于获取当前时间
+  duckduckgo:
+    name: DuckDuckGo搜索
+    description: |
+      搜索工具模块
+
+      这个模块包含了所有搜索相关的工具函数：
+      - duckduckgo: DuckDuckGo搜索工具
+
+      **主要特性：**
+      - 通过DuckDuckGo进行网络搜索
+      - 获取实时的互联网信息
+      - 支持多种搜索类型
+
+      **工具列表：**
+      - duckduckgo_search: DuckDuckGo网络搜索
+    tools:
+      duckduckgo_search:
+        description: |
+          使用 DuckDuckGo 进行搜索并返回结果。
+
+          参数：
+          - query: 搜索查询内容
+          - max_results: 最大结果数量，默认为5
+
+          返回：搜索结果列表
+  fetch:
+    name: HTTP请求
+    description: |
+      Fetch工具模块
+
+      这个模块提供了完整的Web内容获取和HTTP请求工具集，用于Agent与外部API和网页进行交互。
+      工具按功能分类到不同的子模块中：
+
+      - http: HTTP请求工具（GET、POST、PUT、DELETE、PATCH）
+      - fetch: 高级内容获取工具（HTML、JSON、纯文本、Markdown）
+      - formatter: 内容格式化工具（HTML转文本、HTML转Markdown、JSON解析）
+      - utils: 通用辅助函数
+
+      **主要特性：**
+      - 支持所有标准HTTP方法（GET、POST、PUT、DELETE、PATCH）
+      - 自动处理各种内容格式（HTML、JSON、文本、Markdown）
+      - 支持自定义请求头和参数
+      - 支持大内容分段获取
+      - 智能内容提取和清理
+      - 完整的错误处理
+
+      **使用场景：**
+      - 调用外部REST API
+      - 获取网页内容和数据
+      - 下载和解析JSON数据
+      - 提取网页文本内容
+      - 转换网页为Markdown
+      - 与第三方服务集成
+
+      **工具分类：**
+
+      1. HTTP请求工具：
+         - http_get: 发送GET请求
+         - http_post: 发送POST请求
+         - http_put: 发送PUT请求
+         - http_delete: 发送DELETE请求
+         - http_patch: 发送PATCH请求
+
+      2. 高级Fetch工具：
+         - fetch_html: 获取HTML内容
+         - fetch_txt: 获取纯文本内容
+         - fetch_markdown: 获取Markdown格式内容
+         - fetch_json: 获取和解析JSON数据
+
+      3. 格式化工具：
+         - html_to_text: HTML转纯文本
+         - html_to_markdown: HTML转Markdown
+         - parse_json: 解析JSON
+         - extract_main_content: 提取主要内容
+    tools:
+      http_get:
+        description: 发送HTTP GET请求，获取URL内容，支持自定义请求头和参数
+      http_post:
+        description: 发送HTTP POST请求，提交数据到服务器，支持JSON和表单数据
+      http_put:
+        description: 发送HTTP PUT请求，用于更新资源
+      http_delete:
+        description: 发送HTTP DELETE请求，用于删除资源
+      http_patch:
+        description: 发送HTTP PATCH请求，用于部分更新资源
+      fetch_html:
+        description: 获取URL的HTML内容，返回完整的HTML文档
+      fetch_txt:
+        description: 获取URL的纯文本内容，自动清理HTML标签
+      fetch_markdown:
+        description: 获取URL内容并转换为Markdown格式，便于阅读和处理
+      fetch_json:
+        description: 获取URL的JSON数据并自动解析
+      html_to_text:
+        description: 将HTML内容转换为纯文本，移除所有标签
+      html_to_markdown:
+        description: 将HTML内容转换为Markdown格式
+      parse_json:
+        description: 解析JSON字符串为Python对象
+      format_json:
+        description: 格式化JSON字符串，使其更易读
+      extract_main_content:
+        description: 从HTML中提取主要内容，去除导航、广告等无关元素
+  github:
+    name: GitHub
+    description: |
+      GitHub工具模块
+
+      这个模块包含了所有GitHub相关的工具函数，按功能分类到不同的子模块中：
+      - commits: Commits查询工具
+
+      **主要特性：**
+      - 查询GitHub仓库的提交记录
+      - 支持分页查询
+      - 获取提交详情
+
+      **工具列表：**
+      - get_github_commits: 获取GitHub提交记录
+      - get_github_commits_with_pagination: 分页获取GitHub提交记录
+    tools:
+      get_github_commits:
+        description: |
+          获取指定GitHub仓库在指定时间范围内的commits记录，并按用户分组处理。请根据用户指定的时间进行查询，不要猜测。
+
+          参数：
+          - owner (str): GitHub仓库所有者用户名或组织名
+          - repo (str): GitHub仓库名称
+          - since (str): 开始时间，ISO 8601格式，如: 2025-09-08T00:00:00Z
+          - until (str): 结束时间，ISO 8601格式，如: 2025-09-15T00:00:00Z
+          - token (str, optional): GitHub Personal Access Token，用于提高API限制和访问私有仓库
+
+          返回：按用户分组的commits数据JSON字符串
+      get_github_commits_with_pagination:
+        description: |
+          获取指定GitHub仓库在指定时间范围内的commits记录（支持分页），并按用户分组处理。
+
+          当commits数量较多时，GitHub API会分页返回结果。此工具可以自动处理分页，获取完整的commits数据。
+
+          参数：
+          - owner (str): GitHub仓库所有者用户名或组织名
+          - repo (str): GitHub仓库名称
+          - since (str): 开始时间，ISO 8601格式
+          - until (str): 结束时间，ISO 8601格式
+          - token (str, optional): GitHub Personal Access Token
+          - max_pages (int): 最大获取页数，默认10页
+
+          返回：按用户分组的commits数据JSON字符串
+  jenkins:
+    name: Jenkins
+    description: |
+      Jenkins工具模块
+
+      这个模块包含了所有Jenkins相关的工具函数，用于与Jenkins CI/CD服务器进行交互。
+
+      **主要特性：**
+      - 列出Jenkins任务
+      - 触发Jenkins构建
+      - 支持参数化构建
+
+      **工具列表：**
+      - list_jenkins_jobs: 列出Jenkins任务
+      - trigger_jenkins_build: 触发Jenkins构建
+    tools:
+      list_jenkins_jobs:
+        description: 列出Jenkins构建任务，这个工具用户帮助用户获取Jenkins构建任务列表，当用户构建目标不明确的时候，直接使用此工具给用户提出建议
+      trigger_jenkins_build:
+        description: |
+          这个工具用于触发Jenkins构建任务。
+          要求：
+          1. 当构建目标不明确的时候，不要执行任务，告诉与这个任务名字相似的任务
+          2. 不允许构建已禁用的任务
+  postgres:
+    name: PostgreSQL
+    description: |
+      PostgreSQL运维工具模块
+
+      这个模块包含了所有PostgreSQL相关的运维工具函数，按功能分类到不同的子模块中：
+      - resources: 基础资源查询工具（数据库/表/索引/角色等）
+      - dynamic: 动态SQL查询工具（安全的动态查询生成和执行）
+      - query: 高级查询分析工具（统计/膨胀/IO等）
+      - diagnostics: 故障诊断工具（慢查询/锁/连接/复制等）
+      - analysis: 配置分析工具（缓存/连接池/统计信息等）
+      - optimization: 性能优化建议工具（索引/配置/VACUUM等）
+      - tracing: 慢查询追踪和会话分析工具
+      - monitoring: 监控指标采集工具
+      - utils: 通用辅助函数
+
+      **工具分类：**
+
+      1. 基础资源查询工具：
+         - list_postgres_databases: 列出数据库
+         - list_postgres_tables: 列出表
+         - list_postgres_indexes: 列出索引
+         - get_table_structure: 获取表结构
+         - list_postgres_roles: 列出角色
+
+      2. 动态SQL查询工具：
+         - get_table_schema_details: 获取表的详细结构信息
+         - search_tables_by_keyword: 根据关键字搜索表和列
+         - execute_safe_select: 执行安全的SELECT查询
+         - explain_query_plan: 获取查询执行计划
+         - get_sample_data: 获取表的示例数据
+
+      3. 故障诊断工具：
+         - diagnose_slow_queries: 诊断慢查询
+         - diagnose_lock_conflicts: 诊断锁冲突
+         - diagnose_connection_issues: 诊断连接问题
+         - check_database_health: 检查数据库健康状态
+         - check_replication_lag: 检查复制延迟
+
+      4. 性能优化建议工具：
+         - check_unused_indexes: 检查未使用的索引
+         - recommend_vacuum_strategy: 推荐VACUUM策略
+         - recommend_index_optimization: 推荐索引优化
+         - check_configuration_tuning: 检查配置调优
+    tools:
+      # 基础资源查询工具
+      get_current_database_info:
+        description: 获取当前连接的数据库信息，包括数据库名称、当前用户、PostgreSQL版本和schema搜索路径
+      list_postgres_databases:
+        description: 列出所有数据库及其基本信息，包括数据库大小、连接数、所有者、编码和排序规则
+      list_postgres_tables:
+        description: 列出指定数据库中的表及其基本信息，包括表大小、索引大小、估计行数和最后分析时间
+      list_postgres_indexes:
+        description: 列出索引信息，包括索引定义、大小、扫描次数和读取行数，用于识别未使用的索引
+      list_postgres_schemas:
+        description: 列出所有Schema，显示每个schema的所有者和表数量
+      get_table_structure:
+        description: 获取表结构详情，包括所有列及类型、默认值、是否可空，以及主键、唯一约束、外键等约束信息
+      list_postgres_extensions:
+        description: 列出已安装的PostgreSQL扩展，包括扩展名称、版本、所在schema和描述
+      list_postgres_roles:
+        description: 列出数据库角色(用户)信息，包括角色属性(超级用户、创建DB、创建角色等)和连接数限制
+      get_database_config:
+        description: 获取数据库配置参数，包括shared_buffers、work_mem、max_connections等关键性能参数的当前值和来源
+      # 动态SQL查询工具
+      get_table_schema_details:
+        description: 获取表的详细结构信息，包括列信息、主键、外键、索引和列注释，用于构建动态查询和理解数据关系
+      search_tables_by_keyword:
+        description: 根据关键字搜索相关的表和列，帮助发现业务实体及其数据存储位置
+      execute_safe_select:
+        description: 执行安全的SELECT查询，支持聚合统计、多表关联等复杂查询，禁止SELECT *和敏感字段查询
+      explain_query_plan:
+        description: 获取查询的执行计划，显示预估成本、行数和是否使用索引，用于优化动态生成的查询
+      get_sample_data:
+        description: 获取表的示例数据，帮助理解数据格式和内容，必须明确指定列名且自动过滤敏感字段
+      # 高级查询分析工具
+      query_table_stats:
+        description: 查询表统计信息，包括顺序扫描和索引扫描次数、插入/更新/删除统计，识别热表
+      query_index_usage:
+        description: 查询索引使用统计，识别未使用的索引，分析索引效率，用于优化索引设计
+      query_bloat_analysis:
+        description: 分析表和索引膨胀，估算膨胀率，识别严重膨胀的表，计算可回收空间
+      query_table_io_stats:
+        description: 查询表I/O统计，包括磁盘块读取和缓存命中，计算缓存命中率，识别I/O热点
+      search_objects:
+        description: 搜索数据库对象，支持模糊搜索表/视图/函数/序列，显示对象元数据
+      # 故障诊断工具
+      diagnose_slow_queries:
+        description: 诊断慢查询，基于pg_stat_statements识别慢查询，显示查询的平均/最大执行时间和调用次数
+      diagnose_lock_conflicts:
+        description: 检测锁冲突和阻塞，显示阻塞关系和被阻塞查询的信息，用于排查死锁问题
+      diagnose_connection_issues:
+        description: 诊断连接池问题，显示当前连接数和最大连接数，按数据库/用户/状态分组统计连接
+      check_database_health:
+        description: 整体数据库健康检查，检查连接数、死锁、长事务，提供健康状态评分和问题列表
+      check_replication_lag:
+        description: 检查主从复制延迟，显示WAL发送和接收状态，识别复制槽状态
+      diagnose_autovacuum_issues:
+        description: 诊断AUTOVACUUM问题，检查表的最后VACUUM时间，识别长时间未VACUUM的表和死元组数量
+      get_failed_transactions:
+        description: 获取失败和回滚的事务信息，用于排查应用错误和分析事务失败原因
+      # 配置分析工具
+      analyze_cache_hit_ratio:
+        description: 分析缓存命中率，计算整体缓存命中率，按数据库分组统计，提供shared_buffers优化建议
+      analyze_connection_pool_usage:
+        description: 分析连接池使用情况，统计活跃/空闲连接分布，识别长时间空闲连接，按应用和用户分组
+      analyze_table_statistics:
+        description: 分析表统计信息新鲜度，检查最后ANALYZE时间，识别统计信息过时的表
+      analyze_checkpoint_activity:
+        description: 分析检查点活动，统计检查点次数和类型，显示检查点写入量，分析触发原因
+      analyze_transaction_patterns:
+        description: 分析事务模式，统计提交和回滚事务数，计算回滚率，识别高回滚率数据库
+      # 性能优化建议工具
+      check_unused_indexes:
+        description: 检查未使用的索引，识别从未使用的索引，计算可节省的空间，提供删除建议
+      recommend_vacuum_strategy:
+        description: 推荐VACUUM策略，识别需要VACUUM的表，推荐VACUUM类型和优先级
+      recommend_index_optimization:
+        description: 推荐索引优化，识别顺序扫描过多的表，建议创建索引，识别重复和冗余索引
+      check_configuration_tuning:
+        description: 检查配置参数并提供调优建议，检查关键配置参数，对比推荐值
+      # 慢查询追踪和会话分析工具
+      get_top_queries:
+        description: 获取Top查询，按多种维度排序(平均时间/总时间/调用次数/I/O)，识别性能瓶颈查询
+      trace_lock_chain:
+        description: 追踪锁等待链，构建锁等待依赖链，显示每个进程的锁信息，识别锁等待的根源进程
+      get_active_sessions:
+        description: 获取活跃会话信息，显示所有活跃会话的用户/数据库/查询/状态，按持续时间过滤
+      analyze_query_pattern:
+        description: 分析查询模式，统计SELECT/INSERT/UPDATE/DELETE比例，识别查询热点
+      # 监控指标采集工具
+      get_database_metrics:
+        description: 获取数据库级别监控指标，采集连接数、事务数、缓存命中率等核心指标
+      get_table_metrics:
+        description: 获取表级别监控指标，采集表的读写统计、索引使用情况和表膨胀维护状态
+      get_replication_metrics:
+        description: 获取复制相关监控指标，显示所有复制连接状态，监控WAL发送和接收延迟
+      get_bgwriter_stats:
+        description: 获取后台写入进程统计，显示后台写入统计，监控检查点活动，分析缓冲区分配
+      get_wal_metrics:
+        description: 获取WAL相关监控指标，显示当前WAL位置，监控WAL写入统计，检查WAL归档状态
+  python:
+    name: Python执行
+    description: |
+      Python工具模块
+
+      这个模块包含了所有Python相关的工具函数：
+      - executor: Python代码执行工具
+
+      **主要特性：**
+      - 安全执行Python代码
+      - 支持数据处理和计算
+      - 返回执行结果
+
+      **工具列表：**
+      - python_execute_direct: 直接执行Python代码
+    tools:
+      python_execute_direct:
+        description: 直接执行Python代码的工具，不允许执行高危的、恶意的代码，支持数据处理和计算并返回执行结果
+  shell:
+    name: Shell执行
+    description: |
+      Shell工具模块
+
+      在系统shell中执行命令，用于自动化运维、构建、部署、信息获取等场景。
+
+      **安全要求：**
+      1. 不允许执行高危命令（如 rm -rf /, dd, mkfs 等）
+      2. 不允许执行需要交互式输入的命令
+      3. 不允许执行可能泄露敏感信息的命令
+      4. 执行前应明确命令用途与风险
+
+      **工具列表：**
+      - shell_execute: 执行shell命令列表，按顺序执行并返回结果
+    tools:
+      shell_execute:
+        description: 在系统shell中执行命令列表，按顺序执行并返回每个命令的执行结果，包括标准输出、标准错误和退出码
+  browser_use:
+    name: 浏览器自动化
+    description: |
+      浏览器操作工具模块
+
+      这个模块提供了基于AI的浏览器自动化工具，使用Browser-Use实现智能网页交互。
+      工具可以理解自然语言任务描述，自动执行复杂的网页操作。
+
+      **主要特性：**
+      - AI驱动的智能网页操作
+      - 处理动态加载的JavaScript内容
+      - 支持点击、填表、滚动等交互
+      - 智能信息提取和识别
+      - 自动处理常见网页元素
+
+      **使用场景：**
+      - 自动化网页测试和数据采集
+      - 与需要交互的网站进行操作
+      - 从动态网页提取结构化数据
+      - 执行复杂的网页自动化流程
+
+      **依赖要求：**
+      - browser-use: AI浏览器自动化框架
+      - playwright: 浏览器驱动（browser-use的依赖）
+
+      **工具列表：**
+      - browse_website: 访问网站并执行任务
+      - extract_webpage_info: 从网页中提取特定信息
+    tools:
+      browse_website:
+        description: 访问网站并执行指定任务，支持AI驱动的智能网页操作，包括点击、填表、滚动等交互
+      extract_webpage_info:
+        description: 从网页中提取特定信息，支持动态加载的JavaScript内容，返回结构化数据

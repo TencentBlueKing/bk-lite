@@ -101,7 +101,10 @@ export interface SearchFilterProps {
   proxyOptions: { proxy_id: string; proxy_name: string }[];
   userList: UserItem[];
   showExactSearch?: boolean;
+  modelId?: string;
   onSearch: (condition: FilterItem | null, value: any) => void;
+  onChange?: (filters: FilterItem[]) => void;
+  onFilterChange?: (filters: FilterItem[]) => void;
 }
 
 export interface RelationItem extends AssoFieldType {

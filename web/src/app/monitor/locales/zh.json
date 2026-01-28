@@ -3,6 +3,7 @@
     "events": {
       "duration": "持续时间",
       "conditionValidate": "条件不能为空",
+      "thresholdValidate": "单位或条件不能为空",
       "conditionFieldValidate": "标签、条件或值不能为空",
       "strategy": "策略",
       "setGroup": "请设置生成告警的归属组织。",
@@ -397,6 +398,7 @@
       "memoryDes": "监控内存使用情况，包括内存利用率和可用内存。",
       "originalValue": "原始值",
       "metricTitle": "此收集器支持以下监控指标",
+      "searchMetricPlaceholder": "请输入指标名称",
       "step1": "步骤1",
       "portDes": "配置SNMP端口号，通常使用161端口与设备进行通信。",
       "access": "接入",

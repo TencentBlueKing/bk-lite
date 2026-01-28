@@ -74,7 +74,10 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
         setTitle(title);
         let icon = getIconUrl({ model_id: '', icn: '' });
         if (type === 'edit') {
-          icon = getIconUrl(resolvedForm);
+          icon = getIconUrl({
+            model_id: resolvedForm.model_id,
+            icn: resolvedForm.icn,
+          });
         }
         setModelIcon(icon);
         setIconId(resolvedForm.icn || 'icon-cc-host');

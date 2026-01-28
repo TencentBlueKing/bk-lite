@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Form, Select, InputNumber, Input } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ThresholdField } from '@/app/monitor/types';
@@ -14,7 +14,7 @@ const NO_DATA_ALERT_OPTIONS = [
   { value: 'none', labelKey: 'noTriggerNoDataAlert' },
   { value: 'critical', labelKey: 'triggerCriticalAlert' },
   { value: 'error', labelKey: 'triggerErrorAlert' },
-  { value: 'warning', labelKey: 'triggerWarningAlert' },
+  { value: 'warning', labelKey: 'triggerWarningAlert' }
 ];
 
 interface AlertConditionsFormProps {
@@ -27,6 +27,7 @@ interface AlertConditionsFormProps {
   noDataRecoveryUnit: string;
   noDataAlertLevel: string;
   noDataAlertName: string;
+  metricUnit: string | null;
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
   onCalculationUnitChange: (val: string) => void;
@@ -46,16 +47,38 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   nodataUnit,
   noDataAlertLevel,
   noDataAlertName,
+  metricUnit,
   onThresholdChange,
   onCalculationUnitChange,
   onNoDataAlertChange,
   onNoDataAlertLevelChange,
   onNoDataAlertNameChange,
-  isTrap,
+  isTrap
 }) => {
   const { t } = useTranslation();
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
+
+  // 根据指标单位过滤单位列表，只显示相同 system 的单位
+  const filteredUnitOptions = useMemo(() => {
+    // 排除 none 和 short 单位
+    const baseFilteredList = unitList.filter(
+      (item) => !['none', 'short'].includes(item.unit_id)
+    );
+    // 如果没有指定指标单位，返回所有基础过滤后的单位
+    if (!metricUnit) {
+      return baseFilteredList;
+    }
+    // 找到指标单位对应的 system
+    const metricUnitItem = unitList.find((item) => item.unit_id === metricUnit);
+    if (!metricUnitItem) {
+      // 如果找不到对应的单位项，返回所有基础过滤后的单位
+      return baseFilteredList;
+    }
+    const targetSystem = metricUnitItem.system;
+    // 过滤出相同 system 的单位
+    return baseFilteredList.filter((item) => item.system === targetSystem);
+  }, [unitList, metricUnit]);
 
   // 验证阈值
   const validateThreshold = async () => {
@@ -64,12 +87,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       (threshold.some((item) => {
         return !item.method;
       }) ||
-        !threshold.some((item) => {
-          return !!item.value || item.value === 0;
-        }) ||
         !calculationUnit)
     ) {
-      return Promise.reject(new Error(t('monitor.events.conditionValidate')));
+      return Promise.reject(new Error(t('monitor.events.thresholdValidate')));
     }
     return Promise.resolve();
   };
@@ -103,9 +123,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   onChange={onThresholdChange}
                   calculationUnit={calculationUnit}
                   onUnitChange={onCalculationUnitChange}
-                  unitOptions={unitList.filter(
-                    (item) => !['none', 'short'].includes(item.unit_id)
-                  )}
+                  unitOptions={filteredUnitOptions}
                 />
               </Form.Item>
 
@@ -124,8 +142,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   rules={[
                     {
                       required: false,
-                      message: t('common.required'),
-                    },
+                      message: t('common.required')
+                    }
                   ]}
                 >
                   <InputNumber
@@ -147,9 +165,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 }
               >
                 <div className="flex items-center">
-                  <span className="mr-[10px]">
-                    {t('monitor.events.noDataAlertCondition')}
-                  </span>
+                  <span>{t('monitor.events.noDataAlertCondition')}</span>
                   <InputNumber
                     className="mx-[10px]"
                     style={{ width: '80px' }}
@@ -188,8 +204,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   rules={[
                     {
                       required: true,
-                      message: t('common.required'),
-                    },
+                      message: t('common.required')
+                    }
                   ]}
                 >
                   <Input

@@ -161,13 +161,47 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
   const onConnect = useCallback(
     (params: Connection) => {
-      // 验证连接：source 必须连接到 target
       if (!params.source || !params.target) return;
-      if (params.source === params.target) return; // 不能连接到自己
+      if (params.source === params.target) return;
       
       setEdges((eds) => addEdge(params, eds));
     },
     [setEdges]
+  );
+
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, connectionState: any) => {
+      if (!connectionState.isValid && connectionState.fromNode && reactFlowInstance) {
+        const targetIsPane = (event.target as HTMLElement)?.classList?.contains('react-flow__pane');
+        if (targetIsPane) return;
+
+        const { clientX, clientY } = 'changedTouches' in event ? event.changedTouches[0] : event;
+        const targetNode = document.elementFromPoint(clientX, clientY)?.closest('.react-flow__node');
+        
+        if (targetNode) {
+          const targetNodeId = targetNode.getAttribute('data-id');
+          const sourceNodeId = connectionState.fromNode.id;
+          
+          if (targetNodeId && targetNodeId !== sourceNodeId) {
+            const targetNodeData = nodes.find(n => n.id === targetNodeId);
+            const noInputTypes = ['celery', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'];
+            const nodeType = targetNodeData?.data?.type as string;
+            const hasInputHandle = nodeType && !noInputTypes.includes(nodeType);
+            
+            if (hasInputHandle) {
+              const newEdge: Connection = {
+                source: sourceNodeId,
+                target: targetNodeId,
+                sourceHandle: connectionState.fromHandle?.id || null,
+                targetHandle: null,
+              };
+              setEdges((eds) => addEdge(newEdge, eds));
+            }
+          }
+        }
+      }
+    },
+    [reactFlowInstance, nodes, setEdges]
   );
 
   const onSelectionChange = useCallback((params: { nodes: any[]; edges: any[] }) => {
@@ -280,6 +314,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onConnectEnd={onConnectEnd}
             onInit={onInit}
             onDrop={(e) => onDrop(e, reactFlowWrapper)}
             onDragOver={onDragOver}
@@ -297,12 +332,8 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
             multiSelectionKeyCode={null}
             connectionMode={ConnectionMode.Strict}
             isValidConnection={(connection) => {
-              // 确保 source 和 target 存在且不同
               if (!connection.source || !connection.target) return false;
               if (connection.source === connection.target) return false;
-              
-              // 重要：sourceHandle 必须是 source 类型，targetHandle 必须是 target 类型
-              // 这通过 Handle 的 type 属性自动处理
               return true;
             }}
           >

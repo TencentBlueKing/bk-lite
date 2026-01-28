@@ -65,8 +65,6 @@ class EventModelSerializer(serializers.ModelSerializer):
             "end_time": {"read_only": True},
             "labels": {"write_only": True},
             # "raw_data": {"write_only": True},
-            "search_vector": {"write_only": True},
-            # "labels": {"write_only": True},
         }
 
     @staticmethod
@@ -105,14 +103,13 @@ class AlertModelSerializer(serializers.ModelSerializer):
             self.alert_notify_result_map = {}
 
     class Meta:
-        model = Alert.objects.exclude(session_status__in=SessionStatus.NO_CONFIRMED)
+        model = Alert
         exclude = ["events"]
         extra_kwargs = {
             # "events": {"write_only": True},  # events 字段只读
             "created_at": {"read_only": True},
             "updated_at": {"read_only": True},
             "operator": {"write_only": True},
-            "search_vector": {"write_only": True},
             "labels": {"write_only": True},
         }
 

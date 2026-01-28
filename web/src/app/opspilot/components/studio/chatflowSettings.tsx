@@ -214,7 +214,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
                 <Collapse
                   size="small"
                   ghost
-                  defaultActiveKey={['triggers', 'agents', 'logic', 'actions']}
+                  defaultActiveKey={['triggers', 'applications', 'agents', 'logic', 'actions']}
                   expandIcon={({ isActive }) => <CaretRightOutlined rotate={isActive ? 90 : 0} />}
                 >
                   {nodeCategories.map((category) => (
