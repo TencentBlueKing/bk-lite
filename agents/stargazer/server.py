@@ -4,6 +4,7 @@ from core.config import YamlConfig
 from dotenv import load_dotenv
 from core.nats import initialize_nats
 from core.task_queue import initialize_task_queue
+import os
 
 load_dotenv(".env")
 
@@ -11,8 +12,9 @@ yml_config = YamlConfig(path="./config.yml")
 app = Sanic("Stargazer", config=yml_config)
 app.blueprint(api)
 
-# 初始化 NATS
-nats = initialize_nats(app, service_name="stargazer")
+cloud_region_id = os.getenv("CLOUD_REGION_ID")
+service_name = f"{cloud_region_id}_stargazer" if cloud_region_id else "stargazer"
+nats = initialize_nats(app, service_name=service_name)
 
 # 初始化任务队列
 task_queue = initialize_task_queue(app)
