@@ -12,7 +12,8 @@
 }
 
 .chart {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     height: 100%;
     position: relative;
     background: var(--color-bg-1);
@@ -29,7 +30,10 @@
 }
 
 .filterArea {
+    flex-shrink: 0;
+    // 兼容ie浏览器 (不支持clamp)
     width: 150px;
+    width: clamp(120px, 20%, 200px);
     margin-left: 10px;
     background: var(--color-bg-1);
 
