@@ -12,8 +12,8 @@ yml_config = YamlConfig(path="./config.yml")
 app = Sanic("Stargazer", config=yml_config)
 app.blueprint(api)
 
-cloud_region_id = os.getenv("CLOUD_REGION_ID")
-service_name = f"{cloud_region_id}_stargazer" if cloud_region_id else "stargazer"
+nats_instance_id = os.getenv("NATS_INSTANCE_ID", "default")
+service_name = f"{nats_instance_id}_stargazer"
 nats = initialize_nats(app, service_name=service_name)
 
 # 初始化任务队列

@@ -9,7 +9,7 @@ HEALTH_CHECK_TIMEOUT = 10
 
 def check_stargazer_health(cloud_region):
     try:
-        instance_id = f"{cloud_region.id}_stargazer"
+        instance_id = f"{cloud_region.name}_stargazer"
         stargazer = Stargazer(instance_id)
         result = stargazer.health_check(timeout=HEALTH_CHECK_TIMEOUT)
 

@@ -72,8 +72,8 @@ class RegionService:
             "api_token": api_token,
             "redis_password": redis_password,
             "proxy_ip": proxy_ip,
-            "nats_monitor_username": env_vars.get("NATS_USERNAME"),
-            "nats_monitor_password": env_vars.get("NATS_PASSWORD"),
+            "nats_admin_username": env_vars.get("NATS_ADMIN_USERNAME"),
+            "nats_admin_password": env_vars.get("NATS_ADMIN_PASSWORD"),
             "traefik_web_port": env_vars.get("TRAEFIK_WEB_PORT", "443"),
         }
 
