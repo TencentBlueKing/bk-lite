@@ -20,7 +20,6 @@ import { RASA_MENUS } from '@/app/mlops/constants'
 
 
 const Detail = () => {
-  console.log('[Detail Page] Component render');
   
   const { t } = useTranslation();
   const router = useRouter();
@@ -39,12 +38,6 @@ const Detail = () => {
     menu: searchParams.get('menu') || '',
   }), [searchParams]);
 
-  console.log('[Detail Page] URL params:', {
-    folder_id,
-    folder_name,
-    activeTap,
-    menu
-  });
 
   const datasetInfo = `folder_id=${folder_id}&folder_name=${folder_name}&description=${description}&activeTap=${activeTap}`;
 
@@ -69,7 +62,6 @@ const Detail = () => {
   }, [activeTap]);
 
   const renderPage: Record<string, React.ReactNode> = useMemo(() => {
-    console.log('[Detail Page] renderPage useMemo recalculating, activeTap:', activeTap);
     return {
       anomaly_detection: <AnomalyDetail />,
       rasa: <RasaDetail />,
@@ -88,8 +80,6 @@ const Detail = () => {
   }, [menu]);
 
   const backToList = () => router.push(`/mlops/manage/list`);
-
-  console.log('[Detail Page] About to render, activeTap:', activeTap, 'component exists:', !!renderPage[activeTap]);
 
   return (
     <>

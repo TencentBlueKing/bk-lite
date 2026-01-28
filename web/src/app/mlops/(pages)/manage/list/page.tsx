@@ -125,13 +125,6 @@ const DatasetManagePage = () => {
       content: (
         <div>
           <p>{t('datasets.delDatasetInfo')}</p>
-          <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded">
-            <p className="text-orange-600 font-medium mb-2">⚠️ {t('mlops-common.warning')}</p>
-            <ul className="text-sm text-gray-700 space-y-1 ml-4">
-              <li>• {t('datasets.delWarning1')}</li>
-              <li>• {t('datasets.delWarning2')}</li>
-            </ul>
-          </div>
         </div>
       ),
       okText: t('common.confirm'),

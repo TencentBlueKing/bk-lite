@@ -1,3 +1,4 @@
+"use client";
 import OperateModal from '@/components/operate-modal';
 import { useState, useImperativeHandle, forwardRef, useRef } from 'react';
 import { useTranslation } from '@/utils/i18n';
@@ -74,57 +75,57 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   }));
 
   // 验证图片文件名格式（只允许英文、数字、下划线，长度1-64）
-  const validateImageFileName = (fileName: string): { 
-    valid: boolean; 
-    reason?: string 
+  const validateImageFileName = (fileName: string): {
+    valid: boolean;
+    reason?: string
   } => {
     if (!fileName || fileName.trim() === '') {
-      return { valid: false, reason: '文件名不能为空' };
+      return { valid: false, reason: t('datasets.fileNameEmpty') };
     }
-    
+
     // 取最后一个点分割文件名和扩展名
     const lastDotIndex = fileName.lastIndexOf('.');
-    
+
     if (lastDotIndex === -1) {
-      return { 
-        valid: false, 
-        reason: '文件名必须包含扩展名' 
+      return {
+        valid: false,
+        reason: t('datasets.fileNameMustHaveExtension')
       };
     }
-    
+
     if (lastDotIndex === 0) {
-      return { 
-        valid: false, 
-        reason: '文件名不能为空' 
+      return {
+        valid: false,
+        reason: t('datasets.fileNameEmpty')
       };
     }
-    
+
     const mainName = fileName.substring(0, lastDotIndex);
-    
+
     // 长度限制：1-64个字符
     if (mainName.length < 1) {
-      return { 
-        valid: false, 
-        reason: '文件名不能为空' 
+      return {
+        valid: false,
+        reason: t('datasets.fileNameEmpty')
       };
     }
-    
+
     if (mainName.length > 64) {
-      return { 
-        valid: false, 
-        reason: '文件名过长（最多64个字符）' 
+      return {
+        valid: false,
+        reason: t('datasets.fileNameTooLong')
       };
     }
-    
+
     // 只允许英文字母、数字、下划线
     const validNamePattern = /^[a-zA-Z0-9_]+$/;
     if (!validNamePattern.test(mainName)) {
-      return { 
-        valid: false, 
-        reason: '文件名只能包含英文字母、数字和下划线' 
+      return {
+        valid: false,
+        reason: t('datasets.fileNameInvalidChars')
       };
     }
-    
+
     return { valid: true };
   };
 
@@ -140,27 +141,37 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     maxCount: config?.maxCount || 1,
     fileList: fileList,
     onChange: handleChange,
-    beforeUpload: (file) => {
-      if (!config) return false;
+    customRequest: ({ onSuccess }) => {
+      // 阻止自动上传，只做文件收集
+      // 实际上传会在用户点击"确认"按钮时在 handleSubmit 中进行
+      setTimeout(() => {
+        onSuccess?.("ok");
+      }, 0);
+    },
+    beforeUpload: async (file) => {
+      if (!config) return Upload.LIST_IGNORE;
 
       if (config.fileType === 'csv') {
         const isCSV = file.type === "text/csv" || file.name.endsWith('.csv');
         if (!isCSV) {
           message.warning(t('datasets.uploadWarn'));
+          return Upload.LIST_IGNORE;
         }
-        return isCSV;
+        return true;
       } else if (config.fileType === 'txt') {
         const isTXT = file.type === "text/plain" || file.name.endsWith('.txt');
         if (!isTXT) {
           message.warning(t('datasets.uploadTxtWarn'));
+          return Upload.LIST_IGNORE;
         }
-        return isTXT;
+        return true;
       } else if (config.fileType === 'image') {
         const isLt2M = file.size / 1024 / 1024 < 2;
         if (!isLt2M) {
           message.error(t('datasets.over2MB'));
+          return Upload.LIST_IGNORE;
         }
-        return isLt2M || Upload.LIST_IGNORE;
+        return true;
       }
       return true;
     },
@@ -202,14 +213,14 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   const buildFormDataForImages = async (files: UploadFile[], name: string): Promise<FormData> => {
     // 创建ZIP实例
     const zip = new JSZip();
-    
+
     // 将所有图片添加到ZIP（扁平化结构）
     files.forEach((file) => {
       if (file.originFileObj) {
         zip.file(file.name, file.originFileObj);
       }
     });
-    
+
     // 生成ZIP Blob
     const zipBlob = await zip.generateAsync({
       type: 'blob',
@@ -218,7 +229,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
         level: 6  // 压缩级别 1-9
       }
     });
-    
+
     // 构建FormData
     const params = new FormData();
     params.append('dataset', formData?.dataset_id || '');
@@ -227,7 +238,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     Object.entries(selectTags).forEach(([key, val]) => {
       params.append(key, String(val));
     });
-    
+
     return params;
   };
 
@@ -249,21 +260,21 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   const handleSubmit = async () => {
     const validatedFiles = validateFileUpload();
     if (!validatedFiles?.length) return;
-    
+
     setConfirmLoading(true);
 
     try {
       // 图片文件名格式验证
       if (IMAGE_TYPES.includes(activeType as DatasetType)) {
         const invalidFiles: string[] = [];
-        
+
         validatedFiles.forEach(file => {
           const { valid, reason } = validateImageFileName(file.name);
           if (!valid && reason) {
             invalidFiles.push(`${file.name}: ${reason}`);
           }
         });
-        
+
         if (invalidFiles.length > 0) {
           message.error({
             content: (

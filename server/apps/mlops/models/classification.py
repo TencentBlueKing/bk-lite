@@ -149,6 +149,7 @@ class ClassificationDatasetRelease(MaintainerInfo, TimeInfo):
         max_length=20,
         choices=[
             ("pending", "待发布"),
+            ("processing", "发布中"),
             ("published", "已发布"),
             ("failed", "发布失败"),
             ("archived", "归档"),

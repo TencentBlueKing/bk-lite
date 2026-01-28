@@ -13,6 +13,7 @@ from apps.mlops.models.object_detection import (
     ObjectDetectionDatasetRelease,
     ObjectDetectionTrainData,
     ObjectDetectionTrainJob,
+    ObjectDetectionServing,
 )
 
 
@@ -128,3 +129,112 @@ def cleanup_train_job_config_file(sender, instance, **kwargs):
             )
 
     transaction.on_commit(delete_files)
+
+
+# ==================== MLflow 和 Docker 资源清理 ====================
+
+from apps.mlops.utils import mlflow_service
+from apps.mlops.utils.webhook_client import WebhookClient, WebhookError
+
+
+@receiver(
+    post_delete,
+    sender=ObjectDetectionTrainJob,
+    dispatch_uid="cleanup_od_mlflow_experiment",
+)
+def cleanup_mlflow_experiment(sender, instance, **kwargs):
+    """
+    清理 MLflow 实验和模型
+
+    在 ObjectDetectionTrainJob 删除后触发，删除关联的 MLflow 实验、运行和注册模型
+    """
+    logger.info(
+        f"[Signal] post_delete 触发: ObjectDetectionTrainJob (MLflow清理), "
+        f"train_job_id={instance.id}, algorithm={instance.algorithm}"
+    )
+
+    def delete_mlflow_resources():
+        try:
+            # 构造实验和模型名称（与创建时一致）
+            experiment_name = mlflow_service.build_experiment_name(
+                prefix="ObjectDetection",
+                algorithm=instance.algorithm,
+                train_job_id=instance.id,
+            )
+            model_name = mlflow_service.build_model_name(
+                prefix="ObjectDetection",
+                algorithm=instance.algorithm,
+                train_job_id=instance.id,
+            )
+
+            # 删除 MLflow 资源
+            mlflow_service.delete_experiment_and_model(
+                experiment_name=experiment_name, model_name=model_name
+            )
+
+            logger.info(
+                f"成功删除 MLflow 资源: experiment={experiment_name}, model={model_name}, "
+                f"train_job_id={instance.id}"
+            )
+
+        except Exception as e:
+            # 不阻断删除流程，仅记录错误
+            logger.error(
+                f"删除 MLflow 资源失败 (不影响数据库删除): {str(e)}, "
+                f"train_job_id={instance.id}, algorithm={instance.algorithm}",
+                exc_info=True,
+            )
+
+    transaction.on_commit(delete_mlflow_resources)
+
+
+@receiver(
+    post_delete,
+    sender=ObjectDetectionServing,
+    dispatch_uid="cleanup_od_docker_container",
+)
+def cleanup_docker_container(sender, instance, **kwargs):
+    """
+    清理 Serving 服务的 Docker 容器
+
+    在 ObjectDetectionServing 删除后触发，停止并删除关联的 Docker 容器
+    """
+    logger.info(
+        f"[Signal] post_delete 触发: ObjectDetectionServing (容器清理), "
+        f"serving_id={instance.id}, port={instance.port}"
+    )
+
+    def delete_container():
+        try:
+            # 构造容器 ID（与创建时一致）
+            container_id = f"ObjectDetection_Serving_{instance.id}"
+
+            # 调用 webhookd API 删除容器
+            result = WebhookClient.remove(container_id)
+
+            logger.info(
+                f"成功删除 Docker 容器: container_id={container_id}, "
+                f"serving_id={instance.id}, result={result}"
+            )
+
+        except WebhookError as e:
+            # 容器可能已不存在（手动删除、系统重启等），记录警告
+            if "not found" in str(e).lower() or "does not exist" in str(e).lower():
+                logger.warning(
+                    f"容器已不存在，跳过删除: container_id=ObjectDetection_Serving_{instance.id}, "
+                    f"serving_id={instance.id}"
+                )
+            else:
+                logger.error(
+                    f"删除 Docker 容器失败 (不影响数据库删除): {str(e)}, "
+                    f"serving_id={instance.id}",
+                    exc_info=True,
+                )
+        except Exception as e:
+            logger.error(
+                f"删除 Docker 容器失败 (不影响数据库删除): {str(e)}, "
+                f"serving_id={instance.id}",
+                exc_info=True,
+            )
+
+    transaction.on_commit(delete_container)

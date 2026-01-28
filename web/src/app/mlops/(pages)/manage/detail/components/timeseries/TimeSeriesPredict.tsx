@@ -123,6 +123,10 @@ const TimeSeriesPredict = () => {
     { label: t(`datasets.test`), value: 'is_test_data' },
   ];
 
+  useEffect(() => {
+    getDataset();
+  }, [pagination.current, pagination.pageSize]);
+
   const onChange = (checkedValues: string[]) => {
     setSelectedTags(checkedValues);
   };
@@ -145,7 +149,7 @@ const TimeSeriesPredict = () => {
         page: pagination.current,
         page_size: pagination.pageSize
       });
-      
+
       const _tableData = items?.map((item: any) => {
         return {
           id: item?.id,
@@ -171,11 +175,7 @@ const TimeSeriesPredict = () => {
     } finally {
       setLoading(false);
     }
-  }, [folder_id, getTrainDataByDataset, pagination.current, pagination.pageSize]);
-
-  useEffect(() => {
-    getDataset();
-  }, [getDataset]);
+  }, [t, searchParams]);
 
   const onUpload = () => {
     const data = {
@@ -269,7 +269,7 @@ const TimeSeriesPredict = () => {
           </PermissionWrapper>
         </div>
       </div>
-      
+
       <div className="flex-1 relative">
         <div className='absolute w-full'>
           <CustomTable
@@ -284,7 +284,7 @@ const TimeSeriesPredict = () => {
           />
         </div>
       </div>
-      
+
       <UploadModal ref={modalRef} onSuccess={() => getDataset()} />
       <OperateModal
         open={modalOpen}

@@ -18,6 +18,157 @@ from collections import defaultdict
 from apps.core.logger import mlops_logger as logger
 
 
+def prepare_class_mappings(
+    train_meta: dict, val_meta: dict, test_meta: dict | None = None
+):
+    """
+    准备全局classes和各split的映射表
+
+    新策略：从 metadata.classes 合并三个数据集的完整类别列表，构建恒等映射
+
+    设计理念：
+    1. 保留完整类别空间，支持预训练模型权重直接加载和微调
+    2. 合并三个数据集的 classes，优先使用 train 的类别名称
+    3. 构建恒等映射 {0→0, 1→1, ..., N→N}，保持原始 class_id 不变
+    4. 检测类别名称冲突（同一 class_id 对应不同名称），优先保留 train 的定义
+
+    Args:
+        train_meta: train数据的metadata，必须包含"classes"字段
+        val_meta: validation数据的metadata，必须包含"classes"字段
+        test_meta: test数据的metadata（可选），如果有则必须包含"classes"字段
+
+    Returns:
+        tuple: (global_classes, train_mapping, val_mapping, test_mapping, warnings)
+            - global_classes: List[str] - 全局类别列表（合并三个数据集的完整 classes）
+            - train_mapping: Dict[int, int] - 恒等映射 {i: i}
+            - val_mapping: Dict[int, int] - 恒等映射 {i: i}
+            - test_mapping: Dict[int, int] - 恒等映射 {i: i}
+            - warnings: Dict - 包含类别冲突信息（如有）
+
+    Raises:
+        ValueError: 当metadata格式不正确时
+    """
+    # 1. 验证 metadata 格式
+    if not train_meta or not isinstance(train_meta, dict):
+        raise ValueError("train_meta必须是非空字典")
+
+    train_classes = train_meta.get("classes")
+    if not train_classes or not isinstance(train_classes, list):
+        raise ValueError("train_meta.classes必须是非空列表")
+
+    if not val_meta or not isinstance(val_meta, dict):
+        raise ValueError("val_meta必须是非空字典")
+
+    val_classes = val_meta.get("classes")
+    if not val_classes or not isinstance(val_classes, list):
+        raise ValueError("val_meta.classes必须是非空列表")
+
+    test_classes = []
+    if test_meta:
+        if not isinstance(test_meta, dict):
+            raise ValueError("test_meta必须是字典")
+        test_classes = test_meta.get("classes", [])
+        if not isinstance(test_classes, list):
+            raise ValueError("test_meta.classes必须是列表")
+
+    # 2. 合并三个数据集的 classes，构建全局类别字典
+    # 策略：以 train 为基准，补充 val 和 test 的类别
+    # 冲突处理：同一 class_id 对应不同名称时，优先保留 train 的定义
+    global_classes_dict = {}  # {class_id: class_name}
+    conflicts = []  # 记录类别名称冲突
+
+    # 优先处理 train 的类别
+    for class_id, class_name in enumerate(train_classes):
+        global_classes_dict[class_id] = class_name
+
+    # 处理 val 的类别
+    for class_id, class_name in enumerate(val_classes):
+        if class_id in global_classes_dict:
+            # 检测冲突：同一 class_id 但名称不同
+            if global_classes_dict[class_id] != class_name:
+                conflicts.append(
+                    {
+                        "class_id": class_id,
+                        "train_name": global_classes_dict[class_id],
+                        "val_name": class_name,
+                    }
+                )
+                logger.warning(
+                    f"类别名称冲突: class_id={class_id}, "
+                    f"train='{global_classes_dict[class_id]}', val='{class_name}' "
+                    f"→ 保留 train 的定义"
+                )
+        else:
+            # val 中有新的 class_id，添加到全局字典
+            global_classes_dict[class_id] = class_name
+
+    # 处理 test 的类别
+    if test_classes:
+        for class_id, class_name in enumerate(test_classes):
+            if class_id in global_classes_dict:
+                # 检测冲突
+                if global_classes_dict[class_id] != class_name:
+                    conflicts.append(
+                        {
+                            "class_id": class_id,
+                            "existing_name": global_classes_dict[class_id],
+                            "test_name": class_name,
+                        }
+                    )
+                    logger.warning(
+                        f"类别名称冲突: class_id={class_id}, "
+                        f"已有='{global_classes_dict[class_id]}', test='{class_name}' "
+                        f"→ 保留已有定义"
+                    )
+            else:
+                # test 中有新的 class_id
+                global_classes_dict[class_id] = class_name
+
+    if not global_classes_dict:
+        raise ValueError("所有数据集的 classes 都为空")
+
+    # 3. 按 class_id 排序，构建全局类别列表
+    # 处理可能的 class_id 不连续情况（如 COCO 删除了某些类别）
+    max_class_id = max(global_classes_dict.keys())
+    global_classes = []
+
+    for i in range(max_class_id + 1):
+        if i in global_classes_dict:
+            global_classes.append(global_classes_dict[i])
+        else:
+            # class_id 不连续，填充占位符
+            placeholder = f"unused_class_{i}"
+            global_classes.append(placeholder)
+            logger.warning(
+                f"class_id={i} 在所有数据集中都不存在，填充为 '{placeholder}'"
+            )
+
+    # 4. 构建恒等映射 {0: 0, 1: 1, ..., N: N}
+    # 由于不再进行稀疏→密集转换，所有 class_id 保持不变
+    num_classes = len(global_classes)
+    identity_mapping = {i: i for i in range(num_classes)}
+
+    train_mapping = identity_mapping.copy()
+    val_mapping = identity_mapping.copy()
+    test_mapping = identity_mapping.copy() if test_classes else {}
+
+    # 5. 构建警告信息
+    warnings = {
+        "conflicts": conflicts,  # 类别名称冲突列表
+    }
+
+    # 6. 日志输出
+    logger.info(f"类别合并完成: 全局类别总数={num_classes}")
+    logger.info(f"全局classes: {global_classes}")
+    logger.info(f"映射策略: 恒等映射（保持原始 class_id）")
+    logger.info(f"映射示例: {dict(list(identity_mapping.items())[:5])}")
+
+    if conflicts:
+        logger.info(f"检测到 {len(conflicts)} 个类别名称冲突，已按 train 优先原则处理")
+
+    return global_classes, train_mapping, val_mapping, test_mapping, warnings
+
+
 @shared_task(
     soft_time_limit=7200,  # 120 分钟（图片处理较慢）
     time_limit=7260,
@@ -93,10 +244,38 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
                 (yolo_root / "images" / split_name).mkdir(parents=True)
                 (yolo_root / "labels" / split_name).mkdir(parents=True)
 
+            # 准备全局classes和映射表
+            logger.info("准备全局classes和class_id映射表")
+            try:
+                (
+                    global_classes,
+                    train_mapping,
+                    val_mapping,
+                    test_mapping,
+                    mapping_warnings,
+                ) = prepare_class_mappings(
+                    train_obj.metadata,
+                    val_obj.metadata,
+                    test_obj.metadata if test_obj else None,
+                )
+                logger.info(
+                    f"全局classes准备完成: {len(global_classes)} 个类别 - {global_classes}"
+                )
+            except ValueError as e:
+                error_msg = f"准备class映射表失败: {e}"
+                logger.error(error_msg)
+                raise ValueError(error_msg) from e
+
             # 初始化统计信息
             statistics = {"total_images": 0, "classes": set(), "splits": {}}
 
             # 处理 train/val/test 三个数据集
+            split_mappings = {
+                "train": train_mapping,
+                "val": val_mapping,
+                "test": test_mapping,
+            }
+
             for data_obj, split_name in [
                 (train_obj, "train"),
                 (val_obj, "val"),
@@ -127,6 +306,8 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
                             yolo_root / "images" / split_name,
                             yolo_root / "labels" / split_name,
                             data_obj.metadata,
+                            split_mappings[split_name],  # 传入映射表
+                            global_classes,  # 传入全局classes
                         )
                     except ValueError as e:
                         error_msg = f"{split_name} 数据处理失败: {e}"
@@ -150,9 +331,8 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
                         f"{split_name} 处理完成: {split_stats['total']} 张图片, {len(split_stats['classes'])} 个类别"
                     )
 
-            # 转换 set 为 sorted list
-            classes_list = sorted(list(statistics["classes"]))
-            statistics["classes"] = classes_list
+            # 使用全局classes（已经在prepare_class_mappings中处理好顺序）
+            statistics["classes"] = global_classes
 
             # 生成 data.yaml
             data_yaml_content = {
@@ -161,7 +341,7 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
                 "val": "images/val",
                 "test": "images/test",
                 "names": {
-                    idx: class_name for idx, class_name in enumerate(classes_list)
+                    idx: class_name for idx, class_name in enumerate(global_classes)
                 },
             }
 
@@ -173,8 +353,8 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
             # 生成完整的 metadata
             dataset_metadata = {
                 "total_images": statistics["total_images"],
-                "classes": classes_list,
-                "num_classes": len(classes_list),
+                "classes": global_classes,
+                "num_classes": len(global_classes),
                 "format": "YOLO",
                 "splits": statistics["splits"],
                 "source": {
@@ -257,7 +437,12 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
 
 
 def _reorganize_yolo_data(
-    extract_dir: Path, images_dir: Path, labels_dir: Path, metadata: dict
+    extract_dir: Path,
+    images_dir: Path,
+    labels_dir: Path,
+    metadata: dict,
+    class_id_mapping: dict[int, int],
+    global_classes: list[str],
 ) -> dict:
     """
     将原始数据重组为 YOLO 格式
@@ -277,6 +462,8 @@ def _reorganize_yolo_data(
                 "classes": ["cat", "dog", "person"],
                 "statistics": {"total_images": 100, "total_annotations": 250}
             }
+        class_id_mapping: 本地class_id → 全局class_id的映射表
+        global_classes: 全局类别列表
 
     Returns:
         dict: 统计信息 {total, classes: set()}
@@ -416,11 +603,21 @@ def _reorganize_yolo_data(
                                 )
                                 continue
 
-                            if class_id >= len(classes):
+                            if class_id >= len(global_classes):
                                 logger.warning(
-                                    f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_id ({class_id}) 超出范围 [0, {len(classes) - 1}]，跳过"
+                                    f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_id ({class_id}) 超出全局类别范围 [0, {len(global_classes) - 1}]，跳过"
                                 )
                                 continue
+
+                            # 应用class_id映射：本地→全局
+                            local_class_id = class_id
+                            if local_class_id not in class_id_mapping:
+                                logger.warning(
+                                    f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_id ({local_class_id}) 不在映射表中，跳过"
+                                )
+                                continue
+
+                            global_class_id = class_id_mapping[local_class_id]
 
                             # 验证坐标范围（YOLO 格式要求 0-1）
                             coords = {
@@ -440,16 +637,16 @@ def _reorganize_yolo_data(
                                 )
                                 continue
 
-                            # YOLO 格式：class_id x_center y_center width height
+                            # YOLO 格式：global_class_id x_center y_center width height
                             f.write(
-                                f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n"
+                                f"{global_class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n"
                             )
                             valid_annotations += 1
                             annotation_count += 1
 
-                            # 记录类别
-                            if class_id < len(classes):
-                                classes_found.add(classes[class_id])
+                            # 记录类别（使用全局类别）
+                            if global_class_id < len(global_classes):
+                                classes_found.add(global_classes[global_class_id])
 
                         except Exception as e:
                             logger.error(

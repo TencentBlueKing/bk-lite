@@ -92,6 +92,9 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
             if df["value"].isnull().any():
                 raise serializers.ValidationError("'value'列包含空值")
 
+            # 重置文件指针到开头，以便后续保存时能读取完整内容
+            value.seek(0)
+
             return value
         except pd.errors.ParserError as e:
             raise serializers.ValidationError(f"无效的CSV格式: {str(e)}")

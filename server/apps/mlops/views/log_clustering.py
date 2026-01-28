@@ -1381,7 +1381,7 @@ class LogClusteringServingViewSet(ModelViewSet):
         """
         解析 MLflow Model URI
         """
-        train_job = serving.log_clustering_train_job
+        train_job = serving.train_job
         model_name = mlflow_service.build_model_name(
             prefix=self.MLFLOW_PREFIX,
             algorithm=train_job.algorithm,

@@ -179,7 +179,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       );
 
       if (!response.ok) {
-        throw new Error(`下载失败: ${response.status}`);
+        throw new Error(`${t('mlops-common.downloadFailed')}: ${response.status}`);
       }
 
       const blob = await response.blob();
@@ -204,7 +204,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       document.body.removeChild(link);
       window.URL.revokeObjectURL(fileUrl);
     } catch (error: any) {
-      console.error(t(`traintask.downloadFailed`), error);
+      console.error(t(`mlops-common.downloadFailed`), error);
       message.error(error.message || t('common.errorFetch'));
     }
   };
@@ -212,7 +212,8 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { color: string; text: string }> = {
       published: { color: 'success', text: t(`mlops-common.published`) },
-      pending: { color: 'processing', text: t(`mlops-common.publishing`) },
+      pending: { color: 'default', text: t(`mlops-common.pending`) },
+      processing: { color: 'processing', text: t(`mlops-common.publishing`) },
       failed: { color: 'error', text: t(`mlops-common.failed`) },
       archived: { color: 'default', text: t(`mlops-common.archived`) }
     };
@@ -283,7 +284,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
             : <Button
               type="link"
               size="small"
-              disabled={record.status === 'pending' || record.status == 'failed'}
+              disabled={['pending', 'processing', 'failed'].includes(record.status)}
               onClick={() => downloadReleaseZip(record)}
             >
               {t(`common.download`)}
@@ -302,7 +303,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
               </Button>
             </Popconfirm>
           )}
-          {(record.status == 'archived' || record.status == 'failed' || record.status === 'pending') && (
+          {['archived', 'failed', 'pending', 'processing'].includes(record.status) && (
             <Popconfirm
               placement='left'
               title={t(`mlops-common.deleteConfirm`)}
