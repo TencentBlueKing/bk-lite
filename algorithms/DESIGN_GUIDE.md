@@ -54,8 +54,8 @@ algorithms/
     │   │   ├── metrics.py              # Prometheus指标
     │   │   └── models/                 # 模型加载器
     │   │       ├── __init__.py
-    │   │       ├── loader.py           # 统一模型加载
-    │   │       └── dummy_model.py      # 降级策略，加载模型失败时使用，可选
+    │   │       ├── loader.py           # 统一模型加载（支持 MLflow/本地/DummyModel）
+    │   │       └── dummy_model.py      # 降级策略（可选，详见"DummyModel 降级策略"章节）
     │   │
     │   └── training/                   # 离线训练层
     │       ├── __init__.py
@@ -68,7 +68,11 @@ algorithms/
     │       ├── preprocessing/          # 数据预处理
     │       │   ├── __init__.py
     │       │   ├── preprocessor.py     # 基础预处理器
-    │       │   └── feature_engineering.py  # 特征工程（必选，每个算法领域都需要实现基础版本，但是训练时可选是否在训练过程中启用）
+    │       │   └── feature_engineering.py  # 特征工程模块
+    │       │                           # - 文件必须存在：每个服务都需要实现此模块
+    │       │                           # - 至少实现一种方法：如滞后特征、滚动窗口等
+    │       │                           # - 训练时可选：通过 use_feature_engineering 开关控制
+    │       │                           # - 示例：时间序列的滞后特征，异常检测的统计特征
     │       └── models/                 # 训练模型实现
     │           ├── __init__.py
     │           ├── base.py             # 抽象基类 + ModelRegistry
@@ -185,23 +189,38 @@ def _optimize_hyperparams(self, train_data, val_data) -> Optional[Dict[str, Any]
     
     架构：Trainer 负责配置检查和错误处理，Model 实现具体优化逻辑
     
-    val_data 参数用途说明：
-    - 不用于模型训练（model.fit() 不使用）
-    - 仅用于超参数优化时的目标函数评估
-    - 在 optimize_hyperparams() 中训练临时模型并在 val_data 上评估性能
+    超参数优化流程：
+    1. Hyperopt 生成候选参数组合
+    2. 对每个候选参数：
+       - 创建临时模型
+       - 在 train_data 上训练临时模型
+       - 在 val_data 上评估性能（计算目标函数值）
+    3. 找到最优参数后：
+       - 传统ML算法：在 train_data + val_data 上训练最终模型（利用更多数据）
+       - 深度学习算法：在 train_data 上训练，val_data 用于 early stopping（YOLO框架）
     
-    三种使用模式：
+    val_data 的两种用途：
+    - 超参数搜索阶段：用于评估候选参数的性能
+    - 最终训练阶段：
+      * 传统ML: 合并到训练集
+      * 深度学习: 用于验证和early stopping
+    
+    四种使用模式示例：
     1. 时间序列（Prophet/RandomForest）：
-       - fit(train_data, val_data, merge_val=False)  # 只用训练集训练
-       - evaluate(val_data, is_in_sample=False)      # 验证集评估（样本外）
+       - 超参数搜索: fit(train_data), evaluate(val_data)
+       - 最终训练: fit(train_data + val_data)
        
     2. 日志聚类（Spell）：
-       - fit(train_data)                              # 无监督训练，不使用验证集
-       - evaluate(val_data)                           # 验证集评估（模板质量）
+       - 超参数搜索: fit(train_data), evaluate(val_data)
+       - 最终训练: fit(train_data + val_data)
        
     3. 异常检测（ECOD）：
-       - fit(train_data)                              # 无监督训练
-       - evaluate(val_data, val_labels)               # 验证集评估（需要标签）
+       - 超参数搜索: fit(train_data), evaluate(val_data, val_labels)
+       - 最终训练: fit(train_data + val_data)
+    
+    4. 图片分类/目标检测（YOLO）：
+       - 超参数搜索: model.train(data='train+val.yaml')
+       - 最终训练: model.train(data='train+val.yaml')  # YOLO框架内部处理
     """
     # 1. 检查是否启用（max_evals=0 表示跳过）
     max_evals = getattr(self.config, 'max_evals', 0)
@@ -265,9 +284,27 @@ model = ModelRegistry.get("my_model")(**params)
 - 异常检测：`BaseAnomalyModel`
 
 **评估指标要求**：
-- 返回格式：`{f"{prefix}_metric_name": value}`
-- 命名规范：小写下划线（rmse、mae、f1、precision、recall）
-- 内部数据用 `_` 前缀（不会被 MLflow 记录）
+
+1. **返回格式**：`{prefix}_{metric_name}: value`
+   - prefix: train/val/test
+   - metric_name: 小写下划线
+   - 示例：`{"test_rmse": 0.123, "test_mae": 0.456}`
+
+2. **命名规范（按领域）**：
+   - 时间序列：rmse, mae, mape, r2
+   - 异常检测：f1, precision, recall, auc, roc_auc
+   - 日志聚类：template_quality_score, coverage_rate, num_templates
+   - 文本分类：accuracy, f1_macro, f1_weighted
+   - 图片分类/目标检测：accuracy, precision, recall, map50, map50_95
+
+3. **计算方式**：
+   - 优先使用 sklearn.metrics（如 `sklearn.metrics.mean_squared_error`）
+   - 自定义指标需在代码中详细注释计算逻辑
+   - 确保指标方向一致（越大越好 或 越小越好）
+
+4. **内部数据**：
+   - 使用 `_` 前缀（如 `_predictions`, `_raw_scores`）
+   - 这些数据不会被 MLflow 记录，仅用于调试
 
 **完整实现参考**：
 - `classify_timeseries_server/training/models/base.py`
@@ -327,6 +364,114 @@ model = ModelRegistry.get("my_model")(**params)
 
 ---
 
+### DummyModel 降级策略（可选）
+
+**何时实现**：
+- ✅ **生产环境**：需要保证服务可用性，模型加载失败时自动降级
+- ❌ **开发/测试环境**：建议直接报错（快速失败），便于发现问题
+
+**核心作用**：
+- 当 MLflow 或本地模型加载失败时，自动回退到 DummyModel
+- 保证服务不中断，返回安全的默认预测结果
+- 记录降级日志，便于监控和告警
+
+**实现要求**：
+
+1. **返回格式必须与真实模型完全一致**
+   - 异常检测：`{'labels': list[int], 'scores': list[float], 'probabilities': list[float]}`
+   - 时间序列：`list[float]`（预测值列表）
+   - 日志聚类：`float`（单个预测值）
+   - 文本/图片分类：根据具体任务定义
+
+2. **返回安全的默认值**
+   - 异常检测：基于简单统计规则（如 z-score）
+   - 时间序列：naive forecast（重复最后观测值）
+   - 日志聚类：特征值求和
+   - 根据业务需求选择合理的降级策略
+
+3. **记录降级日志**
+   ```python
+   logger.warning("模型加载失败，使用 DummyModel 降级")
+   logger.info("DummyModel initialized for {domain}")
+   ```
+
+**实现示例**：
+
+```python
+# serving/models/dummy_model.py
+from loguru import logger
+
+class DummyModel:
+    """模拟模型，用于降级策略."""
+    
+    def __init__(self):
+        self.version = "0.1.0-dummy"
+        logger.info("DummyModel initialized for {domain}")
+    
+    def predict(self, model_input: dict) -> dict:
+        """
+        模拟预测（返回格式必须与真实模型一致）.
+        
+        Args:
+            model_input: 模型输入（格式与真实模型相同）
+        
+        Returns:
+            预测结果（格式与真实模型相同）
+        """
+        # 实现简单的降级逻辑
+        # 示例：异常检测返回基于 z-score 的简单规则
+        # 示例：时间序列返回 naive forecast
+        pass
+```
+
+**服务层集成**：
+
+```python
+# serving/models/loader.py
+from .dummy_model import DummyModel
+
+def load_model(config: ModelConfig):
+    """加载模型，失败时自动降级到 DummyModel."""
+    
+    if config.source == "mlflow":
+        try:
+            model = mlflow.pyfunc.load_model(config.mlflow_model_uri)
+            logger.info("MLflow model loaded successfully")
+            return model
+        except Exception as e:
+            logger.error(f"Failed to load MLflow model: {e}")
+            logger.warning("Falling back to dummy model")
+            return DummyModel()  # 自动降级
+    
+    elif config.source == "dummy":
+        return DummyModel()  # 显式使用 DummyModel
+    
+    else:
+        logger.warning(f"Unknown source '{config.source}', falling back to dummy")
+        return DummyModel()
+```
+
+**参考实现**：
+- 异常检测：`classify_anomaly_server/serving/models/dummy_model.py`（基于 z-score 规则）
+- 时间序列：`classify_timeseries_server/serving/models/dummy_model.py`（naive forecast）
+- 日志聚类：`classify_log_server/serving/models/dummy_model.py`（特征求和）
+- 加载器：`classify_anomaly_server/serving/models/loader.py`（统一降级逻辑）
+
+**配置方式**：
+
+```yaml
+# bentofile.yaml 或环境变量
+MODEL_SOURCE: "mlflow"  # 优先使用 MLflow
+# MODEL_SOURCE: "dummy"  # 显式使用 DummyModel（测试用）
+```
+
+**注意事项**：
+- DummyModel 仅用于保证服务可用性，**不应用于生产预测**
+- 生产环境应配置监控告警，检测 DummyModel 降级事件
+- 开发环境建议禁用 DummyModel，直接报错以便快速发现问题
+
+---
+
 ## 🚀 BentoML 服务设计
 
 ### 核心设计要点
@@ -343,7 +488,7 @@ model = ModelRegistry.get("my_model")(**params)
 2. **配置验证**：启动时快速失败（Fast Fail）
 3. **监控指标**：Prometheus metrics（加载次数、预测次数、延迟）
 4. **错误处理**：统一的异常处理和日志记录
-5. **DummyModel**：当加载模型失败时的降级策略(可选，可自主选择加载模型失败时是报错，还是使用降级策略)
+5. **DummyModel 降级**：模型加载失败时的降级策略（可选，详见"DummyModel 降级策略"章节）
 
 **必需的 API 端点**：
 - `predict()`: 主要预测接口（使用 Pydantic schemas）

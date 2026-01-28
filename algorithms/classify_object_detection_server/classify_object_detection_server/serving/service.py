@@ -141,7 +141,7 @@ class MLService:
 
         request_start = time.time()
 
-        # 构造请求对象进行验证
+        # 快速失败：前置验证（在 try 块外）
         try:
             predict_config = PredictConfig(**config) if config else PredictConfig()
             request = PredictRequest(images=images, config=predict_config)

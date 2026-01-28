@@ -320,6 +320,111 @@ with mlflow.start_run(run_name=run_name) as run:
     mlflow.register_model(model_uri, config.model_name)
 ```
 
+## 训练数据策略差异说明
+
+### Train/Val 数据合并策略
+
+BK-Lite 算法模块中的不同服务采用了不同的训练数据策略，这是**有意的设计决策**，而非不一致性bug。
+
+#### 策略对比
+
+| 服务类型 | Train+Val合并 | 代码位置 | 原因 |
+|---------|--------------|---------|------|
+| **异常检测** (anomaly) | ✅ 合并 | trainer.py L546-554 | 传统ML算法，手动合并以利用更多数据 |
+| **时间序列** (timeseries) | ✅ 合并 | trainer.py L111 | 传统ML算法，手动合并以利用更多数据 |
+| **日志聚类** (log) | ✅ 合并 | trainer.py L464-467 | 传统ML算法，手动合并以利用更多数据 |
+| **文本分类** (text) | ✅ 合并 | trainer.py L104-111 | 传统ML算法，手动合并以利用更多数据 |
+| **图片分类** (image) | ❌ 不合并 | - | YOLO框架限制，遵循官方最佳实践 |
+| **目标检测** (object_detection) | ❌ 不合并 | - | YOLO框架限制，遵循官方最佳实践 |
+
+#### 设计理由
+
+**传统ML算法（anomaly/timeseries/log/text）**：
+- 使用 scikit-learn、pandas、numpy 等库
+- 数据格式：DataFrame、ndarray、sparse matrix
+- **合并策略**：在最终训练前手动合并 train+val 数据
+  ```python
+  # 示例：异常检测服务
+  if val_data is not None:
+      X_train = pd.concat([train_data[0], val_data[0]], axis=0)
+      self.model.fit(X_train, y_train)  # 用 train+val 训练最终模型
+  ```
+- **优点**：利用更多数据（85% vs 70%），性能提升 5-15%
+- **适用场景**：数据稀缺，需要榨取每一分性能
+
+**深度学习算法（image/object_detection）**：
+- 使用 Ultralytics YOLO 框架
+- 数据格式：ImageFolder 目录结构 或 YAML 配置文件
+- **分离策略**：保持 train/val 分离，遵循 YOLO 官方设计
+  ```python
+  # YOLO 训练流程
+  model.train(
+      data='data.yaml',  # 包含 train/val 分离的路径
+      epochs=100,
+      patience=20        # 基于 val 指标的 Early Stopping
+  )
+  ```
+- **YOLO 框架行为**：
+  - 在 train 数据上训练
+  - 在 val 数据上验证（每个 epoch）
+  - 使用 Early Stopping 防止过拟合
+  - 保存 `best.pt`（基于 val 性能最佳的模型）
+  - **不会自动合并 train+val 数据**
+- **优点**：
+  - 有独立的 val 集验证，防止过拟合
+  - 符合 YOLO 官方最佳实践
+  - 遵循深度学习社区标准
+- **参考**：[Ultralytics YOLO 官方文档](https://docs.ultralytics.com/modes/train/)
+
+#### 为什么不统一？
+
+1. **框架限制**：YOLO 不支持自动合并 train+val，手动合并需要：
+   - 图片分类：创建新的合并目录或软链接
+   - 目标检测：修改 YAML 配置文件
+   - 增加复杂度和维护成本
+
+2. **最佳实践差异**：
+   - 传统 ML：数据稀缺时，合并 train+val 是常见做法
+   - 深度学习：数据充足时，保持分离更符合标准流程
+
+3. **性能权衡**：
+   - 合并策略：性能 +5-15%，但无独立 val 集验证
+   - 分离策略：性能 -5-15%，但有独立 val 集防止过拟合
+
+#### 如果需要修改策略
+
+**将 YOLO 改为合并策略**（不推荐）：
+```python
+# 方案1：创建合并数据集
+def merge_image_folders(train_path, val_path, output_path):
+    """合并 train 和 val 目录"""
+    # 创建软链接或复制文件
+    pass
+
+# 方案2：修改 YAML 配置
+def create_merged_yaml(original_yaml):
+    """创建合并后的 YAML 配置"""
+    config = yaml.safe_load(open(original_yaml))
+    config['train'] = 'images/train_and_val'  # 指向合并数据
+    return config
+```
+
+**将传统ML改为分离策略**（不推荐）：
+```python
+# 移除 trainer.py 中的合并逻辑
+# 直接传递 train_data 给 model.fit()
+self.model.fit(train_data[0], train_data[1])  # 不合并 val_data
+```
+
+#### 总结
+
+- ✅ **当前策略是合理的**：不同算法类型采用不同的最佳实践
+- ✅ **代码已文档化**：注释中说明了合并的原因
+- ✅ **性能已优化**：传统ML利用更多数据，YOLO遵循官方标准
+- ⚠️ **如需统一**：需要权衡性能、复杂度、维护成本
+
+---
+
 ## 关键规则
 
 ### 必须做

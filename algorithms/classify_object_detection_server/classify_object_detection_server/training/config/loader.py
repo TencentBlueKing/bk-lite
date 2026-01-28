@@ -213,6 +213,17 @@ class TrainingConfig:
         """是否使用特征工程."""
         return self.get("hyperparams", "use_feature_engineering", default=False)
 
+    def to_dict(self) -> Dict[str, Any]:
+        """导出配置为字典（浅拷贝）
+
+        Returns:
+            配置字典的浅拷贝
+
+        Note:
+            使用浅拷贝以提升性能。当前仅用于 MLflow 参数记录（只读场景）。
+        """
+        return self.config.copy()
+
     def __str__(self) -> str:
         """返回配置的字符串表示."""
         return (

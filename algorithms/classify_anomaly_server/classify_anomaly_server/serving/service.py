@@ -27,10 +27,10 @@ class MLService:
     @bentoml.on_deployment
     def setup() -> None:
         """
-        部署时执行一次的全局初始化.
+                部署时执行一次的全局初始化.
 
-        用于预热缓存、下载资源等全局操作.
-不接收 self 参数,类似静态方法.
+                用于预热缓存、下载资源等全局操作.
+        不接收 self 参数,类似静态方法.
         """
         logger.info("=== Deployment setup started ===")
         # 可以在这里做全局初始化,例如:
@@ -49,25 +49,31 @@ class MLService:
             load_start = time.time()
             self.model = load_model(self.config)
             load_time = time.time() - load_start
-            
-            model_load_counter.labels(
-                source=self.config.source, status="success").inc()
-            logger.info(f"⏱️  Model loaded successfully in {load_time:.3f}s: {self.config.mlflow_model_uri or 'local/dummy'}")
-            
+
+            model_load_counter.labels(source=self.config.source, status="success").inc()
+            logger.info(
+                f"⏱️  Model loaded successfully in {load_time:.3f}s: {self.config.mlflow_model_uri or 'local/dummy'}"
+            )
+
         except Exception as e:
-            model_load_counter.labels(
-                source=self.config.source, status="failure").inc()
+            model_load_counter.labels(source=self.config.source, status="failure").inc()
             logger.error(f"❌ Failed to load model: {e}", exc_info=True)
-            
+
             # 根据环境变量决定是否允许降级到 DummyModel
-            allow_fallback = os.getenv("ALLOW_DUMMY_FALLBACK", "false").lower() == "true"
-            
+            allow_fallback = (
+                os.getenv("ALLOW_DUMMY_FALLBACK", "false").lower() == "true"
+            )
+
             if allow_fallback:
                 from .models.dummy_model import DummyModel
-                logger.warning("⚠️  ALLOW_DUMMY_FALLBACK=true, using DummyModel as fallback")
+
+                logger.warning(
+                    "⚠️  ALLOW_DUMMY_FALLBACK=true, using DummyModel as fallback"
+                )
                 self.model = DummyModel()
                 model_load_counter.labels(
-                    source="dummy_fallback", status="success").inc()
+                    source="dummy_fallback", status="success"
+                ).inc()
             else:
                 logger.error(
                     "Model loading failed and fallback is disabled. "
@@ -94,11 +100,7 @@ class MLService:
         logger.info("=== Cleanup completed ===")
 
     @bentoml.api
-    async def predict(
-        self,
-        data: list,
-        config: dict = None
-    ) -> PredictResponse:
+    async def predict(self, data: list, config: dict = None) -> PredictResponse:
         """
         异常检测接口.
 
@@ -110,11 +112,18 @@ class MLService:
             异常检测响应
         """
         import pandas as pd
-        
+
         request_start = time.time()
-        
-        # 构造 PredictRequest 对象进行验证
-        from .schemas import TimeSeriesPoint, DetectionConfig, ResponseMetadata, ErrorDetail, AnomalyPoint
+
+        # 快速失败：前置验证（在 try 块外）
+        from .schemas import (
+            TimeSeriesPoint,
+            DetectionConfig,
+            ResponseMetadata,
+            ErrorDetail,
+            AnomalyPoint,
+        )
+
         try:
             data_points = [TimeSeriesPoint(**point) for point in data]
             detect_config = DetectionConfig(**config) if config else None
@@ -126,28 +135,32 @@ class MLService:
                 success=False,
                 results=None,
                 metadata=ResponseMetadata(
-                    model_uri=self.config.mlflow_model_uri if hasattr(self.config, 'mlflow_model_uri') else None,
+                    model_uri=self.config.mlflow_model_uri
+                    if hasattr(self.config, "mlflow_model_uri")
+                    else None,
                     input_data_points=len(data) if data else 0,
                     detected_anomalies=0,
                     anomaly_rate=0.0,
                     input_frequency=None,
-                    execution_time_ms=(time.time() - request_start) * 1000
+                    execution_time_ms=(time.time() - request_start) * 1000,
                 ),
                 error=ErrorDetail(
                     code="E1000",
                     message=f"请求格式验证失败: {str(e)}",
-                    details={"error_type": type(e).__name__}
-                )
+                    details={"error_type": type(e).__name__},
+                ),
             )
-        
-        logger.info(f"📥 Received anomaly detection request: data_points={len(request.data)}")
+
+        logger.info(
+            f"📥 Received anomaly detection request: data_points={len(request.data)}"
+        )
 
         try:
             # 转换为时间序列
             series = request.to_series()
-            
+
             logger.info(f"📊 Input data range: {series.index[0]} to {series.index[-1]}")
-            
+
             # 推断频率（宽松模式，允许不规则序列）
             inferred_freq = None
             try:
@@ -155,50 +168,54 @@ class MLService:
                 if inferred_freq:
                     logger.info(f"🕒 Detected frequency: {inferred_freq}")
             except Exception:
-                logger.warning("⚠️  Could not infer frequency, treating as irregular time series")
-            
+                logger.warning(
+                    "⚠️  Could not infer frequency, treating as irregular time series"
+                )
+
             # 执行异常检测
-            model_info = f"source={self.config.source}, type={type(self.model).__name__}"
+            model_info = (
+                f"source={self.config.source}, type={type(self.model).__name__}"
+            )
             if self.config.source == "local":
                 model_info += f", path={self.config.model_path}"
             elif self.config.source == "mlflow":
                 model_info += f", uri={self.config.mlflow_model_uri}"
-            
+
             logger.info(f"🤖 Model info: {model_info}")
             logger.info(f"🔍 Starting anomaly detection...")
-            
+
             detect_start = time.time()
-            
+
             # 准备模型输入（统一字典格式）
-            model_input = {'data': series}
+            model_input = {"data": series}
             if request.config and request.config.threshold is not None:
-                model_input['threshold'] = request.config.threshold
-            
+                model_input["threshold"] = request.config.threshold
+
             # 调用模型检测（统一接口）
             detection_result = self.model.predict(model_input)
-            
+
             detect_time = time.time() - detect_start
-            
+
             logger.info(f"✅ Detection completed successfully")
             logger.info(f"⏱️  Detection time: {detect_time:.3f}s")
-            
+
             # 解析检测结果
             # 期望格式: {'labels': [0,1,0,...], 'scores': [0.1,0.9,0.2,...], 'probabilities': [0.05,0.95,...]}
-            labels = detection_result.get('labels', [])
-            scores = detection_result.get('scores', [])
-            probabilities = detection_result.get('probabilities', [])
-            
+            labels = detection_result.get("labels", [])
+            scores = detection_result.get("scores", [])
+            probabilities = detection_result.get("probabilities", [])
+
             if len(labels) != len(request.data) or len(scores) != len(request.data):
                 raise ValueError(
                     f"模型返回结果长度不匹配: 输入{len(request.data)}个点, "
                     f"返回labels={len(labels)}, scores={len(scores)}"
                 )
-            
+
             # 兼容性处理：如果模型没有返回probabilities，使用scores作为fallback
             if len(probabilities) != len(request.data):
                 logger.warning("模型未返回probabilities，使用scores作为fallback")
                 probabilities = scores
-            
+
             # 构造结果点
             result_points = []
             anomaly_count = 0
@@ -206,43 +223,51 @@ class MLService:
                 label = int(labels[i])  # 0=正常, 1=异常
                 if label == 1:
                     anomaly_count += 1
-                    
-                result_points.append(AnomalyPoint(
-                    timestamp=point.timestamp,
-                    value=point.value,
-                    label=label,
-                    anomaly_score=float(scores[i]),
-                    anomaly_probability=float(probabilities[i])
-                ))
-            
-            anomaly_rate = anomaly_count / len(request.data) if len(request.data) > 0 else 0.0
-            
+
+                result_points.append(
+                    AnomalyPoint(
+                        timestamp=point.timestamp,
+                        value=point.value,
+                        label=label,
+                        anomaly_score=float(scores[i]),
+                        anomaly_probability=float(probabilities[i]),
+                    )
+                )
+
+            anomaly_rate = (
+                anomaly_count / len(request.data) if len(request.data) > 0 else 0.0
+            )
+
             # 构造成功响应
             response = PredictResponse(
                 success=True,
                 results=result_points,
                 metadata=ResponseMetadata(
-                    model_uri=self.config.mlflow_model_uri if hasattr(self.config, 'mlflow_model_uri') else None,
+                    model_uri=self.config.mlflow_model_uri
+                    if hasattr(self.config, "mlflow_model_uri")
+                    else None,
                     input_data_points=len(request.data),
                     detected_anomalies=anomaly_count,
                     anomaly_rate=anomaly_rate,
                     input_frequency=inferred_freq,
-                    execution_time_ms=(time.time() - request_start) * 1000
+                    execution_time_ms=(time.time() - request_start) * 1000,
                 ),
-                error=None
+                error=None,
             )
-            
+
             total_time = time.time() - request_start
-            logger.info(f"📈 Detection summary: {anomaly_count}/{len(request.data)} anomalies ({anomaly_rate:.2%})")
+            logger.info(
+                f"📈 Detection summary: {anomaly_count}/{len(request.data)} anomalies ({anomaly_rate:.2%})"
+            )
             logger.info(f"⏱️  Total request time: {total_time:.3f}s")
-            
+
             prediction_counter.labels(
                 model_source=self.config.source,
                 status="success",
             ).inc()
-            
+
             return response
-            
+
         except ValueError as e:
             # 验证错误
             logger.error(f"Validation error: {e}")
@@ -254,47 +279,52 @@ class MLService:
                 success=False,
                 results=None,
                 metadata=ResponseMetadata(
-                    model_uri=self.config.mlflow_model_uri if hasattr(self.config, 'mlflow_model_uri') else None,
+                    model_uri=self.config.mlflow_model_uri
+                    if hasattr(self.config, "mlflow_model_uri")
+                    else None,
                     input_data_points=len(data) if data else 0,
                     detected_anomalies=0,
                     anomaly_rate=0.0,
                     input_frequency=None,
-                    execution_time_ms=(time.time() - request_start) * 1000
+                    execution_time_ms=(time.time() - request_start) * 1000,
                 ),
                 error=ErrorDetail(
                     code="E1001",
                     message=str(e),
-                    details={"error_type": "ValidationError"}
-                )
+                    details={"error_type": "ValidationError"},
+                ),
             )
-            
+
         except Exception as e:
             # 其他错误（模型检测失败等）
             logger.error(f"Detection failed: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
-            
+
             prediction_counter.labels(
                 model_source=self.config.source,
                 status="failure",
             ).inc()
-            
+
             return PredictResponse(
                 success=False,
                 results=None,
                 metadata=ResponseMetadata(
-                    model_uri=self.config.mlflow_model_uri if hasattr(self.config, 'mlflow_model_uri') else None,
+                    model_uri=self.config.mlflow_model_uri
+                    if hasattr(self.config, "mlflow_model_uri")
+                    else None,
                     input_data_points=len(data) if data else 0,
                     detected_anomalies=0,
                     anomaly_rate=0.0,
                     input_frequency=None,
-                    execution_time_ms=(time.time() - request_start) * 1000
+                    execution_time_ms=(time.time() - request_start) * 1000,
                 ),
                 error=ErrorDetail(
                     code="E2002",
                     message=f"异常检测失败: {str(e)}",
-                    details={"error_type": type(e).__name__}
-                )
+                    details={"error_type": type(e).__name__},
+                ),
             )
 
     @bentoml.api

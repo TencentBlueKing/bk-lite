@@ -262,17 +262,23 @@ class UniversalTrainer:
         """记录配置到MLflow."""
         logger.info("记录配置到MLflow...")
 
-        # 记录模型配置
-        mlflow.log_param("model_type", self.config.model_type)
-        mlflow.log_param("model_name", self.config.model_name)
-        mlflow.log_param("device", self.device)
+        # 使用统一的to_dict()方法导出配置
+        config_dict = self.config.to_dict()
 
-        # 记录超参数
-        hyperparams = self.config.hyperparams_config
-        for key, value in hyperparams.items():
-            if not key.startswith("_"):  # 跳过内部参数
-                if isinstance(value, (str, int, float, bool)):
-                    mlflow.log_param(f"hp_{key}", value)
+        # 展开嵌套的配置
+        flat_config = {}
+        for key, value in config_dict.items():
+            if isinstance(value, dict):
+                for sub_key, sub_value in value.items():
+                    flat_config[f"{key}.{sub_key}"] = sub_value
+            else:
+                flat_config[key] = value
+
+        # 记录设备信息
+        flat_config["device"] = self.device
+
+        MLFlowUtils.log_params_batch(flat_config)
+        logger.debug(f"配置已记录到 MLflow")
 
     def _optimize_hyperparams(self) -> Optional[Dict[str, Any]]:
         """超参数优化."""
