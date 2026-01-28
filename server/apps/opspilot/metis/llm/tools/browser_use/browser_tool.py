@@ -568,7 +568,7 @@ async def _browse_website_async(
 
         # 初始化 LLM（使用 browser_use.llm.ChatOpenAI）
         if not llm:
-            llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
+            llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
         executable_path = os.getenv("EXECUTABLE_PATH", None) or None
 
         # DEBUG 模式下显示浏览器窗口，方便调试
@@ -585,24 +585,6 @@ async def _browse_website_async(
             # 生产环境使用传入的 headless 参数（默认 True）
             actual_headless = headless
 
-        # 平台特定的启动参数
-        is_debug = getattr(settings, "DEBUG", False)
-
-        # 构建浏览器启动参数 - 根据平台调整
-        browser_args = None
-        if not is_debug:
-            # Linux 服务器环境需要额外参数
-            browser_args = [
-                "--no-sandbox",
-                "--disable-gpu-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--no-xshm",
-                "--no-zygote",
-                "--disable-site-isolation-trials",
-            ]
-            logger.info("Linux 生产环境: 应用 Linux 特定的浏览器参数")
-
         # 初始化 Browser
         browser_init_kwargs = {
             "executable_path": executable_path,
@@ -611,13 +593,7 @@ async def _browse_website_async(
             "user_data_dir": user_data_dir,  # 使用共享的用户数据目录保持会话状态
         }
 
-        # 如果有特定的浏览器参数，添加到初始化参数中
-        if browser_args:
-            browser_init_kwargs["args"] = browser_args
-
         browser = Browser(**browser_init_kwargs)
-
-        logger.info(f"浏览器已初始化 - headless={actual_headless}, platform_specific_args={bool(browser_args)}")
 
         # 创建 browser-use agent
         # 判断task中是否已经明确包含了URL信息（使用脱敏后的任务判断，避免泄露）
@@ -636,8 +612,43 @@ async def _browse_website_async(
         has_credentials = sensitive_data is not None and len(sensitive_data) > 0
         login_failure_hook, login_state = _create_login_failure_hook(has_credentials)
 
-        # 扩展系统提示 - 简化版，核心规则已在任务前缀中
-        extend_system_message = """
+        # 扩展系统提示 - 根据 DEBUG 模式选择语言
+        # DEBUG 模式下使用中文，便于调试和阅读
+        if getattr(settings, "DEBUG", False):
+            extend_system_message = """
+【语言要求】你的所有思考(thinking)、评估(evaluation)、记忆(memory)、下一步目标(next_goal)输出必须使用中文。
+
+核心规则（必须遵守）：
+1. 同一元素最多点击2次。点击2次后视为成功，继续下一步。
+2. 在记忆中跟踪已点击的元素："已点击: [索引1, 索引2, ...]"
+3. 提取操作最多尝试2次，之后切换到截图/视觉方式。
+4. 重要 - 凭据处理：
+   当任务中出现 <secret>xxx</secret> 时，在操作中必须原样输出。
+   不要去掉标签或只输出占位符名称。
+   系统会在执行时自动替换为实际值。
+   - 正确: input_text(..., text="<secret>x_password</secret>")
+   - 错误: input_text(..., text="x_password")
+   - 错误: input_text(..., text="actual_password_here")
+5. 重要 - URL导航规则：
+   当任务明确要求"更改网址"、"跳转到URL"、"导航到"、"访问URL"时，必须使用 navigate action 直接跳转，禁止通过点击页面元素来实现导航。
+   - 正确: {"navigate": {"url": "https://example.com/target"}}
+   - 错误: 通过点击菜单、链接等元素来跳转到目标URL
+   记住：任务说"将网址更改为 xxx"时，直接使用 navigate 跳转，不要尝试点击任何元素。
+6. 重要 - 顺序执行规则：
+   当任务需要依次检查多个元素时（如巡检、遍历列表），每一步只执行一个点击操作，等待页面加载完成并观察结果后，再进行下一个点击。
+   - 禁止：一次性点击多个元素（如同时点击 #3937, #3938, #3939）
+   - 正确：点击 #3937 → 等待加载 → 记录结果 → 下一步点击 #3938 → 等待加载 → 记录结果 → ...
+   这样可以确保每个元素的响应都被正确观察和记录。
+7. 重要 - 完整遍历规则：
+   当任务要求"遍历所有"、"检查所有"、"巡检所有"节点时，必须完整遍历，不能提前结束。
+   - 在 memory 中记录："待检查节点: [A, B, C, ...]，已完成: [A]，剩余: [B, C, ...]"
+   - 每完成一个节点后，检查是否还有剩余未检查的节点
+   - 如果列表有滚动条，必须向下滚动查看是否有更多节点
+   - 只有当所有可见节点都已检查完毕后，才能进入下一步骤
+   - 禁止：只检查了部分节点就生成报告
+"""
+        else:
+            extend_system_message = """
 CORE RULES (MUST FOLLOW):
 1. NEVER click same element more than 2 times. After 2 clicks, treat as SUCCESS and move on.
 2. Track clicked elements in memory: "Clicked: [index1, index2, ...]"
@@ -649,6 +660,30 @@ CORE RULES (MUST FOLLOW):
    - CORRECT: input_text(..., text="<secret>x_password</secret>")
    - WRONG: input_text(..., text="x_password")
    - WRONG: input_text(..., text="actual_password_here")
+5. CRITICAL - URL Navigation:
+   When task explicitly requires "change URL to", "navigate to", "go to URL",
+   or "visit URL", you MUST use the navigate action to jump directly.
+   DO NOT click page elements to navigate.
+   - CORRECT: {"navigate": {"url": "https://example.com/target"}}
+   - WRONG: Clicking menus, links, or buttons to reach the target URL
+   Remember: When task says "change URL to xxx", use navigate action directly,
+   do NOT attempt to click any elements.
+6. CRITICAL - Sequential Execution:
+   When task requires checking multiple elements sequentially
+   (e.g., inspection, traversing a list), execute only ONE click per step.
+   Wait for page to load and observe the result before clicking next element.
+   - FORBIDDEN: Clicking multiple elements at once
+     (e.g., clicking #3937, #3938, #3939 in the same step)
+   - CORRECT: Click #3937 → wait for load → record result →
+     next step click #3938 → wait for load → record result → ...
+   This ensures each element's response is properly observed and recorded.
+7. CRITICAL - Complete Traversal:
+   When task requires "traverse all", "check all", or "inspect all" nodes, you MUST complete the full traversal without stopping early.
+   - Track in memory: "Pending nodes: [A, B, C, ...], Completed: [A], Remaining: [B, C, ...]"
+   - After each node, check if there are remaining unchecked nodes
+   - If the list has a scrollbar, scroll down to check for more nodes
+   - Only proceed to the next step after ALL visible nodes have been checked
+   - FORBIDDEN: Generating report after checking only a few nodes
 """
 
         # 创建 browser-use agent（带回调支持和优化配置）
