@@ -156,7 +156,7 @@ const EntityCard: React.FC<EntityCardProps> = ({
             onClick={handlePinClick}
           >
             {is_pinned ? (
-              <PushpinFilled className="text-sm text-white" />
+              <PushpinFilled className="text-sm text-white" style={{ transform: 'rotate(-45deg)' }} />
             ) : (
               <PushpinOutlined className="text-sm text-white/70 hover:text-white" />
             )}
