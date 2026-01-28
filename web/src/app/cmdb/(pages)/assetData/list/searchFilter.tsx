@@ -1,28 +1,43 @@
-import React, { useState, useEffect } from 'react';
-import type { CheckboxProps } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import type { CheckboxProps, MenuProps } from 'antd';
 import searchFilterStyle from './searchFilter.module.scss';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
-import { Select, Input, InputNumber, Checkbox, DatePicker, Button } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Select, Input, InputNumber, Checkbox, DatePicker, Button, Tag, Dropdown, Modal, message, Tooltip } from 'antd';
+import { SearchOutlined, StarFilled, CloseOutlined, DownOutlined } from '@ant-design/icons';
 import { UserItem } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { SearchFilterProps } from '@/app/cmdb/types/assetData';
-import { useAssetDataStore } from '@/app/cmdb/store';
+import { useAssetDataStore, type SavedFilter } from '@/app/cmdb/store';
+import { useSavedFiltersApi, type SavedFiltersConfigValue } from '@/app/cmdb/api/userConfig';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 
 dayjs.extend(customParseFormat);
+
+const SAVED_FILTERS_CONFIG_KEY = 'cmdb_saved_filters';
 
 const SearchFilter: React.FC<SearchFilterProps> = ({
   attrList,
   userList,
   proxyOptions,
   showExactSearch = true,
+  modelId = '',
   onSearch,
+  onChange,
+  onFilterChange,
 }) => {
-  // 从 store 获取 searchAttr
   const searchAttr_store = useAssetDataStore((state) => state.searchAttr);
+  const userConfigs = useAssetDataStore((state) => state.user_configs);
+  const updateUserConfig = useAssetDataStore((state) => state.updateUserConfig);
+  const applySavedFilter = useAssetDataStore((state) => state.applySavedFilter);
+
+  const { saveFilters } = useSavedFiltersApi();
+
+  const savedFilters = useMemo(() => {
+    const allFilters = userConfigs.cmdb_saved_filters as SavedFiltersConfigValue | undefined;
+    return allFilters?.[modelId] || [];
+  }, [userConfigs.cmdb_saved_filters, modelId]);
 
   const [searchAttr, setSearchAttr] = useState<string>("");
   const [searchValue, setSearchValue] = useState<any>('');
@@ -118,6 +133,61 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   const handleSearchClick = () => {
     onSearchValueChange(searchValue, isExactSearch);
   };
+
+  const handleApplySavedFilter = (filter: SavedFilter) => {
+    const newFilters = applySavedFilter(filter);
+    onChange?.(newFilters);
+    onFilterChange?.(newFilters);
+  };
+
+  const handleDeleteSavedFilter = (filter: SavedFilter, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    
+    Modal.confirm({
+      title: t('common.confirm'),
+      content: t('common.delConfirmCxt'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      onOk: async () => {
+        try {
+          const allSavedFilters = (userConfigs.cmdb_saved_filters ||
+            {}) as SavedFiltersConfigValue;
+          const currentFilters = allSavedFilters[modelId] || [];
+          const updatedFilters = currentFilters.filter(
+            (f) => f.id !== filter.id,
+          );
+          const updatedAllFilters: SavedFiltersConfigValue = {
+            ...allSavedFilters,
+            [modelId]: updatedFilters,
+          };
+
+          await saveFilters(SAVED_FILTERS_CONFIG_KEY, updatedAllFilters, false);
+          updateUserConfig(SAVED_FILTERS_CONFIG_KEY, updatedAllFilters);
+
+          message.success(t('FilterBar.deleteSuccess'));
+        } catch {
+          message.error(t('FilterBar.deleteFailed'));
+        }
+      },
+    });
+  };
+
+  const visibleSavedFilters = savedFilters.slice(0, 3);
+  const moreSavedFilters = savedFilters.slice(3);
+
+  const moreFiltersMenuItems: MenuProps['items'] = moreSavedFilters.map((filter) => ({
+    key: filter.id,
+    label: (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span onClick={() => handleApplySavedFilter(filter)}>{filter.name}</span>
+        <CloseOutlined 
+          style={{ marginLeft: 8, color: '#999', fontSize: '10px' }}
+          onClick={(e) => handleDeleteSavedFilter(filter, e)} 
+        />
+      </div>
+    ),
+  }));
 
   const renderSearchInput = () => {
     const selectedAttr = attrList.find((attr) => attr.attr_id === searchAttr);
@@ -300,33 +370,89 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   };
 
   return (
-    <div className={searchFilterStyle.searchFilter + ' flex items-center'}>
-      <Select
-        className={searchFilterStyle.attrList}
-        style={{ width: 120 }}
-        value={searchAttr}
-        onChange={onSearchAttrChange}
-      >
-        {attrList.map((attr) => (
-          <Select.Option key={attr.attr_id} value={attr.attr_id}>
-            {attr.attr_name}
-          </Select.Option>
-        ))}
-      </Select>
-      {renderSearchInput()}
-      {/* 搜索按钮 */}
-      <Button
-        type="primary"
-        icon={<SearchOutlined />}
-        onClick={handleSearchClick}
-        style={{ marginLeft: 0, marginRight: 8, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
-      ></Button>
-      {showExactSearch && (
-        <Checkbox onChange={onExactSearchChange}>
-          {t('Model.isExactSearch')}
-        </Checkbox>
-      )}
-    </div>
+    <>
+      <div className={searchFilterStyle.searchFilter + ' flex items-center'}>
+        <Select
+          className={searchFilterStyle.attrList}
+          style={{ width: 120 }}
+          value={searchAttr}
+          onChange={onSearchAttrChange}
+        >
+          {attrList.map((attr) => (
+            <Select.Option key={attr.attr_id} value={attr.attr_id}>
+              {attr.attr_name}
+            </Select.Option>
+          ))}
+        </Select>
+        {renderSearchInput()}
+        {/* 搜索按钮 */}
+        <Button
+          type="primary"
+          icon={<SearchOutlined />}
+          onClick={handleSearchClick}
+          style={{
+            marginLeft: 0,
+            marginRight: 8,
+            borderTopLeftRadius: 0,
+            borderBottomLeftRadius: 0,
+          }}
+        ></Button>
+        {showExactSearch && (
+          <Checkbox onChange={onExactSearchChange}>
+            {t('Model.isExactSearch')}
+          </Checkbox>
+        )}
+
+        {/* 收藏的筛选条件 */}
+        {savedFilters.length > 0 && (
+          <div className={searchFilterStyle.savedFiltersWrapper}>
+            <div className={searchFilterStyle.savedFiltersLabel}>
+              <StarFilled className={searchFilterStyle.starIcon} />
+              <span>{t('FilterBar.savedFilters')}：</span>
+            </div>
+            <div className={searchFilterStyle.savedFiltersTags}>
+              {visibleSavedFilters.map((filter) => {
+                const displayName =
+                  filter.name.length > 6
+                    ? `${filter.name.slice(0, 6)}...`
+                    : filter.name;
+                const tagContent = (
+                  <Tag
+                    key={filter.id}
+                    className={searchFilterStyle.savedFilterTag}
+                    onClick={() => handleApplySavedFilter(filter)}
+                  >
+                    <span>{displayName}</span>
+                    <CloseOutlined
+                      className={searchFilterStyle.closeIcon}
+                      onClick={(e) => handleDeleteSavedFilter(filter, e)}
+                    />
+                  </Tag>
+                );
+                return filter.name.length > 6 ? (
+                  <Tooltip key={filter.id} title={filter.name}>
+                    {tagContent}
+                  </Tooltip>
+                ) : (
+                  tagContent
+                );
+              })}
+              {moreSavedFilters.length > 0 && (
+                <Dropdown
+                  menu={{ items: moreFiltersMenuItems }}
+                  trigger={['click']}
+                >
+                  <Tag className={searchFilterStyle.moreFiltersTag}>
+                    <span>{t('FilterBar.moreSavedFilters')}</span>
+                    <DownOutlined className={searchFilterStyle.downIcon} />
+                  </Tag>
+                </Dropdown>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   );
 };
 

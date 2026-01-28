@@ -1,17 +1,20 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Tag, Button, Popover, Form, Input, InputNumber, Select, DatePicker, Checkbox, Space } from 'antd';
-import { FunnelPlotFilled, CloseOutlined } from '@ant-design/icons';
+import { Tag, Button, Popover, Form, Input, InputNumber, Select, DatePicker, Checkbox, Space, Modal, message } from 'antd';
+import { FunnelPlotFilled, CloseOutlined, StarOutlined } from '@ant-design/icons';
 import type { AttrFieldType } from '@/app/cmdb/types/assetManage';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
-import styles from './FilterBar.module.scss';
+import styles from './filterBar.module.scss';
 import { useTranslation } from '@/utils/i18n';
 dayjs.extend(customParseFormat);
 import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
+import { useSavedFiltersApi, type SavedFiltersConfigValue, type SavedFilterItem } from '@/app/cmdb/api/userConfig';
 
 const { RangePicker } = DatePicker;
+
+const SAVED_FILTERS_CONFIG_KEY = 'cmdb_saved_filters';
 
 // 筛选条件的数据格式（兼容旧代码，实际使用 FilterItem）
 export interface FilterCondition {
@@ -26,6 +29,7 @@ export interface FilterBarProps {
   attrList?: AttrFieldType[];
   userList?: Array<{ id: string; username: string; display_name?: string }>;
   proxyOptions?: Array<{ proxy_id: string; proxy_name: string }>;
+  modelId?: string;
   onChange?: (filters: FilterItem[]) => void;
   onFilterChange?: (filters: FilterItem[]) => void;
 }
@@ -34,6 +38,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
   attrList = [],
   userList = [],
   proxyOptions = [],
+  modelId = '',
   onChange,
   onFilterChange,
 }) => {
@@ -42,12 +47,20 @@ const FilterBar: React.FC<FilterBarProps> = ({
   const remove = useAssetDataStore((state) => state.remove);
   const clear = useAssetDataStore((state) => state.clear);
   const update = useAssetDataStore((state) => state.update);
+  const userConfigs = useAssetDataStore((state) => state.user_configs);
+  const updateUserConfig = useAssetDataStore((state) => state.updateUserConfig);
+
+  const { saveFilters } = useSavedFiltersApi();
 
   const [editPopoverVisible, setEditPopoverVisible] = useState(false);
   const [editingFilter, setEditingFilter] = useState<FilterItem | null>(null);
   const [editingIndex, setEditingIndex] = useState<number>(-1);
   const [clickedTagIndex, setClickedTagIndex] = useState<number>(-1);
   const [form] = Form.useForm();
+
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [saveFilterName, setSaveFilterName] = useState('');
+  const [saving, setSaving] = useState(false);
 
   // 根据 field 获取字段信息
   const getFieldInfo = (field: string): AttrFieldType | undefined => {
@@ -279,6 +292,59 @@ const FilterBar: React.FC<FilterBarProps> = ({
     }
   };
 
+  const generateDefaultFilterName = (): string => {
+    if (queryList.length === 1) {
+      const filter = queryList[0];
+      const value = filter.start && filter.end 
+        ? `${filter.start}~${filter.end}`
+        : Array.isArray(filter.value) 
+          ? filter.value.join(',') 
+          : String(filter.value || '');
+      return `${value}`.substring(0, 50);
+    }
+    return '';
+  };
+
+  const handleOpenSaveModal = () => {
+    if (queryList.length === 0) {
+      message.warning(t('FilterBar.noFiltersToSave'));
+      return;
+    }
+    setSaveFilterName(generateDefaultFilterName());
+    setSaveModalVisible(true);
+  };
+
+  const handleSaveFilter = async () => {
+    if (!saveFilterName.trim()) {
+      message.warning(t('FilterBar.filterNameRequired'));
+      return;
+    }
+    setSaving(true);
+    try {
+      const allSavedFilters = (userConfigs.cmdb_saved_filters || {}) as SavedFiltersConfigValue;
+      const currentFilters = allSavedFilters[modelId] || [];
+      const newItem: SavedFilterItem = {
+        id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        name: saveFilterName.trim(),
+        filters: queryList,
+      };
+      const updatedFilters = [...currentFilters, newItem];
+      const updatedAllFilters: SavedFiltersConfigValue = { ...allSavedFilters, [modelId]: updatedFilters };
+      const isNew = !userConfigs.cmdb_saved_filters;
+
+      await saveFilters(SAVED_FILTERS_CONFIG_KEY, updatedAllFilters, isNew);
+      updateUserConfig(SAVED_FILTERS_CONFIG_KEY, updatedAllFilters);
+
+      message.success(t('FilterBar.saveSuccess'));
+      setSaveModalVisible(false);
+      setSaveFilterName('');
+    } catch {
+      message.error(t('FilterBar.saveFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const renderEditInput = () => {
     if (!editingFilter) return null;
     const fieldType = inferFieldType(editingFilter);
@@ -406,67 +472,96 @@ const FilterBar: React.FC<FilterBarProps> = ({
     }
   };
 
-  // 如果没有筛选条件，返回空状态
-  if (queryList.length === 0) return null;
+  const hasActiveFilters = queryList.length > 0;
+
+  // 只显示当前激活的筛选条件，不显示收藏的筛选条件
+  if (!hasActiveFilters) return null;
 
   return (
     <>
-      <div className={styles.filterBar}>
-        {/* 左侧：标题区域 */}
-        <div className={styles.header}>
-          <FunnelPlotFilled className={styles.headerIcon} />
-          <span className={styles.headerLabel}>{t('FilterBar.filterItems')}</span>
-        </div>
-        {/* 中间：标签列表区域 */}
-        <div className={styles.tagsContainer}>
-          {queryList.map((filter, index) => (
-            <Popover
-              key={`${filter.field}-${index}`}
-              open={editPopoverVisible && clickedTagIndex === index}
-              onOpenChange={handlePopoverOpenChange}
-              trigger="click"
-              placement="bottomLeft"
-              content={
-                <div className={styles.popoverContent}>
-                  <Form form={form} layout="horizontal">
-                    <Form.Item label={formatFilterLabelForPopover(filter)}>
-                      {renderEditInput()}
-                    </Form.Item>
-                    <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
-                      <Space>
-                        <span className={styles.actionLinkPrimary} onClick={handleEditConfirm}>
-                          {t('common.confirm')}
-                        </span>
-                        <span className={styles.actionLink} onClick={handleCancel}>
-                          {t('common.cancel')}
-                        </span>
-                      </Space>
-                    </Form.Item>
-                  </Form>
-                </div>
-              }
-            >
-              {/* 筛选项的标签 */}
-              <Tag
-                closable
-                onClose={(e) => handleClose(index, e)}
-                onClick={() => handleTagClick(filter, index)}
-                className={styles.tag}
-                closeIcon={<CloseOutlined className={styles.tagCloseIcon} />}
-              >
-                <span className={styles.tagLabel}>{formatFilterLabel(filter)} : </span>
-                <span className={styles.tagValue} title={formatFilterValue(filter)}>
-                  {formatFilterValue(filter)}
-                </span>
-              </Tag>
-            </Popover>
-          ))}
-        </div>
-        {/* 右侧：操作区域 */}
-        <Button type="link" onClick={handleClear} className={styles.clearButton}>
-          {t('FilterBar.clearConditions')}
-        </Button>
+      <div className={styles.filterBarWrapper}>
+        {hasActiveFilters && (
+          <div className={styles.filterBar}>
+            <div className={styles.header}>
+              <FunnelPlotFilled className={styles.headerIcon} />
+              <span className={styles.headerLabel}>{t('FilterBar.filterItems')}</span>
+            </div>
+            <div className={styles.tagsContainer}>
+              {queryList.map((filter, index) => (
+                <Popover
+                  key={`${filter.field}-${index}`}
+                  open={editPopoverVisible && clickedTagIndex === index}
+                  onOpenChange={handlePopoverOpenChange}
+                  trigger="click"
+                  placement="bottomLeft"
+                  content={
+                    <div className={styles.popoverContent}>
+                      <Form form={form} layout="horizontal">
+                        <Form.Item label={formatFilterLabelForPopover(filter)}>
+                          {renderEditInput()}
+                        </Form.Item>
+                        <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
+                          <Space>
+                            <span className={styles.actionLinkPrimary} onClick={handleEditConfirm}>
+                              {t('common.confirm')}
+                            </span>
+                            <span className={styles.actionLink} onClick={handleCancel}>
+                              {t('common.cancel')}
+                            </span>
+                          </Space>
+                        </Form.Item>
+                      </Form>
+                    </div>
+                  }
+                >
+                  <Tag
+                    closable
+                    onClose={(e) => handleClose(index, e)}
+                    onClick={() => handleTagClick(filter, index)}
+                    className={styles.tag}
+                    closeIcon={<CloseOutlined className={styles.tagCloseIcon} />}
+                  >
+                    <span className={styles.tagLabel}>{formatFilterLabel(filter)} : </span>
+                    <span className={styles.tagValue} title={formatFilterValue(filter)}>
+                      {formatFilterValue(filter)}
+                    </span>
+                  </Tag>
+                </Popover>
+              ))}
+            </div>
+            <Button type="link" onClick={handleClear} className={styles.clearButton}>
+              {t('FilterBar.clearConditions')}
+            </Button>
+            <Button type="link" onClick={handleOpenSaveModal} className={styles.saveButton}>
+              <StarOutlined />
+              {t('FilterBar.saveFilters')}
+            </Button>
+          </div>
+        )}
       </div>
+
+      <Modal
+        title={t('FilterBar.saveFilters')}
+        open={saveModalVisible}
+        onOk={handleSaveFilter}
+        onCancel={() => setSaveModalVisible(false)}
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        confirmLoading={saving}
+        centered
+        width={400}
+      >
+        <Form layout="vertical">
+          <Form.Item label={t('FilterBar.filterName')} required>
+            <Input
+              value={saveFilterName}
+              onChange={(e) => setSaveFilterName(e.target.value)}
+              placeholder={t('FilterBar.filterName')}
+              maxLength={50}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </>
   );
 };
