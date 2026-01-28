@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Card, Dropdown, Menu, Tag } from 'antd';
+import { Card, Dropdown, Menu, Tag, Tooltip } from 'antd';
+import { PushpinFilled, PushpinOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import Icon from '@/components/icon';
 import Image from 'next/image';
@@ -25,6 +26,8 @@ interface EntityCardProps {
   skill_type?: number;
   bot_type?: number;
   botType?: string;
+  is_pinned?: boolean;
+  showPinButton?: boolean;
   permissions?: string[];
   onMenuClick: (action: string, entity: any) => void;
   redirectUrl: string;
@@ -43,6 +46,8 @@ const EntityCard: React.FC<EntityCardProps> = ({
   skillType,
   skill_type,
   bot_type,
+  is_pinned,
+  showPinButton = false,
   permissions,
   onMenuClick,
   redirectUrl,
@@ -123,11 +128,41 @@ const EntityCard: React.FC<EntityCardProps> = ({
   const iconType = getIconType();
   const avatar = getStableRandom(id + 'avatar', 2) === 0 ? '/app/banner_bg_1.jpg' : '/app/banner_bg_2.jpg';
 
+  const handlePinClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onMenuClick('pin', { 
+      id, 
+      name, 
+      introduction, 
+      created_by, 
+      team_name, 
+      team, 
+      online, 
+      skill_type, 
+      bot_type,
+      is_pinned
+    });
+  };
+
   return (
     <Card
       className={`shadow-md cursor-pointer rounded-xl relative overflow-hidden ${styles.CommonCard}`}
       onClick={() => router.push(`${redirectUrl}?id=${id}&name=${name}&desc=${introduction}`)}
     >
+      {showPinButton && (
+        <Tooltip title={is_pinned ? t('common.unpin') : t('common.pin')}>
+          <div 
+            className="absolute top-2 left-2 z-10 cursor-pointer w-6 h-6 rounded-full flex items-center justify-center bg-[rgba(0,0,0,0.3)] hover:bg-[rgba(0,0,0,0.5)] transition-colors"
+            onClick={handlePinClick}
+          >
+            {is_pinned ? (
+              <PushpinFilled className="text-sm text-white" style={{ transform: 'rotate(-45deg)' }} />
+            ) : (
+              <PushpinOutlined className="text-sm text-white/70 hover:text-white" />
+            )}
+          </div>
+        </Tooltip>
+      )}
       <div className="absolute top-2 right-2 z-10" onClick={(e) => e.stopPropagation()}>
         <Dropdown overlay={menu} trigger={['click']} key={`dropdown-${id}`} placement="bottomRight">
           <div className="cursor-pointer">

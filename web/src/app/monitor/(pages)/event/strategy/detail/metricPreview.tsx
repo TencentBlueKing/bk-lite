@@ -10,14 +10,15 @@ import {
   MetricItem,
   ThresholdField,
   FilterItem,
-  TableDataItem,
+  TableDataItem
 } from '@/app/monitor/types';
 import { SourceFeild } from '@/app/monitor/types/event';
 import { InstanceItem } from '@/app/monitor/types/search';
 import {
   mergeViewQueryKeyValues,
-  renderChart,
+  renderChart
 } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 
 const { Option } = Select;
 
@@ -50,11 +51,12 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   threshold,
   calculationUnit,
   scrollContainerRef,
-  anchorRef,
+  anchorRef
 }) => {
   const { t } = useTranslation();
   const { get } = useApiClient();
   const { getInstanceList } = useMonitorApi();
+  const { findUnitNameById } = useUnitTransform();
   const [loading, setLoading] = useState<boolean>(false);
   const [instanceLoading, setInstanceLoading] = useState<boolean>(false);
   const [chartData, setChartData] = useState<ChartData[]>([]);
@@ -109,7 +111,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       return {
         instance_id: val,
         instance_name: val,
-        instance_id_values: [val],
+        instance_id_values: [val]
       };
     });
     setInstances(instanceItems);
@@ -180,7 +182,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       'min_over_time',
       'avg_over_time',
       'last_over_time',
-      'count_over_time',
+      'count_over_time'
     ];
     if (overTimeFunctions.includes(algorithm)) {
       // 例如: sum_over_time(metric{labels}[5m])
@@ -203,8 +205,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     const queryList = [
       {
         keys: currentMetric.instance_id_keys || [],
-        values: selectedInst.instance_id_values,
-      },
+        values: selectedInst.instance_id_values
+      }
     ];
     let query = mergeViewQueryKeyValues(queryList);
     // 添加条件维度
@@ -224,32 +226,41 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         query += conditionQueries.join(',');
       }
     }
-
     // 基础查询语句（替换标签占位符）
     const baseQuery = metricQuery.replace(/__\$labels__/g, query);
     // 根据汇聚方式包装查询语句
     const finalQuery = wrapQueryWithAlgorithm(baseQuery);
     // 计算时间范围和步长
-    // 基于汇聚周期计算：显示最近 N 个周期的数据（至少显示 50 个点）
     const periodInSeconds = getPeriodInSeconds();
-    const MIN_POINTS = 50;
     const now = Date.now();
-    // 时间范围：至少显示 50 个汇聚周期，最少 1 小时，最多 24 小时
-    const minDuration = Math.max(periodInSeconds * MIN_POINTS * 1000, 3600000);
-    const maxDuration = 86400000; // 24 小时
-    const duration = Math.min(minDuration, maxDuration);
+    // 动态计算时间范围：基于汇聚周期的 30 倍
+    // 例如：5分钟周期 → 150分钟范围，1小时周期 → 30小时范围，1天周期 → 7天范围（受限制）
+    const dynamicDuration = periodInSeconds * 30 * 1000;
+    // 限制在 30 分钟到 7 天之间
+    const minDuration = 1800000; // 30 分钟
+    const maxDuration = 604800000; // 7 天
+    const duration = Math.max(
+      minDuration,
+      Math.min(dynamicDuration, maxDuration)
+    );
     const startTime = now - duration;
     const endTime = now;
-    // step 设置为汇聚周期（秒）
-    const step = periodInSeconds;
-
+    // 动态计算目标点数：时间范围越短，点数越少
+    // 基准：1小时 → 30个点，按比例缩放，最少15个点，最多60个点
+    const basePoints = 30;
+    const baseDuration = 3600000; // 1 小时
+    const targetPoints = Math.round(basePoints * (duration / baseDuration));
+    const clampedPoints = Math.max(15, Math.min(targetPoints, 60));
+    // step = 时间范围 / 目标点数，但不能小于汇聚周期
+    const calculatedStep = Math.ceil(duration / 1000 / clampedPoints);
+    const step = Math.max(periodInSeconds, calculatedStep);
     return {
       query: finalQuery,
       source_unit: currentMetric.unit || '',
       unit: calculationUnit || '',
       start: startTime,
       end: endTime,
-      step,
+      step
     };
   };
 
@@ -265,10 +276,10 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         {
           page: 1,
           page_size: -1,
-          name: '',
+          name: ''
         },
         {
-          signal: abortController.signal,
+          signal: abortController.signal
         }
       );
       const results = data?.results || [];
@@ -305,8 +316,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
             ...inst,
             instance_name: foundInstance.instance_name || inst.instance_id,
             instance_id_values: foundInstance.instance_id_values || [
-              inst.instance_id,
-            ],
+              inst.instance_id
+            ]
           };
         }
       }
@@ -346,7 +357,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         '/monitor/api/metrics_instance/query_range/',
         {
           params,
-          signal: abortController.signal,
+          signal: abortController.signal
         }
       );
       if (currentRequestId !== requestIdRef.current) {
@@ -367,8 +378,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
           instance_id_keys: currentMetric?.instance_id_keys || [],
           dimensions: currentMetric?.dimensions || [],
           title: currentMetric?.display_name || '--',
-          showInstName: true,
-        },
+          showInstName: true
+        }
       ];
       if (!selectedInst) {
         list = [];
@@ -397,13 +408,14 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     };
   }, [
     selectedInstance,
+    instances,
     metric,
     groupBy,
     conditions,
     period,
     periodUnit,
     algorithm,
-    calculationUnit,
+    calculationUnit
   ]);
 
   // 清理
@@ -428,10 +440,15 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     (item) => item.value !== null && item.value !== undefined
   );
 
+  const showUnit = (val) => {
+    const unitName = findUnitNameById(val);
+    return unitName ? `（${unitName}）` : '';
+  };
+
   return (
     <div
       ref={previewRef}
-      className="w-[600px] flex-shrink-0 sticky h-fit self-start border border-[var(--color-border-2)] rounded-md p-4 bg-[var(--color-bg-1)] transition-[top] duration-150"
+      className="w-full sticky h-fit self-start border border-[var(--color-border-2)] rounded-md p-4 bg-[var(--color-bg-1)] shadow-md transition-[top] duration-150"
       style={{ top: topOffset }}
     >
       {/* 标题和资产选择器 - 水平排列 */}
@@ -470,7 +487,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
           {currentMetric.display_name || metric}
           {(calculationUnit || unit) && (
             <span className="text-[var(--color-text-3)] ml-1">
-              ({calculationUnit || unit})
+              {showUnit(calculationUnit || unit)}
             </span>
           )}
         </div>
@@ -485,7 +502,6 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
               metric={currentMetric}
               threshold={validThreshold}
               allowSelect={false}
-              showDimensionTable={false}
               showDimensionFilter={true}
             />
           ) : (

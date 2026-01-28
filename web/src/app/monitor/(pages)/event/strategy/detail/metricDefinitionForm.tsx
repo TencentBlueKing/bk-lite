@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
 import {
   Form,
   Input,
@@ -24,6 +24,7 @@ import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import { useConditionList } from '@/app/monitor/hooks';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import strategyStyle from '../index.module.scss';
+import { debounce } from 'lodash';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -37,6 +38,7 @@ interface MetricDefinitionFormProps {
   labels: string[];
   conditions: FilterItem[];
   groupBy: string[];
+  period: number | null;
   periodUnit: string;
   originMetricData: IndexViewItem[];
   monitorName: string;
@@ -44,7 +46,9 @@ interface MetricDefinitionFormProps {
   onMetricChange: (val: string) => void;
   onFiltersChange: (filters: FilterItem[]) => void;
   onGroupChange: (val: string[]) => void;
+  onPeriodChange: (val: number | null) => void;
   onPeriodUnitChange: (val: string) => void;
+  onAlgorithmChange: (val: string) => void;
   isTrap: (getFieldValue: any) => boolean;
 }
 
@@ -63,7 +67,9 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   onMetricChange,
   onFiltersChange,
   onGroupChange,
+  onPeriodChange,
   onPeriodUnitChange,
+  onAlgorithmChange,
   isTrap,
 }) => {
   const { t } = useTranslation();
@@ -71,6 +77,38 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   const SCHEDULE_LIST = useScheduleList();
   const CONDITION_LIST = useConditionList();
   const { getGroupIds } = useObjectConfigInfo();
+
+  // 条件维度输入框的本地状态（用于即时显示）
+  const [localConditionValues, setLocalConditionValues] = useState<
+    Record<number, string>
+  >({});
+  const conditionDebounceRef = useRef<
+    Record<number, ReturnType<typeof setTimeout>>
+  >({});
+
+  // 同步外部 conditions 到本地状态
+  useEffect(() => {
+    const newLocalValues: Record<number, string> = {};
+    conditions.forEach((item, index) => {
+      newLocalValues[index] = item.value || '';
+    });
+    setLocalConditionValues(newLocalValues);
+  }, [conditions.length]);
+
+  // 防抖处理汇聚周期值变化
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const debouncedPeriodChange = useCallback(
+    debounce((val: number | null) => {
+      onPeriodChange(val);
+    }, 500),
+    [onPeriodChange],
+  );
+
+  // 处理汇聚周期输入变化
+  const handlePeriodInputChange = (val: number | null) => {
+    form.setFieldValue('period', val);
+    debouncedPeriodChange(val);
+  };
 
   // 同步外部状态到 Form，使验证能正常工作
   useEffect(() => {
@@ -126,9 +164,19 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
     e: React.ChangeEvent<HTMLInputElement>,
     index: number
   ) => {
-    const newConditions = [...conditions];
-    newConditions[index].value = e.target.value;
-    onFiltersChange(newConditions);
+    const value = e.target.value;
+    // 立即更新本地状态（UI 即时响应）
+    setLocalConditionValues((prev) => ({ ...prev, [index]: value }));
+    // 清除之前的防抖定时器
+    if (conditionDebounceRef.current[index]) {
+      clearTimeout(conditionDebounceRef.current[index]);
+    }
+    // 防抖更新到父组件
+    conditionDebounceRef.current[index] = setTimeout(() => {
+      const newConditions = [...conditions];
+      newConditions[index].value = value;
+      onFiltersChange(newConditions);
+    }, 500);
   };
 
   const addConditionItem = () => {
@@ -298,7 +346,10 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                             <Input
                               style={{ width: '150px' }}
                               placeholder={t('monitor.value')}
-                              value={conditionItem.value}
+                              value={
+                                localConditionValues[index] ??
+                                conditionItem.value
+                              }
                               onChange={(e) => handleValueChange(e, index)}
                             />
                             <Button
@@ -352,9 +403,11 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
           ]}
         >
           <InputNumber
+            className="w-full"
             min={SCHEDULE_UNIT_MAP[`${periodUnit}Min`]}
             max={SCHEDULE_UNIT_MAP[`${periodUnit}Max`]}
             precision={0}
+            onChange={handlePeriodInputChange}
             addonAfter={
               <Select
                 value={periodUnit}
@@ -408,6 +461,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   }}
                   placeholder={t('monitor.events.convergenceMethod')}
                   showSearch
+                  onChange={onAlgorithmChange}
                 >
                   {METHOD_LIST.map((item) => (
                     <Option value={item.value} key={item.value}>

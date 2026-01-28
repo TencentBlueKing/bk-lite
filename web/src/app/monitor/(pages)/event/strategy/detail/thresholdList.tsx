@@ -56,7 +56,7 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
   };
 
   return (
-    <div className="w-full border border-[var(--color-border-2)] rounded-md p-4 bg-[var(--color-bg-1)]">
+    <div className="w-full border border-[var(--color-border-2)] rounded-md p-4 bg-[var(--color-bg-1)] shadow-md">
       {/* 单位选择器在右上角 */}
       <div className="flex justify-end mb-[10px]">
         <span className="mr-[10px] leading-[32px]">{t('common.unit')}:</span>
@@ -107,7 +107,7 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
                 ))}
               </Select>
               <InputNumber
-                style={{ width: '200px' }}
+                style={{ flex: 1 }}
                 min={0}
                 value={item.value}
                 addonAfter={getUnitLabel()}

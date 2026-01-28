@@ -52,7 +52,7 @@ class SnmpFacts:
         self.authkey = kwargs.get('authkey')
         self.privkey = kwargs.get('privkey')
         self.timeout = int(kwargs.get('timeout', 1))
-        self.retries = int(kwargs.get('retries', 5))
+        self.retries = int(kwargs.get('retries', 2))
         self.snmp_port = int(kwargs.get('snmp_port', 161))  # 默认 SNMP 端口为 161
         self.topo = kwargs.get('topo', False)
 

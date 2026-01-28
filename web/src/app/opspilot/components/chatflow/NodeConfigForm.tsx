@@ -444,8 +444,8 @@ export const NodeConfigForm: React.FC<any> = ({
           <Form.List name="intents">
             {(fields, { add, remove }) => (
               <>
-                <div className="mb-3 flex items-center justify-between border-b pb-2">
-                  <label className="text-sm font-medium text-gray-700">{t('chatflow.nodeConfig.intentClassification')}</label>
+                <div className="mb-3 flex items-center justify-between pb-2">
+                  <label className="text-sm font-medium text-[var(--color-text-2)]">{t('chatflow.nodeConfig.intentClassification')}</label>
                   <Button 
                     type="dashed" 
                     onClick={() => add({ name: '' })} 
@@ -461,7 +461,7 @@ export const NodeConfigForm: React.FC<any> = ({
                       <div className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-semibold shadow-md">
                         {index + 1}
                       </div>
-                      <span className="text-xs text-gray-500 font-medium">
+                      <span className="text-xs text-[var(--color-text-3)] font-medium">
                         {t('chatflow.nodeConfig.classification')} {index + 1}
                       </span>
                     </div>
@@ -497,7 +497,11 @@ export const NodeConfigForm: React.FC<any> = ({
       {nodeType === 'notification' && (
         <>
           <Form.Item name="notificationType" label={t('chatflow.notificationCategory')} initialValue="email" rules={[{ required: true }]}>
-            <Radio.Group onChange={(e) => { setNotificationType(e.target.value); loadChannels(e.target.value); }}>
+            <Radio.Group onChange={(e) => { 
+              setNotificationType(e.target.value); 
+              loadChannels(e.target.value); 
+              form.setFieldsValue({ notificationMethod: undefined });
+            }}>
               <Radio value="email">{t('chatflow.email')}</Radio>
               <Radio value="enterprise_wechat_bot">{t('chatflow.enterpriseWechatBot')}</Radio>
             </Radio.Group>
@@ -529,7 +533,7 @@ export const NodeConfigForm: React.FC<any> = ({
               </Form.Item>
             </>
           )}
-          <Form.Item name="notificationContent" label={t('chatflow.notificationContent')} rules={[{ required: true }]} initialValue="last_message">
+          <Form.Item name="notificationContent" label={t('chatflow.notificationContent')} rules={[{ required: true }]} initialValue="{{last_message}}">
             <TextArea rows={4} placeholder={t('chatflow.enterNotificationContent')} />
           </Form.Item>
         </>

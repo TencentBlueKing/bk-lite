@@ -149,7 +149,7 @@ class SessionStatus:
         (CONFIRMED, "已确认"),
         (RECOVERED, "已恢复"),
     )
-    NO_CONFIRMED = (OBSERVING, RECOVERED)
+    NO_CONFIRMED = (CONFIRMED, RECOVERED)
 
 
 class IncidentStatus:

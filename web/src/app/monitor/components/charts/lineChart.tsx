@@ -9,14 +9,14 @@ import {
   Area,
   ResponsiveContainer,
   ReferenceArea,
-  ReferenceLine,
+  ReferenceLine
 } from 'recharts';
 import CustomTooltip from './customTooltips';
 import EventBar from './eventBar';
 import {
   generateUniqueRandomColor,
   useFormatTime,
-  isStringArray,
+  isStringArray
 } from '@/app/monitor/utils/common';
 import chartLineStyle from './index.module.scss';
 import dayjs, { Dayjs } from 'dayjs';
@@ -27,7 +27,7 @@ import {
   ListItem,
   TableDataItem,
   MetricItem,
-  ThresholdField,
+  ThresholdField
 } from '@/app/monitor/types';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 
@@ -71,7 +71,7 @@ const LineChart: React.FC<LineChartProps> = memo(
     eventData = [],
     allowSelect = true,
     showDimensionTable = false,
-    onXRangeChange,
+    onXRangeChange
   }) => {
     const { formatTime } = useFormatTime();
     const [startX, setStartX] = useState<number | null>(null);
@@ -91,9 +91,44 @@ const LineChart: React.FC<LineChartProps> = memo(
       const times = data.map((d) => d.time);
       return {
         minTime: +new Date(Math.min(...times)),
-        maxTime: +new Date(Math.max(...times)),
+        maxTime: +new Date(Math.max(...times))
       };
     }, [data]);
+
+    // 计算 Y 轴范围，确保阈值线能显示
+    const yAxisDomain = useMemo((): [number | 'auto', number | 'auto'] => {
+      if (!threshold.length) {
+        return [0, 'auto'];
+      }
+      // 获取数据中的所有值
+      const dataValues: number[] = [];
+      data.forEach((item) => {
+        Object.keys(item).forEach((key) => {
+          if (key.includes('value')) {
+            const val = item[key];
+            if (typeof val === 'number' && !isNaN(val)) {
+              dataValues.push(val);
+            }
+          }
+        });
+      });
+      // 获取所有有效阈值
+      const thresholdValues = threshold
+        .filter((item) => item.value !== null && item.value !== undefined)
+        .map((item) => item.value as number);
+      // 如果没有数据或阈值，返回自动计算
+      if (!dataValues.length || !thresholdValues.length) {
+        return [0, 'auto'];
+      }
+      const dataMax = Math.max(...dataValues);
+      const thresholdMax = Math.max(...thresholdValues);
+      // 只有当阈值最大值超过数据最大值时，才用阈值最大值设置 Y 轴上限
+      if (thresholdMax > dataMax) {
+        const yMax = thresholdMax;
+        return [0, yMax];
+      }
+      return [0, 'auto'];
+    }, [data, threshold]);
 
     const hasDimension = useMemo(() => {
       return !Object.values(details || {}).every((item) => !item.length);
@@ -151,7 +186,7 @@ const LineChart: React.FC<LineChartProps> = memo(
       if (startX !== null && endX !== null) {
         const selectedTimeRange: [Dayjs, Dayjs] = [
           dayjs(Math.min(startX, endX) * 1000),
-          dayjs(Math.max(startX, endX) * 1000),
+          dayjs(Math.max(startX, endX) * 1000)
         ];
         onXRangeChange && onXRangeChange(selectedTimeRange);
       }
@@ -217,7 +252,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                   top: 10,
                   right: eventData?.length ? 20 : 0,
                   left: 0,
-                  bottom: 0,
+                  bottom: 0
                 }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
@@ -232,6 +267,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                   axisLine={false}
                   tickLine={false}
                   tick={renderYAxisTick}
+                  domain={yAxisDomain}
                 />
 
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -338,7 +374,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                   fontSize: '12px',
                   pointerEvents: 'none',
                   zIndex: 1000,
-                  whiteSpace: 'nowrap',
+                  whiteSpace: 'nowrap'
                 }}
               >
                 {hoveredThreshold.value}

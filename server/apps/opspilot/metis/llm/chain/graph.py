@@ -28,6 +28,56 @@ from loguru import logger
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, BasicLLMResponse
 
+# Sensitive field patterns for masking in SSE events (logging/frontend display only)
+_SENSITIVE_FIELD_PATTERNS = frozenset(
+    {
+        "password",
+        "pwd",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "credential",
+        "auth",
+        "密码",
+        "口令",
+        "秘钥",
+    }
+)
+
+
+def _mask_sensitive_data(data: Any) -> Any:
+    """
+    Mask sensitive data in tool arguments for SSE event output.
+
+    This function creates a deep copy and masks values of sensitive fields
+    (password, token, secret, etc.) to prevent credential leakage in logs/frontend.
+
+    NOTE: This is ONLY for display purposes. The original data passed to
+    tool execution remains unchanged.
+
+    Args:
+        data: The data to mask (dict, list, or primitive)
+
+    Returns:
+        A copy with sensitive values replaced by "***"
+    """
+    if isinstance(data, dict):
+        result = {}
+        for key, value in data.items():
+            key_lower = key.lower()
+            # Check if any sensitive pattern is contained in the key
+            is_sensitive = any(pattern in key_lower for pattern in _SENSITIVE_FIELD_PATTERNS)
+            if is_sensitive and isinstance(value, str) and value:
+                result[key] = "***"
+            else:
+                result[key] = _mask_sensitive_data(value)
+        return result
+    elif isinstance(data, list):
+        return [_mask_sensitive_data(item) for item in data]
+    else:
+        return data
+
 
 async def _merge_async_streams(
     langgraph_stream,
@@ -385,12 +435,14 @@ class BasicGraph(ABC):
 
         if existing_tool_call_id:
             if tool_input:
+                # Mask sensitive data (password, token, etc.) for SSE output only
+                masked_input = _mask_sensitive_data(tool_input) if isinstance(tool_input, dict) else tool_input
                 events.append(
                     encoder.encode(
                         ToolCallArgsEvent(
                             type=EventType.TOOL_CALL_ARGS,
                             tool_call_id=existing_tool_call_id,
-                            delta=json.dumps(tool_input, ensure_ascii=False) if isinstance(tool_input, dict) else str(tool_input),
+                            delta=json.dumps(masked_input, ensure_ascii=False) if isinstance(masked_input, dict) else str(masked_input),
                             timestamp=int(time.time() * 1000),
                         )
                     )
@@ -415,12 +467,14 @@ class BasicGraph(ABC):
                 )
             )
             if tool_input:
+                # Mask sensitive data (password, token, etc.) for SSE output only
+                masked_input = _mask_sensitive_data(tool_input) if isinstance(tool_input, dict) else tool_input
                 events.append(
                     encoder.encode(
                         ToolCallArgsEvent(
                             type=EventType.TOOL_CALL_ARGS,
                             tool_call_id=tool_call_id,
-                            delta=json.dumps(tool_input, ensure_ascii=False) if isinstance(tool_input, dict) else str(tool_input),
+                            delta=json.dumps(masked_input, ensure_ascii=False) if isinstance(masked_input, dict) else str(masked_input),
                             timestamp=int(time.time() * 1000),
                         )
                     )
@@ -517,12 +571,14 @@ class BasicGraph(ABC):
                     )
                 )
                 if tool_args:
+                    # Mask sensitive data (password, token, etc.) for SSE output only
+                    masked_args = _mask_sensitive_data(tool_args) if isinstance(tool_args, dict) else tool_args
                     events.append(
                         encoder.encode(
                             ToolCallArgsEvent(
                                 type=EventType.TOOL_CALL_ARGS,
                                 tool_call_id=tool_call_id,
-                                delta=json.dumps(tool_args, ensure_ascii=False) if isinstance(tool_args, dict) else str(tool_args),
+                                delta=json.dumps(masked_args, ensure_ascii=False) if isinstance(masked_args, dict) else str(masked_args),
                                 timestamp=int(time.time() * 1000),
                             )
                         )
@@ -759,11 +815,13 @@ class BasicGraph(ABC):
 
                 # 发送工具参数
                 if tool_args:
+                    # Mask sensitive data (password, token, etc.) for SSE output only
+                    masked_args = _mask_sensitive_data(tool_args) if isinstance(tool_args, dict) else tool_args
                     yield encoder.encode(
                         ToolCallArgsEvent(
                             type=EventType.TOOL_CALL_ARGS,
                             tool_call_id=tool_call_id,
-                            delta=json.dumps(tool_args, ensure_ascii=False) if isinstance(tool_args, dict) else str(tool_args),
+                            delta=json.dumps(masked_args, ensure_ascii=False) if isinstance(masked_args, dict) else str(masked_args),
                             timestamp=int(time.time() * 1000),
                         )
                     )
@@ -813,11 +871,13 @@ class BasicGraph(ABC):
 
                 # 发送工具参数
                 if tool_args:
+                    # Mask sensitive data (password, token, etc.) for SSE output only
+                    masked_args = _mask_sensitive_data(tool_args) if isinstance(tool_args, dict) else tool_args
                     yield encoder.encode(
                         ToolCallArgsEvent(
                             type=EventType.TOOL_CALL_ARGS,
                             tool_call_id=tool_call_id,
-                            delta=json.dumps(tool_args, ensure_ascii=False) if isinstance(tool_args, dict) else str(tool_args),
+                            delta=json.dumps(masked_args, ensure_ascii=False) if isinstance(masked_args, dict) else str(masked_args),
                             timestamp=int(time.time() * 1000),
                         )
                     )
