@@ -24,6 +24,7 @@ http:
         servers:
           - url: '{{ env "SERVER_URL" }}'
         serversTransport: insecure
+        passHostHeader: false
 
   serversTransports:
     insecure:
