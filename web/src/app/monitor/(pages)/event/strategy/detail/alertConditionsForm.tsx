@@ -165,9 +165,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 }
               >
                 <div className="flex items-center">
-                  <span className="mr-[10px]">
-                    {t('monitor.events.noDataAlertCondition')}
-                  </span>
+                  <span>{t('monitor.events.noDataAlertCondition')}</span>
                   <InputNumber
                     className="mx-[10px]"
                     style={{ width: '80px' }}

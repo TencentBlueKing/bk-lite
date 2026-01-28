@@ -587,7 +587,7 @@ const StrategyOperation = () => {
         </div>
         <div className={strategyStyle.form} ref={formContainerRef}>
           <div className="flex gap-6">
-            <div className="w-[800px] flex-shrink-0">
+            <div className="w-[820px] flex-shrink-0">
               <Form form={form} name="basic">
                 <Steps
                   direction="vertical"
