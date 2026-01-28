@@ -121,7 +121,7 @@ class AggregationProcessor:
         )
 
         events = Event.objects.filter(
-            received_at__gte=cutoff_time, action=EventAction.CREATED
+            received_at__gte=cutoff_time, action__in=[EventAction.CREATED,EventAction.CLOSED]
         )
 
         logger.debug(f"策略 {strategy.name}: 时间范围内事件总数={events.count()}")
