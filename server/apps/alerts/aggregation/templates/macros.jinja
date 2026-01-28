@@ -15,7 +15,7 @@ CASE
         {{ ", " if not loop.last else "" }}
       {%- endfor %}
     )
-    {{ " " }}ELSE event_id
+    {{ " " }}ELSE external_id
   END
 {%- endmacro %}
 
@@ -49,5 +49,5 @@ CASE
 
 {# Macro: Event action filter (action=created for new events) #}
 {% macro event_action_filter() %}
-  action = 'created'
+  action IN ('created', 'closed')
 {% endmacro %}
