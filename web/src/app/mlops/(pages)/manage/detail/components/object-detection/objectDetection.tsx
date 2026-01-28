@@ -171,7 +171,7 @@ const ObjectDetectionDetail = () => {
         }
       });
     }
-    catch (e) { console.log(e) }
+    catch (e) { console.error(e) }
     finally { setLoading(false); }
   }, [t, searchParams]);
 
@@ -189,7 +189,7 @@ const ObjectDetectionDetail = () => {
     try {
       await deleteTrainDataFile(data.id, DatasetType.OBJECT_DETECTION);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
@@ -219,7 +219,7 @@ const ObjectDetectionDetail = () => {
         getDataset();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }

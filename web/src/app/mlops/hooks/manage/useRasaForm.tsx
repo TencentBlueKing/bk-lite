@@ -495,7 +495,7 @@ const useRasaRuleForm = ({
           action: actionOption
         });
       } catch (e) {
-        console.log(e);
+        console.error(e);
         message.error(t(`common.fetchFailed`));
       }
     };
@@ -944,7 +944,7 @@ const useRasaForms = ({
         });
         setOptions(_options || []);
       } catch (e) {
-        console.log(e);
+        console.error(e);
         message.error(t(`common.fetchFailed`));
       }
     };
@@ -1453,7 +1453,7 @@ const useRasaFormManager = ({
       onSuccess();
       setVisiable(false);
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.error`));
     } finally {
       setConfirmLoading(false);

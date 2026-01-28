@@ -310,7 +310,7 @@ const TrainTask = () => {
         }));
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -394,7 +394,7 @@ const TrainTask = () => {
       await startTrainTask(record.id, activeTab as DatasetType);
       message.success(t(`traintask.trainStartSucess`));
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.error`));
     } finally {
       getTasks();
@@ -420,7 +420,7 @@ const TrainTask = () => {
       await deleteTrainTask(record.id as string, activeTab as DatasetType);
       message.success(t('common.delSuccess'));
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t('common.delFailed'));
     } finally {
       getTasks();

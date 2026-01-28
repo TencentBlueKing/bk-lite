@@ -58,7 +58,7 @@ const AnnotationPage = () => {
         setMenuItems(data)
       }
     } catch (e) {
-      console.log(e)
+      console.error(e)
     } finally {
       setLoadingState((prev) => ({ ...prev, loading: false }));
     }

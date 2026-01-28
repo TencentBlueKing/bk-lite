@@ -43,7 +43,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
       setHistoryData(data);
       // setHistoryData(Object.entries(data?.metrics_history) || []);
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`traintask.getTrainStatusFailed`));
       setHistoryData([]);
     } finally {

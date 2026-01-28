@@ -1,5 +1,6 @@
 import { RefObject } from 'react';
 import { FormInstance } from 'antd';
+import { DatasetType } from '@/app/mlops/types';
 import type { Option } from '@/types';
 import { LOG_CLUSTERING_ALGORITHM_CONFIGS, LOG_CLUSTERING_ALGORITHM_SCENARIOS } from '@/app/mlops/constants';
 import useMlopsTaskApi from '@/app/mlops/api/task';
@@ -22,7 +23,7 @@ export const useLogClusteringForm = ({ datasetOptions, onSuccess, formRef }: Use
   } = useMlopsTaskApi();
 
   return useGenericDatasetForm({
-    datasetType: 'log_clustering',
+    datasetType: DatasetType.LOG_CLUSTERING,
     algorithmConfigs: LOG_CLUSTERING_ALGORITHM_CONFIGS,
     algorithmScenarios: LOG_CLUSTERING_ALGORITHM_SCENARIOS,
     algorithmOptions: [

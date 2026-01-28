@@ -1,26 +1,16 @@
 import useApiClient from '@/utils/request';
 import { TRAINJOB_MAP, SERVING_MAP } from '@/app/mlops/constants';
-import { DatasetType } from '@/app/mlops/types';
-interface LabelData {
-  timestamp: string;
-  value: string;
-  label: number;
-}
+import type { 
+  DatasetType,
+  AnomalyDetectionReasonParams,
+  ClassificationReasonParams
+} from '@/app/mlops/types';
 
-interface AnomalyDetectionReason {
-  model_name: string;
-  model_version: string;
-  algorithm: string;
-  data: LabelData[];
-  anomaly_threshold: number;
-}
 
-interface ClassificationReason {
-  model_name: string;
-  model_version: string;
-  algorithm: string;
-  data: any[];
-}
+
+// 使用导入的类型别名
+type AnomalyDetectionReason = AnomalyDetectionReasonParams;
+type ClassificationReason = ClassificationReasonParams;
 
 const useMlopsModelReleaseApi = () => {
   const {
@@ -60,9 +50,8 @@ const useMlopsModelReleaseApi = () => {
     name: string;
     description: string;
     model_version: string;
-    anomaly_detection_train_job: string;
+    train_job: string;
     status: string;
-    anomaly_threshold: number;
   }) => {
     return await post(`/mlops/anomaly_detection_servings/`, params);
   };
@@ -72,9 +61,8 @@ const useMlopsModelReleaseApi = () => {
     name: string;
     description: string;
     model_version: string;
-    time_series_predict_train_job: string;
+    train_job: string;
     status: string;
-    anomaly_threshold: number;
   }) => {
     return await post(`/mlops/timeseries_predict_servings/`, params);
   };
@@ -84,9 +72,8 @@ const useMlopsModelReleaseApi = () => {
     name: string;
     description: string;
     model_version: string;
-    log_clustering_train_job: string;
+    train_job: string;
     status: string;
-    anomaly_threshold: number;
   }) => {
     return await post(`/mlops/log_clustering_servings/`, params);
   };
@@ -96,9 +83,8 @@ const useMlopsModelReleaseApi = () => {
     name: string;
     description: string;
     model_version: string;
-    classification_train_job: string;
+    train_job: string;
     status: string;
-    anomaly_threshold: number;
   }) => {
     return await post(`/mlops/classification_servings/`, params);
   };
@@ -108,9 +94,8 @@ const useMlopsModelReleaseApi = () => {
     name: string;
     description: string;
     model_version: string;
-    classification_train_job: string;
+    train_job: string;
     status: string;
-    anomaly_threshold: number;
   }) => {
     return await post(`/mlops/image_classification_servings/`, params);
   };
@@ -120,9 +105,8 @@ const useMlopsModelReleaseApi = () => {
     name: string;
     description: string;
     model_version: string;
-    classification_train_job: string;
+    train_job: string;
     status: string;
-    anomaly_threshold: number;
   }) => {
     return await post(`/mlops/object_detection_servings/`, params);
   };
@@ -152,9 +136,8 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    anomaly_detection_train_job?: string;
+    train_job?: string;
     status?: string;
-    anomaly_threshold?: number;
   }) => {
     return await patch(`/mlops/anomaly_detection_servings/${id}/`, params);
   };
@@ -164,9 +147,8 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    time_series_predict_train_job?: string;
+    train_job?: string;
     status?: string;
-    anomaly_threshold?: number;
   }) => {
     return await patch(`/mlops/timeseries_predict_servings/${id}/`, params);
   };
@@ -176,9 +158,8 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    log_clustering_train_job?: string;
+    train_job?: string;
     status?: string;
-    anomaly_threshold?: number;
   }) => {
     return await patch(`/mlops/log_clustering_servings/${id}/`, params);
   };
@@ -188,9 +169,8 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    classification_train_job?: string;
+    train_job?: string;
     status?: string;
-    anomaly_threshold?: number;
   }) => {
     return await patch(`/mlops/classification_servings/${id}/`, params)
   };
@@ -200,9 +180,8 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    classification_train_job?: string;
+    train_job?: string;
     status?: string;
-    anomaly_threshold?: number;
   }) => {
     return await patch(`/mlops/image_classification_servings/${id}/`, params)
   };
@@ -212,9 +191,8 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    classification_train_job?: string;
+    train_job?: string;
     status?: string;
-    anomaly_threshold?: number;
   }) => {
     return await patch(`/mlops/object_detection_servings/${id}/`, params)
   };

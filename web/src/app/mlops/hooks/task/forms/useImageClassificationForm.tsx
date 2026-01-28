@@ -1,5 +1,6 @@
 import { RefObject } from 'react';
 import { FormInstance } from 'antd';
+import { DatasetType } from '@/app/mlops/types';
 import type { Option } from '@/types';
 import { IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS, IMAGE_CLASSIFICATION_ALGORITHM_SCENARIOS } from '@/app/mlops/constants';
 import useMlopsTaskApi from '@/app/mlops/api/task';
@@ -22,7 +23,7 @@ export const useImageClassificationForm = ({ datasetOptions, onSuccess, formRef 
   } = useMlopsTaskApi();
 
   return useGenericDatasetForm({
-    datasetType: 'image_classification',
+    datasetType: DatasetType.IMAGE_CLASSIFICATION,
     algorithmConfigs: IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS,
     algorithmScenarios: IMAGE_CLASSIFICATION_ALGORITHM_SCENARIOS,
     algorithmOptions: [

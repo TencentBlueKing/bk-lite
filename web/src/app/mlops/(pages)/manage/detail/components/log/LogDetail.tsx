@@ -167,7 +167,7 @@ const LogDetail = () => {
         }
       });
     }
-    catch (e) { console.log(e) }
+    catch (e) { console.error(e) }
     finally { setLoading(false); }
   }, [t, searchParams]);
 
@@ -185,7 +185,7 @@ const LogDetail = () => {
     try {
       await deleteTrainDataFile(data.id, DatasetType.LOG_CLUSTERING);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
@@ -215,7 +215,7 @@ const LogDetail = () => {
         getDataset();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }

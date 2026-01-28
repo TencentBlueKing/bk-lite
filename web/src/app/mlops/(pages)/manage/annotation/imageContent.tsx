@@ -188,7 +188,7 @@ const ImageContent = () => {
       }
       
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.error`));
     } finally {
       setLoadingState((prev) => ({ ...prev, imageLoading: false }));
@@ -333,7 +333,7 @@ const ImageContent = () => {
       
       message.success(t('datasets.uploadSuccess'));
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error('添加图片失败');
     }
   };
@@ -407,7 +407,7 @@ const ImageContent = () => {
       getImageTrainDataInfo();
       
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t('datasets.saveError'));
     } finally {
       setLoadingState(prev => ({ ...prev, saveLoading: false }));

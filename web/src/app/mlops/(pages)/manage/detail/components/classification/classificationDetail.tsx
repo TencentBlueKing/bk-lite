@@ -168,7 +168,7 @@ const ClassificationDetail = () => {
         }
       });
     }
-    catch (e) { console.log(e) }
+    catch (e) { console.error(e) }
     finally { setLoading(false); }
   }, [t, searchParams]);
 
@@ -186,7 +186,7 @@ const ClassificationDetail = () => {
     try {
       await deleteTrainDataFile(data.id, DatasetType.CLASSIFICATION);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
@@ -216,7 +216,7 @@ const ClassificationDetail = () => {
         getDataset();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }

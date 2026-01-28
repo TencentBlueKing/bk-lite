@@ -1,20 +1,12 @@
 import useApiClient from '@/utils/request';
 import { TRAINJOB_MAP } from '@/app/mlops/constants';
-import { DatasetType } from '@/app/mlops/types';
-
-
-interface TrainTaskParams {
-  name: string;
-  description?: string;
-  status: string;
-  algorithm: string;
-  train_data_id: number;
-  val_data_id: number;
-  text_data_id: number;
-  max_evals: 0;
-  hyperopt_config: object;
-  windows_size?: number;
-}
+import type { 
+  DatasetType, 
+  DatasetRelease,
+  TrainJob,
+  CreateTrainJobParams,
+  UpdateTrainJobParams
+} from '@/app/mlops/types';
 
 interface RasaPipelinesProps {
   name: string;
@@ -27,7 +19,6 @@ interface RasaPipelinesProps {
   datasets_detail?: any[];
   [key: string]: any
 }
-
 
 
 const useMlopsTaskApi = () => {
@@ -75,7 +66,7 @@ const useMlopsTaskApi = () => {
   };
 
   // 新建异常检测训练任务
-  const addAnomalyTrainTask = async (params: TrainTaskParams) => {
+  const addAnomalyTrainTask = async (params: CreateTrainJobParams): Promise<TrainJob> => {
     return await post(`/mlops/anomaly_detection_train_jobs/`, params)
   };
 
@@ -85,27 +76,27 @@ const useMlopsTaskApi = () => {
   };
 
   // 新建日志聚类训练任务
-  const addLogClusteringTrainTask = async (params: TrainTaskParams) => {
+  const addLogClusteringTrainTask = async (params: CreateTrainJobParams): Promise<TrainJob> => {
     return await post(`/mlops/log_clustering_train_jobs/`, params)
   };
 
   // 新建时序预测训练任务
-  const addTimeSeriesTrainTask = async (params: TrainTaskParams) => {
+  const addTimeSeriesTrainTask = async (params: CreateTrainJobParams): Promise<TrainJob> => {
     return await post(`/mlops/timeseries_predict_train_jobs/`, params)
   };
 
   // 新建分类任务训练任务
-  const addClassificationTrainTask = async (params: TrainTaskParams) => {
+  const addClassificationTrainTask = async (params: CreateTrainJobParams): Promise<TrainJob> => {
     return await post(`/mlops/classification_train_jobs`, params);
   };
 
   // 新建图片分类训练任务
-  const addImageClassificationTrainTask = async (params: TrainTaskParams) => {
+  const addImageClassificationTrainTask = async (params: CreateTrainJobParams): Promise<TrainJob> => {
     return await post(`/mlops/image_classification_train_jobs/`, params);
   };
 
   // 新建目标检测训练任务
-  const addObjectDetectionTrainTask = async (params: TrainTaskParams) => {
+  const addObjectDetectionTrainTask = async (params: CreateTrainJobParams): Promise<TrainJob> => {
     return await post(`/mlops/object_detection_train_jobs/`, params);
   };
 
@@ -115,7 +106,7 @@ const useMlopsTaskApi = () => {
   };
 
   // 编辑异常检测训练任务
-  const updateAnomalyTrainTask = async (id: string, params: TrainTaskParams) => {
+  const updateAnomalyTrainTask = async (id: string, params: UpdateTrainJobParams): Promise<TrainJob> => {
     return await patch(`/mlops/anomaly_detection_train_jobs/${id}/`, params);
   };
 
@@ -125,27 +116,27 @@ const useMlopsTaskApi = () => {
   };
 
   // 编辑日志聚类训练任务
-  const updateLogClusteringTrainTask = async (id: string, params: TrainTaskParams) => {
+  const updateLogClusteringTrainTask = async (id: string, params: UpdateTrainJobParams): Promise<TrainJob> => {
     return await patch(`/mlops/log_clustering_train_jobs/${id}/`, params);
   };
 
   // 编辑时序预测训练任务
-  const updateTimeSeriesTrainTask = async (id: string, params: TrainTaskParams) => {
+  const updateTimeSeriesTrainTask = async (id: string, params: UpdateTrainJobParams): Promise<TrainJob> => {
     return await patch(`/mlops/timeseries_predict_train_jobs/${id}/`, params);
   };
 
   // 编辑分类任务训练任务
-  const updateClassificationTrainTask = async (id: string, params: TrainTaskParams) => {
+  const updateClassificationTrainTask = async (id: string, params: UpdateTrainJobParams): Promise<TrainJob> => {
     return await patch(`/mlops/classification_train_jobs/${id}/`, params);
   };
 
   // 编辑图片分类训练任务
-  const updateImageClassificationTrainTask = async (id: string, params: TrainTaskParams) => {
+  const updateImageClassificationTrainTask = async (id: string, params: UpdateTrainJobParams): Promise<TrainJob> => {
     return await patch(`/mlops/image_classification_train_jobs/${id}/`, params);
   };
 
   // 编辑目标检测训练任务
-  const updateObjectDetectionTrainTask = async (id: string, params: TrainTaskParams) => {
+  const updateObjectDetectionTrainTask = async (id: string, params: UpdateTrainJobParams): Promise<TrainJob> => {
     return await patch(`/mlops/object_detection_train_jobs/${id}/`, params);
   };
 
@@ -183,7 +174,7 @@ const useMlopsTaskApi = () => {
   };
 
   // 获取指定数据集版本信息
-  const getDatasetReleaseByID = async (key: DatasetType, id: any) => {
+  const getDatasetReleaseByID = async (key: DatasetType, id: number | string): Promise<DatasetRelease> => {
     return await get(`/mlops/${key}_dataset_releases/${id}/`);
   };
 

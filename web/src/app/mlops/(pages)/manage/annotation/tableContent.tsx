@@ -114,7 +114,7 @@ const TableContent = () => {
       // 显示第一页数据
       updateDisplayData(processedData, 1, newPagination.pageSize);
     } catch (e) {
-      console.log(e);
+      console.error(e);
       setAllData([]);
       setTableData([]);
       setPagination({

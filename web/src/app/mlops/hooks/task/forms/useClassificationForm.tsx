@@ -1,5 +1,6 @@
 import { RefObject } from 'react';
 import { FormInstance } from 'antd';
+import { DatasetType } from '@/app/mlops/types';
 import type { Option } from '@/types';
 import { CLASSIFICATION_ALGORITHM_CONFIGS, CLASSIFICATION_ALGORITHM_SCENARIOS } from '@/app/mlops/constants';
 import useMlopsTaskApi from '@/app/mlops/api/task';
@@ -22,7 +23,7 @@ export const useClassificationForm = ({ datasetOptions, onSuccess, formRef }: Us
   } = useMlopsTaskApi();
 
   return useGenericDatasetForm({
-    datasetType: 'classification',
+    datasetType: DatasetType.CLASSIFICATION,
     algorithmConfigs: CLASSIFICATION_ALGORITHM_CONFIGS,
     algorithmScenarios: CLASSIFICATION_ALGORITHM_SCENARIOS,
     algorithmOptions: [

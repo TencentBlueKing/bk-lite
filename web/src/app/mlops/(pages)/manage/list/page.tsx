@@ -114,6 +114,8 @@ const DatasetManagePage = () => {
 
   const navigateToNode = (item: any) => {
     const [activeTab] = selectedKeys;
+    if(!activeTab) return;
+    console.log('进入详情：', activeTab, selectedKeys);
     router.push(
       `/mlops/manage/detail?folder_id=${item?.id}&folder_name=${item.name}&description=${item.description}&activeTap=${activeTab}&menu=${activeTab === DatasetType.RASA ? 'intent' : ''}`
     );
@@ -191,7 +193,12 @@ const DatasetManagePage = () => {
         treeData={treeData}
         showLine
         selectedKeys={selectedKeys}
-        onSelect={(keys) => setSelectedKeys(keys as string[])}
+        onSelect={(keys) => {
+          // 防止用户点击已选中节点时取消选择（导致 keys 为空）
+          if (keys.length > 0) {
+            setSelectedKeys(keys as string[]);
+          }
+        }}
         defaultExpandedKeys={['datasets']}
       />
     </div>

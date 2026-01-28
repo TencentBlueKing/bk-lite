@@ -14,6 +14,14 @@ interface TrainJob {
   dataset?: string | number;
   dataset_version?: string | number;
   max_evals?: number;
+  hyperopt_config?: HyperoptConfig;
+}
+
+// 超参数配置类型
+export interface HyperoptConfig {
+  hyperparams?: Record<string, unknown>;
+  preprocessing?: Record<string, unknown>;
+  feature_engineering?: Record<string, unknown>;
 }
 
 interface TrainTaskModalProps {
@@ -85,6 +93,33 @@ export interface AlgorithmConfig {
     feature_engineering?: GroupConfig[];
     preprocessing?: GroupConfig[];
   };
+}
+
+// ========== API 参数类型 ==========
+export interface CreateTrainJobParams {
+  name: string;
+  algorithm: string;
+  dataset: number;
+  dataset_version: number;
+  max_evals: number;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  description: string;
+  hyperopt_config: HyperoptConfig;
+}
+
+export interface UpdateTrainJobParams extends Partial<CreateTrainJobParams> {
+  id?: never; // 防止在 params 中传递 id
+}
+
+// ========== 表单数据类型 ==========
+export interface TrainJobFormValues {
+  name: string;
+  algorithm: string;
+  dataset: number;
+  dataset_version: number;
+  max_evals: number;
+  // 动态算法参数（根据 AlgorithmConfig 生成）
+  [key: string]: unknown;
 }
 
 export type {

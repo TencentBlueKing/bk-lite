@@ -264,7 +264,7 @@ const ModelRelease = () => {
         total: count
       }));
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -278,7 +278,7 @@ const ModelRelease = () => {
       await startServingContainer(id, activeTypes as DatasetType);
       getModelServings();
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.fetchFailed`));
     } finally {
       setLoading(false);
@@ -294,7 +294,7 @@ const ModelRelease = () => {
       await stopServingContainer(id, activeTypes as DatasetType);
       getModelServings();
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.fetchFailed`))
     } finally {
       setLoading(false);
@@ -310,7 +310,7 @@ const ModelRelease = () => {
       getModelServings();
       message.success(t(`common.delSuccess`));
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.delFailed`));
     }
   };
@@ -326,7 +326,7 @@ const ModelRelease = () => {
       await updateMap[activeTypes]!(id, { status });
       message.success(t(`common.updateSuccess`));
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.updateFailed`));
     } finally {
       getModelServings();

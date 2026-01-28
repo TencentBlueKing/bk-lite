@@ -236,7 +236,7 @@ const ExampleContent = ({ menu, data, dataset, loading, handleAdd, handleEdit, h
         message.success(t(`common.updateSuccess`));
         onSuccess();
       } catch (e) {
-        console.log(e);
+        console.error(e);
         message.error(t(`common.updateFailed`));
       }
     }
@@ -296,7 +296,7 @@ const ExampleContent = ({ menu, data, dataset, loading, handleAdd, handleEdit, h
         setOriginalData(null); // 清除原始数据
       }
     } catch (errInfo) {
-      console.log('Validate Failed:', errInfo);
+      console.error('Validate Failed:', errInfo);
     }
   };
 

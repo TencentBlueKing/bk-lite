@@ -134,7 +134,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
       options.unshift({ label: 'latest', value: 'latest' });
       setVersionOptions(options);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setVersionLoading(false);
     }
@@ -165,7 +165,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
       setModalOpen(false);
       onSuccess();
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.error`));
     } finally {
       setConfirmLoading(false);

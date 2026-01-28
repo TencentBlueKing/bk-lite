@@ -68,7 +68,6 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   useEffect(() => {
     if (datasetId && isSupportedType && open) {
-      console.log(datasetId, datasetType, pagination.current)
       fetchReleases();
     }
   }, [datasetId, datasetType, pagination.current]);
@@ -136,7 +135,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       message.success(t(`common.delSuccess`));
       fetchReleases();
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.delFailed`));
     }
   }

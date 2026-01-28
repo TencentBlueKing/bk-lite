@@ -253,7 +253,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
 
   // 处理提交错误
   const handleSubmitError = (error: any) => {
-    console.log(error);
+    console.error(error);
     message.error(t('datasets.uploadError'));
   };
 

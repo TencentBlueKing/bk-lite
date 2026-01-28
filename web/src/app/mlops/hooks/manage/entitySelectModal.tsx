@@ -63,7 +63,7 @@ const EntitySelectModal = forwardRef<ModalRef, EntitySelectModalProps>(({ datase
         setOpen(false);
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }

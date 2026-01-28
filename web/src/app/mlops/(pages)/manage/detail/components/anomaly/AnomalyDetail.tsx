@@ -166,7 +166,7 @@ const AnomalyDetail = () => {
         }
       });
     }
-    catch (e) { console.log(e) }
+    catch (e) { console.error(e) }
     finally { setLoading(false) }
   }, [t, searchParams]);
 
@@ -184,7 +184,7 @@ const AnomalyDetail = () => {
     try {
       await deleteTrainDataFile(data.id, DatasetType.ANOMALY_DETECTION);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
@@ -218,7 +218,7 @@ const AnomalyDetail = () => {
         getDataset();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }

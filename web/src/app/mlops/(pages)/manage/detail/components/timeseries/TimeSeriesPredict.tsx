@@ -191,7 +191,7 @@ const TimeSeriesPredict = () => {
     try {
       await deleteTrainDataFile(data.id, DatasetType.TIMESERIES_PREDICT);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
@@ -221,7 +221,7 @@ const TimeSeriesPredict = () => {
         getDataset();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }

@@ -1,6 +1,12 @@
 import useApiClient from "@/utils/request";
 import { DATASET_MAP, TRAINDATA_MAP } from "@/app/mlops/constants";
-import { DatasetType } from "../types";
+import type { 
+  DatasetType,
+  BaseTrainDataUpdateParams,
+  AnomalyTrainDataUpdateParams,
+  ObjectDetectionTrainDataUpdateParams,
+  ImageClassificationTrainDataUpdateParams
+} from "../types";
 
 const useMlopsManageApi = () => {
   const {
@@ -413,13 +419,10 @@ const useMlopsManageApi = () => {
   };
 
   // 更新异常检测数据集样本文件
-  const updateAnomalyTrainDataFile = async (id: string, params: {
-    is_train_data?: boolean,
-    is_val_data?: boolean,
-    is_test_data?: boolean,
-    meta_data?: any,
-    train_data?: any
-  } | FormData) => {
+  const updateAnomalyTrainDataFile = async (
+    id: string, 
+    params: AnomalyTrainDataUpdateParams | FormData
+  ) => {
     return await patch(`/mlops/anomaly_detection_train_data/${id}/`, params, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -428,12 +431,10 @@ const useMlopsManageApi = () => {
   };
 
   // 更新日志聚类数据集样本文件
-  const updateLogClusteringTrainData = async (id: string, params: {
-    is_train_data?: boolean,
-    is_val_data?: boolean,
-    is_test_data?: boolean,
-    train_data?: any[]
-  }) => {
+  const updateLogClusteringTrainData = async (
+    id: string, 
+    params: BaseTrainDataUpdateParams & { train_data?: unknown[] }
+  ) => {
     return await patch(`/mlops/log_clustering_train_data/${id}/`, params)
   };
 
@@ -458,12 +459,7 @@ const useMlopsManageApi = () => {
   // 更新图片分类任务数据集样本文件
   const updateImageClassificationTrainData = async (
     id: string,
-    params: {
-      is_train_data?: boolean,
-      is_val_data?: boolean,
-      is_test_data?: boolean,
-      meta_data?: any
-    } | FormData
+    params: ImageClassificationTrainDataUpdateParams | FormData
   ) => {
     return await patch(`/mlops/image_classification_train_data/${id}`, params,
       {
@@ -475,13 +471,10 @@ const useMlopsManageApi = () => {
   };
 
   // 更新目标检测任务数据集样本文件
-  const updateObjectDetectionTrainData = async (id: string, params: {
-    is_train_data?: boolean,
-    is_val_data?: boolean,
-    is_test_data?: boolean,
-    meta_data?: any,
-    train_data?: any
-  } | FormData) => {
+  const updateObjectDetectionTrainData = async (
+    id: string, 
+    params: ObjectDetectionTrainDataUpdateParams | FormData
+  ) => {
     return await patch(`/mlops/object_detection_train_data/${id}`, params,
       {
         headers: {

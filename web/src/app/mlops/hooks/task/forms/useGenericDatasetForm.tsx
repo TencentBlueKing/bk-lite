@@ -2,7 +2,17 @@ import { useState, useCallback, useEffect, RefObject } from 'react';
 import { FormInstance, message, Form, Select, Input, InputNumber } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type { Option } from '@/types';
-import type { TrainJob, FieldConfig, AlgorithmConfig } from '@/app/mlops/types/task';
+import type { 
+  TrainJob, 
+  FieldConfig, 
+  AlgorithmConfig,
+  TrainJobFormValues,
+  CreateTrainJobParams,
+  UpdateTrainJobParams,
+  HyperoptConfig,
+  DatasetType,
+  DatasetRelease
+} from '@/app/mlops/types';
 import { AlgorithmFieldRenderer } from '@/app/mlops/components/AlgorithmFieldRenderer';
 import {
   transformGroupData,
@@ -12,12 +22,18 @@ import {
 
 interface ModalState {
   isOpen: boolean;
-  type: string;
+  type: 'add' | 'edit';
   title: string;
 }
 
+interface ShowModalParams {
+  type: 'add' | 'edit';
+  title: string;
+  form: TrainJob | null;
+}
+
 interface UseGenericDatasetFormProps {
-  datasetType: string; // 'anomaly_detection' | 'classification' | 'image_classification' | 'log_clustering' | 'object_detection' | 'timeseries_predict'
+  datasetType: DatasetType;
   algorithmConfigs: Record<string, AlgorithmConfig>;
   algorithmScenarios: Record<string, string>;
   algorithmOptions: Array<{ value: string; label: string }>;
@@ -25,10 +41,16 @@ interface UseGenericDatasetFormProps {
   formRef: RefObject<FormInstance>;
   onSuccess: () => void;
   apiMethods: {
-    addTask: (params: any) => Promise<any>;
-    updateTask: (id: string, params: any) => Promise<any>;
-    getDatasetReleases: (datasetType: string, params: any) => Promise<any>;
-    getDatasetReleaseByID: (datasetType: string, id: number) => Promise<any>;
+    addTask: (params: CreateTrainJobParams) => Promise<TrainJob>;
+    updateTask: (id: string, params: UpdateTrainJobParams) => Promise<TrainJob>;
+    getDatasetReleases: (
+      datasetType: DatasetType, 
+      params: { dataset: number }
+    ) => Promise<DatasetRelease[]>;
+    getDatasetReleaseByID: (
+      datasetType: DatasetType, 
+      id: number
+    ) => Promise<DatasetRelease>;
   };
 }
 
@@ -61,7 +83,13 @@ export const useGenericDatasetForm = ({
   });
   const [datasetVersions, setDatasetVersions] = useState<Option[]>([]);
   const [isShow, setIsShow] = useState<boolean>(false);
-  const [formValues, setFormValues] = useState<any>({}); // 用于 AlgorithmFieldRenderer 的依赖检查
+  const [formValues, setFormValues] = useState<TrainJobFormValues>({
+    name: '',
+    algorithm: '',
+    dataset: 0,
+    dataset_version: 0,
+    max_evals: 50
+  });
 
   // 当 formData 和 modalState.isOpen 改变时初始化表单
   useEffect(() => {
@@ -71,22 +99,28 @@ export const useGenericDatasetForm = ({
   }, [modalState.isOpen, formData]);
 
   // 后端数据 → 表单数据
-  const apiToForm = useCallback((data: any) => {
-    const config = data.hyperopt_config || {};
+  const apiToForm = useCallback((data: TrainJob): TrainJobFormValues => {
+    const config = (data.hyperopt_config as HyperoptConfig) || {};
     const algorithm = data.algorithm;
-    const algorithmConfig = algorithmConfigs[algorithm];
+    const algorithmConfig = algorithm ? algorithmConfigs[algorithm] : null;
 
     if (!algorithmConfig) {
       console.error(`Unknown algorithm: ${algorithm}`);
-      return {};
+      return {
+        name: '',
+        algorithm: '',
+        dataset: 0,
+        dataset_version: 0,
+        max_evals: 50
+      };
     }
 
-    const result: any = {
+    const result: TrainJobFormValues = {
       name: data.name,
-      algorithm: data.algorithm,
-      dataset: data.dataset,
-      dataset_version: data.dataset_version,
-      max_evals: data.max_evals,
+      algorithm: data.algorithm || '',
+      dataset: Number(data.dataset) || 0,
+      dataset_version: Number(data.dataset_version) || 0,
+      max_evals: data.max_evals || 50,
     };
 
     // 转换 hyperparams
@@ -114,16 +148,26 @@ export const useGenericDatasetForm = ({
   }, [algorithmConfigs]);
 
   // 表单数据 → 后端数据
-  const formToApi = useCallback((formValues: any) => {
+  const formToApi = useCallback((formValues: TrainJobFormValues): CreateTrainJobParams => {
     const algorithm = formValues.algorithm;
     const algorithmConfig = algorithmConfigs[algorithm];
 
     if (!algorithmConfig) {
       console.error(`Unknown algorithm: ${algorithm}`);
-      return {};
+      // 返回最小有效参数
+      return {
+        name: formValues.name,
+        algorithm: formValues.algorithm,
+        dataset: formValues.dataset,
+        dataset_version: formValues.dataset_version,
+        max_evals: formValues.max_evals,
+        status: 'pending',
+        description: formValues.name || '',
+        hyperopt_config: {}
+      };
     }
 
-    const hyperopt_config: Record<string, any> = {};
+    const hyperopt_config: HyperoptConfig = {};
 
     // 转换所有配置组
     const allFields: FieldConfig[] = [];
@@ -141,7 +185,7 @@ export const useGenericDatasetForm = ({
     const transformed = transformGroupData(formValues, allFields);
     Object.assign(hyperopt_config, transformed);
 
-    const result = {
+    const result: CreateTrainJobParams = {
       name: formValues.name,
       algorithm: formValues.algorithm,
       dataset: formValues.dataset,
@@ -155,13 +199,13 @@ export const useGenericDatasetForm = ({
   }, [algorithmConfigs]);
 
   // 显示模态框
-  const showModal = useCallback(({ type, title, form }: { type: string; title: string; form: any }) => {
+  const showModal = useCallback(({ type, title, form }: ShowModalParams) => {
     setLoadingState((prev) => ({ ...prev, select: false }));
     setFormData(form);
     setModalState({
       isOpen: true,
       type,
-      title: title as string,
+      title,
     });
   }, []);
 
@@ -209,9 +253,9 @@ export const useGenericDatasetForm = ({
       if (!formRef.current || !dataset) return;
       // 加载数据集版本
       const datasetVersions = await apiMethods.getDatasetReleases(datasetType, { dataset });
-      const _versionOptions = datasetVersions.map((item: any) => ({
+      const _versionOptions: Option[] = datasetVersions.map((item: DatasetRelease) => ({
         label: item?.name || '',
-        value: item?.id
+        value: String(item?.id)
       }));
       setDatasetVersions(_versionOptions);
       if (formData?.dataset_version) {
@@ -248,7 +292,7 @@ export const useGenericDatasetForm = ({
   }, [algorithmConfigs]);
 
   // 表单值变化处理（用于更新 formValues 状态）
-  const onFormValuesChange = useCallback((changedValues: any, allValues: any) => {
+  const onFormValuesChange = useCallback((changedValues: Partial<TrainJobFormValues>, allValues: TrainJobFormValues) => {
     setFormValues(allValues);
   }, []);
 
@@ -262,9 +306,9 @@ export const useGenericDatasetForm = ({
       const params = formToApi(formValues);
 
       if (modalState.type === 'add') {
-        await apiMethods.addTask(params as any);
+        await apiMethods.addTask(params);
       } else {
-        await apiMethods.updateTask(formData?.id as string, params as any);
+        await apiMethods.updateTask(formData?.id as string, params);
       }
 
       setModalState((prev) => ({ ...prev, isOpen: false }));
@@ -289,7 +333,13 @@ export const useGenericDatasetForm = ({
     formRef.current?.resetFields();
     setDatasetVersions([]);
     setFormData(null);
-    setFormValues({});
+    setFormValues({
+      name: '',
+      algorithm: '',
+      dataset: 0,
+      dataset_version: 0,
+      max_evals: 50
+    });
     setIsShow(false);
   }, []);
 

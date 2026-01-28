@@ -171,7 +171,7 @@ const ImageClassificationDetail = () => {
         }
       });
     }
-    catch (e) { console.log(e) }
+    catch (e) { console.error(e) }
     finally { setLoading(false); }
   }, [t, searchParams]);
 
@@ -189,7 +189,7 @@ const ImageClassificationDetail = () => {
     try {
       await deleteTrainDataFile(data.id, DatasetType.IMAGE_CLASSIFICATION);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
@@ -219,7 +219,7 @@ const ImageClassificationDetail = () => {
         getDataset();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }

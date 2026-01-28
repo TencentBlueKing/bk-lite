@@ -1,5 +1,6 @@
 import { RefObject } from 'react';
 import { FormInstance } from 'antd';
+import { DatasetType } from '@/app/mlops/types';
 import type { Option } from '@/types';
 import { ANOMALY_ALGORITHM_CONFIGS, ANOMALY_ALGORITHM_SCENARIOS } from '@/app/mlops/constants';
 import useMlopsTaskApi from '@/app/mlops/api/task';
@@ -22,7 +23,7 @@ export const useAnomalyForm = ({ datasetOptions, onSuccess, formRef }: UseAnomal
   } = useMlopsTaskApi();
 
   return useGenericDatasetForm({
-    datasetType: 'anomaly_detection',
+    datasetType: DatasetType.ANOMALY_DETECTION,
     algorithmConfigs: ANOMALY_ALGORITHM_CONFIGS,
     algorithmScenarios: ANOMALY_ALGORITHM_SCENARIOS,
     algorithmOptions: [
