@@ -113,7 +113,7 @@ export const useRasaParamsToForm = () => {
         case 'boolean':
           return (
             <Form.Item key={name} name={name} style={{ marginBottom: 0 }} valuePropName="checked">
-              <div className='flex flex-col gap-[3px] items-start'>
+              <div className='flex flex-col gap-0.75 items-start'>
                 <span className='font-mini text-[#666]'>{label}</span>
                 <Switch size="small" /> 
               </div>
@@ -182,11 +182,11 @@ export const useRasaParamsToForm = () => {
       switch (type) {
         case 'boolean':
           return (
-            <div key={name} className='flex flex-col gap-[3px]'>
+            <div key={name} className='flex flex-col gap-0.75'>
               <span className='font-mini text-[#666]'>{label}</span>
               <Switch
                 size="small"
-                className='!w-[32px]'
+                className='w-8!'
                 checked={Boolean(value)}
                 onChange={onChange}
               />

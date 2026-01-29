@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo, RefObject } from 'react';
 import { FormInstance, message, Form, Select, Input, Button } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useMlopsTaskApi from '@/app/mlops/api/task';
-import { Option } from '@/app/mlops/types';
+import { Option, DatasetType } from '@/app/mlops/types';
 import { EditOutlined, MinusOutlined, PlusOutlined, UnorderedListOutlined, CloseOutlined, SaveOutlined } from '@ant-design/icons';
 import { useRasaParamsToForm } from '@/app/mlops/hooks/task/useRasaParamsToForm';
 import { PIPELINE_TYPE_OPTIONS, PIPELINE_OPTIONS, POLICIES_OPTIONS } from '@/app/mlops/constants';
@@ -74,7 +74,7 @@ export const useRasaForm = ({ datasetOptions, activeTag, onSuccess, formRef }: U
     if (modalState.isOpen) {
       initializeForm();
     }
-  }, [modalState.isOpen])
+  }, [modalState.isOpen]);
 
   // 显示模态框
   const showModal = useCallback(({ type, title, form }: { type: string; title: string; form: any }) => {
@@ -88,7 +88,7 @@ export const useRasaForm = ({ datasetOptions, activeTag, onSuccess, formRef }: U
   }, []);
 
   const initializeForm = () => {
-    if (key !== 'rasa') return;
+    if (key !== DatasetType.RASA) return;
     try {
       if (modalState.type === 'add') {
         setPipeLine([{ type: '', select: '', config: null }]);
@@ -380,7 +380,7 @@ export const useRasaForm = ({ datasetOptions, activeTag, onSuccess, formRef }: U
   };
 
   const renderFormContent = useCallback(() => {
-    if (key !== 'rasa') return;
+    if (key !== DatasetType.RASA) return;
     return (
       <>
         <Form.Item

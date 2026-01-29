@@ -40,30 +40,6 @@ class TimeSeriesPredictTrainJobFilter(FilterSet):
         fields = ["name", "status", "algorithm", "dataset_version", "created_by"]
 
 
-class TimeSeriesPredictTrainHistoryFilter(FilterSet):
-    """时间序列预测训练历史过滤器"""
-
-    algorithm = ChoiceFilter(
-        field_name="algorithm",
-        choices=TimeSeriesPredictTrainHistory._meta.get_field('algorithm').choices,
-        label="算法模型"
-    )
-    status = ChoiceFilter(
-        field_name="status",
-        choices=TimeSeriesPredictTrainHistory._meta.get_field('status').choices,
-        label="任务状态"
-    )
-    dataset_version__version = CharFilter(field_name="dataset_version__version", lookup_expr="icontains", label="数据集版本号")
-    dataset_version__dataset__name = CharFilter(field_name="dataset_version__dataset__name", lookup_expr="icontains", label="数据集名称")
-    created_by = CharFilter(field_name="created_by", lookup_expr="icontains", label="创建者")
-    created_at_start = DateTimeFilter(field_name="created_at", lookup_expr="gte", label="创建时间开始")
-    created_at_end = DateTimeFilter(field_name="created_at", lookup_expr="lte", label="创建时间结束")
-
-    class Meta:
-        model = TimeSeriesPredictTrainHistory
-        fields = ["algorithm", "status", "dataset_version", "created_by"]
-
-
 class TimeSeriesPredictTrainDataFilter(FilterSet):
     """时间序列预测训练数据过滤器"""
 
@@ -91,8 +67,8 @@ class TimeSeriesPredictServingFilter(FilterSet):
         label="服务状态"
     )
     model_version = CharFilter(field_name="model_version", lookup_expr="icontains", label="模型版本")
-    time_series_predict_train_job__name = CharFilter(
-        field_name="time_series_predict_train_job__name",
+    train_job__name = CharFilter(
+        field_name="train_job__name",
         lookup_expr="icontains",
         label="训练任务名称"
     )
@@ -102,7 +78,7 @@ class TimeSeriesPredictServingFilter(FilterSet):
 
     class Meta:
         model = TimeSeriesPredictServing
-        fields = ["name", "status", "model_version", "time_series_predict_train_job", "created_by"]
+        fields = ["name", "status", "model_version", "train_job", "created_by"]
 
 
 class TimeSeriesPredictDatasetReleaseFilter(FilterSet):

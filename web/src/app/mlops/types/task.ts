@@ -1,22 +1,34 @@
-import { Option } from "."
+import type { Option } from "@/types"
 
 interface TrainJob {
   id: string | number,
   name: string,
-  // type: string,
   status?: string,
   created_at: string,
   train_data_id?: string | number;
   val_data_id?: string | number;
   test_data_id?: string | number;
-  [key: string]: any
+  algorithm?: string;
+  parameters?: string | Record<string, unknown>;
+  dataset_id?: string | number;
+  dataset?: string | number;
+  dataset_version?: string | number;
+  max_evals?: number;
+  hyperopt_config?: HyperoptConfig;
+}
+
+// 超参数配置类型
+export interface HyperoptConfig {
+  hyperparams?: Record<string, unknown>;
+  preprocessing?: Record<string, unknown>;
+  feature_engineering?: Record<string, unknown>;
 }
 
 interface TrainTaskModalProps {
-  options?: any;
+  options?: Record<string, unknown>;
   onSuccess: () => void;
   activeTag: string[];
-  [key: string]: any
+  datasetOptions: Option[];
 }
 
 interface AlgorithmParam {
@@ -59,12 +71,12 @@ export interface FieldConfig {
   required?: boolean;
   tooltip?: string;
   placeholder?: string;
-  defaultValue?: any;
+  defaultValue?: string | number | boolean | string[];
   options?: Option[]; // 用于 select/multiSelect
   min?: number; // 用于 inputNumber
   max?: number; // 用于 inputNumber
   step?: number; // 用于 inputNumber
-  dependencies?: string[]; // 依赖字段路径（单个），如 ['feature_engineering', 'use_diff_features']
+  dependencies?: string[][]; // 依赖字段路径数组（支持多个依赖），如 [['hyperparams', 'use_feature_engineering'], ['feature_engineering', 'use_diff_features']]
   layout?: 'vertical' | 'horizontal'; // vertical: label在上, horizontal: label和input水平排列
 }
 
@@ -81,6 +93,33 @@ export interface AlgorithmConfig {
     feature_engineering?: GroupConfig[];
     preprocessing?: GroupConfig[];
   };
+}
+
+// ========== API 参数类型 ==========
+export interface CreateTrainJobParams {
+  name: string;
+  algorithm: string;
+  dataset: number;
+  dataset_version: number;
+  max_evals: number;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  description: string;
+  hyperopt_config: HyperoptConfig;
+}
+
+export interface UpdateTrainJobParams extends Partial<CreateTrainJobParams> {
+  id?: never; // 防止在 params 中传递 id
+}
+
+// ========== 表单数据类型 ==========
+export interface TrainJobFormValues {
+  name: string;
+  algorithm: string;
+  dataset: number;
+  dataset_version: number;
+  max_evals: number;
+  // 动态算法参数（根据 AlgorithmConfig 生成）
+  [key: string]: unknown;
 }
 
 export type {

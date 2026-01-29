@@ -1,2 +1,0 @@
-from .playground_category import PlayGroundCategoryFilter
-from .playground_capability import PlayGroundCapabilityFilter

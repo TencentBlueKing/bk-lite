@@ -78,7 +78,7 @@ const NodeDetailDrawer = ({
         });
       }
     } catch (e) {
-      console.log(e)
+      console.error(e)
     } finally {
       setLoading(false);
     }
@@ -164,7 +164,7 @@ const NodeDetailDrawer = ({
       message.success(t('common.saveSuccess'));
       closeDrawer();
     } catch (error) {
-      console.log(error);
+      console.error(error);
       message.error(t(`common.saveFailed`))
     }
   };

@@ -6,6 +6,7 @@ import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
 import UploadModal from "../../uploadModal";
 import OperateModal from "@/components/operate-modal";
+import DatasetReleaseList from '../DatasetReleaseList';
 import {
   Input,
   Button,
@@ -17,7 +18,7 @@ import {
   message,
 } from "antd";
 import { TYPE_CONTENT, TYPE_COLOR } from "@/app/mlops/constants";
-import { ColumnItem, ModalRef, Pagination, TableData } from '@/app/mlops/types';
+import { ColumnItem, ModalRef, Pagination, TableData, DatasetType } from '@/app/mlops/types';
 const { Search } = Input;
 
 const ImageClassificationDetail = () => {
@@ -26,9 +27,9 @@ const ImageClassificationDetail = () => {
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
   const {
-    getImageClassificationTrainData,
-    deleteImageClassificationTrainData,
-    updateImageClassificationTrainData
+    getTrainDataByDataset,
+    deleteTrainDataFile,
+    updateImageClassificationTrainData,
   } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
@@ -83,7 +84,7 @@ const ImageClassificationDetail = () => {
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => toAnnotation(record)}
             >
               {t('datasets.annotate')}
@@ -92,7 +93,7 @@ const ImageClassificationDetail = () => {
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => openModal(record)}
             >
               {t('common.edit')}
@@ -142,7 +143,8 @@ const ImageClassificationDetail = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getImageClassificationTrainData({
+      const { count, items } = await getTrainDataByDataset({
+        key: DatasetType.IMAGE_CLASSIFICATION,
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -169,7 +171,7 @@ const ImageClassificationDetail = () => {
         }
       });
     }
-    catch (e) { console.log(e) }
+    catch (e) { console.error(e) }
     finally { setLoading(false); }
   }, [t, searchParams]);
 
@@ -185,9 +187,9 @@ const ImageClassificationDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteImageClassificationTrainData(data.id);
+      await deleteTrainDataFile(data.id, DatasetType.IMAGE_CLASSIFICATION);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
@@ -205,7 +207,7 @@ const ImageClassificationDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'image_classification') {
+      if (activeTap === DatasetType.IMAGE_CLASSIFICATION) {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
@@ -217,7 +219,7 @@ const ImageClassificationDetail = () => {
         getDataset();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }
@@ -245,9 +247,9 @@ const ImageClassificationDetail = () => {
             ]}
           />
         </div>
-        <div className='flex'>
+        <div className='flex gap-2'>
           <Search
-            className="w-[240px] mr-1.5"
+            className="w-60 mr-1.5"
             placeholder={t('common.search')}
             enterButton
             onSearch={onSearch}
@@ -257,6 +259,9 @@ const ImageClassificationDetail = () => {
             <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['File View']}>
+            <DatasetReleaseList datasetType={DatasetType.IMAGE_CLASSIFICATION} />
           </PermissionWrapper>
         </div>
       </div>

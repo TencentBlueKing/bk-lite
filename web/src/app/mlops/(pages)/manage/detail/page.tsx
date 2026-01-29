@@ -20,6 +20,7 @@ import { RASA_MENUS } from '@/app/mlops/constants'
 
 
 const Detail = () => {
+  
   const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -36,6 +37,7 @@ const Detail = () => {
     activeTap: searchParams.get('activeTap') || '',
     menu: searchParams.get('menu') || '',
   }), [searchParams]);
+
 
   const datasetInfo = `folder_id=${folder_id}&folder_name=${folder_name}&description=${description}&activeTap=${activeTap}`;
 
@@ -59,22 +61,17 @@ const Detail = () => {
     return activeTap !== 'rasa' ? false : true;
   }, [activeTap]);
 
-  const renderPage: Record<string, React.ReactNode> = useMemo(() => ({
-    anomaly_detection: <AnomalyDetail />,
-    rasa: <RasaDetail />,
-    log_clustering: <LogDetail />,
-    timeseries_predict: <TimeSeriesPredict />,
-    classification: <ClassificationDetail />,
-    image_classification: <ImageClassificationDetail />,
-    object_detection: <ObjectDetectionDetail />
-  }), [activeTap]);
-
-  // const Intro = useMemo(() => (
-  //   <div className="flex h-[58px] flex-col items-center justify-center">
-  //     <h2 className="text-base font-semibold mb-2">{folder_name}</h2>
-  //     <h1 className="text-center">{description}</h1>
-  //   </div>
-  // ), [folder_name]);
+  const renderPage: Record<string, React.ReactNode> = useMemo(() => {
+    return {
+      anomaly_detection: <AnomalyDetail />,
+      rasa: <RasaDetail />,
+      log_clustering: <LogDetail />,
+      timeseries_predict: <TimeSeriesPredict />,
+      classification: <ClassificationDetail />,
+      image_classification: <ImageClassificationDetail />,
+      object_detection: <ObjectDetectionDetail />
+    };
+  }, [activeTap]);
 
   const topSection = useMemo(() => {
     if (menu)
@@ -88,7 +85,6 @@ const Detail = () => {
     <>
       <div className='w-full'>
         <Sublayout
-          // intro={Intro}
           topSection={topSection}
           showSideMenu={showSideMenu}
           activeKeyword

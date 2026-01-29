@@ -1,26 +1,19 @@
 import CustomTable from "@/components/custom-table";
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from "react";
-import { ColumnItem, TableDataItem, Pagination } from "@/app/mlops/types";
+import { ColumnItem, TableDataItem, Pagination, DatasetType } from "@/app/mlops/types";
 import useMlopsManageApi from "@/app/mlops/api/manage";
 import { useTranslation } from "@/utils/i18n";
-// import PermissionWrapper from '@/components/permission';
-// import { Button } from "antd";
-// import { cloneDeep } from "lodash";
 
 const TableContent = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { 
-    getLogClusteringTrainDataInfo, 
-    // updateLogClusteringTrainData, 
-    getClassificationTrainDataInfo, 
-    // updateClassificationTrainData 
+  const {
+    getTrainDataInfo,
   } = useMlopsManageApi();
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [allData, setAllData] = useState<TableDataItem[]>([]); // 存储所有数据
   const [loading, setLoading] = useState<boolean>(false);
-  const [dynamicColumns, setDynamicColumns] = useState<ColumnItem[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -35,72 +28,39 @@ const TableContent = () => {
   }), [searchParams]);
 
   const baseColumns: Record<string, ColumnItem[]> = {
-    'log_clustering': [
+    [DatasetType.LOG_CLUSTERING]: [
       {
         title: '日志内容',
-        dataIndex: 'name',
-        key: 'name',
-        align: 'center'
+        dataIndex: 'log',
+        key: 'log',
+        align: 'center',
+        render: (_, record) => { return (<>{record.log}</>) }
       },
-      // {
-      //   title: t(`common.action`),
-      //   dataIndex: 'action',
-      //   key: 'action',
-      //   width: 120,
-      //   align: 'center',
-      //   fiexd: 'right',
-      //   render: (_, record) => {
-      //     return (
-      //       <PermissionWrapper requiredPermissions={['File Edit']}>
-      //         <Button color="danger" variant="link" onClick={() => handleDelete(record)}>
-      //           {t('common.delete')}
-      //         </Button>
-      //       </PermissionWrapper>
-      //     )
-      //   }
-      // }
+    ],
+    [DatasetType.CLASSIFICATION]: [
+      {
+        title: '文本内容',
+        dataIndex: 'text',
+        key: 'text',
+        align: 'center',
+      },
+      {
+        title: '标注',
+        dataIndex: 'label',
+        key: 'label',
+        align: 'center'
+      }
     ]
   };
 
   const columns = useMemo(() => {
-    if (key === 'classification') {
-      return [
-        ...dynamicColumns,
-        // {
-        //   title: t(`common.action`),
-        //   dataIndex: 'action',
-        //   key: 'action',
-        //   width: 120,
-        //   align: 'center' as const,
-        //   fiexd: 'right',
-        //   render: (_: any, record: any) => {
-        //     return (
-        //       <PermissionWrapper requiredPermissions={['File Edit']}>
-        //         <Button color="danger" variant="link" onClick={() => handleDelete(record)}>
-        //           {t('common.delete')}
-        //         </Button>
-        //       </PermissionWrapper>
-        //     )
-        //   }
-        // }
-      ];
-    }
-    return baseColumns[key] || [];
-  }, [key, dynamicColumns, t]);
+    return baseColumns[key];
+  }, [key, t]);
 
-  const getTrainDataInfoMap: Record<string, any> = {
-    'log_clustering': getLogClusteringTrainDataInfo,
-    'classification': getClassificationTrainDataInfo
-  };
-
-  // const updateTrainDataInfoMap: Record<string, any> = {
-  //   'log_clustering': updateLogClusteringTrainData,
-  //   'classification': updateClassificationTrainData
-  // };
 
   useEffect(() => {
     getTableData();
-  }, [])
+  }, [searchParams])
 
   // 根据分页信息更新显示的数据
   const updateDisplayData = (allDataArray: TableDataItem[], currentPage: number, pageSize: number) => {
@@ -124,48 +84,17 @@ const TableContent = () => {
   const getTableData = async () => {
     setLoading(true);
     try {
-      const data = await getTrainDataInfoMap[key](id, true, true);
-      console.log(data);
+      const data = await getTrainDataInfo(id, key as DatasetType, true, true);
       let processedData: TableDataItem[] = [];
-      
-      if (key === 'classification') {
-        // 从metadata中提取headers
-        const headers = data?.metadata?.headers || [];
 
-        // 生成动态列
-        const generatedColumns: ColumnItem[] = headers.map((header: string) => ({
-          title: header,
-          dataIndex: header,
-          key: header,
-          width: 150,
-          // align: 'center' as const
-        }));
-
-        setDynamicColumns(generatedColumns);
-
-        // 处理train_data，将数组转换为对象形式
-        if (data?.train_data) {
-          processedData = data.train_data.map((item: any, index: number) => {
-            const rowData: Record<string, any> = { index };
-
-            // 如果item是数组，按headers顺序映射
-            if (Array.isArray(item)) {
-              headers.forEach((header: string, idx: number) => {
-                rowData[header] = item[idx];
-              });
-            } else if (typeof item === 'object') {
-              // 如果item已经是对象，直接使用
-              Object.assign(rowData, item);
-            }
-
-            return rowData;
-          });
-        }
+      if (key === DatasetType.CLASSIFICATION) {
+        // 文本分类数据
+        processedData = data?.train_data;
       } else {
         // 处理log_clustering等其他类型
         if (data?.train_data) {
           processedData = data?.train_data?.map((item: any, index: number) => ({
-            name: item,
+            ...item,
             index
           }));
         }
@@ -173,7 +102,7 @@ const TableContent = () => {
 
       // 存储所有数据
       setAllData(processedData);
-      
+
       // 更新分页信息
       const newPagination = {
         current: 1,
@@ -181,11 +110,11 @@ const TableContent = () => {
         pageSize: pagination.pageSize,
       };
       setPagination(newPagination);
-      
+
       // 显示第一页数据
       updateDisplayData(processedData, 1, newPagination.pageSize);
     } catch (e) {
-      console.log(e);
+      console.error(e);
       setAllData([]);
       setTableData([]);
       setPagination({
@@ -197,36 +126,6 @@ const TableContent = () => {
       setLoading(false);
     }
   };
-
-  // const handleDelete = async (record: any) => {
-  //   setLoading(true)
-  //   try {
-  //     let _data;
-
-  //     if (key === 'classification') {
-  //       // 对于classification，从所有数据中过滤
-  //       _data = cloneDeep(allData)
-  //         .filter((_, idx) => idx !== record?.index)
-  //         // .map((item: any) => {
-  //         //   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  //         //   const { index, ...rest } = item;
-  //         //   return rest;
-  //         // });
-  //     } else {
-  //       // 对于log_clustering等其他类型，从所有数据中过滤
-  //       _data = cloneDeep(allData)
-  //         .filter((_, idx) => idx !== record?.index)
-  //         .map((item: any) => item?.name);
-  //     }
-
-  //     await updateTrainDataInfoMap[key](id, { train_data: _data });
-  //     await getTableData(); // 重新加载数据
-  //   } catch (e) {
-  //     console.log(e);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
 
   return (
     <>

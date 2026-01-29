@@ -1,0 +1,21 @@
+service: "classify_object_detection_server.serving.service:MLService"
+labels:
+  owner: bk-lite
+  project: algorithms
+  model_type: object_detection
+description: "YOLOv11 Object Detection Service - Supports real-time object detection with bounding boxes"
+include:
+  - "classify_object_detection_server/serving/"
+  - "classify_object_detection_server/__init__.py"
+  - ".env"
+python:
+  packages:
+    - "bentoml>=1.2.0"
+    - "pydantic>=2.0.0"
+    - "loguru>=0.7.0"
+    - "python-dotenv>=1.0.0"
+    - "pillow>=10.0.0"
+    - "mlflow>=2.10.0"
+    - "ultralytics>=8.0.0"
+    - "torch>=2.0.0"
+    - "torchvision>=0.15.0"

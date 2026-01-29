@@ -219,7 +219,7 @@ const RasaDetail = () => {
         setTableData(data);
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.fetchFailed`));
       setTableData([]);
     } finally {
@@ -244,7 +244,7 @@ const RasaDetail = () => {
       await delFileMap[menu](id);
       message.success(t(`common.delSuccess`));
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.delFailed`));
     } finally {
       getTableData();

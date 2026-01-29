@@ -3,7 +3,7 @@ import OperateModal from '@/components/operate-modal';
 import { Form, Input, Button, FormInstance, message } from 'antd';
 import { useState, useImperativeHandle, useEffect, useRef, forwardRef } from 'react';
 import { useTranslation } from '@/utils/i18n';
-import { ModalRef } from '@/app/mlops/types';
+import { DatasetType, ModalRef } from '@/app/mlops/types';
 import useMlopsManageApi from '@/app/mlops/api/manage';
 
 interface DatasetModalProps {
@@ -17,20 +17,8 @@ interface DatasetModalProps {
 const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activeTag }, ref) => {
   const { t } = useTranslation();
   const {
-    addAnomalyDatasets,
-    updateAnomalyDatasets,
-    addRasaDatasets,
-    updateRasaDatasets,
-    addLogClusteringDatasets,
-    addTimeSeriesPredictDatasets,
-    updateLogClustering,
-    updateTimeSeriesPredict,
-    addClassificationDatasets,
-    updateClassificationDataset,
-    addImageClassificationDatasets,
-    updateImageClassificationDataset,
-    addObjectDetectionDataset,
-    updateObjectDetectionDataset
+    addDataset,
+    updateDataset,
   } = useMlopsManageApi();
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [type, setType] = useState<string>('edit');
@@ -60,63 +48,15 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
     }
   }, [formData, isModalOpen]);
 
-  const handleAddMap: Record<string, (params: any) => Promise<void>> = {
-    'anomaly_detection': async (params: any) => {
-      await addAnomalyDatasets(params);
-    },
-    'rasa': async (params: any) => {
-      await addRasaDatasets(params);
-    },
-    'log_clustering': async (params: any) => {
-      await addLogClusteringDatasets(params);
-    },
-    'timeseries_predict': async (params: any) => {
-      await addTimeSeriesPredictDatasets(params);
-    },
-    'classification': async (params: any) => {
-      await addClassificationDatasets(params)
-    },
-    'image_classification': async (params: any) => {
-      await addImageClassificationDatasets(params)
-    },
-    'object_detection': async (params: any) => {
-      await addObjectDetectionDataset(params);
-    }
-  };
-
-  const handleUpdateMap: Record<string, (id: number, params: any) => Promise<void>> = {
-    'anomaly_detection': async (id: number, params: any) => {
-      await updateAnomalyDatasets(id, params);
-    },
-    'rasa': async (id: number, params: any) => {
-      await updateRasaDatasets(id, params);
-    },
-    'log_clustering': async (id: number, params: any) => {
-      await updateLogClustering(id, params);
-    },
-    'timeseries_predict': async (id: number, params: any) => {
-      await updateTimeSeriesPredict(id, params);
-    },
-    'classification': async (id: number, params: any) => {
-      await updateClassificationDataset(id, params);
-    },
-    'image_classification': async (id: number, params: any) => {
-      await updateImageClassificationDataset(id, params);
-    },
-    'object_detection': async (id: number, params: any) => {
-      await updateObjectDetectionDataset(id, params);
-    }
-  };
-
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
       const [tagName] = activeTag;
       const { name, description } = await formRef.current?.validateFields();
       if (type === 'add') {
-        await handleAddMap[tagName]({ name, description });
+        await addDataset(tagName as DatasetType, { name, description });
       } else if (type === 'edit') {
-        await handleUpdateMap[tagName](formData.id, {
+        await updateDataset(formData.id, tagName as DatasetType, {
           name,
           description
         });
@@ -125,7 +65,7 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
       setIsModalOpen(false);
       onSuccess();
     } catch (e) {
-      console.log(e)
+      console.error(e)
     } finally {
       setConfirmLoading(false);
     }

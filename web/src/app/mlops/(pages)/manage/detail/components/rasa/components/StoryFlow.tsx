@@ -110,7 +110,7 @@ const StoryFlow: React.FC<StoryFlowWrapperProps> = ({
         onSuccess();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.updateFailed`));
     } finally {
       setFlowLoading(false);

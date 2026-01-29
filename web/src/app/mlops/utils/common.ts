@@ -1,7 +1,5 @@
 import { MetricItem, ListItem, UserProfile } from "@/app/mlops/types";
-import { TrainDataParams, FileReadResult } from "@/app/mlops/types/manage";
 import { useLocalizedTime } from "@/hooks/useLocalizedTime";
-import { TYPE_FILE_MAP } from "@/app/mlops/constants";
 import dayjs from "dayjs";
 
 // 判断一个字符串是否是字符串的数组
@@ -94,55 +92,6 @@ export const calculateMetrics = (data: any[], key = 'value1') => {
     sumValue,
     latestValue,
   };
-};
-
-export const handleFileRead = (text: string, type: string, include_header = false): FileReadResult => {
-  const result: FileReadResult = {
-    train_data: []
-  };
-
-  try {
-    // 统一换行符为 \n
-    const lines = text.replace(/\r\n|\r|\n/g, '\n')?.split('\n').filter(line => line.trim() !== '');
-
-    if (lines.length) {
-      console.log(TYPE_FILE_MAP[type])
-      if(TYPE_FILE_MAP[type] === 'txt') {
-        // txt类型文件直接返回读取到的数据
-        result.train_data = lines;
-      } else if (TYPE_FILE_MAP[type] === 'csv') {
-        // csv文件先读取第一行的表头，然后根据表头聚合后续的数据
-        const headers = lines[0]?.split(',');
-
-        if (!headers || headers.length === 0) throw new Error('文件格式不正确');
-        const data = lines.slice(1).map((line, index) => {
-          const values = line.split(',');
-
-          return headers.reduce((obj: Record<string, any>, key, idx) => {
-            const value = values[idx];
-
-            if (key === 'timestamp') {
-              const timestamp = new Date(value).getTime();
-              obj[key] = timestamp / 1000;
-            } else {
-              const numValue = Number(value);
-              obj[key] = isNaN(numValue) ? value : numValue;
-            }
-            obj['index'] = index;
-
-            return obj;
-          }, {});
-        });
-
-        result.train_data = data as TrainDataParams[];
-        if(include_header) result.headers = headers;
-      }
-    }
-    return result;
-  } catch (error) {
-    console.log(error);
-    throw error;
-  }
 };
 
 // 导出文件为csv

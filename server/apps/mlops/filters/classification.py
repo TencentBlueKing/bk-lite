@@ -24,9 +24,8 @@ class ClassificationServingFilter(FilterSet):
         choices=ClassificationServing._meta.get_field('status').choices,
         label="服务状态"
     )
-    model_version = CharFilter(field_name="model_version", lookup_expr="icontains", label="模型版本")
-    classification_train_job__name = CharFilter(
-        field_name="classification_train_job__name", 
+    train_job__name = CharFilter(
+        field_name="train_job__name", 
         lookup_expr="icontains", 
         label="训练任务名称"
     )
@@ -36,7 +35,7 @@ class ClassificationServingFilter(FilterSet):
 
     class Meta:
         model = ClassificationServing
-        fields = ["name", "status", "model_version", "classification_train_job", "created_by"]
+        fields = ["name", "status", "train_job", "created_by"]
 
 class ClassificationTrainDataFilter(FilterSet):
     """分类任务训练数据过滤器"""
@@ -54,30 +53,6 @@ class ClassificationTrainDataFilter(FilterSet):
         model = ClassificationTrainData
         fields = ["name", "dataset", "is_train_data", "is_val_data", "is_test_data", "created_by"]
 
-class ClassificationTrainHistoryFilter(FilterSet):
-    """分类任务训练历史记录过滤器"""
-    
-    algorithm = ChoiceFilter(
-        field_name="algorithm",
-        choices=ClassificationTrainHistory._meta.get_field('algorithm').choices,
-        label="算法模型"
-    )
-    status = ChoiceFilter(
-        field_name="status",
-        choices=ClassificationTrainHistory._meta.get_field('status').choices,
-        label="任务状态"
-    )
-    train_data_id__name = CharFilter(field_name="train_data_id__name", lookup_expr="icontains", label="训练数据名称")
-    val_data_id__name = CharFilter(field_name="val_data_id__name", lookup_expr="icontains", label="验证数据名称")
-    test_data_id__name = CharFilter(field_name="test_data_id__name", lookup_expr="icontains", label="测试数据名称")
-    created_by = CharFilter(field_name="created_by", lookup_expr="icontains", label="创建者")
-    created_at_start = DateTimeFilter(field_name="created_at", lookup_expr="gte", label="创建时间开始")
-    created_at_end = DateTimeFilter(field_name="created_at", lookup_expr="lte", label="创建时间结束")
-
-    class Meta:
-        model = ClassificationTrainHistory
-        fields = ["algorithm", "status", "train_data_id", "val_data_id", "test_data_id", "created_by"]
-
 class ClassificationTrainJobFilter(FilterSet):
     """分类任务训练作业过滤器"""
     
@@ -92,11 +67,30 @@ class ClassificationTrainJobFilter(FilterSet):
         choices=ClassificationTrainJob._meta.get_field('algorithm').choices,
         label="算法模型"
     )
-    train_data_id__name = CharFilter(field_name="train_data_id__name", lookup_expr="icontains", label="训练数据名称")
+    dataset_version__version = CharFilter(field_name="dataset_version__version", lookup_expr="icontains", label="数据集版本")
     created_by = CharFilter(field_name="created_by", lookup_expr="icontains", label="创建者")
     created_at_start = DateTimeFilter(field_name="created_at", lookup_expr="gte", label="创建时间开始")
     created_at_end = DateTimeFilter(field_name="created_at", lookup_expr="lte", label="创建时间结束")
 
     class Meta:
         model = ClassificationTrainJob
-        fields = ["name", "status", "algorithm", "train_data_id", "created_by"]
+        fields = ["name", "status", "algorithm", "dataset_version", "created_by"]
+
+
+class ClassificationDatasetReleaseFilter(FilterSet):
+    """分类数据集发布版本过滤器"""
+    
+    dataset__name = CharFilter(field_name="dataset__name", lookup_expr="icontains", label="数据集名称")
+    version = CharFilter(field_name="version", lookup_expr="icontains", label="版本号")
+    status = ChoiceFilter(
+        field_name="status",
+        choices=ClassificationDatasetRelease._meta.get_field('status').choices,
+        label="发布状态"
+    )
+    created_by = CharFilter(field_name="created_by", lookup_expr="icontains", label="创建者")
+    created_at_start = DateTimeFilter(field_name="created_at", lookup_expr="gte", label="创建时间开始")
+    created_at_end = DateTimeFilter(field_name="created_at", lookup_expr="lte", label="创建时间结束")
+
+    class Meta:
+        model = ClassificationDatasetRelease
+        fields = ["dataset", "version", "status", "created_by"]

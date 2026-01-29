@@ -127,7 +127,6 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, status, getMet
         const merged = mergeData(prevData, newData);
         
         if (merged.length !== prevData.length) {
-          console.log(`[Data] ${metricName}: ${prevData.length} → ${merged.length} (+${merged.length - prevData.length})`);
           return merged;
         }
         

@@ -26,7 +26,6 @@ const APP_ORDER = [
   'itsm',
   'ops-analysis',
   'mlops',
-  'playground',
   'lab'
 ];
 

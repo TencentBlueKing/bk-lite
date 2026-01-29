@@ -29,10 +29,10 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
 
     return (
       <div className={customTooltipStyle.customTooltip}>
-        <p className="label font-[600]">{`${convertToLocalizedTime(new Date(label * 1000) + '')}`}</p>
+        <p className="label font-semibold">{`${convertToLocalizedTime(new Date(label * 1000) + '')}`}</p>
         {sortedPayload.map((item: any, index: number) => (
           <div key={index}>
-            <div className="flex items-center mt-[4px]">
+            <div className="flex items-center mt-1">
               <span
                 style={{
                   display: 'inline-block',
@@ -45,24 +45,15 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
               ></span>
               {(item.payload.details?.[item.dataKey] || [])
                 .filter((item: any) => item.name !== 'instance_name')
-                .map((detail: any) => `${detail.label}：${detail.value}`)
+                .map((detail: any) => `${detail.label}: ${detail.value}`)
                 .join('-') ||
                 (item.payload.details?.[item.dataKey] || [])
                   .map((detail: any) => detail.value)
                   .join('-')}
-              <span className="font-[600] ml-[10px]">
+              <span className="font-semibold ml-2.5">
                 {getEnumValue(metric as MetricItem, item.value)}
               </span>
             </div>
-            {/* <ul className="text-[12px] ml-[15px] text-[var(--color-text-3)]">
-              {(item.payload.details?.[item.dataKey] || [])
-                .filter((item: any) => item.name !== 'instance_name')
-                .map((detail: any) => (
-                  <li className="mt-[5px]" key={detail.name}>
-                    <span>{`${detail.label}: ${detail.value}`}</span>
-                  </li>
-                ))}
-            </ul> */}
           </div>
         ))}
       </div>
