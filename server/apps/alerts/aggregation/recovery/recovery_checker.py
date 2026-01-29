@@ -52,8 +52,8 @@ class AlertRecoveryChecker:
                 if event.external_id:
                     recovery_by_external_id[event.external_id].append(event)
         # 3. 如果没有 CREATED 事件，无需恢复
-        if not created_events:
-            logger.debug(f"Alert {alert.alert_id} 没有 CREATED 事件，无需恢复")
+        if not created_events and recovery_by_external_id.keys().__len__() == 0:
+            logger.debug(f"Alert {alert.alert_id} 没有 CREATED 事件和 恢复事件，无需恢复")
             return False
         
         # 4. 检查每个 CREATED 事件是否都被恢复
