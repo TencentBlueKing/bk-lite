@@ -33,6 +33,27 @@ class BotViewSet(AuthViewSet):
     permission_key = "bot"
     filterset_class = BotFilter
 
+    def query_by_groups(self, request, queryset):
+        """重写排序逻辑：置顶优先，再按 ID 倒序"""
+        new_queryset = self.get_queryset_by_permission(request, queryset)
+        return self._list(new_queryset.order_by("-is_pinned", "-id"))
+
+    @action(methods=["POST"], detail=True)
+    @HasPermission("bot_settings-Edit")
+    def toggle_pin(self, request, pk=None):
+        """切换工作台置顶状态"""
+        instance = self.get_object()
+        if not request.user.is_superuser:
+            current_team = request.COOKIES.get("current_team", "0")
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
+            if not has_permission:
+                message = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
+                return JsonResponse({"result": False, "message": message})
+        instance.is_pinned = not instance.is_pinned
+        instance.save(update_fields=["is_pinned"])
+        return JsonResponse({"result": True, "data": {"is_pinned": instance.is_pinned}})
+
     @HasPermission("bot_list-Add")
     def create(self, request, *args, **kwargs):
         data = request.data
@@ -57,14 +78,8 @@ class BotViewSet(AuthViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, obj, current_team, include_children=include_children)
             if not has_permission:
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": self.loader.get("error.no_bot_update_permission")
-                        if self.loader
-                        else "You do not have permission to update this bot.",
-                    }
-                )
+                msg = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
+                return JsonResponse({"result": False, "message": msg})
         data = request.data
         is_publish = data.pop("is_publish", False)
         channels = data.pop("channels", [])
@@ -167,12 +182,7 @@ class BotViewSet(AuthViewSet):
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("error.no_bot_start_permission") if self.loader else "You do not have permission to start this bot."
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": message,
-                    }
-                )
+                return JsonResponse({"result": False, "message": message})
         # 只有 CHAT_FLOW 类型
         for bot in bots:
             if not bot.api_token:
@@ -196,12 +206,7 @@ class BotViewSet(AuthViewSet):
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("error.no_bot_stop_permission") if self.loader else "You do not have permission to stop this bot"
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": message,
-                    }
-                )
+                return JsonResponse({"result": False, "message": message})
 
         # 只有 CHAT_FLOW 类型
         for bot in bots:

@@ -42,7 +42,6 @@ class SkillToolsSerializer(AuthSerializer):
     permission_key = "tools"
 
     description_tr = serializers.SerializerMethodField()
-    tools_tr = serializers.SerializerMethodField()
     tools = serializers.SerializerMethodField()
 
     class Meta:
@@ -68,10 +67,6 @@ class SkillToolsSerializer(AuthSerializer):
 
         # fallback 到原始描述
         return instance.description
-
-    def get_tools_tr(self, instance: SkillTools):
-        """获取翻译后的子工具列表"""
-        return self._get_translated_tools(instance)
 
     def get_tools(self, instance: SkillTools):
         """获取翻译后的子工具列表（覆盖原始 tools 字段）"""

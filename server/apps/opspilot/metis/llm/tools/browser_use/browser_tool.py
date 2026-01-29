@@ -427,9 +427,6 @@ def _create_login_failure_hook(
             # 获取当前浏览器状态
             browser_state = await agent.browser_session.get_browser_state_summary()
             page_title = browser_state.title if browser_state else ""
-            page_url = browser_state.url if browser_state else ""
-
-            logger.debug(f"[Step {step_num}] 登录失败检测: 页面标题='{page_title}', URL='{page_url}'")
 
             # 只检测页面标题，不检测 LLM 思考过程（避免误判）
             # LLM 可能在 thinking/evaluation 中描述 "if login fails..." 等假设性内容
@@ -454,15 +451,13 @@ def _create_login_failure_hook(
                         f"登录失败次数超过限制({max_failures}次)，已停止执行。" f"页面标题: {state['last_failure_reason']}",
                         state["login_failure_count"],
                     )
-            else:
-                logger.debug(f"[Step {step_num}] 登录失败检测: 未检测到失败（页面标题正常）")
 
         except LoginFailureError:
             # 重新抛出登录失败异常
             raise
-        except Exception as e:
+        except Exception:
             # 其他异常只记录日志，不影响主流程
-            logger.debug(f"[Step {step_num}] 登录失败检测时发生异常（忽略）: {e}")
+            pass
 
     return login_failure_hook, state
 
@@ -537,6 +532,7 @@ async def _browse_website_async(
     sensitive_data: Optional[Dict[str, str]] = None,
     masked_task: Optional[str] = None,
     user_data_dir: Optional[str] = None,
+    locale: str = "en",
 ) -> Dict[str, Any]:
     """
     异步浏览网站并执行任务
@@ -552,6 +548,7 @@ async def _browse_website_async(
                        任务中使用占位符 <secret>，执行时替换为实际值，输出时显示占位符
         masked_task: 脱敏后的任务文本（用于日志输出），如果为 None 则使用原始 task
         user_data_dir: 浏览器用户数据目录，用于在多次调用间保持会话状态（cookies、localStorage等）
+        locale: 用户语言设置，用于控制 browser-use 输出语言（如 "zh-Hans" 使用中文，其他使用英文）
 
     Returns:
         Dict[str, Any]: 执行结果
@@ -612,9 +609,9 @@ async def _browse_website_async(
         has_credentials = sensitive_data is not None and len(sensitive_data) > 0
         login_failure_hook, login_state = _create_login_failure_hook(has_credentials)
 
-        # 扩展系统提示 - 根据 DEBUG 模式选择语言
-        # DEBUG 模式下使用中文，便于调试和阅读
-        if getattr(settings, "DEBUG", False):
+        # 扩展系统提示 - 根据用户语言设置选择输出语言
+        # 中文 locale（如 "zh-Hans", "zh-CN", "zh"）使用中文输出
+        if locale.startswith("zh"):
             extend_system_message = """
 【语言要求】你的所有思考(thinking)、评估(evaluation)、记忆(memory)、下一步目标(next_goal)输出必须使用中文。
 
@@ -911,6 +908,9 @@ def browse_website(
         # 获取或创建共享的浏览器用户数据目录（基于 thread_id/run_id 缓存，用于保持会话状态）
         user_data_dir = _get_or_create_user_data_dir(config)
 
+        # 获取用户语言设置，用于控制 browser-use 输出语言
+        locale = getattr(llm_config, "locale", "en") if llm_config else "en"
+
         result = _run_async_task(
             _browse_website_async(
                 url=url,
@@ -920,6 +920,7 @@ def browse_website(
                 sensitive_data=sensitive_data,
                 masked_task=masked_task,
                 user_data_dir=user_data_dir,
+                locale=locale,
             )
         )
         return result
@@ -1006,6 +1007,9 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
         # 获取或创建共享的浏览器用户数据目录（基于 thread_id/run_id 缓存，用于保持会话状态）
         user_data_dir = _get_or_create_user_data_dir(config)
 
+        # 获取用户语言设置，用于控制 browser-use 输出语言
+        locale = getattr(llm_config, "locale", "en") if llm_config else "en"
+
         result = _run_async_task(
             _browse_website_async(
                 url=url,
@@ -1015,6 +1019,7 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
                 sensitive_data=sensitive_data,
                 masked_task=masked_task,
                 user_data_dir=user_data_dir,
+                locale=locale,
             )
         )
 

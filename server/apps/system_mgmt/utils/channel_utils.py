@@ -1,6 +1,10 @@
+import base64
 import smtplib
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import encode_rfc2231
 
 import requests
 from wechatpy import WeChatClientException
@@ -29,21 +33,57 @@ def send_wechat(channel_obj: Channel, content, user_list):
         return {"result": False, "message": f"Error sending WeChat message: {str(e)}"}
 
 
-def send_email(channel_obj: Channel, title, content, user_list):
+def send_email(channel_obj: Channel, title, content, user_list, attachments=None):
     """发送邮件"""
     channel_config = channel_obj.config
     channel_obj.decrypt_field("smtp_pwd", channel_config)
     receivers = list(user_list.values_list("email", flat=True).distinct())
-    return send_email_to_user(channel_config, content, receivers, title)
+    return send_email_to_user(channel_config, content, receivers, title, attachments)
 
 
-def send_email_to_user(channel_config, content, receivers, title):
+def send_email_to_user(channel_config, content, receivers, title, attachments=None):
+    """
+    发送邮件给用户
+    :param channel_config: 邮件通道配置
+    :param content: 邮件正文内容（HTML格式）
+    :param receivers: 收件人邮箱列表
+    :param title: 邮件主题
+    :param attachments: 附件列表，每个附件格式为:
+        - {"filename": "文件名", "content": "base64编码内容"} (用于NATS远程调用，推荐)
+        - {"filename": "文件名", "data": bytes} (仅用于本地直接调用)
+        注意: 通过NATS传输时，附件必须使用base64编码的content字段，因为NATS使用JSON序列化
+    """
     try:
         msg = MIMEMultipart()
         msg["From"] = channel_config["mail_sender"]
         msg["To"] = ",".join(receivers)
         msg["Subject"] = title
         msg.attach(MIMEText(content, "html", "utf-8"))
+
+        # 处理附件
+        if attachments:
+            for attachment in attachments:
+                filename = attachment.get("filename", "attachment")
+                # 支持两种方式：base64编码的content（NATS传输）或原始bytes的data（本地调用）
+                if "content" in attachment:
+                    file_data = base64.b64decode(attachment["content"])
+                elif "data" in attachment:
+                    file_data = attachment["data"]
+                else:
+                    continue
+
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(file_data)
+                # 使用 RFC 2231 编码处理中文文件名
+                part.add_header(
+                    "Content-Disposition",
+                    "attachment",
+                    filename=encode_rfc2231(filename, "utf-8"),
+                )
+                # 对附件内容进行 base64 编码
+                encoders.encode_base64(part)
+                msg.attach(part)
+
         # 根据配置决定使用 SSL 还是普通连接
         if channel_config.get("smtp_usessl", False):
             server = smtplib.SMTP_SSL(channel_config["smtp_server"], channel_config["port"])
@@ -63,9 +103,10 @@ def send_email_to_user(channel_config, content, receivers, title):
         return {"result": False, "message": f"Error sending email: {str(e)}"}
 
 
-def send_by_bot(channel_obj: Channel, content, receivers: list):
+def send_by_bot(channel_obj: Channel, content, receivers):
     if receivers:
-        to_user_mentions = " ".join(f"@{user}" for user in receivers)
+        display_names = receivers.values_list("display_name", flat=True)
+        to_user_mentions = " ".join(f"@{name}" for name in display_names)
         content = f"{content}\nTo: {to_user_mentions}"
     channel_config = channel_obj.config
     channel_obj.decrypt_field("bot_key", channel_config)

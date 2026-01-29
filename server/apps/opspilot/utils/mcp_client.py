@@ -3,6 +3,7 @@ MCP (Model Context Protocol) 客户端工具类
 
 提供标准的 MCP 协议握手和工具获取功能
 """
+
 import asyncio
 from typing import Any, Dict, List
 
@@ -12,7 +13,13 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 class MCPClient:
     """MCP 协议客户端 - 基于 langchain_mcp_adapters"""
 
-    def __init__(self, server_url: str, timeout: float = 30.0, enable_auth: bool = False, auth_token: str = ""):
+    def __init__(
+        self,
+        server_url: str,
+        timeout: float = 30.0,
+        enable_auth: bool = False,
+        auth_token: str = "",
+    ):
         """
         初始化 MCP 客户端
 
@@ -84,13 +91,16 @@ class MCPClient:
             raise RuntimeError(f"Failed to get tools: {str(e)}")
 
     def _fetch_tools_async(self) -> List[Any]:
-        """异步获取工具列表"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        """异步获取工具列表，智能复用事件循环"""
         try:
-            return loop.run_until_complete(self._mcp_client.get_tools())
-        finally:
-            loop.close()
+            # 尝试获取已存在的事件循环（如在 async 上下文中）
+            loop = asyncio.get_running_loop()
+            # 已在异步上下文中，使用 run_coroutine_threadsafe
+            future = asyncio.run_coroutine_threadsafe(self._mcp_client.get_tools(), loop)
+            return future.result(timeout=self.timeout)
+        except RuntimeError:
+            # 没有运行中的循环，使用 asyncio.run（内部会创建并管理循环）
+            return asyncio.run(self._mcp_client.get_tools())
 
     def _convert_tool_to_dict(self, tool) -> Dict[str, Any]:
         """将工具对象转换为字典格式"""

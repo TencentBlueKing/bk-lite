@@ -26,6 +26,7 @@ from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 from apps.opspilot.viewsets.llm_view import LLMViewSet
 from apps.rpc.system_mgmt import SystemMgmt
+from apps.system_mgmt.models import User
 
 
 def get_loader(request=None, default_lang="en"):
@@ -96,93 +97,66 @@ def validate_openai_token(token, team=None, is_mobile=False):
     """Validate the OpenAI API token"""
     loader = LanguageLoader(app="opspilot", default_lang="en")
     if not token:
-        return False, {
-            "choices": [
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": loader.get("error.no_authorization", "No authorization"),
-                    }
-                }
-            ]
-        }
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     token = token.split("Bearer ")[-1]
     user = UserAPISecret.objects.filter(api_secret=token).first()
     if not user:
         if team is None and not is_mobile:
-            return False, {
-                "choices": [
-                    {
-                        "message": {
-                            "role": "assistant",
-                            "content": loader.get("error.no_authorization", "No authorization"),
-                        }
-                    }
-                ]
-            }
+            return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
         team = team or 0
         client = SystemMgmt()
         result = client.verify_token(token)
         if not result.get("result"):
-            return False, {
-                "choices": [
-                    {
-                        "message": {
-                            "role": "assistant",
-                            "content": loader.get("error.no_authorization", "No authorization"),
-                        }
-                    }
-                ]
-            }
+            return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
         user_info = result.get("data")
         user = UserAPISecret(
             username=user_info["username"],
             domain=user_info["domain"],
             team=int(team),
         )
+        # Token 认证：从 verify_token 结果获取 locale
+        user.locale = user_info.get("locale", "en")
+    else:
+        # UserAPISecret 认证：查询用户信息获取 locale
+        user.locale = _get_user_locale(user.username, user.domain)
     return True, user
+
+
+def _get_user_locale(username: str, domain: str) -> str:
+    """获取用户语言设置
+
+    从 User 表查询用户的 locale 设置。
+
+    Args:
+        username: 用户名
+        domain: 域名
+
+    Returns:
+        用户语言设置，默认 "en"
+    """
+
+    try:
+        user_obj = User.objects.filter(username=username, domain=domain).first()
+        if user_obj:
+            return user_obj.locale or "en"
+    except Exception as e:
+        logger.warning(f"Failed to get user locale for {username}@{domain}: {e}")
+    return "en"
 
 
 def validate_header_token(token, bot_id):
     loader = LanguageLoader(app="opspilot", default_lang="en")
     if not token:
-        return False, {
-            "choices": [
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": loader.get("error.no_authorization", "No authorization"),
-                    }
-                }
-            ]
-        }
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     bot_obj = Bot.objects.filter(id=bot_id, online=True).first()
     if not bot_obj:
-        return False, {
-            "choices": [
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": loader.get("error.bot_not_online", "No bot online"),
-                    }
-                }
-            ]
-        }
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.bot_not_online", "No bot online")}}]}
     token = token.split("Bearer ")[-1]
     client = SystemMgmt()
     # res = client.verify_token(token)
     res = client.get_pilot_permission_by_token(token, bot_id, bot_obj.team)
     if not res.get("result"):
-        return False, {
-            "choices": [
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": loader.get("error.no_authorization", "No authorization"),
-                    }
-                }
-            ]
-        }
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     return True, {"username": res["data"]["username"]}
 
 
@@ -215,20 +189,7 @@ def get_skill_and_params(kwargs, team, bot_id=None):
                 pass
 
     if not skill_obj:
-        return (
-            None,
-            None,
-            {
-                "choices": [
-                    {
-                        "message": {
-                            "role": "assistant",
-                            "content": loader.get("error.skill_not_found", "No skill"),
-                        }
-                    }
-                ]
-            },
-        )
+        return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.skill_not_found", "No skill")}}]})
     num = kwargs.get("conversation_window_size") or skill_obj.conversation_window_size
     chat_history = [{"message": i["content"], "event": i["role"]} for i in kwargs.get("messages", [])[-1 * num :]]
 
@@ -499,11 +460,7 @@ def get_active_users_line_data(request):
     end_time_str = request.GET.get("end_time")
     end_time, start_time = set_time_range(end_time_str, start_time_str)
     queryset = (
-        BotConversationHistory.objects.filter(
-            created_at__range=[start_time, end_time],
-            bot_id=request.GET.get("bot_id"),
-            conversation_role="user",
-        )
+        BotConversationHistory.objects.filter(created_at__range=[start_time, end_time], bot_id=request.GET.get("bot_id"), conversation_role="user")
         .annotate(date=TruncDate("created_at"))
         .values("channel_user__channel_type", "date")
         .annotate(count=Count("channel_user", distinct=True))
@@ -546,12 +503,7 @@ def execute_chat_flow(request, bot_id, node_id):
     """执行ChatFlow流程（支持流式响应）"""
     loader = get_loader(request)
     if not bot_id or not node_id:
-        return JsonResponse(
-            {
-                "result": False,
-                "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required."),
-            }
-        )
+        return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
 
     # 读取请求体
     kwargs = json.loads(request.body)
@@ -582,12 +534,7 @@ def execute_chat_flow(request, bot_id, node_id):
         filter_dict["online"] = True
     bot_obj = Bot.objects.filter(**filter_dict).first()
     if not bot_obj:
-        return JsonResponse(
-            {
-                "result": False,
-                "message": loader.get("error.bot_not_online", "No bot online"),
-            }
-        )
+        return JsonResponse({"result": False, "message": loader.get("error.bot_not_online", "No bot online")})
 
     # 获取Bot的工作流配置
     bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
@@ -625,6 +572,7 @@ def execute_chat_flow(request, bot_id, node_id):
             "bot_id": bot_id,
             "node_id": node_id,
             "session_id": session_id,
+            "locale": getattr(user, "locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
         }
 
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
@@ -788,9 +736,4 @@ def test(request):
     kwargs = request.GET.dict()
     data = json.loads(request.body) if request.body else {}
     kwargs.update(data)
-    return JsonResponse(
-        {
-            "result": True,
-            "data": {"ip": ip, "is_routable": is_routable, "kwargs": kwargs},
-        }
-    )
+    return JsonResponse({"result": True, "data": {"ip": ip, "is_routable": is_routable, "kwargs": kwargs}})
