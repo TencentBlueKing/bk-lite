@@ -2,6 +2,7 @@ from django.http import JsonResponse
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
 from apps.system_mgmt.models import Group, User
@@ -165,9 +166,21 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         # 更新组的角色
         if isinstance(role_ids, list):
             obj.roles.set(role_ids)
+            # 清除该组织中所有用户的权限缓存
+            group_id = request.data.get("group_id")
+            affected_users = User.objects.filter(group_list__contains=int(group_id)).values("username", "domain")
+            if affected_users:
+                clear_users_permission_cache(list(affected_users))
 
         # 同步组织数据到CMDB
-        CMDB().sync_display_fields(organizations=[{"id": request.data.get("group_id"), "name": request.data.get("group_name")}])
+        CMDB().sync_display_fields(
+            organizations=[
+                {
+                    "id": request.data.get("group_id"),
+                    "name": request.data.get("group_name"),
+                }
+            ]
+        )
 
         # 记录操作日志
         log_operation(request, "update", "group", f"编辑组织: {request.data.get('group_name')}")
@@ -225,5 +238,10 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         Group.objects.filter(id__in=groups_to_delete).delete()
 
         # 记录操作日志
-        log_operation(request, "delete", "group", f"删除组织: {obj.name} (包含{len(groups_to_delete)}个子组)")
+        log_operation(
+            request,
+            "delete",
+            "group",
+            f"删除组织: {obj.name} (包含{len(groups_to_delete)}个子组)",
+        )
         return JsonResponse({"result": True})
