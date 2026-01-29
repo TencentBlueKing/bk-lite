@@ -146,6 +146,7 @@ class AgentNode(BaseNodeExecutor):
             "km_llm_model": skill.km_llm_model,
             "enable_suggest": skill.enable_suggest,
             "enable_query_rewrite": skill.enable_query_rewrite,
+            "locale": flow_input.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
         }
 
     def sse_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):
@@ -187,20 +188,6 @@ class AgentNode(BaseNodeExecutor):
 
                 chunk_index = 0
                 async for sse_line in graph.agui_stream(request):
-                    # 如果 show_think=False，过滤掉工具调用相关事件
-                    if not show_think and sse_line.startswith("data: "):
-                        try:
-                            data_str = sse_line[6:].strip()
-                            data_json = json.loads(data_str)
-                            event_type = data_json.get("type", "")
-
-                            # 过滤工具调用相关事件
-                            if event_type in ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]:
-                                continue
-                        except (json.JSONDecodeError, ValueError):
-                            pass
-
-                    chunk_index += 1
                     yield sse_line
 
                 logger.info(f"[AgentNode-AGUI] 流式处理完成 - 生成 {chunk_index} 个chunk")

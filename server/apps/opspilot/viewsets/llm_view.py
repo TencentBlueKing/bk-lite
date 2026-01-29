@@ -238,6 +238,7 @@ class LLMViewSet(AuthViewSet):
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
             params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
+            params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
             # 调用stream_chat函数返回流式响应
             return stream_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
         except LLMSkill.DoesNotExist:
@@ -307,6 +308,7 @@ class LLMViewSet(AuthViewSet):
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
             params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
+            params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
 
             # 调用AGUI协议的流式响应
             return stream_agui_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
