@@ -60,7 +60,7 @@ class AlertAutoClose:
         """
         # 获取所有告警的 rule_id
         rule_ids = list(self.alerts.values_list('rule_id', flat=True).distinct())
-
+        rule_ids = [rid for rid in rule_ids if isinstance(rid, str) and rid.isdigit()]
         # 查询启用了自动关闭的告警策略
         # 过滤条件：is_active=True, auto_close=True, close_minutes > 0
         strategies = AlarmStrategy.objects.filter(

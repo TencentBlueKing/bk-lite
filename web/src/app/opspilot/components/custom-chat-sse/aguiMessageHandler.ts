@@ -80,7 +80,7 @@ export class AGUIMessageHandler {
           content = renderToolCallCard(block.id, toolInfo);
         }
       } else if (block.type === 'thinking') {
-        content = '<div class="thinking-loader" style="display: flex; align-items: center; gap: 8px; color: #999;"><span style="display: inline-flex; gap: 4px;"><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.32s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.16s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both;"></span></span></div><style>@keyframes thinking-dot { 0%, 80%, 100% { transform: scale(0); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; } }</style>';
+        content = '<div class="thinking-loader" style="display: flex; align-items: center; gap: 8px; color: #999; margin-bottom: 8px;"><span style="display: inline-flex; gap: 4px;"><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.32s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.16s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both;"></span></span></div><style>@keyframes thinking-dot { 0%, 80%, 100% { transform: scale(0); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; } }</style>';
       }
 
       if (content) {
@@ -150,10 +150,9 @@ export class AGUIMessageHandler {
    * 处理 TOOL_CALL_START 事件
    */
   handleToolCallStart(toolCallId: string, toolCallName: string) {
-    // 提交当前文本块
+    this.clearThinkingPrompt();
     this.flushCurrentTextBlock();
     
-    // 添加工具调用块
     this.contentBlocks.push({ type: 'toolCall', id: toolCallId });
     
     this.toolCallsRef.set(toolCallId, {

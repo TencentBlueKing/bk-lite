@@ -239,7 +239,7 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
           </Radio.Group>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center">
           <Button
             size="small"
             icon={<LeftOutlined />}
@@ -257,7 +257,7 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
                 : t('common.heatMap.selectDate')
             }
             allowClear={false}
-            className="min-w-[120px]"
+            className="min-w-[120px] mx-2"
             disabledDate={disabledDate}
           />
           <Button

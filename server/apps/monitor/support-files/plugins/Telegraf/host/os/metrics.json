@@ -195,7 +195,7 @@
       "query": "rate(diskio_reads{instance_type=\"os\", __$labels__}[5m])",
       "display_name": "Disk Read IOPS",
       "data_type": "Number",
-      "unit": "cps",
+      "unit": "counts",
       "dimensions": [
         {
           "name": "name",

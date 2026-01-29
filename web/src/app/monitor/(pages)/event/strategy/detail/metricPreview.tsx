@@ -498,7 +498,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
           {chartData.length > 0 ? (
             <LineChart
               data={chartData}
-              unit={unit}
+              unit={calculationUnit || unit}
               metric={currentMetric}
               threshold={validThreshold}
               allowSelect={false}

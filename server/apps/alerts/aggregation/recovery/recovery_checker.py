@@ -44,7 +44,6 @@ class AlertRecoveryChecker:
         # 2. 按 action 分组，构建索引
         created_events = []
         recovery_by_external_id = defaultdict(list)  # external_id -> [recovery_events]
-        
         for event in all_events:
             if event.action == EventAction.CREATED:
                 created_events.append(event)
@@ -52,10 +51,9 @@ class AlertRecoveryChecker:
                 # 只记录有 external_id 的恢复事件
                 if event.external_id:
                     recovery_by_external_id[event.external_id].append(event)
-        
         # 3. 如果没有 CREATED 事件，无需恢复
-        if not created_events:
-            logger.debug(f"Alert {alert.alert_id} 没有 CREATED 事件，无需恢复")
+        if not created_events and recovery_by_external_id.keys().__len__() == 0:
+            logger.debug(f"Alert {alert.alert_id} 没有 CREATED 事件和 恢复事件，无需恢复")
             return False
         
         # 4. 检查每个 CREATED 事件是否都被恢复

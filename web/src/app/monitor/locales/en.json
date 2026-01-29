@@ -398,6 +398,7 @@
       "memoryDes": "Monitor memory usage, including memory utilization and available memory.",
       "originalValue": "Original Value",
       "metricTitle": "The following monitoring indicators are supported by this collector",
+      "searchMetricPlaceholder": "Please enter the metric name",
       "step1": "Step1",
       "portDes": "Configured SNMP port number, typically using port 161 for communication with the device.",
       "access": "Access",

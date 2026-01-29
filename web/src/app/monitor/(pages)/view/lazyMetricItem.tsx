@@ -5,7 +5,7 @@ import React, {
   useRef,
   useEffect,
   useCallback,
-  useMemo,
+  useMemo
 } from 'react';
 import { Spin, Tooltip } from 'antd';
 import { BellOutlined, SearchOutlined } from '@ant-design/icons';
@@ -41,7 +41,7 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
   isLoaded,
   isCancelled,
   onVisibilityChange,
-  isInViewport,
+  isInViewport
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -53,7 +53,7 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
   const observerOptions = useMemo(
     () => ({
       threshold: 0.1,
-      rootMargin: '50px',
+      rootMargin: '50px'
     }),
     []
   );
@@ -124,7 +124,7 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
                   className="absolute cursor-pointer inline-block"
                   style={{
                     top: '-4px',
-                    right: '-6px',
+                    right: '-6px'
                   }}
                 >
                   <Icon type="a-shuoming2" className="text-[14px]" />
