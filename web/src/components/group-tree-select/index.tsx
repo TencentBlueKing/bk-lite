@@ -7,6 +7,7 @@ import { createStrategy } from './strategies';
 import MultiCascadePanel from '@/components/multi-cascade-panel';
 import type { GroupTreeSelectProps } from './types';
 import type { CascadeNode } from '@/components/multi-cascade-panel';
+import { useTranslation } from '@/utils/i18n';
 
 const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   value = [],
@@ -21,6 +22,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   filterByRootId,
 }) => {
   const { groupTree } = useUserInfoContext();
+  const { t } = useTranslation();
   const [internalValue, setInternalValue] = useState<number[]>([]);
   const [open, setOpen] = useState(false);
 
@@ -166,7 +168,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
 
   const displayContent = useMemo(() => {
     if (internalValue.length === 0) {
-      return <span className="text-gray-400">{placeholder || '请选择'}</span>;
+      return <span className="text-(--ant-color-text-placeholder)">{placeholder || t('common.pleaseSelect')}</span>;
     }
     if (multiple) {
       return (
@@ -203,7 +205,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
           className={`
             px-3 py-1 border rounded min-h-8
             flex items-center justify-between w-full
-            ${disabled ? 'cursor-not-allowed bg-gray-100' : 'cursor-pointer bg-[var(--color-bg)]'}
+            ${disabled ? 'cursor-not-allowed bg-(--ant-color-bg-container-disabled)' : 'cursor-pointer bg-[var(--color-bg)]'}
           `}
           style={{ borderColor: 'var(--color-border)' }}
         >
