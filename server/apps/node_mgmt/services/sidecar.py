@@ -208,7 +208,8 @@ class Sidecar:
             request_data.update(updated_at=datetime.now(timezone.utc).isoformat())
 
             # 更新节点
-            Node.objects.filter(id=node_id).update(**request_data)
+            node_info = {key: val for key, val in request_data.items() if key != "name"}
+            Node.objects.filter(id=node_id).update(**node_info)
 
             # # 更新组织关联(覆盖)
             # Sidecar.update_groups(
