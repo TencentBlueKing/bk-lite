@@ -22,19 +22,19 @@ import {
   GroupInfo,
   MetricItem,
   IndexViewItem,
-  ObjectItem,
+  ObjectItem
 } from '@/app/monitor/types';
 import { Dayjs } from 'dayjs';
 import {
   SearchParams,
   InstanceItem,
   SearchTableDataItem,
-  ConditionItem,
+  ConditionItem
 } from '@/app/monitor/types/search';
 import {
   mergeViewQueryKeyValues,
   renderChart,
-  getRecentTimeRange,
+  getRecentTimeRange
 } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useSearchParams } from 'next/navigation';
@@ -50,7 +50,7 @@ const SearchView: React.FC = () => {
     getMonitorObject,
     getMonitorMetrics,
     getMetricsGroup,
-    getInstanceList,
+    getInstanceList
   } = useMonitorApi();
   const { t } = useTranslation();
   const CONDITION_LIST = useConditionList();
@@ -75,12 +75,12 @@ const SearchView: React.FC = () => {
   const [conditions, setConditions] = useState<ConditionItem[]>([]);
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
     timeRange: [],
-    originValue: 15,
+    originValue: 15
   });
   const [timeDefaultValue, setTimeDefaultValue] =
     useState<TimeSelectorDefaultValue>({
       selectValue: 15,
-      rangePickerVaule: null,
+      rangePickerVaule: null
     });
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const searchAbortControllerRef = useRef<AbortController | null>(null);
@@ -142,7 +142,7 @@ const SearchView: React.FC = () => {
     try {
       setObjLoading(true);
       const data: ObjectItem[] = await getMonitorObject({
-        add_instance_count: true,
+        add_instance_count: true
       });
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
@@ -171,7 +171,7 @@ const SearchView: React.FC = () => {
       setMetrics(res[1] || []);
       const groupData = res[0].map((item: GroupInfo) => ({
         ...item,
-        child: [],
+        child: []
       }));
       metricData.forEach((metric: MetricItem) => {
         const target = groupData.find(
@@ -202,10 +202,10 @@ const SearchView: React.FC = () => {
       const data = await getInstanceList(
         id,
         {
-          page_size: -1,
+          page_size: -1
         },
         {
-          signal: abortController.signal,
+          signal: abortController.signal
         }
       );
       if (currentRequestId === instanceRequestIdRef.current) {
@@ -233,12 +233,12 @@ const SearchView: React.FC = () => {
     for (let i = 0; i < queryValues.length; i++) {
       queryList.push({
         keys: querykeys,
-        values: queryValues[i],
+        values: queryValues[i]
       });
     }
     const params: SearchParams = {
       query: '',
-      source_unit: metricItem?.unit || '',
+      source_unit: metricItem?.unit || ''
     };
     const recentTimeRange = getRecentTimeRange(_timeRange);
     const startTime = recentTimeRange.at(0);
@@ -282,7 +282,7 @@ const SearchView: React.FC = () => {
   const onTimeChange = (val: number[], originValue: number | null) => {
     const timeRange = {
       timeRange: val,
-      originValue,
+      originValue
     };
     setTimeValues(timeRange);
     handleSearch('refresh', activeTab, timeRange);
@@ -307,7 +307,7 @@ const SearchView: React.FC = () => {
       monitorObjId: object + '',
       metricId: metric || '',
       instanceId: instanceId.join(','),
-      type: 'add',
+      type: 'add'
     });
     const targetUrl = `/monitor/event/strategy/detail?${params.toString()}`;
     window.open(targetUrl, '_blank', 'noopener,noreferrer');
@@ -342,7 +342,7 @@ const SearchView: React.FC = () => {
     setObject(val);
     if (val) {
       getMetrics({
-        monitor_object_id: val,
+        monitor_object_id: val
       });
       getInstList(val);
     }
@@ -374,7 +374,7 @@ const SearchView: React.FC = () => {
     _conditions.push({
       label: null,
       condition: null,
-      value: '',
+      value: ''
     });
     setConditions(_conditions);
   };
@@ -421,12 +421,12 @@ const SearchView: React.FC = () => {
         params = {
           time: params.end,
           query: params.query,
-          source_unit: params.source_unit,
+          source_unit: params.source_unit
         };
       }
       const responseData = await get(url, {
         params,
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       if (currentRequestId !== searchRequestIdRef.current) {
         return;
@@ -446,7 +446,7 @@ const SearchView: React.FC = () => {
               instance_id_keys: targetMetric?.instance_id_keys || [],
               dimensions: targetMetric?.dimensions || [],
               title: targetMetric?.display_name || '--',
-              showInstName: true,
+              showInstName: true
             };
           });
         const _chartData = renderChart(data, list);
@@ -456,7 +456,7 @@ const SearchView: React.FC = () => {
           (item: SearchTableDataItem, index: number) => ({
             ...item.metric,
             value: item.value[1] ?? '--',
-            index,
+            index
           })
         );
         const metricTarget =
@@ -476,8 +476,8 @@ const SearchView: React.FC = () => {
             key: item,
             width: 200,
             ellipsis: {
-              showTitle: true,
-            },
+              showTitle: true
+            }
           }));
         const _columns: any = cloneDeep(tableColumns);
         if (_columns[0]) _columns[0].fixed = 'left';
@@ -495,34 +495,37 @@ const SearchView: React.FC = () => {
     setTimeDefaultValue((pre) => ({
       ...pre,
       rangePickerVaule: arr,
-      selectValue: 0,
+      selectValue: 0
     }));
     const _times = arr.map((item) => dayjs(item).valueOf());
     const timeRange = {
       timeRange: _times,
-      originValue: 0,
+      originValue: 0
     };
     setTimeValues(timeRange);
     handleSearch('refresh', activeTab, timeRange);
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.type]) {
-        acc[item.type] = {
-          title: item.display_type || '--',
-          key: item.type,
-          children: [],
-        };
-      }
-      acc[item.type].children.push({
-        title: (item.display_name || '--') + `(${item.instance_count || 0})`,
-        label: item.name || '--',
-        key: item.id,
-        children: [],
-      });
-      return acc;
-    }, {} as Record<string, TreeItem>);
+    const groupedData = data.reduce(
+      (acc, item) => {
+        if (!acc[item.type]) {
+          acc[item.type] = {
+            title: item.display_type || '--',
+            key: item.type,
+            children: []
+          };
+        }
+        acc[item.type].children.push({
+          title: (item.display_name || '--') + `(${item.instance_count || 0})`,
+          label: item.name || '--',
+          key: item.id,
+          children: []
+        });
+        return acc;
+      },
+      {} as Record<string, TreeItem>
+    );
     if (groupedData.Other) {
       groupedData.Other.children = groupedData.Other.children.filter(
         (item) => item.label !== 'SNMP Trap'
@@ -617,8 +620,8 @@ const SearchView: React.FC = () => {
                         title: item.name,
                         options: (item.child || []).map((tex) => ({
                           label: tex.display_name,
-                          value: tex.name,
-                        })),
+                          value: tex.name
+                        }))
                       }))}
                       onChange={handleMetricChange}
                     />
@@ -708,7 +711,7 @@ const SearchView: React.FC = () => {
                         {t('monitor.search.area')}
                       </div>
                     ),
-                    value: 'area',
+                    value: 'area'
                   },
                   {
                     label: (
@@ -717,8 +720,8 @@ const SearchView: React.FC = () => {
                         {t('monitor.search.table')}
                       </div>
                     ),
-                    value: 'table',
-                  },
+                    value: 'table'
+                  }
                 ]}
                 onChange={onTabChange}
               />
@@ -747,7 +750,7 @@ const SearchView: React.FC = () => {
                             className="absolute cursor-pointer inline-block"
                             style={{
                               top: '-3px',
-                              right: '-14px',
+                              right: '-14px'
                             }}
                           >
                             <Icon

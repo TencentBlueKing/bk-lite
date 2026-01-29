@@ -11,7 +11,15 @@
         "pleaseEnterValue": "请输入值",
         "exactMatch": "精确匹配",
         "filterItems": "检索项：",
-        "clearConditions": "清空条件"
+        "clearConditions": "清空条件",
+        "saveFilters": "收藏条件",
+        "savedFilters": "已收藏条件",
+        "filterName": "名称",
+        "moreSavedFilters": "更多收藏",
+        "saveSuccess": "收藏成功",
+        "deleteSuccess": "删除成功",
+        "filterNameRequired": "请输入收藏名称",
+        "noFiltersToSave": "没有可收藏的筛选条件"
     },
     "deleteTitle": "您确定要删除这个项目吗？",
     "disassociationTitle": "您确定要取消关联吗？",

@@ -2278,13 +2278,6 @@ monitor_object_metric_group:
     Base: 基础
     Bandwidth: 带宽
     Packet Error: 数据包错误
-  Node:
-    Net: 网络
-    Status: 状态
-    Memory: 内存
-    Load: 负载
-    Disk: 磁盘
-    CPU: CPU
   WebLogic-JMX:
     Threadpool: 线程池
     Application: 应用
@@ -2420,7 +2413,6 @@ monitor_object_metric_group:
     Performance: 性能
     Storage: 存储
     Connection: 连接
-    Base: 基础信息
     Wait: 等待时间
 monitor_object_plugin:
   Detection Device SNMP General:

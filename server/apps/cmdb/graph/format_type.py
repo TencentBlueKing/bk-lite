@@ -80,9 +80,24 @@ def format_int_in(param):
 
 
 def format_list_in(param):
+    """
+    list[]类型查询条件格式化
+    
+    标准 Cypher 列表子集检查：查询列表中的所有元素都必须在字段数组中。
+    使用 ALL(x IN query_list WHERE x IN n.field) 语义（AND 关系）。
+    
+    示例：查询 [2,5]，字段 [2,5,4] → 2在且5在 → 匹配成功
+    """
     field = param["field"]
-    value = param["value"]
-    return f"(n.{field} IN {value} OR ANY(x IN {value} WHERE x IN n.{field}))"
+    value = param["value"]  # value 是列表，如 [2, 5]
+    
+    if not value or not isinstance(value, list):
+        return "false"
+    
+    # 展开为多个 IN 检查并用 AND 连接
+    # [2,5] -> (2 IN n.field AND 5 IN n.field)
+    conditions = [f"{v} IN n.{field}" for v in value]
+    return f"({' AND '.join(conditions)})"
 
 
 def id_in(param):
@@ -310,16 +325,21 @@ def format_list_in_params(param, collector):
     """
     参数化版本：list[]
 
-    支持字段为标量或列表两种情况：
-    - 标量字段: n.field IN $list (如 n.operator=3 在 [3,5] 中)
-    - 列表字段: ANY(x IN $list WHERE x IN n.field) (如 n.tags=[1,2] 与 [2,3] 有交集)
+    标准 Cypher 列表子集检查：查询列表中的所有元素都必须在字段数组中。
+    使用 ALL(x IN $param WHERE x IN n.field) 语义（AND 关系）。
+    
+    语义：$param = [2,5]，n.field = [2,5,4] 
+          → 检查 2 在 [2,5,4] 中 AND 5 在 [2,5,4] 中 → 都存在 → 匹配成功
+    
+    这是 FalkorDB/Cypher 做 list 字段检索的标准姿势。
     """
     from apps.cmdb.graph.validators import CQLValidator
 
     field = CQLValidator.validate_field(param["field"])
     value = param["value"]
     param_name = collector.add_param(value, prefix="list")
-    return f"(n.{field} IN {param_name} OR ANY(x IN {param_name} WHERE x IN n.{field}))"
+    # 标准 ALL + IN 语法：查询列表的所有元素都必须在字段数组中
+    return f"ALL(x IN {param_name} WHERE x IN n.{field})"
 
 
 # 参数化格式映射表

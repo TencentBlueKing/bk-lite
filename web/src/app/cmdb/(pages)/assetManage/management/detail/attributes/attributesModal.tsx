@@ -125,7 +125,12 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
             },
           ]);
         } else {
-          setEnumList(attrInfo.option || []);
+          const optionArray = Array.isArray(attrInfo.option)
+            ? attrInfo.option
+            : [];
+          setEnumList(
+            optionArray.length > 0 ? optionArray : [{ id: '', name: '' }],
+          );
         }
         setAttrInfo(attrInfo);
       },
@@ -133,13 +138,21 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
 
     const handleSubmit = () => {
       formRef.current?.validateFields().then((values) => {
-        const flag = enumList.every((item) => !!item.id && !!item.name);
         const selectedGroup = groups.find(
-          (group) => group.id === values.group_id
+          (group) => group.id === values.group_id,
         );
+
+        // 只有枚举类型才处理 enumList
+        let option = [];
+        if (values.attr_type === 'enum') {
+          const enumArray = Array.isArray(enumList) ? enumList : [];
+          const flag = enumArray.every((item) => !!item.id && !!item.name);
+          option = flag ? enumArray : [];
+        }
+
         operateAttr({
           ...values,
-          option: flag ? enumList : [],
+          option,
           attr_group: selectedGroup?.group_name || '',
           model_id: modelId,
         });
@@ -148,7 +161,8 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
 
     // 自定义验证枚举列表
     const validateEnumList = async () => {
-      if (enumList.some((item) => !item.id || !item.name)) {
+      const enumArray = Array.isArray(enumList) ? enumList : [];
+      if (enumArray.some((item) => !item.id || !item.name)) {
         return Promise.reject(new Error(t('valueValidate')));
       }
       return Promise.resolve();
