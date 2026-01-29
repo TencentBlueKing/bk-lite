@@ -117,6 +117,7 @@ export const SNMP_FORM_INITIAL_VALUES = {
   level: 'authNoPriv',
   integrity: 'sha',
   privacy: 'aes',
+  hasNetworkTopo: true,
 };
 
 export const SQL_FORM_INITIAL_VALUES = {
