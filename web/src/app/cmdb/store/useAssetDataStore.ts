@@ -22,7 +22,6 @@ interface AssetDataStore {
   case_sensitive: boolean;
   cloud_list: { proxy_id: string; proxy_name: string }[];
   user_configs: UserConfigs;
-  user_configs_loading: boolean;
   add: (item: FilterItem) => FilterItem[];
   remove: (index: number) => FilterItem[];
   clear: () => FilterItem[];
@@ -31,7 +30,6 @@ interface AssetDataStore {
   setQueryList: (items: FilterItem[]) => FilterItem[];
   setCloudList: (list: { proxy_id: string; proxy_name: string }[]) => void;
   setUserConfigs: (configs: UserConfigs) => void;
-  setUserConfigsLoading: (loading: boolean) => void;
   updateUserConfig: (key: string, value: unknown) => void;
   getSavedFilters: (modelId: string) => SavedFilterItem[];
   applySavedFilter: (filter: SavedFilter) => FilterItem[];
@@ -43,7 +41,6 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   case_sensitive: false,
   cloud_list: [],
   user_configs: {},
-  user_configs_loading: false,
 
   add: (item: FilterItem) => {
     set((state) => ({ query_list: [...state.query_list, item] }));
@@ -80,10 +77,6 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
 
   setUserConfigs: (configs: UserConfigs) => {
     set({ user_configs: configs });
-  },
-
-  setUserConfigsLoading: (loading: boolean) => {
-    set({ user_configs_loading: loading });
   },
 
   updateUserConfig: (key: string, value: unknown) => {

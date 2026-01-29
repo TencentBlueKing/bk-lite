@@ -228,7 +228,8 @@
             "authPassword": "认证密钥",
             "hashAlgorithm": "散列算法",
             "encryptAlgorithm": "加密算法",
-            "encryptKey": "加密密钥"
+            "encryptKey": "加密密钥",
+            "collectRelationships": "是否采集关系"
         },
         "cloudTask": {
             "accessKey": "秘匙",

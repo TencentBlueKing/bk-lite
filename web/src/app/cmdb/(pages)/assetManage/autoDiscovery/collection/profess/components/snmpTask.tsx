@@ -14,7 +14,7 @@ import {
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
 import { formatTaskValues } from '../hooks/formatTaskValues';
-import { Form, Spin, Input, Select, Collapse, InputNumber } from 'antd';
+import { Form, Spin, Input, Select, Collapse, InputNumber, Switch } from 'antd';
 
 interface SNMPTaskFormProps {
   onClose: () => void;
@@ -114,6 +114,9 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
         ...baseData,
         ...instanceData,
         credential,
+        params: {
+          has_network_topo: values.hasNetworkTopo ?? true,
+        },
       };
     },
   });
@@ -141,6 +144,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
           ...values.credential,
           organization: values.team || [],
           accessPointId: values.access_point?.[0]?.id,
+          hasNetworkTopo: values.params?.has_network_topo ?? true,
         });
       } else {
         form.setFieldsValue(SNMP_FORM_INITIAL_VALUES);
@@ -171,6 +175,14 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >
+          <Form.Item
+            label={t('Collection.SNMPTask.collectRelationships')}
+            name="hasNetworkTopo"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
           <Collapse
             ghost
             defaultActiveKey={['credential']}
