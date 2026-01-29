@@ -108,6 +108,7 @@ class WebhookClient:
         """
         if not os.getenv("WEBHOOK"):
             return False, "环境变量 WEBHOOK 未配置"
+        return True, ""
 
     @staticmethod
     def get_all_endpoints():

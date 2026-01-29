@@ -7,6 +7,7 @@ import os
 import requests
 import pandas as pd
 import numpy as np
+import json
 
 from apps.core.logger import mlops_logger as logger
 from apps.core.decorators.api_permission import HasPermission
@@ -84,6 +85,11 @@ class ClassificationServingViewSet(ModelViewSet):
             result = WebhookClient.get_status(serving_ids)
             status_map = {s.get("id"): s for s in result}
 
+            # 批量获取所有需要更新的对象（避免N+1查询）
+            serving_id_list = [s["id"] for s in servings]
+            serving_objs = ClassificationServing.objects.filter(id__in=serving_id_list)
+            serving_obj_map = {obj.id: obj for obj in serving_objs}
+
             updates = []
             for serving_data in servings:
                 serving_id = f"Classification_Serving_{serving_data['id']}"
@@ -92,12 +98,11 @@ class ClassificationServingViewSet(ModelViewSet):
                 if container_info:
                     serving_data["container_info"] = container_info
 
-                    # 同步到数据库
-                    serving_obj = ClassificationServing.objects.get(
-                        id=serving_data["id"]
-                    )
-                    serving_obj.container_info = container_info
-                    updates.append(serving_obj)
+                    # 同步到数据库：从缓存字典获取对象，无额外查询
+                    serving_obj = serving_obj_map.get(serving_data["id"])
+                    if serving_obj:
+                        serving_obj.container_info = container_info
+                        updates.append(serving_obj)
                 else:
                     serving_data["container_info"] = {
                         "status": "error",
@@ -611,7 +616,8 @@ class ClassificationServingViewSet(ModelViewSet):
                 try:
                     error_detail = response.json()
                     error_msg = f"{error_msg} - {error_detail}"
-                except Exception:
+                except (ValueError, json.JSONDecodeError) as e:
+                    logger.warning(f"Failed to parse error response JSON: {e}")
                     error_msg = f"{error_msg} - {response.text[:200]}"
 
                 logger.error(f"预测失败: {error_msg}")

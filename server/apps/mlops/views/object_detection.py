@@ -832,6 +832,11 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             result = WebhookClient.get_status(serving_ids)
             status_map = {s.get("id"): s for s in result}
 
+            # 批量获取所有需要更新的对象（避免N+1查询）
+            serving_id_list = [s["id"] for s in servings]
+            serving_objs = ObjectDetectionServing.objects.filter(id__in=serving_id_list)
+            serving_obj_map = {obj.id: obj for obj in serving_objs}
+
             updates = []
             for serving_data in servings:
                 serving_id = f"ObjectDetection_Serving_{serving_data['id']}"
@@ -840,12 +845,11 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                 if container_info:
                     serving_data["container_info"] = container_info
 
-                    # 同步到数据库
-                    serving_obj = ObjectDetectionServing.objects.get(
-                        id=serving_data["id"]
-                    )
-                    serving_obj.container_info = container_info
-                    updates.append(serving_obj)
+                    # 同步到数据库：从缓存字典获取对象，无额外查询
+                    serving_obj = serving_obj_map.get(serving_data["id"])
+                    if serving_obj:
+                        serving_obj.container_info = container_info
+                        updates.append(serving_obj)
                 else:
                     serving_data["container_info"] = {
                         "status": "error",
