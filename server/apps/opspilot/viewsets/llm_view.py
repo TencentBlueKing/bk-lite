@@ -12,6 +12,7 @@ from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
 from apps.opspilot.utils.agui_chat import stream_agui_chat
+from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
 from apps.opspilot.utils.mcp_client import MCPClient
 from apps.opspilot.utils.sse_chat import stream_chat
 
@@ -472,6 +473,7 @@ class SkillToolsViewSet(AuthViewSet):
             server_url: MCP server 地址
             enable_auth: 是否启用基本认证
             auth_token: 基本认证的 token
+            force_refresh: 是否强制刷新缓存（可选，默认 False）
         返回格式:
             {
                 "result": True,
@@ -481,16 +483,24 @@ class SkillToolsViewSet(AuthViewSet):
                         "description": "tool description",
                         "input_schema": {...}
                     }
-                ]
+                ],
+                "cached": True/False  # 是否来自缓存
             }
         """
         server_url = request.data.get("server_url")
         enable_auth = request.data.get("enable_auth", False)
         auth_token = request.data.get("auth_token", "")
+        force_refresh = request.data.get("force_refresh", False)
 
         if not server_url:
             message = self.loader.get("error.server_url_required") if self.loader else "MCP server URL is required"
             return JsonResponse({"result": False, "message": message})
+
+        # 先查缓存（非强制刷新时）
+        if not force_refresh:
+            cached_tools = get_cached_mcp_tools(server_url, auth_token)
+            if cached_tools is not None:
+                return JsonResponse({"result": True, "data": cached_tools, "cached": True})
 
         # 构建 MCP 客户端配置
         mcp_config = {"server_url": server_url}
@@ -507,8 +517,9 @@ class SkillToolsViewSet(AuthViewSet):
         try:
             with MCPClient(**mcp_config) as mcp_client:
                 tools = mcp_client.get_tools()
-                # MCPClient 已经返回了格式化后的数据,直接返回
-                return JsonResponse({"result": True, "data": tools})
+                # 缓存结果
+                set_cached_mcp_tools(server_url, tools, auth_token)
+                return JsonResponse({"result": True, "data": tools, "cached": False})
         except Exception as e:
             logger.exception(e)
             message = self.loader.get("error.mcp_server_error") if self.loader else "Error occurred while fetching MCP tools"
