@@ -112,18 +112,18 @@ class Sidecar:
                 batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
             )
 
-    @staticmethod
-    def update_groups(node_id: str, groups: list):
-        """
-        更新节点关联的组织
-        :param node_id: 节点ID
-        :param groups: 组织列表
-        """
-        # 删除现有的组织关联
-        NodeOrganization.objects.filter(node_id=node_id).delete()
-
-        # 重新关联新的组织
-        Sidecar.asso_groups(node_id, groups)
+    # @staticmethod
+    # def update_groups(node_id: str, groups: list):
+    #     """
+    #     更新节点关联的组织
+    #     :param node_id: 节点ID
+    #     :param groups: 组织列表
+    #     """
+    #     # 删除现有的组织关联
+    #     NodeOrganization.objects.filter(node_id=node_id).delete()
+    #
+    #     # 重新关联新的组织
+    #     Sidecar.asso_groups(node_id, groups)
 
     @staticmethod
     def update_node_client(request, node_id):
@@ -210,10 +210,10 @@ class Sidecar:
             # 更新节点
             Node.objects.filter(id=node_id).update(**request_data)
 
-            # 更新组织关联(覆盖)
-            Sidecar.update_groups(
-                node_id, tags_data.get(ControllerConstants.GROUP_TAG, [])
-            )
+            # # 更新组织关联(覆盖)
+            # Sidecar.update_groups(
+            #     node_id, tags_data.get(ControllerConstants.GROUP_TAG, [])
+            # )
 
         # 预取相关数据，减少查询次数
         new_obj = Node.objects.prefetch_related(
