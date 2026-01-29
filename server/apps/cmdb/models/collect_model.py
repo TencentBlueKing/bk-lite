@@ -91,7 +91,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
 
     @property
     def is_network_topo(self):
-        return self.model_id == "network_topo"
+        return bool(self.params.get("has_network_topo"))
 
     @property
     def is_cloud(self):
