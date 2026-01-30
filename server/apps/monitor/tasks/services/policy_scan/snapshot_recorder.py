@@ -144,7 +144,7 @@ class SnapshotRecorder:
                     f"Added pre-alert snapshot for alert {alert.id}, metric_instance {metric_id}"
                 )
 
-        if event_objs:
+        if event_objs and raw_data:
             for event_obj in event_objs:
                 event_snapshot = {
                     "type": "event",
@@ -153,7 +153,7 @@ class SnapshotRecorder:
                     if event_obj.event_time
                     else None,
                     "snapshot_time": snapshot_time.isoformat(),
-                    "raw_data": raw_data if raw_data else {},
+                    "raw_data": raw_data,
                 }
 
                 existing_event_ids = [
