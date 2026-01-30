@@ -47,9 +47,11 @@ class MinioDownloader:
             use_https: 是否使用 HTTPS
         """
         self.endpoint = endpoint or os.getenv("MINIO_ENDPOINT", "localhost:9000")
+        # 清理协议前缀 (MinIO SDK 不接受 http:// 或 https://)
+        self.endpoint = self.endpoint.replace("http://", "").replace("https://", "")
         self.access_key = access_key or os.getenv("MINIO_ACCESS_KEY")
         self.secret_key = secret_key or os.getenv("MINIO_SECRET_KEY")
-        
+
         # 处理 use_https: 支持字符串 "0"/"1" 和布尔值
         if use_https is None:
             use_https_env = os.getenv("MINIO_USE_HTTPS", "0")
