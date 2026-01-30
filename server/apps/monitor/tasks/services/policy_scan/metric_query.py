@@ -143,7 +143,7 @@ class MetricQueryService:
         # 准备查询参数
         query = self.format_pmq()
         step = self.format_period(period, points)
-        group_by = ",".join(self.instance_id_keys)
+        group_by = ",".join(self.policy.group_by or [])
 
         # 获取聚合方法
         method = METHOD.get(self.policy.algorithm)
@@ -250,16 +250,17 @@ class MetricQueryService:
             dict: 格式化后的指标数据 {metric_instance_id: {"value": float, "raw_data": dict}}
         """
         result = {}
+        group_by_keys = self.policy.group_by or []
 
         for metric_info in metrics.get("data", {}).get("result", []):
             instance_id_tuple = tuple(
-                [metric_info["metric"].get(key) for key in self.instance_id_keys]
+                [metric_info["metric"].get(key) for key in group_by_keys]
             )
             metric_instance_id = str(instance_id_tuple)
 
             if self.instances_map:
                 monitor_instance_id = (
-                    str(instance_id_tuple[0]) if instance_id_tuple else ""
+                    str((instance_id_tuple[0],)) if instance_id_tuple else ""
                 )
                 if monitor_instance_id not in self.instances_map:
                     continue

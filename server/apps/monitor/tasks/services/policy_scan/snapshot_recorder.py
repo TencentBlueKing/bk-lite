@@ -104,14 +104,10 @@ class SnapshotRecorder:
     def _query_fallback_raw_data(self, metric_instance_id):
         """查询兜底原始数据（用于历史活跃告警）"""
         fallback_data = self.metric_query_service.query_raw_metrics(self.policy.period)
+        group_by_keys = self.policy.group_by or []
         for metric_info in fallback_data.get("data", {}).get("result", []):
             current_metric_id = str(
-                tuple(
-                    [
-                        metric_info["metric"].get(i)
-                        for i in self.metric_query_service.instance_id_keys
-                    ]
-                )
+                tuple([metric_info["metric"].get(i) for i in group_by_keys])
             )
             if current_metric_id == metric_instance_id:
                 return metric_info
@@ -214,7 +210,8 @@ class SnapshotRecorder:
         start_timestamp = end_timestamp - period_seconds
         query = self.metric_query_service.format_pmq()
         step = self.metric_query_service.format_period(self.policy.period)
-        group_by = ",".join(self.metric_query_service.instance_id_keys)
+        group_by_keys = self.policy.group_by or []
+        group_by = ",".join(group_by_keys)
 
         method = METHOD.get(self.policy.algorithm)
         if not method:
@@ -236,12 +233,7 @@ class SnapshotRecorder:
         raw_data = {}
         for metric_info in pre_alert_metrics.get("data", {}).get("result", []):
             current_metric_id = str(
-                tuple(
-                    [
-                        metric_info["metric"].get(key)
-                        for key in self.metric_query_service.instance_id_keys
-                    ]
-                )
+                tuple([metric_info["metric"].get(key) for key in group_by_keys])
             )
 
             if current_metric_id == metric_instance_id:
