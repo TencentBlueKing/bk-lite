@@ -2,8 +2,11 @@
 统一初始化命令 - 在单个 Python 进程中执行所有初始化任务
 避免多次启动 Python 进程，大幅提升启动速度
 """
+
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
+
+from apps.core.utils.loader import preload_language_cache
 
 
 class Command(BaseCommand):
@@ -21,7 +24,10 @@ class Command(BaseCommand):
         else:
             apps_list = [app.strip() for app in apps.split(",")]
 
-        self.stdout.write(self.style.SUCCESS(f'开始批量初始化，目标模块: {", ".join(apps_list)}'))
+        self.stdout.write(self.style.SUCCESS(f"开始批量初始化，目标模块: {', '.join(apps_list)}"))
+
+        # 预热语言缓存
+        self._preload_language_cache()
 
         # 按模块执行初始化
         for app in apps_list:
@@ -89,10 +95,10 @@ class Command(BaseCommand):
 
     def _init_alerts(self):
         """告警系统资源初始化"""
-        self.stdout.write('告警系统资源初始化...')
-        call_command('init_alert_sources')
-        call_command('init_alert_levels')
-        call_command('init_system_settings')
+        self.stdout.write("告警系统资源初始化...")
+        call_command("init_alert_sources")
+        call_command("init_alert_levels")
+        call_command("init_system_settings")
 
     def _init_operation_analysis(self):
         """运营分析系统资源初始化"""
@@ -115,3 +121,14 @@ class Command(BaseCommand):
         """日志模块初始化"""
         self.stdout.write("日志模块初始化...")
         call_command("log_init")
+
+    def _preload_language_cache(self):
+        """预热语言缓存"""
+        self.stdout.write("预热语言缓存...")
+        try:
+            result = preload_language_cache()
+            self.stdout.write(
+                self.style.SUCCESS(f"语言缓存预热完成: {len(result['loaded'])} 已加载, " f"{len(result['skipped'])} 已跳过, {len(result['failed'])} 失败")
+            )
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"语言缓存预热失败: {str(e)}"))

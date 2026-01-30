@@ -136,6 +136,7 @@ class ChatService:
             "naive_rag_request": naive_rag_request,
             "enable_suggest": kwargs.get("enable_suggest", False),
             "enable_query_rewrite": kwargs.get("enable_query_rewrite", False),
+            "locale": kwargs.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
         }
 
         if kwargs.get("thread_id"):

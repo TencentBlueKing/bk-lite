@@ -113,19 +113,19 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
   const fetchRegions = async (
     accessKey: string,
     accessSecret: string,
-    refreshFlag = true
+    cloudRegionId: string,
+    refreshFlag = true,
   ) => {
     if (!accessKey || !accessSecret) return;
     setLoadingRegions(true);
     try {
-      const res = await collectApi.getCollectRegions({
+      const data = await collectApi.getCollectRegions({
         model_id: modelId,
         access_key: accessKey,
         access_secret: accessSecret,
+        cloud_id: cloudRegionId,
       });
-      if (res.result) {
-        setRegions(res.data);
-      }
+      setRegions(data || []);
       if (refreshFlag) {
         message.success(t('common.updateSuccess'));
       }
@@ -137,7 +137,11 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
   };
 
   const handleRefreshRegions = async (refreshFlag = false) => {
-    const values = form.getFieldsValue(['accessKey', 'accessSecret']);
+    const values = form.getFieldsValue([
+      'accessKey',
+      'accessSecret',
+      'accessPointId',
+    ]);
     if (!values.accessKey || !values.accessSecret) {
       const msg = !values.accessKey
         ? t('Collection.cloudTask.accessKey')
@@ -145,7 +149,22 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       message.error(t('common.inputMsg') + msg);
       return;
     }
-    await fetchRegions(values.accessKey, values.accessSecret, refreshFlag);
+    if (!values.accessPointId) {
+      message.error(t('common.selectTip') + t('Collection.accessPoint'));
+      return;
+    }
+
+    const selectedAccessPoint = baseRef.current?.accessPoints?.find(
+      (item: any) => item.value === values.accessPointId,
+    );
+    const cloudRegion = selectedAccessPoint?.origin?.cloud_region || '';
+
+    await fetchRegions(
+      values.accessKey,
+      values.accessSecret,
+      cloudRegion,
+      refreshFlag,
+    );
   };
 
   const handleCredentialChange = () => {

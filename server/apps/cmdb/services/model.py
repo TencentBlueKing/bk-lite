@@ -33,7 +33,7 @@ class ModelManage(object):
     @staticmethod
     def _validate_attr_id(attr_id: str):
         if not isinstance(attr_id, str) or not ModelManage.ATTR_ID_PATTERN.match(attr_id):
-            raise BaseAppException("模型ID必须以字母开头，且仅包含字母、数字或下划线")
+            raise BaseAppException("属性ID必须以字母开头，且仅包含字母、数字或下划线")
 
     @staticmethod
     def _add_display_field_to_attrs(attrs: list, attr_info: dict, model_id: str, is_pre: bool = False):
