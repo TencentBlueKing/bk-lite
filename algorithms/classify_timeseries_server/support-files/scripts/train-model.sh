@@ -153,17 +153,23 @@ log_info "MLflow Tracking URI: ${MLFLOW_TRACKING_URI}"
 
 export MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}"
 
-# 构建训练命令（使用 python 直接运行）
-TRAIN_CMD="python -m classify_timeseries_server.cli.bootstrap train \
+# 构建训练命令（使用已注册的 CLI 入口点）
+TRAIN_CMD="classify_timeseries_server train \
     --dataset-path \"${EXTRACT_DIR}\" \
     --config \"${CONFIG_FILE}\""
 
-# 执行训练
-if eval ${TRAIN_CMD}; then
-    log_info "模型训练成功！"
+# 执行训练（捕获标准输出和标准错误）
+log_info "执行训练命令: ${TRAIN_CMD}"
+eval ${TRAIN_CMD}
+EXIT_CODE=$?
+
+# 检查退出码
+if [ ${EXIT_CODE} -eq 0 ]; then
+    log_info "模型训练成功！退出码: ${EXIT_CODE}"
     log_info "详细信息请查看 MLflow UI"
 else
-    log_error "模型训练失败"
+    log_error "模型训练失败,退出码: ${EXIT_CODE}"
+    log_error "请检查上方的错误日志"
     exit 1
 fi
 
