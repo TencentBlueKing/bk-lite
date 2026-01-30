@@ -15,6 +15,21 @@ interface UseTaskFormProps {
   initialValues: Record<string, any>;
 }
 
+export const getCycleFormValues = (data: any) => {
+  const cycleType = data?.cycle_value_type || CYCLE_OPTIONS.ONCE;
+  const cycleValue = data?.cycle_value;
+  return {
+    cycle: cycleType,
+    ...(cycleType === CYCLE_OPTIONS.DAILY && {
+      dailyTime: dayjs(cycleValue, 'HH:mm'),
+    }),
+    ...(cycleType === CYCLE_OPTIONS.INTERVAL && {
+      intervalValue: Number(cycleValue),
+      everyHours: Number(cycleValue),
+    }),
+  };
+};
+
 export const useTaskForm = ({
   editId,
   onSuccess,
@@ -51,20 +66,12 @@ export const useTaskForm = ({
       const data = await collectApi.getCollectDetail(id.toString());
       // console.log('test2.5:getCollectDetail', data.cycle_value_type);
       useAssetManageStore.getState().setScanCycleType(data.cycle_value_type || null);
-      const cycleType = data.cycle_value_type || CYCLE_OPTIONS.ONCE;
-      const cycleValue = data.cycle_value;
+      const cycleFields = getCycleFormValues(data);
       form.setFieldsValue({
         ...data,
         taskName: data.name,
         instId: data.instances?.[0]?._id,
-        cycle: cycleType,
-        ...(cycleType === CYCLE_OPTIONS.DAILY && {
-          dailyTime: dayjs(cycleValue, 'HH:mm'),
-        }),
-        ...(cycleType === CYCLE_OPTIONS.INTERVAL && {
-          intervalValue: Number(cycleValue),
-          everyHours: Number(cycleValue),
-        }),
+        ...cycleFields,
       });
       return data;
     } catch (error) {
@@ -83,7 +90,7 @@ export const useTaskForm = ({
         if (params.scan_cycle.value_type === "cycle") {
           await collectApi.updateCollect(editId.toString(), params);
           message.success(t('successfullyModified'));
-        }else{
+        } else {
           message.error(t('Collection.cycleDeprecated'));
           return;
         }
