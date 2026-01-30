@@ -18,7 +18,7 @@ const InstallGuidance = forwardRef<ModalRef>(({}, ref) => {
       setGroupVisible(true);
       setTitle(title || '');
       setScript(form?.message);
-    },
+    }
   }));
 
   const handleCancel = () => {
@@ -40,7 +40,7 @@ const InstallGuidance = forwardRef<ModalRef>(({}, ref) => {
       >
         <CodeEditor
           readOnly
-          showCopy
+          headerOptions={{ copy: true }}
           value={script}
           width="100%"
           height="calc(100vh - 180px)"
