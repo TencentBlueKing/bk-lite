@@ -22,7 +22,7 @@ import {
 import LineChart from "@/app/mlops/components/charts/lineChart";
 import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
-import { ColumnItem, TableDataItem, } from '@/app/mlops/types';
+import { ColumnItem, TableDataItem, DatasetType } from '@/app/mlops/types';
 import { AnnotationData } from '@/app/mlops/types/manage';
 
 const ChartContent = ({
@@ -38,7 +38,7 @@ const ChartContent = ({
 }) => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { getAnomalyTrainDataInfo, getTimeSeriesPredictTrainDataInfo, labelingData } = useMlopsManageApi();
+  const { getTrainDataInfo, updateAnomalyTrainDataFile } = useMlopsManageApi();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [currentFileData, setCurrentFileData] = useState<AnnotationData[]>([]);
@@ -62,11 +62,6 @@ const ChartContent = ({
   const isSlidingRef = useRef<boolean>(false);
   const isInitializedRef = useRef<boolean>(false);
   const dataRangeRef = useRef<[number, number]>([0, 2000]);
-
-  const getTrainDataInfoMap: Record<string, any> = {
-    'anomaly_detection': getAnomalyTrainDataInfo,
-    'timeseries_predict': getTimeSeriesPredictTrainDataInfo
-  };
 
   const {
     id,
@@ -110,7 +105,7 @@ const ChartContent = ({
       }
     ];
 
-    if (key === 'anomaly_detection') {
+    if (key === DatasetType.ANOMALY_DETECTION) {
       _columns.push(
         {
           title: t('mlops-common.action'),
@@ -325,27 +320,13 @@ const ChartContent = ({
     }
   }, [currentFileData, isAnimating]);
 
-  const handleLabelData = useCallback((data: any[], points: number[] | undefined) => {
-    const _data = cloneDeep(data).map((item, index) => ({
-      ...item,
-      index
-    }));
-    if (!points) {
-      setCurrentFileData(data);
-      setTableData([]);
-      return;
-    }
-    points.forEach(item => {
-      _data[item] = {
-        ..._data[item],
-        label: 1
-      }
-    });
+  const handleLabelData = useCallback((data: any[]) => {
+    const _data = cloneDeep(data);
     setCurrentFileData(_data);
-    if (key === 'timeseries_predict') {
-      setTableData(_data);
-    } else {
+    if (key === DatasetType.ANOMALY_DETECTION) {
       setTableData(_data.filter((item) => item.label === 1));
+    } else {
+      setTableData(_data);
     }
   }, []);
 
@@ -357,17 +338,9 @@ const ChartContent = ({
 
     try {
       if (!key) return;
-      const data = await getTrainDataInfoMap[key](id as string, true, true);
-      
-      if (key === 'timeseries_predict') {
-        const { train_data, metadata } = data;
-        const points = metadata?.anomaly_point || [];
-        
-        handleLabelData(train_data || [], points);
-      } else {
-        // 异常检测模式
-        handleLabelData(data?.train_data, data?.metadata?.anomaly_point);
-      }
+      const data = await getTrainDataInfo(id as string, key as DatasetType, true, true);
+
+      handleLabelData(data?.train_data);
     } catch (e) {
       console.error('Failed to load data:', e);
       message.error(t('datasets.loadDataError'));
@@ -443,27 +416,53 @@ const ChartContent = ({
     }
   }, [currentFileData]);
 
+  // 异常检测样本文件更新入口
   const handleSave = useCallback(async () => {
     setLoadingState(prev => ({ ...prev, saveLoading: true }));
     const id = searchParams.get('id');
     try {
-      const points = tableData.map(item => item.index);
-      const params = {
-        metadata: {
-          anomaly_point: points
-        },
-      }
-      await labelingData(id as string, params);
+      // 构造CSV表头
+      const headers = ['timestamp', 'value', 'label'];
+      const csvRows = [headers.join(',')];
+
+      // 添加CSV数据行
+      currentFileData.forEach((item: AnnotationData) => {
+        // 将 Unix 时间戳转换为 UTC 0 时区的 "YYYY-MM-DD HH:mm:ss" 格式
+        const date = new Date(item.timestamp * 1000);
+        const year = date.getUTCFullYear();
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(date.getUTCDate()).padStart(2, '0');
+        const hours = String(date.getUTCHours()).padStart(2, '0');
+        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+        const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+        const timestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+        csvRows.push(`${timestamp},${item.value},${item.label || 0}`);
+      });
+
+      // 生成CSV字符串
+      const csvString = csvRows.join('\n');
+
+      // 创建Blob对象
+      const blob = new Blob([csvString], { type: 'text/csv' });
+
+      // 创建FormData并添加文件
+      const formData = new FormData();
+      formData.append('train_data', blob, 'train_data.csv');
+
+      // 调用后端API更新文件
+      await updateAnomalyTrainDataFile(id as string, formData);
+
       message.success(t('datasets.saveSuccess'));
+      setIsChange(false);
       getCurrentFileData();
     } catch (e) {
-      console.log(e);
+      console.error('Save error:', e);
       message.error(t('datasets.saveError'));
     } finally {
       setLoadingState(prev => ({ ...prev, saveLoading: false }));
-      setIsChange(false);
     }
-  }, [currentFileData, colmuns]);
+  }, [currentFileData, searchParams, updateAnomalyTrainDataFile, t, getCurrentFileData]);
 
   const handleCancel = () => {
     getCurrentFileData();
@@ -555,10 +554,10 @@ const ChartContent = ({
                     showDimensionTable
                     showDimensionFilter
                     showBrush
-                    allowSelect={key === 'anomaly_detection'}
+                    allowSelect={key === DatasetType.ANOMALY_DETECTION}
                     onXRangeChange={onXRangeChange}
                     onTimeLineChange={onTimeLineChange}
-                    onAnnotationClick={key === 'anomaly_detection' ? onAnnotationClick : undefined}
+                    onAnnotationClick={key === DatasetType.ANOMALY_DETECTION ? onAnnotationClick : undefined}
                   />
                 </div>
               </div>
@@ -599,7 +598,7 @@ const ChartContent = ({
               )}
             </div>
             <div
-              className={`${key === 'anomaly_detection' ? 'w-88.75' : 'w-72.5'} anomaly-container relative`}
+              className={`${key === DatasetType.ANOMALY_DETECTION ? 'w-88.75' : 'w-72.5'} anomaly-container relative`}
               ref={tableContainerRef}
               style={{
                 height: `calc(100vh - 120px)`,
@@ -628,13 +627,13 @@ const ChartContent = ({
                   virtual
                   size="small"
                   rowKey="timestamp"
-                  scroll={{ x: '100%', y: key === 'anomaly_detection' ? tableScrollHeight : 'calc(100vh - 160px)' }}
+                  scroll={{ x: '100%', y: key === DatasetType.ANOMALY_DETECTION ? tableScrollHeight : 'calc(100vh - 160px)' }}
                   columns={colmuns}
                   dataSource={pagedData}
                 />
                 <div className="absolute bottom-0 right-0 flex justify-end gap-2 mb-4">
                   {
-                    key === 'anomaly_detection' && (
+                    key === DatasetType.ANOMALY_DETECTION && (
                       <>
                         <Button className="mr-4" onClick={handleCancel}>{t('common.cancel')}</Button>
                         <PermissionWrapper requiredPermissions={['File Edit']}>

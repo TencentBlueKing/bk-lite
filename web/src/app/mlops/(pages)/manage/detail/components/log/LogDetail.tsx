@@ -6,6 +6,7 @@ import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
 import UploadModal from "../../uploadModal";
 import OperateModal from "@/components/operate-modal";
+import DatasetReleaseList from '../DatasetReleaseList';
 import {
   Input,
   Button,
@@ -17,7 +18,7 @@ import {
   message,
 } from "antd";
 import { TYPE_CONTENT, TYPE_COLOR } from "@/app/mlops/constants";
-import { ColumnItem, ModalRef, Pagination, TableData } from '@/app/mlops/types';
+import { ColumnItem, ModalRef, Pagination, TableData, DatasetType } from '@/app/mlops/types';
 const { Search } = Input;
 
 const LogDetail = () => {
@@ -25,7 +26,7 @@ const LogDetail = () => {
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
-  const { getLogClusteringTrainData, deleteLogClusteringTrainData, updateLogClusteringTrainData } = useMlopsManageApi();
+  const { getTrainDataByDataset, deleteTrainDataFile, updateLogClusteringTrainData } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [currentData, setCurrentData] = useState<any>(null);
@@ -79,7 +80,7 @@ const LogDetail = () => {
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => toAnnotation(record)}
             >
               {t('common.detail')}
@@ -88,7 +89,7 @@ const LogDetail = () => {
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => openModal(record)}
             >
               {t('common.edit')}
@@ -138,7 +139,8 @@ const LogDetail = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getLogClusteringTrainData({
+      const { count, items } = await getTrainDataByDataset({
+        key: DatasetType.LOG_CLUSTERING,
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -165,7 +167,7 @@ const LogDetail = () => {
         }
       });
     }
-    catch (e) { console.log(e) }
+    catch (e) { console.error(e) }
     finally { setLoading(false); }
   }, [t, searchParams]);
 
@@ -181,9 +183,9 @@ const LogDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteLogClusteringTrainData(data.id);
+      await deleteTrainDataFile(data.id, DatasetType.LOG_CLUSTERING);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
@@ -201,7 +203,7 @@ const LogDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'log_clustering') {
+      if (activeTap === DatasetType.LOG_CLUSTERING) {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
@@ -213,7 +215,7 @@ const LogDetail = () => {
         getDataset();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }
@@ -231,28 +233,33 @@ const LogDetail = () => {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4 gap-2">
-        <div>
-          <Breadcrumb
-            separator=">"
-            items={[
-              { title: <a href="#" onClick={() => router.push(`/mlops/manage/list`)}>{t(`datasets.datasets`)}</a> },
-              { title: t(`datasets.datasetsDetail`) }
-            ]}
-          />
-        </div>
-        <div className='flex'>
+      <div className="flex justify-between items-center mb-4 gap-2 h-8">
+        <Breadcrumb
+          separator=">"
+          items={[
+            {
+              title: <a href="#" onClick={() => router.push(`/mlops/manage/list`)}>{t(`datasets.datasets`)}</a>
+            },
+            {
+              title: t(`datasets.datasetsDetail`)
+            }
+          ]}
+        />
+        <div className='flex gap-2'>
           <Search
-            className="w-[240px] mr-1.5"
+            className="w-60"
             placeholder={t('common.search')}
             enterButton
             onSearch={onSearch}
             style={{ fontSize: 15 }}
           />
           <PermissionWrapper requiredPermissions={['File Upload']}>
-            <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
+            <Button type="primary" className="rounded-md shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['File View']}>
+            <DatasetReleaseList datasetType={DatasetType.LOG_CLUSTERING} />
           </PermissionWrapper>
         </div>
       </div>
