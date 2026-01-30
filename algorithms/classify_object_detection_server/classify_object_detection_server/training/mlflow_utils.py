@@ -54,12 +54,55 @@ class MLFlowUtils:
         return mlflow.pyfunc.load_model(model_uri)
 
     @staticmethod
+    def flatten_dict(d: dict, parent_key: str = "", sep: str = ".") -> dict:
+        """
+        递归展平嵌套字典.
+
+        用于将多层嵌套的配置字典展平为单层字典，以便记录到 MLflow。
+
+        Args:
+            d: 待展平的字典
+            parent_key: 父级键名（递归时使用）
+            sep: 键名分隔符（默认为 "."）
+
+        Returns:
+            展平后的字典
+
+        Examples:
+            >>> config = {
+            ...     "hyperparams": {
+            ...         "search_space": {
+            ...             "conf": [0.25, 0.3, 0.35]
+            ...         },
+            ...         "max_evals": 10
+            ...     }
+            ... }
+            >>> MLFlowUtils.flatten_dict(config)
+            {
+                "hyperparams.search_space.conf": [0.25, 0.3, 0.35],
+                "hyperparams.max_evals": 10
+            }
+        """
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+
+            if isinstance(v, dict):
+                # 递归展平嵌套字典
+                items.extend(MLFlowUtils.flatten_dict(v, new_key, sep=sep).items())
+            else:
+                # 叶子节点（保留原始类型：int, float, bool, str, list, tuple）
+                items.append((new_key, v))
+
+        return dict(items)
+
+    @staticmethod
     def log_params_batch(params: Dict[str, Any]):
         """
         批量记录参数到MLflow.
 
         Args:
-            params: 参数字典
+            params: 参数字典（可包含嵌套结构，建议先用 flatten_dict 展平）
         """
         if params:
             # 过滤掉不支持的参数类型
@@ -67,8 +110,20 @@ class MLFlowUtils:
             for k, v in params.items():
                 if isinstance(v, (str, int, float, bool)):
                     valid_params[k] = v
-                elif isinstance(v, (list, tuple, dict)):
-                    valid_params[k] = str(v)
+                elif isinstance(v, (list, tuple)):
+                    str_v = str(v)
+                    if len(str_v) <= 500:  # MLflow 参数值长度限制
+                        valid_params[k] = str_v
+                    else:
+                        logger.warning(
+                            f"参数{k}过长({len(str_v)}字符)，已截断前500字符"
+                        )
+                        valid_params[k] = str_v[:497] + "..."
+                elif isinstance(v, dict):
+                    logger.warning(f"参数{k}是dict类型，建议先使用flatten_dict展平")
+                    valid_params[k] = (
+                        str(v)[:497] + "..." if len(str(v)) > 500 else str(v)
+                    )
                 else:
                     logger.warning(f"跳过不支持类型{type(v)}的参数{k}")
 

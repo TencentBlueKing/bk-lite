@@ -373,8 +373,10 @@ class UniversalTrainer:
         """步骤7: 记录配置参数"""
         logger.info("步骤7: 记录配置参数")
 
-        # 记录配置参数
-        MLFlowUtils.log_params_batch(self.config.to_dict())
+        # 递归展平并记录配置参数
+        config_dict = self.config.to_dict()
+        flat_config = MLFlowUtils.flatten_dict(config_dict)
+        MLFlowUtils.log_params_batch(flat_config)
 
         # 记录特征维度
         if self.feature_engineer:

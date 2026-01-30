@@ -34,7 +34,7 @@ DATASET_NAME="${2:-${DATASET_NAME:-timeseries_train_data.zip}}"
 CONFIG_NAME="$3"
 
 # MLflow 配置
-MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:-http://127.0.0.1:15000}"
+MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:-http://10.10.41.149:15000}"
 
 # ==================== 函数定义 ====================
 function log_info() {

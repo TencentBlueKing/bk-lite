@@ -563,14 +563,8 @@ class UniversalTrainer:
         """记录配置到 MLflow"""
         config_dict = self.config.to_dict()
 
-        # 展开嵌套的配置
-        flat_config = {}
-        for key, value in config_dict.items():
-            if isinstance(value, dict):
-                for sub_key, sub_value in value.items():
-                    flat_config[f"{key}.{sub_key}"] = sub_value
-            else:
-                flat_config[key] = value
+        # 递归展平嵌套配置（支持任意深度）
+        flat_config = MLFlowUtils.flatten_dict(config_dict)
 
         # 记录模型参数
         model_params = self.model.get_params()
@@ -578,7 +572,7 @@ class UniversalTrainer:
             flat_config[f"model_{key}"] = value
 
         MLFlowUtils.log_params_batch(flat_config)
-        logger.debug(f"配置已记录到 MLflow")
+        logger.debug(f"配置已记录到 MLflow，共 {len(flat_config)} 个参数")
 
     def _save_model_to_mlflow(self) -> str:
         """保存模型到 MLflow（自动支持所有实现了 save_mlflow 的模型）
