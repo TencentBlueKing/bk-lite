@@ -330,6 +330,12 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                       : '--'}
                   </span>
                 </li>
+                <li className="mr-[20px]">
+                  <span>{t('monitor.events.alertType')}：</span>
+                  <Tag color="default">
+                    {ALERT_TYPE_MAP[formData.alert_type] || '--'}
+                  </Tag>
+                </li>
                 <li>
                   <span>{t('monitor.events.state')}：</span>
                   <Tag
@@ -338,12 +344,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                     }
                   >
                     {STATE_MAP[formData.status]}
-                  </Tag>
-                </li>
-                <li className="ml-[20px]">
-                  <span>{t('monitor.events.alertType')}：</span>
-                  <Tag color="default">
-                    {ALERT_TYPE_MAP[formData.alert_type] || '--'}
                   </Tag>
                 </li>
               </ul>
