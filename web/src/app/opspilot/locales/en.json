@@ -956,7 +956,10 @@
     "webChat": "Web Chat",
     "embeddedChat": "Embedded Chat",
     "applications": "Applications",
-    "intentClassification": "Intent Classification"
+    "intentClassification": "Intent Classification",
+    "autoLayout": "Auto Layout",
+    "horizontalLayout": "Horizontal Layout",
+    "verticalLayout": "Vertical Layout"
   },
   "provider": {
     "form": {

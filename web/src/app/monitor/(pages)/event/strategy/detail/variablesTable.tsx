@@ -1,6 +1,7 @@
 'use client';
 import React, { useMemo } from 'react';
 import { Button } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 
@@ -15,7 +16,7 @@ interface VariablesTableProps {
 }
 
 const VariablesTable: React.FC<VariablesTableProps> = ({
-  onVariableSelect,
+  onVariableSelect
 }) => {
   const { t } = useTranslation();
 
@@ -25,55 +26,55 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
       {
         key: 'monitor_object',
         variable: '${monitor_object}',
-        description: t('monitor.events.variableMonitorObject'),
+        description: t('monitor.events.variableMonitorObject')
       },
       {
         key: 'instance_name',
         variable: '${instance_name}',
-        description: t('monitor.events.variableInstanceName'),
+        description: t('monitor.events.variableInstanceName')
       },
       {
         key: 'level',
         variable: '${level}',
-        description: t('monitor.events.variableLevel'),
+        description: t('monitor.events.variableLevel')
       },
       {
         key: 'metric_name',
         variable: '${metric_name}',
-        description: t('monitor.events.variableMetricName'),
+        description: t('monitor.events.variableMetricName')
       },
       {
         key: 'value',
         variable: '${value}',
-        description: t('monitor.events.variableValue'),
+        description: t('monitor.events.variableValue')
       },
       {
         key: 'instance_id',
         variable: '${instance_id}',
-        description: t('monitor.events.variableInstanceId'),
-      },
+        description: t('monitor.events.variableInstanceId')
+      }
     ],
     [t]
   );
 
-  const variableColumns = [
+  const variableColumns: ColumnsType<VariableItem> = [
     {
       title: t('monitor.events.variableName'),
       dataIndex: 'variable',
       key: 'variable',
-      width: 150,
       render: (text: string) => (
         <span className="text-[var(--color-primary)] font-mono">{text}</span>
-      ),
+      )
     },
     {
       title: t('common.description'),
       dataIndex: 'description',
-      key: 'description',
+      key: 'description'
     },
     {
       title: t('common.actions'),
       key: 'action',
+      fixed: 'right',
       width: 80,
       render: (_: unknown, record: VariableItem) => (
         <Button
@@ -83,8 +84,8 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
         >
           {t('monitor.events.useVariable')}
         </Button>
-      ),
-    },
+      )
+    }
   ];
 
   return (
@@ -93,6 +94,7 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
         {t('monitor.events.optionalVariables')}
       </div>
       <CustomTable
+        scroll={{ x: 'max-content' }}
         columns={variableColumns}
         dataSource={variableData}
         pagination={false}
