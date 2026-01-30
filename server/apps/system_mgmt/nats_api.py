@@ -340,7 +340,7 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
     :param channel_id: 通道ID
     :param title: 邮件主题（企微机器人传空字符串即可）
     :param content: 正文内容
-    :param receivers: 用户ID列表 [1, 2, 3, 4]
+    :param receivers: 用户ID列表 [1, 2, 3, 4] 或用户名列表 ["user1", "user2"]
     :param attachments: 附件列表（仅email通道支持），格式为:
         [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]
         注意: 附件内容必须是base64编码的字符串，因为NATS使用JSON序列化传输
@@ -348,11 +348,22 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
     channel_obj = Channel.objects.filter(id=channel_id).first()
     if not channel_obj:
         return {"result": False, "message": "Channel not found"}
-    user_list = User.objects.filter(id__in=receivers)
+    # 兼容用户ID列表和用户名列表两种情况
+    user_list = None
+    if receivers and all(isinstance(r, int) or (isinstance(r, str) and r.isdigit()) for r in receivers):
+        # receivers 是用户ID列表
+        user_list = User.objects.filter(id__in=[int(r) for r in receivers])
     if channel_obj.channel_type == ChannelChoices.EMAIL:
+        # 邮件发送需要校验收件人是否存在
+        if not user_list or not user_list.exists():
+            return {"result": False, "message": "No valid recipients found"}
         return send_email(channel_obj, title, content, user_list, attachments)
     elif channel_obj.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
-        return send_by_bot(channel_obj, content, user_list)
+        if user_list is not None:
+            display_names = list(user_list.values_list("display_name", flat=True))
+        else:
+            display_names = receivers if isinstance(receivers, list) else [receivers]
+        return send_by_bot(channel_obj, content, display_names)
     return {"result": False, "message": "Unsupported channel type"}
     # return send_wechat(channel_obj, content, user_list)
 
