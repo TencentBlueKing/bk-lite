@@ -4,13 +4,11 @@ import { PlayCircleOutlined, PauseCircleOutlined, RedoOutlined, ReloadOutlined, 
 import stlyes from '@/app/lab/styles/index.module.scss';
 import { useState, useEffect, useRef } from 'react';
 import EntityList from '@/components/entity-list';
-import { ModalRef } from '@/app/lab/types';
+import { ModalRef, LabEnvItem, ContarinerState } from '@/app/lab/types';
 import { useTranslation } from '@/utils/i18n';
 import useLabEnv from '@/app/lab/api/env';
 import LabEnvModal from './labEnvModal';
 import PermissionWrapper from "@/components/permission"
-
-type ContarinerState = 'starting' | 'stopping' | 'running' | 'stopped' | 'error';
 
 const EnvManage = () => {
   const { t } = useTranslation();
@@ -23,7 +21,7 @@ const EnvManage = () => {
     restartEnv,
   } = useLabEnv();
 
-  const [tableData, setTableData] = useState<any[]>([]);
+  const [tableData, setTableData] = useState<LabEnvItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -36,18 +34,17 @@ const EnvManage = () => {
     try {
       // 使用新接口一次性获取环境列表和状态
       const res = await getEnvListWithStatus();
-      const _res = res?.map((item: any) => {
+      const _res = res?.map((item: LabEnvItem) => {
         return {
           ...item,
           icon: 'tucengshuju',
           creator: item?.created_by || '--',
         }
       });
-      console.log(_res);
       setTableData(_res || []);
     } catch (e) {
-      console.log(e);
       setTableData([]);
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -56,7 +53,7 @@ const EnvManage = () => {
 
 
   const changeState = (id: string | number, state: ContarinerState) => {
-    const _env = tableData.map((item: any) => {
+    const _env = tableData.map((item: LabEnvItem) => {
       if (item.id === id) {
         return {
           ...item,
@@ -93,7 +90,7 @@ const EnvManage = () => {
       message.success(t(`lab.env.envReStartSucess`));
 
     } catch (e) {
-      console.log(e);
+      console.error(t(`lab.env.envReStartFailed`), e);
       message.error(t(`lab.env.envReStartFailed`))
     } finally {
       fetchEnvs();
@@ -303,7 +300,7 @@ const EnvManage = () => {
 
   // 搜索
   const handleSearch = () => {
-    // 搜索逻辑
+    // TODO: 待实现搜索功能
   };
 
   return (
