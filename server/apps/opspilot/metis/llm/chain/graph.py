@@ -219,8 +219,8 @@ def create_browser_step_callback(
                     "memory": step_info.get("memory"),
                     "next_goal": step_info.get("next_goal"),
                     "actions": step_info.get("actions", []),
-                    # 不包含 screenshot 以减少传输大小，前端如需截图可单独请求
-                    "has_screenshot": bool(step_info.get("screenshot")),
+                    # 包含 screenshot 供人工查看调试，不经过 LLM，无额外 token 消耗
+                    "screenshot": step_info.get("screenshot"),
                 },
             )
 
