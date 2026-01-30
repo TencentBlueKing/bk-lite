@@ -6,7 +6,7 @@ import React, {
   useImperativeHandle,
   useEffect,
   useRef,
-  useMemo,
+  useMemo
 } from 'react';
 import { Button, Tag, Tabs, Spin, Timeline } from 'antd';
 import OperateModal from '@/app/monitor/components/operate-drawer';
@@ -19,13 +19,17 @@ import {
   ChartData,
   Pagination,
   TimeLineItem,
-  MetricItem,
+  MetricItem
 } from '@/app/monitor/types';
 import { HeatMapDataItem } from '@/types';
 import { AlertOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlertDetailTabs } from '@/app/monitor/hooks/event';
-import { useLevelList, useStateMap } from '@/app/monitor/hooks';
+import {
+  useLevelList,
+  useStateMap,
+  useAlertTypeMap
+} from '@/app/monitor/hooks';
 import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
 import Information from './information';
@@ -42,6 +46,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const { convertToLocalizedTime } = useLocalizedTime();
     const { getEnumValueUnit } = useUnitTransform();
     const STATE_MAP = useStateMap();
+    const ALERT_TYPE_MAP = useAlertTypeMap();
     const LEVEL_LIST = useLevelList();
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [formData, setFormData] = useState<TableDataItem>({});
@@ -53,7 +58,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const [pagination, setPagination] = useState<Pagination>({
       current: 1,
       total: 0,
-      pageSize: 100,
+      pageSize: 100
     });
     const [tableLoading, setTableLoading] = useState<boolean>(false);
     const [eventChartLoading, setEventChartLoading] = useState<boolean>(false);
@@ -72,7 +77,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         if (form?.id) {
           getEventData(form?.id);
         }
-      },
+      }
     }));
 
     const isInformation = useMemo(
@@ -101,7 +106,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         const form: TableDataItem = {
           ...row,
           metric: metricWithUnit,
-          alertValue: getEnumValueUnit(metricWithUnit as MetricItem, row.value),
+          alertValue: getEnumValueUnit(metricWithUnit as MetricItem, row.value)
         };
         setFormData(form);
         if (form.policy?.query_condition?.type === 'pmq') {
@@ -119,7 +124,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       const currentPage = customPage || pagination.current;
       const params = {
         page: currentPage,
-        page_size: pagination.pageSize,
+        page_size: pagination.pageSize
       };
       try {
         const data = await getMonitorEventDetail(formData.id, params);
@@ -137,12 +142,12 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                 {getEnumValueUnit(formData.metric, item.value)}
               </span>
             </>
-          ),
+          )
         }));
         setTimeLineData((prev) => [...prev, ..._timelineData]); // 追加新数据
         setPagination((prev: Pagination) => ({
           ...prev,
-          total: data.count,
+          total: data.count
         }));
       } finally {
         setTableLoading(false);
@@ -155,13 +160,27 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         const responseData = await getSnapshot({
           id: form.id,
           page_size: -1,
-          page: 10,
+          page: 10
         });
+        const isNoDataAlert = form.alert_type === 'no_data';
         const data = (responseData?.snapshots || []).reduce(
           (pre: any, cur: any) => {
-            const values = cur.raw_data?.values?.at(-1);
-            if (values) {
-              pre.push(values);
+            if (
+              isNoDataAlert &&
+              (!cur.raw_data || !Object.keys(cur.raw_data).length)
+            ) {
+              if (cur.event_time) {
+                const timestamp = Math.floor(
+                  new Date(cur.event_time).getTime() / 1000
+                );
+                pre.push([timestamp, null]);
+              }
+            } else {
+              // 阈值告警或有数据的情况: 使用原逻辑
+              const values = cur.raw_data?.values?.at(-1);
+              if (values) {
+                pre.push(values);
+              }
             }
             return pre;
           },
@@ -174,8 +193,8 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
             instance_id: form.monitor_instance_id,
             instance_id_keys: form.metric?.instance_id_keys || [],
             dimensions: form.metric?.dimensions || [],
-            title: form.metric?.display_name || '--',
-          },
+            title: form.metric?.display_name || '--'
+          }
         ];
         const _chartData = renderChart(
           [{ values: data, metric: form.metric }],
@@ -203,7 +222,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       try {
         const _data = await getMonitorEventDetail(formId, {
           page: 1,
-          page_size: -1,
+          page_size: -1
         });
         setEventData(_data.results || []);
       } catch {
@@ -219,7 +238,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         const nextPage = pagination.current + 1;
         setPagination((prev) => ({
           ...prev,
-          current: nextPage,
+          current: nextPage
         }));
         getTableData(nextPage);
       }
@@ -253,7 +272,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       setPagination({
         current: 1,
         total: 0,
-        pageSize: 100,
+        pageSize: 100
       });
       setLoading(false);
       setTableLoading(false);
@@ -321,6 +340,12 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                     {STATE_MAP[formData.status]}
                   </Tag>
                 </li>
+                <li className="ml-[20px]">
+                  <span>{t('monitor.events.alertType')}：</span>
+                  <Tag color="default">
+                    {ALERT_TYPE_MAP[formData.alert_type] || '--'}
+                  </Tag>
+                </li>
               </ul>
             </div>
             <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
@@ -347,7 +372,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                     className="pt-[10px]"
                     style={{
                       height: 'calc(100vh - 520px)',
-                      overflowY: 'auto',
+                      overflowY: 'auto'
                     }}
                     ref={timelineRef}
                     onScroll={handleScroll}
