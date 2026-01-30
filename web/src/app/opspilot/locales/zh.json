@@ -476,6 +476,7 @@
     "annotationFailed": "标注保存失败",
     "removeAnnotationConfirm": "你确定要移除此标注吗？",
     "copyFailed": "无法复制消息",
+    "copySuccess": "复制成功",
     "copy": "复制",
     "annotationRemoved": "标注移除成功",
     "answer": "回答",
@@ -556,6 +557,7 @@
       "complexTag": "决策树",
       "guide": "引导语",
       "guideTip": "每次对话开始前,发送一个初始化内容。支持标准Markdown语法，可使用的额外标记。[快捷按键]：用户点击后可以直接发送该问题。",
+      "guideNotSupportedInExternalApp": "外部应用暂不支持引导语展示",
       "planTypeScene": "自动化故障排查：智能生成排查计划定位故障。\n自动化部署与更新：按依赖生成部署升级计划。\n自动化安全运维：制定安全策略执行计划。",
       "problemOptimization": "问题优化",
       "toolsTypeDesc": "将推理与行动结合，通过逻辑推导和工具调用来解决任务，适合需要实时交互与多步骤操作的场景。",
@@ -664,6 +666,7 @@
   "chatflow": {
     "nodeConfig": {
       "paramName": "参数名",
+      "webAccessAddress": "访问地址",
       "fileDeleted": "文件删除成功",
       "pleaseEnterClientId": "请输入Client ID",
       "outputParamsPlaceholder": "输出参数，例如：result, status",
@@ -737,6 +740,7 @@
       "enterUrl": "输入URL",
       "pleaseEnterNodeName": "请输入节点名称",
       "selectAgent": "选择智能体",
+      "addAgent": "新增智能体",
       "apiMethod": "方法",
       "paramValue": "参数值",
       "connectionDescription": "连接说明：",

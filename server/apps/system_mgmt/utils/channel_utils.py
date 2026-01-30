@@ -105,8 +105,7 @@ def send_email_to_user(channel_config, content, receivers, title, attachments=No
 
 def send_by_bot(channel_obj: Channel, content, receivers):
     if receivers:
-        display_names = receivers.values_list("display_name", flat=True)
-        to_user_mentions = " ".join(f"@{name}" for name in display_names)
+        to_user_mentions = " ".join(f"@{name}" for name in receivers)
         content = f"{content}\nTo: {to_user_mentions}"
     channel_config = channel_obj.config
     channel_obj.decrypt_field("bot_key", channel_config)
