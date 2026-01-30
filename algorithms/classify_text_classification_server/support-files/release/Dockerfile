@@ -16,24 +16,14 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
     pip3 config set global.trusted-host "$(echo $NEXUS_PYTHON_REPOSITY | sed -E 's|^https?://([^/:]+).*|\1|')"; \
     fi
 
-# 安装 uv (Python 包管理工具)
-RUN pip3 install uv
-
 ADD . .
 
-# 设置脚本和 mc 可执行权限
+# 设置脚本可执行权限
 RUN chmod +x ./support-files/release/startup.sh && \
-    chmod +x ./support-files/scripts/train-model.sh && \
-    chmod +x ./mc
+    chmod +x ./support-files/scripts/train-model.sh
 
-# 使用 uv 安装项目依赖并预先同步虚拟环境（通过命令行参数指定镜像源）
-RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
-    uv pip install --system --index-url "$NEXUS_PYTHON_REPOSITY" -e ".[dev]" && \
-    uv sync --index-url "$NEXUS_PYTHON_REPOSITY"; \
-    else \
-    uv pip install --system -e ".[dev]" && \
-    uv sync; \
-    fi
+# 使用 pip 安装项目依赖
+RUN pip3 install -e ".[dev]"
 
 # 清理 matplotlib 字体缓存，让其重新扫描字体
 RUN rm -rf /root/.cache/matplotlib /root/.cache/fontconfig
