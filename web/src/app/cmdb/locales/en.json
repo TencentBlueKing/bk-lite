@@ -232,7 +232,8 @@
             "authPassword": "Authentication Password",
             "hashAlgorithm": "Hash algorithm",
             "encryptAlgorithm": "Encryption algorithm",
-            "encryptKey": "Encryption key"
+            "encryptKey": "Encryption key",
+            "collectRelationships": "Collect Relationships"
         },
         "cloudTask": {
             "accessKey": "AccessKey",

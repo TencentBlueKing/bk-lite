@@ -956,7 +956,10 @@
     "webChat": "Web对话",
     "embeddedChat": "嵌入式对话",
     "applications": "应用",
-    "intentClassification": "意图分类"
+    "intentClassification": "意图分类",
+    "autoLayout": "自动布局",
+    "horizontalLayout": "水平布局",
+    "verticalLayout": "垂直布局"
   },
   "provider": {
     "form": {

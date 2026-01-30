@@ -13,7 +13,7 @@ import {
   Organization,
   Pagination,
   ObjectItem,
-  TableDataItem,
+  TableDataItem
 } from '@/app/monitor/types';
 import { RuleInfo } from '@/app/monitor/types/integration';
 import CustomTable from '@/components/custom-table';
@@ -41,7 +41,7 @@ const GroupPage = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
   const [ruleLoading, setRuleLoading] = useState<boolean>(false);
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
@@ -57,16 +57,21 @@ const GroupPage = () => {
         title: t('monitor.integrations.ruleName'),
         dataIndex: 'name',
         key: 'name',
-        width: 200,
+        width: 200
       },
       {
         title: t('monitor.integrations.objectType'),
         dataIndex: 'monitor_object',
         key: 'monitor_object',
-        width: 150,
+        width: 180,
         render: (_, { monitor_object }) => (
-          <Tag color="blue">{getObjectTypeName(monitor_object)}</Tag>
-        ),
+          <Tag color="blue" className="max-w-full p-0">
+            <EllipsisWithTooltip
+              className="w-full px-2 overflow-hidden text-ellipsis whitespace-nowrap"
+              text={getObjectTypeName(monitor_object)}
+            />
+          </Tag>
+        )
       },
       {
         title: t('monitor.integrations.ruleDescription'),
@@ -82,7 +87,7 @@ const GroupPage = () => {
               {t('monitor.integrations.rulesCount')}
             </>
           );
-        },
+        }
       },
       {
         title: t('monitor.group'),
@@ -94,7 +99,7 @@ const GroupPage = () => {
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
             text={showGroupName(organizations, organizationList)}
           />
-        ),
+        )
       },
       {
         title: t('common.action'),
@@ -127,8 +132,8 @@ const GroupPage = () => {
               </Popconfirm>
             </Permission>
           </Space>
-        ),
-      },
+        )
+      }
     ];
     return columnItems;
   }, [objects, objectId, t, organizationList]);
@@ -161,7 +166,7 @@ const GroupPage = () => {
     setObjectId(id);
     setPagination((prev) => ({
       ...prev,
-      current: 1,
+      current: 1
     }));
   };
 
@@ -174,7 +179,7 @@ const GroupPage = () => {
     ruleRef.current?.showModal({
       title,
       type,
-      form: row,
+      form: row
     });
   };
 
@@ -193,16 +198,16 @@ const GroupPage = () => {
         monitor_object_id: objectId === 'all' ? '' : objectId,
         page: pagination.current,
         page_size: pagination.pageSize,
-        name: type === 'clear' ? '' : searchText,
+        name: type === 'clear' ? '' : searchText
       };
       const data = await getInstanceGroupRule(params, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       if (currentRequestId !== ruleRequestIdRef.current) return;
       setRuleList(data?.items || []);
       setPagination((prev: Pagination) => ({
         ...prev,
-        total: data?.count || 0,
+        total: data?.count || 0
       }));
     } finally {
       if (currentRequestId === ruleRequestIdRef.current) {
@@ -215,7 +220,7 @@ const GroupPage = () => {
     try {
       setTreeLoading(type !== 'timer');
       const params = {
-        name: '',
+        name: ''
       };
       const data = await getMonitorObject(params);
       setObjects(data);
@@ -227,28 +232,31 @@ const GroupPage = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.type]) {
-        acc[item.type] = {
-          title: item.display_type || '--',
-          key: item.type,
-          children: [],
-        };
-      }
-      acc[item.type].children.push({
-        title: item.display_name || '--',
-        key: item.id,
-        children: [],
-      });
-      return acc;
-    }, {} as Record<string, TreeItem>);
+    const groupedData = data.reduce(
+      (acc, item) => {
+        if (!acc[item.type]) {
+          acc[item.type] = {
+            title: item.display_type || '--',
+            key: item.type,
+            children: []
+          };
+        }
+        acc[item.type].children.push({
+          title: item.display_name || '--',
+          key: item.id,
+          children: []
+        });
+        return acc;
+      },
+      {} as Record<string, TreeItem>
+    );
     return [
       {
         title: t('common.all'),
         key: 'all',
-        children: [],
+        children: []
       },
-      ...Object.values(groupedData),
+      ...Object.values(groupedData)
     ];
   };
 
@@ -266,7 +274,7 @@ const GroupPage = () => {
     deleteModalRef.current?.showModal({
       title: t('common.prompt'),
       form: row as Record<string, unknown>,
-      type: 'delete',
+      type: 'delete'
     });
   };
 
@@ -309,7 +317,7 @@ const GroupPage = () => {
           </Permission>
         </div>
         <CustomTable
-          scroll={{ y: 'calc(100vh - 330px)' }}
+          scroll={{ y: 'calc(100vh - 330px)', x: 'calc(100vw - 320px)' }}
           columns={columns}
           dataSource={ruleList}
           pagination={pagination}

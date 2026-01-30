@@ -5,6 +5,7 @@ import {
   ReactFlow,
   MiniMap,
   Controls,
+  ControlButton,
   Background,
   useNodesState,
   useEdgesState,
@@ -42,6 +43,10 @@ import {
 import { useNodeExecution } from './hooks/useNodeExecution';
 import { useNodeDeletion } from './hooks/useNodeDeletion';
 import { useNodeDrop } from './hooks/useNodeDrop';
+import { useHelperLines } from './hooks/useHelperLines';
+import { useAutoLayout } from './hooks/useAutoLayout';
+import HelperLines from './HelperLines';
+import { PartitionOutlined } from '@ant-design/icons';
 
 const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onSave, initialData }, ref) => {
   const { t } = useTranslation();
@@ -55,11 +60,21 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   const [isInitialized, setIsInitialized] = useState(false);
   const lastSaveData = useRef<string>('');
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(
+  const [nodes, setNodes] = useNodesState(
     initialData?.nodes && Array.isArray(initialData.nodes) ? initialData.nodes : []
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(
     initialData?.edges && Array.isArray(initialData.edges) ? initialData.edges : []
+  );
+
+  const { helperLines, applyHelperLines } = useHelperLines();
+  const { getLayoutedElements } = useAutoLayout();
+
+  const onNodesChange = useCallback(
+    (changes: any) => {
+      setNodes((nds) => applyHelperLines(changes, nds));
+    },
+    [setNodes, applyHelperLines]
   );
 
   // 使用自定义 Hooks
@@ -117,6 +132,16 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   }, [setNodes, setEdges]);
 
   useImperativeHandle(ref, () => ({ clearCanvas }), [clearCanvas]);
+
+  const handleAutoLayout = useCallback(
+    async (direction: 'LR' | 'TB') => {
+      console.log('Auto layout triggered, nodes:', nodes.length, 'edges:', edges.length);
+      const { nodes: layoutedNodes } = await getLayoutedElements(nodes, edges, { direction });
+      console.log('Layout complete, new positions:', layoutedNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y })));
+      setNodes(layoutedNodes);
+    },
+    [nodes, edges, getLayoutedElements, setNodes]
+  );
 
   const handleConfigNode = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
@@ -346,8 +371,13 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
               zoomable
               ariaLabel="Flowchart minimap"
             />
-            <Controls />
+            <Controls>
+              <ControlButton onClick={() => handleAutoLayout('LR')} title={t('chatflow.autoLayout')}>
+                <PartitionOutlined />
+              </ControlButton>
+            </Controls>
             <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+            <HelperLines horizontal={helperLines.horizontal} vertical={helperLines.vertical} />
           </ReactFlow>
         </ReactFlowProvider>
       </div>
