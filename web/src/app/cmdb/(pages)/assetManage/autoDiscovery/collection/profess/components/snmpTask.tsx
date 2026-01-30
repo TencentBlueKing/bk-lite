@@ -13,8 +13,9 @@ import {
   createTaskValidationRules,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
+import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import { formatTaskValues } from '../hooks/formatTaskValues';
-import { Form, Spin, Input, Select, Collapse, InputNumber, Switch } from 'antd';
+import { Form, Spin, Input, Select, Collapse, InputNumber,} from 'antd';
 
 interface SNMPTaskFormProps {
   onClose: () => void;
@@ -36,6 +37,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
   const [snmpVersion, setSnmpVersion] = useState('v2');
   const [securityLevel, setSecurityLevel] = useState('authNoPriv');
   const localeContext = useLocale();
+  const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
 
   const {
@@ -126,9 +128,47 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
     [t, form]
   );
 
+  // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
+  const buildFormValues = (values: any, isCopy: boolean, ipRange?: string[]) => {
+    const credential = values.credential || {};
+    return {
+      ipRange,
+      ...values,
+      ...credential,
+      taskName: isCopy ? '' : values.name,
+      timeout: values.timeout,
+      input_method: values.input_method,
+      version: credential.version,
+      level: credential.level,
+      username: credential.username,
+      integrity: credential.integrity,
+      privacy: credential.privacy,
+      snmp_port: credential.snmp_port,
+      community: isCopy ? '' : PASSWORD_PLACEHOLDER,
+      authkey: isCopy ? '' : PASSWORD_PLACEHOLDER,
+      privkey: isCopy ? '' : PASSWORD_PLACEHOLDER,
+      organization: values.team || [],
+      accessPointId: values.access_point?.[0]?.id,
+    };
+  };
+
   useEffect(() => {
     const initForm = async () => {
-      if (editId) {
+      if (copyTaskData) {
+        const values = copyTaskData;
+        const ipRange = values.ip_range?.split('-');
+        const credential = values.credential || {};
+        setSnmpVersion(credential.version || 'v2');
+        setSecurityLevel(credential.level || 'authNoPriv');
+        if (values.ip_range?.length) {
+          baseRef.current?.initCollectionType(ipRange, 'ip');
+        } else {
+          baseRef.current?.initCollectionType(values.instances, 'asset');
+        }
+
+        // 复制任务中回填表单数据（此时任务名称和密码为空，需要用户手动输入）
+        form.setFieldsValue(buildFormValues(values, true, ipRange));
+      } else if (editId) {
         const values = await fetchTaskDetail(editId);
         const ipRange = values.ip_range?.split('-');
         setSnmpVersion(values.credential.version);
@@ -138,20 +178,15 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
         } else {
           baseRef.current?.initCollectionType(values.instances, 'asset');
         }
-        form.setFieldsValue({
-          ipRange,
-          ...values,
-          ...values.credential,
-          organization: values.team || [],
-          accessPointId: values.access_point?.[0]?.id,
-          hasNetworkTopo: values.params?.has_network_topo ?? true,
-        });
+
+        // 编辑任务中回填表单数据
+        form.setFieldsValue(buildFormValues(values, false, ipRange));
       } else {
         form.setFieldsValue(SNMP_FORM_INITIAL_VALUES);
       }
     };
     initForm();
-  }, [modelId]);
+  }, [modelId, copyTaskData, setCopyTaskData]);
 
   return (
     <Spin spinning={loading}>
