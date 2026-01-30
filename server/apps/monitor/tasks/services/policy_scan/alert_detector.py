@@ -30,9 +30,10 @@ class AlertDetector:
         )
         vm_data = self.metric_query_service.convert_metric_values(vm_data)
 
+        group_by_keys = self.policy.group_by or []
         df = vm_to_dataframe(
             vm_data.get("data", {}).get("result", []),
-            self.metric_query_service.instance_id_keys,
+            group_by_keys,
         )
 
         template_context = {
@@ -41,7 +42,7 @@ class AlertDetector:
             else "",
             "metric_name": self._get_metric_display_name(),
             "instances_map": self.instances_map,
-            "instance_id_keys": self.metric_query_service.instance_id_keys or [],
+            "instance_id_keys": group_by_keys,
         }
 
         alert_events, info_events = calculate_alerts(
@@ -82,8 +83,6 @@ class AlertDetector:
         return events
 
     def _filter_events_by_scope(self, events):
-        if self.baselines_map:
-            return [e for e in events if e["metric_instance_id"] in self.baselines_map]
         return [
             e
             for e in events
@@ -92,11 +91,10 @@ class AlertDetector:
         ]
 
     def _extract_monitor_instance_id(self, metric_instance_id: str) -> str:
-        """从 metric_instance_id 提取 monitor_instance_id（取第一个维度值）"""
         try:
             tuple_val = eval(metric_instance_id)
             if isinstance(tuple_val, tuple) and len(tuple_val) > 0:
-                return str(tuple_val[0])
+                return str((tuple_val[0],))
         except Exception:
             pass
         return metric_instance_id
@@ -112,7 +110,7 @@ class AlertDetector:
 
         baseline_keys = set(self.baselines_map.keys()) if self.baselines_map else set()
         if not baseline_keys:
-            baseline_keys = {str((mid,)) for mid in self.instances_map.keys()}
+            baseline_keys = set(self.instances_map.keys())
 
         for metric_instance_id in baseline_keys:
             if metric_instance_id in aggregation_result:
@@ -160,7 +158,7 @@ class AlertDetector:
         try:
             tuple_val = eval(metric_instance_id)
             if isinstance(tuple_val, tuple):
-                keys = self.metric_query_service.instance_id_keys or []
+                keys = self.policy.group_by or []
                 return {
                     keys[i]: tuple_val[i] for i in range(min(len(keys), len(tuple_val)))
                 }
