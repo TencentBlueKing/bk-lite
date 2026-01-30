@@ -27,6 +27,7 @@ dependencies = [
     "matplotlib>=3.9.0",
     "setuptools>=68.0.0",
     "cloudpickle>=3.0.0",  # 用于 SpellWrapper 序列化测试
+    "minio>=7.2.20",
 ]
 
 [dependency-groups]
