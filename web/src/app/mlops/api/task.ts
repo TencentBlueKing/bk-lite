@@ -8,18 +8,6 @@ import type {
   UpdateTrainJobParams
 } from '@/app/mlops/types';
 
-interface RasaPipelinesProps {
-  name: string;
-  datasets: number[];
-  dataset_names: string[];
-  config: {
-    pipeline: any;
-    policies: any;
-  };
-  datasets_detail?: any[];
-  [key: string]: any
-}
-
 
 const useMlopsTaskApi = () => {
   const {
@@ -70,11 +58,6 @@ const useMlopsTaskApi = () => {
     return await post(`/mlops/anomaly_detection_train_jobs/`, params)
   };
 
-  // 新建Rasa训练流水线
-  const addRasaTrainTask = async (params: RasaPipelinesProps) => {
-    return await post(`/mlops/rasa_pipelines/`, params);
-  };
-
   // 新建日志聚类训练任务
   const addLogClusteringTrainTask = async (params: CreateTrainJobParams): Promise<TrainJob> => {
     return await post(`/mlops/log_clustering_train_jobs/`, params)
@@ -108,11 +91,6 @@ const useMlopsTaskApi = () => {
   // 编辑异常检测训练任务
   const updateAnomalyTrainTask = async (id: string, params: UpdateTrainJobParams): Promise<TrainJob> => {
     return await patch(`/mlops/anomaly_detection_train_jobs/${id}/`, params);
-  };
-
-  // 编辑Rasa训练任务
-  const updateRasaPipelines = async (id: string, params: RasaPipelinesProps) => {
-    return await patch(`/mlops/rasa_pipelines/${id}/`, params);
   };
 
   // 编辑日志聚类训练任务
@@ -209,7 +187,6 @@ const useMlopsTaskApi = () => {
     getDatasetReleaseByID,
     getTimeseriesPredictModelURL,
     addAnomalyTrainTask,
-    addRasaTrainTask,
     addLogClusteringTrainTask,
     addTimeSeriesTrainTask,
     addClassificationTrainTask,
@@ -217,7 +194,6 @@ const useMlopsTaskApi = () => {
     addObjectDetectionTrainTask,
     startTrainTask,
     updateAnomalyTrainTask,
-    updateRasaPipelines,
     updateLogClusteringTrainTask,
     updateTimeSeriesTrainTask,
     updateClassificationTrainTask,

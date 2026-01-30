@@ -80,7 +80,6 @@ const DATASET_MAP: Record<DatasetType, string> = {
   [DatasetType.CLASSIFICATION]: 'classification_datasets',
   [DatasetType.TIMESERIES_PREDICT]: 'timeseries_predict_datasets',
   [DatasetType.LOG_CLUSTERING]: 'log_clustering_datasets',
-  [DatasetType.RASA]: 'rasa_datasets',
   [DatasetType.IMAGE_CLASSIFICATION]: 'image_classification_datasets',
   [DatasetType.OBJECT_DETECTION]: 'object_detection_datasets',
 };
@@ -101,7 +100,6 @@ const TRAINJOB_MAP: Record<DatasetType, string> = {
   [DatasetType.LOG_CLUSTERING]: 'log_clustering_train_jobs',
   [DatasetType.IMAGE_CLASSIFICATION]: 'image_classification_train_jobs',
   [DatasetType.OBJECT_DETECTION]: 'object_detection_train_jobs',
-  [DatasetType.RASA]: 'rasa_pipelines'
 };
 
 const DATASET_RELEASE_MAP: Partial<Record<DatasetType, string>> = {

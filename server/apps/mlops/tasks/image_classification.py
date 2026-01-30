@@ -275,6 +275,14 @@ def _reorganize_images(extract_dir: Path, split_root: Path, metadata: dict) -> d
             if img_name in labels:
                 class_name = labels[img_name]
                 target_dir = split_root / class_name
+
+                # 安全检查：防止目录遍历攻击
+                try:
+                    target_dir.resolve().relative_to(split_root.resolve())
+                except ValueError:
+                    logger.error(f"检测到非法路径: {class_name}")
+                    continue
+
                 target_dir.mkdir(exist_ok=True)
 
                 # 移动文件

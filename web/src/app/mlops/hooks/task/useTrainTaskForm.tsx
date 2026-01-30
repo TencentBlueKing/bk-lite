@@ -1,5 +1,5 @@
 import { FormInstance } from 'antd';
-import { useAnomalyForm, useClassificationForm, useRasaForm, useTimeseriesPredictForm, useLogClusteringForm, useImageClassificationForm, useObjectDetectionForm } from './forms';
+import { useAnomalyForm, useClassificationForm, useTimeseriesPredictForm, useLogClusteringForm, useImageClassificationForm, useObjectDetectionForm } from './forms';
 import type { Option } from '@/types';
 import { RefObject } from 'react';
 import { DatasetType } from '@/app/mlops/types';
@@ -15,7 +15,6 @@ const useTaskForm = ({ datasetOptions, activeTag, onSuccess, formRef }: UseTaskF
   const [activeType] = activeTag;
   const anomalyFormResult = useAnomalyForm({ datasetOptions, activeTag, onSuccess, formRef });
   const classificationFormResult = useClassificationForm({ datasetOptions, activeTag, onSuccess, formRef });
-  const rasaFormResult = useRasaForm({ datasetOptions, activeTag, onSuccess, formRef });
   const timeseriesPredictFormResult = useTimeseriesPredictForm({ datasetOptions, activeTag, onSuccess, formRef });
   const logClusteringFormResult = useLogClusteringForm({ datasetOptions, activeTag, onSuccess, formRef });
   const imageClassificationFormResult = useImageClassificationForm({ datasetOptions, activeTag, onSuccess, formRef });
@@ -24,8 +23,6 @@ const useTaskForm = ({ datasetOptions, activeTag, onSuccess, formRef }: UseTaskF
   switch (activeType) {
     case DatasetType.ANOMALY_DETECTION:
       return anomalyFormResult;
-    case DatasetType.RASA:
-      return rasaFormResult;
     case DatasetType.TIMESERIES_PREDICT:
       return timeseriesPredictFormResult;
     case DatasetType.LOG_CLUSTERING:

@@ -81,7 +81,6 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     [DatasetType.ANOMALY_DETECTION]: async (params: any) => {
       await addAnomalyServings(params);
     },
-    [DatasetType.RASA]: null, // RASA 类型留空
     [DatasetType.LOG_CLUSTERING]: async (params: any) => {
       await addLogClusteringServings(params);
     },
@@ -103,7 +102,6 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     [DatasetType.ANOMALY_DETECTION]: async (id: number, params: any) => {
       await updateAnomalyServings(id, params);
     },
-    [DatasetType.RASA]: null, // RASA 类型留空
     [DatasetType.LOG_CLUSTERING]: async (id: number, params: any) => {
       await updateLogClusteringServings(id, params);
     },

@@ -4,9 +4,6 @@
 // Common constants (status maps, type maps, etc.)
 export * from './common';
 
-// RASA configuration
-export * from './rasa';
-
 // Algorithm configurations
 export * from './algorithms/anomaly-detection';
 export * from './algorithms/classification';

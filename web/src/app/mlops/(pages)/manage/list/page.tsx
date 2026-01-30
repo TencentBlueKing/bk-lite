@@ -30,10 +30,10 @@ const DatasetManagePage = () => {
   const [datasets, setDatasets] = useState<DataSet[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<DatasetType>(DatasetType.ANOMALY_DETECTION);
   const modalRef = useRef<ModalRef>(null);
   const datasetTypes = [
     { key: DatasetType.ANOMALY_DETECTION, value: 'anomaly', label: t('datasets.anomaly') },
-    // { key: DatasetType.RASA, value: 'rasa', label: t('datasets.rasa') },
     { key: DatasetType.LOG_CLUSTERING, value: 'log_clustering', label: t('datasets.logClustering') },
     { key: DatasetType.TIMESERIES_PREDICT, value: 'timeseries_predict', label: t('datasets.timeseriesPredict') },
     { key: DatasetType.CLASSIFICATION, value: 'classification', label: t('datasets.classification') },
@@ -50,10 +50,6 @@ const DatasetManagePage = () => {
         {
           title: t(`datasets.anomaly`),
           key: DatasetType.ANOMALY_DETECTION,
-        },
-        {
-          title: t(`datasets.rasa`),
-          key: DatasetType.RASA,
         },
         {
           title: t(`datasets.timeseriesPredict`),
@@ -80,20 +76,21 @@ const DatasetManagePage = () => {
   ];
 
   useEffect(() => {
-    setSelectedKeys([DatasetType.ANOMALY_DETECTION]);
+    const defaultTab = DatasetType.ANOMALY_DETECTION;
+    setSelectedKeys([defaultTab]);
+    setActiveTab(defaultTab);
   }, []);
 
   useEffect(() => {
     getDataSets();
-  }, [selectedKeys]);
+  }, [activeTab]);
 
 
   const getDataSets = useCallback(async () => {
-    const [activeTab] = selectedKeys;
     if (!activeTab) return;
     setLoading(true);
     try {
-      const data = await getDatasetsList({ key: activeTab as DatasetType, page: 1, page_size: -1 });
+      const data = await getDatasetsList({ key: activeTab, page: 1, page_size: -1 });
       const _data: DataSet[] = data?.map((item: any) => {
         return {
           id: item.id,
@@ -110,16 +107,14 @@ const DatasetManagePage = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedKeys]);
+  }, [activeTab, getDatasetsList]);
 
-  const navigateToNode = (item: any) => {
-    const [activeTab] = selectedKeys;
-    if(!activeTab) return;
-    console.log('进入详情：', activeTab, selectedKeys);
+  const navigateToNode = useCallback((item: any) => {
+    console.log('进入详情：', activeTab);
     router.push(
-      `/mlops/manage/detail?folder_id=${item?.id}&folder_name=${item.name}&description=${item.description}&activeTap=${activeTab}&menu=${activeTab === DatasetType.RASA ? 'intent' : ''}`
+      `/mlops/manage/detail?folder_id=${item?.id}&folder_name=${item.name}&description=${item.description}&activeTap=${activeTab}&menu=`
     );
-  };
+  }, [activeTab, router]);
 
   const handleDelete = async (id: number) => {
     confirm({
@@ -134,8 +129,7 @@ const DatasetManagePage = () => {
       cancelText: t('common.cancel'),
       onOk: async () => {
         try {
-          const [activeTab] = selectedKeys;
-          await deleteDataset(id, activeTab as DatasetType);
+          await deleteDataset(id, activeTab);
           message.success(t('common.delSuccess'));
         } catch (e) {
           console.error(e);
@@ -193,10 +187,13 @@ const DatasetManagePage = () => {
         treeData={treeData}
         showLine
         selectedKeys={selectedKeys}
-        onSelect={(keys) => {
-          // 防止用户点击已选中节点时取消选择（导致 keys 为空）
-          if (keys.length > 0) {
+        onSelect={(keys, info) => {
+          console.log('keys:', keys, 'selected:', info.selected);
+          // 只处理选中事件，忽略取消选择事件
+          if (info.selected && keys.length > 0) {
+            const newTab = keys[0] as DatasetType;
             setSelectedKeys(keys as string[]);
+            setActiveTab(newTab);
           }
         }}
         defaultExpandedKeys={['datasets']}
@@ -229,7 +226,7 @@ const DatasetManagePage = () => {
         ref={modalRef}
         options={datasetTypes}
         onSuccess={getDataSets}
-        activeTag={selectedKeys}
+        activeTag={[activeTab]}
       />
     </>
   );

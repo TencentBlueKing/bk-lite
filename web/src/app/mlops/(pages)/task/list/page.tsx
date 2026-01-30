@@ -56,7 +56,6 @@ const TrainTask = () => {
   // 抽屉操作映射
   const drawerSupportMap: Record<string, boolean> = {
     [DatasetType.ANOMALY_DETECTION]: true,
-    [DatasetType.RASA]: false,
     [DatasetType.LOG_CLUSTERING]: true,
     [DatasetType.TIMESERIES_PREDICT]: true,
     [DatasetType.CLASSIFICATION]: true,
@@ -67,20 +66,6 @@ const TrainTask = () => {
   // 数据处理映射
   const dataProcessorMap: Record<string, (data: any) => { tableData: TrainJob[], total: number }> = {
     [DatasetType.ANOMALY_DETECTION]: (data) => processAnomalyLikeData(data, 'anomaly'),
-    [DatasetType.RASA]: (data) => {
-      const _data = data.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        dataset_count: item?.dataset_count,
-        dataset_nameas: item?.dataset_names,
-        datasets: item.datasets,
-        creator: item?.created_by,
-        created_at: item?.created_at,
-        config: item?.config,
-        datasets_detail: item?.datasets_detail
-      }));
-      return { tableData: _data, total: data?.length || 0 };
-    },
     [DatasetType.LOG_CLUSTERING]: (data) => processAnomalyLikeData(data, 'log_clustering'),
     [DatasetType.TIMESERIES_PREDICT]: (data) => processAnomalyLikeData(data, 'timeseries_predict'),
     [DatasetType.CLASSIFICATION]: (data) => processAnomalyLikeData(data, 'classification'),
@@ -198,6 +183,7 @@ const TrainTask = () => {
                 <Button
                   type="link"
                   className="mr-2.5"
+                  disabled={record.status === 'running'}
                 >
                   {t('traintask.train')}
                 </Button>
@@ -229,7 +215,7 @@ const TrainTask = () => {
                 cancelText={t('common.cancel')}
                 onConfirm={() => onDelete(record)}
               >
-                <Button type="link" danger>{t('common.delete')}</Button>
+                <Button type="link" danger disabled={record.status === 'running'}>{t('common.delete')}</Button>
               </Popconfirm>
             </PermissionWrapper>
           </>
@@ -336,19 +322,13 @@ const TrainTask = () => {
     if (!activeTab) return { items: [], count: 0 };
 
     try {
-      if (activeTab === DatasetType.RASA) {
-        // RASA 特殊处理，不需要分页参数
-        return await getTrainJobList({ key: activeTab as DatasetType });
-      } else {
-        // 其他类型需要分页参数
-        const result = await getTrainJobList({
-          key: activeTab as DatasetType,
-          name,
-          page,
-          page_size: pageSize
-        });
-        return result;
-      }
+      const result = await getTrainJobList({
+        key: activeTab as DatasetType,
+        name,
+        page,
+        page_size: pageSize
+      });
+      return result;
     } catch (error) {
       console.error(error);
       return { items: [], count: 0 };

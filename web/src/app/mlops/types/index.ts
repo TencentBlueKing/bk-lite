@@ -10,7 +10,6 @@ import React from 'react';
  * @property {string} LOG_CLUSTERING - Log clustering datasets (日志聚类)
  * @property {string} IMAGE_CLASSIFICATION - Image classification datasets (图片分类)
  * @property {string} OBJECT_DETECTION - Object detection datasets (目标检测)
- * @property {string} RASA - RASA conversational AI datasets (对话机器人)
  */
 export enum DatasetType {
   ANOMALY_DETECTION = 'anomaly_detection',
@@ -19,7 +18,6 @@ export enum DatasetType {
   LOG_CLUSTERING = 'log_clustering',
   IMAGE_CLASSIFICATION = 'image_classification',
   OBJECT_DETECTION = 'object_detection',
-  RASA = 'rasa'
 }
 
 export interface Option {

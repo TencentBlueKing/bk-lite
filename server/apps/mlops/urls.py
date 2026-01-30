@@ -4,7 +4,6 @@ from apps.mlops.views.anomaly_detection import *
 from apps.mlops.views.image_classification import *
 from apps.mlops.views.timeseries_predict import *
 from apps.mlops.views.log_clustering import *
-from apps.mlops.views.rasa import *
 from apps.mlops.views.classification import *
 from apps.mlops.views.object_detection import *
 
@@ -171,17 +170,5 @@ router.register(
     LogClusteringServingViewSet,
     basename="log_clustering_servings",
 )
-
-# Rasa
-router.register(r"rasa_datasets", RasaDatasetViewSet, basename="rasa_datasets")
-router.register(r"rasa_intent", RasaIntentViewSet, basename="rasa_intent")
-router.register(r"rasa_response", RasaResponseViewSet, basename="rasa_response")
-router.register(r"rasa_rule", RasaRuleViewSet, basename="rasa_rule")
-router.register(r"rasa_story", RasaStoryViewSet, basename="rasa_story")
-router.register(r"rasa_entity", RasaEntityViewSet, basename="rasa_entity")
-router.register(r"rasa_slot", RasaSlotViewSet, basename="rasa_slot")
-router.register(r"rasa_form", RasaFormViewSet, basename="rasa_form")
-router.register(r"rasa_action", RasaActionViewSet, basename="rasa_action")
-router.register(r"rasa_pipelines", RasaPipelineViewSet, basename="rasa_pipelines")
 
 urlpatterns = router.urls

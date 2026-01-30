@@ -186,7 +186,6 @@ const ModelRelease = () => {
   // 更新操作映射
   const updateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
     [DatasetType.ANOMALY_DETECTION]: updateAnomalyServings,
-    [DatasetType.RASA]: null, // RASA 类型留空
     [DatasetType.LOG_CLUSTERING]: updateLogClusteringServings,
     [DatasetType.TIMESERIES_PREDICT]: updateTimeSeriesPredictServings,
     [DatasetType.CLASSIFICATION]: updateClassificationServings,
