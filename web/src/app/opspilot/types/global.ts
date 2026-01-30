@@ -40,6 +40,7 @@ export interface BrowserStepProgressData {
   next_goal: string;
   actions: BrowserStepAction[];
   has_screenshot: boolean;
+  screenshot?: string;
 }
 
 export interface BrowserStepsHistory {
