@@ -55,6 +55,13 @@ func UnzipToDir(req UnzipRequest) (string, error) {
 			return "", fmt.Errorf("failed to create parent directory: %w", err)
 		}
 
+		// 检查目标路径是否已存在目录，如果是则删除
+		if info, err := os.Stat(fpath); err == nil && info.IsDir() {
+			if err := os.RemoveAll(fpath); err != nil {
+				return "", fmt.Errorf("failed to remove existing directory: %w", err)
+			}
+		}
+
 		// 解压文件
 		inFile, err := f.Open()
 		if err != nil {
@@ -62,7 +69,7 @@ func UnzipToDir(req UnzipRequest) (string, error) {
 		}
 		defer inFile.Close()
 
-		outFile, err := os.Create(fpath)
+		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 		if err != nil {
 			return "", fmt.Errorf("failed to create output file: %w", err)
 		}

@@ -16,3 +16,4 @@ windows_drive_range: ""
 tags: __TAGS__
 collector_binaries_accesslist:
 - "c:\\fusion-collector\\bin\\*"
+- "c:\\fusion-collector\\bin\\*\\*"
