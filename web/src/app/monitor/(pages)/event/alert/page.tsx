@@ -9,7 +9,7 @@ import {
   Tabs,
   Spin,
   Tooltip,
-  Popconfirm,
+  Popconfirm
 } from 'antd';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -25,7 +25,7 @@ import {
   TimeSelectorDefaultValue,
   TimeValuesProps,
   TreeItem,
-  ObjectItem,
+  ObjectItem
 } from '@/app/monitor/types';
 import { AlertOutlined } from '@ant-design/icons';
 import { FiltersConfig } from '@/app/monitor/types/event';
@@ -37,7 +37,11 @@ import StackedBarChart from '@/app/monitor/components/charts/stackedBarChart';
 import AlertDetail from './alertDetail';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlarmTabs, useStateList } from '@/app/monitor/hooks/event';
-import { useLevelList, useStateMap } from '@/app/monitor/hooks';
+import {
+  useLevelList,
+  useStateMap,
+  useAlertTypeMap
+} from '@/app/monitor/hooks';
 import dayjs, { Dayjs } from 'dayjs';
 import { useCommon } from '@/app/monitor/context/common';
 import alertStyle from './index.module.scss';
@@ -54,6 +58,7 @@ const Alert: React.FC = () => {
     useMonitorApi();
   const { t } = useTranslation();
   const STATE_MAP = useStateMap();
+  const ALERT_TYPE_MAP = useAlertTypeMap();
   const LEVEL_LIST = useLevelList();
   const stateList = useStateList();
   const tabs: TabItem[] = useAlarmTabs();
@@ -70,16 +75,16 @@ const Alert: React.FC = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
   const [frequence, setFrequence] = useState<number>(0);
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
     timeRange: [],
-    originValue: 10080,
+    originValue: 10080
   });
   const timeDefaultValue = (useRef<TimeSelectorDefaultValue>({
     selectValue: 10080,
-    rangePickerVaule: null,
+    rangePickerVaule: null
   })?.current || {}) as any;
   const alertAbortControllerRef = useRef<AbortController | null>(null);
   const alertRequestIdRef = useRef<number>(0);
@@ -87,7 +92,7 @@ const Alert: React.FC = () => {
   const chartRequestIdRef = useRef<number>(0);
   const [filters, setFilters] = useState<FiltersConfig>({
     level: [],
-    state: [],
+    state: []
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
@@ -107,7 +112,7 @@ const Alert: React.FC = () => {
         <Tag icon={<AlertOutlined />} color={LEVEL_MAP[level] as string}>
           {LEVEL_LIST.find((item) => item.value === level)?.label || '--'}
         </Tag>
-      ),
+      )
     },
     {
       title: t('common.time'),
@@ -117,26 +122,35 @@ const Alert: React.FC = () => {
       sorter: (a: any, b: any) => a.id - b.id,
       render: (_, { updated_at }) => (
         <>{updated_at ? convertToLocalizedTime(updated_at) : '--'}</>
-      ),
+      )
     },
     {
       title: t('monitor.events.alertName'),
       dataIndex: 'content',
       key: 'content',
-      width: 120,
+      width: 120
+    },
+    {
+      title: t('monitor.events.alertType'),
+      dataIndex: 'alert_type',
+      key: 'alert_type',
+      width: 100,
+      render: (_, { alert_type }) => (
+        <Tag color="default">{ALERT_TYPE_MAP[alert_type] || '--'}</Tag>
+      )
     },
     {
       title: t('monitor.asset'),
       dataIndex: 'monitor_instance_name',
       key: 'monitor_instance_name',
-      width: 200,
+      width: 200
     },
     {
       title: t('monitor.events.assetType'),
       dataIndex: 'assetType',
       key: 'assetType',
       width: 120,
-      render: (_, record) => <>{showObjName(record)}</>,
+      render: (_, record) => <>{showObjName(record)}</>
     },
     {
       title: t('monitor.events.state'),
@@ -147,7 +161,7 @@ const Alert: React.FC = () => {
         <Tag color={status === 'new' ? 'blue' : 'var(--color-text-4)'}>
           {STATE_MAP[status]}
         </Tag>
-      ),
+      )
     },
     {
       title: t('monitor.events.notify'),
@@ -162,7 +176,7 @@ const Alert: React.FC = () => {
             }`
           )}
         </>
-      ),
+      )
     },
     {
       title: t('common.operator'),
@@ -188,7 +202,7 @@ const Alert: React.FC = () => {
         ) : (
           <>--</>
         );
-      },
+      }
     },
     {
       title: t('common.action'),
@@ -223,8 +237,8 @@ const Alert: React.FC = () => {
             </Popconfirm>
           </Permission>
         </>
-      ),
-    },
+      )
+    }
   ];
 
   const isActiveAlarm = useMemo(() => {
@@ -256,7 +270,7 @@ const Alert: React.FC = () => {
     objectId,
     searchText,
     pagination.current,
-    pagination.pageSize,
+    pagination.pageSize
   ]);
 
   useEffect(() => {
@@ -267,7 +281,7 @@ const Alert: React.FC = () => {
     timeValues,
     objectId,
     pagination.current,
-    pagination.pageSize,
+    pagination.pageSize
   ]);
 
   useEffect(() => {
@@ -290,7 +304,7 @@ const Alert: React.FC = () => {
     setActiveTab(val);
     const filtersConfig = {
       level: [],
-      state: [],
+      state: []
     };
     setFilters(filtersConfig);
     setSearchText('');
@@ -302,7 +316,7 @@ const Alert: React.FC = () => {
     setTreeLoading(true);
     try {
       const data: ObjectItem[] = await getMonitorObject({
-        add_policy_count: true,
+        add_policy_count: true
       });
       setObjects(data);
       const _treeData = getTreeData(cloneDeep(data));
@@ -313,29 +327,32 @@ const Alert: React.FC = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.type]) {
-        acc[item.type] = {
-          title: item.display_type || '--',
-          key: item.type,
-          children: [],
-        };
-      }
-      acc[item.type].children.push({
-        title: item.display_name || '--',
-        label: item.name || '--',
-        key: item.id,
-        children: [],
-      });
-      return acc;
-    }, {} as Record<string, TreeItem>);
+    const groupedData = data.reduce(
+      (acc, item) => {
+        if (!acc[item.type]) {
+          acc[item.type] = {
+            title: item.display_type || '--',
+            key: item.type,
+            children: []
+          };
+        }
+        acc[item.type].children.push({
+          title: item.display_name || '--',
+          label: item.name || '--',
+          key: item.id,
+          children: []
+        });
+        return acc;
+      },
+      {} as Record<string, TreeItem>
+    );
     return [
       {
         title: t('common.all'),
         key: 'all',
-        children: [],
+        children: []
       },
-      ...Object.values(groupedData),
+      ...Object.values(groupedData)
     ];
   };
 
@@ -343,7 +360,7 @@ const Alert: React.FC = () => {
     setConfirmLoading(true);
     try {
       await patchMonitorAlert(id, {
-        status: 'closed',
+        status: 'closed'
       });
       message.success(t('monitor.events.successfullyClosed'));
       onRefresh();
@@ -370,9 +387,7 @@ const Alert: React.FC = () => {
       page: pagination.current,
       page_size: pagination.pageSize,
       created_at_after: isActive ? '' : dayjs(recentTimeRange[0]).toISOString(),
-      created_at_before: isActive
-        ? ''
-        : dayjs(recentTimeRange[1]).toISOString(),
+      created_at_before: isActive ? '' : dayjs(recentTimeRange[1]).toISOString()
     };
     return params;
   };
@@ -410,13 +425,13 @@ const Alert: React.FC = () => {
     try {
       setTableLoading(type !== 'timer');
       const data = await getMonitorAlert(params, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       if (currentRequestId !== alertRequestIdRef.current) return;
       setTableData(data.results || []);
       setPagination((pre) => ({
         ...pre,
-        total: data.count || 0,
+        total: data.count || 0
       }));
     } finally {
       if (currentRequestId === alertRequestIdRef.current) {
@@ -448,7 +463,7 @@ const Alert: React.FC = () => {
     try {
       setChartLoading(type !== 'timer');
       const data = await getMonitorAlert(chartParams, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       if (currentRequestId !== chartRequestIdRef.current) return;
       setChartData(
@@ -478,15 +493,15 @@ const Alert: React.FC = () => {
       type: 'add',
       form: {
         ...row,
-        alertTitle: showObjName(row),
-      },
+        alertTitle: showObjName(row)
+      }
     });
   };
 
   const onTimeChange = (val: number[], originValue: number | null) => {
     setTimeValues({
       timeRange: val,
-      originValue,
+      originValue
     });
   };
 
@@ -531,7 +546,7 @@ const Alert: React.FC = () => {
             time: roundedTime,
             critical: 0,
             error: 0,
-            warning: 0,
+            warning: 0
           };
         }
         // 根据 level 统计数量
@@ -661,7 +676,7 @@ const Alert: React.FC = () => {
                       className="absolute cursor-pointer"
                       style={{
                         top: '-4px',
-                        right: '-14px',
+                        right: '-14px'
                       }}
                     >
                       <Icon

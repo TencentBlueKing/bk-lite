@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form, Switch, Button, Radio, Select, Input } from 'antd';
+import { Form, Switch, Button, Radio, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { StrategyFields, ChannelItem } from '@/app/monitor/types/event';
 import { UserItem } from '@/app/monitor/types';
@@ -15,7 +15,7 @@ interface NotificationFormProps {
 const NotificationForm: React.FC<NotificationFormProps> = ({
   channelList,
   userList,
-  onLinkToSystemManage,
+  onLinkToSystemManage
 }) => {
   const { t } = useTranslation();
 
@@ -48,8 +48,8 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                 rules={[
                   {
                     required: true,
-                    message: t('common.required'),
-                  },
+                    message: t('common.required')
+                  }
                 ]}
               >
                 {channelList.length ? (
@@ -94,13 +94,13 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                       rules={[
                         {
                           required: true,
-                          message: t('common.required'),
-                        },
+                          message: t('common.required')
+                        }
                       ]}
                     >
                       <Select
                         style={{
-                          width: '100%',
+                          width: '100%'
                         }}
                         showSearch
                         allowClear
@@ -126,15 +126,20 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                       rules={[
                         {
                           required: true,
-                          message: t('common.required'),
-                        },
+                          message: t('common.required')
+                        }
                       ]}
                     >
-                      <Input
+                      <Select
                         style={{
-                          width: '100%',
+                          width: '100%'
                         }}
-                        placeholder={t('monitor.events.notifier')}
+                        mode="tags"
+                        placeholder={t(
+                          'monitor.events.notifierTagsPlaceholder'
+                        )}
+                        suffixIcon={null}
+                        open={false}
                       />
                     </Form.Item>
                     )
