@@ -129,7 +129,8 @@ opspilot = [
     "kubernetes==32.0.1",  
     "azure-cognitiveservices-vision-computervision==0.9.0",
     "browser-use==0.11.3",
-    "patchright",
+    "patchright==1.57.2",
+    "playwright==1.57.0",
     "reportlab==4.2.5",
 ]
 
