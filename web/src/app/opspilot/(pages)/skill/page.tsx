@@ -7,7 +7,7 @@ import SkillCard from '@/app/opspilot/components/skill/skillCard';
 import OperateModal from '@/components/operate-modal';
 import { Skill } from '@/app/opspilot/types/skill';
 import { useTranslation } from '@/utils/i18n';
-import { Segmented, Button, Spin, Empty } from 'antd';
+import { Segmented, Button, Spin, Empty, message } from 'antd';
 import Icon from '@/components/icon';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 
@@ -19,7 +19,7 @@ const SkillPage: React.FC = () => {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const { t } = useTranslation();
-  const { fetchSkillTemplates, createSkill } = useSkillApi();
+  const { fetchSkillTemplates, createSkill, togglePin } = useSkillApi();
 
   const iconTypeMapping: [string, string] = ['jiqirenjiaohukapian', 'jiqiren'];
 
@@ -43,6 +43,12 @@ const SkillPage: React.FC = () => {
     if (itemType === 'skill') {
       setIsTemplateModalVisible(true);
     }
+  };
+
+  const handleTogglePin = async (item: Skill) => {
+    await togglePin(item.id);
+    const isPinned = (item as any).is_pinned;
+    message.success(isPinned ? t('common.unpinSuccess') : t('common.pinSuccess'));
   };
 
   const handleUseTemplate = async (template: any) => {
@@ -79,6 +85,7 @@ const SkillPage: React.FC = () => {
         )}
         itemTypeSingle="skill"
         onCreateFromTemplate={handleCreateFromTemplate}
+        onTogglePin={handleTogglePin}
       />
       <OperateModal
         width={850}

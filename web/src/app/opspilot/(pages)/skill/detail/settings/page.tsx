@@ -387,7 +387,12 @@ const SkillSettingsPage: React.FC = () => {
                     <Form.Item
                       label={t('skill.form.guide')}
                       name="guide"
-                      tooltip={t('skill.form.guideTip')}>
+                      tooltip={
+                        <>
+                          <div className="text-red-500 text-xs mt-1">{t('skill.form.guideNotSupportedInExternalApp')}</div>
+                          <div>{t('skill.form.guideTip')}</div>
+                        </>
+                      }>
                       <TextArea 
                         rows={4} 
                         onChange={(e) => setGuideValue(e.target.value)}

@@ -27,7 +27,8 @@ import { deepClone } from '@/app/cmdb/utils/common';
 import { useInstanceApi } from '@/app/cmdb/api';
 import dayjs from 'dayjs';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import styles from './FilterBar.module.scss';
+import styles from './filterBar.module.scss';
+import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
 interface FieldModalProps {
   onSuccess: (instId?: string) => void;
@@ -68,16 +69,11 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
       }
     }, [groupVisible, instanceData]);
 
+    // 当编辑弹窗打开+模型为host时，获取云区域选项test8.8
     useEffect(() => {
       if (groupVisible && modelId === 'host') {
-        instanceApi
-          .getInstanceProxys()
-          .then((data: any[]) => {
-            setProxyOptions(data || []);
-          })
-          .catch(() => {
-            setProxyOptions([]);
-          });
+        // 使用store中的云区域列表数据替代直接获取
+        setProxyOptions(useAssetDataStore.getState().cloud_list || []);
       }
     }, [groupVisible, modelId]);
 
@@ -85,13 +81,16 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
     const ipValue = Form.useWatch('ip_addr', form);
     const cloudValue = Form.useWatch('cloud', form);
     useEffect(() => {
+      // 当模型为host时，自动填充 inst_name + could_id
       if (modelId === 'host') {
+        // 确保cloudValue是数字格式（后台传来的字符串格式）
         const cloudName = proxyOptions.find(
-          (opt) => opt.proxy_id === cloudValue
+          (opt: any) => opt.proxy_id === +cloudValue
         )?.proxy_name;
         if (ipValue && cloudName) {
           form.setFieldsValue({
             inst_name: `${ipValue || ''}[${cloudName || ''}]`,
+            cloud_id: Number(cloudValue),
           });
         }
       }
@@ -189,21 +188,35 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
       const hostDisabled = modelId === 'host' && item.attr_id === 'inst_name';
 
       const formField = (() => {
-        // 特殊处理-主机的云区域为下拉选项
+        // 特殊处理-主机的云区域为下拉选项（弹窗中）
         if (item.attr_id === 'cloud') {
           return (
             <Select
               disabled={fieldDisabled}
               placeholder={t('common.selectTip')}
             >
-              {proxyOptions.map((opt) => (
-                <Select.Option key={opt.proxy_id} value={opt.proxy_id}>
-                  {opt.proxy_name}
-                </Select.Option>
-              ))}
+              {proxyOptions.map((opt) => {
+                // 确保proxy_id是字符串格式
+                return (
+                  <Select.Option key={String(opt.proxy_id)} value={String(opt.proxy_id)}>
+                    {opt.proxy_name}
+                  </Select.Option>
+                )
+              })}
             </Select>
           );
         }
+
+        // 特殊处理-主机的云区域ID显示,但是不允许修改（弹窗中）
+        if (item.attr_id === 'cloud_id' && modelId === 'host') {
+          return (
+            <Input
+              disabled={true}
+              placeholder={t('common.inputTip')}
+            />
+          );
+        }
+
         // 新增+编辑弹窗中，用户字段为多选
         switch (item.attr_type) {
           case 'user':
@@ -316,6 +329,14 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             if (target?.attr_type === 'time' && values[key]) {
               values[key] = values[key].format('YYYY-MM-DD HH:mm:ss');
             }
+          }
+
+          //显示规范云区域提交参数
+          if (values.cloud) {
+            values.cloud = String(values.cloud);
+          }
+          if (values.cloud_id) {
+            values.cloud_id = +values.cloud_id;
           }
           operateAttr(values, confirmType);
         })

@@ -5,6 +5,7 @@ import {
   ReactFlow,
   MiniMap,
   Controls,
+  ControlButton,
   Background,
   useNodesState,
   useEdgesState,
@@ -42,6 +43,10 @@ import {
 import { useNodeExecution } from './hooks/useNodeExecution';
 import { useNodeDeletion } from './hooks/useNodeDeletion';
 import { useNodeDrop } from './hooks/useNodeDrop';
+import { useHelperLines } from './hooks/useHelperLines';
+import { useAutoLayout } from './hooks/useAutoLayout';
+import HelperLines from './HelperLines';
+import { PartitionOutlined } from '@ant-design/icons';
 
 const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onSave, initialData }, ref) => {
   const { t } = useTranslation();
@@ -55,11 +60,21 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   const [isInitialized, setIsInitialized] = useState(false);
   const lastSaveData = useRef<string>('');
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(
+  const [nodes, setNodes] = useNodesState(
     initialData?.nodes && Array.isArray(initialData.nodes) ? initialData.nodes : []
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(
     initialData?.edges && Array.isArray(initialData.edges) ? initialData.edges : []
+  );
+
+  const { helperLines, applyHelperLines } = useHelperLines();
+  const { getLayoutedElements } = useAutoLayout();
+
+  const onNodesChange = useCallback(
+    (changes: any) => {
+      setNodes((nds) => applyHelperLines(changes, nds));
+    },
+    [setNodes, applyHelperLines]
   );
 
   // 使用自定义 Hooks
@@ -118,6 +133,16 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
   useImperativeHandle(ref, () => ({ clearCanvas }), [clearCanvas]);
 
+  const handleAutoLayout = useCallback(
+    async (direction: 'LR' | 'TB') => {
+      console.log('Auto layout triggered, nodes:', nodes.length, 'edges:', edges.length);
+      const { nodes: layoutedNodes } = await getLayoutedElements(nodes, edges, { direction });
+      console.log('Layout complete, new positions:', layoutedNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y })));
+      setNodes(layoutedNodes);
+    },
+    [nodes, edges, getLayoutedElements, setNodes]
+  );
+
   const handleConfigNode = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
     if (node && isChatflowNode(node)) {
@@ -161,13 +186,47 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
   const onConnect = useCallback(
     (params: Connection) => {
-      // 验证连接：source 必须连接到 target
       if (!params.source || !params.target) return;
-      if (params.source === params.target) return; // 不能连接到自己
+      if (params.source === params.target) return;
       
       setEdges((eds) => addEdge(params, eds));
     },
     [setEdges]
+  );
+
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, connectionState: any) => {
+      if (!connectionState.isValid && connectionState.fromNode && reactFlowInstance) {
+        const targetIsPane = (event.target as HTMLElement)?.classList?.contains('react-flow__pane');
+        if (targetIsPane) return;
+
+        const { clientX, clientY } = 'changedTouches' in event ? event.changedTouches[0] : event;
+        const targetNode = document.elementFromPoint(clientX, clientY)?.closest('.react-flow__node');
+        
+        if (targetNode) {
+          const targetNodeId = targetNode.getAttribute('data-id');
+          const sourceNodeId = connectionState.fromNode.id;
+          
+          if (targetNodeId && targetNodeId !== sourceNodeId) {
+            const targetNodeData = nodes.find(n => n.id === targetNodeId);
+            const noInputTypes = ['celery', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'];
+            const nodeType = targetNodeData?.data?.type as string;
+            const hasInputHandle = nodeType && !noInputTypes.includes(nodeType);
+            
+            if (hasInputHandle) {
+              const newEdge: Connection = {
+                source: sourceNodeId,
+                target: targetNodeId,
+                sourceHandle: connectionState.fromHandle?.id || null,
+                targetHandle: null,
+              };
+              setEdges((eds) => addEdge(newEdge, eds));
+            }
+          }
+        }
+      }
+    },
+    [reactFlowInstance, nodes, setEdges]
   );
 
   const onSelectionChange = useCallback((params: { nodes: any[]; edges: any[] }) => {
@@ -280,6 +339,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onConnectEnd={onConnectEnd}
             onInit={onInit}
             onDrop={(e) => onDrop(e, reactFlowWrapper)}
             onDragOver={onDragOver}
@@ -297,12 +357,8 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
             multiSelectionKeyCode={null}
             connectionMode={ConnectionMode.Strict}
             isValidConnection={(connection) => {
-              // 确保 source 和 target 存在且不同
               if (!connection.source || !connection.target) return false;
               if (connection.source === connection.target) return false;
-              
-              // 重要：sourceHandle 必须是 source 类型，targetHandle 必须是 target 类型
-              // 这通过 Handle 的 type 属性自动处理
               return true;
             }}
           >
@@ -315,8 +371,13 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
               zoomable
               ariaLabel="Flowchart minimap"
             />
-            <Controls />
+            <Controls>
+              <ControlButton onClick={() => handleAutoLayout('LR')} title={t('chatflow.autoLayout')}>
+                <PartitionOutlined />
+              </ControlButton>
+            </Controls>
             <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+            <HelperLines horizontal={helperLines.horizontal} vertical={helperLines.vertical} />
           </ReactFlow>
         </ReactFlowProvider>
       </div>

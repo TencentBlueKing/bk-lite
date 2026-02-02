@@ -5,7 +5,9 @@ from apps.monitor.models import (
     MonitorInstanceOrganization,
     MonitorAlert,
     MonitorInstance,
+    PolicyInstanceBaseline,
 )
+from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.tasks.services.policy_scan.metric_query import MetricQueryService
 from apps.monitor.tasks.services.policy_scan.alert_detector import AlertDetector
 from apps.monitor.tasks.services.policy_scan.event_alert_manager import (
@@ -21,11 +23,16 @@ class MonitorPolicyScan:
     def __init__(self, policy):
         self.policy = policy
         self.instances_map = self._build_instances_map()
+        self.baselines_map = self._build_baselines_map()
         self.active_alerts = self._get_active_alerts()
 
         self.metric_query_service = MetricQueryService(policy, self.instances_map)
         self.alert_detector = AlertDetector(
-            policy, self.instances_map, self.active_alerts, self.metric_query_service
+            policy,
+            self.instances_map,
+            self.baselines_map,
+            self.active_alerts,
+            self.metric_query_service,
         )
         self.event_alert_manager = EventAlertManager(
             policy, self.instances_map, self.active_alerts
@@ -42,7 +49,7 @@ class MonitorPolicyScan:
         return qs
 
     def _build_instances_map(self):
-        """构建策略适用的实例映射"""
+        """构建策略适用的实例映射: {monitor_instance_id: monitor_instance_name}"""
         if not self.policy.source:
             return {}
 
@@ -57,6 +64,17 @@ class MonitorPolicyScan:
             is_deleted=False,
         )
         return {instance.id: instance.name for instance in instances}
+
+    def _build_baselines_map(self):
+        """构建基准映射: {metric_instance_id: monitor_instance_id}"""
+        if not self.policy.source:
+            return {}
+
+        baselines = PolicyInstanceBaseline.objects.filter(
+            policy_id=self.policy.id,
+            monitor_instance_id__in=self.instances_map.keys(),
+        )
+        return {b.metric_instance_id: b.monitor_instance_id for b in baselines}
 
     def _get_instance_list_by_source(self, source_type, source_values):
         """根据来源类型获取实例列表"""
@@ -148,6 +166,8 @@ class MonitorPolicyScan:
 
         alert_events, info_events, no_data_events = self._collect_events()
 
+        self._sync_baselines(alert_events, info_events)
+
         events = alert_events + no_data_events
         result = self._create_events_alerts_and_notify(events)
         if result[0] is None:
@@ -155,6 +175,32 @@ class MonitorPolicyScan:
         event_objs, new_alerts = result
 
         self._record_snapshots(info_events, event_objs, new_alerts)
+
+    def _sync_baselines(self, alert_events, info_events):
+        """同步基准表（只增不删）"""
+        if not self.policy.source or not self.instances_map:
+            return
+
+        all_events = alert_events + info_events
+        if not all_events:
+            return
+
+        metric_instances = {}
+        for event in all_events:
+            metric_instance_id = event.get("metric_instance_id", "")
+            monitor_instance_id = event.get("monitor_instance_id", "")
+
+            if not metric_instance_id or not monitor_instance_id:
+                continue
+
+            if monitor_instance_id not in self.instances_map:
+                continue
+
+            if metric_instance_id not in self.baselines_map:
+                metric_instances[metric_instance_id] = monitor_instance_id
+
+        if metric_instances:
+            PolicyBaselineService(self.policy).sync(metric_instances)
 
     def _pre_check(self):
         """前置检查"""

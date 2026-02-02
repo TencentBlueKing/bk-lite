@@ -1,0 +1,57 @@
+{
+  "model": {
+    "type": "XGBoost",
+    "name": "text_classification_xgboost"
+  },
+  
+  "hyperparams": {
+    "use_feature_engineering": true,
+    "random_state": 42,
+    "max_evals": 20,
+    "metric": "f1_weighted",
+    "search_space": {
+      "max_depth": [3, 5, 7, 10],
+      "learning_rate": [0.01, 0.05, 0.1, 0.2],
+      "n_estimators": [50, 100, 200, 300],
+      "min_child_weight": [1, 3, 5],
+      "subsample": [0.7, 0.8, 0.9, 1.0],
+      "colsample_bytree": [0.7, 0.8, 0.9, 1.0],
+      "gamma": [0, 0.1, 0.2, 0.3]
+    }
+  },
+  
+  "preprocessing": {
+    "jieba_mode": "precise",
+    "remove_stopwords": true,
+    "remove_punctuation": true,
+    "min_length": 2,
+    "max_length": 1000,
+    "lowercase": true
+  },
+  
+  "feature_engineering": {
+    "use_tfidf": true,
+    "use_statistical": true,
+    "tfidf": {
+      "max_features": 5000,
+      "min_df": 2,
+      "max_df": 0.95,
+      "ngram_range": [1, 2],
+      "use_idf": true,
+      "sublinear_tf": true
+    },
+    "statistical_features": [
+      "text_length",
+      "token_count",
+      "special_char_ratio",
+      "digit_ratio",
+      "avg_word_length"
+    ]
+  },
+  
+  "mlflow": {
+    "_comment": "MLflow 实验跟踪配置",
+    "experiment_name": "text_classification_xgboost",
+    "_experiment_name_desc": "tracking_uri 通过环境变量 MLFLOW_TRACKING_URI 配置"
+  }
+}

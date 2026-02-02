@@ -15,6 +15,7 @@ import nats_client
 from apps.core.backends import cache
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.system_mgmt.guest_menus import CMDB_MENUS, MONITOR_MENUS, OPSPILOT_GUEST_MENUS
 from apps.system_mgmt.models import (
     App,
@@ -333,15 +334,36 @@ def search_channel_list(channel_type):
 
 
 @nats_client.register
-def send_msg_with_channel(channel_id, title, content, receivers):
+def send_msg_with_channel(channel_id, title, content, receivers, attachments=None):
+    """
+    通过指定通道发送消息
+    :param channel_id: 通道ID
+    :param title: 邮件主题（企微机器人传空字符串即可）
+    :param content: 正文内容
+    :param receivers: 用户ID列表 [1, 2, 3, 4] 或用户名列表 ["user1", "user2"]
+    :param attachments: 附件列表（仅email通道支持），格式为:
+        [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]
+        注意: 附件内容必须是base64编码的字符串，因为NATS使用JSON序列化传输
+    """
     channel_obj = Channel.objects.filter(id=channel_id).first()
     if not channel_obj:
         return {"result": False, "message": "Channel not found"}
+    # 兼容用户ID列表和用户名列表两种情况
+    user_list = None
+    if receivers and all(isinstance(r, int) or (isinstance(r, str) and r.isdigit()) for r in receivers):
+        # receivers 是用户ID列表
+        user_list = User.objects.filter(id__in=[int(r) for r in receivers])
     if channel_obj.channel_type == ChannelChoices.EMAIL:
-        user_list = User.objects.filter(id__in=receivers)
-        return send_email(channel_obj, title, content, user_list)
+        # 邮件发送需要校验收件人是否存在
+        if not user_list or not user_list.exists():
+            return {"result": False, "message": "No valid recipients found"}
+        return send_email(channel_obj, title, content, user_list, attachments)
     elif channel_obj.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
-        return send_by_bot(channel_obj, content, receivers)
+        if user_list is not None:
+            display_names = list(user_list.values_list("display_name", flat=True))
+        else:
+            display_names = receivers if isinstance(receivers, list) else [receivers]
+        return send_by_bot(channel_obj, content, display_names)
     return {"result": False, "message": "Unsupported channel type"}
     # return send_wechat(channel_obj, content, user_list)
 
@@ -600,12 +622,8 @@ def login(username, password):
     if user.account_locked_until and user.account_locked_until > now:
         # 计算剩余锁定时间（分钟）
         remaining_minutes = int((user.account_locked_until - now).total_seconds() / 60) + 1
-        return {
-            "result": False,
-            "message": loader.get("login.account_locked", "Account is locked. Please try again after {minutes} minutes.").format(
-                minutes=remaining_minutes
-            ),
-        }
+        msg = loader.get("login.account_locked", "Account is locked. Please try again after {minutes} minutes.").format(minutes=remaining_minutes)
+        return {"result": False, "message": msg}
 
     # 使用 check_password 验证密码是否匹配
     if not check_password(password, user.password):
@@ -867,6 +885,7 @@ def delete_rules(group_ids, instance_id, app, module, child_module):
         rules_queryset = GroupDataRule.objects.filter(group_id__in=group_ids, app=app)
 
         updated_count = 0
+        affected_rule_ids = []
         for rule_obj in rules_queryset:
             rules_data = rule_obj.rules
 
@@ -897,8 +916,18 @@ def delete_rules(group_ids, instance_id, app, module, child_module):
                 rule_obj.rules = rules_data
                 rule_obj.save()
                 updated_count += 1
+                affected_rule_ids.append(rule_obj.id)
 
-        return {"result": True, "message": f"Successfully deleted rules from {updated_count} group data rules"}
+        # 清除受影响用户的权限缓存
+        if affected_rule_ids:
+            affected_users = list(UserRule.objects.filter(group_rule_id__in=affected_rule_ids).values("username", "domain"))
+            if affected_users:
+                clear_users_permission_cache(affected_users)
+
+        return {
+            "result": True,
+            "message": f"Successfully deleted rules from {updated_count} group data rules",
+        }
 
     except Exception as e:
         logger.exception(f"Error deleting rules: {e}")

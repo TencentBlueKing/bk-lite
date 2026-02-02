@@ -6,15 +6,26 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
-from apps.core.utils.permission_utils import get_permission_rules, permission_filter, get_permissions_rules, \
-    check_instance_permission
+from apps.core.utils.permission_utils import (
+    get_permission_rules,
+    permission_filter,
+    get_permissions_rules,
+    check_instance_permission,
+)
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
-from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorPolicy, MonitorEventRawData, \
-    MonitorAlertMetricSnapshot
+from apps.monitor.models import (
+    MonitorAlert,
+    MonitorEvent,
+    MonitorPolicy,
+    MonitorEventRawData,
+    MonitorAlertMetricSnapshot,
+    PolicyInstanceBaseline,
+)
 from apps.monitor.filters.monitor_alert import MonitorAlertFilter
 from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+from apps.monitor.services.policy_baseline import PolicyBaselineService
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -22,7 +33,7 @@ class MonitorAlertVieSet(
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     mixins.ListModelMixin,
-    GenericViewSet
+    GenericViewSet,
 ):
     queryset = MonitorAlert.objects.all().order_by("-created_at")
     serializer_class = MonitorAlertSerializer
@@ -50,9 +61,11 @@ class MonitorAlertVieSet(
             return []
 
         # 一次性获取所有策略及其关联组织，减少SQL查询
-        all_policies = MonitorPolicy.objects.select_related('monitor_object').prefetch_related(
-            'policyorganization_set'
-        ).all()
+        all_policies = (
+            MonitorPolicy.objects.select_related("monitor_object")
+            .prefetch_related("policyorganization_set")
+            .all()
+        )
 
         accessible_policy_ids = []
 
@@ -62,16 +75,20 @@ class MonitorAlertVieSet(
             policy_id = policy_obj.id
 
             # 获取策略关联的组织
-            teams = {org.organization for org in policy_obj.policyorganization_set.all()}
+            teams = {
+                org.organization for org in policy_obj.policyorganization_set.all()
+            }
 
             # 使用通用权限检查函数
-            if check_instance_permission(monitor_object_id, policy_id, teams, policy_permissions, cur_team):
+            if check_instance_permission(
+                monitor_object_id, policy_id, teams, policy_permissions, cur_team
+            ):
                 accessible_policy_ids.append(policy_id)
 
         return accessible_policy_ids
 
     def list(self, request, *args, **kwargs):
-        monitor_object_id = request.query_params.get('monitor_object_id', None)
+        monitor_object_id = request.query_params.get("monitor_object_id", None)
 
         if monitor_object_id:
             permission = get_permission_rules(
@@ -80,7 +97,12 @@ class MonitorAlertVieSet(
                 "monitor",
                 f"{PermissionConstants.POLICY_MODULE}.{monitor_object_id}",
             )
-            qs = permission_filter(MonitorPolicy, permission, team_key="policyorganization__organization__in", id_key="id__in")
+            qs = permission_filter(
+                MonitorPolicy,
+                permission,
+                team_key="policyorganization__organization__in",
+                id_key="id__in",
+            )
 
             qs = qs.filter(monitor_object_id=monitor_object_id).distinct()
             policy_ids = qs.values_list("id", flat=True)
@@ -98,11 +120,13 @@ class MonitorAlertVieSet(
             # 执行序列化
             serializer = self.get_serializer(queryset, many=True)
             # 返回成功响应
-            return WebUtils.response_success(dict(count=queryset.count(), results=serializer.data))
+            return WebUtils.response_success(
+                dict(count=queryset.count(), results=serializer.data)
+            )
 
         # 获取分页参数
-        page = int(request.GET.get('page', 1))  # 默认第1页
-        page_size = int(request.GET.get('page_size', 10))  # 默认每页10条数据
+        page = int(request.GET.get("page", 1))  # 默认第1页
+        page_size = int(request.GET.get("page_size", 10))  # 默认每页10条数据
 
         # 计算分页的起始位置
         start = (page - 1) * page_size
@@ -130,7 +154,6 @@ class MonitorAlertVieSet(
         # 补充策略和实例到每个 alert 中
 
         for alert in results:
-
             # # 补充权限信息
             # if alert["policy_id"] in inst_permission_map:
             #     alert["permission"] = inst_permission_map[alert["policy_id"]]
@@ -140,36 +163,52 @@ class MonitorAlertVieSet(
             # 补充instance_id_values
 
             try:
-                alert["instance_id_values"] = [i for i in ast.literal_eval(alert["monitor_instance_id"])]
+                alert["instance_id_values"] = [
+                    i for i in ast.literal_eval(alert["monitor_instance_id"])
+                ]
             except Exception as e:
                 alert["instance_id_values"] = [alert["monitor_instance_id"]]
             # 在 results 字典中添加完整的 policy 和 monitor_instance 信息
-            alert["policy"] = MonitorPolicySerializer(policy_dict.get(alert["policy_id"])).data if alert["policy_id"] else None
+            alert["policy"] = (
+                MonitorPolicySerializer(policy_dict.get(alert["policy_id"])).data
+                if alert["policy_id"]
+                else None
+            )
 
         # 返回成功响应
         return WebUtils.response_success(dict(count=queryset.count(), results=results))
 
     def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
+        partial = kwargs.pop("partial", False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
 
-        # 检查是否要更新 status 和其他字段
         updated_data = serializer.validated_data
         if updated_data.get("status") == "closed":
-            updated_data["end_event_time"] = datetime.now(timezone.utc)  # 补充时间
-            updated_data["operator"] = request.user.username  # 假设操作人从请求中获取
+            updated_data["end_event_time"] = datetime.now(timezone.utc)
+            updated_data["operator"] = request.user.username
+
+            if instance.alert_type == "no_data" and instance.metric_instance_id:
+                update_baseline = request.data.get("update_baseline", False)
+                if update_baseline:
+                    policy = MonitorPolicy.objects.filter(id=instance.policy_id).first()
+                    if policy:
+                        PolicyBaselineService(policy).refresh()
+                else:
+                    PolicyInstanceBaseline.objects.filter(
+                        policy_id=instance.policy_id,
+                        metric_instance_id=instance.metric_instance_id,
+                    ).delete()
 
         self.perform_update(serializer)
 
-        # 清理缓存
-        if getattr(instance, '_prefetched_objects_cache', None):
+        if getattr(instance, "_prefetched_objects_cache", None):
             instance._prefetched_objects_cache = {}
 
         return Response(serializer.data)
 
-    @action(methods=['get'], detail=False, url_path='snapshots/(?P<alert_id>[^/.]+)')
+    @action(methods=["get"], detail=False, url_path="snapshots/(?P<alert_id>[^/.]+)")
     def get_snapshots(self, request, alert_id):
         """根据告警ID查询指标快照数据"""
         try:
@@ -182,17 +221,19 @@ class MonitorAlertVieSet(
         try:
             snapshot_obj = MonitorAlertMetricSnapshot.objects.get(alert_id=alert_obj.id)
         except MonitorAlertMetricSnapshot.DoesNotExist:
-            return WebUtils.response_success({
-                'alert_info': {
-                    'id': alert_obj.id,
-                    'policy_id': alert_obj.policy_id,
-                    'monitor_instance_id': alert_obj.monitor_instance_id,
-                    'status': alert_obj.status,
-                    'start_event_time': alert_obj.start_event_time,
-                    'end_event_time': alert_obj.end_event_time,
-                },
-                'snapshots': []
-            })
+            return WebUtils.response_success(
+                {
+                    "alert_info": {
+                        "id": alert_obj.id,
+                        "policy_id": alert_obj.policy_id,
+                        "monitor_instance_id": alert_obj.monitor_instance_id,
+                        "status": alert_obj.status,
+                        "start_event_time": alert_obj.start_event_time,
+                        "end_event_time": alert_obj.end_event_time,
+                    },
+                    "snapshots": [],
+                }
+            )
 
         # 3. 从 S3 加载快照数据（S3JSONField 自动处理）
         try:
@@ -203,31 +244,33 @@ class MonitorAlertVieSet(
         except Exception as e:
             # S3 读取异常时记录日志并返回空列表
             import logging
+
             logger = logging.getLogger(__name__)
             logger.error(f"Failed to load snapshots from S3 for alert {alert_id}: {e}")
             snapshots_data = []
 
         # 4. 返回快照数据
-        return WebUtils.response_success({
-            'alert_info': {
-                'id': alert_obj.id,
-                'policy_id': alert_obj.policy_id,
-                'monitor_instance_id': alert_obj.monitor_instance_id,
-                'status': alert_obj.status,
-                'start_event_time': alert_obj.start_event_time,
-                'end_event_time': alert_obj.end_event_time,
-            },
-            'snapshots': snapshots_data,
-        })
+        return WebUtils.response_success(
+            {
+                "alert_info": {
+                    "id": alert_obj.id,
+                    "policy_id": alert_obj.policy_id,
+                    "monitor_instance_id": alert_obj.monitor_instance_id,
+                    "status": alert_obj.status,
+                    "start_event_time": alert_obj.start_event_time,
+                    "end_event_time": alert_obj.end_event_time,
+                },
+                "snapshots": snapshots_data,
+            }
+        )
 
 
 class MonitorEventVieSet(viewsets.ViewSet):
-
-    @action(methods=['get'], detail=False, url_path='query/(?P<alert_id>[^/.]+)')
+    @action(methods=["get"], detail=False, url_path="query/(?P<alert_id>[^/.]+)")
     def get_events(self, request, alert_id):
         """查询告警的事件列表 - 优化版：使用外键直接查询"""
-        page = int(request.GET.get('page', 1))
-        page_size = int(request.GET.get('page_size', 10))
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
 
         try:
             alert_obj = MonitorAlert.objects.get(id=alert_id)
@@ -251,7 +294,7 @@ class MonitorEventVieSet(viewsets.ViewSet):
         if page_size == -1:
             events = q_set
         else:
-            events = q_set[(page - 1) * page_size: page * page_size]
+            events = q_set[(page - 1) * page_size : page * page_size]
 
         result = [
             {
@@ -268,7 +311,7 @@ class MonitorEventVieSet(viewsets.ViewSet):
         ]
         return WebUtils.response_success(dict(count=q_set.count(), results=result))
 
-    @action(methods=['get'], detail=False, url_path='raw_data/(?P<event_id>[^/.]+)')
+    @action(methods=["get"], detail=False, url_path="raw_data/(?P<event_id>[^/.]+)")
     def get_raw_data(self, request, event_id):
         """根据事件ID获取事件的原始指标数据（从 S3 加载）"""
         try:
@@ -292,6 +335,7 @@ class MonitorEventVieSet(viewsets.ViewSet):
         except Exception as e:
             # S3 读取异常时记录日志并返回空字典
             import logging
+
             logger = logging.getLogger(__name__)
             logger.error(f"Failed to load raw data from S3 for event {event_id}: {e}")
             raw_data = {}

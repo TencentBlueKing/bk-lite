@@ -321,6 +321,7 @@
       "setAlertConditions": "设置告警条件",
       "configureNotifications": "配置通知",
       "notifier": "通知者",
+      "notifierTagsPlaceholder": "请输入通知者，按回车键添加",
       "activeAlarmsMapTips": "展示所有符合过滤项的活跃告警分布图。",
       "historicalAlarms": "历史告警",
       "successfullyClosed": "关闭成功！",

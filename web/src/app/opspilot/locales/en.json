@@ -476,6 +476,7 @@
     "annotationFailed": "Failed to save annotation",
     "removeAnnotationConfirm": "Are you sure you want to remove this annotation?",
     "copyFailed": "Could not copy message",
+    "copySuccess": "Copied successfully",
     "copy": "Copy",
     "annotationRemoved": "Annotation removed successfully",
     "answer": "Answer",
@@ -556,6 +557,7 @@
       "complexTag": "LATS",
       "guide": "Guide",
       "guideTip": "An initialization message sent at the start of each conversation. Supports standard Markdown syntax and additional tags. [Quick Key]: Users can click to send this question directly.",
+      "guideNotSupportedInExternalApp": "Guide messages are not supported in external applications",
       "planTypeScene": "Project Management: Decompose tasks and track execution status at each stage.\nProduct Development: Develop R&D plans and coordinate execution across multiple departments.\nDaily Planning: Such as travel route design and budget arrangement.",
       "problemOptimization": "Problem Optimization",
       "toolsTypeDesc": "Combines reasoning and action, solving tasks through logical deduction and tool invocation, suitable for scenarios requiring real-time interaction and multi-step operations.",
@@ -664,6 +666,7 @@
   "chatflow": {
     "nodeConfig": {
       "paramName": "Parameter Name",
+      "webAccessAddress": "Access URL",
       "fileDeleted": "File deleted successfully",
       "pleaseEnterClientId": "Please enter Client ID",
       "outputParamsPlaceholder": "Output parameters, e.g.: result, status",
@@ -737,6 +740,7 @@
       "enterUrl": "Enter URL",
       "pleaseEnterNodeName": "Please enter node name",
       "selectAgent": "Select Agent",
+      "addAgent": "Add Agent",
       "apiMethod": "Method",
       "paramValue": "Parameter Value",
       "connectionDescription": "Connection Description:",
@@ -956,7 +960,10 @@
     "webChat": "Web Chat",
     "embeddedChat": "Embedded Chat",
     "applications": "Applications",
-    "intentClassification": "Intent Classification"
+    "intentClassification": "Intent Classification",
+    "autoLayout": "Auto Layout",
+    "horizontalLayout": "Horizontal Layout",
+    "verticalLayout": "Vertical Layout"
   },
   "provider": {
     "form": {

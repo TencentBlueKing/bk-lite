@@ -1,0 +1,98 @@
+{
+  "model": {
+    "type": "YOLOClassification",
+    "name": "yolo_image_classification"
+  },
+  
+  "hyperparams": {
+    "_comment": "=== 核心训练参数（必须配置） ===",
+    
+    "model_name": "yolo11n-cls.pt",
+    "_model_name_desc": "预训练模型选择：yolo11n-cls.pt(最快) / yolo11s-cls.pt / yolo11m-cls.pt / yolo11l-cls.pt / yolo11x-cls.pt(最准)",
+    
+    "epochs": 100,
+    "_epochs_desc": "训练轮数，建议：小数据集50-100，大数据集100-300",
+    
+    "imgsz": 224,
+    "_imgsz_desc": "输入图片尺寸，可选：224/256/320/384/416，越大越慢但可能更准",
+    
+    "batch": 16,
+    "_batch_desc": "批大小，根据GPU显存调整：4GB显存用8，8GB用16，16GB用32",
+    
+    "lr0": 0.01,
+    "_lr0_desc": "初始学习率，建议范围：0.001-0.1",
+    
+    "optimizer": "AdamW",
+    "_optimizer_desc": "优化器选择：AdamW(推荐) / Adam / SGD / RMSProp",
+    
+    "device": "auto",
+    "_device_desc": "设备配置：auto(自动检测) / cpu(强制CPU) / gpu(单GPU) / gpus(多GPU分布式)",
+    
+    "amp": true,
+    "_amp_desc": "混合精度训练（AMP），GPU训练建议开启以加速和节省显存",
+    
+    "patience": 50,
+    "_patience_desc": "早停耐心值，验证集指标多少轮不提升则停止训练",
+    
+    "_comment_tuning": "=== 超参数自动优化（可选，不启用则设max_evals=0） ===",
+    
+    "max_evals": 0,
+    "_max_evals_desc": "超参数优化评估次数，0=不优化，推荐：10-30次",
+    
+    "metric": "acc_top1",
+    "_metric_desc": "优化目标指标：acc_top1(Top-1准确率) / acc_top5(Top-5准确率)",
+    
+    "search_space": {
+      "lr0": [0.0001, 0.001, 0.01, 0.05, 0.1],
+      "batch": [8, 16, 32, 64],
+      "imgsz": [224, 256, 320, 384]
+    },
+    "_search_space_desc": "搜索空间，为每个超参数提供候选值列表"
+  },
+  
+  "preprocessing": {
+    "_comment": "数据预处理配置",
+    "min_image_size": 32,
+    "_min_image_size_desc": "最小图片尺寸（像素），小于此尺寸的图片会被过滤",
+    
+    "allowed_extensions": [".jpg", ".jpeg", ".png", ".bmp"],
+    "_allowed_extensions_desc": "允许的图片格式"
+  },
+  
+  "feature_engineering": {
+    "_comment": "数据增强配置（YOLO内部自动处理）",
+    "augmentation_enabled": true,
+    "_augmentation_enabled_desc": "是否启用数据增强（包括翻转、旋转、缩放等）",
+    
+    "_advanced_augmentation_comment": "=== 高级增强参数（可选，通常使用默认值即可） ===",
+    "degrees": 0.0,
+    "_degrees_desc": "随机旋转角度范围（度），0表示不旋转",
+    
+    "translate": 0.1,
+    "_translate_desc": "随机平移比例，0.1表示最多平移图像10%",
+    
+    "scale": 0.5,
+    "_scale_desc": "随机缩放比例，0.5表示缩放范围0.5x-1.5x",
+    
+    "fliplr": 0.5,
+    "_fliplr_desc": "水平翻转概率，0.5表示50%概率翻转",
+    
+    "flipud": 0.0,
+    "_flipud_desc": "垂直翻转概率，一般设为0",
+    
+    "hsv_h": 0.015,
+    "_hsv_h_desc": "HSV色调增强强度",
+    
+    "hsv_s": 0.7,
+    "_hsv_s_desc": "HSV饱和度增强强度",
+    
+    "hsv_v": 0.4,
+    "_hsv_v_desc": "HSV亮度增强强度"
+  },
+  
+  "mlflow": {
+    "_comment": "MLflow实验跟踪配置",
+    "experiment_name": "yolo_image_classification",
+    "_experiment_name_desc": "实验名称，用于组织多个训练运行",
+  }
+}

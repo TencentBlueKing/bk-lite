@@ -220,6 +220,7 @@ class LLMSkill(MaintainerInfo):
     enable_query_rewrite = models.BooleanField(default=False, verbose_name="问题优化")
     instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name="实例ID", db_index=True)
     is_builtin = models.BooleanField(default=False, verbose_name="是否内置", db_index=True)
+    is_pinned = models.BooleanField(default=False, verbose_name="是否置顶", db_index=True)
 
     def __str__(self):
         return self.name

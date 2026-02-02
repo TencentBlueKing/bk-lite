@@ -3,10 +3,13 @@ import { Spin, message, Image, Button, Input, Upload, type UploadProps, type Upl
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import useMlopsManageApi from "@/app/mlops/api/manage";
 import { useSearchParams } from "next/navigation";
+import { useAuth } from "@/context/auth";
+import JSZip from 'jszip';
 import { LeftOutlined, RightOutlined, PlusOutlined, SearchOutlined, MinusCircleOutlined } from "@ant-design/icons";
 import PermissionWrapper from '@/components/permission';
 import styles from './index.module.scss';
 import { generateUniqueRandomColor } from "@/app/mlops/utils/common";
+import { DatasetType } from '@/app/mlops/types';
 
 interface TrainDataItem {
   image_name: string;
@@ -22,22 +25,13 @@ interface LabelItem {
 
 const ImageContent = () => {
   const { t } = useTranslation();
+  const authContext = useAuth();
   const searchParams = useSearchParams();
-  const { getImageClassificationTrainDataInfo, updateImageClassificationTrainData } = useMlopsManageApi();
+  const { getTrainDataInfo, updateImageClassificationTrainData } = useMlopsManageApi();
   const [trainData, setTrainData] = useState<TrainDataItem[]>([]);
-  // const [fileList, setFileList] = useState<UploadFile<any>[]>([]);
-  const [labels, setLabels] = useState<LabelItem[]>([
-    { id: 1, name: 'fruit' },
-    { id: 2, name: 'War' },
-    { id: 3, name: 'Musical' },
-    { id: 4, name: 'Family' },
-    { id: 5, name: 'Sport' },
-    { id: 6, name: 'Thriller' },
-    { id: 7, name: 'Music' },
-    { id: 8, name: 'Romance' },
-    { id: 9, name: 'Drama' },
-    { id: 10, name: 'Fantasy' },
-  ]);
+  const [labels, setLabels] = useState<LabelItem[]>([]);
+  const imageUrlsRef = useRef<string[]>([]);
+  const imageBlobsRef = useRef<Map<string, Blob>>(new Map());
   const [currentIndex, setCurrentIndex] = useState(0);
   // const [activeTab, setActiveTab] = useState('unlabeled');
   const [searchValue, setSearchValue] = useState('');
@@ -70,70 +64,134 @@ const ImageContent = () => {
   const props: UploadProps = {
     name: 'file',
     showUploadList: false,
+    customRequest: ({ onSuccess }) => {
+      // 使用customRequest避免自动上传
+      setTimeout(() => {
+        onSuccess?.('ok');
+      }, 0);
+    },
     onChange: ({ file }) => {
-      console.log(file.status);
-      if (file.status === 'uploading') {
-        message.info(t('datasets.uploading'))
-      }
       if (file.status === 'done') {
-        addNewImage(file)
+        addNewImage(file);
       }
     },
     beforeUpload: (file) => {
-      const isPng = file.type === 'image/png' || file.name.endsWith('.png');
+      const isImage = file.type.startsWith('image/');
       const isLt2M = file.size / 1024 / 1024 < 2;
-      if (!isPng) {
+      
+      if (!isImage) {
         message.error(t('datasets.uploadWarn'));
       }
       if (!isLt2M) {
         message.error(t('datasets.over2MB'));
       }
-
-      return (isLt2M && isPng) || Upload.LIST_IGNORE;
-
+      
+      return (isLt2M && isImage) || Upload.LIST_IGNORE;
     },
     accept: 'image/*',
   };
 
+  // 清理ObjectURL
+  const cleanupImageUrls = () => {
+    imageUrlsRef.current.forEach(url => {
+      URL.revokeObjectURL(url);
+    });
+    imageUrlsRef.current = [];
+    imageBlobsRef.current.clear();
+  };
+
   useEffect(() => {
-    getTrainDataInfo()
+    getImageTrainDataInfo()
   }, [searchParams]);
 
   useEffect(() => {
     const container = thumbnailContainerRef.current;
-    if(!container) return;
+    if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       container.scrollLeft += e.deltaY;
     };
 
-    container.addEventListener('wheel', handleWheel, {passive: false});
+    container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
   }, [])
 
-  const getTrainDataInfo = async () => {
+  useEffect(() => {
+    return () => {
+      cleanupImageUrls();
+    };
+  }, []);
+
+  const getImageTrainDataInfo = async () => {
+    // 清理旧的ObjectURL
+    cleanupImageUrls();
+    
     setLoadingState((prev) => ({ ...prev, imageLoading: true }));
     try {
-      const data = await getImageClassificationTrainDataInfo(id, true, true);
-      const train_data = data.train_data || [];
-      const meta_data = data.meta_data;
-      const allData = train_data.map((item: any) => {
-        const labelItem = meta_data.image_label?.find((i: any) => i?.image_url === item?.image_url);
-        if (labelItem) {
-          return {
-            ...item,
-            label: labelItem?.label
-          }
+      // 1. 获取metadata
+      const data = await getTrainDataInfo(id, DatasetType.IMAGE_CLASSIFICATION, false, true);
+      const metadata = data.metadata || {};
+      
+      // 2. 下载ZIP
+      const response = await fetch(
+        `/api/proxy/mlops/image_classification_train_data/${id}/download/`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${authContext?.token}`,
+          },
         }
-        return item;
-      });
-      setTrainData(allData);
+      );
+      
+      if (!response.ok) {
+        throw new Error(`下载失败: ${response.status}`);
+      }
+      
+      const zipBlob = await response.blob();
+      
+      // 3. 解压ZIP
+      const zip = await JSZip.loadAsync(zipBlob);
+      const imageFiles: TrainDataItem[] = [];
+      const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp)$/i;
+      
+      for (const [fileName, file] of Object.entries(zip.files)) {
+        if (file.dir) continue;
+        if (!imageExtensions.test(fileName)) continue;
+        
+        const blob = await file.async('blob');
+        const imageUrl = URL.createObjectURL(blob);
+        
+        // 保存ObjectURL和Blob
+        imageUrlsRef.current.push(imageUrl);
+        imageBlobsRef.current.set(fileName, blob);
+        
+        // 从metadata.labels中获取标签
+        const label = metadata.labels?.[fileName];
+        
+        imageFiles.push({
+          image_name: fileName,
+          image_url: imageUrl,
+          label: label
+        });
+      }
+      
+      setTrainData(imageFiles);
+      
+      // 4. 设置标签列表（从metadata.classes）
+      if (metadata.classes && Array.isArray(metadata.classes)) {
+        const labelList = metadata.classes.map((name: string, index: number) => ({
+          id: index + 1,
+          name: name
+        }));
+        setLabels(labelList);
+      }
+      
     } catch (e) {
-      console.log(e);
-      message.error(t(`common.error`))
+      console.error(e);
+      message.error(t(`common.error`));
     } finally {
-      setLoadingState((prev) => ({ ...prev, imageLoading: false }))
+      setLoadingState((prev) => ({ ...prev, imageLoading: false }));
     }
   };
 
@@ -170,7 +228,7 @@ const ImageContent = () => {
   const handleAddLabel = (event: React.KeyboardEvent<HTMLInputElement>) => {
     const value = event.currentTarget.value.trim();
 
-    if(!value) {
+    if (!value) {
       return;
     }
 
@@ -178,7 +236,7 @@ const ImageContent = () => {
       return;
     }
 
-    setLabels(prev => [...prev,{
+    setLabels(prev => [...prev, {
       id: prev.length > 0 ? Math.max(...prev.map(l => l.id)) + 1 : 1,
       name: value
     }]);
@@ -236,8 +294,8 @@ const ImageContent = () => {
 
     const labelItem = labels.find(l => l.id === id);
     const hasUsed = trainData.some(item => item.label === labelItem?.name);
-    
-    if(hasUsed) {
+
+    if (hasUsed) {
       message.warning('该标签已被使用');
       return;
     }
@@ -247,44 +305,109 @@ const ImageContent = () => {
 
   // 添加图片
   const addNewImage = async (file: UploadFile) => {
-    setLoadingState(prev => ({ ...prev, imageLoading: true }));
+    if (!file.originFileObj) return;
+    
     try {
-      const formData = new FormData();
-      if (file.originFileObj) {
-        formData.append('images', file.originFileObj);
-        await updateImageClassificationTrainData(id, formData);
-        getTrainDataInfo();
-        message.success(t('datasets.uploadSuccess'));
-      }
+      const blob = file.originFileObj as Blob;
+      const fileName = file.name;
+      
+      // 创建ObjectURL
+      const imageUrl = URL.createObjectURL(blob);
+      imageUrlsRef.current.push(imageUrl);
+      
+      // 保存Blob用于后续打包
+      imageBlobsRef.current.set(fileName, blob);
+      
+      // 添加到trainData列表
+      const newImage: TrainDataItem = {
+        image_name: fileName,
+        image_url: imageUrl,
+      };
+      
+      setTrainData(prev => [...prev, newImage]);
+      
+      // 切换到新添加的图片
+      setTimeout(() => {
+        setCurrentIndex(trainData.length);
+      }, 0);
+      
+      message.success(t('datasets.uploadSuccess'));
     } catch (e) {
-      console.log(e)
-    } finally {
-      setLoadingState(prev => ({ ...prev, imageLoading: false }))
+      console.error(e);
+      message.error('添加图片失败');
     }
   };
 
-  const handleCancel = () => { getTrainDataInfo() };
+  const handleCancel = () => { getImageTrainDataInfo() };
   const handleSave = async () => {
     setLoadingState(prev => ({ ...prev, saveLoading: true }));
     try {
-      const image_label: any[] = [];
+      // 1. 构建labels对象（文件名 → 标签）
+      const labelsObj: Record<string, string> = {};
+      let labeledCount = 0;
+      
       trainData.forEach((item) => {
         if (item.label) {
-          image_label.push({
-            image_url: item.image_url,
-            label: item.label
-          })
+          labelsObj[item.image_name] = item.label;
+          labeledCount++;
         }
       });
-      await updateImageClassificationTrainData(id, {
-        meta_data: JSON.stringify({
-          image_label
-        })
+      
+      // 2. 提取所有唯一的类别
+      const uniqueClasses = Array.from(new Set(Object.values(labelsObj)));
+      
+      // 3. 统计类别分布
+      const classDistribution: Record<string, number> = {};
+      Object.values(labelsObj).forEach(label => {
+        classDistribution[label] = (classDistribution[label] || 0) + 1;
       });
-      getTrainDataInfo();
+      
+      // 4. 构建新的metadata
+      const newMetadata = {
+        task_type: "classification",
+        classes: uniqueClasses,
+        labels: labelsObj,
+        statistics: {
+          total_images: trainData.length,
+          labeled_images: labeledCount,
+          num_classes: uniqueClasses.length,
+          class_distribution: classDistribution
+        }
+      };
+      
+      // 5. 重新打包所有图片为ZIP
+      const zip = new JSZip();
+      
+      trainData.forEach((item) => {
+        const blob = imageBlobsRef.current.get(item.image_name);
+        if (blob) {
+          zip.file(item.image_name, blob);
+        }
+      });
+      
+      const zipBlob = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: {
+          level: 6
+        }
+      });
+      
+      // 6. 构建FormData上传
+      const formData = new FormData();
+      formData.append('train_data', zipBlob, 'train_data.zip');
+      formData.append('metadata', JSON.stringify(newMetadata));
+      
+      // 7. 调用更新接口
+      await updateImageClassificationTrainData(id, formData);
+      
       message.success(t('datasets.saveSuccess'));
+      
+      // 8. 重新加载数据（确保与后端同步）
+      getImageTrainDataInfo();
+      
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t('datasets.saveError'));
     } finally {
       setLoadingState(prev => ({ ...prev, saveLoading: false }));
@@ -337,7 +460,7 @@ const ImageContent = () => {
               </div>
 
               {/* 识别结果 */}
-              <div className="w-[15%] bg-white p-2 border border-gray-200 rounded flex-shrink-0">
+              <div className="w-[15%] bg-white p-2 border border-gray-200 rounded shrink-0">
                 <div className="font-medium mb-2">{t('datasets.labelResult')}</div>
                 <div className="text-sm text-gray-500">
                   {rendenrLabelResult}
@@ -346,7 +469,7 @@ const ImageContent = () => {
             </div>
 
             {/* 底部缩略图列表 */}
-            <div className="h-[108px] bg-white border border-gray-200 rounded px-3 pt-3 flex-shrink-0">
+            <div className="h-27 bg-white border border-gray-200 rounded px-3 pt-3 shrink-0">
               <div
                 ref={thumbnailContainerRef}
                 className="flex gap-2 overflow-x-auto"
@@ -357,7 +480,7 @@ const ImageContent = () => {
                     key={index}
                     onClick={() => goToSlide(index)}
                     className={
-                      `relative flex-shrink-0 w-[120px] h-[80px] cursor-pointer border-2 rounded overflow-hidden transition-all ${currentIndex === index
+                      `relative shrink-0 w-30 h-20 cursor-pointer border-2 rounded overflow-hidden transition-all ${currentIndex === index
                         ? 'border-blue-500 shadow-lg'
                         : 'border-gray-200 hover:border-blue-300'
                       } ${!item.label ? 'opacity-70' : ''}`
@@ -384,7 +507,7 @@ const ImageContent = () => {
                 {/* 添加图片按钮 */}
                 <Upload {...props}>
                   <div
-                    className="flex-shrink-0 w-[120px] h-[80px] border-2 border-dashed border-gray-300 rounded flex items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
+                    className="shrink-0 w-30 h-20 border-2 border-dashed border-gray-300 rounded flex items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
                   >
                     <div className="text-center">
                       <PlusOutlined className="text-2xl text-gray-400 mb-1" />

@@ -2,7 +2,6 @@
 
 import asyncio
 import os
-import re
 import tempfile
 import threading
 import time
@@ -21,13 +20,18 @@ from loguru import logger
 from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 # 安全配置
-DEFAULT_TIMEOUT = 60
-MAX_RETRIES = 4
+MAX_RETRIES = 2
 MAX_LOGIN_FAILURES = 2  # 登录失败最大重试次数
 
 # 浏览器超时配置（秒），可通过环境变量调整
 BROWSER_LLM_TIMEOUT = int(os.getenv("BROWSER_LLM_TIMEOUT", "30"))  # LLM 调用超时
-BROWSER_STEP_TIMEOUT = int(os.getenv("BROWSER_STEP_TIMEOUT", "30"))  # 单步执行超时（包含导航、页面加载等）
+BROWSER_STEP_TIMEOUT = int(os.getenv("BROWSER_STEP_TIMEOUT", "60"))  # 单步执行超时（包含导航、页面加载等）
+
+# 页面加载等待配置（秒），避免截图时页面仍在 loading
+# minimum_wait_page_load_time: 页面加载后最小等待时间，确保页面渲染完成后再截图
+# wait_for_network_idle_page_load_time: 等待网络请求完成的时间
+BROWSER_MIN_WAIT_PAGE_LOAD = float(os.getenv("BROWSER_MIN_WAIT_PAGE_LOAD", "2"))
+BROWSER_WAIT_NETWORK_IDLE = float(os.getenv("BROWSER_WAIT_NETWORK_IDLE", "2"))
 
 # 会话缓存：用于在同一个 Agent 运行周期内共享浏览器用户数据目录
 # 键: thread_id 或 run_id, 值: {"user_data_dir": str, "created_at": float}
@@ -204,7 +208,6 @@ def _cleanup_expired_sessions() -> None:
                 expired_keys.append(key)
 
         for key in expired_keys:
-            logger.debug(f"清理过期的浏览器会话缓存: {key}")
             del _SESSION_CACHE[key]
 
 
@@ -281,9 +284,9 @@ def _validate_url(url: str) -> bool:
         raise ValueError(f"URL验证失败: {e}")
 
 
-def _extract_sensitive_data(task: str) -> tuple[Optional[Dict[str, str]], str]:
+def _build_sensitive_data(username: Optional[str] = None, password: Optional[str] = None) -> Optional[Dict[str, str]]:
     """
-    从任务描述中提取敏感数据（如用户名、密码），用于执行时使用实际值，输出时脱敏
+    从独立参数构建 sensitive_data 字典
 
     browser-use 的 sensitive_data 参数工作原理:
     1. Task 中使用 <secret>占位符名</secret> 格式
@@ -291,91 +294,28 @@ def _extract_sensitive_data(task: str) -> tuple[Optional[Dict[str, str]], str]:
     3. LLM 输出 <secret>占位符</secret>，browser-use 在执行动作时替换为实际值
     4. 日志/输出中始终显示 <secret>占位符</secret>，保护真实凭证
 
+    注意：凭据应通过 browse_website 的 username/password 参数传递，
+    而不是写在 task 文本中。LLM 已在 react_agent_system_message.jinja2
+    中被严格约束使用参数传递方式。
+
     Args:
-        task: 任务描述字符串
+        username: 用户名（可选）
+        password: 密码（可选）
 
     Returns:
-        Tuple of:
-        - Dict mapping placeholder to actual value, e.g., {"x_password": "WeOps2023", "x_username": "admin"}
-          如果没有检测到敏感数据则返回 None
-        - 脱敏后的任务文本（敏感信息被替换为 <secret>占位符</secret> 格式）
+        Dict mapping placeholder to actual value, e.g., {"x_password": "123456", "x_username": "admin"}
+        如果没有凭据则返回 None
     """
-    if not task:
-        return None, task
+    if not username and not password:
+        return None
 
     sensitive_data: Dict[str, str] = {}
-    masked_task = task
+    if username:
+        sensitive_data["x_username"] = username
+    if password:
+        sensitive_data["x_password"] = password
 
-    # 敏感数据检测模式（支持中英文）
-    # 格式: (pattern, placeholder)
-    # pattern 中: group(1)=前缀, group(2)=敏感值, group(3)=可选后缀
-    # 注意：占位符会被包裹成 <secret>placeholder</secret> 格式
-    # 分隔符说明：支持空白、逗号、句号、顿号、"和"、"以及"等作为值的结束边界
-    sensitive_patterns = [
-        # === 密码相关 ===
-        # 中文：密码是xxx / 密码：xxx / 密码:xxx / 密码 xxx（支持括号内的说明）
-        # 密码值只匹配非空白、非中文字符（即只匹配ASCII字符、数字、常见符号）
-        # [^\s\u4e00-\u9fff] 匹配非空白且非中文的字符
-        (
-            r"(密码\s*(?:是|为)?\s*[:：]?\s*)([^\s\u4e00-\u9fff]+)(\s*[（(].*?[)）])?(?=[\s\u4e00-\u9fff,，。、;；]|$)",
-            "x_password",
-        ),
-        # 英文：password: xxx / password=xxx / password xxx
-        # 同样排除中文字符
-        (
-            r"(password\s*[:=]?\s*[\"']?)([^\s\u4e00-\u9fff]+?)([\"']?)(?=[\s\u4e00-\u9fff,，。;；]|$)",
-            "x_password",
-        ),
-        # pwd: xxx / pwd=xxx / pwd xxx
-        (
-            r"(pwd\s*[:=]?\s*[\"']?)([^\s\u4e00-\u9fff]+?)([\"']?)(?=[\s\u4e00-\u9fff,，。;；]|$)",
-            "x_password",
-        ),
-        # === 用户名相关 ===
-        # 中文：用户名是xxx / 账号是xxx / 用户名：xxx 等
-        # 注意：需要在"和"、"以及"、"密码"等词前停止匹配
-        # 用户名值只匹配非空白、非中文字符
-        (
-            r"((?:用户名|用户|账号|帐号)\s*(?:是|为)?\s*[:：]?\s*)([^\s\u4e00-\u9fff]+)()(?=[\s\u4e00-\u9fff,，。、;；]|和|以及|密码|pwd|password|$)",
-            "x_username",
-        ),
-        # 英文：username / user + 分隔符 + 值
-        (
-            r"((?:username|user)\s*[:=]?\s*[\"']?)([^\s\u4e00-\u9fff]+?)([\"']?)(?=[\s\u4e00-\u9fff,，。;；]|and|password|pwd|$)",
-            "x_username",
-        ),
-    ]
-
-    # 遍历所有模式，提取并替换敏感数据
-    for pattern, placeholder in sensitive_patterns:
-        # 如果该占位符已存在（同类型的敏感数据已处理），跳过
-        if placeholder in sensitive_data:
-            continue
-
-        match = re.search(pattern, masked_task, re.IGNORECASE)
-        if match:
-            # 获取完整匹配和敏感值
-            if len(match.groups()) >= 2:
-                actual_value = match.group(2).strip("\"'")  # 实际敏感值
-            else:
-                actual_value = match.group(1).strip("\"'")
-
-            # 避免捕获到标点符号
-            actual_value = actual_value.rstrip("，。,.")
-            if actual_value:
-                sensitive_data[placeholder] = actual_value
-                # 在任务文本中替换敏感值为 <secret>占位符</secret> 格式
-                # 这样 LLM 会输出相同格式，browser-use 在执行时替换为实际值
-                secret_placeholder = f"<secret>{placeholder}</secret>"
-                masked_task = re.sub(
-                    pattern,
-                    lambda m: f"{m.group(1)}{secret_placeholder}{m.group(3) if len(m.groups()) >= 3 and m.group(3) else ''}",
-                    masked_task,
-                    count=1,
-                    flags=re.IGNORECASE,
-                )
-
-    return (sensitive_data if sensitive_data else None, masked_task)
+    return sensitive_data
 
 
 def _create_login_failure_hook(
@@ -427,9 +367,6 @@ def _create_login_failure_hook(
             # 获取当前浏览器状态
             browser_state = await agent.browser_session.get_browser_state_summary()
             page_title = browser_state.title if browser_state else ""
-            page_url = browser_state.url if browser_state else ""
-
-            logger.debug(f"[Step {step_num}] 登录失败检测: 页面标题='{page_title}', URL='{page_url}'")
 
             # 只检测页面标题，不检测 LLM 思考过程（避免误判）
             # LLM 可能在 thinking/evaluation 中描述 "if login fails..." 等假设性内容
@@ -454,15 +391,13 @@ def _create_login_failure_hook(
                         f"登录失败次数超过限制({max_failures}次)，已停止执行。" f"页面标题: {state['last_failure_reason']}",
                         state["login_failure_count"],
                     )
-            else:
-                logger.debug(f"[Step {step_num}] 登录失败检测: 未检测到失败（页面标题正常）")
 
         except LoginFailureError:
             # 重新抛出登录失败异常
             raise
-        except Exception as e:
+        except Exception:
             # 其他异常只记录日志，不影响主流程
-            logger.debug(f"[Step {step_num}] 登录失败检测时发生异常（忽略）: {e}")
+            pass
 
     return login_failure_hook, state
 
@@ -537,6 +472,7 @@ async def _browse_website_async(
     sensitive_data: Optional[Dict[str, str]] = None,
     masked_task: Optional[str] = None,
     user_data_dir: Optional[str] = None,
+    locale: str = "en",
 ) -> Dict[str, Any]:
     """
     异步浏览网站并执行任务
@@ -552,6 +488,7 @@ async def _browse_website_async(
                        任务中使用占位符 <secret>，执行时替换为实际值，输出时显示占位符
         masked_task: 脱敏后的任务文本（用于日志输出），如果为 None 则使用原始 task
         user_data_dir: 浏览器用户数据目录，用于在多次调用间保持会话状态（cookies、localStorage等）
+        locale: 用户语言设置，用于控制 browser-use 输出语言（如 "zh-Hans" 使用中文，其他使用英文）
 
     Returns:
         Dict[str, Any]: 执行结果
@@ -568,7 +505,7 @@ async def _browse_website_async(
 
         # 初始化 LLM（使用 browser_use.llm.ChatOpenAI）
         if not llm:
-            llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
+            llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
         executable_path = os.getenv("EXECUTABLE_PATH", None) or None
 
         # DEBUG 模式下显示浏览器窗口，方便调试
@@ -586,13 +523,18 @@ async def _browse_website_async(
             actual_headless = headless
 
         # 初始化 Browser
-        browser = Browser(
-            executable_path=executable_path,
-            headless=actual_headless,
-            # headless=headless,
-            enable_default_extensions=False,
-            user_data_dir=user_data_dir,  # 使用共享的用户数据目录保持会话状态
-        )
+        # 配置页面加载等待时间，确保截图时页面已完成渲染（避免截到 loading 状态）
+        browser_init_kwargs = {
+            "executable_path": executable_path,
+            "headless": actual_headless,
+            "enable_default_extensions": False,
+            "user_data_dir": user_data_dir,  # 使用共享的用户数据目录保持会话状态
+            # 截图延迟配置：确保页面加载完成后再截图
+            "minimum_wait_page_load_time": BROWSER_MIN_WAIT_PAGE_LOAD,  # 默认 1.5 秒
+            "wait_for_network_idle_page_load_time": BROWSER_WAIT_NETWORK_IDLE,  # 默认 1.0 秒
+        }
+
+        browser = Browser(**browser_init_kwargs)
 
         # 创建 browser-use agent
         # 判断task中是否已经明确包含了URL信息（使用脱敏后的任务判断，避免泄露）
@@ -602,7 +544,7 @@ async def _browse_website_async(
         if task_to_check and url.lower() in task_to_check.lower():
             final_task = task or ""
         else:
-            final_task = f"首先，导航到 {url}。然后，{task}" if task else f"导航到 {url}"
+            final_task = f"首先，导航到 {url} \n 然后，{task}" if task else f"导航到 {url}"
 
         # 创建步骤回调适配器
         register_callback = _create_step_callback_adapter(step_callback, max_steps)
@@ -611,8 +553,86 @@ async def _browse_website_async(
         has_credentials = sensitive_data is not None and len(sensitive_data) > 0
         login_failure_hook, login_state = _create_login_failure_hook(has_credentials)
 
-        # 扩展系统提示 - 简化版，核心规则已在任务前缀中
-        extend_system_message = """
+        # 扩展系统提示 - 根据用户语言设置选择输出语言
+        # 中文 locale（如 "zh-Hans", "zh-CN", "zh"）使用中文输出
+        if locale.startswith("zh"):
+            extend_system_message = """
+【语言要求】你的所有思考(thinking)、评估(evaluation)、记忆(memory)、下一步目标(next_goal)输出必须使用中文。
+
+核心规则（必须遵守）：
+1. 同一元素最多点击2次。点击2次后视为成功，继续下一步。
+2. 在记忆中跟踪已点击的元素："已点击: [索引1, 索引2, ...]"
+3. 提取操作最多尝试2次，之后切换到截图/视觉方式。
+4. 重要 - 凭据处理：
+   当任务中出现 <secret>xxx</secret> 时，在操作中必须原样输出。
+   不要去掉标签或只输出占位符名称。
+   系统会在执行时自动替换为实际值。
+   - 正确: input_text(..., text="<secret>x_password</secret>")
+   - 错误: input_text(..., text="x_password")
+   - 错误: input_text(..., text="actual_password_here")
+5. 重要 - URL导航规则：
+   当任务明确要求"更改网址"、"跳转到URL"、"导航到"、"访问URL"时，必须使用 navigate action 直接跳转，禁止通过点击页面元素来实现导航。
+   - 正确: {"navigate": {"url": "https://example.com/target"}}
+   - 错误: 通过点击菜单、链接等元素来跳转到目标URL
+   记住：任务说"将网址更改为 xxx"时，直接使用 navigate 跳转，不要尝试点击任何元素。
+6. 重要 - 顺序执行规则：
+   当任务需要依次检查多个元素时（如巡检、遍历列表），每一步只执行一个点击操作，等待页面加载完成并观察结果后，再进行下一个点击。
+   - 禁止：一次性点击多个元素（如同时点击 #3937, #3938, #3939）
+   - 正确：点击 #3937 → 等待加载 → 记录结果 → 下一步点击 #3938 → 等待加载 → 记录结果 → ...
+   这样可以确保每个元素的响应都被正确观察和记录。
+7. 重要 - 完整遍历规则：
+   当任务要求"遍历所有"、"检查所有"、"巡检所有"节点时，必须完整遍历，不能提前结束。
+   - 在 memory 中记录："待检查节点: [A, B, C, ...]，已完成: [A]，剩余: [B, C, ...]"
+   - 每完成一个节点后，检查是否还有剩余未检查的节点
+   - 如果列表有滚动条，必须向下滚动查看是否有更多节点
+   - 只有当所有可见节点都已检查完毕后，才能进入下一步骤
+   - 禁止：只检查了部分节点就生成报告
+8. 重要 - 页面异常检测规则（仅巡检任务适用）：
+   【触发条件】：仅当任务包含"巡检"、"检查"、"健康检查"、"功能验证"等关键词时，才需要执行此规则。
+   普通浏览、数据提取等任务无需执行此规则，页面弹框不影响正常操作流程。
+
+   在巡检任务中，必须判断页面是否存在异常。以下情况必须记录为【异常】：
+
+   (1) 错误弹框/提示（必须检查）：
+       - 红色背景、红色边框、红色文字的弹框、Toast、通知、Alert
+       - 包含以下关键词的任何提示：错误、失败、异常、Error、Failed、Exception、Fail
+       - 包含 HTTP 状态码的提示：500、502、503、504、404、403、超时、timeout
+       - 右上角、页面中央、底部出现的错误通知条
+       - 感叹号图标（⚠️、❗、!）配合的警告/错误提示
+
+    (2) 页面加载失败：
+        - 页面显示"加载失败"、"网络错误"、"服务不可用"、"请求失败"
+        - 页面长时间显示空白、骨架屏、加载动画不消失
+        - 出现"重试"、"刷新"、"重新加载"按钮提示
+        - 页面内容区域显示"暂无数据"配合错误图标
+
+    (3) 页面加载速度过慢（重要 - 必须识别各类 loading 样式）：
+        - 如果点击菜单/链接后，页面加载时间超过2秒仍未完成，记录为【异常 - 页面加载速度过慢】
+        - 必须识别以下 loading 样式：
+          * 旋转图标/spinner（圆形旋转动画）
+          * 骨架屏（灰色占位块）
+          * 彩色圆点动画（如红、黄、绿、蓝四个圆点跳动，类似 Google 加载样式）
+          * 进度条动画
+          * "加载中..."、"Loading..." 文字提示
+          * 页面中央的任何动画图标
+        - 注意：这是性能问题，不是功能错误，需要单独标注
+        - 可继续执行后续检查，但必须记录此异常
+
+    (4) 系统错误展示：
+       - 页面直接显示报错堆栈信息（Stack Trace）
+       - 显示 JSON 格式的错误响应
+       - 控制台错误直接展示在页面上
+
+   【判断为正常】：页面主要内容正常显示，无上述任何异常情况
+
+    【记录格式】：在 memory 中记录每个页面状态，如：
+    - "首页: 正常"
+    - "监控: 异常 - 右上角出现红色提示'数据加载失败'"
+    - "告警: 异常 - 页面中央弹框显示'服务器错误 500'"
+    - "资产: 异常 - 页面加载速度过慢（超过2秒）"
+"""
+        else:
+            extend_system_message = """
 CORE RULES (MUST FOLLOW):
 1. NEVER click same element more than 2 times. After 2 clicks, treat as SUCCESS and move on.
 2. Track clicked elements in memory: "Clicked: [index1, index2, ...]"
@@ -624,6 +644,73 @@ CORE RULES (MUST FOLLOW):
    - CORRECT: input_text(..., text="<secret>x_password</secret>")
    - WRONG: input_text(..., text="x_password")
    - WRONG: input_text(..., text="actual_password_here")
+5. CRITICAL - URL Navigation:
+   When task explicitly requires "change URL to", "navigate to", "go to URL",
+   or "visit URL", you MUST use the navigate action to jump directly.
+   DO NOT click page elements to navigate.
+   - CORRECT: {"navigate": {"url": "https://example.com/target"}}
+   - WRONG: Clicking menus, links, or buttons to reach the target URL
+   Remember: When task says "change URL to xxx", use navigate action directly,
+   do NOT attempt to click any elements.
+6. CRITICAL - Sequential Execution:
+   When task requires checking multiple elements sequentially
+   (e.g., inspection, traversing a list), execute only ONE click per step.
+   Wait for page to load and observe the result before clicking next element.
+   - FORBIDDEN: Clicking multiple elements at once
+     (e.g., clicking #3937, #3938, #3939 in the same step)
+   - CORRECT: Click #3937 → wait for load → record result →
+     next step click #3938 → wait for load → record result → ...
+   This ensures each element's response is properly observed and recorded.
+7. CRITICAL - Complete Traversal:
+   When task requires "traverse all", "check all", or "inspect all" nodes, you MUST complete the full traversal without stopping early.
+   - Track in memory: "Pending nodes: [A, B, C, ...], Completed: [A], Remaining: [B, C, ...]"
+   - After each node, check if there are remaining unchecked nodes
+   - If the list has a scrollbar, scroll down to check for more nodes
+   - Only proceed to the next step after ALL visible nodes have been checked
+   - FORBIDDEN: Generating report after checking only a few nodes
+8. CRITICAL - Page Error Detection:
+    [TRIGGER CONDITION]: Only apply this rule when task contains keywords like "inspect", "check", "health check", "verification", "audit", "patrol".
+    For normal browsing or data extraction tasks, this rule does NOT apply - page popups should not interrupt normal operation flow.
+
+    When inspecting or checking page functionality, you MUST detect page anomalies. The following situations MUST be recorded as [ABNORMAL]:
+
+   (1) Error Popups/Notifications (MUST CHECK):
+       - Popups, Toasts, Notifications, Alerts with red background, red border, or red text
+       - Any prompt containing keywords: Error, Failed, Exception, Fail, Failure
+       - Prompts containing HTTP status codes: 500, 502, 503, 504, 404, 403, timeout
+       - Error notification bars appearing at top-right, center, or bottom of page
+       - Warning/error prompts with exclamation icons (⚠️, ❗, !)
+
+    (2) Page Load Failures:
+        - Page displays "Load Failed", "Network Error", "Service Unavailable", "Request Failed"
+        - Page shows blank content, skeleton screen, or loading animation that never completes
+        - "Retry", "Refresh", "Reload" button prompts appear
+        - Content area shows "No Data" with error icon
+
+    (3) Slow Page Load (IMPORTANT - Must recognize all loading styles):
+        - If page load time exceeds 2 seconds after clicking menu/link, record as [ABNORMAL - Slow page load]
+        - Must recognize these loading styles:
+          * Spinning icons/spinners (circular rotating animation)
+          * Skeleton screens (gray placeholder blocks)
+          * Colored dot animations (e.g., red, yellow, green, blue dots bouncing, Google-style loading)
+          * Progress bar animations
+          * "Loading...", "加载中..." text prompts
+          * Any animated icon in the center of the page
+        - Note: This is a performance issue, not a functional error, mark it separately
+        - Continue with subsequent checks, but must record this anomaly
+
+    (4) System Error Display:
+        - Page directly displays error stack traces
+        - JSON format error responses shown on page
+        - Console errors displayed directly on page
+
+    [NORMAL]: Main page content displays correctly without any of the above anomalies
+
+    [Recording Format]: Record each page status in memory, e.g.:
+    - "Homepage: Normal"
+    - "Monitor: Abnormal - Red toast appeared at top-right showing 'Data load failed'"
+    - "Alerts: Abnormal - Modal in center showing 'Server Error 500'"
+    - "Assets: Abnormal - Slow page load (exceeded 2 seconds)"
 """
 
         # 创建 browser-use agent（带回调支持和优化配置）
@@ -634,7 +721,7 @@ CORE RULES (MUST FOLLOW):
             register_new_step_callback=register_callback,
             extend_system_message=extend_system_message,
             max_actions_per_step=5,  # 每步最多5个动作，避免过度操作
-            max_failures=3,  # 最大失败重试次数
+            max_failures=2,  # 最大失败重试次数
             sensitive_data=sensitive_data,  # 敏感数据脱敏
             llm_timeout=BROWSER_LLM_TIMEOUT,  # LLM 调用超时
             step_timeout=BROWSER_STEP_TIMEOUT,  # 单步执行超时（包含导航等待）
@@ -720,7 +807,13 @@ def _run_async_task(coro):
 
 
 @tool()
-def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig = None) -> Dict[str, Any]:
+def browse_website(
+    url: str,
+    task: Optional[str] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    config: RunnableConfig = None,
+) -> Dict[str, Any]:
     """
     使用AI驱动的浏览器打开网站并执行操作
 
@@ -729,14 +822,26 @@ def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig 
     请在一次调用中描述完整的任务流程，不要拆分成多次调用！
     每次调用结束后浏览器会关闭，多次调用会导致登录状态丢失。
 
-    **正确用法（一次调用完成所有步骤）：**
-    - task="登录系统（用户名xxx，密码xxx），然后点击巡检菜单，执行巡检任务，最后返回巡检结果"
+    **🔐 凭据传递方式（必须使用 username/password 参数）：**
+    当任务需要登录时，必须将用户名密码放在独立参数中，不要写在 task 里：
+
+    ```python
+    browse_website(
+        url="https://example.com/login",
+        username="admin",
+        password="mypassword123",
+        task="使用提供的凭据登录系统，登录成功后点击'系统巡检'菜单，执行巡检并返回结果"
+    )
+    ```
+
+    这样做的好处：
+    1. 凭据会自动安全地传递给浏览器，不会在日志中暴露
+    2. 避免凭据在任务描述中被意外修改或脱敏
+    3. 浏览器会在需要时自动填入正确的用户名和密码
 
     **错误用法（不要这样做）：**
-    - 第一次调用：task="打开登录页面"
-    - 第二次调用：task="输入用户名密码并登录"
-    - 第三次调用：task="点击巡检菜单"
-    这样做会导致每次调用后浏览器关闭，登录状态丢失！
+    - ❌ task="输入用户名admin和密码123456登录" （凭据不要写在task里！）
+    - ❌ 拆分成多次调用（会丢失登录状态）
 
     **何时使用此工具：**
     - 需要与网页进行交互（点击、填表等）
@@ -753,23 +858,27 @@ def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig 
     - 支持流式传递执行进度（通过 step_callback）
 
     **典型使用场景：**
-    1. 登录并执行操作（一次调用完成）：
-       - url="https://example.com/login"
-       - task="使用用户名admin和密码123456登录，登录成功后点击'系统巡检'菜单，执行巡检并返回巡检结果"
+    1. 登录并执行操作：
+       browse_website(
+           url="https://example.com/login",
+           username="admin",
+           password="123456",
+           task="使用提供的凭据登录，登录成功后点击'系统巡检'菜单，执行巡检并返回巡检结果"
+       )
 
-    2. 执行搜索并提取结果：
-       - url="https://www.google.com"
-       - task="搜索'Python教程'，等待结果加载，提取前3个结果的标题和链接"
-
-    3. 完整的表单流程：
-       - url="https://example.com/form"
-       - task="填写用户名为'test'，密码为'test123'，点击登录，等待跳转，然后提取用户信息"
+    2. 执行搜索并提取结果（无需登录）：
+       browse_website(
+           url="https://www.google.com",
+           task="搜索'Python教程'，等待结果加载，提取前3个结果的标题和链接"
+       )
 
     Args:
         url (str): 目标网站URL（必填）
-        task (str, optional): 完整的任务描述，应包含所有需要执行的步骤
+        task (str, optional): 完整的任务描述，应包含所有需要执行的步骤。
+            注意：不要在task中包含用户名密码，请使用username/password参数
+        username (str, optional): 登录用户名。当任务需要登录时必填
+        password (str, optional): 登录密码。当任务需要登录时必填
         config (RunnableConfig): 工具配置（自动传递）
-            - 可通过 config["configurable"]["browser_step_callback"] 传递步骤回调函数
 
     Returns:
         dict: 执行结果
@@ -785,13 +894,8 @@ def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig 
     - 需要稳定的网络连接
     - 某些网站可能有反爬虫机制
     - 确保任务描述清晰具体，包含完整流程
-    - 自动使用调用它的Agent的LLM，如果没有则使用 gpt-4o
     - ⚠️ 不要将连续任务拆分成多次调用，这会导致登录状态丢失
-
-    **与其他工具的区别：**
-    - fetch_html: 仅获取静态HTML，不执行JavaScript
-    - http_get: 仅发送HTTP请求，不渲染页面
-    - browse_website: 完整的浏览器环境，可执行复杂交互
+    - 🔐 凭据必须通过 username/password 参数传递，不要写在 task 中
     """
     configurable = config.get("configurable", {}) if config else {}
     llm_config = configurable.get("graph_request")
@@ -806,10 +910,25 @@ def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig 
             api_key=llm_config.openai_api_key,
             base_url=llm_config.openai_api_base,
         )
-        sensitive_data, masked_task = _extract_sensitive_data(task) if task else (None, task)
+        # logger.info(f"task: {task}\n username: {username}\n password: {password}")
+
+        # 从独立参数构建 sensitive_data（凭据应通过 username/password 参数传递）
+        sensitive_data = _build_sensitive_data(username=username, password=password)
+
+        # 如果有凭据，在 task 开头添加提示，让浏览器 agent 知道有凭据可用
+        masked_task = task
+        if sensitive_data and task:
+            credential_hint = "【凭据已提供】用户名: <secret>x_username</secret>"
+            if "x_password" in sensitive_data:
+                credential_hint += ", 密码: <secret>x_password</secret>"
+            masked_task = f"{credential_hint}。{task}"
+            logger.info("凭据已通过 username/password 参数传递: x_username=***, x_password=***")
 
         # 获取或创建共享的浏览器用户数据目录（基于 thread_id/run_id 缓存，用于保持会话状态）
         user_data_dir = _get_or_create_user_data_dir(config)
+
+        # 获取用户语言设置，用于控制 browser-use 输出语言
+        locale = getattr(llm_config, "locale", "en") if llm_config else "en"
 
         result = _run_async_task(
             _browse_website_async(
@@ -820,6 +939,7 @@ def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig 
                 sensitive_data=sensitive_data,
                 masked_task=masked_task,
                 user_data_dir=user_data_dir,
+                locale=locale,
             )
         )
         return result
@@ -832,7 +952,13 @@ def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig 
 
 
 @tool()
-def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, config: RunnableConfig = None) -> Dict[str, Any]:
+def extract_webpage_info(
+    url: str,
+    selectors: Optional[Dict[str, str]] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    config: RunnableConfig = None,
+) -> Dict[str, Any]:
     """
     从网页中提取特定信息
 
@@ -861,10 +987,18 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
        - url="https://example.com/list"
        - selectors={"items": "所有列表项"}
 
+    4. 提取需要登录的页面信息：
+       - url="https://admin.example.com/dashboard"
+       - username="admin"
+       - password="123456"
+       - selectors={"stats": "统计数据", "alerts": "告警信息"}
+
     Args:
         url (str): 目标网站URL（必填）
         selectors (dict, optional): 要提取的信息字典
             键：字段名，值：字段描述
+        username (str, optional): 登录用户名。当页面需要登录时使用
+        password (str, optional): 登录密码。当页面需要登录时使用
         config (RunnableConfig): 工具配置（自动传递）
             - 可通过 config["configurable"]["browser_step_callback"] 传递步骤回调函数
 
@@ -892,6 +1026,7 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
             api_key=llm_config.openai_api_key,
             base_url=llm_config.openai_api_base,
         )
+        logger.info(f"selectors: {selectors}")
         if selectors:
             task_parts = ["从页面中提取以下信息："]
             for field, description in selectors.items():
@@ -900,10 +1035,23 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
         else:
             task = "提取页面的主要内容，包括标题、正文和关键信息"
 
-        sensitive_data, masked_task = _extract_sensitive_data(task) if task else (None, task)
+        # 从独立参数构建 sensitive_data（凭据应通过 username/password 参数传递）
+        sensitive_data = _build_sensitive_data(username=username, password=password)
+
+        # 如果有凭据，在 task 开头添加提示，让浏览器 agent 知道有凭据可用
+        masked_task = task
+        if sensitive_data and task:
+            credential_hint = "【凭据已提供】用户名: <secret>x_username</secret>"
+            if "x_password" in sensitive_data:
+                credential_hint += ", 密码: <secret>x_password</secret>"
+            masked_task = f"{credential_hint}。{task}"
+            logger.info("凭据已通过 username/password 参数传递: x_username=***, x_password=***")
 
         # 获取或创建共享的浏览器用户数据目录（基于 thread_id/run_id 缓存，用于保持会话状态）
         user_data_dir = _get_or_create_user_data_dir(config)
+
+        # 获取用户语言设置，用于控制 browser-use 输出语言
+        locale = getattr(llm_config, "locale", "en") if llm_config else "en"
 
         result = _run_async_task(
             _browse_website_async(
@@ -914,6 +1062,7 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
                 sensitive_data=sensitive_data,
                 masked_task=masked_task,
                 user_data_dir=user_data_dir,
+                locale=locale,
             )
         )
 

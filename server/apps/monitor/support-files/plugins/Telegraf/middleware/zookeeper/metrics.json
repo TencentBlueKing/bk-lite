@@ -12,7 +12,7 @@
   "metrics": [
     {
       "metric_group": "System Status",
-      "name": "version",
+      "name": "zookeeper_version",
       "display_name": "Version Info",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -23,7 +23,7 @@
     },
     {
       "metric_group": "System Status",
-      "name": "num_alive_connections",
+      "name": "zookeeper_num_alive_connections",
       "display_name": "Alive Connections",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -34,7 +34,7 @@
     },
     {
       "metric_group": "System Status",
-      "name": "outstanding_requests",
+      "name": "zookeeper_outstanding_requests",
       "display_name": "Outstanding Requests",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -45,7 +45,7 @@
     },
     {
       "metric_group": "Performance Metrics",
-      "name": "avg_latency",
+      "name": "zookeeper_avg_latency",
       "display_name": "Average Latency",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -56,7 +56,7 @@
     },
     {
       "metric_group": "Performance Metrics",
-      "name": "max_latency",
+      "name": "zookeeper_max_latency",
       "display_name": "Maximum Latency",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -67,7 +67,7 @@
     },
     {
       "metric_group": "Performance Metrics",
-      "name": "min_latency",
+      "name": "zookeeper_min_latency",
       "display_name": "Minimum Latency",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -78,7 +78,7 @@
     },
     {
       "metric_group": "Performance Metrics",
-      "name": "packets_received",
+      "name": "zookeeper_packets_received",
       "display_name": "Packets Received",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -89,7 +89,7 @@
     },
     {
       "metric_group": "Performance Metrics",
-      "name": "packets_sent",
+      "name": "zookeeper_packets_sent",
       "display_name": "Packets Sent",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -100,7 +100,7 @@
     },
     {
       "metric_group": "Data Storage",
-      "name": "watch_count",
+      "name": "zookeeper_watch_count",
       "display_name": "Watch Count",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -111,7 +111,7 @@
     },
     {
       "metric_group": "Data Storage",
-      "name": "ephemerals_count",
+      "name": "zookeeper_ephemerals_count",
       "display_name": "Ephemeral Nodes",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -122,7 +122,7 @@
     },
     {
       "metric_group": "Data Storage",
-      "name": "znode_count",
+      "name": "zookeeper_znode_count",
       "display_name": "ZNode Count",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -133,7 +133,7 @@
     },
     {
       "metric_group": "Data Storage",
-      "name": "approximate_data_size",
+      "name": "zookeeper_approximate_data_size",
       "display_name": "Data Size",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -144,7 +144,7 @@
     },
     {
       "metric_group": "Resource Usage",
-      "name": "open_file_descriptor_count",
+      "name": "zookeeper_open_file_descriptor_count",
       "display_name": "Open File Descriptors",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -155,7 +155,7 @@
     },
     {
       "metric_group": "Resource Usage",
-      "name": "max_file_descriptor_count",
+      "name": "zookeeper_max_file_descriptor_count",
       "display_name": "Max File Descriptors",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -166,7 +166,7 @@
     },
     {
       "metric_group": "Resource Usage",
-      "name": "fsync_threshold_exceed_count",
+      "name": "zookeeper_fsync_threshold_exceed_count",
       "display_name": "Fsync Threshold Exceed",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -177,7 +177,7 @@
     },
     {
       "metric_group": "Performance Trends",
-      "name": "packets_received_rate",
+      "name": "zookeeper_packets_received_rate",
       "display_name": "Packets Received Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -188,7 +188,7 @@
     },
     {
       "metric_group": "Performance Trends",
-      "name": "packets_sent_rate",
+      "name": "zookeeper_packets_sent_rate",
       "display_name": "Packets Sent Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -199,7 +199,7 @@
     },
     {
       "metric_group": "Performance Trends",
-      "name": "fsync_threshold_exceed_rate",
+      "name": "zookeeper_fsync_threshold_exceed_rate",
       "display_name": "Fsync Exceed Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -210,7 +210,7 @@
     },
     {
       "metric_group": "Performance Trends",
-      "name": "avg_latency_avg",
+      "name": "zookeeper_avg_latency_avg",
       "display_name": "Avg Latency Trend",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -221,7 +221,7 @@
     },
     {
       "metric_group": "Performance Trends",
-      "name": "max_latency_max",
+      "name": "zookeeper_max_latency_max",
       "display_name": "Max Latency Peak",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",

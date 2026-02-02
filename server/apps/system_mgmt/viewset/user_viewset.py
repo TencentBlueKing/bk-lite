@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.permission_cache import clear_user_permission_cache
 from apps.rpc.cmdb import CMDB
 from apps.system_mgmt.models import Group, Role, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
@@ -154,7 +155,12 @@ class UserViewSet(ViewSetUtils):
                 UserRule.objects.bulk_create(add_rule, batch_size=100)
 
             # 记录操作日志
-            log_operation(request, "create", "user", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
+            log_operation(
+                request,
+                "create",
+                "user",
+                f"新增用户: {kwargs['username']} ({kwargs['lastName']})",
+            )
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -205,8 +211,17 @@ class UserViewSet(ViewSetUtils):
         # 删除用户
         users.delete()
 
+        # 清除权限缓存
+        for user_info in user_info_list:
+            clear_user_permission_cache(user_info["username"], user_info.get("domain", "domain.com"))
+
         # 记录操作日志
-        log_operation(request, "delete", "user", f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)")
+        log_operation(
+            request,
+            "delete",
+            "user",
+            f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)",
+        )
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -237,9 +252,21 @@ class UserViewSet(ViewSetUtils):
             cache.delete_many(keys)
 
             # 同步用户数据到CMDB
-            CMDB().sync_display_fields(users=[{"id": pk, "username": params["username"], "display_name": params.get("lastName")}])
+            CMDB().sync_display_fields(
+                users=[
+                    {
+                        "id": pk,
+                        "username": params["username"],
+                        "display_name": params.get("lastName"),
+                    }
+                ]
+            )
             # 记录操作日志
             log_operation(request, "update", "user", f"编辑用户: {params['username']}")
+
+            # 清除权限缓存
+            clear_user_permission_cache(params["username"])
+
         return JsonResponse({"result": True})
 
     @action(detail=True, methods=["POST"])
@@ -253,6 +280,10 @@ class UserViewSet(ViewSetUtils):
             return JsonResponse({"result": False, "message": "用户组不能为空"})
         user.group_list.append(request.data.get("group_id"))
         user.save()
+
+        # 清除权限缓存
+        clear_user_permission_cache(user.username, user.domain)
+
         return JsonResponse({"result": True})
 
     @action(detail=True, methods=["POST"])
@@ -266,4 +297,8 @@ class UserViewSet(ViewSetUtils):
             return JsonResponse({"result": False, "message": "用户组不能为空"})
         user.group_list.remove(request.data.get("group_id"))
         user.save()
+
+        # 清除权限缓存
+        clear_user_permission_cache(user.username, user.domain)
+
         return JsonResponse({"result": True})

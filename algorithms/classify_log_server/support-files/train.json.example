@@ -1,0 +1,184 @@
+{
+  "_comment": "Spell 日志聚类训练配置文件",
+  "_usage": "复制为 train.json 并根据需要修改参数",
+  
+  "model": {
+    "type": "spell",
+    "_type_desc": "模型类型，当前项目仅支持 spell (Streaming Parser for Event Logs using LCS)",
+    
+    "name": "spell_log_clustering",
+    "_name_desc": "模型名称，用于 MLflow 记录和标识"
+  },
+
+  "hyperparams": {
+    "_comment": "超参数配置（自动进行超参数搜索）",
+    
+    "use_feature_engineering": false,
+    "_use_feature_engineering_desc": "特征工程总开关。Spell/Drain等模板方法通常不需要（设为false）；LogBERT/DeepLog等深度学习方法建议启用（设为true）",
+    "_algorithm_recommendation": {
+      "Spell/Drain": "推荐 use_feature_engineering=false，基于模板的方法不需要特征工程",
+      "LogBERT/DeepLog": "推荐 use_feature_engineering=true 并启用所有特征类型"
+    },
+    
+    "random_state": 42,
+    "_random_state_desc": "随机种子，保证结果可复现",
+    
+    "max_evals": 50,
+    "_max_evals_desc": "超参数搜索的最大评估次数。设为 0 跳过搜索，直接使用 search_space 中的第一个值。大于 0 时自动启用早停机制",
+    "_early_stopping_desc": "早停机制会根据 max_evals 自动计算 patience 等参数，避免无效搜索浪费资源",
+    
+    "metric": "template_quality_score",
+    "_metric_options": ["num_templates", "coverage_rate", "template_diversity", "template_quality_score"],
+    "_metric_desc": "优化目标指标。template_quality_score=综合质量评分（推荐），num_templates=模板数量，coverage_rate=覆盖率，template_diversity=多样性",
+    
+    "search_space": {
+      "_comment": "超参数搜索空间（仅在 max_evals > 0 时生效）",
+      
+      "tau": [0.5, 0.4, 0.45, 0.55, 0.6],
+      "_tau_desc": "Spell LCS 相似度阈值候选值。范围 0-1，越大越严格（生成更多模板）",
+      "_tau_recommendation": {
+        "0.3-0.4": "宽松匹配，适合变化较大的日志",
+        "0.5": "默认值（推荐首选），适合大多数场景",
+        "0.6-0.7": "严格匹配，适合格式统一的日志"
+      },
+      
+      "_advanced_params_comment": "以下为高级参数，仅在需要精细调优时启用",
+      
+      "merge_threshold": [0.85],
+      "_merge_threshold_desc": "聚类合并阈值（可选）。范围 0-1，控制训练后聚类合并的严格程度",
+      "_merge_threshold_note": "注释掉此行则使用默认值 0.85。设为 0 禁用合并",
+      "_merge_threshold_recommendation": {
+        "0.8": "激进合并，减少模板数量",
+        "0.85": "默认值（推荐），平衡准确性和泛化",
+        "0.9-0.95": "保守合并，保留更多细粒度模板"
+      },
+      
+      "diversity_threshold": [3],
+      "_diversity_threshold_desc": "Token 多样性阈值（可选）。整数，>=1，控制何时将变化的 token 标记为通配符 <*>",
+      "_diversity_threshold_note": "注释掉此行则使用默认值 3。值越小，生成的通配符越多（模板更泛化）",
+      "_diversity_threshold_recommendation": {
+        "2": "激进泛化，适合变化极大的字段（如时间戳、ID）",
+        "3": "默认值（推荐），适合大多数场景",
+        "4-5": "保守泛化，保留更多具体信息"
+      },
+      
+      "_position_weight_note": "位置权重已内置启用（头部=2.0, 尾部=1.5, 中间=1.0），通常不需要调整"
+    }
+  },
+  
+  "preprocessing": {
+    "_comment": "日志预处理配置（必须启用，无开关）",
+    
+    "remove_digits": false,
+    "_remove_digits_desc": "是否将数字替换为 <NUM>。true 可提高模板泛化能力",
+    
+    "remove_special_chars": false,
+    "_remove_special_chars_desc": "是否移除特殊字符（保留字母数字和基本分隔符）",
+    
+    "lowercase": false,
+    "_lowercase_desc": "是否转小写。建议保持原样以保留大小写语义",
+    
+    "custom_regex": [],
+    "_custom_regex_desc": "自定义正则表达式替换规则列表",
+    "_custom_regex_examples": [
+      {"pattern": "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}", "replacement": "<IP>"},
+      {"pattern": "/[a-zA-Z0-9_/\\-\\.]+", "replacement": "<PATH>"},
+      {"pattern": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "replacement": "<UUID>"}
+    ]
+  },
+  
+  "feature_engineering": {
+    "_comment": "特征工程详细配置（仅当 hyperparams.use_feature_engineering=true 时生效）",
+    
+    "text_features": {
+      "_comment": "文本统计特征（轻量级，计算快速）",
+      "enable": true,
+      "_enable_desc": "是否提取文本统计特征。建议启用",
+      
+      "features": ["length", "token_count", "digit_ratio", "special_char_ratio", "uppercase_ratio", "avg_token_length"],
+      "_features_desc": "要提取的文本特征列表",
+      "_features_options": {
+        "length": "日志长度",
+        "token_count": "token数量（空格分割）",
+        "digit_ratio": "数字字符占比",
+        "special_char_ratio": "特殊字符占比",
+        "uppercase_ratio": "大写字母占比",
+        "avg_token_length": "平均token长度"
+      }
+    },
+    
+    "time_features": {
+      "_comment": "时间特征（轻量级，需要时间戳列）",
+      "enable": true,
+      "_enable_desc": "是否提取时间特征。需要日志数据包含时间戳列",
+      
+      "datetime_column": "timestamp",
+      "_datetime_column_desc": "时间戳列名",
+      
+      "cyclical_features": ["hour", "day_of_week"],
+      "_cyclical_features_desc": "周期性时间特征列表（会自动添加sin/cos编码）",
+      "_cyclical_features_options": ["hour", "day_of_week", "day", "month", "week", "minute", "second"],
+      
+      "interval_features": true,
+      "_interval_features_desc": "是否提取时间间隔特征（相邻日志的时间差）"
+    },
+    
+    "level_features": {
+      "_comment": "日志级别特征（轻量级，需要level列）",
+      "enable": true,
+      "_enable_desc": "是否提取日志级别特征。需要日志数据包含级别列（DEBUG/INFO/WARN/ERROR等）",
+      
+      "level_column": "level",
+      "_level_column_desc": "日志级别列名",
+      
+      "level_mapping": {
+        "DEBUG": 0,
+        "INFO": 1,
+        "WARN": 2,
+        "WARNING": 2,
+        "ERROR": 3,
+        "FATAL": 4,
+        "CRITICAL": 4
+      },
+      "_level_mapping_desc": "日志级别到数值的映射（数值越大越严重）"
+    },
+    
+    "frequency_features": {
+      "_comment": "频率特征（轻量级，捕捉日志出现频率和罕见度）",
+      "enable": true,
+      "_enable_desc": "是否提取频率特征。用于识别罕见日志和异常模式",
+      
+      "window_size": "5min",
+      "_window_size_desc": "时间窗口大小（用于计算窗口内日志频率）。格式: '5min', '1H', '1D'等"
+    },
+    
+    "sequence_features": {
+      "_comment": "序列特征（中等开销，捕捉日志前后关系）",
+      "enable": false,
+      "_enable_desc": "是否提取序列特征。需要保持日志时间顺序。计算开销较大，建议深度学习方法使用",
+      
+      "window_size": 10,
+      "_window_size_desc": "滑动窗口大小（用于统计窗口内的日志重复）"
+    },
+    
+    "semantic_features": {
+      "_comment": "语义特征（计算密集型，文本向量化）",
+      "enable": false,
+      "_enable_desc": "是否提取语义特征（TF-IDF/Word2Vec/BERT）。计算密集型，仅深度学习方法建议启用",
+      
+      "method": "tfidf",
+      "_method_desc": "语义特征提取方法",
+      "_method_options": ["tfidf", "word2vec", "bert"],
+      
+      "max_features": 100,
+      "_max_features_desc": "最大特征维度（TF-IDF向量维度）"
+    }
+  },
+  
+  "mlflow": {
+    "_comment": "MLflow 实验跟踪配置",
+    
+    "experiment_name": "log_clustering_spell",
+    "_experiment_name_desc": "MLflow 实验名称。用于组织和管理训练运行。tracking_uri 通过环境变量 MLFLOW_TRACKING_URI 配置"
+  }
+}

@@ -10,15 +10,12 @@ from apps.core.logger import celery_logger as logger
 
 
 class EventAlertManager:
-    """事件告警管理服务"""
-
     def __init__(self, policy, instances_map: dict, active_alerts):
         self.policy = policy
         self.instances_map = instances_map
         self.active_alerts = active_alerts
 
     def create_events(self, events):
-        """创建事件 - 支持关联告警外键"""
         if not events:
             return []
 
@@ -34,7 +31,9 @@ class EventAlertManager:
                     id=event_id,
                     alert_id=alert_id,
                     policy_id=self.policy.id,
-                    monitor_instance_id=event["instance_id"],
+                    monitor_instance_id=event.get("monitor_instance_id", ""),
+                    metric_instance_id=event.get("metric_instance_id", ""),
+                    dimensions=event.get("dimensions", {}),
                     value=event["value"],
                     level=event["level"],
                     content=event["content"],
@@ -64,7 +63,6 @@ class EventAlertManager:
         return event_objs
 
     def _create_raw_data_records(self, events_with_raw_data, event_objs):
-        """创建事件原始数据记录"""
         event_obj_map = {obj.id: obj for obj in event_objs}
 
         raw_data_objects = []
@@ -86,11 +84,6 @@ class EventAlertManager:
             )
 
     def create_events_and_alerts(self, events):
-        """创建事件和告警 - 先创建告警再创建事件以支持外键关联
-
-        Returns:
-            tuple: (事件对象列表, 新告警列表)
-        """
         if not events:
             return [], []
 
@@ -98,13 +91,14 @@ class EventAlertManager:
         existing_alert_events = []
 
         active_alerts_map = {
-            alert.monitor_instance_id: alert for alert in self.active_alerts
+            self._get_alert_metric_instance_id(alert): alert
+            for alert in self.active_alerts
         }
 
         for event in events:
-            instance_id = event["instance_id"]
-            if instance_id in active_alerts_map:
-                alert = active_alerts_map[instance_id]
+            metric_instance_id = event.get("metric_instance_id", "")
+            if metric_instance_id in active_alerts_map:
+                alert = active_alerts_map[metric_instance_id]
                 event["alert_id"] = alert.id
                 event["_alert_obj"] = alert
                 existing_alert_events.append(event)
@@ -121,15 +115,15 @@ class EventAlertManager:
                     f"got {len(new_alerts)} for policy {self.policy.id}"
                 )
 
-            alert_map = {alert.monitor_instance_id: alert for alert in new_alerts}
+            alert_map = {alert.metric_instance_id: alert for alert in new_alerts}
             for event in new_alert_events:
-                alert = alert_map.get(event["instance_id"])
+                alert = alert_map.get(event.get("metric_instance_id", ""))
                 if alert:
                     event["alert_id"] = alert.id
                     event["_alert_obj"] = alert
                 else:
                     logger.error(
-                        f"Failed to get alert for event instance {event['instance_id']} "
+                        f"Failed to get alert for event metric_instance {event.get('metric_instance_id')} "
                         f"in policy {self.policy.id}"
                     )
                     event["alert_id"] = None
@@ -158,14 +152,30 @@ class EventAlertManager:
 
         return event_objs, new_alerts
 
+    def _get_alert_metric_instance_id(self, alert) -> str:
+        if alert.metric_instance_id:
+            return alert.metric_instance_id
+        return str((alert.monitor_instance_id,))
+
     def _create_alerts_from_events(self, events):
-        """从事件数据创建告警（不依赖事件对象）"""
         if not events:
             return []
 
         create_alerts = []
 
         for event in events:
+            monitor_instance_id = event.get("monitor_instance_id", "")
+            metric_instance_id = event.get("metric_instance_id", "")
+            dimensions = event.get("dimensions", {})
+
+            instance_name = self.instances_map.get(
+                monitor_instance_id, monitor_instance_id
+            )
+            dimension_str = self._format_dimension_str(dimensions)
+            display_name = (
+                f"{instance_name} - {dimension_str}" if dimension_str else instance_name
+            )
+
             if event["level"] != "no_data":
                 alert_type = "alert"
                 level = event["level"]
@@ -180,10 +190,10 @@ class EventAlertManager:
             create_alerts.append(
                 MonitorAlert(
                     policy_id=self.policy.id,
-                    monitor_instance_id=event["instance_id"],
-                    monitor_instance_name=self.instances_map.get(
-                        event["instance_id"], event["instance_id"]
-                    ),
+                    monitor_instance_id=monitor_instance_id,
+                    metric_instance_id=metric_instance_id,
+                    dimensions=dimensions,
+                    monitor_instance_name=display_name,
                     alert_type=alert_type,
                     level=level,
                     value=value,
@@ -199,11 +209,13 @@ class EventAlertManager:
         )
 
         if not new_alerts or not hasattr(new_alerts[0], "id"):
-            instance_ids = [event["instance_id"] for event in events]
+            metric_instance_ids = [
+                event.get("metric_instance_id", "") for event in events
+            ]
             new_alerts = list(
                 MonitorAlert.objects.filter(
                     policy_id=self.policy.id,
-                    monitor_instance_id__in=instance_ids,
+                    metric_instance_id__in=metric_instance_ids,
                     start_event_time=self.policy.last_run_time,
                     status="new",
                 ).order_by("id")
@@ -212,8 +224,19 @@ class EventAlertManager:
         logger.info(f"Created {len(new_alerts)} new alerts for policy {self.policy.id}")
         return new_alerts
 
+    def _format_dimension_str(self, dimensions: dict) -> str:
+        if not dimensions:
+            return ""
+        keys = list(dimensions.keys())
+        if not keys:
+            return ""
+        first_key = keys[0]
+        sub_dimensions = {k: v for k, v in dimensions.items() if k != first_key}
+        if not sub_dimensions:
+            return ""
+        return ", ".join(f"{k}:{v}" for k, v in sub_dimensions.items())
+
     def _update_existing_alerts_from_events(self, event_data_list):
-        """更新已有告警的等级和内容（如果新事件级别更高）"""
         if not event_data_list:
             return
 
@@ -223,7 +246,7 @@ class EventAlertManager:
             alert = event_data.get("_alert_obj")
             if not alert:
                 logger.warning(
-                    f"Event data missing _alert_obj: {event_data.get('instance_id')}"
+                    f"Event data missing _alert_obj: {event_data.get('metric_instance_id')}"
                 )
                 continue
 
@@ -254,7 +277,6 @@ class EventAlertManager:
             )
 
     def send_notice(self, event_obj):
-        """发送告警通知"""
         title = f"告警通知：{self.policy.name}"
         content = f"告警内容：{event_obj.content}"
 
@@ -279,7 +301,6 @@ class EventAlertManager:
         return []
 
     def notify_events(self, event_objs):
-        """批量发送事件通知"""
         events_to_notify = []
 
         for event in event_objs:

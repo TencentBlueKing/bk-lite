@@ -5,6 +5,7 @@ import useMlopsManageApi from '@/app/mlops/api/manage';
 import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
 import UploadModal from "../../uploadModal";
+import DatasetReleaseList from '../DatasetReleaseList';
 import OperateModal from "@/components/operate-modal";
 import {
   Input,
@@ -17,7 +18,7 @@ import {
   message,
 } from "antd";
 import { TYPE_CONTENT, TYPE_COLOR } from "@/app/mlops/constants";
-import { ColumnItem, ModalRef, Pagination, TableData } from '@/app/mlops/types';
+import { ColumnItem, ModalRef, Pagination, TableData, DatasetType } from '@/app/mlops/types';
 const { Search } = Input;
 
 const ClassificationDetail = () => {
@@ -25,7 +26,7 @@ const ClassificationDetail = () => {
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
-  const { getClassificationTrainData, deleteClassificationTrainData, updateClassificationTrainData } = useMlopsManageApi();
+  const { getTrainDataByDataset, deleteTrainDataFile, updateClassificationTrainData } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [currentData, setCurrentData] = useState<any>(null);
@@ -79,7 +80,7 @@ const ClassificationDetail = () => {
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => toAnnotation(record)}
             >
               {t('common.detail')}
@@ -88,7 +89,7 @@ const ClassificationDetail = () => {
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => openModal(record)}
             >
               {t('common.edit')}
@@ -138,13 +139,14 @@ const ClassificationDetail = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getClassificationTrainData({
+      const { count, items } = await getTrainDataByDataset({
+        key: DatasetType.CLASSIFICATION,
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
         page_size: pagination.pageSize
       });
-      
+
       const _tableData = items?.map((item: any) => {
         return {
           id: item?.id,
@@ -166,7 +168,7 @@ const ClassificationDetail = () => {
         }
       });
     }
-    catch (e) { console.log(e) }
+    catch (e) { console.error(e) }
     finally { setLoading(false); }
   }, [t, searchParams]);
 
@@ -182,9 +184,9 @@ const ClassificationDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteClassificationTrainData(data.id);
+      await deleteTrainDataFile(data.id, DatasetType.CLASSIFICATION);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
@@ -202,7 +204,7 @@ const ClassificationDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'log_clustering') {
+      if (activeTap === DatasetType.LOG_CLUSTERING) {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
@@ -214,7 +216,7 @@ const ClassificationDetail = () => {
         getDataset();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }
@@ -242,9 +244,9 @@ const ClassificationDetail = () => {
             ]}
           />
         </div>
-        <div className='flex'>
+        <div className='flex gap-2'>
           <Search
-            className="w-[240px] mr-1.5"
+            className="w-60 mr-1.5"
             placeholder={t('common.search')}
             enterButton
             onSearch={onSearch}
@@ -254,6 +256,9 @@ const ClassificationDetail = () => {
             <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['File View']}>
+            <DatasetReleaseList datasetType={DatasetType.CLASSIFICATION} />
           </PermissionWrapper>
         </div>
       </div>

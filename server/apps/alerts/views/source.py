@@ -55,7 +55,6 @@ def receiver_data(request):
         if not secret:
             return JsonResponse({"status": "error", "message": "Missing secret."}, status=400)
 
-        # 对接到
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)
         adapter = adapter_class(alert_source=event_source, secret=secret, events=events)
 

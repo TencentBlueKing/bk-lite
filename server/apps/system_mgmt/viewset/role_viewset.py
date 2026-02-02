@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 
 from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, Menu, Role, User
 from apps.system_mgmt.serializers.role_serializer import RoleSerializer
@@ -42,7 +43,13 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
             )
         for client_obj in client_list:
             app_role = role_map.get(client_obj["name"], [])
-            return_data.append({"id": client_obj["id"] * 886, "name": client_obj["name"], "children": app_role})
+            return_data.append(
+                {
+                    "id": client_obj["id"] * 886,
+                    "name": client_obj["name"],
+                    "children": app_role,
+                }
+            )
         return JsonResponse({"result": True, "data": return_data})
 
     @action(detail=False, methods=["GET"])
@@ -83,7 +90,12 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         )
 
         # 记录操作日志
-        log_operation(request, "create", "role", f"新增角色: {request.data['name']} (应用: {request.data.get('client_id')})")
+        log_operation(
+            request,
+            "create",
+            "role",
+            f"新增角色: {request.data['name']} (应用: {request.data.get('client_id')})",
+        )
 
         return_data = {"id": role_obj.id, "name": role_obj.name}
         return JsonResponse({"result": True, "data": return_data})
@@ -94,11 +106,21 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         role_id = request.data.get("role_id")
         role_name = request.data.get("role_name")
         if role_name in ["admin", "normal"]:
-            return JsonResponse({"result": False, "message": self.loader.get("error.cannot_delete_admin_normal_roles")})
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": self.loader.get("error.cannot_delete_admin_normal_roles"),
+                }
+            )
         users = User.objects.filter(role_list__contains=int(role_id)).values_list("username", flat=True)
         if users:
             msg = "、".join([i["username"] for i in list(users)])
-            return JsonResponse({"result": False, "message": self.loader.get("error.role_used_by_users").format(users=msg)})
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": self.loader.get("error.role_used_by_users").format(users=msg),
+                }
+            )
         Role.objects.filter(id=role_id).delete()
 
         # 记录操作日志
@@ -129,17 +151,28 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
 
         user_list = User.objects.filter(id__in=user_ids)
         usernames = []
+        affected_users = []
         for i in user_list:
             if role_id not in i.role_list:
                 i.role_list.append(int(role_id))
                 usernames.append(i.username)
+                affected_users.append({"username": i.username, "domain": i.domain})
         User.objects.bulk_update(user_list, ["role_list"], batch_size=100)
+
+        # 清除受影响用户的权限缓存
+        if affected_users:
+            clear_users_permission_cache(affected_users)
 
         # 记录操作日志
         if is_superuser:
             log_operation(request, "create", "role", f"新增超级管理员: {', '.join(usernames)}")
         else:
-            log_operation(request, "create", "role", f"添加用户到角色 {role_name}: {', '.join(usernames)}")
+            log_operation(
+                request,
+                "create",
+                "role",
+                f"添加用户到角色 {role_name}: {', '.join(usernames)}",
+            )
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -156,17 +189,28 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
 
         user_list = User.objects.filter(id__in=user_ids)
         usernames = []
+        affected_users = []
         for i in user_list:
             if pk in i.role_list:
                 i.role_list.remove(pk)
                 usernames.append(i.username)
+                affected_users.append({"username": i.username, "domain": i.domain})
         User.objects.bulk_update(user_list, ["role_list"], batch_size=100)
+
+        # 清除受影响用户的权限缓存
+        if affected_users:
+            clear_users_permission_cache(affected_users)
 
         # 记录操作日志
         if is_superuser:
             log_operation(request, "delete", "role", f"删除超级管理员: {', '.join(usernames)}")
         else:
-            log_operation(request, "delete", "role", f"从角色 {role_name} 移除用户: {', '.join(usernames)}")
+            log_operation(
+                request,
+                "delete",
+                "role",
+                f"从角色 {role_name} 移除用户: {', '.join(usernames)}",
+            )
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -185,8 +229,18 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         keys.extend(RoleManage.get_cache_keys(user_menu_cache))
         cache.delete_many(keys)
 
+        # 清除所有拥有此角色的用户的权限缓存
+        affected_users = User.objects.filter(role_list__contains=int(role_id)).values("username", "domain")
+        if affected_users:
+            clear_users_permission_cache(list(affected_users))
+
         # 记录操作日志
-        log_operation(request, "update", "role", f"设置角色权限: {role_obj.name} (共{len(menus)}个菜单)")
+        log_operation(
+            request,
+            "update",
+            "role",
+            f"设置角色权限: {role_obj.name} (共{len(menus)}个菜单)",
+        )
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -199,26 +253,51 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         role_id = request.data.get("role_id")
 
         if not group_ids or not role_id:
-            return JsonResponse({"result": False, "message": self.loader.get("error.group_ids_role_id_required")})
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": self.loader.get("error.group_ids_role_id_required"),
+                }
+            )
 
         # 验证组织是否存在
         groups = Group.objects.filter(id__in=group_ids)
         if len(groups) != len(group_ids):
-            return JsonResponse({"result": False, "message": self.loader.get("error.some_groups_not_exist")})
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": self.loader.get("error.some_groups_not_exist"),
+                }
+            )
 
         # 验证角色是否存在
         try:
             role = Role.objects.get(id=role_id)
         except Role.DoesNotExist:
-            return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": self.loader.get("error.some_roles_not_exist"),
+                }
+            )
 
         # 使用ManyToMany关系批量分配角色
         for group in groups:
             group.roles.add(role)
 
+        # 清除受影响组织中用户的权限缓存
+        affected_users = User.objects.filter(group_list__overlap=group_ids).values("username", "domain")
+        if affected_users:
+            clear_users_permission_cache(list(affected_users))
+
         # 记录操作日志
         group_names = [g.name for g in groups]
-        log_operation(request, "create", "role", f"添加组织到角色 {role.name}: {', '.join(group_names)}")
+        log_operation(
+            request,
+            "create",
+            "role",
+            f"添加组织到角色 {role.name}: {', '.join(group_names)}",
+        )
 
         return JsonResponse({"result": True})
 
@@ -232,26 +311,51 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         role_id = request.data.get("role_id")
 
         if not group_ids or not role_id:
-            return JsonResponse({"result": False, "message": self.loader.get("error.group_ids_role_id_required")})
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": self.loader.get("error.group_ids_role_id_required"),
+                }
+            )
 
         # 验证组织是否存在
         groups = Group.objects.filter(id__in=group_ids)
         if len(groups) != len(group_ids):
-            return JsonResponse({"result": False, "message": self.loader.get("error.some_groups_not_exist")})
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": self.loader.get("error.some_groups_not_exist"),
+                }
+            )
 
         # 验证角色是否存在
         try:
             role = Role.objects.get(id=role_id)
         except Role.DoesNotExist:
-            return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": self.loader.get("error.some_roles_not_exist"),
+                }
+            )
 
         # 使用ManyToMany关系回收角色
         for group in groups:
             group.roles.remove(role)
 
+        # 清除受影响组织中用户的权限缓存
+        affected_users = User.objects.filter(group_list__overlap=group_ids).values("username", "domain")
+        if affected_users:
+            clear_users_permission_cache(list(affected_users))
+
         # 记录操作日志
         group_names = [g.name for g in groups]
-        log_operation(request, "delete", "role", f"从角色 {role.name} 移除组织: {', '.join(group_names)}")
+        log_operation(
+            request,
+            "delete",
+            "role",
+            f"从角色 {role.name} 移除组织: {', '.join(group_names)}",
+        )
 
         return JsonResponse({"result": True})
 
@@ -270,7 +374,12 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         try:
             role = Role.objects.get(id=role_id)
         except Role.DoesNotExist:
-            return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": self.loader.get("error.some_roles_not_exist"),
+                }
+            )
         # 获取拥有该角色的组织，支持按组名筛选
         queryset = role.group_set.all()
         if search:

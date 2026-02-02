@@ -143,7 +143,7 @@ class MetricQueryService:
         # 准备查询参数
         query = self.format_pmq()
         step = self.format_period(period, points)
-        group_by = ",".join(self.instance_id_keys)
+        group_by = ",".join(self.policy.group_by or [])
 
         # 获取聚合方法
         method = METHOD.get(self.policy.algorithm)
@@ -247,22 +247,28 @@ class MetricQueryService:
             metrics: VictoriaMetrics返回的原始指标数据
 
         Returns:
-            dict: 格式化后的指标数据 {instance_id: {"value": float, "raw_data": dict}}
+            dict: 格式化后的指标数据 {metric_instance_id: {"value": float, "raw_data": dict}}
         """
         result = {}
+        group_by_keys = self.policy.group_by or []
 
         for metric_info in metrics.get("data", {}).get("result", []):
-            # 根据instance_id_keys提取实例ID
-            instance_id = str(
-                tuple([metric_info["metric"].get(key) for key in self.instance_id_keys])
+            instance_id_tuple = tuple(
+                [metric_info["metric"].get(key) for key in group_by_keys]
             )
+            metric_instance_id = str(instance_id_tuple)
 
-            # 应用实例范围过滤
-            if self.instances_map and instance_id not in self.instances_map:
-                continue
+            if self.instances_map:
+                monitor_instance_id = (
+                    str((instance_id_tuple[0],)) if instance_id_tuple else ""
+                )
+                if monitor_instance_id not in self.instances_map:
+                    continue
 
-            # 提取最后一个时间点的值
             value = metric_info["values"][-1]
-            result[instance_id] = {"value": float(value[1]), "raw_data": metric_info}
+            result[metric_instance_id] = {
+                "value": float(value[1]),
+                "raw_data": metric_info,
+            }
 
         return result

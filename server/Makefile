@@ -14,7 +14,17 @@ migrate:
 	uv run python manage.py createcachetable django_cache
 
 server-init:
-	uv run manage.py batch_init --apps="system_mgmt,cmdb,monitor,node_mgmt,console_mgmt,alerts,log,mlops,operation_analysis"
+	uv run python manage.py init_realm_resource
+	uv run python manage.py init_login_settings
+	uv run python manage.py create_user admin password --email=admin@bklite.net --is_superuser
+	uv run python manage.py model_init
+	uv run python manage.py plugin_init
+	uv run python manage.py node_init
+	uv run python manage.py log_init
+	uv run python manage.py init_bot
+	uv run python manage.py init_channel
+	uv run python manage.py init_llm
+	uv run python manage.py init_bk_login_settings
 
 setup-dev-user:
 	DJANGO_SUPERUSER_USERNAME=admin DJANGO_SUPERUSER_EMAIL=admin@example.com DJANGO_SUPERUSER_PASSWORD=password uv run python manage.py createsuperuser --noinput
@@ -49,11 +59,3 @@ start-nats:
 
 test:
 	uv run pytest
-
-bootstrap:
-	uv sync --all-groups --all-extras
-	uv run python manage.py makemigrations
-	uv run python manage.py migrate
-	uv run python manage.py createcachetable django_cache
-	uv run python manage.py initialize_buckets
-	uv run python manage.py batch_init --apps="system_mgmt,cmdb,monitor,node_mgmt,console_mgmt,alerts,log,mlops,operation_analysis"

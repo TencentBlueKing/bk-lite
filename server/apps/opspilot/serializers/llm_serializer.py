@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import AuthSerializer, TeamSerializer
 from apps.opspilot.models import LLMModel, LLMSkill, SkillRequestLog, SkillTools
 from apps.opspilot.serializers.model_type_serializer import CustomProviderSerializer
@@ -40,15 +41,53 @@ class SkillRequestLogSerializer(serializers.ModelSerializer):
 class SkillToolsSerializer(AuthSerializer):
     permission_key = "tools"
 
-    # TODO: 后续需要针对内置 tools 进行中英文翻译，使用 LanguageLoader 替代 gettext
-    # 需要在 opspilot/language/*.yaml 中添加内置工具的描述翻译
     description_tr = serializers.SerializerMethodField()
+    tools = serializers.SerializerMethodField()
 
     class Meta:
         model = SkillTools
         fields = "__all__"
 
-    @staticmethod
-    def get_description_tr(instance: SkillTools):
-        # 暂时直接返回原始描述，不进行翻译
+    def _get_language_loader(self):
+        """获取语言加载器，根据请求的用户语言设置"""
+        request = self.context.get("request")
+        locale = "en"  # 默认语言
+        if request and hasattr(request, "user") and request.user:
+            locale = getattr(request.user, "locale", "en") or "en"
+        return LanguageLoader(app="opspilot", default_lang=locale)
+
+    def get_description_tr(self, instance: SkillTools):
+        """获取翻译后的工具集描述"""
+        loader = self._get_language_loader()
+
+        # 尝试从语言文件获取翻译，使用 name 作为 key
+        translated = loader.get(f"tools.{instance.name}.description")
+        if translated:
+            return translated
+
+        # fallback 到原始描述
         return instance.description
+
+    def get_tools(self, instance: SkillTools):
+        """获取翻译后的子工具列表（覆盖原始 tools 字段）"""
+        return self._get_translated_tools(instance)
+
+    def _get_translated_tools(self, instance: SkillTools):
+        """翻译子工具列表的通用方法"""
+        loader = self._get_language_loader()
+        tools = instance.tools or []
+        translated_tools = []
+
+        for tool in tools:
+            tool_name = tool.get("name", "")
+            original_description = tool.get("description", "")
+
+            # 尝试从语言文件获取子工具的翻译
+            # 翻译键格式: tools.{parent_tool_name}.tools.{sub_tool_name}.description
+            translated_description = loader.get(f"tools.{instance.name}.tools.{tool_name}.description")
+
+            translated_tool = tool.copy()
+            translated_tool["description"] = translated_description if translated_description else original_description
+            translated_tools.append(translated_tool)
+
+        return translated_tools
