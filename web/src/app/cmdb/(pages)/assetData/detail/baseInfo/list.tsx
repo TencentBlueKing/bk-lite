@@ -30,6 +30,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const [form] = Form.useForm();
   const [fieldList, setFieldList] = useState<DescriptionsProps['items']>([]);
   const [attrList, setAttrList] = useState<AttrFieldType[]>([]);
+  const [isBatchEdit, setIsBatchEdit] = useState<boolean>(false);
+  const [isBatchSaving, setIsBatchSaving] = useState<boolean>(false);
   const { t } = useTranslation();
 
   const { updateInstance, getInstanceProxys } = useInstanceApi();
@@ -121,6 +123,105 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     }
     setAttrList(list);
     onsuccessEdit();
+  };
+
+  // 获取可以编辑的值
+  const getEditableFieldValue = (fieldItem: any) =>
+    fieldItem._originalValue ?? fieldItem.value;
+
+
+  const normalizeFieldValue = (
+    fieldKey: string,
+    fieldValue: any,
+    fieldAttr?: any
+  ) => {
+    let value = fieldValue;
+    if (fieldAttr?.attr_type === 'organization' && value != null) {
+      value = Array.isArray(value) ? value : [value];
+    }
+    if (fieldKey === 'cloud') {
+      return String(value);
+    }
+    if (fieldKey === 'cloud_id') {
+      return value == null ? value : +value;
+    }
+    return value;
+  };
+
+  const getAttrById = (id: string) =>
+    attrList.flatMap((group: any) => group.attrs || []).find(
+      (item: any) => item.attr_id === id
+    );
+
+  const toggleBatchEdit = (nextState: boolean) => {
+    const list = deepClone(attrList);
+    const values: any = {};
+
+    list.forEach((group: any) => {
+      (group.attrs || []).forEach((item: any) => {
+        if (item.editable && item.attr_id !== 'cloud_id') {
+          item.isEdit = nextState;
+          if (nextState) {
+            values[item.attr_id] = getEditableFieldValue(item);
+          }
+        }
+      });
+    });
+
+    setAttrList(list);
+    setIsBatchEdit(nextState);
+    if (nextState) {
+      form.setFieldsValue(values);
+    }
+  };
+
+  const handleBatchCancel = () => {
+    toggleBatchEdit(false);
+    const resetValues: any = {};
+    attrList.forEach((group: any) => {
+      (group.attrs || []).forEach((item: any) => {
+        resetValues[item.attr_id] = getEditableFieldValue(item);
+      });
+    });
+    form.setFieldsValue(resetValues);
+  };
+
+  const handleBatchSave = async () => {
+    setIsBatchSaving(true);
+    try {
+      const values = await form.validateFields();
+      const params: any = {};
+
+      Object.keys(values).forEach((key) => {
+        const rawValue = values[key];
+        if (rawValue === undefined) {
+          return;
+        }
+        const fieldAttr = getAttrById(key);
+        params[key] = normalizeFieldValue(key, rawValue, fieldAttr);
+      });
+
+      await updateInstance(instId, params);
+      message.success(t('successfullyModified'));
+
+      const list = deepClone(attrList);
+      list.forEach((group: any) => {
+        (group.attrs || []).forEach((item: any) => {
+          if (Object.prototype.hasOwnProperty.call(params, item.attr_id)) {
+            item.value = params[item.attr_id];
+          }
+          if (item.isEdit) {
+            item.isEdit = false;
+          }
+        });
+      });
+
+      setAttrList(list);
+      setIsBatchEdit(false);
+      onsuccessEdit();
+    } finally {
+      setIsBatchSaving(false);
+    }
   };
 
   const initData = (list: any) => {
@@ -216,19 +317,23 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
               <div className={`flex items-center ${informationList.operateBtn}`}>
                 {item.isEdit ? (
                   <>
-                    <Button
-                      type="link"
-                      size="small"
-                      className="ml-[4px]"
-                      icon={<CheckOutlined />}
-                      onClick={() => confirmEdit(item.key)}
-                    />
-                    <Button
-                      type="link"
-                      size="small"
-                      icon={<CloseOutlined />}
-                      onClick={() => cancelEdit(item.key)}
-                    />
+                    {!isBatchEdit && (
+                      <>
+                        <Button
+                          type="link"
+                          size="small"
+                          className="ml-[4px]"
+                          icon={<CheckOutlined />}
+                          onClick={() => confirmEdit(item.key)}
+                        />
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<CloseOutlined />}
+                          onClick={() => cancelEdit(item.key)}
+                        />
+                      </>
+                    )}
                   </>
                 ) : (
                   <>
@@ -266,6 +371,9 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   };
 
   const enableEdit = (id: string) => {
+    if (isBatchEdit) {
+      return;
+    }
     const list = deepClone(attrList);
     // 通过for循环遍历分组，找到对应的属性并设置编辑状态
     for (const group of list) {
@@ -279,6 +387,9 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   };
 
   const cancelEdit = (id: string) => {
+    if (isBatchEdit) {
+      return;
+    }
     const list = deepClone(attrList);
     // 通过for循环遍历分组，恢复表单值为修改前的原始值
     for (const group of list) {
@@ -307,6 +418,9 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   };
 
   const confirmEdit = (id: string) => {
+    if (isBatchEdit) {
+      return;
+    }
     form
       .validateFields()
       .then((values) => {
@@ -381,8 +495,48 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   // 合并其他字段
   displayGroups.push(...otherGroups);
 
+  // 渲染详情页
+  const hasEditableField = attrList.some((group: any) =>
+    (group.attrs || []).some(
+      (item: any) => item.editable && item.attr_id !== 'cloud_id'
+    )
+  );
+
   return (
     <div>
+      {hasEditableField && (
+        <div className="flex items-center justify-end mb-2">
+          {isBatchEdit ? (
+            <>
+              <Button
+                type="primary"
+                size="small"
+                loading={isBatchSaving}
+                className="mr-2"
+                onClick={handleBatchSave}
+              >
+                {t('common.save')}
+              </Button>
+              <Button size="small" onClick={handleBatchCancel}>
+                {t('common.cancel')}
+              </Button>
+            </>
+          ) : (
+            <PermissionWrapper
+              requiredPermissions={['Edit']}
+              instPermissions={instDetail.permission}
+            >
+              <Button
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => toggleBatchEdit(true)}
+              >
+                {t('batchEdit')}
+              </Button>
+            </PermissionWrapper>
+          )}
+        </div>
+      )}
       {/* 通过遍历 fieldList，自动添加Collapse折叠面板容器，并设置默认展开 */}
       {displayGroups && displayGroups.length > 0 && (
         <Collapse
@@ -417,7 +571,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           })}
         </Collapse>
       )}
-    </div >
+    </div>
   );
 };
 

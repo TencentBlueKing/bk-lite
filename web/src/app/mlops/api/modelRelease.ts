@@ -1,25 +1,16 @@
 import useApiClient from '@/utils/request';
+import { TRAINJOB_MAP, SERVING_MAP } from '@/app/mlops/constants';
+import type { 
+  DatasetType,
+  AnomalyDetectionReasonParams,
+  ClassificationReasonParams
+} from '@/app/mlops/types';
 
-interface LabelData {
-  timestamp: string;
-  value: string;
-  label: number;
-}
 
-interface AnomalyDetectionReason {
-  model_name: string;
-  model_version: string;
-  algorithm: string;
-  data: LabelData[];
-  anomaly_threshold: number;
-}
 
-interface ClassificationReason {
-  model_name: string;
-  model_version: string;
-  algorithm: string;
-  data: any[];
-}
+// 使用导入的类型别名
+type AnomalyDetectionReason = AnomalyDetectionReasonParams;
+type ClassificationReason = ClassificationReasonParams;
 
 const useMlopsModelReleaseApi = () => {
   const {
@@ -31,76 +22,27 @@ const useMlopsModelReleaseApi = () => {
   } = useApiClient();
 
   // 获取能力发布列表
-  const getAnomalyServingsList = async (params: {
-    name?: string;
-    anomaly_detection_train_job?: number;
-    status?: string;
-    page?: number;
-    page_size?: number;
-  }) => {
-    const searchParams = new URLSearchParams();
-
-    // 只添加有值的参数
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        searchParams.append(key, value.toString());
-      }
-    });
-
-    return await get(`/mlops/anomaly_detection_servings/?${searchParams}`);
-  };
-
-  // 获取时序预测能力列表
-  const getTimeSeriesPredictServingsList = async ({
+  const getServingList = async ({
+    key,
     page,
-    page_size
+    page_size,
   }: {
+    key: DatasetType,
     page?: number,
     page_size?: number
   }) => {
-    return await get(`/mlops/timeseries_predict_servings/?page=${page}&page_size=${page_size}`);
+    return await get(`/mlops/${SERVING_MAP[key]}/?page=${page}&page_size=${page_size}`)
   };
 
-  // 获取日志聚类能力列表
-  const getLogClusteringServingsList = async ({
-    page,
-    page_size
-  }: {
-    page?: number,
-    page_size?: number
-  }) => {
-    return await get(`/mlops/log_clustering_servings/?page=${page}&page_size=${page_size}`);
+
+  // 查询单个能力
+  const getOneServingInfo = async (id: number, key: DatasetType) => {
+    return await get(`/mlops/${SERVING_MAP[key]}/${id}/`);
   };
 
-  // 获取分类任务能力列表
-  const getClassificationServingsList = async ({
-    page,
-    page_size
-  }: {
-    page?: number,
-    page_size?: number
-  }) => {
-    return await get(`/mlops/classification_servings/?page=${page}&page_size=${page_size}`)
-  };
-
-  // 查询单个能力发布
-  const getOneAnomalyServing = async (id: number) => {
-    return await get(`/mlops/anomaly_detection_servings/${id}/`);
-  };
-
-  // 查询单个时序预测能力
-  const getOneTimeSeriesPredictServing = async (id: number) => {
-    return await get(`/mlops/timeseries_predict_servings/${id}/`);
-  };
-
-  // 查询单个日志聚类能力
-  const getOneLogClusteringServing = async (id: number) => {
-    return await get(`/mlops/log_clustering_servings/${id}/`);
-  };
-
-  // 查询单个分类任务能力
-  const getOneClassificationServing = async (id: number) => {
-    return await get(`/mlops/classification_servings/${id}/`);
+  // 查询模型版本列表
+  const getModelVersionList = async (id: number, key: DatasetType) => {
+    return await get(`mlops/${TRAINJOB_MAP[key]}/${id}/model_versions`);
   };
 
   // 新增能力发布
@@ -108,9 +50,8 @@ const useMlopsModelReleaseApi = () => {
     name: string;
     description: string;
     model_version: string;
-    anomaly_detection_train_job: string;
+    train_job: string;
     status: string;
-    anomaly_threshold: number;
   }) => {
     return await post(`/mlops/anomaly_detection_servings/`, params);
   };
@@ -120,9 +61,8 @@ const useMlopsModelReleaseApi = () => {
     name: string;
     description: string;
     model_version: string;
-    time_series_predict_train_job: string;
+    train_job: string;
     status: string;
-    anomaly_threshold: number;
   }) => {
     return await post(`/mlops/timeseries_predict_servings/`, params);
   };
@@ -132,9 +72,8 @@ const useMlopsModelReleaseApi = () => {
     name: string;
     description: string;
     model_version: string;
-    log_clustering_train_job: string;
+    train_job: string;
     status: string;
-    anomaly_threshold: number;
   }) => {
     return await post(`/mlops/log_clustering_servings/`, params);
   };
@@ -144,11 +83,32 @@ const useMlopsModelReleaseApi = () => {
     name: string;
     description: string;
     model_version: string;
-    classification_train_job: string;
+    train_job: string;
     status: string;
-    anomaly_threshold: number;
   }) => {
     return await post(`/mlops/classification_servings/`, params);
+  };
+
+  // 新增图片分类任务能力
+  const addImageClassificationServings = async (params: {
+    name: string;
+    description: string;
+    model_version: string;
+    train_job: string;
+    status: string;
+  }) => {
+    return await post(`/mlops/image_classification_servings/`, params);
+  };
+
+  // 新增目标检测任务能力
+  const addObjectDetectionServings = async (params: {
+    name: string;
+    description: string;
+    model_version: string;
+    train_job: string;
+    status: string;
+  }) => {
+    return await post(`/mlops/object_detection_servings/`, params);
   };
 
   // 异常检测推理
@@ -176,9 +136,8 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    anomaly_detection_train_job?: string;
+    train_job?: string;
     status?: string;
-    anomaly_threshold?: number;
   }) => {
     return await patch(`/mlops/anomaly_detection_servings/${id}/`, params);
   };
@@ -188,9 +147,8 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    time_series_predict_train_job?: string;
+    train_job?: string;
     status?: string;
-    anomaly_threshold?: number;
   }) => {
     return await patch(`/mlops/timeseries_predict_servings/${id}/`, params);
   };
@@ -200,9 +158,8 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    log_clustering_train_job?: string;
+    train_job?: string;
     status?: string;
-    anomaly_threshold?: number;
   }) => {
     return await patch(`/mlops/log_clustering_servings/${id}/`, params);
   };
@@ -212,56 +169,61 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    classification_train_job?: string;
+    train_job?: string;
     status?: string;
-    anomaly_threshold?: number;
   }) => {
     return await patch(`/mlops/classification_servings/${id}/`, params)
   };
 
+  // 编辑图片分类任务能力
+  const updateImageClassificationServings = async (id: number, params: {
+    name?: string;
+    description?: string;
+    model_version?: string;
+    train_job?: string;
+    status?: string;
+  }) => {
+    return await patch(`/mlops/image_classification_servings/${id}/`, params)
+  };
+
+  // 编辑目标检测任务能力
+  const updateObjectDetectionServings = async (id: number, params: {
+    name?: string;
+    description?: string;
+    model_version?: string;
+    train_job?: string;
+    status?: string;
+  }) => {
+    return await patch(`/mlops/object_detection_servings/${id}/`, params)
+  };
+
   // 删除能力发布
-  const deleteAnomalyServing = async (id: number) => {
-    return await del(`/mlops/anomaly_detection_servings/${id}/`);
+  const deleteServing = async (id: number, key: DatasetType) => {
+    return await del(`/mlops/${SERVING_MAP[key]}/${id}/`);
   };
 
-  // 删除时序预测能力
-  const deleteTimeSeriesPredictServing = async (id: number) => {
-    return await del(`/mlops/timeseries_predict_servings/${id}`);
+  // 启动服务容器
+  const startServingContainer = async (id: number, key: DatasetType) => {
+    return await post(`/mlops/${SERVING_MAP[key]}/${id}/start`);
   };
 
-  // 删除日志聚类能力
-  const deleteLogClusteringServing = async (id: number) => {
-    return await del(`/mlops/log_clustering_servings/${id}`);
+  // 停止服务容器
+  const stopServingContainer = async (id: number, key: DatasetType) => {
+    return await post(`/mlops/${SERVING_MAP[key]}/${id}/stop`);
   };
 
-  // 删除分类任务能力
-  const deleteClassificationServing = async (id: number) => {
-    return await del(`/mlops/classification_servings/${id}`);
-  };
-
-  /// 启动时序预测服务容器
-  const startTimeseriesPredictServingContainer = async (id: number) => {
-    return await post(`/mlops/timeseries_predict_servings/${id}/start`);
-  };
-
-  // 停止时序预测服务容器
-  const stopTimeseriesPredictServingContainer = async (id: number) => {
-    return await post(`/mlops/timeseries_predict_servings/${id}/stop`);
-  };
 
   return {
-    getAnomalyServingsList,
-    getOneAnomalyServing,
-    getTimeSeriesPredictServingsList,
-    getLogClusteringServingsList,
-    getClassificationServingsList,
-    getOneTimeSeriesPredictServing,
-    getOneLogClusteringServing,
-    getOneClassificationServing,
+    getModelVersionList,
+    getServingList,
+    getOneServingInfo,
+
     addAnomalyServings,
     addLogClusteringServings,
     addTimeseriesPredictServings,
     addClassificationServings,
+    addImageClassificationServings,
+    addObjectDetectionServings,
     anomalyDetectionReason,
     timeseriesPredictReason,
     logClusteringReason,
@@ -270,12 +232,11 @@ const useMlopsModelReleaseApi = () => {
     updateTimeSeriesPredictServings,
     updateLogClusteringServings,
     updateClassificationServings,
-    deleteAnomalyServing,
-    deleteTimeSeriesPredictServing,
-    deleteLogClusteringServing,
-    deleteClassificationServing,
-    startTimeseriesPredictServingContainer,
-    stopTimeseriesPredictServingContainer
+    updateImageClassificationServings,
+    updateObjectDetectionServings,
+    deleteServing,
+    startServingContainer,
+    stopServingContainer
   };
 };
 

@@ -27,6 +27,12 @@ MAX_LOGIN_FAILURES = 2  # 登录失败最大重试次数
 BROWSER_LLM_TIMEOUT = int(os.getenv("BROWSER_LLM_TIMEOUT", "30"))  # LLM 调用超时
 BROWSER_STEP_TIMEOUT = int(os.getenv("BROWSER_STEP_TIMEOUT", "60"))  # 单步执行超时（包含导航、页面加载等）
 
+# 页面加载等待配置（秒），避免截图时页面仍在 loading
+# minimum_wait_page_load_time: 页面加载后最小等待时间，确保页面渲染完成后再截图
+# wait_for_network_idle_page_load_time: 等待网络请求完成的时间
+BROWSER_MIN_WAIT_PAGE_LOAD = float(os.getenv("BROWSER_MIN_WAIT_PAGE_LOAD", "2"))
+BROWSER_WAIT_NETWORK_IDLE = float(os.getenv("BROWSER_WAIT_NETWORK_IDLE", "2"))
+
 # 会话缓存：用于在同一个 Agent 运行周期内共享浏览器用户数据目录
 # 键: thread_id 或 run_id, 值: {"user_data_dir": str, "created_at": float}
 _SESSION_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -517,11 +523,15 @@ async def _browse_website_async(
             actual_headless = headless
 
         # 初始化 Browser
+        # 配置页面加载等待时间，确保截图时页面已完成渲染（避免截到 loading 状态）
         browser_init_kwargs = {
             "executable_path": executable_path,
             "headless": actual_headless,
             "enable_default_extensions": False,
             "user_data_dir": user_data_dir,  # 使用共享的用户数据目录保持会话状态
+            # 截图延迟配置：确保页面加载完成后再截图
+            "minimum_wait_page_load_time": BROWSER_MIN_WAIT_PAGE_LOAD,  # 默认 1.5 秒
+            "wait_for_network_idle_page_load_time": BROWSER_WAIT_NETWORK_IDLE,  # 默认 1.0 秒
         }
 
         browser = Browser(**browser_init_kwargs)
@@ -577,6 +587,49 @@ async def _browse_website_async(
    - 如果列表有滚动条，必须向下滚动查看是否有更多节点
    - 只有当所有可见节点都已检查完毕后，才能进入下一步骤
    - 禁止：只检查了部分节点就生成报告
+8. 重要 - 页面异常检测规则（仅巡检任务适用）：
+   【触发条件】：仅当任务包含"巡检"、"检查"、"健康检查"、"功能验证"等关键词时，才需要执行此规则。
+   普通浏览、数据提取等任务无需执行此规则，页面弹框不影响正常操作流程。
+
+   在巡检任务中，必须判断页面是否存在异常。以下情况必须记录为【异常】：
+
+   (1) 错误弹框/提示（必须检查）：
+       - 红色背景、红色边框、红色文字的弹框、Toast、通知、Alert
+       - 包含以下关键词的任何提示：错误、失败、异常、Error、Failed、Exception、Fail
+       - 包含 HTTP 状态码的提示：500、502、503、504、404、403、超时、timeout
+       - 右上角、页面中央、底部出现的错误通知条
+       - 感叹号图标（⚠️、❗、!）配合的警告/错误提示
+
+    (2) 页面加载失败：
+        - 页面显示"加载失败"、"网络错误"、"服务不可用"、"请求失败"
+        - 页面长时间显示空白、骨架屏、加载动画不消失
+        - 出现"重试"、"刷新"、"重新加载"按钮提示
+        - 页面内容区域显示"暂无数据"配合错误图标
+
+    (3) 页面加载速度过慢（重要 - 必须识别各类 loading 样式）：
+        - 如果点击菜单/链接后，页面加载时间超过2秒仍未完成，记录为【异常 - 页面加载速度过慢】
+        - 必须识别以下 loading 样式：
+          * 旋转图标/spinner（圆形旋转动画）
+          * 骨架屏（灰色占位块）
+          * 彩色圆点动画（如红、黄、绿、蓝四个圆点跳动，类似 Google 加载样式）
+          * 进度条动画
+          * "加载中..."、"Loading..." 文字提示
+          * 页面中央的任何动画图标
+        - 注意：这是性能问题，不是功能错误，需要单独标注
+        - 可继续执行后续检查，但必须记录此异常
+
+    (4) 系统错误展示：
+       - 页面直接显示报错堆栈信息（Stack Trace）
+       - 显示 JSON 格式的错误响应
+       - 控制台错误直接展示在页面上
+
+   【判断为正常】：页面主要内容正常显示，无上述任何异常情况
+
+    【记录格式】：在 memory 中记录每个页面状态，如：
+    - "首页: 正常"
+    - "监控: 异常 - 右上角出现红色提示'数据加载失败'"
+    - "告警: 异常 - 页面中央弹框显示'服务器错误 500'"
+    - "资产: 异常 - 页面加载速度过慢（超过2秒）"
 """
         else:
             extend_system_message = """
@@ -615,6 +668,49 @@ CORE RULES (MUST FOLLOW):
    - If the list has a scrollbar, scroll down to check for more nodes
    - Only proceed to the next step after ALL visible nodes have been checked
    - FORBIDDEN: Generating report after checking only a few nodes
+8. CRITICAL - Page Error Detection:
+    [TRIGGER CONDITION]: Only apply this rule when task contains keywords like "inspect", "check", "health check", "verification", "audit", "patrol".
+    For normal browsing or data extraction tasks, this rule does NOT apply - page popups should not interrupt normal operation flow.
+
+    When inspecting or checking page functionality, you MUST detect page anomalies. The following situations MUST be recorded as [ABNORMAL]:
+
+   (1) Error Popups/Notifications (MUST CHECK):
+       - Popups, Toasts, Notifications, Alerts with red background, red border, or red text
+       - Any prompt containing keywords: Error, Failed, Exception, Fail, Failure
+       - Prompts containing HTTP status codes: 500, 502, 503, 504, 404, 403, timeout
+       - Error notification bars appearing at top-right, center, or bottom of page
+       - Warning/error prompts with exclamation icons (⚠️, ❗, !)
+
+    (2) Page Load Failures:
+        - Page displays "Load Failed", "Network Error", "Service Unavailable", "Request Failed"
+        - Page shows blank content, skeleton screen, or loading animation that never completes
+        - "Retry", "Refresh", "Reload" button prompts appear
+        - Content area shows "No Data" with error icon
+
+    (3) Slow Page Load (IMPORTANT - Must recognize all loading styles):
+        - If page load time exceeds 2 seconds after clicking menu/link, record as [ABNORMAL - Slow page load]
+        - Must recognize these loading styles:
+          * Spinning icons/spinners (circular rotating animation)
+          * Skeleton screens (gray placeholder blocks)
+          * Colored dot animations (e.g., red, yellow, green, blue dots bouncing, Google-style loading)
+          * Progress bar animations
+          * "Loading...", "加载中..." text prompts
+          * Any animated icon in the center of the page
+        - Note: This is a performance issue, not a functional error, mark it separately
+        - Continue with subsequent checks, but must record this anomaly
+
+    (4) System Error Display:
+        - Page directly displays error stack traces
+        - JSON format error responses shown on page
+        - Console errors displayed directly on page
+
+    [NORMAL]: Main page content displays correctly without any of the above anomalies
+
+    [Recording Format]: Record each page status in memory, e.g.:
+    - "Homepage: Normal"
+    - "Monitor: Abnormal - Red toast appeared at top-right showing 'Data load failed'"
+    - "Alerts: Abnormal - Modal in center showing 'Server Error 500'"
+    - "Assets: Abnormal - Slow page load (exceeded 2 seconds)"
 """
 
         # 创建 browser-use agent（带回调支持和优化配置）
