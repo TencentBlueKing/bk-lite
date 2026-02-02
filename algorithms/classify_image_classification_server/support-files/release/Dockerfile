@@ -42,4 +42,10 @@ RUN rm -rf /root/.cache/matplotlib /root/.cache/fontconfig
 
 RUN apt-get reinstall -y supervisor
 
+ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-cls.pt /apps/yolo_models/yolo11n-cls.pt
+ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11x-cls.pt /apps/yolo_models/yolo11x-cls.pt
+ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11s-cls.pt /apps/yolo_models/yolo11s-cls.pt
+ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11m-cls.pt /apps/yolo_models/yolo11m-cls.pt
+ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11l-cls.pt /apps/yolo_models/yolo11l-cls.pt
+
 ENTRYPOINT ["/bin/bash","/apps/support-files/release/startup.sh"]
