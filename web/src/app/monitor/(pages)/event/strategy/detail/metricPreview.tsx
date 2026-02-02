@@ -107,11 +107,15 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setSelectedInstance(null);
       return;
     }
+    // 当 allInstances 已加载时，直接使用其中的名称信息
     const instanceItems: InstanceItem[] = source.values.map((val: string) => {
+      const foundInstance = allInstances.find(
+        (item) => item.instance_id === val
+      );
       return {
         instance_id: val,
-        instance_name: val,
-        instance_id_values: [val]
+        instance_name: foundInstance?.instance_name || val,
+        instance_id_values: foundInstance?.instance_id_values || [val]
       };
     });
     setInstances(instanceItems);
@@ -123,7 +127,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         setSelectedInstance(instanceItems[0].instance_id);
       }
     }
-  }, [source?.type, source?.values]);
+  }, [source?.type, source?.values, allInstances]);
 
   // 判断是否可以查询
   const canQuery = useMemo(() => {
@@ -294,46 +298,6 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       }
     }
   };
-
-  // 当 allInstances 加载完成后，更新 instances 中的 instance_name 和 instance_id_values
-  useEffect(() => {
-    if (allInstances.length === 0 || instances.length === 0) {
-      return;
-    }
-    // source.values 和 allInstances.instance_id 格式一致，都是 "('1_os_172.18.0.17',)"
-    // 需要从 allInstances 获取正确的 instance_id_values 用于查询
-    const updatedInstances = instances.map((inst) => {
-      const foundInstance = allInstances.find(
-        (item) => item.instance_id === inst.instance_id
-      );
-      if (foundInstance) {
-        const needsUpdate =
-          foundInstance.instance_name !== inst.instance_name ||
-          JSON.stringify(foundInstance.instance_id_values) !==
-            JSON.stringify(inst.instance_id_values);
-        if (needsUpdate) {
-          return {
-            ...inst,
-            instance_name: foundInstance.instance_name || inst.instance_id,
-            instance_id_values: foundInstance.instance_id_values || [
-              inst.instance_id
-            ]
-          };
-        }
-      }
-      return inst;
-    });
-    // 检查是否有更新
-    const hasUpdate = updatedInstances.some(
-      (item, index) =>
-        item.instance_name !== instances[index].instance_name ||
-        JSON.stringify(item.instance_id_values) !==
-          JSON.stringify(instances[index].instance_id_values)
-    );
-    if (hasUpdate) {
-      setInstances(updatedInstances);
-    }
-  }, [allInstances, instances.length]);
 
   // 查询数据
   const fetchData = async () => {
