@@ -16,3 +16,6 @@ update:
 
 serving:
 	uv run python -m bentoml serve classify_log_server.serving.service:MLService
+
+release:
+	docker build -t bklite/classify_log_server:latest -f ./support-files/release/Dockerfile . --push
