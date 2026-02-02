@@ -1,0 +1,19 @@
+[[inputs.prometheus]]
+    urls = ["${STARGAZER_URL}/api/monitor/{{ instance_type }}/metrics"]
+    interval = "{{ interval | default(60, true) }}s"
+    timeout = "{{ timeout | default(60, true) }}s"
+    response_timeout = "{{ response_timeout | default(60, true) }}s"
+
+    [inputs.prometheus.http_headers]
+        username = "{{ username }}"
+        password = "{{ password }}"
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "http"
+        config_type = "qcloud"
+
+    [inputs.prometheus.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "http"
+        config_type = "qcloud"

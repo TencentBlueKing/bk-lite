@@ -29,6 +29,17 @@ class UserGroup:
             raise
 
     @classmethod
+    def get_all_users(cls, system_mgmt_client: SystemMgmt) -> Dict[str, Any]:
+        """用户列表"""
+        try:
+            result = system_mgmt_client.get_all_users()
+            data = result["data"]
+            return {"count": data.__len__(), "users": data}
+        except Exception as e:
+            logger.error(f"Failed to search users: {e}")
+            raise
+
+    @classmethod
     def groups_list(cls, system_mgmt_client: SystemMgmt, query_params: Union[Optional[Dict[str, Any]], str]) -> Any:
         """用户组列表"""
         if not query_params:

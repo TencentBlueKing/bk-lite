@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Type
-
+from django.utils import timezone
 from apps.cmdb.collection.common import Management
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -34,6 +34,9 @@ class MetricsCannula:
         self.collect_data = new_metrics.result
         for i in new_metrics.raw_data:
             if i.get('metric'):
+                if i['value'][0]:
+                    # 往原始数据中打入vm指标的时间，为“数据实际上报时间”
+                    i['metric']['__time__'] = datetime.fromtimestamp(i['value'][0], timezone.utc).isoformat()
                 self.raw_data.append(i['metric'])
         return result
 
@@ -54,6 +57,7 @@ class MetricsCannula:
 
     def collect_controller(self) -> dict:
         result = {}
+        all_count = 0
         for model_id, metrics in self.collection_metrics.items():
             params = [
                 {"field": "model_id", "type": "str=", "value": model_id},
@@ -74,6 +78,7 @@ class MetricsCannula:
                     self.task_id,
                     collect_plugin=self.collect_plugin
                 )
+                all_count = all_count + len(metrics)
                 if self.manual:
                     self.add_list.extend(management.add_list)
                     self.delete_list.extend(management.delete_list)
@@ -83,5 +88,6 @@ class MetricsCannula:
                     collect_result = management.controller()
                 result[model_id] = collect_result
         result['__raw_data__'] = self.raw_data
+        result['all'] = all_count
         return result
 

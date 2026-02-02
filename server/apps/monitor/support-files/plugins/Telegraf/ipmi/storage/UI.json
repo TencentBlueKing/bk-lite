@@ -18,7 +18,10 @@
         "placeholder": "IP地址"
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.servers"
+        "origin_path": "child.content.config.servers[0]",
+        "to_form": {
+          "regex": "\\(([^)]+)\\)"
+        }
       }
     },
     {
@@ -30,6 +33,12 @@
       "description": "用于访问接口的用户名",
       "widget_props": {
         "placeholder": "用户名"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.servers[0]",
+        "to_form": {
+          "regex": "^([^:]+):"
+        }
       }
     },
     {
@@ -38,9 +47,13 @@
       "type": "password",
       "required": true,
       "editable": false,
+      "encrypted": true,
       "description": "对应的登录密码",
       "widget_props": {
         "placeholder": "密码"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
       }
     },
     {
@@ -53,6 +66,12 @@
       "description": "表示使用 LAN+ 协议进行访问（通常用于较新版本的 IPMI）",
       "widget_props": {
         "placeholder": "协议"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.servers[0]",
+        "to_form": {
+          "regex": "@([^(]+)\\("
+        }
       }
     },
     {

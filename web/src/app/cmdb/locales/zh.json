@@ -1,4 +1,18 @@
 {
+    "FilterBar": {
+        "fuzzy": "模糊",
+        "exact": "精确",
+        "pleaseSelectValidTimeRange": "请选择有效的时间范围",
+        "pleaseSelectValue": "请选择值",
+        "pleaseSelect": "请选择",
+        "pleaseSelectUser": "请选择用户",
+        "pleaseSelectTimeRange": "请选择时间范围",
+        "pleaseEnterNumber": "请输入数值",
+        "pleaseEnterValue": "请输入值",
+        "exactMatch": "精确匹配",
+        "filterItems": "检索项：",
+        "clearConditions": "清空条件"
+    },
     "deleteTitle": "您确定要删除这个项目吗？",
     "disassociationTitle": "您确定要取消关联吗？",
     "deleteContent": "删除后，数据无法恢复。",
@@ -66,6 +80,10 @@
     "Model": {
         "addModel": "新增模型",
         "editModel": "编辑模型",
+        "copyModel": "复制模型",
+        "copy": "复制",
+        "copyMode": "复制方式",
+        "selectCopyMode": "请至少选择一种复制方式",
         "addGroup": "新增分组",
         "editGroup": "编辑分组",
         "modelGroup": "模型分组",
@@ -74,6 +92,17 @@
         "selectIcon": "选择图标",
         "addAttribute": "添加属性",
         "editAttribute": "编辑属性",
+        "addAttrGroup": "新增属性分组",
+        "editAttrGroup": "编辑属性分组",
+        "deleteAttrGroup": "删除属性分组",
+        "attrGroupName": "分组名称",
+        "enterAttrGroupName": "请输入分组名称",
+        "continueAdd": "继续新增",
+        "deleteGroupConfirm": "这个分组下存在属性，如果强制删除会将属性转移到第一个分组下",
+        "deleteGroupConfirmEmpty": "确定要删除该分组吗？",
+        "deleteGroupConfirmPrefix": "您确定要删除",
+        "deleteGroupConfirmMiddle": "的",
+        "deleteGroupConfirmSuffix": "组吗？",
         "attributes": "属性",
         "relationships": "关系",
         "addAssociations": "添加关联",
@@ -115,6 +144,7 @@
         "assetList": "资产列表"
     },
     "Collection": {
+        "cycleDeprecated": "定时执行和一次性执行功能已下线，请调整配置为周期执行",
         "fullTitle": "全面采集",
         "fullMessage": "您可以根据通过创建全面采集任务，针对批量的主机采集多数资产信息。",
         "professionalTitle": "专业采集",
@@ -127,17 +157,15 @@
         "pluginDoc": "插件说明",
         "baseSetting": "基本配置",
         "taskNameLabel": "任务名称",
-        "cycle": "扫描周期",
+        "cycle": "周期",
         "dailyAt": "每天一次，在",
         "selectTime": "请选择时间",
         "every": "每隔",
         "hour": "小时",
         "once": "一次",
-        "cycleRequired": "请选择扫描周期",
+        "cycleRequired": "请选择周期",
         "enterType": "录入方式",
-        "enterTypeTooltip": "设置新资产的录入方式。自动录入将在任务完成后自动更新到资产记录，审批录入将根据审批结果更新到资产记录。",
         "automatic": "自动",
-        "approvalRequired": "需要审批",
         "advanced": "高级",
         "timeout": "超时时间",
         "timeoutTooltip": "该超时时间为单个对象的采集超时时间，超过该时长将跳过该对象的采集。",
@@ -156,10 +184,9 @@
         "executeOnce": "执行一次",
         "port": "端口",
         "syncStatus": {
-            "add": "新增资产",
-            "update": "更新资产",
-            "association": "关联资产",
-            "delete": "下架资产",
+            "add": "新增",
+            "update": "更新",
+            "delete": "删除",
             "unexecuted": "未执行",
             "collecting": "正在采集",
             "success": "成功",
@@ -167,8 +194,7 @@
             "timeout": "超时",
             "writing": "正在写入",
             "forceStop": "强制终止",
-            "pendingApproval": "待审批",
-            "approval": "审批"
+            "pendingApproval": "待审批"
         },
         "k8sTask": {
             "title": "添加任务",
@@ -203,10 +229,11 @@
         },
         "table": {
             "taskName": "任务名称",
-            "syncStatus": "同步状态",
-            "collectSummary": "采集摘要",
+            "syncStatus": "状态",
+            "latestOverview": "最新任务概览",
             "creator": "创建者",
             "syncTime": "同步时间",
+            "reportTime": "数据上报时间",
             "actions": "操作",
             "detail": "详情",
             "sync": "同步",
@@ -216,11 +243,30 @@
         },
         "taskDetail": {
             "title": "任务详情",
+            "instanceName": "实例名称",
             "status": "状态",
             "errorInfo": "异常信息",
             "rawData": "原始数据",
-            "noRawData": "暂无原始数据"
-        }
+            "noRawData": "暂无原始数据",
+            "totalDiscovered": "本次发现总数",
+            "addData": "需要新增数据",
+            "updateData": "需要更新数据",
+            "deleteData": "需要删除数据",
+            "writeFailed": "录入CMDB失败",
+            "failedCount": "条"
+        },
+        "statusLabel": {
+            "running": "进行中",
+            "syncSuccess": "同步成功",
+            "syncFailed": "同步失败"
+        },
+        "overviewLabel": {
+            "add": "新增",
+            "update": "更新",
+            "delete": "删除",
+            "error": "异常"
+        },
+        "executeSuccess": "执行成功"
     },
     "OidLibrary": {
         "title": "SOID库",

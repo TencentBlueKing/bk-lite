@@ -1,16 +1,16 @@
-import { useMssqlTelegraf } from '../../plugins/database/mssqlTelegraf';
-
 export const useMssqlConfig = () => {
-  const mssqlTelegraf = useMssqlTelegraf();
-  const plugins = {
-    MSSQL: mssqlTelegraf,
-  };
-
   return {
     instance_type: 'mssql',
     dashboardDisplay: [],
-    tableDiaplay: [],
+    tableDiaplay: [
+      { type: 'value', key: 'sqlserver_database_io_read_latency_ms' },
+      { type: 'value', key: 'sqlserver_waitstats_wait_time_ms_rate' },
+      { type: 'value', key: 'sqlserver_volume_space_available_space_bytes' },
+    ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'MSSQL-Exporter': 'exporter',
+      MSSQL: 'database',
+    },
   };
 };

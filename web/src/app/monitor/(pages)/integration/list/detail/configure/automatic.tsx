@@ -363,7 +363,74 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
   };
 
+  const validateTableData = (): boolean => {
+    if (!currentConfig?.table_columns) return true;
+    let hasError = false;
+    const newData = [...dataSource];
+    // 先清除所有字段的错误状态
+    newData.forEach((row, index) => {
+      currentConfig.table_columns.forEach((column: any) => {
+        const { name } = column;
+        newData[index] = {
+          ...newData[index],
+          [`${name}_error`]: null,
+        };
+      });
+    });
+    // 验证所有字段
+    currentConfig.table_columns.forEach((column: any) => {
+      const { name, rules = [], required = false } = column;
+      dataSource.forEach((row, index) => {
+        const value = row[name];
+        let errorMsg: string | null = null;
+        // 如果字段标记为required，进行必填验证
+        if (required) {
+          if (
+            value === undefined ||
+            value === null ||
+            value === '' ||
+            (Array.isArray(value) && value.length === 0)
+          ) {
+            errorMsg = t('common.required');
+          }
+        }
+        // 如果有rules配置，按照rules验证（只支持pattern类型）
+        if (rules.length > 0 && !errorMsg) {
+          for (const rule of rules) {
+            // 正则验证（只在有值时验证）
+            if (rule.type === 'pattern') {
+              if (value !== undefined && value !== null && value !== '') {
+                const regex = new RegExp(rule.pattern);
+                if (!regex.test(String(value))) {
+                  errorMsg = rule.message || t('common.required');
+                  break;
+                }
+              }
+            }
+          }
+        }
+        if (errorMsg) {
+          hasError = true;
+          newData[index] = {
+            ...newData[index],
+            [`${name}_error`]: errorMsg,
+          };
+        }
+      });
+    });
+    // 更新数据源以显示错误状态
+    setDataSource(newData);
+    if (hasError) {
+      return false;
+    }
+    return true;
+  };
+
   const handleSave = () => {
+    // 先验证表格数据
+    if (!validateTableData()) {
+      return;
+    }
     form.validateFields().then((values) => {
       const row = cloneDeep(values);
       delete row.nodes;
@@ -455,13 +522,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                   required: true,
                   validator: async () => {
                     if (!dataSource.length) {
-                      return Promise.reject(new Error(t('common.required')));
-                    }
-                    if (
-                      dataSource.some((item) =>
-                        Object.values(item).some((value) => !value)
-                      )
-                    ) {
                       return Promise.reject(new Error(t('common.required')));
                     }
                     // 校验值得唯一性

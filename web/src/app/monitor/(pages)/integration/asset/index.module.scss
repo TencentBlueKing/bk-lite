@@ -13,10 +13,8 @@
         padding: 20px 10px;
         background-color: var(--color-bg-1);
 
-        :global {
-            .ant-tree-list {
-                width: 100%;
-            }
+        :global(.ant-tree-list) {
+            width: 100%;
         }
     }
 
@@ -37,10 +35,8 @@
 }
 
 .conditionItem {
-    :global {
-        .ant-btn-default {
-            min-width: 32px;
-        }
+    :global(.ant-btn-default) {
+        min-width: 32px;
     }
 
     .itemLabel {
@@ -55,18 +51,14 @@
 
     .source {
         .sourceObjectType {
-            :global {
-                .ant-select-selector {
-                    border-radius: 6px 0 0 6px;
-                }
+            :global(.ant-select-selector) {
+                border-radius: 6px 0 0 6px;
             }
         }
 
         .sourceObject {
-            :global {
-                .ant-select-selector {
-                    border-radius: 0 6px 6px 0;
-                }
+            :global(.ant-select-selector) {
+                border-radius: 0 6px 6px 0;
             }
         }
     }
@@ -85,31 +77,29 @@
         .filter {
             margin-bottom: 10px;
 
-            :global {
-                .ant-btn:nth-of-type(1) {
-                    border-radius: 0 6px 6px 0;
-                    margin-right: 10px;
-                }
+            :global(.ant-btn:nth-of-type(1)) {
+                border-radius: 0 6px 6px 0;
+                margin-right: 10px;
+            }
 
-                .ant-btn:nth-of-type(2) {
-                    margin-right: 10px;
-                }
+            :global(.ant-btn:nth-of-type(2)) {
+                margin-right: 10px;
+            }
 
-                .ant-btn {
-                    background: var(--color-fill-2);
-                }
+            :global(.ant-btn) {
+                background: var(--color-fill-2);
+            }
 
-                .ant-btn-icon {
-                    transform: scale(0.8);
-                }
+            :global(.ant-btn-icon) {
+                transform: scale(0.8);
+            }
 
-                .ant-select-selector {
-                    border-radius: 0;
-                }
+            :global(.ant-select-selector) {
+                border-radius: 0;
+            }
 
-                .ant-input {
-                    border-radius: 0;
-                }
+            :global(.ant-input) {
+                border-radius: 0;
             }
         }
     }

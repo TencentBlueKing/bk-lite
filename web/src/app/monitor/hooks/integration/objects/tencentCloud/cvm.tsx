@@ -3,11 +3,13 @@ export const useCvmConfig = () => {
     instance_type: 'qcloud',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'value', key: 'cvm_CPU_Usage' },
-      { type: 'value', key: 'cvm_MemUsage' },
-      { type: 'value', key: 'cvm_CvmDiskUsage' },
+      { type: 'progress', key: 'CPUUsage_gauge' },
+      { type: 'progress', key: 'MemUsage_gauge' },
+      { type: 'progress', key: 'CvmDiskUsage_gauge' },
     ],
     groupIds: {},
-    plugins: {},
+    collectTypes: {
+      'Tencent Cloud': 'http',
+    },
   };
 };

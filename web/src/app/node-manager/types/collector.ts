@@ -15,7 +15,7 @@ export interface CollectorListResponse {
 export interface CollectorCardProps {
   id: string;
   name: string;
-  system: string[];
+  system?: string[];
   introduction: string;
   icon: string;
 }

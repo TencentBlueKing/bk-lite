@@ -1,12 +1,4 @@
-import { useWebLogicJmx } from '../../plugins/middleware/webLogicJmx';
-
 export const useWebLogicConfig = () => {
-  const webLogicPlugin = useWebLogicJmx();
-
-  const plugins = {
-    'WebLogic-JMX': webLogicPlugin,
-  };
-
   return {
     instance_type: 'weblogic',
     dashboardDisplay: [],
@@ -17,9 +9,11 @@ export const useWebLogicConfig = () => {
         type: 'enum',
         key: 'weblogic_application_overallhealthstatejmx_is_critical_value',
       },
-      { type: 'enum', key: 'jmx_scrape_error_gauge' },
+      { type: 'enum', key: 'jvm_memory_usage_used_value' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'WebLogic-JMX': 'jmx',
+    },
   };
 };

@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/nats-io/nats.go"
 	"log"
 	"nats-executor/utils"
 	"os/exec"
 	"time"
+
+	"github.com/nats-io/nats.go"
 )
 
 func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
@@ -20,7 +21,31 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(req.ExecuteTimeout)*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", req.Command)
+	// 根据脚本类型构建命令，默认使用 sh（兼容旧逻辑）
+	var cmd *exec.Cmd
+	shell := req.Shell
+	if shell == "" {
+		shell = "sh"
+	}
+
+	switch shell {
+	case "bat", "cmd":
+		// Windows 批处理命令
+		cmd = exec.CommandContext(ctx, "cmd", "/c", req.Command)
+	case "powershell":
+		// PowerShell 脚本和命令
+		cmd = exec.CommandContext(ctx, "powershell", "-Command", req.Command)
+	case "pwsh":
+		// PowerShell Core
+		cmd = exec.CommandContext(ctx, "pwsh", "-Command", req.Command)
+	case "bash":
+		cmd = exec.CommandContext(ctx, "bash", "-c", req.Command)
+	case "sh":
+		cmd = exec.CommandContext(ctx, "sh", "-c", req.Command)
+	default:
+		// 自定义 shell，使用 -c 参数
+		cmd = exec.CommandContext(ctx, shell, "-c", req.Command)
+	}
 
 	// 记录命令开始执行时间
 	startTime := time.Now()
@@ -309,6 +334,7 @@ func SubscribeHealthCheck(nc *nats.Conn, instanceId *string) {
 	log.Printf("[Health Check Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
 	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
+		log.Printf("[Health Check] Received health check request from subject: %s", subject)
 		response := HealthCheckResponse{
 			Success:    true,
 			Status:     "ok",
@@ -317,6 +343,7 @@ func SubscribeHealthCheck(nc *nats.Conn, instanceId *string) {
 		}
 		responseContent, _ := json.Marshal(response)
 		msg.Respond(responseContent)
+		log.Printf("[Health Check] Responded with status: ok")
 	})
 
 	if err != nil {

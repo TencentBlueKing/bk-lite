@@ -11,6 +11,7 @@ const SecuritySettingsPage: React.FC = () => {
   const [otpEnabled, setOtpEnabled] = useState(false);
   const [pendingOtpEnabled, setPendingOtpEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [loginExpiredTime, setLoginExpiredTime] = useState<string>('24');
   const [pendingLoginExpiredTime, setPendingLoginExpiredTime] = useState<string>('24');
   
@@ -37,7 +38,7 @@ const SecuritySettingsPage: React.FC = () => {
 
   const fetchSystemSettings = async () => {
     try {
-      setLoading(true);
+      setFetching(true);
       const settings = await getSystemSettings();
       const otpValue = settings.enable_otp === '1';
       setOtpEnabled(otpValue);
@@ -83,7 +84,7 @@ const SecuritySettingsPage: React.FC = () => {
     } catch (error) {
       console.error('Failed to fetch system settings:', error);
     } finally {
-      setLoading(false);
+      setFetching(false);
     }
   };
 
@@ -175,6 +176,7 @@ const SecuritySettingsPage: React.FC = () => {
       lockDuration={pendingLockDuration}
       reminderDays={pendingReminderDays}
       loading={loading}
+      disabled={fetching}
       onOtpChange={handleOtpChange}
       onLoginExpiredTimeChange={handleLoginExpiredTimeChange}
       onPasswordExpirationChange={handlePasswordExpirationChange}

@@ -1,0 +1,53 @@
+port 4222
+
+monitor_port: 8222
+jetstream {
+    store_dir: "/nats/storage"
+    domain: leaf-${ZONE_ID}
+}
+tls {
+  cert_file: "/etc/nats/certs/proxy.crt"
+  key_file:  "/etc/nats/certs/proxy.key"
+  ca_file:   "/etc/nats/certs/ca.crt"
+}
+leafnodes {
+  port 7422
+  remotes [
+    {
+      url: "tls://${REMOTE_HOST}:${REMOTE_NATS_PORT}"
+      
+      tls {
+        cert_file: "/etc/nats/certs/proxy.crt"
+        key_file:  "/etc/nats/certs/proxy.key"
+        ca_file:   "/etc/nats/certs/ca.crt"
+        verify: true
+      }
+    }
+  ]
+}
+debug: false
+trace: false
+authorization {  
+  default_permissions = {
+    publish = []
+    subscribe = []
+  }
+  users = [
+    {
+      user: "${NATS_ADMIN_USERNAME}"
+      password: "${NATS_ADMIN_PASSWORD}"
+      permissions: {
+        publish = [">"]
+        subscribe = [">"]
+      }
+    },
+    {
+      user: "${NATS_MONITOR_USERNAME}"
+      password: "${NATS_MONITOR_PASSWORD}"
+      permissions: {
+        publish = ["metrics.>", "vector"]
+        subscribe = []
+      }
+    }
+  ]
+}

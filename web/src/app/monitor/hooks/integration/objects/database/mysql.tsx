@@ -1,20 +1,16 @@
-import { useMysqlTelegraf } from '../../plugins/database/mysqlTelegraf ';
-
 export const useMysqlConfig = () => {
-  const mysqlPlugin = useMysqlTelegraf();
-  const plugins = {
-    Mysql: mysqlPlugin,
-  };
-
   return {
     instance_type: 'mysql',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'value', key: 'mysql_bytes_received' },
-      { type: 'value', key: 'mysql_bytes_sent' },
-      { type: 'value', key: 'mysql_connections_total' },
+      { type: 'value', key: 'mysql_threads_running' },
+      { type: 'value', key: 'mysql_slow_queries_rate' },
+      { type: 'value', key: 'mysql_innodb_buffer_pool_disk_reads_rate' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Mysql-Exporter': 'exporter',
+      Mysql: 'database',
+    },
   };
 };

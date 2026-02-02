@@ -62,8 +62,16 @@
       "type": "input",
       "required": true,
       "widget_props": {
-        "placeholder": "example.com"
+        "placeholder": "192.168.1.1"
       },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$|^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$",
+          "message": "请输入有效的域名或IP地址",
+          "excel_formula": "OR(ISNUMBER(FIND(\".\",{{CELL}})),AND(LEN({{CELL}})>=7,LEN({{CELL}})<=253))"
+        }
+      ],
       "change_handler": {
         "type": "simple",
         "source_fields": ["url"],

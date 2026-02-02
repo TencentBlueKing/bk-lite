@@ -6,6 +6,7 @@ import {
   AssoFieldType,
   ColumnItem
 } from '@/app/cmdb/types/assetManage';
+import { FilterItem } from '@/app/cmdb/store';
   
 
 export interface TopoData {
@@ -20,6 +21,7 @@ export interface NodeData {
   asst_id?: string;
   expanded?: boolean;
   children: NodeData[];
+  has_more?: boolean;
 }
 
 export interface RecordsEnum {
@@ -99,7 +101,7 @@ export interface SearchFilterProps {
   proxyOptions: { proxy_id: string; proxy_name: string }[];
   userList: UserItem[];
   showExactSearch?: boolean;
-  onSearch: (condition: unknown, value: any) => void;
+  onSearch: (condition: FilterItem | null, value: any) => void;
 }
 
 export interface RelationItem extends AssoFieldType {

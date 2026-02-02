@@ -1,63 +1,36 @@
-import type { MenuProps } from 'antd';
-import { JSX } from 'react';
+import React from 'react';
+
+/**
+ * Dataset types supported by the ML Ops platform
+ * 
+ * @enum {string}
+ * @property {string} ANOMALY_DETECTION - Anomaly detection datasets (异常检测)
+ * @property {string} CLASSIFICATION - Text classification datasets (文本分类)
+ * @property {string} TIMESERIES_PREDICT - Time series prediction datasets (时序预测)
+ * @property {string} LOG_CLUSTERING - Log clustering datasets (日志聚类)
+ * @property {string} IMAGE_CLASSIFICATION - Image classification datasets (图片分类)
+ * @property {string} OBJECT_DETECTION - Object detection datasets (目标检测)
+ */
+export enum DatasetType {
+  ANOMALY_DETECTION = 'anomaly_detection',
+  CLASSIFICATION = 'classification',
+  TIMESERIES_PREDICT = 'timeseries_predict',
+  LOG_CLUSTERING = 'log_clustering',
+  IMAGE_CLASSIFICATION = 'image_classification',
+  OBJECT_DETECTION = 'object_detection',
+}
 
 export interface Option {
   label: string;
   value: string | number;
 }
 
-export interface EntityListProps<T> {
-  data: T[];
-  loading: boolean;
-  searchSize?: 'large' | 'middle' | 'small';
-  singleActionType?: 'button' | 'icon';
-  filterOptions?: Option[];
-  filter?: boolean;
-  filterLoading?: boolean;
-  operateSection?: React.ReactNode;
-  infoText?: string | ((data: any) => string);
-  menuActions?: (item: T) => MenuProps['items'];
-  singleAction?: (item: T) => { text: string, onClick: (item: T) => void };
-  openModal?: (item?: T) => void;
-  onSearch?: (value: string) => void;
-  onCardClick?: (item: T) => void;
-  changeFilter?: (value: string[]) => void;
-}
-
-export interface TourItem {
-  title: string;
-  description: string;
-  cover?: string;
-  target: string;
-  mask?: any;
-  order: number;
-}
-
-export interface MenuItem {
-  name: string;
-  display_name?: string;
-  url: string;
-  icon: string;
-  title: string;
-  params?: string;
-  operation: string[];
-  tour?: TourItem;
-  isNotMenuItem?: boolean;
-  children?: MenuItem[];
-}
-
 export interface ColumnItem {
   title: string;
   dataIndex: string;
   key: string;
-  render?: (_: unknown, record: any) => JSX.Element;
+  render?: (_: unknown, record: any) => React.ReactElement;
   [key: string]: unknown;
-}
-
-export interface GroupFieldItem {
-  title: string;
-  key: string;
-  child: ColumnItem[];
 }
 
 export interface MetricItem {
@@ -89,13 +62,6 @@ export interface ListItem {
   display_name?: string;
   id?: string | number;
   value?: string | number;
-}
-
-export interface TabItem {
-  key: string;
-  label: string;
-  name?: string;
-  children?: JSX.Element | string;
 }
 
 export interface ChartData {
@@ -147,17 +113,6 @@ export interface ModalConfig {
   nodes?: string[];
 }
 
-//调用弹窗的类型
-export interface ModalRef {
-  showModal: (config: ModalConfig) => void;
-}
-
-export interface UserProfile {
-  id: string,
-  first_name: string,
-  last_name: string
-}
-
 export interface Pagination {
   current: number;
   total: number;
@@ -184,3 +139,47 @@ export interface NodeData {
   target: any[],
   [key: string]: any
 }
+
+// YOLO格式的标注数据
+export interface YOLOAnnotation {
+  class_id: number;
+  class_name: string;
+  x_center: number;
+  y_center: number;
+  width: number;
+  height: number;
+}
+
+// Object Detection 元数据结构
+export interface ObjectDetectionMetadata {
+  format: 'YOLO';
+  classes: string[];
+  num_classes: number;
+  num_images: number;
+  labels: Record<string, YOLOAnnotation[]>;
+  statistics: {
+    total_annotations: number;
+    images_with_annotations: number;
+    images_without_annotations: number;
+    class_distribution: Record<string, number>;
+  };
+}
+
+// 数据集版本发布
+export interface DatasetRelease {
+  id: number;
+  dataset: number;
+  version: string;
+  name?: string;
+  description?: string;
+  train_file_id: number;
+  val_file_id: number;
+  test_file_id: number;
+  created_at: string;
+  is_archived: boolean;
+}
+
+// ========== 导出子模块类型 ==========
+export * from './task';
+export * from './manage';
+export * from './serving';

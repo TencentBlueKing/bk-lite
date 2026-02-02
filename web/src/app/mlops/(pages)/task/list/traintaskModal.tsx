@@ -25,12 +25,14 @@ const TrainTaskModal = forwardRef<ModalRef, TrainTaskModalProps>(({ datasetOptio
     showModal,
     handleSubmit,
     handleCancel,
-    renderFormContent
+    renderFormContent,
+    onFormValuesChange
   } = useTaskForm({ datasetOptions, activeTag, onSuccess, formRef }); // 使用统一入口
 
   useImperativeHandle(ref, () => ({
     showModal: ({ type, title, form }) => {
-      showModal({ type, title: title as string, form });
+      // 类型断言：确保 type 是 'add' 或 'edit'
+      showModal({ type: type as 'add' | 'edit', title: title as string, form });
     }
   }));
 
@@ -52,6 +54,7 @@ const TrainTaskModal = forwardRef<ModalRef, TrainTaskModalProps>(({ datasetOptio
         <Form
           ref={formRef}
           layout="vertical"
+          onValuesChange={onFormValuesChange}
         >
           {renderFormContent()}
         </Form>

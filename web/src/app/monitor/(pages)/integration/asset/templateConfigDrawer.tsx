@@ -45,12 +45,50 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
     const [instanceName, setInstanceName] = useState<string>('');
     const [objName, setObjName] = useState<string>('');
     const [showTemplateList, setShowTemplateList] = useState<boolean>(true);
+    const [instanceId, setInstanceId] = useState<number | string>('');
+    const [objId, setObjId] = useState<React.Key>('');
+
+    const fetchConfigList = async (params?: {
+      plugin?: PluginItem;
+      instanceId?: number | string;
+      monitorObjectId?: React.Key;
+    }) => {
+      const targetPlugin = params?.plugin || selectedPlugin;
+      const targetInstanceId = params?.instanceId || instanceId;
+      if (!targetPlugin || targetPlugin.collect_mode === 'manual') {
+        setConfigList([]);
+        return;
+      }
+      setLoading(true);
+      try {
+        const requestParams = {
+          collect_type: targetPlugin.collect_type,
+          collector: targetPlugin.collector,
+        };
+
+        const templateData = await getInstanceChildConfig({
+          ...requestParams,
+          instance_id: targetInstanceId,
+        });
+        const dataWithId = (templateData || []).map(
+          (item: any, index: number) => ({
+            ...item,
+            ...requestParams,
+            monitor_object_id: params?.monitorObjectId || objId,
+            id: index,
+          })
+        );
+        setConfigList(dataWithId);
+      } finally {
+        setLoading(false);
+      }
+    };
 
     useImperativeHandle(ref, () => ({
       showModal: async ({
         instanceName,
         instanceId,
-        instanceType,
+        monitorObjId,
         selectedConfigId,
         objName,
         plugins: externalPlugins,
@@ -58,11 +96,11 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
       }: ShowModalParams) => {
         setVisible(true);
         setInstanceName(instanceName);
+        setInstanceId(instanceId);
         setObjName(objName || '');
         setShowTemplateList(shouldShowList);
-        // 设置外层传入的plugins
         setPlugins(externalPlugins || []);
-        // 立即设置选中的插件，让用户打开弹窗时就能看到内容
+        setObjId(monitorObjId || '');
         let selectedTemp: any;
         if (externalPlugins && externalPlugins.length > 0) {
           if (shouldShowList) {
@@ -105,29 +143,12 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
             }
           }
           setSelectedPlugin(selectedTemp);
-          // 如果选中的是手动模板，不需要调用接口
-          if (selectedTemp && selectedTemp.collect_mode === 'manual') {
-            setConfigList([]);
-            return;
-          }
-        }
-        setLoading(true);
-        try {
-          const templateData = await getInstanceChildConfig({
-            instance_id: instanceId,
-            instance_type: instanceType,
-            collect_type: selectedTemp?.collect_type,
-            collector: selectedTemp?.collector,
+          // 使用 fetchConfigList 获取配置列表
+          await fetchConfigList({
+            plugin: selectedTemp,
+            instanceId,
+            monitorObjectId: monitorObjId,
           });
-          const dataWithId = (templateData || []).map(
-            (item: any, index: number) => ({
-              ...item,
-              id: index,
-            })
-          );
-          setConfigList(dataWithId);
-        } finally {
-          setLoading(false);
         }
       },
     }));
@@ -138,6 +159,8 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
       setConfigList([]);
       setSelectedPlugin(null);
       setInstanceName('');
+      setInstanceId('');
+      setObjId('');
       setObjName('');
       setShowTemplateList(true);
     };
@@ -158,6 +181,11 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
         return `${row.collect_type}(${row.config_type})`;
       }
       return row.collect_type || '--';
+    };
+
+    const handleConfigSuccess = () => {
+      fetchConfigList();
+      onSuccess?.();
     };
 
     const openConfigModal = (row: ConfigItem) => {
@@ -283,7 +311,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
 
     return (
       <div>
-        <EditConfig ref={configRef} onSuccess={onSuccess} />
+        <EditConfig ref={configRef} onSuccess={handleConfigSuccess} />
         <OperateDrawer
           title={instanceName || '--'}
           open={visible}

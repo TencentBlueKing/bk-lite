@@ -40,11 +40,11 @@ collector:
     name: Jetty JMX
     description: Jetty JMX（Linux）采集器基于Java管理扩展（JMX）采集Jetty各类监控指标。
   Vector_linux:
-    description: None
-    name: None
+    description: Vector（Linux）是一款轻量高效的日志采集器，原生具备各类日志数据采集能力。同时作为数据中转站将其他日志采集器收集的数据存储到平台。
+    name: Vector
   Auditbeat_linux:
-    name: None
-    description: None
+    name: Auditbeat
+    description: Auditbeat（Linux）是一款轻量级的审计数据采集器，能够可靠地采集服务器上的系统级审计与安全事件日志。
   exporter_kafka_linux:
     description: Kafka Exporter（Linux）采集器通过连接Kafka采集各类监控指标。
     name: Kafka Exporter
@@ -58,8 +58,8 @@ collector:
     name: JVM JMX
     description: JVM JMX（Linux）采集器基于Java管理扩展（JMX）采集Java虚拟机各类监控指标。
   Packetbeat_linux:
-    description: None
-    name: None
+    description: Packetbeat（Linux）是一款轻量级的网络数据包采集器，能够实时采集和分析服务器之间的网络流量。
+    name: Packetbeat
   exporter_mongodb_linux:
     description: None
     name: None
@@ -67,8 +67,8 @@ collector:
     description: None
     name: None
   Filebeat_linux:
-    name: None
-    description: None
+    name: Filebeat
+    description: Filebeat（Linux）是一款轻量级文件日志采集器，能够可靠地采集指定路径的日志文件。
   jmx_jboss_linux:
     description: None
     name: None
@@ -88,8 +88,8 @@ collector:
     name: None
     description: None
   Metricbeat_linux:
-    name: None
-    description: None
+    name: Metricbeat
+    description: Metricbeat（Linux）是一款轻量级的指标数据采集器，能够可靠地采集服务器和各类服务的系统级与业务级性能指标。
 collector_tag:
   exporter: Exporter
   log: 日志
@@ -112,4 +112,4 @@ controller:
     name: Windows控制器
 controller_install_method:
   manual: 手动安装
-  auto: 自动安装
+  auto: 远程安装

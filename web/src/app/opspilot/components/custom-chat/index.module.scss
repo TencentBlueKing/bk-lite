@@ -51,25 +51,6 @@
     background-color: var(--color-bg);
   }
 
-  :global {
-    .ant-avatar {
-      background: transparent;
-    }
-    .ant-bubble-content-wrapper {
-      max-width: 100%;
-    }
-    .ant-bubble-end {
-      .ant-bubble-content-wrapper {
-        align-items: flex-end;
-      }
-    }
-    .ant-bubble-content {
-      background-color: var(--color-bg-1);
-    }
-    .ant-bubble-footer {
-      margin-top: 5px;
-    }
-  }
   .bubbleWrapper {
     cursor: pointer;
     &:hover {
@@ -102,6 +83,27 @@
     }
   }
 }
+
+.chatContainer :global(.ant-avatar) {
+  background: transparent;
+}
+
+.chatContainer :global(.ant-bubble-content-wrapper) {
+  max-width: 100%;
+}
+
+.chatContainer :global(.ant-bubble-end .ant-bubble-content-wrapper) {
+  align-items: flex-end;
+}
+
+.chatContainer :global(.ant-bubble-content) {
+  background-color: var(--color-bg-1);
+}
+
+.chatContainer :global(.ant-bubble-footer) {
+  margin-top: 5px;
+}
+
 .fullscreen {
   position: fixed;
   top: 0;

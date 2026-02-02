@@ -6,7 +6,7 @@ from apps.cmdb.node_configs.base import BaseNodeParams
 
 
 class AliyunNodeParams(BaseNodeParams):
-    supported_model_id = "aliyun_account"
+    supported_model_id = "aliyun"
     plugin_name = "aliyun_info"
     interval = 300  # 阿里云采集间隔：300秒
 
@@ -15,19 +15,19 @@ class AliyunNodeParams(BaseNodeParams):
         self.PLUGIN_MAP.update({self.model_id: self.plugin_name})
 
     def set_credential(self, *args, **kwargs):
+        _access_key = f"PASSWORD_access_key_{self._instance_id}"
+        _access_secret = f"PASSWORD_access_secret_{self._instance_id}"
         regions_id = self.credential["regions"]["resource_id"]
         credential_data = {
-            "access_key": self.credential.get("accessKey", ""),
-            "access_secret": self.credential.get("accessSecret", ""),
+            "access_key": "${" + _access_key + "}",
+            "access_secret": "${" + _access_secret + "}",
             "region_id": regions_id
         }
         return credential_data
 
-    def get_instance_id(self, instance):
-        """
-        获取实例 id
-        """
-        if self.has_set_instances:
-            return f"{self.instance.id}_{instance['inst_name']}"
-        else:
-            return f"{self.instance.id}_{instance}"
+    def env_config(self, *args, **kwargs):
+        env_config = {
+            f"PASSWORD_access_key_{self._instance_id}": self.credential.get("accessKey", ""),
+            f"PASSWORD_access_secret_{self._instance_id}": self.credential.get("accessSecret", ""),
+        }
+        return env_config

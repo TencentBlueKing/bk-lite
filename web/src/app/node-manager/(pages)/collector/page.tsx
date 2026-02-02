@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Menu, Input, Button, message, Modal, Tag, Segmented } from 'antd';
 import useApiClient from '@/utils/request';
 import useNodeManagerApi from '@/app/node-manager/api';
@@ -12,6 +12,7 @@ import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
 import { useCollectorMenuItem } from '@/app/node-manager/hooks/collector';
 import { useCommon } from '@/app/node-manager/context/common';
+import { cloneDeep } from 'lodash';
 const { Search } = Input;
 const { confirm } = Modal;
 
@@ -24,6 +25,8 @@ const Collector = () => {
   const nodeStateEnum = commonContext?.nodeStateEnum || {};
   const menuItem = useCollectorMenuItem();
   const modalRef = useRef<ModalRef>(null);
+  const collectorAbortControllerRef = useRef<AbortController | null>(null);
+  const collectorRequestIdRef = useRef<number>(0);
   const [collectorCards, setCollectorCards] = useState<CardItem[]>([]);
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
@@ -38,6 +41,13 @@ const Collector = () => {
       initData();
     }
   }, [isLoading]);
+
+  // 组件卸载时取消所有请求
+  useEffect(() => {
+    return () => {
+      collectorAbortControllerRef.current?.abort();
+    };
+  }, []);
 
   const initData = () => {
     setLoading(true);
@@ -54,7 +64,7 @@ const Collector = () => {
 
   const navigateToCollectorDetail = (item: CardItem) => {
     router.push(`
-      /node-manager/collector/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.tagList[0]}&icon=${item.icon}`);
+      /node-manager/collector/detail?id=${item.id}&name=${item.original_name}&displayName=${item.name}&introduction=${item.description}&system=${item.os}&icon=${item.icon}`);
   };
 
   const getTags = () => {
@@ -80,20 +90,21 @@ const Collector = () => {
 
   const handleResult = (res: any, enumMap?: Record<string, any>) => {
     const currentTagEnum = enumMap || tagEnum;
-    const filter = res.filter((item: any) => !item.controller_default_run);
-    const tempdata = filter.map((item: any) => {
+    const tempdata = (res || []).map((item: any) => {
       const tagList = item.tags || [];
       const displayTags = tagList.map((tag: string) => {
         return currentTagEnum[tag]?.name || tag;
       });
       return {
-        id: item.id,
-        name: item.name,
-        service_type: item.service_type,
-        executable_path: item.executable_path,
-        execute_parameters: item.execute_parameters,
-        description: item.introduction || '--',
+        ...item,
+        name: item.display_name,
+        description: item.display_introduction || '--',
+        original_name: item.name,
+        original_introduction: item.introduction,
         icon: item.icon || 'caijiqizongshu',
+        os:
+          tagList.find((item: string) => ['linux', 'windows'].includes(item)) ||
+          'linux',
         tagList: displayTags,
         originalTags: tagList,
       };
@@ -107,6 +118,11 @@ const Collector = () => {
     sysTags?: string[];
     tagEnum?: Record<string, any>;
   }) => {
+    // 取消上一次请求
+    collectorAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    collectorAbortControllerRef.current = abortController;
+    const currentRequestId = ++collectorRequestIdRef.current;
     const { searchValue, appTag, sysTags, tagEnum: enumMap } = params;
     const requestParams: any = { name: searchValue };
     const tagsArray: string[] = [];
@@ -123,19 +139,32 @@ const Collector = () => {
     }
     try {
       setLoading(true);
-      const res = await getCollectorlist(requestParams);
+      const res = await getCollectorlist(requestParams, {
+        signal: abortController.signal,
+      });
+      // 只有最新请求才处理数据
+      if (currentRequestId !== collectorRequestIdRef.current) return;
       handleResult(res, enumMap);
     } finally {
-      setLoading(false);
+      // 只有最新请求才控制 loading
+      if (currentRequestId === collectorRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   const openModal = (config: any) => {
+    const form = cloneDeep(config?.form || {});
+    if (config?.type === 'edit') {
+      form.name = form.original_name;
+      form.description = form.original_introduction;
+    }
     modalRef.current?.showModal({
       title: config?.title,
       type: config?.type,
-      form: config?.form,
+      form,
       key: config?.key,
+      appTag: selectedAppTag,
     });
   };
 

@@ -6,6 +6,7 @@ from apps.core.models.time_info import TimeInfo
 class CloudRegion(TimeInfo, MaintainerInfo):
     name = models.CharField(unique=True, max_length=100, verbose_name="云区域名称")
     introduction = models.TextField(blank=True, verbose_name="云区域介绍")
+    proxy_address = models.CharField(max_length=255, blank=True, default="", verbose_name="代理地址")
 
     class Meta:
         verbose_name = "云区域"
@@ -14,7 +15,7 @@ class CloudRegion(TimeInfo, MaintainerInfo):
 
 class SidecarEnv(models.Model):
     key = models.CharField(max_length=100)
-    value = models.CharField(max_length=200)
+    value = models.TextField(default="", verbose_name="变量内容")
     type = models.CharField(max_length=20, default="")
     description = models.TextField(blank=True, verbose_name="描述")
     cloud_region = models.ForeignKey(CloudRegion, default=1, on_delete=models.CASCADE, verbose_name="云区域")
@@ -32,6 +33,7 @@ class CloudRegionService(models.Model):
     deployed_status = models.SmallIntegerField(default=0, verbose_name="部署状态")
     deployed_message = models.TextField(blank=True, verbose_name="部署信息")
     status = models.CharField(max_length=50, verbose_name="服务状态")
+    message = models.TextField(blank=True, verbose_name="服务信息")
     description = models.TextField(blank=True, verbose_name="服务描述")
 
     class Meta:

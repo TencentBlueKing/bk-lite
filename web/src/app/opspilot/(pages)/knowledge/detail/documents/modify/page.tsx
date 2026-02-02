@@ -112,7 +112,16 @@ const KnowledgeModifyPage = () => {
           // Fetch configuration for a single document if applicable
           if (documentIdArray.length === 1) {
             const config = await getDocumentConfig(documentIdArray[0]);
-            setPreprocessConfig(config);
+            // Use the same default config format as when creating new documents
+            const defaultConfig = {
+              knowledge_source_type: type || 'file',
+              knowledge_document_list: [config.id],
+              general_parse_chunk_size: config.general_parse_chunk_size || 200,
+              general_parse_chunk_overlap: config.general_parse_chunk_overlap || 50,
+              semantic_chunk_parse_embedding_model: config.semantic_chunk_parse_embedding_model || null,
+              chunk_type: config.chunk_type || 'fixed_size',
+            };
+            setPreprocessConfig(defaultConfig);
           }
         } catch {
           message.error(t('common.fetchFailed'));
@@ -384,17 +393,9 @@ const KnowledgeModifyPage = () => {
           onFormChange={handleValidationChange} 
           onFormDataChange={handleQAPairDataChange} 
         />
-        <div className="fixed bottom-10 right-10 z-50 flex space-x-2">
+        <div className="fixed bottom-5 right-6 z-50 flex space-x-2">
           <Button disabled={loading} onClick={() => router.back()}>
             {t('common.cancel')}
-          </Button>
-          <Button 
-            type="default" 
-            onClick={() => handleCreateQAPair(true)} 
-            disabled={!isStepValid} 
-            loading={loading}
-          >
-            {t('knowledge.qaPairs.onlyGenerateQuestion')}
           </Button>
           <Button 
             type="primary" 
@@ -428,14 +429,14 @@ const KnowledgeModifyPage = () => {
 
   const renderCustomQAContent = () => {
     return (
-      <div className="px-7 py-5">
+      <div className="px-3 py-5">
         <CustomQAForm 
           ref={formRef}
           initialData={customQAData} 
           onFormChange={handleValidationChange} 
           onFormDataChange={handleCustomQADataChange} 
         />
-        <div className="fixed bottom-10 right-10 z-50 flex space-x-2">
+        <div className="fixed bottom-5 right-6 z-50 flex space-x-2">
           <Button disabled={loading} onClick={() => router.back()}>
             {t('common.cancel')}
           </Button>
@@ -589,7 +590,7 @@ const KnowledgeModifyPage = () => {
         <Breadcrumb.Item>{type && sourceTypeToDisplayText[type]}</Breadcrumb.Item>
         <Breadcrumb.Item>{isUpdate ? t('common.update') : t('common.create')}</Breadcrumb.Item>
       </Breadcrumb>
-      <div className="px-7 py-5">
+      <div className="px-3 py-5">
         {pageLoading ? (
           <div className="flex items-center justify-center h-full">
             <Spin />
@@ -606,7 +607,7 @@ const KnowledgeModifyPage = () => {
             </div>
           </div>
         )}
-        <div className="fixed bottom-10 right-10 z-50 flex space-x-2">
+        <div className="fixed bottom-5 right-6 z-50 flex space-x-2">
           {currentStep > 0 && currentStep < steps.length - 1 && (
             <Button onClick={handlePrevious} disabled={isUpdate && type === 'file' && currentStep === 1}>
               {t('common.pre')}

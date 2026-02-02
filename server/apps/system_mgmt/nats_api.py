@@ -50,10 +50,10 @@ def get_user_all_roles(user):
     # 用户所属组织的角色（只包含直接所属组织，不递归子组）
     group_role_ids = set()
     if user.group_list:
-        # 使用ManyToMany关系获取组角色
-        groups = Group.objects.filter(id__in=user.group_list)
+        # 使用prefetch_related避免N+1查询
+        groups = Group.objects.filter(id__in=user.group_list).prefetch_related("roles")
         for group in groups:
-            group_role_ids.update(group.roles.values_list("id", flat=True))
+            group_role_ids.update(role.id for role in group.roles.all())
 
     # 合并去重
     all_role_ids = list(personal_role_ids | group_role_ids)
@@ -132,7 +132,7 @@ def verify_token(token):
         group_list = group_list.filter(id__in=user.group_list)
     # groups = GroupUtils.build_group_tree(group_list)
     groups = list(group_list.values("id", "name", "parent_id"))
-    queryset = Group.objects.all()
+    queryset = Group.objects.prefetch_related("roles").all()
 
     # 构建嵌套组结构
     groups_data = GroupUtils.build_group_tree(queryset, is_superuser, [i["id"] for i in groups])
@@ -162,6 +162,7 @@ def verify_token(token):
             "role_ids": all_role_ids,  # 返回所有角色ID（个人+组）
             "locale": user.locale,
             "permission": menus,
+            "timezone": user.timezone,
         },
     }
 
@@ -318,7 +319,7 @@ def create_default_rule(llm_model, ocr_model, embed_model, rerank_model):
 
 @nats_client.register
 def get_all_groups():
-    groups = Group.objects.all()
+    groups = Group.objects.prefetch_related("roles").all()
     return_data = GroupUtils.build_group_tree(groups, True)
     return {"result": True, "data": return_data}
 
@@ -391,7 +392,8 @@ def _prepare_user_rules_query(group_id, username, domain, app, include_children=
 
     # 获取查询的组ID列表（包含子组）
     if include_children:
-        query_group_ids = GroupUtils.get_all_child_groups(int(group_id), include_self=True)
+        # 提取用户的组织ID列表
+        query_group_ids = GroupUtils.get_all_child_groups(int(group_id), include_self=True, group_list=user_obj.group_list)
     else:
         query_group_ids = [int(group_id)]
 
@@ -615,12 +617,13 @@ def login(username, password):
         max_retry_count = int(max_retry_setting.value) if max_retry_setting else 5
 
         lock_duration_setting = SystemSettings.objects.filter(key="pwd_set_lock_duration").first()
-        lock_duration_minutes = int(lock_duration_setting.value) if lock_duration_setting else 30
+        lock_duration_seconds = int(lock_duration_setting.value) if lock_duration_setting else 180  # 默认180秒(3分钟)
 
         # 如果错误次数达到或超过最大重试次数，锁定账号
         if user.password_error_count >= max_retry_count:
-            user.account_locked_until = now + timedelta(minutes=lock_duration_minutes)
+            user.account_locked_until = now + timedelta(seconds=lock_duration_seconds)
             user.save()
+            lock_duration_minutes = int(lock_duration_seconds / 60) + 1
             return {
                 "result": False,
                 "message": loader.get(

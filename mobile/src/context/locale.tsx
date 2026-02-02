@@ -6,6 +6,7 @@ import {
   useState,
   ReactNode,
   useEffect,
+  useCallback,
 } from 'react';
 import { IntlProvider } from 'react-intl';
 import zhMessages from '@/locales/zh.json';
@@ -34,54 +35,68 @@ const flattenMessages = (
 };
 
 const localeMessages: Record<string, Record<string, string>> = {
-  zh: flattenMessages(zhMessages),
+  'zh-Hans': flattenMessages(zhMessages),
+  'zh': flattenMessages(zhMessages),
   'zh-CN': flattenMessages(zhMessages),
-  en: flattenMessages(enMessages),
+  'en': flattenMessages(enMessages),
   'en-US': flattenMessages(enMessages),
 };
 
-const LocaleContext = createContext<
-  | {
-      locale: string;
-      setLocale: (locale: string) => void;
-        }
-        | undefined
-        >(undefined);
+// 默认语言
+const DEFAULT_LOCALE = 'zh-Hans';
+
+interface LocaleContextType {
+  locale: string;
+  setLocale: (locale: string) => void;
+}
+
+const LocaleContext = createContext<LocaleContextType | undefined>(undefined);
 
 interface LocaleProviderProps {
   children: ReactNode;
 }
 
 export const LocaleProvider = ({ children }: LocaleProviderProps) => {
-  const [locale, setLocale] = useState('zh-CN');
+  const [locale, setLocaleState] = useState(DEFAULT_LOCALE);
   const [messages, setMessages] = useState<Record<string, string>>(
-    localeMessages['zh-CN']
+    localeMessages[DEFAULT_LOCALE]
   );
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    // 从localStorage获取保存的语言设置，默认为中文
-    const savedLocale = localStorage.getItem('locale') || 'zh-CN';
-    const newMessages = localeMessages[savedLocale] || localeMessages['zh-CN'];
+  // 设置语言
+  const setLocale = useCallback((newLocale: string) => {
+    const newMessages = localeMessages[newLocale] || localeMessages[DEFAULT_LOCALE];
 
-    setLocale(savedLocale);
+    setLocaleState(newLocale);
     setMessages(newMessages);
-    setMounted(true);
   }, []);
 
-  const changeLocale = (newLocale: string) => {
-    const newMessages = localeMessages[newLocale] || localeMessages['zh-CN'];
+  useEffect(() => {
+    // 初始化时从安全存储获取用户信息中的 locale
+    const initLocale = async () => {
+      try {
+        const { getUserInfoFromStorage, initSecureStorage } = await import('@/utils/secureStorage');
+        await initSecureStorage();
+        const userInfo = await getUserInfoFromStorage();
 
-    setLocale(newLocale);
-    setMessages(newMessages);
-    localStorage.setItem('locale', newLocale);
-  };
+        if (userInfo?.locale) {
+          setLocale(userInfo.locale);
+        }
+      } catch (error) {
+        console.error('Failed to load locale from user info:', error);
+      } finally {
+        setMounted(true);
+      }
+    };
+
+    initLocale();
+  }, [setLocale]);
 
   // 在客户端挂载前使用默认消息避免闪烁
   if (!mounted) {
     return (
-      <LocaleContext.Provider value={{ locale, setLocale: changeLocale }}>
-        <IntlProvider locale={locale} messages={messages} defaultLocale="zh-CN">
+      <LocaleContext.Provider value={{ locale, setLocale }}>
+        <IntlProvider locale={locale} messages={messages} defaultLocale={DEFAULT_LOCALE}>
           {children as any}
         </IntlProvider>
       </LocaleContext.Provider>
@@ -89,8 +104,8 @@ export const LocaleProvider = ({ children }: LocaleProviderProps) => {
   }
 
   return (
-    <LocaleContext.Provider value={{ locale, setLocale: changeLocale }}>
-      <IntlProvider locale={locale} messages={messages} defaultLocale="zh-CN">
+    <LocaleContext.Provider value={{ locale, setLocale }}>
+      <IntlProvider locale={locale} messages={messages} defaultLocale={DEFAULT_LOCALE}>
         {children as any}
       </IntlProvider>
     </LocaleContext.Provider>

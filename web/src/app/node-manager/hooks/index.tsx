@@ -5,9 +5,13 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { Button, Popconfirm } from 'antd';
 import Permission from '@/components/permission';
 
-const useHandleCopy = (value: string) => {
+const useHandleCopy = () => {
   const { t } = useTranslation();
-  const handleCopy = () => {
+  const handleCopy = (config: {
+    value: string;
+    showSuccessMessage?: boolean;
+  }) => {
+    const { value, showSuccessMessage = true } = config;
     try {
       if (navigator?.clipboard?.writeText) {
         navigator.clipboard.writeText(value);
@@ -19,7 +23,9 @@ const useHandleCopy = (value: string) => {
         document.execCommand('copy');
         document.body.removeChild(textArea);
       }
-      message.success(t('common.successfulCopied'));
+      if (showSuccessMessage) {
+        message.success(t('common.copySuccess'));
+      }
     } catch (error: any) {
       message.error(error + '');
     }

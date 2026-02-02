@@ -1,14 +1,15 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { Button, Tag, message, Popconfirm, Space, Drawer } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import { ModalRef, ColumnItem } from '@/app/mlops/types';
+import { ModalRef, ColumnItem, DatasetType } from '@/app/mlops/types';
+import { DATASET_RELEASE_MAP } from '@/app/mlops/constants';
 import DatasetReleaseModal from './DatasetReleaseModal';
+import { useAuth } from "@/context/auth";
 
 interface DatasetRelease {
   id: number;
@@ -31,20 +32,30 @@ interface DatasetRelease {
 }
 
 interface DatasetReleaseListProps {
-  datasetType: 'timeseries_predict' | 'anomaly_detection' | 'classification' | 'log_clustering' | 'rasa' | 'image_classification' | 'object_detection';
+  datasetType: DatasetType;
 }
+
+const SUPPORTED_DATASET_TYPES = [
+  DatasetType.TIMESERIES_PREDICT,
+  DatasetType.ANOMALY_DETECTION,
+  DatasetType.LOG_CLUSTERING,
+  DatasetType.CLASSIFICATION,
+  DatasetType.IMAGE_CLASSIFICATION,
+  DatasetType.OBJECT_DETECTION
+];
 
 const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) => {
   const { t } = useTranslation();
+  const authContext = useAuth();
   const { convertToLocalizedTime } = useLocalizedTime();
   const searchParams = useSearchParams();
   const datasetId = searchParams.get('folder_id');
   const releaseModalRef = useRef<ModalRef>(null);
 
-  const { getDatasetReleases, archiveDatasetRelease, deleteDatasetRelease } = useMlopsTaskApi();
+  const taskApi = useMlopsTaskApi();
 
   // 判断当前类型是否支持版本管理
-  const isSupportedType = datasetType === 'timeseries_predict';
+  const isSupportedType = SUPPORTED_DATASET_TYPES.includes(datasetType);
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -57,7 +68,6 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   useEffect(() => {
     if (datasetId && isSupportedType && open) {
-      console.log(datasetId, datasetType, pagination.current)
       fetchReleases();
     }
   }, [datasetId, datasetType, pagination.current]);
@@ -66,11 +76,14 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
     if (!isSupportedType) return;
     setLoading(true);
     try {
-      const result = await getDatasetReleases({
-        dataset: Number(datasetId),
-        page: pagination.current,
-        page_size: pagination.pageSize,
-      });
+      const result = await taskApi.getDatasetReleases(
+        datasetType,
+        {
+          dataset: Number(datasetId),
+          page: pagination.current,
+          page_size: pagination.pageSize,
+        }
+      );
 
       setDataSource(result.items || []);
       setPagination(prev => ({
@@ -78,8 +91,8 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
         total: result.count || 0,
       }));
     } catch (error) {
-      console.error('获取版本列表失败:', error);
-      message.error('获取版本列表失败');
+      console.error(t(`common.fetchFailed`), error);
+      message.error(t(`common.fetchFailed`));
     } finally {
       setLoading(false);
     }
@@ -87,22 +100,42 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   const handleArchive = async (record: DatasetRelease) => {
     try {
-      await archiveDatasetRelease(record.id.toString());
-      message.success('归档成功');
+      await taskApi.archiveDatasetRelease(
+        datasetType,
+        record.id.toString()
+      );
+      message.success(t(`common.updateSuccess`));
       fetchReleases();
     } catch (error) {
-      console.error('归档失败:', error);
-      message.error('归档失败');
+      console.error(t(`common.updateFailed`), error);
+      message.error(t(`common.updateFailed`));
+    }
+  };
+
+  const handleUnarchive = async (record: DatasetRelease) => {
+    try {
+      await taskApi.unarchiveDatasetRelease(
+        datasetType,
+        record.id.toString()
+      );
+      message.success(t(`common.publishSuccess`));
+      fetchReleases()
+    } catch (error) {
+      console.error(t(`mlops-common.publishFailed`), error);
+      message.error(t(`mlops-common.publishFailed`));
     }
   };
 
   const handleDeleteRelease = async (record: DatasetRelease) => {
     try {
-      await deleteDatasetRelease(record.id.toString());
+      await taskApi.deleteDatasetRelease(
+        datasetType,
+        record.id.toString()
+      );
       message.success(t(`common.delSuccess`));
       fetchReleases();
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.delFailed`));
     }
   }
@@ -130,11 +163,58 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
     releaseModalRef.current?.showModal({ type: '' });
   };
 
+  const downloadReleaseZip = async (record: any) => {
+    try {
+      message.info(t(`mlops-common.downloadStart`));
+
+      const response = await fetch(
+        `/api/proxy/mlops/${DATASET_RELEASE_MAP[datasetType]}/${record.id}/download/`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${authContext?.token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`${t('mlops-common.downloadFailed')}: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+
+      // 从 Content-Disposition 头提取文件名
+      const contentDisposition = response.headers.get('content-disposition');
+      let fileName = `${record.name}.zip`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename[^;=\n]*=(['\"]?)([^'"\n]*?)\1/);
+        if (match && match[2]) {
+          fileName = match[2];
+        }
+      }
+
+      // 创建下载链接
+      const fileUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = fileUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(fileUrl);
+    } catch (error: any) {
+      console.error(t(`mlops-common.downloadFailed`), error);
+      message.error(error.message || t('common.errorFetch'));
+    }
+  };
+
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { color: string; text: string }> = {
-      published: { color: 'success', text: '已发布' },
-      pending: { color: 'default', text: '待发布' },
-      failed: { color: 'error', text: '失败' },
+      published: { color: 'success', text: t(`mlops-common.published`) },
+      pending: { color: 'default', text: t(`mlops-common.pending`) },
+      processing: { color: 'processing', text: t(`mlops-common.publishing`) },
+      failed: { color: 'error', text: t(`mlops-common.failed`) },
+      archived: { color: 'default', text: t(`mlops-common.archived`) }
     };
     const config = statusMap[status] || { color: 'default', text: status };
     return <Tag color={config.color}>{config.text}</Tag>;
@@ -150,34 +230,34 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   const columns: ColumnItem[] = [
     {
-      title: '版本号',
+      title: t(`common.version`),
       dataIndex: 'version',
       key: 'version',
       width: 120,
       render: (_, record: DatasetRelease) => <Tag color="blue">{record.version}</Tag>,
     },
     {
-      title: '版本名称',
+      title: t(`common.name`),
       dataIndex: 'name',
       key: 'name',
       ellipsis: true,
     },
     {
-      title: '文件大小',
+      title: t(`datasets.fileSize`),
       dataIndex: 'file_size',
       key: 'file_size',
       width: 120,
       render: (_, record: DatasetRelease) => <>{formatBytes(record.file_size)}</>,
     },
     {
-      title: '状态',
+      title: t(`mlops-common.status`),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       render: (_, record: DatasetRelease) => getStatusTag(record.status),
     },
     {
-      title: '创建时间',
+      title: t(`mlops-common.createdAt`),
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
@@ -187,38 +267,49 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       title: t(`common.action`),
       key: 'action',
       dataIndex: 'action',
-      width: 150,
+      width: 100,
       fixed: 'right' as const,
-      align: 'center',
+      // align: 'center',
       render: (_: any, record: DatasetRelease) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            href={record.dataset_file}
-          >
-            {t(`common.download`)}
-          </Button>
+          {(record.status === 'archived')
+            ? <Button
+              type='link'
+              size='small'
+              onClick={() => handleUnarchive(record)}
+            >
+              {t(`common.publish`)}
+            </Button>
+            : <Button
+              type="link"
+              size="small"
+              disabled={['pending', 'processing', 'failed'].includes(record.status)}
+              onClick={() => downloadReleaseZip(record)}
+            >
+              {t(`common.download`)}
+            </Button>
+          }
           {record.status === 'published' && (
             <Popconfirm
-              title="确认归档"
-              description="归档后该版本将标记为旧版本"
+              title={t(`mlops-common.archiveConfirm`)}
+              description={t(`mlops-common.archivingMsg`)}
               onConfirm={() => handleArchive(record)}
-              okText="确认"
-              cancelText="取消"
+              okText={t(`common.confirm`)}
+              cancelText={t(`common.cancel`)}
             >
               <Button type="link" size="small" danger>
-                归档
+                {t(`mlops-common.archived`)}
               </Button>
             </Popconfirm>
           )}
-          {record.status == 'pending' && (
+          {['archived', 'failed', 'pending', 'processing'].includes(record.status) && (
             <Popconfirm
-              title="确认删除"
-              description="该文件将被删除"
+              placement='left'
+              title={t(`mlops-common.deleteConfirm`)}
+              description={t(`mlops-common.fileDelDes`)}
               onConfirm={() => handleDeleteRelease(record)}
-              okText="确认"
-              cancelText="取消"
+              okText={t(`common.confirm`)}
+              cancelText={t(`common.cancel`)}
             >
               <Button type="link" size="small" danger>
                 {t(`common.delete`)}
@@ -232,21 +323,21 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   return (
     <>
-      <Button type="link" className="mr-[10px]" onClick={handleOpenDrawer} disabled={!isSupportedType}>
-        版本
+      <Button type="primary" className="mr-2.5" onClick={handleOpenDrawer} disabled={!isSupportedType}>
+        {t(`common.version`)}
       </Button>
 
       <Drawer
-        title={
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>数据集版本管理</span>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleRelease}>
-              发布版本
+        title={t(`datasets.datasetsRelease`)}
+        footer={
+          <div className='flex justify-end'>
+            <Button type="primary" onClick={handleRelease}>
+              {t(`common.publish`)}
             </Button>
           </div>
         }
         placement="right"
-        width={900}
+        width={850}
         onClose={handleCloseDrawer}
         open={open}
       >
@@ -257,13 +348,14 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
           loading={loading}
           pagination={pagination}
           onChange={handleTableChange}
-          scroll={{ x: '100%', y: 'calc(100vh - 250px)' }}
+          scroll={{ x: '100%', y: 'calc(100vh - 265px)' }}
         />
       </Drawer>
 
       <DatasetReleaseModal
         ref={releaseModalRef}
         datasetId={datasetId || ''}
+        datasetType={datasetType}
         onSuccess={() => fetchReleases()}
       />
     </>

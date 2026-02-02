@@ -1,10 +1,5 @@
 # -- coding: utf-8 --
 # @File: k8s.py
-# @Time: 2025/11/12 13:49
-# @Author: windyzhao
-
-# -- coding: utf-8 --
-# @File: k8s.py
 # @Time: 2025/11/12 11:39
 # @Author: windyzhao
 import json
@@ -39,6 +34,7 @@ class CollectK8sMetrics:
         self.collection_metrics_dict = {i: [] for i in COLLECTION_METRICS.keys()}
         self.timestamp_gt = False
         self.result = {}
+        self.raw_data = []
 
     @property
     def collect_data(self):
@@ -75,6 +71,7 @@ class CollectK8sMetrics:
         sql = " or ".join(
             "{}{{instance_id=\"{}\"}}".format(j, self.cluster_name) for m in COLLECTION_METRICS.values() for j in m)
         data = Collection().query(sql)
+        self.raw_data = data.get("data", []).get("result", [])
         return data.get("data", [])
 
     def format_data(self, data):

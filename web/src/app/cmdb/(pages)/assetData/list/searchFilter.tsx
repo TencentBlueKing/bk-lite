@@ -3,10 +3,16 @@ import type { CheckboxProps } from 'antd';
 import searchFilterStyle from './searchFilter.module.scss';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
-import { Select, Input, InputNumber, Checkbox, DatePicker } from 'antd';
+import { Select, Input, InputNumber, Checkbox, DatePicker, Button } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import { UserItem } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { SearchFilterProps } from '@/app/cmdb/types/assetData';
+import { useAssetDataStore } from '@/app/cmdb/store';
+import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+
+dayjs.extend(customParseFormat);
 
 const SearchFilter: React.FC<SearchFilterProps> = ({
   attrList,
@@ -15,15 +21,30 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   showExactSearch = true,
   onSearch,
 }) => {
-  const [searchAttr, setSearchAttr] = useState<string>('');
+  // 从 store 获取 searchAttr
+  const searchAttr_store = useAssetDataStore((state) => state.searchAttr);
+
+  const [searchAttr, setSearchAttr] = useState<string>("");
   const [searchValue, setSearchValue] = useState<any>('');
   const [isExactSearch, setIsExactSearch] = useState<boolean>(false);
   const { t } = useTranslation();
   const { RangePicker } = DatePicker;
 
+  // 监听器，同步 store 中的 searchAttr 到本地状态
+  useEffect(() => {
+    if (searchAttr_store !== searchAttr) {
+      setSearchAttr(searchAttr_store);
+    }
+  }, [searchAttr_store, searchAttr]);
+
+  // 初始化默认字段
   useEffect(() => {
     if (attrList.length) {
       setSearchAttr(attrList[0].attr_id);
+      useAssetDataStore.setState((state) => ({
+        ...state,
+        searchAttr: attrList[0].attr_id,
+      }));
     }
   }, [attrList.length]);
 
@@ -41,7 +62,8 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
       (Array.isArray(value) && !value.length) ||
       (selectedAttr?.attr_type === 'time' && !(value?.[0] && value?.[1]))
     ) {
-      condition = null;
+      // condition 为 null 时，传递字段信息用于删除对应筛选项
+      condition = { field: searchAttr } as any;
     } else if (selectedAttr?.attr_id === 'cloud') {
       condition.type = typeof value === 'number' ? 'int=' : 'str=';
     } else {
@@ -53,8 +75,9 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           condition.type = isExact ? 'str=' : 'str*';
           break;
         case 'user':
-          condition.type = 'user[]';
-          condition.value = [value];
+          // test4.5:如果为用户字段user，则类型为list（operator 字段的数据类型转换）
+          condition.type = 'list[]';
+          condition.value = Array.isArray(value) ? value : [value];
           break;
         case 'int':
           condition.type = 'int=';
@@ -74,13 +97,26 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   };
 
   const onSearchAttrChange = (attr: string) => {
-    setSearchAttr(attr);
     setSearchValue('');
+    useAssetDataStore.setState((state) => ({
+      ...state,
+      searchAttr: attr,
+    }));
+
+    // 更新本地状态
+    setSearchAttr(attr);
   };
 
   const onExactSearchChange: CheckboxProps['onChange'] = (e) => {
-    setIsExactSearch(e.target.checked);
-    onSearchValueChange(searchValue, e.target.checked);
+    const checked = e.target.checked;
+    setIsExactSearch(checked);
+    useAssetDataStore.setState((state) => ({
+      ...state,
+      case_sensitive: checked,
+    }));
+  };
+  const handleSearchClick = () => {
+    onSearchValueChange(searchValue, isExactSearch);
   };
 
   const renderSearchInput = () => {
@@ -109,14 +145,18 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
     switch (selectedAttr?.attr_type) {
       case 'user':
         return (
+          // 筛选项搜索框中，用户字段为多选
           <Select
+            mode="multiple"
             allowClear
             showSearch
             className="value"
-            style={{ width: 200 }}
-            value={searchValue}
+            style={{ minWidth: 200 }}
+            value={Array.isArray(searchValue) ? searchValue : searchValue ? [searchValue] : []}
             onChange={(e) => onSearchValueChange(e, isExactSearch)}
             onClear={() => onSearchValueChange('', isExactSearch)}
+            maxTagCount={2}
+            maxTagPlaceholder={(omittedValues) => `+${omittedValues.length}`}
             filterOption={(input, opt: any) => {
               if (typeof opt?.children?.props?.text === 'string') {
                 return opt?.children?.props?.text
@@ -129,7 +169,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             {userList.map((opt: UserItem) => (
               <Select.Option key={opt.id} value={opt.id}>
                 <EllipsisWithTooltip
-                  text={`${opt.display_name} (${opt.username})`}
+                  text={`${opt.display_name}(${opt.username})`}
                   className="whitespace-nowrap overflow-hidden text-ellipsis break-all"
                 />
               </Select.Option>
@@ -191,12 +231,31 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           />
         );
       case 'time':
+        // 将字符串数组转换为 dayjs 对象数组，用于 RangePicker
+        const getTimeValue = () => {
+          if (!searchValue || !Array.isArray(searchValue)) {
+            return [null, null];
+          }
+          // 如果已经是 dayjs 对象，直接使用
+          if (searchValue[0] && typeof searchValue[0].isValid === 'function') {
+            return [searchValue[0], searchValue[1] || null];
+          }
+          // 如果是字符串，转换为 dayjs 对象
+          const start = searchValue[0] ? dayjs(searchValue[0], 'YYYY-MM-DD HH:mm', true) : null;
+          const end = searchValue[1] ? dayjs(searchValue[1], 'YYYY-MM-DD HH:mm', true) : null;
+          // 如果严格模式解析失败，尝试自动解析
+          return [
+            start && start.isValid() ? start : (searchValue[0] ? dayjs(searchValue[0]) : null),
+            end && end.isValid() ? end : (searchValue[1] ? dayjs(searchValue[1]) : null),
+          ];
+        };
         return (
           <RangePicker
             allowClear
             style={{ width: 320 }}
             showTime={{ format: 'HH:mm' }}
             format="YYYY-MM-DD HH:mm"
+            value={getTimeValue() as any}
             onChange={(value, dateString) => {
               onSearchValueChange(dateString, isExactSearch);
             }}
@@ -255,6 +314,13 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
         ))}
       </Select>
       {renderSearchInput()}
+      {/* 搜索按钮 */}
+      <Button
+        type="primary"
+        icon={<SearchOutlined />}
+        onClick={handleSearchClick}
+        style={{ marginLeft: 0, marginRight: 8, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+      ></Button>
       {showExactSearch && (
         <Checkbox onChange={onExactSearchChange}>
           {t('Model.isExactSearch')}

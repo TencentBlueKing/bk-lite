@@ -48,11 +48,15 @@ collector:
     description: The Jetty JMX (Linux) collector acquires various monitoring metrics
       from the Jetty server using Java Management Extensions (JMX) technology.
   Vector_linux:
-    description: None
-    name: None
+    description: Vector (Linux) is a lightweight and efficient log collector that
+      natively supports the collection of various types of log data. It also serves
+      as a data transfer hub, storing data collected by other log collectors onto
+      the platform.
+    name: Vector
   Auditbeat_linux:
-    name: None
-    description: None
+    name: Auditbeat
+    description: Auditbeat (Linux) is a lightweight audit data collector capable of
+      reliably collecting system-level audit and security event logs from servers.
   exporter_kafka_linux:
     description: The Kafka Exporter (Linux) collector connects to Kafka to gather
       various monitoring metrics.
@@ -71,8 +75,9 @@ collector:
     description: The JVM JMX (Linux) collector retrieves various monitoring metrics
       from the Java Virtual Machine using Java Management Extensions (JMX) technology.
   Packetbeat_linux:
-    description: None
-    name: None
+    description: 'Packetbeat(Linux) is a lightweight network packet collector that
+      can capture and analyze network traffic between servers in real-time. '
+    name: Packetbeat
   exporter_mongodb_linux:
     description: None
     name: None
@@ -80,8 +85,9 @@ collector:
     description: None
     name: None
   Filebeat_linux:
-    name: None
-    description: None
+    name: Filebeat
+    description: 'Filebeat (Linux) is a lightweight file log collector capable of
+      reliably collecting log files from specified paths. '
   jmx_jboss_linux:
     description: None
     name: None
@@ -101,8 +107,10 @@ collector:
     name: None
     description: None
   Metricbeat_linux:
-    name: None
-    description: None
+    name: Metricbeat
+    description: Metricbeat (Linux) is a lightweight metrics collector capable of
+      reliably collecting system-level and service-level performance metrics from
+      servers and various services.
 collector_tag:
   exporter: Exporter
   log: Log
@@ -131,4 +139,4 @@ controller:
     name: Windows Controller
 controller_install_method:
   manual: Manual Installation
-  auto: Automatic Installation
+  auto: Remote installation

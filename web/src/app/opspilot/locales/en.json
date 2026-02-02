@@ -92,6 +92,7 @@
   },
   "tool": {
     "text": "Text",
+    "textarea": "Textarea",
     "deleteConfirm": "Are you sure you want to delete this tool?",
     "parameters": "Parameters",
     "addTool": "Add Tool",
@@ -117,7 +118,9 @@
     "fetchToolsFailed": "Failed to fetch tools",
     "subToolDescription": "Sub Tool Description",
     "items": "items",
-    "description": "Description"
+    "description": "Description",
+    "checkbox": "Checkbox",
+    "number": "Number"
   },
   "knowledge": {
     "goToTesting": "Go to Testing",
@@ -206,7 +209,10 @@
       "llmModel": "LLM Model",
       "enterQaCount": "Please enter QA count",
       "qaPairsUpdateFailed": "Failed to update QA pairs",
-      "chunks": "chunks"
+      "chunks": "chunks",
+      "totalQAPairsSuffix": "QA pairs",
+      "qaCountPerChunk": "QA Count (Per Chunk)",
+      "totalQAPairsPrefix": "Total"
     },
     "documents": {
       "status": "STATUS",
@@ -317,12 +323,16 @@
       "preprocessFailed": "Failed to start preprocessing",
       "chunkSize": "CHUNK COUNT",
       "ocrEnhancementDesc": "OCR (Optical Character Recognition) technology is used to recognize and convert characters in images into editable text, improving the accuracy and effectiveness of text recognition.",
+      "ocrModelNotConfigured": "OCR Model Not Configured",
+      "ocrModelNotConfiguredTip": "OCR feature requires configuring an OCR model first. Please complete the configuration.",
+      "modelConfig": "Model Config",
       "method": "Method",
       "semanticDescription": "Retains complete semantic units (e.g., chapters, paragraphs, function modules), suitable for long text processing requiring logical associations, but highly dependent on document structure or algorithms.",
       "pageDescription": "Preserves the independence of each slide's content and visuals, suitable for presentations with page logic.",
       "trainWarning": "Important Notice",
       "semanticFormats": "Structured documents (Word, Markdown), technical documents (PDF with table of contents).",
-      "fullTextMethod": "Extract all text content directly, enabling OCR for scanned PDFs."
+      "fullTextMethod": "Extract all text content directly, enabling OCR for scanned PDFs.",
+      "lastSyncTime": "Last Sync Time"
     },
     "knowledgeGraph": {
       "relationships": "Relationships",
@@ -476,7 +486,12 @@
     "editAnnotation": "Edit Annotation",
     "knowledgeDetails": "Knowledge Details",
     "clear": "Clear Conversation",
-    "removeAnnotation": "Remove Annotation"
+    "removeAnnotation": "Remove Annotation",
+    "onlyImageAllowed": "Only image files are allowed",
+    "imageTooLarge": "Image size cannot exceed 5MB",
+    "uploadImage": "Upload Image",
+    "referenceDocSource": "Reference Document Source",
+    "referenceQASource": "Reference QA Source"
   },
   "settings": {
     "secret": {
@@ -746,7 +761,42 @@
       "dingtalkParams": "DingTalk Parameters",
       "pleaseEnterOutputParams": "Please enter output parameters",
       "equals": "Equals",
-      "apiUrl": "URL"
+      "apiUrl": "URL",
+      "appTags": "App Tags",
+      "appDescription": "App Description",
+      "pleaseEnterAppDescription": "Please enter app description",
+      "enterAppName": "Enter app name",
+      "appTagProductivity": "Productivity",
+      "appTagSocial": "Social",
+      "pleaseEnterAppName": "Please enter app name",
+      "appTagWork": "Work",
+      "appTagEntertainment": "Entertainment",
+      "appTagEducation": "Education",
+      "selectAppTags": "Select app tags",
+      "appTagBusiness": "Business",
+      "enterAppDescription": "Enter app description",
+      "appName": "App Name",
+      "pleaseSelectAppTags": "Please select app tags",
+      "appTagAutomation": "Automation",
+      "appTagSecurityAudit": "Security Audit",
+      "appTagOpsPlanning": "Ops Planning",
+      "pleaseSelectAppIcon": "Please select app icon",
+      "appTagMonitorAlarm": "Monitor & Alarm",
+      "appTagRoutineOps": "Routine Ops",
+      "appIcon": "App Icon",
+      "appTagPerformanceAnalysis": "Performance Analysis",
+      "intents": "Intent List",
+      "intentDescription": "Intent Description",
+      "intentNamePlaceholder": "Please enter intent name",
+      "removeIntent": "Remove Intent",
+      "classification": "Classification",
+      "intentTopicPlaceholder": "Please enter classification topic name (one per line)",
+      "intentNameRequired": "Intent name is required",
+      "intentDescPlaceholder": "Please enter intent description (optional)",
+      "intentClassification": "Intent Classification",
+      "addIntent": "Add Intent",
+      "intentName": "Intent Name",
+      "intentClassificationConfig": "Intent Classification Configuration"
     },
     "collapseSidebar": "Collapse Sidebar",
     "messages": {
@@ -901,7 +951,12 @@
     "validate": "Validate",
     "notConfigured": "Not Configured",
     "pleaseEnterNotificationContent": "Please enter notification content",
-    "restful": "RESTful API"
+    "restful": "RESTful API",
+    "mobile": "Mobile Terminal",
+    "webChat": "Web Chat",
+    "embeddedChat": "Embedded Chat",
+    "applications": "Applications",
+    "intentClassification": "Intent Classification"
   },
   "provider": {
     "form": {

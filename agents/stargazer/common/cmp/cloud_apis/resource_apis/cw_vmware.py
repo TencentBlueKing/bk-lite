@@ -29,6 +29,8 @@ class CwVmware(object):
             setattr(self, k, v)
 
         self.si = self._connect_vc()
+        if self.si is None:
+            raise ConnectionError(f"Failed to connect to VMware vCenter: {self.host}")
         self.content = self.si.RetrieveContent()
 
     def __getattr__(self, item):
@@ -61,7 +63,7 @@ class Vmware(PrivateCloudManage):
 
     def __init__(self, si, content, name, region):
         """
-        Initialize vmware vSphere object.
+        Initialize vmware_vc vSphere object.
         :param si: a service instance object using for connecting to the specified server.
         :param content: retrieve content object
         :param name: calling method name
@@ -313,7 +315,7 @@ class Vmware(PrivateCloudManage):
 
     def list_vms(self, ids=None):
         """
-        Get vm list on vmware vsphere platforms
+        Get vm list on vmware_vc vsphere platforms
         :param kwargs: accept multiple key value pair arguments.
         :rtype: dict
         """

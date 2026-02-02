@@ -1,3 +1,4 @@
+import React from 'react';
 import { Dayjs } from 'dayjs';
 export interface TimeSelectorDefaultValue {
   selectValue: number | null;
@@ -8,7 +9,7 @@ export interface ColumnItem {
   title: string;
   dataIndex: string;
   key: string;
-  render?: (_: unknown, record: any) => JSX.Element;
+  render?: (_: unknown, record: any) => React.ReactElement;
   [key: string]: unknown;
 }
 
@@ -54,6 +55,7 @@ export interface UserInfoContextType {
   userId: string;
   displayName: string;
   setSelectedGroup: (group: Group) => void;
+  refreshUserInfo: () => Promise<void>;
 }
 
 export interface ClientData {

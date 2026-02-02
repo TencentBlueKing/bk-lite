@@ -17,7 +17,7 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
     @HasPermission("api_secret_key-View", "opspilot")
     def list(self, request, *args, **kwargs):
         current_team = request.COOKIES.get("current_team") or 0
-        query = self.get_queryset().filter(username=request.user.username, team=int(current_team))
+        query = self.get_queryset().filter(username=request.user.username, domain=request.user.domain, team=int(current_team))
         queryset = self.filter_queryset(query)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -37,6 +37,7 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
         additional_data = {
             "username": username,
             "api_secret": UserAPISecret.generate_api_secret(),
+            "domain": request.user.domain,
             "team": current_team,
         }
         serializer = self.get_serializer(data=additional_data)

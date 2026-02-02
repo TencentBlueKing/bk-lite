@@ -1,18 +1,9 @@
-import { useLoadbalanceSnmpPlugin } from '../../plugins/networkDevice/loadbalanceSnmp';
-
 export const useLoadbalanceConfig = () => {
-  const snmpPlugin = useLoadbalanceSnmpPlugin();
-
-  // 所有插件配置
-  const plugins = {
-    'Loadbalance SNMP General': snmpPlugin,
-  };
-
   return {
     instance_type: 'loadbalance',
     dashboardDisplay: [
       {
-        indexId: 'sysUpTime',
+        indexId: 'interface_ifOutDiscards',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
@@ -22,7 +13,7 @@ export const useLoadbalanceConfig = () => {
         },
       },
       {
-        indexId: 'iftotalInOctets',
+        indexId: 'interface_ifOperStatus',
         displayType: 'lineChart',
         sortIndex: 1,
         displayDimension: [],
@@ -32,7 +23,7 @@ export const useLoadbalanceConfig = () => {
         },
       },
       {
-        indexId: 'iftotalOutOctets',
+        indexId: 'interface_ifInErrors',
         displayType: 'lineChart',
         sortIndex: 2,
         displayDimension: [],
@@ -62,14 +53,16 @@ export const useLoadbalanceConfig = () => {
       },
     ],
     tableDiaplay: [
-      { type: 'value', key: 'iftotalInOctets' },
-      { type: 'value', key: 'iftotalOutOctets' },
-      { type: 'value', key: 'sysUpTime' },
+      { type: 'value', key: 'interface_ifOperStatus' },
+      { type: 'value', key: 'interface_ifInErrors' },
+      { type: 'value', key: 'interface_ifOutDiscards' },
     ],
     groupIds: {
       list: ['instance_id'],
       default: ['instance_id'],
     },
-    plugins,
+    collectTypes: {
+      'Loadbalance SNMP General': 'snmp',
+    },
   };
 };

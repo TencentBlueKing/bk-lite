@@ -140,11 +140,14 @@ interface ServiceItem {
   name: string;
   status: 'not_deployed' | 'normal' | 'error';
   description: string;
+  [key: string]: any;
 }
 
 interface CloudRegionItem extends BaseEntityWithDescription {
   icon: string;
   services?: ServiceItem[];
+  originalName?: string;
+  proxy_address?: string;
   tagList?: Array<{
     name: string;
     color: string;

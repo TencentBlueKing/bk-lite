@@ -13,13 +13,10 @@ import {
   ObjectItem,
   MetricItem,
   ChartDataItem,
-  NodeWorkload,
   OrganizationNode,
-  UnitItem,
 } from '@/app/monitor/types';
 import { Group } from '@/types';
 import {
-  UNIT_LIST,
   APPOINT_METRIC_IDS,
   DERIVATIVE_OBJECTS,
   OBJECT_DEFAULT_ICON,
@@ -202,25 +199,6 @@ export const useFormatTime = () => {
   return { formatTime };
 };
 
-// 根据id找到单位名称（单个id展示）
-export const findUnitNameById = (
-  value: unknown,
-  arr: UnitItem[] = UNIT_LIST
-): string => {
-  for (let i = 0; i < arr.length; i++) {
-    if (arr[i].value === value) {
-      return arr[i].unit || '';
-    }
-    if (arr[i].children && arr[i].children?.length) {
-      const label = findUnitNameById(value, arr[i]?.children || []);
-      if (label) {
-        return label;
-      }
-    }
-  }
-  return '';
-};
-
 // 柱形图或者折线图单条线时，获取其最大值、最小值、平均值和最新值
 export const calculateMetrics = (
   data: Record<string, number>[],
@@ -301,21 +279,6 @@ export const getEnumColor = (metric: MetricItem, id: number | string) => {
     );
   }
   return '';
-};
-
-// 根据指标枚举获取值+单位
-export const getEnumValueUnit = (metric: MetricItem, id: number | string) => {
-  const { unit: input = '', name } = metric || {};
-  if (!id && id !== 0) return '--';
-  if (isStringArray(input)) {
-    return (
-      JSON.parse(input).find((item: ListItem) => item.id === +id)?.name || id
-    );
-  }
-  const unit = findUnitNameById(input);
-  return isNaN(+id) || APPOINT_METRIC_IDS.includes(name)
-    ? `${id} ${unit}`
-    : `${(+id).toFixed(2)} ${unit}`;
 };
 
 export const transformTreeData = (nodes: Group[]): CascaderItem[] => {
@@ -432,36 +395,6 @@ export const findTreeParentKey = (
   return parentKey;
 };
 
-export const getK8SData = (
-  data: Record<
-    string,
-    Record<string, { node: string[]; workload: NodeWorkload[] }>
-  >
-) => {
-  let result = [];
-  try {
-    result = Object.entries(data).map(([key, value]) => ({
-      id: key,
-      child: Object.entries(value).map(([innerKey, innerValue]) => ({
-        id: innerKey,
-        child: [
-          {
-            id: 'node',
-            child: innerValue.node,
-          },
-          {
-            id: 'workload',
-            child: innerValue.workload,
-          },
-        ],
-      })),
-    }));
-  } catch {
-    return [];
-  }
-  return result;
-};
-
 // 展示监控示例名称
 export const showInstName = (objectItem: ObjectItem, row: TableDataItem) => {
   const isDerivative = DERIVATIVE_OBJECTS.includes(objectItem?.name);
@@ -475,6 +408,7 @@ export const getBaseInstanceColumn = (config: {
   row: ObjectItem;
   objects: ObjectItem[];
   t: any;
+  queryData?: any[];
 }) => {
   const baseTarget = config.objects
     .filter((item) => item.type === config.row?.type)
@@ -486,6 +420,11 @@ export const getBaseInstanceColumn = (config: {
       title: config.t('common.name'),
       dataIndex: 'instance_name',
       width: 300,
+      onCell: () => ({
+        style: {
+          minWidth: 200,
+        },
+      }),
       key: 'instance_name',
       render: (_: unknown, record: TableDataItem) => {
         const instanceName = showInstName(config.row, record);
@@ -503,11 +442,26 @@ export const getBaseInstanceColumn = (config: {
       title: title,
       dataIndex: 'base_instance_name',
       width: 300,
+      onCell: () => ({
+        style: {
+          minWidth: 200,
+        },
+      }),
       key: 'base_instance_name',
       render: (_: unknown, record: TableDataItem) => {
+        const instanceIdValue = record.instance_id_values?.[0];
+        let displayName = instanceIdValue || '--';
+        if (config.queryData && instanceIdValue) {
+          const matchedItem = config.queryData.find(
+            (item: TableDataItem) => item.id === instanceIdValue
+          );
+          if (matchedItem) {
+            displayName = matchedItem.name || matchedItem.id;
+          }
+        }
         return (
           <EllipsisWithTooltip
-            text={record.instance_id_values?.[0] || '--'}
+            text={displayName}
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
           ></EllipsisWithTooltip>
         );

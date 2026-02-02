@@ -5,6 +5,7 @@ import { ThresholdField } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import { useScheduleList } from '@/app/monitor/hooks/event';
 import { useLevelList } from '@/app/monitor/hooks';
+import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import SelectCards from './selectCard';
 import ThresholdList from './thresholdList';
@@ -14,12 +15,14 @@ const { Option } = Select;
 interface AlertConditionsFormProps {
   enableAlerts: string[];
   threshold: ThresholdField[];
+  calculationUnit: string;
   noDataAlert: number | null;
   nodataUnit: string;
   noDataRecovery: number | null;
   noDataRecoveryUnit: string;
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
+  onCalculationUnitChange: (val: string) => void;
   onNodataUnitChange: (val: string) => void;
   onNoDataAlertChange: (e: number | null) => void;
   onNodataRecoveryUnitChange: (val: string) => void;
@@ -30,12 +33,14 @@ interface AlertConditionsFormProps {
 const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   enableAlerts,
   threshold,
+  calculationUnit,
   noDataAlert,
   nodataUnit,
   noDataRecovery,
   noDataRecoveryUnit,
   onEnableAlertsChange,
   onThresholdChange,
+  onCalculationUnitChange,
   onNodataUnitChange,
   onNoDataAlertChange,
   onNodataRecoveryUnitChange,
@@ -43,7 +48,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   isTrap,
 }) => {
   const { t } = useTranslation();
-  // 在组件内部引入hooks，减少props传递
+  const commonContext = useCommon();
+  const unitList = commonContext?.unitList || [];
   const LEVEL_LIST = useLevelList();
   const SCHEDULE_LIST = useScheduleList();
 
@@ -60,7 +66,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       }) ||
         !threshold.some((item) => {
           return !!item.value || item.value === 0;
-        }))
+        }) ||
+        !calculationUnit)
     ) {
       return Promise.reject(new Error(t('monitor.events.conditionValidate')));
     }
@@ -110,7 +117,15 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         />
         <div>
           {enableAlerts.includes('threshold') && (
-            <ThresholdList data={threshold} onChange={onThresholdChange} />
+            <ThresholdList
+              data={threshold}
+              onChange={onThresholdChange}
+              calculationUnit={calculationUnit}
+              onUnitChange={onCalculationUnitChange}
+              unitOptions={unitList.filter(
+                (item) => !['none', 'short'].includes(item.unit_id)
+              )}
+            />
           )}
         </div>
       </Form.Item>

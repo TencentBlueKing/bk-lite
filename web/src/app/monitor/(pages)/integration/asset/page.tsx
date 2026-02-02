@@ -11,6 +11,7 @@ import {
   Tooltip,
 } from 'antd';
 import useApiClient from '@/utils/request';
+import { useSearchParams } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import assetStyle from './index.module.scss';
@@ -37,13 +38,13 @@ import {
   showGroupName,
   getBaseInstanceColumn,
 } from '@/app/monitor/utils/common';
-import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import EditConfig from './updateConfig';
 import EditInstance from './editInstance';
 import TemplateConfigDrawer from './templateConfigDrawer';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { EXCLUDED_CHILD_OBJECTS } from '@/app/monitor/constants/integration';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableProps, MenuProps } from 'antd';
@@ -60,11 +61,14 @@ const Asset = () => {
   const { t } = useTranslation();
   const commonContext = useCommon();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const { getInstanceType } = useObjectConfigInfo();
+  const searchparams = useSearchParams();
+  const urlObjId = searchparams.get('objId');
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const configRef = useRef<ModalRef>(null);
+  const assetAbortControllerRef = useRef<AbortController | null>(null);
+  const assetRequestIdRef = useRef<number>(0);
   const instanceRef = useRef<ModalRef>(null);
   const templateDrawerRef = useRef<TemplateDrawerRef>(null);
   const assetMenuItems = useAssetMenuItems();
@@ -79,7 +83,9 @@ const Asset = () => {
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [searchText, setSearchText] = useState<string>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
-  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
+  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>(
+    urlObjId ? Number(urlObjId) : ''
+  );
   const [objectId, setObjectId] = useState<React.Key>('');
   const [frequence, setFrequence] = useState<number>(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -103,16 +109,12 @@ const Asset = () => {
     record: any,
     options?: { selectedConfigId?: string; showTemplateList?: boolean }
   ) => {
-    const instanceType = getInstanceType(
-      objects.find((item) => item.id === objectId)?.name || ''
-    );
-
     templateDrawerRef.current?.showModal({
       instanceName: record.instance_name,
       instanceId: record.instance_id,
-      instanceType: instanceType,
       selectedConfigId: options?.selectedConfigId,
       objName: objects.find((item) => item.id === objectId)?.name || '',
+      monitorObjId: objectId,
       plugins: record.plugins || [],
       showTemplateList: options?.showTemplateList ?? true,
     });
@@ -124,7 +126,11 @@ const Asset = () => {
         title: t('monitor.integrations.collectionTemplate'),
         dataIndex: 'plugins',
         key: 'plugins',
-        width: 200,
+        onCell: () => ({
+          style: {
+            minWidth: 150,
+          },
+        }),
         render: (_, record: any) => {
           const plugins = record.plugins || [];
           if (!plugins.length) return <>--</>;
@@ -134,11 +140,9 @@ const Asset = () => {
               {plugins.map((plugin: any, index: number) => {
                 const isAuto = plugin.collect_mode === 'auto';
                 const statusInfo = {
-                  color: isAuto
-                    ? plugin.status === 'normal' || plugin.status === 'online'
-                      ? 'success'
-                      : 'error'
-                    : 'default',
+                  color: ['normal', 'online'].includes(plugin.status)
+                    ? 'success'
+                    : 'error',
                   text: isAuto
                     ? t('monitor.integrations.automatic')
                     : t('monitor.integrations.manual'),
@@ -171,9 +175,7 @@ const Asset = () => {
                         })
                       }
                     >
-                      {plugin.collector
-                        ? `${plugin.name}（${plugin.collector}）`
-                        : plugin.name}
+                      {plugin.display_name || '--'}
                     </Tag>
                   </Tooltip>
                 );
@@ -186,6 +188,11 @@ const Asset = () => {
         title: t('monitor.group'),
         dataIndex: 'organization',
         key: 'organization',
+        onCell: () => ({
+          style: {
+            minWidth: 120,
+          },
+        }),
         render: (_, { organization }) => (
           <EllipsisWithTooltip
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
@@ -277,6 +284,12 @@ const Asset = () => {
   }, [isLoading]);
 
   useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
+  useEffect(() => {
     if (objectId) {
       getAssetInsts(objectId);
     }
@@ -322,7 +335,12 @@ const Asset = () => {
     setFrequence(val);
   };
 
+  const cancelAllRequests = () => {
+    assetAbortControllerRef.current?.abort();
+  };
+
   const handleObjectChange = (id: string) => {
+    cancelAllRequests();
     setTableData([]);
     setObjectId(id);
   };
@@ -358,6 +376,10 @@ const Asset = () => {
   };
 
   const getAssetInsts = async (objectId: React.Key, type?: string) => {
+    assetAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    assetAbortControllerRef.current = abortController;
+    const currentRequestId = ++assetRequestIdRef.current;
     try {
       setTableLoading(type !== 'timer');
       const params = {
@@ -366,15 +388,19 @@ const Asset = () => {
         name: type === 'clear' ? '' : searchText,
         id: objectId,
       };
-      const data = await getInstanceListByPrimaryObject(params);
-
+      const data = await getInstanceListByPrimaryObject(params, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== assetRequestIdRef.current) return;
       setTableData(data?.results || []);
       setPagination((prev: Pagination) => ({
         ...prev,
         total: data?.count || 0,
       }));
     } finally {
-      setTableLoading(false);
+      if (currentRequestId === assetRequestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 
@@ -389,7 +415,7 @@ const Asset = () => {
       setObjects(data);
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
-      const defaultKey = data[0]?.id || defaultSelectObj || '';
+      const defaultKey = defaultSelectObj || data[0]?.id || '';
       if (defaultKey) {
         setDefaultSelectObj(defaultKey);
       }
@@ -407,11 +433,13 @@ const Asset = () => {
           children: [],
         };
       }
-      acc[item.type].children.push({
-        title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
-        key: item.id,
-        children: [],
-      });
+      if (!EXCLUDED_CHILD_OBJECTS.includes(item.name)) {
+        acc[item.type].children.push({
+          title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
+          key: item.id,
+          children: [],
+        });
+      }
       return acc;
     }, {} as Record<string, TreeItem>);
     return Object.values(groupedData);
@@ -498,7 +526,7 @@ const Asset = () => {
           </div>
         </div>
         <CustomTable
-          scroll={{ y: 'calc(100vh - 330px)' }}
+          scroll={{ y: 'calc(100vh - 330px)', x: 'max-content' }}
           columns={columns}
           dataSource={tableData}
           pagination={pagination}

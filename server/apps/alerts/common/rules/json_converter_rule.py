@@ -89,6 +89,10 @@ class JSONRuleConverter:
                 custom_aggregations=aggregation_rules_config.get('custom_aggregations', {})
             )
 
+            # 获取策略类型和配置
+            strategy_type = getattr(aggregation_rule, 'strategy_type', 'composite')
+            strategy_config = getattr(aggregation_rule, 'strategy_config', None) or {}
+
             # 创建TemplateContext
             context = TemplateContext(
                 table='alerts_event',
@@ -99,10 +103,12 @@ class JSONRuleConverter:
                 resource_filters=resource_filters,
                 threshold_conditions=threshold_conditions,
                 group_by_fields=main_condition.get('aggregation_key', ['fingerprint']),
-                aggregation_rules=aggregation_rules
+                aggregation_rules=aggregation_rules,
+                strategy_type=strategy_type,
+                strategy_config=strategy_config
             )
 
-            logger.info(f"成功转换聚合规则: {aggregation_rule.rule_id}")
+            logger.info(f"成功转换聚合规则: {aggregation_rule.rule_id}, 策略类型: {strategy_type}")
             return context
 
         except Exception as e:

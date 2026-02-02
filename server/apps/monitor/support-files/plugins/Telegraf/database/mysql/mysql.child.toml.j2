@@ -2,6 +2,22 @@
     servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/?tls=false"]
     metric_version = 2
     interval = "{{ interval }}s"
+
+    fieldinclude = [
+        "aborted_clients",
+        "aborted_connects",
+        "access_denied_errors",
+        "aria_pagecache_blocks_unused",
+        "aria_pagecache_blocks_used",
+        "bytes_received",
+        "bytes_sent",
+        "com_select",
+        "com_insert",
+        "com_update",
+        "com_delete",
+        "threads_connected"
+    ]
+
     [inputs.mysql.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"

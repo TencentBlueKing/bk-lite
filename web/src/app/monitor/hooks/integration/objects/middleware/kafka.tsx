@@ -1,16 +1,15 @@
-import { useKafkaExporter } from '../../plugins/middleware/kafkaExporter';
-
 export const useKafkaConfig = () => {
-  const kafkaPlugin = useKafkaExporter();
-  const plugins = {
-    'Kafka-Exporter': kafkaPlugin,
-  };
-
   return {
     instance_type: 'kafka',
     dashboardDisplay: [],
-    tableDiaplay: [],
+    tableDiaplay: [
+      { type: 'enum', key: 'kafka_up_gauge' },
+      { type: 'enum', key: 'kafka_topic_partition_under_replicated_partition' },
+      { type: 'value', key: 'kafka_consumergroup_lag' },
+    ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Kafka-Exporter': 'exporter',
+    },
   };
 };

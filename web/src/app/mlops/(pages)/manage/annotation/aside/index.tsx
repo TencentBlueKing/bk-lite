@@ -49,7 +49,7 @@ const Aside = ({
         key: item.id?.toString(),
         label: item.name,
         title: item.name,
-        icon: <Icon type={'yingpan'} className="!text-xl pr-1.5" />
+        icon: <Icon type={'yingpan'} className="text-xl! pr-1.5" />
       }
     })
   };
@@ -126,7 +126,7 @@ const Aside = ({
   return (
     <>
       <aside
-        className={`relative mr-4 flex flex-shrink-0 flex-col h-full ${sideMenuStyle.sideMenu} font-sans rounded-md`}
+        className={`relative mr-4 flex shrink-0 flex-col h-full ${sideMenuStyle.sideMenu} font-sans rounded-md`}
         style={asideStyle}
       >
         <div className='flex flex-row relative justify-center items-center h-16 overflow-hidden'>
@@ -147,7 +147,7 @@ const Aside = ({
           style={navStyle}
         >
           {loading ? (
-            <div className="min-h-[300px] flex items-center justify-center">
+            <div className="min-h-75 flex items-center justify-center">
               <Spin spinning={loading}></Spin>
             </div>
           ) : (

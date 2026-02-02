@@ -126,7 +126,7 @@ const DimensionFilter: React.FC<DimensionFilterProps> = ({
         fixed: 'left',
         render: (_: any, row: TableDataItem) => (
           <div
-            className="w-[10px] h-[4px]"
+            className="w-2.5 h-1"
             style={{
               background: row.color,
             }}

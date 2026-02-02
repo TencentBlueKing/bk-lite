@@ -42,6 +42,12 @@
           "url": "/opspilot/studio/detail/api",
           "icon": "api",
           "name": "bot_api"
+        },
+        {
+          "title": "对话",
+          "url": "/opspilot/studio/chat",
+          "name": "studio_chat",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -63,24 +69,6 @@
           "url": "/opspilot/skill/detail/settings",
           "icon": "shezhi",
           "name": "skill_setting"
-        },
-        {
-          "title": "规则",
-          "url": "/opspilot/skill/detail/rules",
-          "icon": "guize",
-          "name": "skill_rule"
-        },
-        {
-          "title": "调用日志",
-          "url": "/opspilot/skill/detail/invocationLogs",
-          "icon": "talk-line",
-          "name": "skill_invocation_logs"
-        },
-        {
-          "title": "接口",
-          "url": "/opspilot/skill/detail/api",
-          "icon": "api",
-          "name": "skill_api"
         }
       ]
     },
@@ -172,26 +160,6 @@
         "target": "provide_list",
         "order": 1
       }
-    },
-    {
-      "title": "设置",
-      "icon": "settings-fill",
-      "url": "/opspilot/settings",
-      "name": "Setting",
-      "children": [
-        {
-          "title": "管理配额",
-          "url": "/opspilot/settings/manage",
-          "icon": "_quota_management",
-          "name": "mange_quota"
-        },
-        {
-          "title": "我的配额",
-          "url": "/opspilot/settings/quota",
-          "icon": "quota",
-          "name": "my_quota"
-        }
-      ]
     }
   ],
   "en": [
@@ -231,6 +199,12 @@
           "url": "/opspilot/studio/detail/statistics",
           "icon": "tongji",
           "name": "bot_statistics"
+        },
+        {
+          "title": "Chat",
+          "url": "/opspilot/studio/chat",
+          "name": "studio_chat",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -252,24 +226,6 @@
           "url": "/opspilot/skill/detail/settings",
           "icon": "shezhi",
           "name": "skill_setting"
-        },
-        {
-          "title": "Rules",
-          "url": "/opspilot/skill/detail/rules",
-          "icon": "guize",
-          "name": "skill_rule"
-        },
-        {
-          "title": "Invocation Logs",
-          "url": "/opspilot/skill/detail/invocationLogs",
-          "icon": "talk-line",
-          "name": "skill_invocation_logs"
-        },
-        {
-          "title": "API",
-          "url": "/opspilot/skill/detail/api",
-          "icon": "api",
-          "name": "skill_api"
         }
       ]
     },
@@ -367,26 +323,6 @@
         "target": "provide_list",
         "order": 1
       }
-    },
-    {
-      "title": "Settings",
-      "icon": "settings-fill",
-      "url": "/opspilot/settings",
-      "name": "Setting",
-      "children": [
-        {
-          "title": "Manage Quota",
-          "url": "/opspilot/settings/manage",
-          "icon": "_quota_management",
-          "name": "mange_quota"
-        },
-        {
-          "title": "My Quota",
-          "url": "/opspilot/settings/quota",
-          "icon": "quota",
-          "name": "my_quota"
-        }
-      ]
     }
   ]
 }

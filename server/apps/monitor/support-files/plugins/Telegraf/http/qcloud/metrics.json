@@ -1,0 +1,163 @@
+{
+  "plugin": "Tencent Cloud",
+  "plugin_desc": "It is used to collect various monitoring index data of Tencent Cloud in real - time, covering dimensions such as computing resources, network performance, and storage usage, helping users gain in - depth insights into resource status, accurately locate anomalies, and efficiently complete operation and maintenance management and cost optimization.",
+  "status_query": "any({instance_type='qcloud', collect_type='http'}) by (instance_id)",
+  "is_compound_object": true,
+  "objects": [
+    {
+      "name": "TCP",
+      "icon": "zonghenengyuanfuwupingtaikuangjiaicon-",
+      "type": "Tencent Cloud",
+      "level": "base",
+      "description": "",
+      "default_metric": "any({instance_type='qcloud'}) by (instance_id)",
+      "instance_id_keys": ["instance_id"],
+      "supplementary_indicators": [],
+      "metrics": []
+    },
+    {
+      "name": "CVM",
+      "icon": "yunfuwuqi",
+      "type": "Tencent Cloud",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='qcloud_cvm'}) by (instance_id, resource_id)",
+      "instance_id_keys": ["instance_id", "resource_id"],
+      "supplementary_indicators": ["CPUUsage_gauge", "MemUsage_gauge", "CvmDiskUsage_gauge"],
+      "metrics": [
+        {
+          "metric_group": "CPU",
+          "name": "CPUUsage_gauge",
+          "display_name": "CPU Utilization",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "The real-time percentage of CPU occupied during machine operation.",
+          "query": "CPUUsage_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Memory",
+          "name": "MemUsed_gauge",
+          "display_name": "Memory Usage",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "mebibytes",
+          "dimensions": [],
+          "description": "The actual memory used by the user, excluding memory occupied by buffers and system cache. Calculated as Total Memory - Available Memory (including buffers and cached).",
+          "query": "MemUsed_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Memory",
+          "name": "MemUsage_gauge",
+          "display_name": "Memory Utilization",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "The actual memory utilization rate by the user, excluding memory occupied by buffers and system cache. It is the ratio of actual user memory usage to total memory.",
+          "query": "MemUsage_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Disk",
+          "name": "CvmDiskUsage_gauge",
+          "display_name": "Disk Utilization",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "The percentage of used disk capacity relative to total capacity (all disks).",
+          "query": "CvmDiskUsage_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Network",
+          "name": "LanOuttraffic_gauge",
+          "display_name": "Internal Outbound Traffic",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "mbitps",
+          "dimensions": [],
+          "description": "Average outbound traffic rate on the internal network interface card.",
+          "query": "LanOuttraffic_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Network",
+          "name": "LanIntraffic_gauge",
+          "display_name": "Internal Inbound Traffic",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "mbitps",
+          "dimensions": [],
+          "description": "Average inbound traffic rate on the internal network interface card.",
+          "query": "LanIntraffic_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Network",
+          "name": "LanOutpkg_gauge",
+          "display_name": "Internal Outbound Packet Rate",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "cps",
+          "dimensions": [],
+          "description": "Average outbound packet rate on the internal network interface card.",
+          "query": "LanOutpkg_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Network",
+          "name": "LanInpkg_gauge",
+          "display_name": "Internal Inbound Packet Rate",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "cps",
+          "dimensions": [],
+          "description": "Average inbound packet rate on the internal network interface card.",
+          "query": "LanInpkg_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Network",
+          "name": "WanOuttraffic_gauge",
+          "display_name": "External Outbound Traffic",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "mbitps",
+          "dimensions": [],
+          "description": "Average outbound traffic rate on the external network (sum of EIP, CLB, and CVM outbound bandwidth). The minimum granularity is a 10-second average.",
+          "query": "WanOuttraffic_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Network",
+          "name": "WanIntraffic_gauge",
+          "display_name": "External Inbound Traffic",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "mbitps",
+          "dimensions": [],
+          "description": "Average inbound traffic rate on the external network (sum of EIP, CLB, and CVM inbound bandwidth). The minimum granularity is a 10-second average.",
+          "query": "WanIntraffic_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Network",
+          "name": "WanOutpkg_gauge",
+          "display_name": "External Outbound Packet Rate",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "cps",
+          "dimensions": [],
+          "description": "Average outbound packet rate on the external network interface card.",
+          "query": "WanOutpkg_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Network",
+          "name": "WanInpkg_gauge",
+          "display_name": "External Inbound Packet Rate",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "cps",
+          "dimensions": [],
+          "description": "Average inbound packet rate on the external network interface card.",
+          "query": "WanInpkg_gauge{__$labels__}"
+        }
+      ]
+    }
+  ]
+}

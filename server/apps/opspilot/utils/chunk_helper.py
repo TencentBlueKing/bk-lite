@@ -1,23 +1,23 @@
-import json
-import os
+import time
 from typing import Any, Dict, Optional
 
-import requests
-from django.conf import settings
+from langchain_core.documents import Document
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.rag.enhance.qa_generation import QAGeneration
+from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
+from apps.opspilot.metis.llm.rag.naive_rag_entity import (
+    DocumentCountRequest,
+    DocumentDeleteRequest,
+    DocumentIngestRequest,
+    DocumentListRequest,
+    DocumentMetadataUpdateRequest,
+)
+from apps.opspilot.metis.llm.rag.rag_enhance_entity import AnswerGenerateRequest, QuestionGenerateRequest
 from apps.opspilot.utils.chat_server_helper import ChatServerHelper
 
 
 class ChunkHelper(ChatServerHelper):
-    list_url = f"{settings.METIS_SERVER_URL}/api/rag/list_rag_document"
-    generate_url = f"{settings.METIS_SERVER_URL}/api/rag/qa_pair_generate"
-    del_url = f"{settings.METIS_SERVER_URL}/api/rag/delete_doc"
-    create_url = f"{settings.METIS_SERVER_URL}/api/rag/custom_content_ingest"
-    update_url = f"{settings.METIS_SERVER_URL}/api/rag/update_rag_document_metadata"
-    generate_question_url = f"{settings.METIS_SERVER_URL}/api/rag/question_generation"
-    generate_answer_url = f"{settings.METIS_SERVER_URL}/api/rag/answer_generation"
-
     @classmethod
     def create_qa_pairs_by_content(
         cls,
@@ -53,36 +53,91 @@ class ChunkHelper(ChatServerHelper):
         metadata_filter: Optional[Dict[str, Any]] = None,
         get_count: bool = True,
     ) -> Dict[str, Any]:
+        """使用 PgvectorRag 直接查询文档列表
+
+        Args:
+            index_name: 索引名称
+            page: 页码
+            page_size: 每页大小
+            search_text: 搜索文本
+            metadata_filter: 元数据过滤条件
+            get_count: 是否获取总数
+
+        Returns:
+            Dict[str, Any]: 包含文档列表和总数的字典
+        """
         if not metadata_filter:
             metadata_filter = {}
-        query = {
-            "index_name": index_name,
-            "page": page,
-            "metadata_filter": metadata_filter,
-            "size": page_size,
-            "query": search_text,
-            "sort_field": "created_time",
-            "sort_order": "asc",
-        }
-        res = cls.post_chat_server(query, cls.list_url)
-        if not res:
-            return {"count": 0, "documents": []}
-        count_res = {"count": 0}
+
+        rag_client = PgvectorRag()
+
+        # 构建 DocumentListRequest 对象
+        request = DocumentListRequest(
+            index_name=index_name,
+            page=page,
+            size=page_size,
+            metadata_filter=metadata_filter,
+            query=search_text,
+            sort_field="created_time",
+            sort_order="asc",
+        )
+
+        # 调用 list_index_document 方法
+        documents = rag_client.list_index_document(request)
+
+        # 转换 Document 对象为字典格式
+        document_list = []
+        for doc in documents:
+            document_list.append(
+                {
+                    "page_content": doc.page_content,
+                    "metadata": doc.metadata,
+                }
+            )
+
+        # 获取文档总数
+        count = 0
         if get_count:
-            count_url = f"{settings.METIS_SERVER_URL}/api/rag/count_index_document"
-            count_res = ChatServerHelper.post_chat_server(query, count_url)
-        res["count"] = count_res.get("count", 0)
-        return res
+            count_request = DocumentCountRequest(
+                index_name=index_name,
+                metadata_filter=metadata_filter,
+                query=search_text,
+            )
+            count = rag_client.count_index_document(count_request)
+
+        return {
+            "status": "success",
+            "count": count,
+            "documents": document_list,
+        }
 
     @classmethod
     def delete_es_content(cls, doc_id, is_chunk=False, keep_qa=False):
-        kwargs = {
-            "chunk_ids": [str(doc_id)] if is_chunk else [],
-            "knowledge_ids": [f"qa_pairs_id_{doc_id}"] if not is_chunk else [],
-            "keep_qa": keep_qa,
-        }
+        """删除 ES 内容
+
+        Args:
+            doc_id: 文档ID或chunk ID
+            is_chunk: 是否为chunk
+            keep_qa: 是否保留问答对
+        """
+        if isinstance(doc_id, list):
+            if is_chunk:
+                doc_ids = [str(i) for i in doc_id]
+            else:
+                doc_ids = [f"qa_pairs_id_{i}" for i in doc_id]
+        else:
+            if is_chunk:
+                doc_ids = [str(doc_id)]
+            else:
+                doc_ids = [f"qa_pairs_id_{doc_id}"]
+        rag_client = PgvectorRag()
+        request = DocumentDeleteRequest(
+            chunk_ids=doc_ids if is_chunk else [],
+            knowledge_ids=doc_ids if not is_chunk else [],
+            keep_qa=keep_qa,
+        )
         try:
-            ChatServerHelper.post_chat_server(kwargs, cls.del_url)
+            rag_client.delete_document(request)
             return True
         except Exception as e:
             logger.exception(e)
@@ -90,27 +145,64 @@ class ChunkHelper(ChatServerHelper):
 
     @classmethod
     def create_qa_pairs(cls, qa_paris, chunk_obj, index_name, embed_config, qa_pairs_id, task_obj):
+        """创建问答对
+
+        Args:
+            qa_paris: 问答对列表
+            chunk_obj: chunk 对象
+            index_name: 索引名称
+            embed_config: 嵌入模型配置
+            qa_pairs_id: 问答对ID
+            task_obj: 任务对象
+        """
         success_count = 0
-        kwargs, metadata = cls.set_qa_pairs_params(embed_config, index_name, qa_pairs_id, chunk_obj)
-        headers = cls.get_chat_server_header()
-        # SSL验证配置 - 从环境变量读取
-        ssl_verify = os.getenv("METIS_SSL_VERIFY", "false").lower() == "true"
-        for i in qa_paris:
-            params = dict(kwargs, **{"content": i["question"]})
-            params["metadata"] = json.dumps(dict(metadata, **{"qa_question": i["question"], "qa_answer": i["answer"]}))
-            response = requests.post(cls.create_url, headers=headers, data=params, verify=ssl_verify)
+        rag_client = PgvectorRag()
+
+        # 构建元数据
+        base_metadata = {
+            "enabled": "true",
+            "base_chunk_id": chunk_obj.get("chunk_id", ""),
+            "qa_pairs_id": str(qa_pairs_id),
+            "is_doc": "0",
+            "knowledge_id": f"qa_pairs_id_{qa_pairs_id}",
+        }
+
+        for qa in qa_paris:
             try:
-                res = response.json()
+                # 为每个问答对创建 Document
+                metadata = dict(
+                    base_metadata,
+                    **{
+                        "qa_question": qa["question"],
+                        "qa_answer": qa["answer"],
+                        "chunk_id": f"qa_{qa_pairs_id}_{success_count}",
+                    },
+                )
+
+                doc = Document(
+                    page_content=qa["question"],
+                    metadata=metadata,
+                )
+
+                # 构建 ingest 请求
+                request = DocumentIngestRequest(
+                    embed_model_base_url=embed_config.get("base_url", ""),
+                    embed_model_api_key=embed_config.get("api_key", "") or " ",
+                    embed_model_name=embed_config.get("model", ""),
+                    index_name=index_name,
+                    index_mode="append",
+                    docs=[doc],
+                )
+
+                rag_client.ingest(request)
+                success_count += 1
+                task_obj.completed_count += 1
+                task_obj.save()
+
             except Exception as e:
-                logger.exception(e)
-                logger.error(response.text)
+                logger.exception(f"创建问答对失败: {e}")
                 continue
-            if res.get("status", "fail") != "success":
-                logger.exception(f"创建问答对失败: {res.get('message', '')}")
-                continue
-            success_count += 1
-            task_obj.completed_count += 1
-            task_obj.save()
+
         return success_count
 
     @classmethod
@@ -142,27 +234,77 @@ class ChunkHelper(ChatServerHelper):
 
     @classmethod
     def create_one_qa_pairs(cls, embed_config, index_name, qa_pairs_id, question, answer, chunk_id=""):
-        chunk_obj = {"chunk_id": chunk_id}
-        kwargs, metadata = cls.set_qa_pairs_params(embed_config, index_name, qa_pairs_id, chunk_obj)
-        metadata.update({"qa_question": question, "qa_answer": answer})
-        params = dict(kwargs, **{"content": question, "metadata": json.dumps(metadata)})
-        # SSL验证配置 - 从环境变量读取
-        ssl_verify = os.getenv("METIS_SSL_VERIFY", "false").lower() == "true"
-        res = requests.post(cls.create_url, headers=cls.get_chat_server_header(), data=params, verify=ssl_verify).json()
-        if res.get("status", "fail") != "success":
-            logger.exception(f"创建问答对失败: {res.get('message', '')}")
+        """创建单个问答对
+
+        Args:
+            embed_config: 嵌入模型配置
+            index_name: 索引名称
+            qa_pairs_id: 问答对ID
+            question: 问题
+            answer: 答案
+            chunk_id: chunk ID
+        """
+        rag_client = PgvectorRag()
+
+        # 构建元数据
+        # 使用时间戳确保chunk_id唯一性，避免重复调用时产生相同ID
+        timestamp = str(int(time.time() * 1000000))  # 微秒级时间戳
+
+        metadata = {
+            "enabled": "true",
+            "base_chunk_id": chunk_id,
+            "qa_pairs_id": str(qa_pairs_id),
+            "is_doc": "0",
+            "knowledge_id": f"qa_pairs_id_{qa_pairs_id}",
+            "qa_question": question,
+            "qa_answer": answer,
+            "chunk_id": f"qa_{qa_pairs_id}_{timestamp}",
+        }
+
+        # 创建 Document
+        doc = Document(
+            page_content=question,
+            metadata=metadata,
+        )
+
+        # 构建 ingest 请求
+        request = DocumentIngestRequest(
+            embed_model_base_url=embed_config.get("base_url", ""),
+            embed_model_api_key=embed_config.get("api_key", "") or " ",
+            embed_model_name=embed_config.get("model", ""),
+            index_name=index_name,
+            index_mode="append",
+            docs=[doc],
+        )
+
+        try:
+            rag_client.ingest(request)
+            return {"result": True}
+        except Exception as e:
+            logger.exception(f"创建问答对失败: {e}")
             return {"result": False}
-        return {"result": True}
 
     @classmethod
     def update_qa_pairs(cls, chunk_id, question, answer):
-        kwargs = {
-            "knowledge_ids": [],
-            "chunk_ids": [chunk_id],
-            "metadata": {"qa_question": question, "qa_answer": answer},
-        }
-        res = ChatServerHelper.post_chat_server(kwargs, cls.update_url)
-        return res
+        """更新问答对
+
+        Args:
+            chunk_id: chunk ID
+            question: 问题
+            answer: 答案
+        """
+        rag_client = PgvectorRag()
+        request = DocumentMetadataUpdateRequest(
+            knowledge_ids=[],
+            chunk_ids=[chunk_id],
+            metadata={"qa_question": question, "qa_answer": answer},
+        )
+        try:
+            rag_client.update_metadata(request)
+            return {"status": "success"}
+        except Exception as e:
+            logger.exception(e)
+            return {"status": "fail", "message": str(e)}
 
     @classmethod
     def get_qa_content(cls, document_id, es_index, page_size=0):
@@ -185,31 +327,48 @@ class ChunkHelper(ChatServerHelper):
 
     @classmethod
     def generate_question(cls, kwargs):
-        ssl_verify = os.getenv("METIS_SSL_VERIFY", "false").lower() == "true"
+        """生成问题
+
+        Args:
+            kwargs: 包含 content, size, extra_prompt, openai_api_base, openai_api_key, model 等参数
+        """
         try:
-            response = requests.post(cls.generate_question_url, headers=cls.get_chat_server_header(), json=kwargs, verify=ssl_verify)
-            res = response.json()
-            if res.get("status", "fail") != "success":
-                raise Exception(res.get("message", "Failed to generate question."))
+            request = QuestionGenerateRequest(
+                content=kwargs["content"],
+                size=kwargs.get("size", 5),
+                extra_prompt=kwargs.get("extra_prompt", ""),
+                openai_api_base=kwargs.get("openai_api_base", "https://api.openai.com"),
+                openai_api_key=kwargs.get("openai_api_key", ""),
+                model=kwargs.get("model", "gpt-4o"),
+            )
+            result = QAGeneration.generate_question(request)
+            return {"result": True, "data": result}
         except Exception as e:
             logger.exception(f"生成问题失败: {e}")
             return {"result": False, "data": []}
-        return {"result": True, "data": res.get("message", [])}
 
     @classmethod
     def generate_answer(cls, kwargs):
-        ssl_verify = os.getenv("METIS_SSL_VERIFY", "false").lower() == "true"
+        """生成答案
+
+        Args:
+            kwargs: 包含 context, content, extra_prompt, openai_api_base, openai_api_key, model 等参数
+        """
         try:
-            response = requests.post(cls.generate_answer_url, headers=cls.get_chat_server_header(), json=kwargs, verify=ssl_verify)
-            res = response.json()
-            if res.get("status", "fail") != "success":
-                raise Exception(res.get("message", "Failed to generate answer."))
+            request = AnswerGenerateRequest(
+                context=kwargs["context"],
+                content=kwargs["content"],
+                extra_prompt=kwargs.get("extra_prompt", ""),
+                openai_api_base=kwargs.get("openai_api_base", "https://api.openai.com"),
+                openai_api_key=kwargs.get("openai_api_key", ""),
+                model=kwargs.get("model", "gpt-4o"),
+            )
+            result = QAGeneration.generate_answer(request)
+            result["question"] = kwargs["content"]
+            return {"result": True, "data": result}
         except Exception as e:
             logger.exception(f"生成答案失败: {e}")
             return {"result": False, "data": {}}
-        return_data = res.get("message", {})
-        return_data["question"] = kwargs["content"]
-        return {"result": True, "data": return_data}
 
     @classmethod
     def create_document_qa_pairs(cls, content_list, embed_config, es_index, llm_setting, qa_pairs_obj, only_question, task_obj):

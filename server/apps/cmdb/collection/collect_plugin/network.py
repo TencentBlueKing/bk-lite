@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
-from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS,NETWORK_COLLECT
+from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS, NETWORK_COLLECT
 from apps.cmdb.models import OidMapping
 from apps.core.logger import cmdb_logger as logger
 
@@ -43,13 +43,9 @@ class CollectNetworkMetrics(CollectBase):
     def _metrics(self):
         return NETWORK_COLLECT
 
-    def prom_sql(self):
-        sql = " or ".join(m for m in self._metrics)
-        return sql
-
     @staticmethod
     def get_oid_map():
-        result = OidMapping.objects.all().values()
+        result = OidMapping.objects.all().values("model", "oid", "brand", "device_type", "built_in")
         return {i["oid"]: i for i in result}
 
     @staticmethod
@@ -115,19 +111,10 @@ class CollectNetworkMetrics(CollectBase):
         }
         return mapping
 
-    def check_task_id(self, instance_id):
-        # TODO 后续补tag字段后 修改查询的promsql 语句
-        task_id, _ = instance_id.split("_", 1)
-        return task_id == self.task_id
-
     def format_data(self, data):
         """格式化数据"""
         for index_data in data["result"]:
             metric_name = index_data["metric"]["__name__"]
-            instance_id = index_data["metric"]["instance_id"]
-            if not self.check_task_id(instance_id):
-                continue
-
             if "sysobjectid" in index_data["metric"]:
                 oid = index_data["metric"]["sysobjectid"]
                 oid_data = self.oid_map.get(oid, "")

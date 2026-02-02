@@ -1,3 +1,4 @@
+import React from 'react';
 export interface GroupItem {
   classification_name: string;
   classification_id: string;
@@ -81,7 +82,7 @@ export interface ColumnItem {
   title: string;
   dataIndex: string;
   key: string;
-  render?: (_: unknown, record: any) => JSX.Element;
+  render?: (_: unknown, record: any) => React.ReactElement;
   [key: string]: any;
 }
 export interface UserItem {
@@ -152,7 +153,7 @@ export interface AssoInstItem {
   key: string;
   label: string;
   model_asst_id: string;
-  children: JSX.Element;
+  children: React.ReactElement;
   [key: string]: unknown;
 }
 
@@ -168,7 +169,7 @@ export interface AssoDetailItem {
 export interface CrentialsAssoInstItem {
   key: string;
   label: string;
-  children: JSX.Element;
+  children: React.ReactElement;
   inst_list: CrentialsAssoDetailItem[];
   [key: string]: unknown;
 }
@@ -208,17 +209,80 @@ export interface RelationInstanceRef {
 }
 
 export interface FieldConfig {
-    type: string;
-    attrList: AttrFieldType[];
-    formInfo: any;
-    subTitle: string;
-    title: string;
-    model_id: string;
-    list: Array<any>;
+  type: string;
+  attrList: FullInfoGroupItem[]; // 属性列表，分组数据
+  formInfo: any;
+  subTitle: string;
+  title: string;
+  model_id: string;
+  list: Array<any>;
 }
 
 export interface FieldModalRef {
-    showModal: (config: FieldConfig) => void;
+  showModal: (config: FieldConfig) => void;
 }
 
+// 属性分组相关类型
+export interface AttrGroup {
+  id: number;
+  model_id: string;
+  group_name: string;
+  order: number;
+  is_collapsed: boolean;
+  description: string;
+  attr_orders: any[];
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
 
+export interface AttrItem {
+  attr_id: string;
+  attr_name: string;
+  attr_type: string;
+  is_required: boolean;
+  editable: boolean;
+  is_only: boolean;
+  group_id?: string;
+  order?: number;
+}
+
+// 获取模型完整信息接口相关类型
+export interface FullInfoAttrItem {
+  attr_id: string;
+  attr_name: string;
+  attr_type: string;
+  option: string;
+  attr_group: string;
+  is_only: boolean;
+  editable: boolean;
+  is_required: boolean;
+  is_pre: boolean;
+}
+
+export interface FullInfoGroupItem {
+  id: number;
+  group_name: string;
+  order: number;
+  is_collapsed: boolean;
+  description: string;
+  attrs: FullInfoAttrItem[];
+  attrs_count: number;
+  can_move_up: boolean;
+  can_move_down: boolean;
+  can_delete: boolean;
+}
+
+export interface ModelFullInfo {
+  model_id: string;
+  model_name: string;
+  groups: FullInfoGroupItem[];
+  total_groups: number;
+  total_attrs: number;
+}
+
+export interface ModelFullInfoResponse {
+  data: ModelFullInfo;
+  result: boolean;
+  message: string;
+}

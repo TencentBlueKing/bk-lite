@@ -246,7 +246,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
             size="middle"
             pagination={false}
             dataSource={item.inst_list}
-            columns={columns}
+            columns={columns as any}
             scroll={{ x: 'calc(100vw - 306px)', y: 300 }}
             rowKey="_id"
           />
@@ -281,7 +281,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       const sourceName = showModelName(row.src_model_id, config.models);
       const targetName = showModelName(row.dst_model_id, config.models);
       const relation = showConnectType(row.asst_id, config.assoTypeList);
-      return `${sourceName} ${relation} ${targetName}`;
+      return `${targetName} ${relation} ${sourceName}`;
     };
 
     const showModelName = (id: string, list: ModelItem[]) => {

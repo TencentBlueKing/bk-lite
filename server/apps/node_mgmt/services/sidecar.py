@@ -6,6 +6,7 @@ from django.core.cache import cache
 from django.http import HttpResponse
 from django.core.serializers.json import DjangoJSONEncoder
 
+from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.services.cloudregion import RegionService
@@ -274,9 +275,6 @@ class Sidecar:
 
         variables = Sidecar.get_variables(node)
 
-        # 不在变量中渲染NATS_PASSWORD，走环境变量渲染
-        variables.pop("NATS_PASSWORD", None)
-
         # 如果配置中有 env_config，则合并到变量中
         if configuration_data.get('env_config'):
             variables.update(configuration_data['env_config'])
@@ -387,15 +385,19 @@ class Sidecar:
         :param variables: 字典，包含变量名和对应值
         :return: 渲染后的字符串
         """
+        # 排除password相关的变量渲染，走env_config渲染
+        _variables = {k:v for k, v in variables.items() if 'password' not in k.lower()}
         template_str = template_str.replace('node.', 'node__')
         template = Template(template_str)
-        return template.safe_substitute(variables)
+        return template.safe_substitute(_variables)
 
     @staticmethod
     def create_default_config(node, node_types):
 
-        collector_objs = Collector.objects.filter(enabled_default_config=True,
-                                                  node_operating_system=node.operating_system)
+        collector_objs = Collector.objects.filter(
+            controller_default_run=True,
+            node_operating_system=node.operating_system,
+        )
         variables = Sidecar.get_cloud_region_envconfig(node)
         default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
 
@@ -403,6 +405,9 @@ class Sidecar:
 
         for collector_obj in collector_objs:
             try:
+                if collector_obj.name in CollectorConstants.DEFAULT_CONTAINER_COLLECTOR_CONFIGS:
+                    if not is_container_node:
+                        continue
 
                 if not collector_obj.default_config:
                     continue

@@ -6,6 +6,8 @@ import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
 import UploadModal from "../../uploadModal";
 import OperateModal from "@/components/operate-modal";
+import DatasetReleaseList from '../DatasetReleaseList';
+import { DatasetType } from '@/app/mlops/types';
 import {
   Input,
   Button,
@@ -25,7 +27,7 @@ const AnomalyDetail = () => {
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
-  const { getAnomalyTrainData, deleteAnomalyTrainData, labelingData } = useMlopsManageApi();
+  const { getTrainDataByDataset, deleteTrainDataFile, updateAnomalyTrainDataFile } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [currentData, setCurrentData] = useState<any>(null);
@@ -56,11 +58,11 @@ const AnomalyDetail = () => {
       key: 'name',
       dataIndex: 'name',
     },
-    {
-      title: t('datasets.anomalyTitle'),
-      key: 'count',
-      dataIndex: 'count',
-    },
+    // {
+    //   title: t('datasets.anomalyTitle'),
+    //   key: 'count',
+    //   dataIndex: 'count',
+    // },
     {
       title: t('datasets.trainFileType'),
       key: 'type',
@@ -82,7 +84,7 @@ const AnomalyDetail = () => {
         <>
           <Button
             type="link"
-            className="mr-[10px]"
+            className="mr-2.5"
             onClick={() => toAnnotation(record)}
           >
             {t('datasets.annotate')}
@@ -90,7 +92,7 @@ const AnomalyDetail = () => {
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => openModal(record)}
             >
               {t('common.edit')}
@@ -136,7 +138,8 @@ const AnomalyDetail = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getAnomalyTrainData({
+      const { count, items } = await getTrainDataByDataset({
+        key: DatasetType.ANOMALY_DETECTION,
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -163,7 +166,7 @@ const AnomalyDetail = () => {
         }
       });
     }
-    catch (e) { console.log(e) }
+    catch (e) { console.error(e) }
     finally { setLoading(false) }
   }, [t, searchParams]);
 
@@ -179,9 +182,9 @@ const AnomalyDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteAnomalyTrainData(data.id);
+      await deleteTrainDataFile(data.id, DatasetType.ANOMALY_DETECTION);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
@@ -203,19 +206,19 @@ const AnomalyDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'anomaly') {
+      if (activeTap === DatasetType.ANOMALY_DETECTION) {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
           is_test_data: selectedTags.includes('is_test_data')
         };
-        await labelingData(currentData?.id, params);
+        await updateAnomalyTrainDataFile(currentData?.id, params);
         message.success(t(`common.updateSuccess`));
         setModalOpen(false);
         getDataset();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }
@@ -233,31 +236,37 @@ const AnomalyDetail = () => {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4 gap-2">
-        <div>
-          <Breadcrumb
-            separator=">"
-            items={[
-              { title: <a href="#" onClick={() => router.push(`/mlops/manage/list`)}>{t(`datasets.datasets`)}</a> },
-              { title: t(`datasets.datasetsDetail`) }
-            ]}
-          />
-        </div>
-        <div className='flex'>
+      <div className="flex justify-between items-center mb-4 gap-2 h-8">
+        <Breadcrumb
+          separator=">"
+          items={[
+            {
+              title: <a href="#" onClick={() => router.push(`/mlops/manage/list`)}>{t(`datasets.datasets`)}</a>
+            },
+            {
+              title: t(`datasets.datasetsDetail`)
+            }
+          ]}
+        />
+        <div className='flex gap-2'>
           <Search
-            className="w-[240px] mr-1.5"
+            className="w-60"
             placeholder={t('common.search')}
             enterButton
             onSearch={onSearch}
             style={{ fontSize: 15 }}
           />
           <PermissionWrapper requiredPermissions={['File Upload']}>
-            <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
+            <Button type="primary" className="rounded-md shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
           </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['File View']}>
+            <DatasetReleaseList datasetType={DatasetType.ANOMALY_DETECTION} />
+          </PermissionWrapper>
         </div>
       </div>
+      
       <div className="flex-1 relative">
         <div className='absolute w-full'>
           <CustomTable

@@ -3,7 +3,7 @@ from rest_framework.viewsets import ViewSet
 
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.tasks.installer import install_controller, install_collector, uninstall_controller
+from apps.node_mgmt.tasks.installer import install_controller, install_collector, uninstall_controller, retry_controller
 
 
 class InstallerViewSet(ViewSet):
@@ -28,6 +28,38 @@ class InstallerViewSet(ViewSet):
         )
         uninstall_controller.delay(task_id)
         return WebUtils.response_success(dict(task_id=task_id))
+
+    @action(detail=False, methods=["post"], url_path="controller/retry")
+    def controller_retry(self, request):
+        retry_controller.delay(
+            request.data["task_id"], 
+            request.data["task_node_ids"], 
+            password=request.data.get("password"),
+            private_key=request.data.get("private_key"),
+            passphrase=request.data.get("passphrase")
+        )
+        return WebUtils.response_success()
+
+    # 控制器手动安装
+    @action(detail=False, methods=["post"], url_path="controller/manual_install")
+    def controller_manual_install(self, request):
+        result = []
+        for node in request.data["nodes"]:
+            result.append({
+                "cloud_region_id": request.data["cloud_region_id"],
+                "os": request.data["os"],
+                "package_id": request.data["package_id"],
+                "ip": node["ip"],
+                "node_id": node["node_id"],
+                "node_name": node.get("node_name", ""),
+                "organizations": node.get("organizations", []),
+            })
+        return WebUtils.response_success(result)
+
+    @action(detail=False, methods=["post"], url_path="controller/manual_install_status")
+    def controller_manual_install_status(self, request):
+        data = InstallerService.get_manual_install_status(request.data["node_ids"])
+        return WebUtils.response_success(data)
 
     # @action(detail=False, methods=["post"], url_path="controller/restart")
     # def controller_restart(self, request):
@@ -57,8 +89,9 @@ class InstallerViewSet(ViewSet):
         data = InstallerService.get_install_command(
             request.user.username,
             request.data["ip"],
+            request.data["node_id"],
             request.data["os"],
-            request.data["package_name"],
+            request.data["package_id"],
             request.data["cloud_region_id"],
             request.data.get("organizations", []),
             request.data.get("node_name", ""),

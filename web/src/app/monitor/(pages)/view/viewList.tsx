@@ -6,14 +6,14 @@ import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import { useTranslation } from '@/utils/i18n';
 import {
-  getEnumValueUnit,
   getEnumColor,
-  getK8SData,
   getBaseInstanceColumn,
 } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { useRouter } from 'next/navigation';
 import ViewModal from './viewModal';
+import MetricDimensionTooltip from './metricDimensionTooltip';
 import {
   ColumnItem,
   ModalRef,
@@ -49,9 +49,15 @@ const ViewList: React.FC<ViewListProps> = ({
   const { t } = useTranslation();
   const router = useRouter();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const { getEnumValueUnit } = useUnitTransform();
   const { getCollectType, getTableDiaplay } = useObjectConfigInfo();
   const viewRef = useRef<ModalRef>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef<number>(0);
+  const columnAbortControllerRef = useRef<AbortController | null>(null);
+  const columnRequestIdRef = useRef<number>(0);
+  const currentObjectIdRef = useRef<React.Key>(objectId);
   const [searchText, setSearchText] = useState<string>('');
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
@@ -108,11 +114,10 @@ const ViewList: React.FC<ViewListProps> = ({
   ];
   const [tableColumn, setTableColumn] = useState<ColumnItem[]>(columns);
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
-  const [namespace, setNameSpace] = useState<string | null>(null);
-  const [workload, setWorkload] = useState<string | null>(null);
   const [node, setNode] = useState<string | null>(null);
   const [colony, setColony] = useState<string | null>(null);
   const [queryData, setQueryData] = useState<any[]>([]);
+  const [nodeList, setNodeList] = useState<ListItem[]>([]);
 
   const instNamePlaceholder = useMemo(() => {
     const type = objects.find((item) => item.id === objectId)?.type || '';
@@ -127,37 +132,6 @@ const ViewList: React.FC<ViewListProps> = ({
     return objects.find((item) => item.id === objectId)?.name === 'Pod';
   }, [objects, objectId]);
 
-  const namespaceList = useMemo(() => {
-    if (queryData.length && colony) {
-      return queryData.find((item) => item.id === colony)?.child || [];
-    }
-    return [];
-  }, [colony, queryData]);
-
-  const workloadList = useMemo(() => {
-    if (namespaceList.length && namespace) {
-      return (
-        (
-          namespaceList.find((item: ListItem) => item.id === namespace)
-            ?.child || []
-        ).filter((item: ListItem) => item.id === 'workload')[0]?.child || []
-      );
-    }
-    return [];
-  }, [namespaceList, namespace]);
-
-  const nodeList = useMemo(() => {
-    if (namespaceList.length && namespace) {
-      return (
-        (
-          namespaceList.find((item: ListItem) => item.id === namespace)
-            ?.child || []
-        ).filter((item: ListItem) => item.id === 'node')[0]?.child || []
-      );
-    }
-    return [];
-  }, [namespaceList, namespace]);
-
   const showMultipleConditions = useMemo(() => {
     const objectNames = DERIVATIVE_OBJECTS.filter(
       (item) => !['Pod', 'Node'].includes(item)
@@ -171,6 +145,8 @@ const ViewList: React.FC<ViewListProps> = ({
   useEffect(() => {
     if (isLoading) return;
     if (objectId && objects?.length) {
+      currentObjectIdRef.current = objectId;
+      cancelAllRequests();
       setTableData([]);
       setPagination((prev: Pagination) => ({
         ...prev,
@@ -210,7 +186,19 @@ const ViewList: React.FC<ViewListProps> = ({
     if (objectId && objects?.length && !isLoading) {
       onRefresh();
     }
-  }, [colony, namespace, workload, node]);
+  }, [colony, node]);
+
+  // 组件卸载时取消未完成的请求
+  useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
+  const cancelAllRequests = () => {
+    abortControllerRef.current?.abort();
+    columnAbortControllerRef.current?.abort();
+  };
 
   const updatePage = () => {
     onRefresh();
@@ -225,37 +213,54 @@ const ViewList: React.FC<ViewListProps> = ({
       name: searchText,
       vm_params: {
         instance_id: colony || '',
-        namespace: namespace || '',
         node: node || '',
-        created_by_kind: workload || '',
-        created_by_name:
-          workloadList.find(
-            (item: TableDataItem) => item.created_by_kind === workload
-          )?.created_by_name || '',
       },
     };
   };
 
   const getColoumnAndData = async () => {
+    // 取消上一次未完成的列相关请求
+    columnAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    columnAbortControllerRef.current = abortController;
+    const currentRequestId = ++columnRequestIdRef.current;
     const objParams = {
       monitor_object_id: objectId,
     };
     const targetObject = objects.find((item) => item.id === objectId);
     const objName = targetObject?.name;
-    const getMetrics = getMonitorMetrics(objParams);
-    const getPlugins = getMonitorPlugin(objParams);
+    const config = { signal: abortController.signal };
+    const getMetrics = getMonitorMetrics(objParams, config);
+    const getPlugins = getMonitorPlugin(objParams, config);
     setTableLoading(true);
     try {
       const res = await Promise.all([
         getMetrics,
         getPlugins,
         showMultipleConditions &&
-          getInstanceQueryParams(objName as string, objParams),
+          getInstanceQueryParams(objName as string, objParams, config),
       ]);
+      // 检查是否是最新的请求
+      if (currentRequestId !== columnRequestIdRef.current) {
+        return;
+      }
       const k8sQuery = res[2];
-      const queryForm = isPod
-        ? getK8SData(k8sQuery || {})
-        : (k8sQuery || []).map((item: string) => ({ id: item, child: [] }));
+      let queryForm: any[] = [];
+      if (k8sQuery?.cluster) {
+        queryForm = k8sQuery?.cluster || [];
+        setNodeList(k8sQuery?.node || []);
+      } else {
+        queryForm = (k8sQuery || []).map((item: any) => {
+          if (typeof item === 'string') {
+            return { id: item, child: [] };
+          }
+          return {
+            id: item?.id,
+            name: item?.name || '',
+            child: [],
+          };
+        });
+      }
       setQueryData(queryForm);
       const _plugins = res[1].map((item: IntegrationItem) => ({
         label: getCollectType(objName as string, item.name as string),
@@ -272,24 +277,41 @@ const ViewList: React.FC<ViewListProps> = ({
           if (item.type === 'progress') {
             return {
               title:
-                t(`monitor.views.${[item.key]}`) ||
                 target?.display_name ||
+                t(`monitor.views.${[item.key]}`) ||
                 '--',
               dataIndex: item.key,
               key: item.key,
               width: 300,
-              sorter: (a: any, b: any) => a[item.key] - b[item.key],
-              render: (_: unknown, record: TableDataItem) => (
-                <Progress
-                  className="flex"
-                  strokeLinecap="butt"
-                  showInfo={!!record[item.key]}
-                  format={(percent) => `${percent?.toFixed(2)}%`}
-                  percent={getPercent(record[item.key] || 0)}
-                  percentPosition={{ align: 'start', type: 'outer' }}
-                  size={[260, 20]}
-                />
-              ),
+              sorter: (a: any, b: any) =>
+                a[item.key]?.value - b[item.key]?.value,
+              render: (_: unknown, record: TableDataItem) => {
+                const hasDimensions = target?.dimensions?.length > 1;
+                const size: [number, number] = hasDimensions
+                  ? [220, 20]
+                  : [240, 20];
+                return (
+                  <div className="flex items-center justify-between">
+                    <Progress
+                      className="flex"
+                      strokeLinecap="butt"
+                      showInfo={!!record[item.key]?.value}
+                      format={(percent) => `${percent?.toFixed(2)}%`}
+                      percent={getPercent(record[item.key]?.value || 0)}
+                      percentPosition={{ align: 'start', type: 'outer' }}
+                      size={size}
+                    />
+                    {hasDimensions && (
+                      <MetricDimensionTooltip
+                        metricItem={target}
+                        instanceId={record.instance_id}
+                        metricId={target.id}
+                        monitorObjectId={objectId}
+                      />
+                    )}
+                  </div>
+                );
+              },
             };
           }
           return {
@@ -300,20 +322,41 @@ const ViewList: React.FC<ViewListProps> = ({
             width: 200,
             ...(item.type === 'value'
               ? {
-                sorter: (a: any, b: any) => a[item.key] - b[item.key],
+                sorter: (a: any, b: any) =>
+                  a[item.key]?.value - b[item.key]?.value,
               }
               : {}),
             render: (_: unknown, record: TableDataItem) => {
-              const color = getEnumColor(target, record[item.key]);
+              const color = getEnumColor(target, record[item.key]?.value);
+              const hasDimensions = target?.dimensions?.length > 1;
+              const metricValue = record[item.key]?.value;
+              const metricUnit = record[item.key]?.unit || target?.unit || '';
+              const metricItem: any = {
+                unit: metricUnit,
+                name: target?.name,
+                dimensions: target?.dimensions || [],
+              };
               return (
-                <>
+                <div className="flex items-center justify-between">
                   <span style={{ color }}>
                     <EllipsisWithTooltip
-                      text={getEnumValueUnit(target, record[item.key])}
+                      text={getEnumValueUnit(
+                        metricItem,
+                        metricValue,
+                        metricUnit
+                      )}
                       className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
                     ></EllipsisWithTooltip>
                   </span>
-                </>
+                  {hasDimensions && (
+                    <MetricDimensionTooltip
+                      metricItem={target}
+                      instanceId={record.instance_id}
+                      metricId={target.id}
+                      monitorObjectId={objectId}
+                    />
+                  )}
+                </div>
               );
             },
           };
@@ -323,20 +366,26 @@ const ViewList: React.FC<ViewListProps> = ({
             objects,
             row: targetObject,
             t,
+            queryData: queryForm,
           }),
           ...columns,
         ]);
         const indexToInsert = originColumns.length - 1;
         originColumns.splice(indexToInsert, 0, ..._columns);
         setTableColumn(originColumns);
+        if (currentRequestId !== columnRequestIdRef.current) {
+          return;
+        }
         if (!colony) {
           onRefresh();
         } else {
           setColony(null);
         }
       }
-    } catch {
-      setTableLoading(false);
+    } finally {
+      if (currentRequestId === columnRequestIdRef.current && colony) {
+        setTableLoading(false);
+      }
     }
   };
 
@@ -353,6 +402,14 @@ const ViewList: React.FC<ViewListProps> = ({
   };
 
   const getAssetInsts = async (objectId: React.Key, type?: string) => {
+    // 检查 objectId 是否还是当前活跃的，取消现有请求，再获取新的
+    if (objectId !== currentObjectIdRef.current) {
+      return;
+    }
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const currentRequestId = ++requestIdRef.current;
     const params = getParams();
     if (type === 'clear') {
       params.name = '';
@@ -362,14 +419,28 @@ const ViewList: React.FC<ViewListProps> = ({
       const request = showMultipleConditions
         ? getInstanceSearch
         : getInstanceList;
-      const data = await request(objectId, params);
-      setTableData(data.results || []);
-      setPagination((prev: Pagination) => ({
-        ...prev,
-        total: data.count || 0,
-      }));
+      const data = await request(objectId, params, {
+        signal: abortController.signal,
+      });
+      // 检查是否是最新的请求且 objectId 仍然匹配
+      if (
+        currentRequestId === requestIdRef.current &&
+        objectId === currentObjectIdRef.current
+      ) {
+        setTableData(data.results || []);
+        setPagination((prev: Pagination) => ({
+          ...prev,
+          total: data.count || 0,
+        }));
+      }
     } finally {
-      setTableLoading(false);
+      // 只有当前请求且 objectId 匹配才更新 loading 状态
+      if (
+        currentRequestId === requestIdRef.current &&
+        objectId === currentObjectIdRef.current
+      ) {
+        setTableLoading(false);
+      }
     }
   };
 
@@ -414,29 +485,7 @@ const ViewList: React.FC<ViewListProps> = ({
 
   const handleColonyChange = (id: string) => {
     setColony(id);
-    setNameSpace(null);
-    setWorkload(null);
     setNode(null);
-    setTableData([]);
-    setPagination((prev: Pagination) => ({
-      ...prev,
-      current: 1,
-    }));
-  };
-
-  const handleNameSpaceChange = (id: string) => {
-    setNameSpace(id);
-    setWorkload(null);
-    setNode(null);
-    setTableData([]);
-    setPagination((prev: Pagination) => ({
-      ...prev,
-      current: 1,
-    }));
-  };
-
-  const handleWorkloadChange = (id: string) => {
-    setWorkload(id);
     setTableData([]);
     setPagination((prev: Pagination) => ({
       ...prev,
@@ -466,59 +515,30 @@ const ViewList: React.FC<ViewListProps> = ({
                 value={colony}
                 allowClear
                 showSearch
-                style={{ width: isPod ? 120 : 240 }}
+                style={{ width: 240 }}
                 placeholder={instNamePlaceholder}
                 onChange={handleColonyChange}
               >
                 {queryData.map((item) => (
                   <Option key={item.id} value={item.id}>
-                    {item.id}
+                    {item.name || item.id}
                   </Option>
                 ))}
               </Select>
               {showTab && isPod && (
                 <>
                   <Select
-                    value={namespace}
-                    allowClear
-                    showSearch
-                    className="mx-[10px]"
-                    style={{ width: 120 }}
-                    placeholder={t('monitor.views.namespace')}
-                    onChange={handleNameSpaceChange}
-                  >
-                    {namespaceList.map((item: ListItem) => (
-                      <Option key={item.id} value={item.id}>
-                        {item.id}
-                      </Option>
-                    ))}
-                  </Select>
-                  <Select
-                    value={workload}
-                    allowClear
-                    showSearch
-                    className="mr-[10px]"
-                    style={{ width: 120 }}
-                    placeholder={t('monitor.views.workload')}
-                    onChange={handleWorkloadChange}
-                  >
-                    {workloadList.map((item: TableDataItem, index: number) => (
-                      <Option key={index} value={item.created_by_kind}>
-                        {item.created_by_name}
-                      </Option>
-                    ))}
-                  </Select>
-                  <Select
+                    className="ml-[8px]"
                     value={node}
                     allowClear
                     showSearch
-                    style={{ width: 120 }}
+                    style={{ width: 240 }}
                     placeholder={t('monitor.views.node')}
                     onChange={handleNodeChange}
                   >
-                    {nodeList.map((item: string, index: number) => (
-                      <Option key={index} value={item}>
-                        {item}
+                    {nodeList.map((item: ListItem, index: number) => (
+                      <Option key={index} value={item.id}>
+                        {item.name}
                       </Option>
                     ))}
                   </Select>
@@ -528,7 +548,7 @@ const ViewList: React.FC<ViewListProps> = ({
           )}
           <Input
             allowClear
-            className="w-[240px] ml-[10px]"
+            className="w-[240px] ml-[8px]"
             placeholder={t('common.searchPlaceHolder')}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
@@ -555,7 +575,7 @@ const ViewList: React.FC<ViewListProps> = ({
         fieldSetting={{
           showSetting: false,
           displayFieldKeys: [
-            'elasticsearch_fs_total_available_in_bytes',
+            'elasticsearch_cluster_health_status_code',
             'instance_name',
           ],
           choosableFields: tableColumn.slice(0, tableColumn.length - 1),

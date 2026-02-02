@@ -18,10 +18,6 @@ class AWSCollectMetrics(CollectBase):
     def _metrics(self):
         return AWS_CLOUD_COLLECT_CLUSTER
 
-    def prom_sql(self):
-        sql = " or ".join(m for m in self._metrics)
-        return sql
-
     @property
     def model_field_mapping(self):
         mapping = {

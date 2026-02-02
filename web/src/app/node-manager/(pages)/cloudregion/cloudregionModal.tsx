@@ -5,7 +5,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Form, Button, Input, message, FormInstance } from 'antd';
+import { Form, Button, Input, message, FormInstance, Alert } from 'antd';
+import { InfoCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import {
   ModalRef,
@@ -27,6 +28,7 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
     const [formData, setFormData] = useState<TableDataItem>({
       name: '',
       introduction: '',
+      proxy_address: '',
     });
 
     useImperativeHandle(ref, () => ({
@@ -56,14 +58,16 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
           const params = {
             name: cloudRegion.name,
             introduction: cloudRegion.introduction,
+            proxy_address: cloudRegion.proxy_address,
           };
           await updateCloudIntro(cloudRegion.id, params);
           message.success(t('common.updateSuccess'));
         } else if (type === 'add') {
-          const { name, introduction } = cloudRegion;
+          const { name, introduction, proxy_address } = cloudRegion;
           await createCloudRegion({
             name,
             introduction,
+            proxy_address,
           });
           message.success(t('common.addSuccess'));
         }
@@ -72,6 +76,7 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
         setFormData({
           name: '',
           introduction: '',
+          proxy_address: '',
         });
       } finally {
         setConfirmLoading(false);
@@ -80,7 +85,7 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
 
     const handleCancel = () => {
       setOpenEditCloudRegion(false);
-      setFormData({ name: '', introduction: '' });
+      setFormData({ name: '', introduction: '', proxy_address: '' });
       setConfirmLoading(false);
     };
 
@@ -97,7 +102,7 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
               <Button
                 type="primary"
                 className="mr-[10px]"
-                disabled={formData.name === 'default'}
+                disabled={formData.originalName === 'default'}
                 loading={confirmLoading}
                 onClick={handleFormOkClick}
               >
@@ -117,17 +122,39 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
               rules={[{ required: true, message: t('common.inputRequired') }]}
             >
               <Input
-                disabled={formData?.name === 'default' || type === 'delete'}
+                disabled={
+                  formData?.originalName === 'default' || type === 'delete'
+                }
                 placeholder={t('common.inputMsg')}
               />
             </Form.Item>
+            <Form.Item
+              name={['cloudRegion', 'proxy_address']}
+              label={t('node-manager.cloudregion.editform.proxyIpOrDomain')}
+            >
+              <Input
+                disabled={type === 'edit'}
+                placeholder={t(
+                  'node-manager.cloudregion.editform.proxyIpOrDomainPlaceholder'
+                )}
+              />
+            </Form.Item>
+            <Alert
+              message={t('node-manager.cloudregion.editform.proxyTips')}
+              type="info"
+              showIcon
+              icon={<InfoCircleOutlined />}
+              className="mb-4"
+            />
             <Form.Item
               name={['cloudRegion', 'introduction']}
               label={t('node-manager.cloudregion.editform.Introduction')}
               rules={[{ required: true, message: t('common.inputRequired') }]}
             >
               <Input.TextArea
-                disabled={formData?.name === 'default' || type === 'delete'}
+                disabled={
+                  formData?.originalName === 'default' || type === 'delete'
+                }
                 rows={5}
                 placeholder={t('common.inputMsg')}
               />

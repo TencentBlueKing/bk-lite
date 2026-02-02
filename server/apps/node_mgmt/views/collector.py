@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from apps.core.utils.loader import LanguageLoader
+from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.filters.collector import CollectorFilter
 from apps.node_mgmt.models.sidecar import Collector
@@ -11,7 +12,7 @@ from django.core.cache import cache
 
 
 class CollectorViewSet(ModelViewSet):
-    queryset = Collector.objects.all()
+    queryset = Collector.objects.exclude(id__in=CollectorConstants.IGNORE_COLLECTORS)
     serializer_class = CollectorSerializer
     filterset_class = CollectorFilter
 
@@ -38,7 +39,9 @@ class CollectorViewSet(ModelViewSet):
         return Response(results)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        data = request.data
+        data.update(is_pre=False)
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
 

@@ -18,14 +18,14 @@ import {
   message,
 } from "antd";
 import { TYPE_CONTENT, TYPE_COLOR } from "@/app/mlops/constants";
-import { ColumnItem, ModalRef, Pagination, TableData } from '@/app/mlops/types';
+import { ColumnItem, ModalRef, Pagination, TableData, DatasetType } from '@/app/mlops/types';
 const { Search } = Input;
 
 const TimeSeriesPredict = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { getTimeSeriesPredictTrainData, deleteTimeSeriesPredictTrainData, updateTimeSeriesPredictTrainData } = useMlopsManageApi();
+  const { getTrainDataByDataset, deleteTrainDataFile, updateTimeSeriesPredictTrainData } = useMlopsManageApi();
   const modalRef = useRef<ModalRef>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
@@ -80,13 +80,10 @@ const TimeSeriesPredict = () => {
       fixed: 'right',
       render: (_: unknown, record) => (
         <>
-          <PermissionWrapper requiredPermissions={['File View']}>
-            <DatasetReleaseList datasetType="timeseries_predict" />
-          </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => toAnnotation(record)}
             >
               {t('common.detail')}
@@ -95,7 +92,7 @@ const TimeSeriesPredict = () => {
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => openModal(record)}
             >
               {t('common.edit')}
@@ -145,12 +142,14 @@ const TimeSeriesPredict = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getTimeSeriesPredictTrainData({
+      const { count, items } = await getTrainDataByDataset({
+        key: DatasetType.TIMESERIES_PREDICT,
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
         page_size: pagination.pageSize
       });
+
       const _tableData = items?.map((item: any) => {
         return {
           id: item?.id,
@@ -166,14 +165,16 @@ const TimeSeriesPredict = () => {
       });
       setTableData(_tableData as TableData[]);
       setPagination((prev) => {
-        return {
-          ...prev,
-          total: count || 0
+        if (prev.total !== count) {
+          return { ...prev, total: count || 0 };
         }
+        return prev;
       });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
-    catch (e) { console.log(e) }
-    finally { setLoading(false); }
   }, [t, searchParams]);
 
   const onUpload = () => {
@@ -188,9 +189,9 @@ const TimeSeriesPredict = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteTimeSeriesPredictTrainData(data.id);
+      await deleteTrainDataFile(data.id, DatasetType.TIMESERIES_PREDICT);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
@@ -208,7 +209,7 @@ const TimeSeriesPredict = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'timeseries_predict') {
+      if (activeTap === DatasetType.TIMESERIES_PREDICT) {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
@@ -220,7 +221,7 @@ const TimeSeriesPredict = () => {
         getDataset();
       }
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       setConfirmLoading(false);
     }
@@ -251,22 +252,24 @@ const TimeSeriesPredict = () => {
           ]}
         />
         <div className='flex gap-2'>
-          
           <Search
-            className="w-[240px]"
+            className="w-60"
             placeholder={t('common.search')}
             enterButton
             onSearch={onSearch}
             style={{ fontSize: 15 }}
           />
           <PermissionWrapper requiredPermissions={['File Upload']}>
-            <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
+            <Button type="primary" className="rounded-md shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
           </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['File View']}>
+            <DatasetReleaseList datasetType={DatasetType.TIMESERIES_PREDICT} />
+          </PermissionWrapper>
         </div>
       </div>
-      
+
       <div className="flex-1 relative">
         <div className='absolute w-full'>
           <CustomTable
@@ -281,7 +284,7 @@ const TimeSeriesPredict = () => {
           />
         </div>
       </div>
-      
+
       <UploadModal ref={modalRef} onSuccess={() => getDataset()} />
       <OperateModal
         open={modalOpen}

@@ -122,26 +122,38 @@
     border: 2px solid white !important;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15) !important;
     transition: all 0.2s ease !important;
+    cursor: crosshair !important;
+    pointer-events: all !important;
   }
   
   :global(.react-flow__handle:hover) {
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25) !important;
+    transform: scale(1.3) !important;
   }
   
   :global(.react-flow__handle-top) {
     top: 0px !important;
+    z-index: 100 !important;
   }
   
   :global(.react-flow__handle-bottom) {
     bottom: 0px !important;
+    z-index: 100 !important;
   }
   
   :global(.react-flow__handle-left) {
-    left: 0px !important;
+    z-index: 999 !important;
   }
   
   :global(.react-flow__handle-right) {
+    z-index: 500 !important;
+  }
+  
+  // 多输出 Handle 需要自定义垂直位置
+  :global(.react-flow__handle[id^="output-"]) {
     right: 0px !important;
+    width: 12px !important;
+    height: 12px !important;
   }
   
   /* Connection flow animation - rightward flow */
@@ -188,6 +200,9 @@
   min-height: 120px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: all 0.2s ease;
+  position: relative;
+  z-index: 0;
+  overflow: visible;
   
   &:hover {
     border-color: var(--color-primary);
@@ -240,11 +255,10 @@
     align-items: flex-start;
     line-height: 1.4;
     white-space: normal;
-    overflow: visible;
-    text-overflow: initial;
-    max-width: 100%;
-    word-wrap: break-word;
     overflow-wrap: break-word;
+    word-break: break-all;
+    hyphens: auto;
+    max-width: 100%;
     
     &:empty {
       display: none;

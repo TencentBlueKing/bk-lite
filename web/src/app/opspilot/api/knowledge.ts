@@ -550,6 +550,28 @@ export const useKnowledgeApi = () => {
     return patch(`/opspilot/knowledge_mgmt/qa_pairs/${qaPairId}/`, payload);
   };
 
+  /**
+   * Previews QA pairs generation.
+   */
+  const previewQAPairs = async (payload: {
+    chunk_list: Array<{
+      chunk_id: string;
+      content: string;
+      knowledge_id: string;
+    }>;
+    knowledge_base_id: number;
+    llm_model_id: number;
+    qa_count: number;
+    question_prompt: string;
+    answer_llm_model_id: number;
+    answer_prompt: string;
+  }): Promise<Array<{
+    answer: string;
+    question: string;
+  }>> => {
+    return post('/opspilot/knowledge_mgmt/qa_pairs/preview/', payload);
+  };
+
   return {
     fetchEmbeddingModels,
     fetchKnowledgeBase,
@@ -604,5 +626,6 @@ export const useKnowledgeApi = () => {
     generateAnswerToEs,
     getQAPairDetail,
     updateQAPairConfig,
+    previewQAPairs,
   };
 };

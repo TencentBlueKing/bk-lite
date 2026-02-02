@@ -6,18 +6,17 @@ import time
 from django.conf import settings
 from django.db.models import Count
 from django.db.models.functions import TruncDate
-from django.http import FileResponse, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django_minio_backend import MinioBackend
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
 
 from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
-from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
-from apps.opspilot.services.llm_service import llm_service
+from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.services.skill_excute_service import SkillExecuteService
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
@@ -93,23 +92,52 @@ def model_download(request):
     return response
 
 
-def validate_openai_token(token, team=None):
+def validate_openai_token(token, team=None, is_mobile=False):
     """Validate the OpenAI API token"""
     loader = LanguageLoader(app="opspilot", default_lang="en")
     if not token:
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
+        return False, {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": loader.get("error.no_authorization", "No authorization"),
+                    }
+                }
+            ]
+        }
     token = token.split("Bearer ")[-1]
     user = UserAPISecret.objects.filter(api_secret=token).first()
     if not user:
-        if team is None:
-            return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
+        if team is None and not is_mobile:
+            return False, {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": loader.get("error.no_authorization", "No authorization"),
+                        }
+                    }
+                ]
+            }
+        team = team or 0
         client = SystemMgmt()
         result = client.verify_token(token)
         if not result.get("result"):
-            return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
+            return False, {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": loader.get("error.no_authorization", "No authorization"),
+                        }
+                    }
+                ]
+            }
         user_info = result.get("data")
         user = UserAPISecret(
             username=user_info["username"],
+            domain=user_info["domain"],
             team=int(team),
         )
     return True, user
@@ -118,16 +146,43 @@ def validate_openai_token(token, team=None):
 def validate_header_token(token, bot_id):
     loader = LanguageLoader(app="opspilot", default_lang="en")
     if not token:
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
+        return False, {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": loader.get("error.no_authorization", "No authorization"),
+                    }
+                }
+            ]
+        }
     bot_obj = Bot.objects.filter(id=bot_id, online=True).first()
     if not bot_obj:
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.bot_not_online", "No bot online")}}]}
+        return False, {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": loader.get("error.bot_not_online", "No bot online"),
+                    }
+                }
+            ]
+        }
     token = token.split("Bearer ")[-1]
     client = SystemMgmt()
     # res = client.verify_token(token)
     res = client.get_pilot_permission_by_token(token, bot_id, bot_obj.team)
     if not res.get("result"):
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
+        return False, {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": loader.get("error.no_authorization", "No authorization"),
+                    }
+                }
+            ]
+        }
     return True, {"username": res["data"]["username"]}
 
 
@@ -163,7 +218,16 @@ def get_skill_and_params(kwargs, team, bot_id=None):
         return (
             None,
             None,
-            {"choices": [{"message": {"role": "assistant", "content": loader.get("error.skill_not_found", "No skill")}}]},
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": loader.get("error.skill_not_found", "No skill"),
+                        }
+                    }
+                ]
+            },
         )
     num = kwargs.get("conversation_window_size") or skill_obj.conversation_window_size
     chat_history = [{"message": i["content"], "event": i["role"]} for i in kwargs.get("messages", [])[-1 * num :]]
@@ -198,12 +262,14 @@ def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
         knowledge_titles = {doc_map.get(k, {}).get("name") for k in title_map.keys()}
         last_content = content.strip().split("\n")[-1]
         if "引用知识" not in last_content and knowledge_titles:
-            content += f'\n引用知识: {", ".join(knowledge_titles)}'
+            content += f"\n引用知识: {', '.join(knowledge_titles)}"
     return content
 
 
 def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_log=None):
-    data, doc_map, title_map = llm_service.invoke_chat(params)
+    # 使用同步版本的 invoke_chat
+    data, doc_map, title_map = ChatService.invoke_chat(params)
+
     content = format_knowledge_sources(data["message"], skill_obj, doc_map, title_map)
     return_data = {
         "id": skill_obj.name,
@@ -336,7 +402,14 @@ def lobe_skill_execute(request):
     )
     if not stream_mode:
         return invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log)
-    return stream_chat(params, skill_obj.name, kwargs, current_ip, user_message, history_log=history_log)
+    return stream_chat(
+        params,
+        skill_obj.name,
+        kwargs,
+        current_ip,
+        user_message,
+        history_log=history_log,
+    )
 
 
 @api_exempt
@@ -371,7 +444,7 @@ def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sen
         return {"content": loader.get("error.no_authorization", "No authorization")}
     bot = Bot.objects.filter(id=bot_id, api_token=api_token).first()
     if not bot:
-        logger.info(f"api_token: {api_token}")
+        logger.info(f"Bot not found for bot_id: {bot_id}")
         return {"content": loader.get("error.bot_not_found", "No bot found")}
     try:
         result = SkillExecuteService.execute_skill(bot, skill_id, user_message, chat_history, sender_id, channel)
@@ -470,36 +543,73 @@ def set_channel_type_line(end_time, queryset, start_time):
 
 @api_exempt
 def execute_chat_flow(request, bot_id, node_id):
-    """执行ChatFlow流程"""
+    """执行ChatFlow流程（支持流式响应）"""
     loader = get_loader(request)
     if not bot_id or not node_id:
-        return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
+        return JsonResponse(
+            {
+                "result": False,
+                "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required."),
+            }
+        )
+
+    # 读取请求体
     kwargs = json.loads(request.body)
-    message = kwargs.get("message", "")
+    message = kwargs.get("message", "") or kwargs.get("user_message", "")
+    session_id = kwargs.get("session_id", "")
     is_test = kwargs.get("is_test", False)
+
+    # 检测请求来源是否为移动端
+    user_agent = request.META.get("HTTP_USER_AGENT", "")
+    is_mobile = any(keyword in user_agent.lower() for keyword in ["android", "iphone", "ipad", "mobile", "windows phone", "tauri"])
+
     # 验证token
     token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
-    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None, is_mobile)
     if not is_valid:
         return JsonResponse(msg)
 
     # 验证Bot
     user = msg
-    filter_dict = {"id": bot_id, "team__contains": int(user.team)}
+    if is_mobile:
+        # 移动端只筛选 bot_id，不校验 team
+        filter_dict = {"id": bot_id}
+    else:
+        # 非移动端保持原有逻辑，需要校验 team
+        filter_dict = {"id": bot_id, "team__contains": int(user.team)}
+
     if not is_test:
         filter_dict["online"] = True
     bot_obj = Bot.objects.filter(**filter_dict).first()
     if not bot_obj:
-        return JsonResponse({"result": False, "message": loader.get("error.bot_not_online", "No bot online")})
+        return JsonResponse(
+            {
+                "result": False,
+                "message": loader.get("error.bot_not_online", "No bot online"),
+            }
+        )
 
     # 获取Bot的工作流配置
     bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
     if not bot_chat_flow:
-        return JsonResponse({"result": False, "message": loader.get("error.no_chat_flow_configured", "No chat flow configured for this bot.")})
+        return JsonResponse(
+            {
+                "result": False,
+                "message": loader.get(
+                    "error.no_chat_flow_configured",
+                    "No chat flow configured for this bot.",
+                ),
+            }
+        )
 
     # 检查工作流是否有配置数据
     if not bot_chat_flow.flow_json:
-        return JsonResponse({"result": False, "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty.")})
+        return JsonResponse(
+            {
+                "result": False,
+                "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty."),
+            }
+        )
 
     try:
         # 创建ChatFlow引擎 - 使用数据库中的工作流配置
@@ -508,30 +618,29 @@ def execute_chat_flow(request, bot_id, node_id):
         # 获取当前节点类型
         node_obj = engine._get_node_by_id(node_id)
         node_type = node_obj.get("type") if node_obj else None
-
         # 准备输入数据
-        input_data = {"last_message": message, "user_id": user.username, "bot_id": bot_id, "node_id": node_id}
+        input_data = {
+            "last_message": message,
+            "user_id": f"{user.username}@{user.domain}",
+            "bot_id": bot_id,
+            "node_id": node_id,
+            "session_id": session_id,
+        }
 
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
 
-        # 区分 openai 和 agui 类型的流式响应，其余类型统一走原有逻辑
-        if node_type in ["openai", "agui"]:
+        # 区分流式响应节点类型：openai、agui、embedded_chat、mobile、web_chat
+        stream_node_types = ["openai", "agui", "embedded_chat", "mobile", "web_chat"]
+        if node_type in stream_node_types:
             # 使用引擎的流式执行方法，设置入口类型
             input_data["entry_type"] = node_type
-            stream_generator = engine.sse_execute(input_data)
 
-            # 直接返回流式响应
-            async_generator = create_async_compatible_generator(stream_generator)
-            response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
-            response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response["X-Accel-Buffering"] = "no"
-            response["Access-Control-Allow-Origin"] = "*"
-            response["Access-Control-Allow-Headers"] = "Cache-Control"
-            return response
+            # 直接返回 engine.sse_execute 的 StreamingHttpResponse（与 execute_agui 保持一致）
+            logger.info(f"[ChatFlow] 调用流式执行 - bot_id: {bot_id}, node_id: {node_id}, node_type: {node_type}")
+            return engine.sse_execute(input_data)
 
         # 非流式节点，使用普通执行
         result = engine.execute(input_data)
-        logger.info(f"ChatFlow流程执行完成，bot_id: {bot_id}, 最终输出: {result}")
         return JsonResponse({"result": True, "data": {"content": result, "execution_time": time.time()}})
 
     except Exception as e:
@@ -643,7 +752,12 @@ def execute_chat_flow_dingtalk(request, bot_id):
     # 1. 验证Bot ID
     if not bot_id:
         logger.error("钉钉ChatFlow执行失败：缺少Bot ID")
-        return JsonResponse({"success": False, "message": loader.get("error.missing_bot_id", "Missing bot_id")})
+        return JsonResponse(
+            {
+                "success": False,
+                "message": loader.get("error.missing_bot_id", "Missing bot_id"),
+            }
+        )
 
     # 2. 创建工具类实例并验证Bot和工作流配置
     dingtalk_utils = DingTalkChatFlowUtils(bot_id)
@@ -663,9 +777,21 @@ def execute_chat_flow_dingtalk(request, bot_id):
             # 启动Stream客户端
             success = start_dingtalk_stream_client(bot_id, bot_chat_flow, dingtalk_config)
             if success:
-                return JsonResponse({"success": True, "message": "DingTalk Stream client started successfully", "mode": "stream"})
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "message": "DingTalk Stream client started successfully",
+                        "mode": "stream",
+                    }
+                )
             else:
-                return JsonResponse({"success": False, "message": "Failed to start DingTalk Stream client", "mode": "stream"})
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "message": "Failed to start DingTalk Stream client",
+                        "mode": "stream",
+                    }
+                )
     except json.JSONDecodeError:
         pass
 
@@ -679,4 +805,9 @@ def test(request):
     kwargs = request.GET.dict()
     data = json.loads(request.body) if request.body else {}
     kwargs.update(data)
-    return JsonResponse({"result": True, "data": {"ip": ip, "is_routable": is_routable, "kwargs": kwargs}})
+    return JsonResponse(
+        {
+            "result": True,
+            "data": {"ip": ip, "is_routable": is_routable, "kwargs": kwargs},
+        }
+    )

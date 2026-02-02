@@ -184,3 +184,5 @@ error:
   mcp_tools_fetch_failed: Failed to fetch tools from MCP server
   no_bot_stop_permission: You do not have permission to stop this bot
   knowledge_base_training: The knowledge base is training and cannot be modified.
+  knowledge_base_used_by_skills: ''
+  knowledge_base_delete_related_data_failed: ''

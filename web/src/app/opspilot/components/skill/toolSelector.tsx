@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Tooltip, Form, Input, Empty } from 'antd';
+import { Button, Tooltip, Form, Input, Empty, InputNumber, Switch } from 'antd';
+
+const { TextArea } = Input;
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import SelectorOperateModal from './operateModal';
@@ -167,20 +169,42 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
                 {fields.length === 0 && (
                   <Empty description={t('common.noData')} />
                 )}
-                {fields.map(({ key, name, fieldKey, ...restField }) => (
-                  <Form.Item
-                    key={key}
-                    {...restField}
-                    name={[name, 'value']}
-                    fieldKey={[fieldKey ?? '', 'value']}
-                    label={form.getFieldValue(['kwargs', name, 'key'])}
-                    rules={[{ required: form.getFieldValue(['kwargs', name, 'isRequired']), message: `${t('common.inputMsg')}${form.getFieldValue(['kwargs', name, 'key'])}` }]}
-                  >
-                    {
-                      form.getFieldValue(['kwargs', name, 'type']) === 'text' ? <Input /> : <EditablePasswordField />
+                {fields.map(({ key, name, fieldKey, ...restField }) => {
+                  const fieldType = form.getFieldValue(['kwargs', name, 'type']);
+                  const fieldLabel = form.getFieldValue(['kwargs', name, 'key']);
+                  const isRequired = form.getFieldValue(['kwargs', name, 'isRequired']);
+
+                  const renderInput = () => {
+                    switch (fieldType) {
+                      case 'text':
+                        return <Input />;
+                      case 'textarea':
+                        return <TextArea rows={4} />;
+                      case 'password':
+                        return <EditablePasswordField />;
+                      case 'number':
+                        return <InputNumber style={{ width: '100%' }} />;
+                      case 'checkbox':
+                        return <Switch />;
+                      default:
+                        return <Input />;
                     }
-                  </Form.Item>
-                ))}
+                  };
+
+                  return (
+                    <Form.Item
+                      key={key}
+                      {...restField}
+                      name={[name, 'value']}
+                      fieldKey={[fieldKey ?? '', 'value']}
+                      label={fieldLabel}
+                      rules={[{ required: isRequired, message: `${t('common.inputMsg')}${fieldLabel}` }]}
+                      valuePropName={fieldType === 'checkbox' ? 'checked' : 'value'}
+                    >
+                      {renderInput()}
+                    </Form.Item>
+                  );
+                })}
               </>
             )}
           </Form.List>

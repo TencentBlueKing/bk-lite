@@ -5,6 +5,7 @@ import {
   NodeConfigParam,
   InstanceInfo,
 } from '@/app/monitor/types/integration';
+import { AxiosRequestConfig } from 'axios';
 
 const useIntegrationApi = () => {
   const { get, post, del } = useApiClient();
@@ -12,9 +13,17 @@ const useIntegrationApi = () => {
   const getInstanceGroupRule = async (
     params: {
       monitor_object_id?: React.Key;
-    } = {}
+    } = {},
+    config?: AxiosRequestConfig
   ) => {
     return await get(`/monitor/api/organization_rule/`, {
+      params,
+      ...config,
+    });
+  };
+
+  const getCloudRegionList = async (params = {}) => {
+    return await get(`/monitor/api/manual_collect/cloud_region_list/`, {
       params,
     });
   };
@@ -125,15 +134,66 @@ const useIntegrationApi = () => {
     return await get(`/monitor/api/monitor_plugin/${data.id}/ui_template/`);
   };
 
+  const getUiTemplateByParams = async (params: {
+    collector: string;
+    collect_type: string;
+    monitor_object_id: string;
+  }) => {
+    return await get(`/monitor/api/monitor_plugin/ui_template_by_params/`, {
+      params,
+    });
+  };
+
   const getInstanceListByPrimaryObject = async (
     params: {
       id?: React.Key;
-    } = {}
+    } = {},
+    config?: AxiosRequestConfig
   ) => {
     const { id, ...rest } = params;
     return await post(
       `/monitor/api/monitor_instance/${id}/list_by_primary_object/`,
-      rest
+      rest,
+      config
+    );
+  };
+
+  const createK8sInstance = async (
+    params: {
+      organizations?: React.Key[];
+      id?: string;
+      name?: string;
+      monitor_object_id?: React.Key;
+    } = {}
+  ) => {
+    return await post(
+      `/monitor/api/manual_collect/create_manual_instance/`,
+      params
+    );
+  };
+
+  const getK8sCommand = async (
+    params: {
+      instance_id?: string;
+      cloud_region_id?: React.Key;
+      interval?: number;
+    } = {}
+  ) => {
+    return await post(
+      `/monitor/api/manual_collect/generate_install_command`,
+      params
+    );
+  };
+
+  const checkCollectStatus = async (
+    params: {
+      instance_id?: string;
+      monitor_object_id?: React.Key;
+    } = {}
+  ) => {
+    return await post(
+      `/monitor/api/manual_collect/check_collect_status/`,
+      params
     );
   };
 
@@ -156,6 +216,11 @@ const useIntegrationApi = () => {
     setInstancesGroup,
     getUiTemplate,
     getInstanceListByPrimaryObject,
+    getCloudRegionList,
+    createK8sInstance,
+    getK8sCommand,
+    checkCollectStatus,
+    getUiTemplateByParams,
   };
 };
 

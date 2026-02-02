@@ -1,29 +1,57 @@
 'use client';
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import useMlopsTaskApi from "@/app/mlops/api/task";
 import useMlopsModelReleaseApi from "@/app/mlops/api/modelRelease";
 import CustomTable from "@/components/custom-table";
 import { useTranslation } from "@/utils/i18n";
-import { Button, Popconfirm, Switch, message, Tree, type TreeDataNode } from "antd";
-import { PlusOutlined } from '@ant-design/icons';
+import { Button, Popconfirm, message, Tree, type TreeDataNode, Tag, Tooltip } from "antd";
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import PageLayout from '@/components/page-layout';
 import TopSection from "@/components/top-section";
 import ReleaseModal from "./releaseModal";
 import PermissionWrapper from '@/components/permission';
-import { ModalRef, Option, Pagination, TableData } from "@/app/mlops/types";
+import { ModalRef, Option, Pagination, TableData, DatasetType } from "@/app/mlops/types";
 import { ColumnItem } from "@/types";
 import { TrainJob } from "@/app/mlops/types/task";
+
+const CONTAINER_STATE_MAP: Record<string, string> = {
+  'running': 'green',
+  'completed': 'blue',
+  'not_found': 'default',
+  'unknown': 'orange',
+  'error': 'red'
+};
+
+const CONTAINER_TEXT_MAP: Record<string, string> = {
+  'running': '运行中',
+  'completed': '已完成',
+  'not_found': '已停止',
+  'unknown': '状态异常',
+  'error': '错误'
+};
+
+// running: 正在提供服务的容器
+// completed: 训练任务正常完成
+// failed: 训练任务异常退出，需要查看日志
+// not_found: 容器已被删除或从未创建
+// unknown: 容器处于未知状态（罕见，可能是 Docker 问题）
 
 
 const ModelRelease = () => {
   const { t } = useTranslation();
   const modalRef = useRef<ModalRef>(null);
-  const { getAnomalyTaskList, getLogClusteringTaskList, getTimeSeriesTaskList, getClassificationTaskList } = useMlopsTaskApi();
+  const { getTrainJobList } = useMlopsTaskApi();
   const {
-    getAnomalyServingsList, deleteAnomalyServing, updateAnomalyServings,
-    getTimeSeriesPredictServingsList, deleteTimeSeriesPredictServing, updateTimeSeriesPredictServings,
-    getLogClusteringServingsList, deleteLogClusteringServing, updateLogClusteringServings,
-    getClassificationServingsList, deleteClassificationServing, updateClassificationServings
+    getServingList,
+    deleteServing,
+    updateAnomalyServings,
+    updateTimeSeriesPredictServings,
+    updateLogClusteringServings,
+    updateClassificationServings,
+    updateImageClassificationServings,
+    updateObjectDetectionServings,
+
+    startServingContainer, stopServingContainer
   } = useMlopsModelReleaseApi();
   const [trainjobs, setTrainjobs] = useState<Option[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
@@ -43,31 +71,31 @@ const ModelRelease = () => {
       children: [
         {
           title: t(`datasets.anomaly`),
-          key: 'anomaly',
+          key: DatasetType.ANOMALY_DETECTION,
         },
-        {
-          title: t(`datasets.rasa`),
-          key: 'rasa'
-        },
+        // {
+        //   title: t(`datasets.rasa`),
+        //   key: DatasetType.RASA
+        // },
         {
           title: t(`datasets.timeseriesPredict`),
-          key: 'timeseries_predict'
+          key: DatasetType.TIMESERIES_PREDICT
         },
         {
           title: t(`datasets.logClustering`),
-          key: 'log_clustering'
+          key: DatasetType.LOG_CLUSTERING
         },
         {
           title: t(`datasets.classification`),
-          key: 'classification'
+          key: DatasetType.CLASSIFICATION
         },
         {
           title: t(`datasets.imageClassification`),
-          key: 'image_classification'
+          key: DatasetType.IMAGE_CLASSIFICATION
         },
         {
           title: t(`datasets.objectDetection`),
-          key: 'object_detection'
+          key: DatasetType.OBJECT_DETECTION
         }
       ]
     }
@@ -89,7 +117,24 @@ const ModelRelease = () => {
       dataIndex: 'status',
       key: 'status',
       render: (_, record) => {
-        return <Switch checked={record.status === 'active'} onChange={(value: boolean) => handleModelAcitve(record.id, value)} />
+        const isAcitve = record.status === 'active'
+        return <Tag color={isAcitve ? 'green' : 'default'}>{isAcitve ? t(`mlops-common.published`) : t(`mlops-common.waitRelease`)}</Tag>
+      }
+    },
+    {
+      title: t(`mlops-common.containerStatus`),
+      dataIndex: 'container_info',
+      key: 'container_info',
+      render: (_, record) => {
+        const { status, state, detail } = record.container_info;
+        const isSucess = status === 'success';
+        const _status = isSucess ? state : status;
+        const text = isSucess ? state : 'error';
+        return (<>
+          <Tooltip title={detail || ''}>
+            <Tag color={CONTAINER_STATE_MAP[_status]}>{CONTAINER_TEXT_MAP[text]}</Tag>
+          </Tooltip>
+        </>)
       }
     },
     {
@@ -98,10 +143,29 @@ const ModelRelease = () => {
       key: 'action',
       width: 180,
       render: (_, record: TableData) => {
+        const { status } = record;
+        const { state } = record.container_info;
+        const isActive = record.status === 'active';
         return (<>
           <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`common.edit`)}</Button>
+            <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`model-release.configuration`)}</Button>
           </PermissionWrapper>
+          {status !== 'active' ?
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" onClick={() => handleModelAcitve(record.id, isActive)}>{t(`model-release.release`)}</Button>
+            </PermissionWrapper> :
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" danger onClick={() => handleModelAcitve(record.id, isActive)}>{t(`model-release.discontinued`)}</Button>
+            </PermissionWrapper>
+          }
+          {state !== 'running' && state !== 'unknown' ?
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)}>{t(`mlops-common.start`)}</Button>
+            </PermissionWrapper> :
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" danger onClick={() => handleStopContainer(record.id)}>{t(`mlops-common.stop`)}</Button>
+            </PermissionWrapper>
+          }
           <PermissionWrapper requiredPermissions={['Delete']}>
             <Popconfirm
               title={t(`model-release.delModel`)}
@@ -110,7 +174,7 @@ const ModelRelease = () => {
               cancelText={t('common.cancel')}
               onConfirm={() => handleDelete(record.id)}
             >
-              <Button type="link" danger>{t(`common.delete`)}</Button>
+              <Button type="link" danger disabled={state === 'running'}>{t(`common.delete`)}</Button>
             </Popconfirm>
           </PermissionWrapper>
         </>)
@@ -118,50 +182,19 @@ const ModelRelease = () => {
     }
   ];
 
-  const getServingsMap: Record<string, any> = {
-    'anomaly': getAnomalyServingsList,
-    'rasa': null, // RASA 类型留空
-    'log_clustering': getLogClusteringServingsList,
-    'timeseries_predict': getTimeSeriesPredictServingsList,
-    'classification': getClassificationServingsList,
-    'image_classification': () => {},
-    'object_detection': () => {}
-  };
-
-  const getTaskMap: Record<string, any> = {
-    'anomaly': getAnomalyTaskList,
-    'rasa': null, // RASA 类型留空
-    'log_clustering': getLogClusteringTaskList,
-    'timeseries_predict': getTimeSeriesTaskList,
-    'classification': getClassificationTaskList,
-    'image_classification': () => {},
-    'object_detection': () => {}
-  };
-
-  // 删除操作映射
-  const deleteMap: Record<string, ((id: number) => Promise<void>) | null> = {
-    'anomaly': deleteAnomalyServing,
-    'rasa': null, // RASA 类型留空
-    'log_clustering': deleteLogClusteringServing,
-    'timeseries_predict': deleteTimeSeriesPredictServing,
-    'classification': deleteClassificationServing,
-    'image_classification': null,
-    'object_detection': null
-  };
 
   // 更新操作映射
   const updateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
-    'anomaly': updateAnomalyServings,
-    'rasa': null, // RASA 类型留空
-    'log_clustering': updateLogClusteringServings,
-    'timeseries_predict': updateTimeSeriesPredictServings,
-    'classification': updateClassificationServings,
-    'image_classification': null,
-    'object_detection': null
+    [DatasetType.ANOMALY_DETECTION]: updateAnomalyServings,
+    [DatasetType.LOG_CLUSTERING]: updateLogClusteringServings,
+    [DatasetType.TIMESERIES_PREDICT]: updateTimeSeriesPredictServings,
+    [DatasetType.CLASSIFICATION]: updateClassificationServings,
+    [DatasetType.IMAGE_CLASSIFICATION]: updateImageClassificationServings,
+    [DatasetType.OBJECT_DETECTION]: updateObjectDetectionServings
   };
 
   const topSection = (
-    <TopSection title={t('model-release.title')} content={t('model-release.detail')} />
+    <TopSection title={t(`model-release.title`)} content={t(`model-release.detail`)} />
   );
 
   const leftSection = (
@@ -176,8 +209,13 @@ const ModelRelease = () => {
     </div>
   );
 
+  const activeTypes = useMemo(() => {
+    const [activeTypes] = selectedKeys;
+    return activeTypes;
+  }, [selectedKeys])
+
   useEffect(() => {
-    setSelectedKeys(['anomaly']);
+    setSelectedKeys([DatasetType.ANOMALY_DETECTION]);
   }, []);
 
   useEffect(() => {
@@ -194,7 +232,7 @@ const ModelRelease = () => {
 
   const getModelServings = async () => {
     const [activeTypes] = selectedKeys;
-    if (!activeTypes || !getServingsMap[activeTypes] || !getTaskMap[activeTypes]) {
+    if (!activeTypes) {
       setTableData([]);
       return;
     }
@@ -202,14 +240,15 @@ const ModelRelease = () => {
     setLoading(true);
     try {
       const params = {
+        key: activeTypes as DatasetType,
         page: pagination.current,
         page_size: pagination.pageSize,
       };
 
       // 获取任务列表和服务列表
       const [taskList, { count, items }] = await Promise.all([
-        getTaskMap[activeTypes]({}),
-        getServingsMap[activeTypes](params)
+        getTrainJobList({ key: activeTypes as DatasetType }),
+        getServingList(params)
       ]);
 
       const _data = taskList.map((item: TrainJob) => ({
@@ -224,7 +263,38 @@ const ModelRelease = () => {
         total: count
       }));
     } catch (e) {
-      console.log(e);
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartContainer = async (id: number) => {
+    const [activeTypes] = selectedKeys;
+
+    setLoading(true);
+    try {
+      await startServingContainer(id, activeTypes as DatasetType);
+      getModelServings();
+    } catch (e) {
+      console.error(e);
+      message.error(t(`common.fetchFailed`));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStopContainer = async (id: number) => {
+    const [activeTypes] = selectedKeys;
+    if (!activeTypes) return;
+
+    setLoading(true);
+    try {
+      await stopServingContainer(id, activeTypes as DatasetType);
+      getModelServings();
+    } catch (e) {
+      console.error(e);
+      message.error(t(`common.fetchFailed`))
     } finally {
       setLoading(false);
     }
@@ -232,37 +302,38 @@ const ModelRelease = () => {
 
   const handleDelete = async (id: number) => {
     const [activeTypes] = selectedKeys;
-    if (!activeTypes || !deleteMap[activeTypes]) {
-      return;
-    }
+    if (!activeTypes) return;
 
     try {
-      await deleteMap[activeTypes]!(id);
+      await deleteServing(id, activeTypes as DatasetType);
       getModelServings();
-      message.success(t('common.delSuccess'));
+      message.success(t(`common.delSuccess`));
     } catch (e) {
-      console.log(e);
+      console.error(e);
       message.error(t(`common.delFailed`));
     }
   };
 
   const handleModelAcitve = async (id: number, value: boolean) => {
-    const [activeTypes] = selectedKeys;
     if (!activeTypes || !updateMap[activeTypes]) {
       return;
     }
 
     setLoading(true);
     try {
-      const status = value ? 'active' : 'inactive';
+      const status = value ? 'inactive' : 'active';
       await updateMap[activeTypes]!(id, { status });
-      message.success(t('common.updateSuccess'));
+      message.success(t(`common.updateSuccess`));
     } catch (e) {
-      console.log(e);
-      message.error(t('common.updateFailed'));
+      console.error(e);
+      message.error(t(`common.updateFailed`));
     } finally {
       getModelServings();
     }
+  };
+
+  const onRefresh = () => {
+    getModelServings();
   };
 
   return (
@@ -273,9 +344,12 @@ const ModelRelease = () => {
         rightSection={
           (
             <>
-              <div className="flex justify-end mb-2">
+              <div className="flex justify-end items-center mb-2 gap-2">
                 <PermissionWrapper requiredPermissions={['Add']}>
                   <Button type="primary" icon={<PlusOutlined />} onClick={() => publish({})}>{t(`model-release.modelRelease`)}</Button>
+                </PermissionWrapper>
+                <PermissionWrapper requiredPermissions={['View']}>
+                  <ReloadOutlined onClick={onRefresh} />
                 </PermissionWrapper>
               </div>
               <div className="flex-1 relative">

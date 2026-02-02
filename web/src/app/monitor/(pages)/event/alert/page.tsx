@@ -77,18 +77,21 @@ const Alert: React.FC = () => {
     timeRange: [],
     originValue: 10080,
   });
-  const timeDefaultValue =
-    useRef<TimeSelectorDefaultValue>({
-      selectValue: 10080,
-      rangePickerVaule: null,
-    })?.current || {};
+  const timeDefaultValue = (useRef<TimeSelectorDefaultValue>({
+    selectValue: 10080,
+    rangePickerVaule: null,
+  })?.current || {}) as any;
+  const alertAbortControllerRef = useRef<AbortController | null>(null);
+  const alertRequestIdRef = useRef<number>(0);
+  const chartAbortControllerRef = useRef<AbortController | null>(null);
+  const chartRequestIdRef = useRef<number>(0);
   const [filters, setFilters] = useState<FiltersConfig>({
     level: [],
     state: [],
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
-  const [pageLoading, setPageLoading] = useState<boolean>(false);
+  const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -277,6 +280,12 @@ const Alert: React.FC = () => {
     getObjects();
   }, [isLoading]);
 
+  useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
   const changeTab = (val: string) => {
     setActiveTab(val);
     const filtersConfig = {
@@ -290,7 +299,7 @@ const Alert: React.FC = () => {
   };
 
   const getObjects = async () => {
-    setPageLoading(true);
+    setTreeLoading(true);
     try {
       const data: ObjectItem[] = await getMonitorObject({
         add_policy_count: true,
@@ -299,7 +308,7 @@ const Alert: React.FC = () => {
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
     } finally {
-      setPageLoading(false);
+      setTreeLoading(false);
     }
   };
 
@@ -387,6 +396,10 @@ const Alert: React.FC = () => {
       filtersConfig?: FiltersConfig;
     }
   ) => {
+    alertAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    alertAbortControllerRef.current = abortController;
+    const currentRequestId = ++alertRequestIdRef.current;
     const params: any = getParams(
       extra?.tab || activeTab,
       extra?.filtersConfig || filters
@@ -396,15 +409,19 @@ const Alert: React.FC = () => {
     }
     try {
       setTableLoading(type !== 'timer');
-      const data = await getMonitorAlert(params);
-
+      const data = await getMonitorAlert(params, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== alertRequestIdRef.current) return;
       setTableData(data.results || []);
       setPagination((pre) => ({
         ...pre,
         total: data.count || 0,
       }));
     } finally {
-      setTableLoading(false);
+      if (currentRequestId === alertRequestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 
@@ -415,6 +432,10 @@ const Alert: React.FC = () => {
       filtersConfig?: FiltersConfig;
     }
   ) => {
+    chartAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    chartAbortControllerRef.current = abortController;
+    const currentRequestId = ++chartRequestIdRef.current;
     const params = getParams(
       extra?.tab || activeTab,
       extra?.filtersConfig || filters
@@ -426,14 +447,19 @@ const Alert: React.FC = () => {
     chartParams.type = 'count';
     try {
       setChartLoading(type !== 'timer');
-      const data = await getMonitorAlert(chartParams);
+      const data = await getMonitorAlert(chartParams, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== chartRequestIdRef.current) return;
       setChartData(
         processDataForStackedBarChart(
           (data.results || []).filter((item: TableDataItem) => !!item.level)
         ) as any
       );
     } finally {
-      setChartLoading(false);
+      if (currentRequestId === chartRequestIdRef.current) {
+        setChartLoading(false);
+      }
     }
   };
 
@@ -542,133 +568,138 @@ const Alert: React.FC = () => {
     getAssetInsts('refresh', { text: text || 'clear' });
   };
 
+  const cancelAllRequests = () => {
+    alertAbortControllerRef.current?.abort();
+    chartAbortControllerRef.current?.abort();
+  };
+
   const handleObjectChange = async (id: string) => {
+    cancelAllRequests();
     setObjectId(id);
   };
 
   return (
     <div className="w-full">
-      <Spin spinning={pageLoading} className="w-full">
-        <div className={alertStyle.alert}>
-          <div className={alertStyle.filters}>
-            <TreeSelector
-              showAllMenu
-              data={treeData}
-              defaultSelectedKey="all"
-              onNodeSelect={handleObjectChange}
+      <div className={alertStyle.alert}>
+        <div className={alertStyle.filters}>
+          <TreeSelector
+            loading={treeLoading}
+            showAllMenu
+            data={treeData}
+            defaultSelectedKey="all"
+            onNodeSelect={handleObjectChange}
+          />
+        </div>
+        <div className={alertStyle.alarmList}>
+          <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
+          <div className={alertStyle.searchCondition}>
+            <div className="mb-[10px]">
+              {t('monitor.search.searchCriteria')}
+            </div>
+            <div className={alertStyle.condition}>
+              <ul className="flex">
+                <li className="mr-[8px]">
+                  <span className="mr-[8px] text-[12px] text-[var(--color-text-3)]">
+                    {t('monitor.events.level')}
+                  </span>
+                  <Select
+                    style={{ width: 200 }}
+                    dropdownStyle={{ width: 130 }}
+                    allowClear
+                    mode="multiple"
+                    maxTagCount="responsive"
+                    value={filters.level}
+                    onChange={(val) => onFilterChange(val, 'level')}
+                  >
+                    {LEVEL_LIST.map((item) => (
+                      <Option key={item.value} value={item.value}>
+                        <Tag
+                          icon={<AlertOutlined />}
+                          color={LEVEL_MAP[item.value as string] as string}
+                        >
+                          {LEVEL_LIST.find((tex) => tex.value === item.value)
+                            ?.label || '--'}
+                        </Tag>
+                      </Option>
+                    ))}
+                  </Select>
+                </li>
+                <li>
+                  <span className="mr-[8px] text-[12px] text-[var(--color-text-3)]">
+                    {t('monitor.events.state')}
+                  </span>
+                  <Select
+                    style={{ width: 200 }}
+                    allowClear
+                    mode="multiple"
+                    maxTagCount="responsive"
+                    value={filters.state}
+                    onChange={(val) => onFilterChange(val, 'state')}
+                    options={activeStateList}
+                  ></Select>
+                </li>
+              </ul>
+              <TimeSelector
+                defaultValue={timeDefaultValue}
+                onlyRefresh={isActiveAlarm}
+                onChange={onTimeChange}
+                onFrequenceChange={onFrequenceChange}
+                onRefresh={onRefresh}
+              />
+            </div>
+          </div>
+          <Spin spinning={chartLoading}>
+            <div className={alertStyle.chartWrapper}>
+              <div className="flex items-center justify-between mb-[2px]">
+                <div className="text-[14px] ml-[10px] relative">
+                  {t('monitor.events.distributionMap')}
+                  <Tooltip
+                    placement="top"
+                    title={t(`monitor.events.${activeTab}MapTips`)}
+                  >
+                    <div
+                      className="absolute cursor-pointer"
+                      style={{
+                        top: '-4px',
+                        right: '-14px',
+                      }}
+                    >
+                      <Icon
+                        type="a-shuoming2"
+                        className="text-[14px] text-[var(--color-text-3)]"
+                      />
+                    </div>
+                  </Tooltip>
+                </div>
+              </div>
+              <div className={alertStyle.chart}>
+                <StackedBarChart data={chartData} colors={LEVEL_MAP as any} />
+              </div>
+            </div>
+          </Spin>
+          <div className={alertStyle.table}>
+            <Search
+              allowClear
+              className="w-[240px] mb-[10px]"
+              placeholder={t('common.searchPlaceHolder')}
+              value={searchText}
+              enterButton
+              onChange={(e) => setSearchText(e.target.value)}
+              onSearch={handleSearch}
+            />
+            <CustomTable
+              className="w-full"
+              scroll={{ y: 'calc(100vh - 640px)', x: 'calc(100vw - 320px)' }}
+              columns={columns}
+              dataSource={tableData}
+              pagination={pagination}
+              loading={tableLoading}
+              rowKey="id"
+              onChange={handleTableChange}
             />
           </div>
-          <div className={alertStyle.alarmList}>
-            <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
-            <div className={alertStyle.searchCondition}>
-              <div className="mb-[10px]">
-                {t('monitor.search.searchCriteria')}
-              </div>
-              <div className={alertStyle.condition}>
-                <ul className="flex">
-                  <li className="mr-[8px]">
-                    <span className="mr-[8px] text-[12px] text-[var(--color-text-3)]">
-                      {t('monitor.events.level')}
-                    </span>
-                    <Select
-                      style={{ width: 200 }}
-                      dropdownStyle={{ width: 130 }}
-                      allowClear
-                      mode="multiple"
-                      maxTagCount="responsive"
-                      value={filters.level}
-                      onChange={(val) => onFilterChange(val, 'level')}
-                    >
-                      {LEVEL_LIST.map((item) => (
-                        <Option key={item.value} value={item.value}>
-                          <Tag
-                            icon={<AlertOutlined />}
-                            color={LEVEL_MAP[item.value as string] as string}
-                          >
-                            {LEVEL_LIST.find((tex) => tex.value === item.value)
-                              ?.label || '--'}
-                          </Tag>
-                        </Option>
-                      ))}
-                    </Select>
-                  </li>
-                  <li>
-                    <span className="mr-[8px] text-[12px] text-[var(--color-text-3)]">
-                      {t('monitor.events.state')}
-                    </span>
-                    <Select
-                      style={{ width: 200 }}
-                      allowClear
-                      mode="multiple"
-                      maxTagCount="responsive"
-                      value={filters.state}
-                      onChange={(val) => onFilterChange(val, 'state')}
-                      options={activeStateList}
-                    ></Select>
-                  </li>
-                </ul>
-                <TimeSelector
-                  defaultValue={timeDefaultValue}
-                  onlyRefresh={isActiveAlarm}
-                  onChange={onTimeChange}
-                  onFrequenceChange={onFrequenceChange}
-                  onRefresh={onRefresh}
-                />
-              </div>
-            </div>
-            <Spin spinning={chartLoading}>
-              <div className={alertStyle.chartWrapper}>
-                <div className="flex items-center justify-between mb-[2px]">
-                  <div className="text-[14px] ml-[10px] relative">
-                    {t('monitor.events.distributionMap')}
-                    <Tooltip
-                      placement="top"
-                      title={t(`monitor.events.${activeTab}MapTips`)}
-                    >
-                      <div
-                        className="absolute cursor-pointer"
-                        style={{
-                          top: '-4px',
-                          right: '-14px',
-                        }}
-                      >
-                        <Icon
-                          type="a-shuoming2"
-                          className="text-[14px] text-[var(--color-text-3)]"
-                        />
-                      </div>
-                    </Tooltip>
-                  </div>
-                </div>
-                <div className={alertStyle.chart}>
-                  <StackedBarChart data={chartData} colors={LEVEL_MAP as any} />
-                </div>
-              </div>
-            </Spin>
-            <div className={alertStyle.table}>
-              <Search
-                allowClear
-                className="w-[240px] mb-[10px]"
-                placeholder={t('common.searchPlaceHolder')}
-                value={searchText}
-                enterButton
-                onChange={(e) => setSearchText(e.target.value)}
-                onSearch={handleSearch}
-              />
-              <CustomTable
-                className="w-full"
-                scroll={{ y: 'calc(100vh - 640px)', x: 'calc(100vw - 320px)' }}
-                columns={columns}
-                dataSource={tableData}
-                pagination={pagination}
-                loading={tableLoading}
-                rowKey="id"
-                onChange={handleTableChange}
-              />
-            </div>
-          </div>
         </div>
-      </Spin>
+      </div>
       <AlertDetail
         ref={detailRef}
         objectId={objectId === 'all' ? '' : objectId}

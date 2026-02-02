@@ -1,13 +1,4 @@
-import { useHostTelegraf } from '../../plugins/os/hostTelegraf';
-
 export const useHostConfig = () => {
-  const plugin = useHostTelegraf();
-
-  // 所有插件配置
-  const plugins = {
-    Host: plugin,
-  };
-
   return {
     instance_type: 'os',
     dashboardDisplay: [
@@ -38,16 +29,10 @@ export const useHostConfig = () => {
         },
       },
       {
-        indexId: 'load5',
-        displayType: 'dashboard',
-        sortIndex: 2,
-        displayDimension: [],
-        segments: [
-          { value: 1.5, color: '#27C274' }, // 绿色区域
-          { value: 3, color: '#FF9214' }, // 黄色区域
-          { value: 5, color: '#D97007' }, // 黄色区域
-          { value: 20, color: '#F43B2C' }, // 红色区域
-        ],
+        indexId: 'disk_used_percent',
+        displayType: 'lineChart',
+        sortIndex: 6,
+        displayDimension: ['device'],
         style: {
           height: '200px',
           width: '15%',
@@ -64,7 +49,7 @@ export const useHostConfig = () => {
         },
       },
       {
-        indexId: 'cpu_summary.usage',
+        indexId: 'cpu_usage_total',
         displayType: 'lineChart',
         sortIndex: 4,
         displayDimension: ['cpu'],
@@ -84,7 +69,7 @@ export const useHostConfig = () => {
         },
       },
       {
-        indexId: 'mem.pct_used',
+        indexId: 'mem_used_percent',
         displayType: 'lineChart',
         sortIndex: 6,
         displayDimension: ['device'],
@@ -125,14 +110,16 @@ export const useHostConfig = () => {
       },
     ],
     tableDiaplay: [
-      { type: 'progress', key: 'cpu_summary.usage' },
-      { type: 'progress', key: 'mem.pct_used' },
-      { type: 'value', key: 'load5' },
+      { type: 'progress', key: 'cpu_usage_total' },
+      { type: 'progress', key: 'disk_used_percent' },
+      { type: 'progress', key: 'mem_used_percent' },
     ],
     groupIds: {
       list: ['instance_id'],
       default: ['instance_id'],
     },
-    plugins,
+    collectTypes: {
+      Host: 'host',
+    },
   };
 };

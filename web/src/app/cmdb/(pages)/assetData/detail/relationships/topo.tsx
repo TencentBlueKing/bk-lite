@@ -28,8 +28,10 @@ const Topo: React.FC<AssoTopoProps> = ({
   const getTopoList = async () => {
     setLoading(true);
     try {
+      // 获取拓扑图数据请求
       const data = await topoSearchInstances(modelId, instId);
       setTopoData(data);
+
     } finally {
       setLoading(false);
     }
@@ -43,9 +45,22 @@ const Topo: React.FC<AssoTopoProps> = ({
         id="container"
       >
         <XFlow>
-          <XFlowGraph zoomable pannable minScale={0.05} maxScale={10} fitView />
+          <XFlowGraph
+            zoomable
+            pannable
+            minScale={0.05}
+            maxScale={10}
+            fitView
+            virtual
+          />
+          
+          {/* 设置网格 */}
           <Grid type="dot" options={{ color: '#ccc', thickness: 1 }} />
+
+          {/* 设置对齐线 */}
           <Snapline sharp />
+
+          {/* 最小化地图 */}
           <Minimap
             width={200}
             height={120}
@@ -56,6 +71,8 @@ const Topo: React.FC<AssoTopoProps> = ({
               position: 'absolute',
             }}
           />
+         
+          {/* 初始化节点 */}
           <InitNode
             modelId={modelId}
             instId={instId}

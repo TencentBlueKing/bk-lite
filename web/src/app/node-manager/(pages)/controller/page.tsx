@@ -7,12 +7,12 @@ import EntityList from '@/components/entity-list/index';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import type { CardItem } from '@/app/node-manager/types';
-import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
 import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
 import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
 import { useControllerMenuItem } from '@/app/node-manager/hooks/controller';
+import { cloneDeep } from 'lodash';
 const { Search } = Input;
 
 const Controller = () => {
@@ -37,7 +37,7 @@ const Controller = () => {
 
   const navigateToCollectorDetail = (item: CardItem) => {
     router.push(`
-      /node-manager/controller/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.tagList[0]}`);
+      /node-manager/controller/detail?id=${item.id}&name=${item.original_name}&displayName=${item.name}&introduction=${item.description}&system=${item.os}`);
   };
 
   const filterBySelected = (data: any[], selectedTags: string[]) => {
@@ -56,14 +56,6 @@ const Controller = () => {
     );
   };
 
-  const getCollectorLabelKey = (value: string) => {
-    for (const key in COLLECTOR_LABEL) {
-      if (COLLECTOR_LABEL[key].includes(value)) {
-        return key;
-      }
-    }
-  };
-
   const getOSDisplayName = (osId: string) => {
     const os = OPERATE_SYSTEMS.find(
       (item) => item.value === osId.toLowerCase()
@@ -73,13 +65,10 @@ const Controller = () => {
 
   const handleResult = (res: any, currentSearch?: string) => {
     const tagSet = new Set<string>();
-    const filter = res.filter((item: any) => !item.controller_default_run);
-    const tempdata = filter.map((item: any) => {
-      const system = item.node_operating_system || item.os;
+    const tempdata = (res || []).map((item: any) => {
+      const system = item.node_operating_system || item.os || 'linux';
       const systemDisplayName = getOSDisplayName(system);
       const tagList = [systemDisplayName];
-      const label = getCollectorLabelKey(item.name);
-      if (label) tagList.push(label);
       tagList.forEach((tag) => {
         if (tag) {
           tagSet.add(tag);
@@ -87,13 +76,18 @@ const Controller = () => {
       });
       return {
         id: item.id,
-        name: item.name,
+        name: item.display_name,
+        original_name: item.name,
+        original_introduction: item.description,
         service_type: item.service_type,
         executable_path: item.executable_path,
         execute_parameters: item.execute_parameters,
-        description: item.description || '--',
+        description: item.display_description || item.description || '--',
+        is_pre: item.is_pre,
         icon: 'caijiqizongshu',
         tagList,
+        os: system,
+        originalTags: [system],
       };
     });
     setAllTags(Array.from(tagSet));
@@ -119,10 +113,15 @@ const Controller = () => {
   };
 
   const openModal = (config: any) => {
+    const form = cloneDeep(config?.form || {});
+    if (config?.type === 'edit') {
+      form.name = form.original_name;
+      form.description = form.original_introduction;
+    }
     modalRef.current?.showModal({
       title: config?.title,
       type: config?.type,
-      form: config?.form,
+      form,
       key: config?.key,
     });
   };

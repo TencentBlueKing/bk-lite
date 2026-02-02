@@ -7,16 +7,11 @@
 .assetSearch {
     width: 100%;
     height: calc(100vh - 90px);
+    overflow: hidden;
 
     .title {
         font-size: 15px;
         font-weight: 600;
-    }
-
-    :global {
-        .ant-input-search-button {
-            padding: 0;
-        }
     }
 
     .searchBtn {
@@ -72,25 +67,6 @@
                 li {
                     margin-right: 6px;
                     cursor: pointer;
-
-                    :global {
-                        .ant-tag {
-                            color: var(--color-text-1);
-
-                            .anticon {
-                                display: none;
-                                position: absolute;
-                                top: -3px;
-                                right: -3px;
-                            }
-
-                            &:hover {
-                                .anticon {
-                                    display: block;
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -144,7 +120,7 @@
                 padding: 10px 20px;
                 background: var(--color-bg-1);
                 margin-left: 20px;
-                max-height: calc(100vh - 180px);
+                max-height: calc(100vh - 192px);
                 overflow-y: auto;
 
                 .detailTile {
@@ -156,13 +132,6 @@
                         max-width: 100%;
                         margin-right: 10px;
                         @include hide-text;
-                    }
-
-                    :global {
-                        .ant-btn-link {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                        }
                     }
                 }
 
@@ -193,12 +162,33 @@
             }
         }
     }
+}
 
-    :global {
+.assetSearch :global(.ant-input-search-button) {
+    padding: 0;
+}
 
-        .ant-spin-nested-loading,
-        .ant-spin-container {
-            height: 100%;
-        }
-    }
+.assetSearch .searchInput .history ul li :global(.ant-tag) {
+    color: var(--color-text-1);
+}
+
+.assetSearch .searchInput .history ul li :global(.ant-tag .anticon) {
+    display: none;
+    position: absolute;
+    top: -3px;
+    right: -3px;
+}
+
+.assetSearch .searchInput .history ul li :global(.ant-tag:hover .anticon) {
+    display: block;
+}
+
+.assetSearch .searchDetail .searchResult .detail .detailTile :global(.ant-btn-link) {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.assetSearch :global(.ant-spin-nested-loading),
+.assetSearch :global(.ant-spin-container) {
+    height: 100%;
 }

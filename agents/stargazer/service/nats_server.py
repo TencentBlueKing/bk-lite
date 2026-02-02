@@ -3,7 +3,7 @@
 # @Time: 2025/4/25 17:04
 # @Author: windyzhao
 from sanic.log import logger
-from service.collect_service import CollectService
+from service.collection_service import CollectionService
 from core.nats import register_handler
 
 
@@ -12,7 +12,7 @@ async def list_regions(data):
     """处理 list_regions 请求"""
     logger.info(f"list_regions received: {data}")
     kwargs = data.get("kwargs", {})
-    collect_service = CollectService(kwargs)
+    collect_service = CollectionService(kwargs)
     regions = collect_service.list_regions()
     return {"regions": regions}
 

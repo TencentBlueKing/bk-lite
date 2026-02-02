@@ -1,12 +1,16 @@
 """
 聊天流程执行引擎 - ChatFlowEngine
 """
+
 import json
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from graphlib import CycleError, TopologicalSorter
 from typing import Any, Callable, Dict, List, Optional, Set
 
+from asgiref.sync import sync_to_async
+from django.http import StreamingHttpResponse
 from django.utils import timezone
 
 from apps.core.logger import opspilot_logger as logger
@@ -57,45 +61,47 @@ class ChatFlowEngine:
         return start_node_type if start_node_type in [choice[0] for choice in WorkFlowExecuteType.choices] else "restful"
 
     def sse_execute(self, input_data: Dict[str, Any] = None):
-        """流程流式执行，支持SSE和AGUI协议"""
+        """流程流式执行，支持SSE和AGUI协议，返回 StreamingHttpResponse"""
+
         if input_data is None:
             input_data = {}
 
         # 提取执行上下文
         user_id = input_data.get("user_id", "")
         input_message = input_data.get("last_message", "") or input_data.get("message", "")
+        session_id = input_data.get("session_id", "")
         entry_type = input_data.get("entry_type", "openai")
-
         logger.info(f"[SSE-Engine] 开始执行 - flow_id: {self.instance.id}, user_id: {user_id}, entry_type: {entry_type}, 节点数: {len(self.nodes)}")
 
         # 初始化变量管理器
         self._initialize_variables(input_data)
 
         # 记录用户输入对话历史
-        self._record_conversation_history(user_id, input_message, "user", entry_type)
+        node_id = input_data.get("node_id", "")
+        self._record_conversation_history(user_id, input_message, "user", entry_type, node_id, session_id)
 
         # 验证流程
         validation_errors = self.validate_flow()
         if validation_errors:
-            return self._create_error_generator("流程验证失败")
+            return self._create_error_response("流程验证失败")
 
         # 获取起始节点和最后节点
         start_node = self._get_start_node()
         last_node = self.nodes[-1] if self.nodes else None
 
         # 判断协议类型
-        is_agui_protocol = start_node and start_node.get("type") == "agui"
+        is_agui_protocol = start_node and start_node.get("type") in ["agui", "embedded_chat", "mobile", "web_chat"]
         is_openai_protocol = start_node and start_node.get("type") == "openai"
 
         # 检查是否需要流式执行
         needs_streaming = (is_agui_protocol or is_openai_protocol) or (last_node and last_node.get("type") == "agents")
         if not needs_streaming:
-            return self._create_error_generator("当前流程不支持SSE")
+            return self._create_error_response("当前流程不支持SSE")
 
         # 查找目标agents节点及前置节点
         target_agent_node, nodes_to_execute_before = self._find_target_agent_node(start_node, last_node, is_agui_protocol, is_openai_protocol)
         if not target_agent_node:
-            return self._create_error_generator("未找到可执行的agents节点")
+            return self._create_error_response("未找到可执行的agents节点")
 
         # 执行前置节点
         final_input_data = self._execute_prerequisite_nodes(nodes_to_execute_before, input_data)
@@ -118,9 +124,84 @@ class ChatFlowEngine:
             logger.error(f"[SSE-Engine] agents节点不支持流式执行: {target_agent_node.get('id')}")
 
         if not execute_method:
-            return self._create_error_generator("agents节点不支持流式执行")
+            return self._create_error_response("agents节点不支持流式执行")
 
-        return self._create_streaming_generator(execute_method, target_agent_node, final_input_data, user_id, entry_type, is_agui_protocol)
+        # 定义一个嵌套的异步生成器函数 - 完全模仿 agui_chat.py 的工作模式
+        async def generate_stream():
+            """
+            嵌套的异步生成器：直接调用节点的 execute_method 获取流
+            """
+            accumulated_content = []
+            try:
+                logger.info(f"[SSE-Engine] 开始流处理 - protocol: {protocol_type}, node: {node_id}")
+
+                # 同步调用 execute_method,它会返回一个异步生成器
+                async_execute = sync_to_async(execute_method, thread_sensitive=False)
+                stream_generator = await async_execute(target_agent_node.get("id"), target_agent_node, final_input_data)
+
+                logger.info(f"[SSE-Engine] 获得流生成器: {type(stream_generator)}")
+
+                chunk_index = 0
+                # 直接迭代异步生成器
+                async for chunk in stream_generator:
+                    chunk_index += 1
+                    # 累积内容用于记录对话历史
+                    if chunk.startswith("data: "):
+                        try:
+                            data_str = chunk[6:].strip()
+                            data_json = json.loads(data_str)
+
+                            # if protocol_type == "AGUI":
+                            #     # AGUI 协议: TEXT_MESSAGE_CONTENT 类型
+                            #     if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
+                            #         accumulated_content += data_json.get("delta", "")
+                            # else:
+                            #     # SSE/OpenAI 协议: 提取 content/message/text 字段
+                            #     content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
+                            #     if content:
+                            #         accumulated_content += content
+                            accumulated_content.append(data_json)
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+
+                    yield chunk
+
+                logger.info(f"[SSE-Engine] 流处理完成 - 共生成 {chunk_index} 个chunk")
+
+                # 记录系统输出到对话历史
+                if accumulated_content:
+
+                    def record_history_in_background():
+                        from asgiref.sync import async_to_sync
+
+                        async_to_sync(sync_to_async(self._record_conversation_history, thread_sensitive=False))(
+                            user_id, accumulated_content, "bot", entry_type, node_id, session_id
+                        )
+
+                    threading.Thread(target=record_history_in_background, daemon=True).start()
+
+                # 执行后续节点(在后台异步执行,不阻塞流式响应)
+                self._execute_subsequent_nodes_async(target_agent_node, accumulated_content)
+
+            except Exception as e:
+                logger.error(f"[SSE-Engine] Stream error: {e}", exc_info=True)
+                error_data = {"type": "ERROR", "error": f"流处理错误: {str(e)}", "timestamp": int(time.time() * 1000)}
+                yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+
+        # 直接使用嵌套的异步生成器创建 StreamingHttpResponse
+        response = StreamingHttpResponse(generate_stream(), content_type="text/event-stream")
+
+        # 设置 SSE 响应头
+        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response["X-Accel-Buffering"] = "no"
+        response["Pragma"] = "no-cache"
+        response["Expires"] = "0"
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Headers"] = "Cache-Control"
+        response["Transfer-Encoding"] = "chunked"
+
+        logger.info(f"[SSE-Engine] 返回 StreamingHttpResponse - protocol: {protocol_type}")
+        return response
 
     def _find_target_agent_node(self, start_node, last_node, is_agui_protocol: bool, is_openai_protocol: bool):
         """查找目标agents节点及前置节点"""
@@ -184,15 +265,71 @@ class ChatFlowEngine:
         return temp_engine_data
 
     def _create_streaming_generator(
-        self, execute_method, target_agent_node, final_input_data: Dict[str, Any], user_id: str, entry_type: str, is_agui_protocol: bool
+        self,
+        execute_method,
+        target_agent_node,
+        final_input_data: Dict[str, Any],
+        user_id: str,
+        entry_type: str,
+        is_agui_protocol: bool,
+        node_id: str = "",
     ):
-        """创建流式输出生成器"""
+        """创建流式输出生成器（支持异步）"""
 
-        def wrapped_generator():
+        async def wrapped_async_generator():
+            """异步包装生成器，用于AGUI协议"""
             accumulated_output = []
 
             try:
-                for chunk in execute_method(target_agent_node.get("id"), target_agent_node, final_input_data):
+                # 在异步上下文中调用同步的 execute_method，使用 sync_to_async
+                # 将同步方法包装为异步方法
+                async_execute = sync_to_async(execute_method, thread_sensitive=False)
+                async_gen = await async_execute(target_agent_node.get("id"), target_agent_node, final_input_data)
+
+                chunk_count = 0
+                async for chunk in async_gen:
+                    chunk_count += 1
+                    chunk_str = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+
+                    # 过滤统计信息
+                    if chunk_str.startswith("# STATS:"):
+                        continue
+
+                    # 立即 yield,确保流式输出
+                    logger.debug(f"[SSE-Engine-AGUI] Yielding chunk #{chunk_count}, length: {len(chunk_str)}")
+                    yield chunk
+
+                    # 收集输出内容
+                    self._accumulate_output(chunk_str, accumulated_output, is_agui_protocol)
+
+                logger.info(f"[SSE-Engine-AGUI] 流式输出完成 - 总共 {chunk_count} 个chunk")
+
+                # 记录完整输出 - 在异步上下文中使用 sync_to_async
+                await sync_to_async(self._record_bot_output, thread_sensitive=False)(
+                    user_id, accumulated_output, entry_type, node_id, final_input_data["session_id"]
+                )
+
+            except Exception as e:
+                logger.error(f"[SSE-Engine] 流式执行过程中出错: {str(e)}")
+                logger.exception(e)
+                yield f"data: {json.dumps({'result': False, 'error': str(e)})}\n\n"
+                yield "data: [DONE]\n\n"
+
+        # AGUI协议返回异步生成器
+        if is_agui_protocol:
+            return wrapped_async_generator()
+
+        # 非AGUI协议也返回异步生成器（统一处理）
+        async def wrapped_sse_generator():
+            """异步包装生成器，用于SSE/OpenAI协议"""
+            accumulated_output = []
+
+            try:
+                # 在异步上下文中调用同步的 execute_method
+                async_execute = sync_to_async(execute_method, thread_sensitive=False)
+                async_gen = await async_execute(target_agent_node.get("id"), target_agent_node, final_input_data)
+
+                async for chunk in async_gen:
                     chunk_str = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
 
                     # 过滤统计信息
@@ -204,8 +341,10 @@ class ChatFlowEngine:
                     # 收集输出内容
                     self._accumulate_output(chunk_str, accumulated_output, is_agui_protocol)
 
-                # 记录完整输出
-                self._record_bot_output(user_id, accumulated_output, entry_type)
+                # 记录完整输出 - 在异步上下文中使用 sync_to_async
+                await sync_to_async(self._record_bot_output, thread_sensitive=False)(
+                    user_id, accumulated_output, entry_type, node_id, final_input_data["session_id"]
+                )
 
             except Exception as e:
                 logger.error(f"[SSE-Engine] 流式执行过程中出错: {str(e)}")
@@ -213,7 +352,7 @@ class ChatFlowEngine:
                 yield f"data: {json.dumps({'result': False, 'error': str(e)})}\n\n"
                 yield "data: [DONE]\n\n"
 
-        return wrapped_generator()
+        return wrapped_sse_generator()
 
     def _accumulate_output(self, chunk_str: str, accumulated_output: List[str], is_agui_protocol: bool):
         """累积输出内容"""
@@ -235,18 +374,20 @@ class ChatFlowEngine:
                 except json.JSONDecodeError:
                     accumulated_output.append(data_str)
 
-    def _record_bot_output(self, user_id: str, accumulated_output: List[str], entry_type: str):
+    def _record_bot_output(self, user_id: str, accumulated_output: List[str], entry_type: str, node_id: str = "", session_id: str = ""):
         """记录机器人输出对话历史"""
         if user_id and accumulated_output and entry_type != "celery":
             try:
                 full_output = "".join(accumulated_output)
                 WorkFlowConversationHistory.objects.create(
                     bot_id=self.instance.bot_id,
+                    node_id=node_id,
                     user_id=user_id,
                     conversation_role="bot",
                     conversation_content=full_output,
                     conversation_time=timezone.now(),
                     entry_type=entry_type,
+                    session_id=session_id,
                 )
             except Exception as e:
                 logger.error(f"[SSE] 记录系统输出对话历史失败: {str(e)}")
@@ -260,6 +401,136 @@ class ChatFlowEngine:
             yield "data: [DONE]\n\n"
 
         return err_gen()
+
+    def _create_error_response(self, error_message: str):
+        """创建错误的 StreamingHttpResponse"""
+        from django.http import StreamingHttpResponse
+
+        logger.error(f"[SSE-Engine] {error_message}")
+
+        async def error_gen():
+            yield f"data: {json.dumps({'result': False, 'error': error_message})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        response = StreamingHttpResponse(error_gen(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+    def _execute_subsequent_nodes_async(self, agent_node: Dict[str, Any], agent_output: Any):
+        """在后台异步执行agents节点之后的节点
+
+        Args:
+            agent_node: agents节点配置
+            agent_output: agents节点的输出内容
+        """
+        import threading
+
+        def execute_in_background():
+            """后台线程执行函数"""
+            try:
+                # 获取后续节点
+                next_nodes = self._get_next_nodes(agent_node.get("id"), {"success": True, "data": {}})
+
+                if not next_nodes:
+                    logger.info(f"[SSE-Engine] agents节点 {agent_node.get('id')} 没有后续节点")
+                    return
+
+                logger.info(f"[SSE-Engine] 开始执行 {len(next_nodes)} 个后续节点: {next_nodes}")
+
+                # 准备输入数据
+                # 从累积的内容中提取最终消息
+                final_message = self._extract_final_message(agent_output)
+
+                # 更新全局变量
+                self.variable_manager.set_variable("last_message", final_message)
+
+                # 准备节点输入
+                node_input = {"last_message": final_message}
+
+                # 执行每个后续节点
+                for next_node_id in next_nodes:
+                    try:
+                        next_node = self._get_node_by_id(next_node_id)
+                        if not next_node:
+                            logger.warning(f"[SSE-Engine] 后续节点不存在: {next_node_id}")
+                            continue
+
+                        node_type = next_node.get("type")
+                        executor = self._get_node_executor(node_type)
+
+                        if not executor:
+                            logger.warning(f"[SSE-Engine] 找不到节点执行器: {node_type}")
+                            continue
+
+                        logger.info(f"[SSE-Engine] 执行后续节点: {next_node_id} ({node_type})")
+
+                        # 执行节点
+                        result = executor.execute(next_node_id, next_node, node_input)
+
+                        logger.info(f"[SSE-Engine] 后续节点 {next_node_id} 执行完成: {result}")
+
+                        # 更新输入为下一个节点准备
+                        if result and isinstance(result, dict):
+                            node_input.update(result)
+
+                    except Exception as e:
+                        logger.error(f"[SSE-Engine] 后续节点 {next_node_id} 执行失败: {str(e)}", exc_info=True)
+                        # 继续执行其他节点
+                        continue
+
+            except Exception as e:
+                logger.error(f"[SSE-Engine] 后续节点执行失败: {str(e)}", exc_info=True)
+
+        # 在后台线程中执行
+        thread = threading.Thread(target=execute_in_background, daemon=True, name="SSE-SubsequentNodes")
+        thread.start()
+        logger.info("[SSE-Engine] 已启动后台线程执行后续节点")
+
+    def _extract_final_message(self, accumulated_content: list) -> str:
+        """从累积的流式内容中提取最终消息
+
+        Args:
+            accumulated_content: 累积的数据列表
+
+        Returns:
+            最终消息字符串
+        """
+        if not accumulated_content:
+            return ""
+
+        # 尝试从最后一个消息中提取
+        final_msg_parts = []
+
+        for data in accumulated_content:
+            if not isinstance(data, dict):
+                continue
+
+            data_type = data.get("type", "")
+
+            # 处理不同协议的消息类型
+            if data_type == "TEXT_MESSAGE_CONTENT":
+                # AGUI 协议
+                delta = data.get("delta", "")
+                if delta:
+                    final_msg_parts.append(delta)
+            elif data_type in ["message", "content", "text"]:
+                # SSE/OpenAI 协议
+                content = data.get("content") or data.get("message") or data.get("text", "")
+                if content:
+                    final_msg_parts.append(content)
+            else:
+                # 尝试直接提取常见字段
+                for key in ["content", "message", "text", "delta"]:
+                    value = data.get(key)
+                    if value and isinstance(value, str):
+                        final_msg_parts.append(value)
+                        break
+
+        final_message = "".join(final_msg_parts) if final_msg_parts else str(accumulated_content[-1] if accumulated_content else "")
+
+        logger.info(f"[SSE-Engine] 提取的最终消息长度: {len(final_message)}")
+        return final_message
 
     """聊天流程执行引擎"""
 
@@ -350,7 +621,6 @@ class ChatFlowEngine:
             input_data_str = json.dumps(input_data, ensure_ascii=False)
 
             # 准备最后输出
-            last_output = ""
             if isinstance(result, dict):
                 last_output = json.dumps(result, ensure_ascii=False)
             elif isinstance(result, str):
@@ -449,7 +719,9 @@ class ChatFlowEngine:
 
             # 确定入口类型并记录用户输入
             entry_type = self._determine_entry_type(start_node)
-            self._record_conversation_history(user_id, input_message, "user", entry_type)
+            node_id = input_data.get("node_id", "")
+            session_id = input_data.get("session_id", "")
+            self._record_conversation_history(user_id, input_message, "user", entry_type, node_id, session_id)
 
             # 执行节点链
             self._execute_node_chain(chosen_start_node, input_data, timeout - (time.time() - start_time))
@@ -458,10 +730,8 @@ class ChatFlowEngine:
             execution_time = time.time() - start_time
             final_last_message = self.variable_manager.get_variable("last_message")
 
-            logger.info(f"流程执行完成: flow_id={self.instance.id}, 耗时={execution_time:.2f}秒")
-
             # 记录系统输出
-            self._record_conversation_history(user_id, final_last_message, "bot", entry_type)
+            self._record_conversation_history(user_id, final_last_message, "bot", entry_type, node_id, session_id)
             self._record_execution_result(input_data, final_last_message, True, start_node.get("type", ""))
 
             return final_last_message
@@ -488,7 +758,7 @@ class ChatFlowEngine:
 
             return error_result
 
-    def _record_conversation_history(self, user_id: str, message: Any, role: str, entry_type: str):
+    def _record_conversation_history(self, user_id: str, message: Any, role: str, entry_type: str, node_id: str = "", session_id: str = ""):
         """记录对话历史
 
         Args:
@@ -496,6 +766,7 @@ class ChatFlowEngine:
             message: 消息内容
             role: 角色 (user/bot)
             entry_type: 入口类型
+            node_id: 节点ID
         """
         if not user_id or not message or entry_type == "celery":
             return
@@ -511,11 +782,13 @@ class ChatFlowEngine:
 
             WorkFlowConversationHistory.objects.create(
                 bot_id=self.instance.bot_id,
+                node_id=node_id,
                 user_id=user_id,
                 conversation_role=role,
                 conversation_content=content,
                 conversation_time=timezone.now(),
                 entry_type=entry_type,
+                session_id=session_id,
             )
         except Exception as e:
             logger.error(f"记录{role}对话历史失败: {str(e)}")
@@ -610,7 +883,6 @@ class ChatFlowEngine:
 
         node_type = node.get("type", "")
         logger.info(f"开始执行节点: {node_id} (类型: {node_type})")
-
         try:
             # 获取执行器
             executor = self._get_node_executor(node_type)
@@ -622,18 +894,26 @@ class ChatFlowEngine:
             input_key = node_config.get("inputParams", "last_message")
             output_key = node_config.get("outputParams", "last_message")
 
-            # 从全局变量中获取输入值
-            input_value = self.variable_manager.get_variable(input_key)
-            if input_value is None:
-                # 如果全局变量中没有找到，使用默认值
-                input_value = input_data.get(input_key, "")
+            # 检查是否是意图分类节点的目标节点（从意图分类节点路由过来的节点）
+            # 如果前一个节点是意图分类节点，使用意图分类节点的前置节点输出
+            intent_previous_output = self.variable_manager.get_variable("intent_previous_output")
+            if intent_previous_output is not None:
+                # 当前节点是意图分类后的目标节点，使用保存的前置节点输出
+                logger.info(f"节点 {node_id} 使用意图分类的前置节点输出")
+                input_value = intent_previous_output
+                # 清除标记，避免影响后续节点
+                self.variable_manager.delete_variable("intent_previous_output")
+            else:
+                # 从全局变量中获取输入值
+                input_value = self.variable_manager.get_variable(input_key)
+                if input_value is None:
+                    # 如果全局变量中没有找到，使用默认值
+                    input_value = input_data.get(input_key, "")
 
             # 准备节点执行的输入数据
             node_input_data = {input_key: input_value}
-
             # 执行节点
             result = executor.execute(node_id, node, node_input_data)
-
             # 处理输出数据到全局变量
             if result and isinstance(result, dict):
                 # 获取节点的实际输出值
@@ -641,11 +921,15 @@ class ChatFlowEngine:
                 if output_value is not None:
                     # 更新全局变量
                     if output_key == "last_message":
-                        # 特殊处理：condition节点的last_message不更新全局变量
-                        if node_type not in ["condition", "branch"]:
+                        # 特殊处理：condition、branch、intent节点的last_message不更新全局变量
+                        # 避免覆盖前置节点的输出
+                        if node_type not in ["condition", "branch", "intent"]:
                             self.variable_manager.set_variable("last_message", output_value)
+                        else:
+                            logger.info(f"节点类型 {node_type} 不更新全局变量 last_message")
                     else:
                         # 非last_message的输出直接设置到全局变量
+                        logger.info(f"设置全局变量 {output_key}={output_value}")
                         self.variable_manager.set_variable(output_key, output_value)
 
             # 更新上下文
@@ -823,16 +1107,32 @@ class ChatFlowEngine:
         Returns:
             是否应该执行
         """
+        source_handle = edge.get("sourceHandle", "")
+
+        # 检查是否是意图分类节点的路由边（通过sourceHandle匹配意图结果）
+        intent_result = node_result.get("data", {}).get("intent_result")
+        if intent_result:
+            # 这是意图分类节点，检查边的sourceHandle是否匹配意图结果
+            if source_handle and source_handle == intent_result:
+                logger.info(f"意图路由匹配: sourceHandle={source_handle}, 意图结果={intent_result}")
+                return True
+            elif source_handle:
+                logger.debug(f"意图路由不匹配: sourceHandle={source_handle}, 意图结果={intent_result}")
+                return False
+            else:
+                # 没有sourceHandle的边，默认不跟随（意图节点必须有明确的sourceHandle）
+                logger.debug("意图分类节点的边缺少sourceHandle，不跟随")
+                return False
+
         # 检查是否是分支节点的条件边
-        source_handle = edge.get("sourceHandle", "").lower()
-        if source_handle in ["true", "false"]:
+        if source_handle.lower() in ["true", "false"]:
             # 这是一条分支边，需要根据分支节点的执行结果判断
             condition_result = node_result["data"].get("condition_result")
             if condition_result is not None:
-                if source_handle == "true" and condition_result:
+                if source_handle.lower() == "true" and condition_result:
                     logger.info(f"分支边判断: true路径匹配，条件结果: {condition_result}")
                     return True
-                elif source_handle == "false" and not condition_result:
+                elif source_handle.lower() == "false" and not condition_result:
                     logger.info(f"分支边判断: false路径匹配，条件结果: {condition_result}")
                     return True
                 else:
@@ -841,7 +1141,8 @@ class ChatFlowEngine:
             else:
                 logger.warning(f"分支边缺少条件结果，edge: {edge.get('id', 'unknown')}")
                 return False
-        # 默认跟随边（对于非分支节点的普通边）
+
+        # 默认跟随边（对于非分支、非意图节点的普通边）
         return True
 
     def _parse_nodes(self, flow_json: Dict[str, Any]) -> List[Dict[str, Any]]:

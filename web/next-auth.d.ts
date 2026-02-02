@@ -1,5 +1,3 @@
-import { JWT } from "next-auth/jwt";
-
 declare module "next-auth" {
   interface Session {
     accessToken?: string;
@@ -11,11 +9,14 @@ declare module "next-auth" {
     temporary_pwd?: boolean;
     enable_otp?: boolean;
     qrcode?: boolean;
-    user?: User;
+    user: User;
   }
 
   interface User {
     id: string;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
     username?: string;
     locale?: string;
     token?: string;

@@ -1,20 +1,23 @@
-"""训练模块."""
+"""训练模块 - 重构版本
+
+提供统一的模型训练接口和配置管理。
+"""
 
 from .data_loader import load_dataset
-from .trainer import SARIMAModel
-from .generic_trainer import TimeSeriesTrainer
-from .algorithms import BaseTimeSeriesAlgorithm, SARIMAAlgorithm
-from .algorithms.sarima import SARIMAWrapper
-from .base_model import BaseTimeSeriesModel
+from .trainer import UniversalTrainer
+from .config.loader import TrainingConfig
+from .models import ModelRegistry
 from .mlflow_utils import MLFlowUtils
 
 __all__ = [
+    # 核心接口
+    "UniversalTrainer",
+    "TrainingConfig",
+    
+    # 模型
+    "ModelRegistry",
+    
+    # 工具类
     "load_dataset",
-    "SARIMAModel",
-    "SARIMAWrapper",
-    "TimeSeriesTrainer",
-    "BaseTimeSeriesAlgorithm",
-    "SARIMAAlgorithm",
-    "BaseTimeSeriesModel",
     "MLFlowUtils",
 ]

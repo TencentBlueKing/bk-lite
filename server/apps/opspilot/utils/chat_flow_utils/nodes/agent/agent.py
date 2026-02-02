@@ -1,18 +1,19 @@
 """
 智能体节点
 """
+
+import json
+import time
 from typing import Any, Dict
 
 import jinja2
-from django.conf import settings
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import LLMSkill
+from apps.opspilot.models import LLMModel, LLMSkill
+from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.services.llm_service import llm_service
-from apps.opspilot.utils.agui_chat import _generate_agui_stream
+from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
-from apps.opspilot.utils.chat_server_helper import ChatServerHelper
-from apps.opspilot.utils.sse_chat import stream_chat
 
 
 class AgentNode(BaseNodeExecutor):
@@ -84,7 +85,7 @@ class AgentNode(BaseNodeExecutor):
             logger.error(f"智能体节点 {node_id} prompt渲染失败: {str(e)}")
             return prompt
 
-    def _build_final_message(self, message: str, node_prompt: str, uploaded_files: list, node_id: str) -> str:
+    def _build_final_message(self, message, node_prompt: str, uploaded_files: list, node_id: str) -> str:
         """构建最终消息
 
         Args:
@@ -103,7 +104,13 @@ class AgentNode(BaseNodeExecutor):
             return message
 
         combined_prompt = files_content + rendered_prompt
-        return f"{combined_prompt}\n{message}"
+        if isinstance(message, str):
+            return f"{combined_prompt}\n{message}"
+        for i in message:
+            if i["type"] == "message":
+                i["message"] = f"{combined_prompt}\n{i['message']}"
+                break
+        return message
 
     def _build_llm_params(self, skill: LLMSkill, final_message: str, flow_input: Dict[str, Any]) -> Dict[str, Any]:
         """构建LLM调用参数
@@ -116,6 +123,10 @@ class AgentNode(BaseNodeExecutor):
         Returns:
             LLM参数字典
         """
+        # 判断是否为第三方渠道调用，如果是则禁用知识来源显示
+        is_third_party = flow_input.get("is_third_party", False)
+        enable_rag_knowledge_source = False if is_third_party else skill.enable_rag_knowledge_source
+        logger.info(f"is_third_party：{is_third_party}")
         return {
             "llm_model": skill.llm_model_id,
             "skill_prompt": skill.skill_prompt,
@@ -125,7 +136,7 @@ class AgentNode(BaseNodeExecutor):
             "conversation_window_size": skill.conversation_window_size,
             "enable_rag": skill.enable_rag,
             "rag_score_threshold": [{"knowledge_base": int(key), "score": float(value)} for key, value in skill.rag_score_threshold_map.items()],
-            "enable_rag_knowledge_source": skill.enable_rag_knowledge_source,
+            "enable_rag_knowledge_source": enable_rag_knowledge_source,
             "show_think": skill.show_think,
             "tools": skill.tools,
             "skill_type": skill.skill_type,
@@ -138,41 +149,71 @@ class AgentNode(BaseNodeExecutor):
         }
 
     def sse_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):
-        """流式执行agent节点，yield SSE格式数据"""
+        """流式执行agent节点，返回异步生成器"""
         config = node_config["data"].get("config", {})
         input_key = config.get("inputParams", "last_message")
         skill_id = config.get("agent")
 
         llm_params, skill_name = self.set_llm_params(node_id, config, input_data)
-        return stream_chat(llm_params, skill_name, {}, None, input_data.get(input_key), skill_id)
+
+        # 导入 create_stream_generator 而不是 stream_chat
+        from apps.opspilot.utils.sse_chat import create_stream_generator
+
+        # 返回异步生成器而不是 StreamingHttpResponse
+        return create_stream_generator(llm_params, skill_name, {}, None, input_data.get(input_key), skill_id)
 
     def agui_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):
-        """AGUI协议流式执行agent节点，yield AGUI格式数据"""
+        """AGUI协议流式执行agent节点，返回异步生成器"""
         config = node_config["data"].get("config", {})
+
+        # 获取 LLM 参数
         llm_params, skill_name = self.set_llm_params(node_id, config, input_data)
 
-        # 获取LLM模型并构建请求参数
-        from apps.opspilot.models import LLMModel, SkillTypeChoices
-
+        # 获取 LLM 模型并构建请求参数
         llm_model = LLMModel.objects.get(id=llm_params["llm_model"])
         show_think = llm_params.pop("show_think", True)
-        llm_params.pop("group", None)
+        skill_type = llm_params.get("skill_type")
+        llm_params.pop("group", 0)
 
-        chat_kwargs, doc_map, title_map = llm_service.format_chat_server_kwargs(llm_params, llm_model)
+        chat_kwargs, _, _ = llm_service.format_chat_server_kwargs(llm_params, llm_model)
+        # 创建 agent 实例
+        graph, request = create_agent_instance(skill_type, chat_kwargs)
 
-        # 根据技能类型选择不同的AGUI接口
-        url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_chatbot_workflow_agui"
-        if llm_params.get("skill_type") == SkillTypeChoices.BASIC_TOOL:
-            url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_react_agent_agui"
-        elif llm_params.get("skill_type") == SkillTypeChoices.PLAN_EXECUTE:
-            url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_plan_and_execute_agent_agui"
-        elif llm_params.get("skill_type") == SkillTypeChoices.LATS:
-            url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_lats_agent_agui"
+        # 直接返回异步生成器
+        async def generate_agui_stream():
+            """异步生成器：直接生成 AGUI 数据流"""
+            try:
+                logger.info(f"[AgentNode-AGUI] 开始流式处理 - skill_name: {skill_name}, node_id: {node_id}, show_think: {show_think}")
 
-        headers = ChatServerHelper.get_chat_server_header()
+                chunk_index = 0
+                async for sse_line in graph.agui_stream(request):
+                    # 如果 show_think=False，过滤掉工具调用相关事件
+                    if not show_think and sse_line.startswith("data: "):
+                        try:
+                            data_str = sse_line[6:].strip()
+                            data_json = json.loads(data_str)
+                            event_type = data_json.get("type", "")
 
-        # 直接使用内部生成器函数，避免双重包装
-        return _generate_agui_stream(url, headers, chat_kwargs, skill_name, show_think)
+                            # 过滤工具调用相关事件
+                            if event_type in ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]:
+                                continue
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+
+                    chunk_index += 1
+                    yield sse_line
+
+                logger.info(f"[AgentNode-AGUI] 流式处理完成 - 生成 {chunk_index} 个chunk")
+            except Exception as e:
+                logger.error(f"[AgentNode-AGUI] stream error: {e}", exc_info=True)
+                error_data = {
+                    "type": "ERROR",
+                    "error": f"节点执行错误: {str(e)}",
+                    "timestamp": int(time.time() * 1000),
+                }
+                yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+
+        return generate_agui_stream()
 
     def set_llm_params(self, node_id: str, config: Dict[str, Any], input_data: Dict[str, Any]):
         """设置LLM参数
@@ -214,7 +255,9 @@ class AgentNode(BaseNodeExecutor):
         output_key = config.get("outputParams", "last_message")
 
         llm_params, _ = self.set_llm_params(node_id, config, input_data)
-        data, _, _ = llm_service.invoke_chat(llm_params)
+
+        # 使用同步版本的 invoke_chat,避免异步上下文冲突
+        data, _, _ = ChatService.invoke_chat(llm_params)
 
         return {output_key: data["message"]}
 

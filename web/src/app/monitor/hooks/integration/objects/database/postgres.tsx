@@ -1,19 +1,16 @@
-import { usePostgresTelegraf } from '../../plugins/database/postgresTelegraf';
-
 export const usePostgresConfig = () => {
-  const postgresPlugin = usePostgresTelegraf();
-  const plugins = {
-    Postgres: postgresPlugin,
-  };
-
   return {
     instance_type: 'postgres',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'value', key: 'postgresql_active_time' },
-      { type: 'value', key: 'postgresql_blks_hit' },
+      { type: 'value', key: 'postgresql_numbackends' },
+      { type: 'value', key: 'postgresql_blks_read_rate' },
+      { type: 'value', key: 'postgresql_temp_files_rate' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Postgres-Exporter': 'exporter',
+      Postgres: 'database',
+    },
   };
 };

@@ -2,23 +2,34 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import useApiClient from '@/utils/request';
-import { UserItem, Organization } from '@/app/monitor/types';
+import {
+  UserItem,
+  Organization,
+  UnitListItem,
+  GroupedUnitList,
+} from '@/app/monitor/types';
 import Spin from '@/components/spin';
 import { useUserInfoContext } from '@/context/userInfo';
 import { transformTreeData } from '@/app/monitor/utils/common';
+import monitorApi from '@/app/monitor/api';
 
 interface CommonContextType {
   userList: UserItem[];
   authOrganizations: Organization[];
+  unitList: UnitListItem[];
+  groupedUnitList: GroupedUnitList[];
 }
 
 const CommonContext = createContext<CommonContextType | null>(null);
 
 const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
-  const [userList, setUserList] = useState<UserItem[]>([]);
-  const [pageLoading, setPageLoading] = useState(false);
-  const { get, isLoading } = useApiClient();
+  const { isLoading } = useApiClient();
   const commonContext = useUserInfoContext();
+  const { getAllUsers, getUnitList } = monitorApi();
+  const [userList, setUserList] = useState<UserItem[]>([]);
+  const [unitList, setUnitList] = useState<UnitListItem[]>([]);
+  const [groupedUnitList, setGroupedUnitList] = useState<GroupedUnitList[]>([]);
+  const [pageLoading, setPageLoading] = useState(false);
 
   useEffect(() => {
     if (isLoading) return;
@@ -28,9 +39,35 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
   const getPermissionGroups = async () => {
     setPageLoading(true);
     try {
-      const responseData = await get('/monitor/api/system_mgmt/user_all/');
-      const userData: UserItem[] = responseData || [];
-      setUserList(userData);
+      Promise.all([getAllUsers(), getUnitList()])
+        .then(([usersResponse = [], unitsResponse = []]) => {
+          setUserList(usersResponse);
+          setUnitList(unitsResponse);
+          const groupedByCategory = unitsResponse.reduce(
+            (acc: UnitListItem, item: UnitListItem) => {
+              if (!acc[item.category]) {
+                acc[item.category] = [];
+              }
+              acc[item.category].push({
+                label: item.unit_name,
+                value: item.unit_id,
+                unit: item.display_unit,
+              });
+              return acc;
+            },
+            {}
+          );
+          const transformedUnitList = Object.entries(groupedByCategory).map(
+            ([category, children]) => ({
+              label: category,
+              children,
+            })
+          );
+          setGroupedUnitList(transformedUnitList as GroupedUnitList[]);
+        })
+        .catch(() => {
+          setPageLoading(false);
+        });
     } finally {
       setPageLoading(false);
     }
@@ -41,6 +78,8 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
     <CommonContext.Provider
       value={{
         userList,
+        unitList,
+        groupedUnitList,
         authOrganizations: transformTreeData(
           commonContext?.groups || []
         ) as any,

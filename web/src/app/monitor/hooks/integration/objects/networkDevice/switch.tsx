@@ -1,18 +1,9 @@
-import { useSwitchSnmpPlugin } from '../../plugins/networkDevice/switchSnmp';
-
 export const useSwitchConfig = () => {
-  const snmpPlugin = useSwitchSnmpPlugin();
-
-  // 所有插件配置
-  const plugins = {
-    'Switch SNMP General': snmpPlugin,
-  };
-
   return {
     instance_type: 'switch',
     dashboardDisplay: [
       {
-        indexId: 'sysUpTime',
+        indexId: 'interface_ifOutDiscards',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
@@ -22,7 +13,7 @@ export const useSwitchConfig = () => {
         },
       },
       {
-        indexId: 'iftotalInOctets',
+        indexId: 'interface_ifOperStatus',
         displayType: 'lineChart',
         sortIndex: 1,
         displayDimension: [],
@@ -32,7 +23,7 @@ export const useSwitchConfig = () => {
         },
       },
       {
-        indexId: 'iftotalOutOctets',
+        indexId: 'interface_ifInErrors',
         displayType: 'lineChart',
         sortIndex: 2,
         displayDimension: [],
@@ -62,14 +53,16 @@ export const useSwitchConfig = () => {
       },
     ],
     tableDiaplay: [
-      { type: 'value', key: 'iftotalInOctets' },
-      { type: 'value', key: 'iftotalOutOctets' },
-      { type: 'value', key: 'sysUpTime' },
+      { type: 'enum', key: 'interface_ifOperStatus' },
+      { type: 'value', key: 'interface_ifInErrors' },
+      { type: 'value', key: 'interface_ifOutDiscards' },
     ],
     groupIds: {
       list: ['instance_id'],
       default: ['instance_id'],
     },
-    plugins,
+    collectTypes: {
+      'Switch SNMP General': 'snmp',
+    },
   };
 };

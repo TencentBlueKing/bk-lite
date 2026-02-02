@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Segmented, message, Input, Button, Select } from 'antd';
 import { useProviderApi } from '@/app/opspilot/api/provider';
 import ProviderGrid from '@/app/opspilot/components/provider/grid';
@@ -24,6 +25,8 @@ const tabConfig: TabConfig[] = [
 
 const ProviderPage: React.FC = () => {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams?.get('tab') || '1';
   const { 
     fetchModels, 
     addProvider, 
@@ -48,7 +51,7 @@ const ProviderPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [modalLoading, setModalLoading] = useState<boolean>(false);
   const [groupModalLoading, setGroupModalLoading] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<string>('1');
+  const [activeTab, setActiveTab] = useState<string>(initialTab);
   
   const currentRequestId = useRef<string | null>(null);
 
@@ -162,7 +165,8 @@ const ProviderPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchModelsData('llm_model');
+    const tab = tabConfig.find((t) => t.key === initialTab);
+    fetchModelsData(tab?.type || 'llm_model');
   }, []);
 
   const handleSegmentedChange = (key: string) => {
@@ -426,11 +430,9 @@ const ProviderPage: React.FC = () => {
                 className="w-60"
                 onSearch={handleSearch}
               />
-              {activeTab !== '4' && (
-                <Button type="primary" onClick={() => setIsAddModalVisible(true)}>
-                  {t('common.add')}
-                </Button>
-              )}
+              <Button type="primary" onClick={() => setIsAddModalVisible(true)}>
+                {t('common.add')}
+              </Button>
             </div>
           </div>
           

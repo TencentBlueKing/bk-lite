@@ -1,0 +1,18 @@
+server_url: "__SERVER_URL__"
+server_api_token: "__SERVER_API_TOKEN__"
+node_id: "__NODE_ID__"
+update_interval: 10
+tls_skip_verify: true
+send_status: true
+list_log_files: []
+cache_path: "c:\\fusion-collectors\\cache"
+log_path: "c:\\fusion-collectors\\logs"
+log_rotate_max_file_size: "10MiB"
+log_rotate_keep_files: 5
+collector_validation_timeout: "1m"
+collector_shutdown_timeout: "10s"
+collector_configuration_directory: "c:\\fusion-collectors\\generated"
+windows_drive_range: ""
+tags: __TAGS__
+collector_binaries_accesslist:
+- "c:\\fusion-collector\\bin\\*"

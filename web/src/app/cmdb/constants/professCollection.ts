@@ -1,4 +1,4 @@
-export type ExecStatusKey = 'add' | 'update' | 'association' | 'delete';
+export type ExecStatusKey = 'add' | 'update' | 'delete';
 
 export interface ExecStatus {
   color: string;
@@ -19,10 +19,6 @@ export const createExecStatusMap = (
   update: {
     color: 'processing',
     text: t('Collection.syncStatus.update'),
-  },
-  association: {
-    color: 'processing',
-    text: t('Collection.syncStatus.association'),
   },
   delete: {
     color: 'error',
@@ -89,16 +85,21 @@ export const ENTER_TYPE = {
   APPROVAL: 'approval',
 } as const;
 
+// 密码占位符，用于编辑时隐藏真实密码
+export const PASSWORD_PLACEHOLDER = '******';
+
 export const K8S_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
-  intervalMinutes: 60,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalMinutes: 30,
+  intervalValue: 30,
   timeout: 60,
 };
 
 export const VM_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
   port: '443',
   timeout: 600,
@@ -107,7 +108,8 @@ export const VM_FORM_INITIAL_VALUES = {
 
 export const SNMP_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
   version: 'v2',
   snmp_port: '161',
@@ -119,7 +121,8 @@ export const SNMP_FORM_INITIAL_VALUES = {
 
 export const SQL_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
   name: '',
   password: '',
@@ -129,7 +132,8 @@ export const SQL_FORM_INITIAL_VALUES = {
 
 export const CLOUD_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
   enterType: ENTER_TYPE.APPROVAL,
   accessKey: '',
   accessSecret: '',
@@ -139,7 +143,8 @@ export const CLOUD_FORM_INITIAL_VALUES = {
 
 export const HOST_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
   username: '',
   password: '',
@@ -379,18 +384,6 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
     columns: [
       { title: '对象类型', dataIndex: 'model_id', width: 140 },
       { title: '实例名', dataIndex: 'inst_name', width: 250 },
-    ],
-  },
-  relation: {
-    count: 0,
-    label: t('Collection.syncStatus.association'),
-    alertType: 'warning',
-    columns: [
-      { title: '源对象类型', dataIndex: 'src_model_id', width: 180 },
-      { title: '源实例', dataIndex: 'src_inst_name', width: 250 },
-      { title: '关联关系', dataIndex: 'asst_id', width: 120 },
-      { title: '目标对象类型', dataIndex: 'dst_model_id', width: 180 },
-      { title: '目标实例', dataIndex: 'dst_inst_name', width: 250 },
     ],
   },
   delete: {

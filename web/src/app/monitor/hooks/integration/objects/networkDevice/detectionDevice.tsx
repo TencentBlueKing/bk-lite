@@ -1,12 +1,9 @@
 export const useDetectionDeviceConfig = () => {
-  // 所有插件配置
-  const plugins = {};
-
   return {
     instance_type: 'detection_device',
     dashboardDisplay: [
       {
-        indexId: 'sysUpTime',
+        indexId: 'interface_ifOutDiscards',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
@@ -16,7 +13,7 @@ export const useDetectionDeviceConfig = () => {
         },
       },
       {
-        indexId: 'iftotalInOctets',
+        indexId: 'interface_ifOperStatus',
         displayType: 'lineChart',
         sortIndex: 1,
         displayDimension: [],
@@ -26,7 +23,7 @@ export const useDetectionDeviceConfig = () => {
         },
       },
       {
-        indexId: 'iftotalOutOctets',
+        indexId: 'interface_ifInErrors',
         displayType: 'lineChart',
         sortIndex: 2,
         displayDimension: [],
@@ -56,11 +53,13 @@ export const useDetectionDeviceConfig = () => {
       },
     ],
     tableDiaplay: [
-      { type: 'value', key: 'iftotalInOctets' },
-      { type: 'value', key: 'iftotalOutOctets' },
-      { type: 'value', key: 'sysUpTime' },
+      { type: 'value', key: 'interface_ifOperStatus' },
+      { type: 'value', key: 'interface_ifInErrors' },
+      { type: 'value', key: 'interface_ifOutDiscards' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Detection Device SNMP General': 'snmp',
+    },
   };
 };

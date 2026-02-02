@@ -1,65 +1,149 @@
 import ast
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.loader import LanguageLoader
+from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.constants.plugin import PluginConstants
-from apps.monitor.models import Metric, MonitorObject, CollectConfig, MonitorPlugin, MonitorInstanceOrganization
+from apps.monitor.models import Metric, MonitorObject, CollectConfig, MonitorPlugin, MonitorInstanceOrganization, \
+    MonitorInstance
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from datetime import datetime, timezone
 
 
 class InstanceSearch:
-    def __init__(self, monitor_obj, query_data, qs=None):
+    def __init__(self, monitor_obj, query_data, qs=None, locale=None):
         self.monitor_obj = monitor_obj
         self.query_data = query_data
         self.obj_metric_map = self.get_obj_metric_map()
         self.qs = qs
+        self.locale = locale or "zh-Hans"
 
     @staticmethod
     def get_parent_instance_ids(query):
         """获取父对象实例ID列表"""
-        metrics = VictoriaMetricsAPI().query(query)
+        metrics = VictoriaMetricsAPI().query(query, step="10m")
         instance_ids = [metric_info["metric"].get("instance_id") for metric_info in
                     metrics.get("data", {}).get("result", [])]
         return instance_ids
 
     @staticmethod
-    def get_query_params_enum(monitor_obj_name):
+    def get_parent_instance_list(monitor_object_id):
+        """获取父对象实例列表"""
+        # 获取父对象实例ID
+        _obj = MonitorObject.objects.filter(id=monitor_object_id).first()
+        objs = MonitorInstance.objects.filter(monitor_object_id=_obj.parent_id).values("id", "name")
+
+        data = []
+        for obj in objs:
+            try:
+                _instance_id = ast.literal_eval(obj["id"])[0]
+            except Exception:
+                _instance_id = obj["id"]
+            data.append({"id": str(_instance_id), "name": obj["name"]})
+        return data
+
+    @staticmethod
+    def get_query_params_enum(monitor_obj_name, monitor_object_id=None):
         """获取查询参数枚举"""
         if monitor_obj_name == "Pod":
-            query = "count(prometheus_remote_write_kube_pod_info{}) by (instance_id, namespace, created_by_kind, created_by_name, node)"
+            query = "count(prometheus_remote_write_kube_pod_info{}) by (instance_id, node)"
             metrics = VictoriaMetricsAPI().query(query)
-            map = {}
-            for metric_info in  metrics.get("data", {}).get("result", []):
+
+            # 使用 set 去重
+            instance_ids = set()  # Cluster 实例 ID
+            node_ids = set()      # Node 实例 ID
+
+            for metric_info in metrics.get("data", {}).get("result", []):
                 instance_id = metric_info["metric"].get("instance_id")
-                if instance_id not in map:
-                    map[instance_id] = {}
-                namespace = metric_info["metric"].get("namespace")
-                if namespace not in map[instance_id]:
-                    map[instance_id][namespace] = {}
-                created_by_kind = metric_info["metric"].get("created_by_kind")
-                created_by_name = metric_info["metric"].get("created_by_name")
-                if "workload" not in map[instance_id][namespace]:
-                    map[instance_id][namespace]["workload"] = []
-                map[instance_id][namespace]["workload"].append({"created_by_kind": created_by_kind, "created_by_name": created_by_name})
                 node = metric_info["metric"].get("node")
-                if "node" not in map[instance_id][namespace]:
-                    map[instance_id][namespace]["node"] = []
-                map[instance_id][namespace]["node"].append(node)
-            return map
+
+                if instance_id:
+                    # instance_id 作为单元素元组（对应 Cluster 监控实例）
+                    instance_ids.add((instance_id,))
+
+                if instance_id and node:
+                    # node ID 由 (instance_id, node) 组合而成（对应 Node 监控实例）
+                    node_ids.add((instance_id, node))
+
+            # 转换为字符串格式的 ID 列表，用于数据库查询实例名称
+            instance_id_strs = [str(iid) for iid in instance_ids]
+            node_id_strs = [str(nid) for nid in node_ids]
+
+            # 从数据库查询 Cluster 和 Node 实例名称
+            instance_name_map = {}
+            node_name_map = {}
+
+            if instance_id_strs:
+                # 查询 Cluster 实例名称
+                cluster_instances = MonitorInstance.objects.filter(id__in=instance_id_strs).values('id', 'name')
+                instance_name_map = {inst['id']: inst['name'] for inst in cluster_instances}
+
+            if node_id_strs:
+                # 查询 Node 实例名称
+                node_instances = MonitorInstance.objects.filter(id__in=node_id_strs).values('id', 'name')
+                node_name_map = {inst['id']: inst['name'] for inst in node_instances}
+
+            # 构建返回结果：id 使用原始维度值（用于查询），name 从数据库获取（用于展示）
+            instance_list = [
+                {
+                    "id": iid[0],  # 原始 instance_id 维度值（如 "k8s-prod"）
+                    "name": instance_name_map.get(str(iid), iid[0])  # Cluster 名称
+                }
+                for iid in instance_ids
+            ]
+
+            node_list = [
+                {
+                    "id": nid[-1],  # 原始 node 维度值（如 "worker-node-1"）
+                    "name": node_name_map.get(str(nid), nid[-1])  # Node 名称
+                }
+                for nid in node_ids
+            ]
+            return {
+                "cluster": instance_list,
+                "node": node_list
+            }
         elif monitor_obj_name == "Node":
             query = "count(prometheus_remote_write_kube_node_info) by (instance_id)"
-            return InstanceSearch.get_parent_instance_ids(query)
+            metrics = VictoriaMetricsAPI().query(query, step="10m")
+
+            # 使用 set 去重
+            instance_ids = set()  # Cluster 实例 ID
+
+            for metric_info in metrics.get("data", {}).get("result", []):
+                instance_id = metric_info["metric"].get("instance_id")
+                if instance_id:
+                    # instance_id 作为单元素元组（对应 Cluster 监控实例）
+                    instance_ids.add((instance_id,))
+
+            # 转换为字符串格式的 ID 列表，用于数据库查询实例名称
+            instance_id_strs = [str(iid) for iid in instance_ids]
+
+            # 从数据库查询 Cluster 实例名称
+            instance_name_map = {}
+            if instance_id_strs:
+                cluster_instances = MonitorInstance.objects.filter(id__in=instance_id_strs).values('id', 'name')
+                instance_name_map = {inst['id']: inst['name'] for inst in cluster_instances}
+
+            # 构建返回结果：id 使用原始维度值（用于查询），name 从数据库获取（用于展示）
+            instance_list = [
+                {
+                    "id": iid[0],  # 原始 instance_id 维度值（如 "k8s-prod"）
+                    "name": instance_name_map.get(str(iid), iid[0])  # Cluster 名称
+                }
+                for iid in instance_ids
+            ]
+
+            return {"cluster": instance_list}
         elif monitor_obj_name in {"ESXI", "VM", "DataStorage"}:
-            query = 'any({instance_type="vmware"}) by (instance_id)'
-            return InstanceSearch.get_parent_instance_ids(query)
+            return InstanceSearch.get_parent_instance_list(monitor_object_id)
         elif monitor_obj_name in {"CVM"}:
             query = 'any({instance_type="qcloud"}) by (instance_id)'
             return InstanceSearch.get_parent_instance_ids(query)
         elif monitor_obj_name in {"Docker Container"}:
-            query = 'any({instance_type="docker"}) by (instance_id)'
-            return InstanceSearch.get_parent_instance_ids(query)
+            return InstanceSearch.get_parent_instance_list(monitor_object_id)
 
     def get_obj_metric_map(self):
         monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
@@ -116,6 +200,9 @@ class InstanceSearch:
         if data["count"] == 0:
             return data
 
+        # 初始化语言加载器
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=self.locale)
+
         # 获取实例的插件采集状态
         confs = CollectConfig.objects.filter(
             monitor_instance_id__in=[i["instance_id"] for i in data["results"]],
@@ -133,8 +220,15 @@ class InstanceSearch:
 
         for plugin in plugins:
             plugin_key = (self.monitor_obj.id, plugin.collector, plugin.collect_type)
-            plugin_map[plugin_key] = dict(name=plugin.name, collector=plugin.collector,
-                                          collect_type=plugin.collect_type)
+            # 添加翻译属性
+            plugin_key_name = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
+            plugin_map[plugin_key] = dict(
+                name=plugin.name,
+                collector=plugin.collector,
+                collect_type=plugin.collect_type,
+                display_name=lan.get(f"{plugin_key_name}.name") or plugin.name,
+                display_description=lan.get(f"{plugin_key_name}.desc") or plugin.description
+            )
             plugin_status_map[plugin_key] = self.get_plugin_normal_status_map(instance_id_keys, plugin.status_query)
 
         # 反转插件状态映射，方便后续查询
@@ -228,10 +322,14 @@ class InstanceSearch:
         end = start + page_size
         results = qs[start:end]
 
-        return dict(count=count, results=[{"instance_id":obj.id, "instance_name":obj.name} for obj in results])
+        return dict(count=count, results=[{
+            "instance_id": obj.id,
+            "instance_name": obj.name,
+            "instance_id_values": [i for i in ast.literal_eval(obj.id)] if isinstance(obj.id, str) and obj.id.startswith('(') else [obj.id]
+        } for obj in results])
 
-    def get_plugin_normal_status_map(self, instance_id_keys, query, step="10m"):
-        resp = VictoriaMetricsAPI().query(query, step=step)
+    def get_plugin_normal_status_map(self, instance_id_keys, query):
+        resp = VictoriaMetricsAPI().query(query, step="20m")
         metrics = resp.get("data", {}).get("result", [])
         status_map = {}
         for metric in metrics:
@@ -249,7 +347,7 @@ class InstanceSearch:
                 query = query.replace("}", f",{params_str}}}")
             else:
                 query = f"{query}{{{params_str}}}"
-        metrics = VictoriaMetricsAPI().query(query)
+        metrics = VictoriaMetricsAPI().query(query, step="20m")
         return metrics.get("data", {}).get("result", [])
 
     def add_other_metrics(self, items):
@@ -269,7 +367,7 @@ class InstanceSearch:
 
             query = metric_obj.query
             query = query.replace("__$labels__", f"{', '.join(query_parts)}")
-            metrics = VictoriaMetricsAPI().query(query)
+            metrics = VictoriaMetricsAPI().query(query, step="10m")
             _metric_map = {}
             for metric in metrics.get("data", {}).get("result", []):
                 instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))

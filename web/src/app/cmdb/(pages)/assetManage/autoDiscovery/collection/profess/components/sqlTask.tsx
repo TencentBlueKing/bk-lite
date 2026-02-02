@@ -9,9 +9,10 @@ import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import {
-  ENTER_TYPE,
   SQL_FORM_INITIAL_VALUES,
+  PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
+import { formatTaskValues, buildCredential } from '../hooks/formatTaskValues';
 import { Form, Spin, Input, Collapse, InputNumber } from 'antd';
 
 interface SQLTaskFormProps {
@@ -30,7 +31,7 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
-  const baseRef = useRef<BaseTaskRef>(null);
+  const baseRef = useRef<BaseTaskRef>(null as any);
   const localeContext = useLocale();
   const { model_id: modelId } = modelItem;
 
@@ -48,42 +49,43 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
     onSuccess,
     onClose,
     formatValues: (values) => {
-      const instance = baseRef.current?.selectedData;
+      const baseData = formatTaskValues({
+        values,
+        baseRef,
+        selectedNode,
+        modelItem,
+        modelId,
+        formatCycleValue,
+      });
+
       const collectType = baseRef.current?.collectionType;
       const ipRange = values.ipRange?.length ? values.ipRange : undefined;
-      const driverType = selectedNode.tabItems?.find(
-        (item) => item.model_id === modelId
-      )?.type;
+      const selectedData = baseRef.current?.selectedData;
 
-      const accessPoint = baseRef.current?.accessPoints.find(
-        (item: any) => item.value === values.accessPointId
-      );
+      let instanceData;
+      if (collectType === 'ip') {
+        instanceData = {
+          ip_range: ipRange.join('-'),
+          instances: [],
+        };
+      } else {
+        instanceData = {
+          ip_range: '',
+          instances: selectedData || [],
+        };
+      }
+
       return {
-        name: values.taskName,
-        input_method: values.enterType === ENTER_TYPE.APPROVAL ? 1 : 0,
-        access_point: accessPoint?.origin && [accessPoint.origin],
-        timeout: values.timeout || 600,
-        scan_cycle: formatCycleValue(values),
-        model_id: modelId,
-        driver_type: driverType,
-        task_type: modelItem.task_type,
-        accessPointId: values.access_point?.[0]?.id,
-        credential: {
-          user: values.user,
-          password: values.password,
-          port: values.port,
-        },
-        ...(collectType === 'ip'
-          ? {
-            ip_range: ipRange.join('-'),
-            instances: [],
-            params: {
-              organization: [values.organization?.[0]],
-            },
-          } : { 
-            ip_range: '',
-            instances: instance || [] 
-          }),
+        ...baseData,
+        ...instanceData,
+        credential: buildCredential(
+          {
+            user: 'user',
+            password: 'password',
+            port: 'port',
+          },
+          values
+        ),
       };
     },
   });
@@ -102,7 +104,8 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
           ipRange,
           ...values,
           ...values.credential,
-          organization: values.params?.organization,
+          password: PASSWORD_PLACEHOLDER,
+          organization: values.team || [],
           accessPointId: values.access_point?.[0]?.id,
         });
       } else {
@@ -165,7 +168,23 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
                 name="password"
                 rules={[{ required: true, message: t('common.inputTip') }]}
               >
-                <Input.Password placeholder={t('common.inputTip')} />
+                <Input.Password
+                  placeholder={t('common.inputTip')}
+                  onFocus={(e) => {
+                    if (!editId) return;
+                    const value = e.target.value;
+                    if (value === PASSWORD_PLACEHOLDER) {
+                      form.setFieldValue('password', '');
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!editId) return;
+                    const value = e.target.value;
+                    if (!value || value.trim() === '') {
+                      form.setFieldValue('password', PASSWORD_PLACEHOLDER);
+                    }
+                  }}
+                />
               </Form.Item>
 
               <Form.Item

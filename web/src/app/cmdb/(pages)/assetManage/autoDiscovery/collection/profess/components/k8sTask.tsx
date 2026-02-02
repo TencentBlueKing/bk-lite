@@ -6,6 +6,7 @@ import { useTranslation } from '@/utils/i18n';
 import { Form, Spin } from 'antd';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { K8S_FORM_INITIAL_VALUES } from '@/app/cmdb/constants/professCollection';
+import { formatTaskValues } from '../hooks/formatTaskValues';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 
 interface K8sTaskFormProps {
@@ -24,7 +25,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
-  const baseRef = useRef<BaseTaskRef>(null);
+  const baseRef = useRef<BaseTaskRef>(null as any);
   const { model_id: modelId } = modelItem;
 
   const {
@@ -41,24 +42,22 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
     onSuccess,
     onClose,
     formatValues: (values) => {
-      const instance = baseRef.current?.instOptions.find(
+      const instance = baseRef.current?.instOptions?.find(
         (item: any) => item.value === values.instId
       );
-      const driverType = selectedNode.tabItems?.find(
-        (item) => item.model_id === modelId
-      )?.type;
 
       return {
-        name: values.taskName,
+        ...formatTaskValues({
+          values,
+          baseRef,
+          selectedNode,
+          modelItem,
+          modelId,
+          formatCycleValue,
+        }),
         instances: instance?.origin && [instance.origin],
-        timeout: values.timeout || 60,
-        driver_type: driverType,
-        scan_cycle: formatCycleValue(values),
-        model_id: modelId,
-        task_type: modelItem.task_type,
         input_method: 0,
         ip_range: '',
-        params: {},
       };
     },
   });
@@ -67,7 +66,10 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
     const initForm = async () => {
       if (editId) {
         const values = await fetchTaskDetail(editId);
-        form.setFieldsValue(values);
+        form.setFieldsValue({
+          ...values,
+          organization: values.team || [],
+        });
       } else {
         form.setFieldsValue(K8S_FORM_INITIAL_VALUES);
       }

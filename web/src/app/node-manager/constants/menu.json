@@ -14,6 +14,12 @@
           "name": "cloud_region_node"
         },
         {
+          "title": "环境",
+          "url": "/node-manager/cloudregion/environment",
+          "icon": "windows",
+          "name": "cloud_region_environment"
+        },
+        {
           "title": "变量",
           "url": "/node-manager/cloudregion/variable",
           "icon": "bianliang",
@@ -22,7 +28,7 @@
       ]
     },
     {
-      "title": "采集器",
+      "title": "组件库",
       "icon": "caijiqi",
       "url": "/node-manager/collector",
       "name": "collector_list",
@@ -67,6 +73,12 @@
           "name": "cloud_region_node"
         },
         {
+          "title": "Environment",
+          "url": "/node-manager/cloudregion/environment",
+          "icon": "windows",
+          "name": "cloud_region_environment"
+        },
+        {
           "title": "Variable",
           "url": "/node-manager/cloudregion/variable",
           "icon": "bianliang",
@@ -75,7 +87,7 @@
       ]
     },
     {
-      "title": "Collector",
+      "title": "Component Library",
       "icon": "xiaocaijiqi",
       "url": "/node-manager/collector",
       "name": "collector_list",

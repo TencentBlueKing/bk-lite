@@ -1,14 +1,16 @@
-import json
 import os
+import tempfile
 import time
 
-import requests
 from celery import shared_task
-from django.conf import settings
+from django.utils import timezone
 from tqdm import tqdm
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.mixinx import EncryptMixin
 from apps.opspilot.enum import DocumentStatus
+from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
+from apps.opspilot.metis.llm.rag.naive_rag_entity import DocumentMetadataUpdateRequest
 from apps.opspilot.models import (
     Bot,
     BotWorkFlow,
@@ -24,7 +26,6 @@ from apps.opspilot.models import (
 )
 from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
-from apps.opspilot.utils.chat_server_helper import ChatServerHelper
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.graph_utils import GraphUtils
 
@@ -47,9 +48,10 @@ def retrain_all(knowledge_base_id, username, domain, delete_qa_pairs):
 
 def general_embed_by_document_list(document_list, is_show=False, username="", domain="", delete_qa_pairs=False):
     if is_show:
-        res, remote_docs = invoke_one_document(document_list[0], is_show)
+        res, remote_docs, _ = invoke_one_document(document_list[0], is_show)
         docs = [i["page_content"] for i in remote_docs][:10]
         return docs
+    logger.info(f"document_list: {document_list}")
     knowledge_base_id = document_list[0].knowledge_base_id
     knowledge_ids = [doc.id for doc in document_list]
     task_obj = KnowledgeTask.objects.create(
@@ -90,134 +92,164 @@ def invoke_document_to_es(document_id=0, document=None, delete_qa_pairs=False):
     logger.info(f"document {document.name} progress: {document.train_progress}")
     keep_qa = not delete_qa_pairs
     KnowledgeSearchService.delete_es_content(document.knowledge_index_name(), document.id, document.name, keep_qa)
-    res, knowledge_docs = invoke_one_document(document)
+    res, knowledge_docs, error_msg = invoke_one_document(document)
     if not res:
         document.train_status = DocumentStatus.ERROR
+        document.error_message = error_msg
         document.save()
         return
     document.train_status = DocumentStatus.READY
+    document.error_message = None
     document.save()
     logger.info(f"document {document.name} progress: {document.train_progress}")
 
 
 def invoke_one_document(document, is_show=False):
-    source_invoke_format_map = {
-        "file": format_file_invoke_kwargs,
-        "manual": format_manual_invoke_kwargs,
-        "web_page": format_web_page_invoke_kwargs,
-    }
-    remote_url_map = {
-        "file": f"{settings.METIS_SERVER_URL}/api/rag/file_ingest",
-        "web_page": f"{settings.METIS_SERVER_URL}/api/rag/website_ingest",
-        "manual": f"{settings.METIS_SERVER_URL}/api/rag/custom_content_ingest",
-    }
-    knowledge_docs = []
+    """处理文档并调用相应的摄取方法"""
     source_type = document.knowledge_source_type
-    source_remote = remote_url_map[source_type]
-    logger.info("Start handle {} knowledge: {}".format(source_type, document.name))
-    form_data = format_invoke_kwargs(document, preview=is_show)
-    source_data = source_invoke_format_map[source_type](document)
+    logger.info(f"Start handle {source_type} knowledge: {document.name}")
+
+    # 准备通用参数
+    params = _prepare_ingest_params(document, is_show)
+
+    # 初始化 RAG 实例
+    rag = PgvectorRag()
+
     res = {"status": "fail"}
+    knowledge_docs = []
+    error_msg = None
+
     try:
-        headers = ChatServerHelper.get_chat_server_header()
-        # SSL验证配置 - 从环境变量读取
-        ssl_verify = os.getenv("METIS_SSL_VERIFY", "false").lower() == "true"
         if source_type == "file":
-            files = source_data.pop("file")
-            response = requests.post(
-                source_remote,
-                headers=headers,
-                data=form_data,
-                files=files,
-                verify=ssl_verify,
-            )
+            res = _handle_file_ingest(document, params, rag)
+        elif source_type == "manual":
+            res = _handle_manual_ingest(document, params, rag)
+        elif source_type == "web_page":
+            res = _handle_webpage_ingest(document, params, rag)
         else:
-            form_data.update(source_data)
-            response = requests.post(source_remote, headers=headers, data=form_data, verify=ssl_verify)
-        res = response.json()
-        remote_docs = res.get("documents", [])
+            error_msg = f"不支持的文档类型: {source_type}"
+            logger.error(error_msg)
+            return False, [], error_msg
+
+        # 处理返回结果
+        if is_show:
+            knowledge_docs = res.get("documents", [])
         document.chunk_size = res.get("chunks_size", 0)
+
         if not document.chunk_size:
-            logger.error(f"获取不到文档，返回结果为： {res}")
-        knowledge_docs.extend(remote_docs)
+            error_msg = f"获取不到文档，返回结果为： {res}"
+            logger.error(error_msg)
+
     except Exception as e:
-        logger.exception(e)
-    return res.get("status") == "success", knowledge_docs
+        error_msg = str(e)
+        logger.exception(f"文档处理失败: {e}")
+        res = {"status": "error", "message": error_msg}
+
+    return res.get("status") == "success", knowledge_docs, error_msg
 
 
-def format_file_invoke_kwargs(document):
-    knowledge = FileKnowledge.objects.filter(knowledge_document_id=document.id).first()
-    return {
-        "file": [
-            (
-                "file",
-                (
-                    knowledge.file.name,
-                    knowledge.file.read(),
-                    "application/octet-stream",
-                ),
-            )
-        ]
-    }
-
-
-def format_manual_invoke_kwargs(document):
-    knowledge = ManualKnowledge.objects.filter(knowledge_document_id=document.id).first()
-    return {"content": document.name + knowledge.content}
-
-
-def format_web_page_invoke_kwargs(document):
-    knowledge = WebPageKnowledge.objects.filter(knowledge_document_id=document.id).first()
-    return {"url": knowledge.url, "max_depth": knowledge.max_depth}
-
-
-def format_invoke_kwargs(knowledge_document: KnowledgeDocument, preview=False):
+def _prepare_ingest_params(document, is_preview=False):
+    """准备摄取参数"""
     embed_config = {}
     semantic_embed_config = {}
     semantic_embed_model_name = ""
-    if knowledge_document.knowledge_base.embed_model:
-        embed_config = knowledge_document.knowledge_base.embed_model.decrypted_embed_config
-        embed_config["model"] = embed_config.get("model", knowledge_document.knowledge_base.embed_model.name)
-    if knowledge_document.semantic_chunk_parse_embedding_model:
-        semantic_embed_config = knowledge_document.semantic_chunk_parse_embedding_model.decrypted_embed_config
-        semantic_embed_model_name = knowledge_document.semantic_chunk_parse_embedding_model.name
+
+    if document.knowledge_base.embed_model:
+        embed_config = document.knowledge_base.embed_model.decrypted_embed_config
+        embed_config["model"] = embed_config.get("model", document.knowledge_base.embed_model.name)
+
+    if document.semantic_chunk_parse_embedding_model:
+        semantic_embed_config = document.semantic_chunk_parse_embedding_model.decrypted_embed_config
+        semantic_embed_model_name = document.semantic_chunk_parse_embedding_model.name
+
+    # OCR配置
     ocr_config = {}
-    if knowledge_document.enable_ocr_parse:
-        if knowledge_document.ocr_model.name == "AzureOCR":
-            ocr_config = {
-                "ocr_type": "azure_ocr",
-                "azure_api_key": knowledge_document.ocr_model.ocr_config["api_key"] or " ",
-                "azure_endpoint": knowledge_document.ocr_model.ocr_config["base_url"],
-            }
-        elif knowledge_document.ocr_model.name == "OlmOCR":
-            ocr_config = {
-                "ocr_type": "olm_ocr",
-                "olm_base_url": knowledge_document.ocr_model.ocr_config["base_url"],
-                "olm_api_key": knowledge_document.ocr_model.ocr_config["api_key"] or " ",
-                "olm_model": knowledge_document.ocr_model.name,
-            }
-        else:
-            ocr_config = {
-                "ocr_type": "pp_ocr",
-            }
-    kwargs = {
-        "knowledge_base_id": knowledge_document.knowledge_index_name(),
-        "knowledge_id": str(knowledge_document.id),
+    if document.enable_ocr_parse and document.ocr_model and document.ocr_model.ocr_config:
+        # 复制一份配置以防止修改原始对象
+        ocr_config = document.ocr_model.ocr_config.copy()
+        # 尝试解密 api_key 字段（如果是明文则会被忽略）
+        try:
+            EncryptMixin.decrypt_field("api_key", ocr_config)
+        except Exception:
+            # 任何解密异常都不应阻塞摄取流程，记录在日志中
+            logger.exception("Failed to decrypt OCR api_key")
+
+        ocr_config = {
+            "ocr_type": ocr_config.get("type", "olm_ocr"),
+            "olm_base_url": ocr_config.get("base_url", ""),
+            "olm_api_key": ocr_config.get("api_key") or " ",
+            "olm_model": ocr_config.get("model", "olmOCR-7B-0225-preview"),
+        }
+
+    params = {
+        "is_preview": is_preview,
+        "knowledge_base_id": document.knowledge_index_name(),
+        "knowledge_id": str(document.id),
         "embed_model_base_url": embed_config.get("base_url", ""),
         "embed_model_api_key": embed_config.get("api_key", "") or " ",
         "embed_model_name": embed_config.get("model", ""),
-        "chunk_mode": knowledge_document.chunk_type,
-        "chunk_size": knowledge_document.general_parse_chunk_size,
-        "chunk_overlap": knowledge_document.general_parse_chunk_overlap,
-        "load_mode": knowledge_document.mode,
-        "semantic_chunk_model_base_url": [semantic_embed_config.get("base_url", "")] if semantic_embed_config.get("base_url", "") else [],
+        "chunk_mode": document.chunk_type,
+        "chunk_size": document.general_parse_chunk_size,
+        "chunk_overlap": document.general_parse_chunk_overlap,
+        "load_mode": document.mode,
+        "semantic_chunk_model_base_url": semantic_embed_config.get("base_url", ""),
         "semantic_chunk_model_api_key": semantic_embed_config.get("api_key", "") or " ",
         "semantic_chunk_model": semantic_embed_config.get("model", semantic_embed_model_name),
-        "preview": "true" if preview else "false",
-        "metadata": json.dumps({"enabled": "true", "is_doc": "1", "qa_count": 0}),
+        "metadata": {"enabled": "true", "is_doc": "1", "qa_count": 0},
     }
-    kwargs.update(ocr_config)
-    return kwargs
+    params.update(ocr_config)
+
+    return params
+
+
+def _handle_file_ingest(document, params, rag):
+    """处理文件类型的文档摄取"""
+    knowledge = FileKnowledge.objects.filter(knowledge_document_id=document.id).first()
+    if not knowledge:
+        raise ValueError(f"找不到文件知识记录: document_id={document.id}")
+
+    # 创建临时文件
+    file_extension = knowledge.file.name.split(".")[-1].lower() if "." in knowledge.file.name else ""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_extension}") as temp_file:
+        # 写入文件内容
+        for chunk in knowledge.file.chunks():
+            temp_file.write(chunk)
+        temp_file.flush()
+        temp_path = temp_file.name
+
+    try:
+        # 调用 RAG 的 file_ingest 方法
+        result = rag.file_ingest(file_path=temp_path, file_name=knowledge.file.name, params=params)
+        return result
+    finally:
+        # 清理临时文件
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
+def _handle_manual_ingest(document, params, rag):
+    """处理手动输入类型的文档摄取"""
+    knowledge = ManualKnowledge.objects.filter(knowledge_document_id=document.id).first()
+    if not knowledge:
+        raise ValueError(f"找不到手动知识记录: document_id={document.id}")
+
+    # 合并标题和内容
+    content = document.name + knowledge.content
+
+    # 调用 RAG 的 custom_content_ingest 方法
+    result = rag.custom_content_ingest(content=content, params=params)
+    return result
+
+
+def _handle_webpage_ingest(document, params, rag):
+    """处理网页类型的文档摄取"""
+    knowledge = WebPageKnowledge.objects.filter(knowledge_document_id=document.id).first()
+    if not knowledge:
+        raise ValueError(f"找不到网页知识记录: document_id={document.id}")
+
+    # 调用 RAG 的 website_ingest 方法
+    result = rag.website_ingest(url=knowledge.url, max_depth=knowledge.max_depth, params=params)
+    return result
 
 
 @shared_task
@@ -231,14 +263,35 @@ def sync_web_page_knowledge(web_page_knowledge_id):
         return
     document_list = [web_page.knowledge_document]
     web_page.knowledge_document.train_status = DocumentStatus.CHUNKING
+    web_page.last_run_time = timezone.now()
+    web_page.save()
     web_page.knowledge_document.save()
+    delete_and_update_old_data(web_page)
     general_embed_by_document_list(
         document_list,
         False,
         web_page.knowledge_document.created_by,
         web_page.knowledge_document.domain,
-        True,
     )
+
+
+def delete_and_update_old_data(web_page: WebPageKnowledge):
+    try:
+        index_name = web_page.knowledge_document.knowledge_index_name()
+        knowledge_document_ids = [web_page.knowledge_document.id]
+        KnowledgeSearchService.delete_es_content(index_name=index_name, doc_id=knowledge_document_ids, keep_qa=True)
+        qa_pairs = QAPairs.objects.filter(document_id=web_page.knowledge_document.id)
+        qa_pairs.update(document_id=0)
+        qa_pairs_id = list(qa_pairs.values_list("id", flat=True))
+        request = DocumentMetadataUpdateRequest(
+            knowledge_ids=[f"qa_pairs_id_{i}" for i in qa_pairs_id],
+            chunk_ids=[],
+            metadata={"base_chunk_id": ""},
+        )
+        rag_client = PgvectorRag()
+        rag_client.update_metadata(request)
+    except Exception as e:
+        logger.exception(e)
 
 
 @shared_task
@@ -441,14 +494,16 @@ def _initialize_qa_task(file_data, knowledge_base_id, username, domain):
 
 def _process_qa_pairs_batch(qa_pairs_list, file_data, knowledge_base, task_obj):
     """批量处理问答对数据"""
-    url = f"{settings.METIS_SERVER_URL}/api/rag/custom_content_ingest"
-    headers = ChatServerHelper.get_chat_server_header()
-    kwargs = set_import_kwargs(knowledge_base)
+    # 准备基础参数
+    base_params = _prepare_qa_ingest_params(knowledge_base)
+    rag = PgvectorRag()
 
     for qa_pairs in qa_pairs_list:
         qa_json = file_data[qa_pairs.name]
-        kwargs["knowledge_id"] = f"qa_pairs_id_{qa_pairs.id}"
-        success_count = _process_single_qa_pairs(qa_pairs, qa_json, kwargs, url, headers, task_obj)
+        params = base_params.copy()
+        params["knowledge_id"] = f"qa_pairs_id_{qa_pairs.id}"
+
+        success_count = _process_single_qa_pairs(qa_pairs, qa_json, params, rag, task_obj)
 
         # 更新问答对数量和任务进度
         qa_pairs.status = "completed"
@@ -459,9 +514,35 @@ def _process_qa_pairs_batch(qa_pairs_list, file_data, knowledge_base, task_obj):
         logger.info(f"批量创建问答对完成: {qa_pairs.name}, 总数: {len(qa_json)}, 成功: {success_count}")
 
 
-def _process_single_qa_pairs(qa_pairs, qa_json, kwargs, url, headers, task_obj):
+def _prepare_qa_ingest_params(knowledge_base):
+    """准备问答对摄取的基础参数"""
+    embed_config = knowledge_base.embed_model.decrypted_embed_config
+
+    return {
+        "is_preview": False,
+        "knowledge_base_id": knowledge_base.knowledge_index_name(),
+        "knowledge_id": "0",
+        "embed_model_base_url": embed_config.get("base_url", ""),
+        "embed_model_api_key": embed_config.get("api_key", "") or " ",
+        "embed_model_name": embed_config.get("model", knowledge_base.embed_model.name),
+        "chunk_mode": "full",
+        "chunk_size": 9999,
+        "chunk_overlap": 128,
+        "load_mode": "full",
+        "semantic_chunk_model_base_url": "",
+        "semantic_chunk_model_api_key": " ",
+        "semantic_chunk_model": "",
+    }
+
+
+def _process_single_qa_pairs(qa_pairs, qa_json, params, rag, task_obj):
     """处理单个问答对集合"""
-    metadata = {"enabled": "true", "base_chunk_id": "", "qa_pairs_id": str(qa_pairs.id), "is_doc": "0"}
+    base_metadata = {
+        "enabled": "true",
+        "base_chunk_id": "",
+        "qa_pairs_id": str(qa_pairs.id),
+        "is_doc": "0",
+    }
     qa_pairs.status = "generating"
     qa_pairs.save()
 
@@ -477,61 +558,66 @@ def _process_single_qa_pairs(qa_pairs, qa_json, kwargs, url, headers, task_obj):
     logger.info(f"开始处理问答对数据: {qa_pairs.name}")
     train_progress = round(float(1 / len(qa_json)) * 100, 4)
     task_progress = 0
+
     for index, qa_item in enumerate(tqdm(qa_json)):
-        result = _create_single_qa_item(qa_item, index, kwargs, metadata, url, headers)
+        result = _create_single_qa_item(qa_item, index, params, base_metadata, rag)
         if result is None:
             continue
         elif result:
             success_count += 1
         else:
             error_count += 1
+
         # 每10个记录输出一次进度日志
         if (index + 1) % 10 == 0:
             logger.info(f"已处理 {index + 1}/{len(qa_json)} 个问答对，成功: {success_count}, 失败: {error_count}")
+
         task_progress += train_progress
         task_obj.train_progress = round(task_progress, 2)
         task_obj.completed_count += 1
         task_obj.save()
+
     return success_count
 
 
-def _create_single_qa_item(qa_item, index, kwargs, metadata, url, headers):
+def _create_single_qa_item(qa_item, index, base_params, base_metadata, rag):
     """创建单个问答项"""
     if not qa_item["instruction"]:
         logger.warning(f"跳过空instruction，索引: {index}")
         return None
 
     # 构建请求参数
-    params = dict(kwargs, **{"content": qa_item["instruction"]})
-    params["metadata"] = json.dumps(dict(metadata, **{"qa_question": qa_item["instruction"], "qa_answer": qa_item["output"]}))
+    params = base_params.copy()
+    params["metadata"] = {
+        **base_metadata,
+        "qa_question": qa_item["instruction"],
+        "qa_answer": qa_item["output"],
+    }
 
     # 尝试创建问答对，带重试机制
-    return _send_qa_request_with_retry(params, url, headers, index)
+    return _ingest_qa_with_retry(qa_item["instruction"], params, rag, index)
 
 
-def _send_qa_request_with_retry(params, url, headers, index):
-    """发送问答对创建请求，带重试机制"""
-    # SSL验证配置 - 从环境变量读取
-    ssl_verify = os.getenv("METIS_SSL_VERIFY", "false").lower() == "true"
+def _ingest_qa_with_retry(content, params, rag, index):
+    """摄取问答对内容，带重试机制"""
     try:
-        res = requests.post(url, headers=headers, data=params, verify=ssl_verify).json()
+        res = rag.custom_content_ingest(content=content, params=params)
         if res.get("status") != "success":
             raise Exception(f"创建问答对失败: {res.get('message', '')}")
+        return True
     except Exception as e:
-        logger.warning(f"第一次请求失败，准备重试。索引: {index}, 错误: {str(e)}")
+        logger.warning(f"第一次摄取失败，准备重试。索引: {index}, 错误: {str(e)}")
         # 重试机制：等待5秒后重试
         time.sleep(5)
         try:
-            res = requests.post(url, headers=headers, data=params, verify=ssl_verify).json()
+            res = rag.custom_content_ingest(content=content, params=params)
             if res.get("status") != "success":
                 raise Exception(f"重试后仍然失败: {res.get('message', '')}")
             logger.info(f"重试成功，索引: {index}")
+            return True
         except Exception as retry_e:
             logger.error(f"创建问答对失败，索引: {index}, 错误: {str(retry_e)}")
-            if hasattr(retry_e, "response"):
-                logger.error(f"响应内容: {retry_e.response}")
             return False
-    return True
 
 
 def create_qa_pairs_task(knowledge_base_id, qa_name, username, domain):
@@ -547,27 +633,6 @@ def create_qa_pairs_task(knowledge_base_id, qa_name, username, domain):
     )
     logger.info(f"问答对对象{'创建' if created else '获取'}成功: {qa_pairs.name}")
     return qa_pairs
-
-
-def set_import_kwargs(knowledge_base):
-    embed_config = knowledge_base.embed_model.decrypted_embed_config
-    kwargs = {
-        "knowledge_base_id": knowledge_base.knowledge_index_name(),
-        "knowledge_id": "0",
-        "embed_model_base_url": embed_config.get("base_url", ""),
-        "embed_model_api_key": embed_config.get("api_key", "") or " ",
-        "embed_model_name": embed_config.get("model", knowledge_base.embed_model.name),
-        "chunk_mode": "full",
-        "chunk_size": 9999,
-        "chunk_overlap": 128,
-        "load_mode": "full",
-        "semantic_chunk_model_base_url": [],
-        "semantic_chunk_model_api_key": " ",
-        "semantic_chunk_model": "",
-        "preview": "false",
-    }
-
-    return kwargs
 
 
 @shared_task
@@ -691,3 +756,15 @@ def chat_flow_celery_task(bot_id, node_id, message):
         logger.info(f"ChatFlow周期任务执行完成: bot_id={bot_id}, node_id={node_id}, 执行结果为{result}")
     except Exception as e:
         logger.error(f"ChatFlow周期任务执行失败: bot_id={bot_id}, node_id={node_id}, error={str(e)}")
+
+
+@shared_task
+def update_graph_task(current_count, all_count, task_id):
+    task_obj = KnowledgeTask.objects.filter(id=task_id).first()
+    if not task_obj:
+        return
+
+    task_obj.completed_count = current_count
+    train_progress = round(float(current_count / all_count) * 100, 2)
+    task_obj.train_progress = train_progress
+    task_obj.save()

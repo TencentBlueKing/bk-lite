@@ -1,5 +1,6 @@
 import React from 'react';
-import { Form, Input, InputNumber, Select, Checkbox } from 'antd';
+import { Form, Input, InputNumber, Select, Checkbox, Tooltip } from 'antd';
+import { ExclamationCircleFilled } from '@ant-design/icons';
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
@@ -9,7 +10,7 @@ export const useConfigRenderer = () => {
   const FORM_WIDGET_WIDTH = 300;
   const FORM_WIDGET_WIDTH_CLASS = 'w-[300px]';
 
-  const renderFormField = (fieldConfig: any) => {
+  const renderFormField = (fieldConfig: any, mode?: string) => {
     const {
       name,
       label,
@@ -21,6 +22,7 @@ export const useConfigRenderer = () => {
       dependency,
       rules = [],
       description,
+      editable,
     } = fieldConfig;
 
     const formRules = [
@@ -84,6 +86,7 @@ export const useConfigRenderer = () => {
           return (
             <Password
               {...widget_props}
+              clickToEdit={mode === 'edit' && editable !== false}
               placeholder={widget_props.placeholder || label}
               className={`${FORM_WIDGET_WIDTH_CLASS} mr-[10px]`}
             />
@@ -290,6 +293,8 @@ export const useConfigRenderer = () => {
       change_handler,
       options_key,
       enable_row_filter = false,
+      rules = [],
+      required = false,
     } = columnConfig;
 
     let options = columnConfig.options || [];
@@ -310,9 +315,42 @@ export const useConfigRenderer = () => {
       width: widget_props.width || 200,
     };
 
+    // 验证函数
+    const validateField = (value: any): string | null => {
+      // 如果字段标记为required，进行必填验证
+      if (required) {
+        if (
+          value === undefined ||
+          value === null ||
+          value === '' ||
+          (Array.isArray(value) && value.length === 0)
+        ) {
+          return t('common.required');
+        }
+      }
+      // 如果有rules配置，按照rules验证（只支持pattern类型）
+      if (rules.length > 0) {
+        for (const rule of rules) {
+          // 正则验证（只在有值时验证）
+          if (rule.type === 'pattern') {
+            if (value !== undefined && value !== null && value !== '') {
+              const regex = new RegExp(rule.pattern);
+              if (!regex.test(String(value))) {
+                return rule.message || t('common.required');
+              }
+            }
+          }
+        }
+      }
+      return null;
+    };
+
     const handleChange = (value: any, record: any, index: number) => {
       const newData = [...dataSource];
       newData[index] = { ...newData[index], [name]: value };
+      // 验证当前字段
+      const errorMsg = validateField(value);
+      newData[index][`${name}_error`] = errorMsg;
       if (change_handler) {
         const {
           type,
@@ -325,11 +363,15 @@ export const useConfigRenderer = () => {
             ? newData[index][source_fields[0]]
             : value;
           newData[index][target_field] = sourceValue;
+          // 清除目标字段的错误状态（因为值已经被更新了）
+          newData[index][`${target_field}_error`] = null;
         } else if (type === 'combine') {
           const values = source_fields.map(
             (field: string) => newData[index][field] || ''
           );
           newData[index][target_field] = values.join(separator);
+          // 清除目标字段的错误状态（因为值已经被更新了）
+          newData[index][`${target_field}_error`] = null;
         }
       }
       onTableDataChange(newData);
@@ -337,30 +379,58 @@ export const useConfigRenderer = () => {
 
     switch (type) {
       case 'input':
-        column.render = (text: any, record: any, index: number) => (
-          <Input
-            value={text}
-            onChange={(e) => handleChange(e.target.value, record, index)}
-            placeholder={widget_props.placeholder || label}
-            {...widget_props}
-          />
-        );
+        column.render = (text: any, record: any, index: number) => {
+          const errorMsg = record[`${name}_error`];
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Input
+                value={text}
+                onChange={(e) => handleChange(e.target.value, record, index)}
+                placeholder={widget_props.placeholder || label}
+                status={errorMsg ? 'error' : ''}
+                style={{ flex: 1 }}
+                {...widget_props}
+              />
+              {errorMsg && (
+                <Tooltip title={errorMsg}>
+                  <ExclamationCircleFilled
+                    style={{ color: 'var(--color-fail)', fontSize: '14px' }}
+                  />
+                </Tooltip>
+              )}
+            </div>
+          );
+        };
         break;
 
       case 'inputNumber':
-        column.render = (text: any, record: any, index: number) => (
-          <InputNumber
-            value={text}
-            onChange={(value) => handleChange(value, record, index)}
-            placeholder={widget_props.placeholder || label}
-            style={{ width: '100%' }}
-            {...widget_props}
-          />
-        );
+        column.render = (text: any, record: any, index: number) => {
+          const errorMsg = record[`${name}_error`];
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <InputNumber
+                value={text}
+                onChange={(value) => handleChange(value, record, index)}
+                placeholder={widget_props.placeholder || label}
+                style={{ flex: 1 }}
+                status={errorMsg ? 'error' : ''}
+                {...widget_props}
+              />
+              {errorMsg && (
+                <Tooltip title={errorMsg}>
+                  <ExclamationCircleFilled
+                    style={{ color: 'var(--color-fail)', fontSize: '14px' }}
+                  />
+                </Tooltip>
+              )}
+            </div>
+          );
+        };
         break;
 
       case 'select':
         column.render = (text: any, record: any, index: number) => {
+          const errorMsg = record[`${name}_error`];
           const filteredOptions = getFilteredOptionsForRow(
             options,
             enable_row_filter,
@@ -371,49 +441,86 @@ export const useConfigRenderer = () => {
           );
 
           return (
-            <Select
-              value={text}
-              onChange={(value) => handleChange(value, record, index)}
-              placeholder={widget_props.placeholder || label}
-              style={{ width: '100%' }}
-              {...widget_props}
-            >
-              {filteredOptions.map((option: any) => (
-                <Select.Option key={option.value} value={option.value}>
-                  {option.label}
-                </Select.Option>
-              ))}
-            </Select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Select
+                value={text}
+                onChange={(value) => handleChange(value, record, index)}
+                placeholder={widget_props.placeholder || label}
+                style={{ flex: 1 }}
+                status={errorMsg ? 'error' : ''}
+                {...widget_props}
+              >
+                {filteredOptions.map((option: any) => (
+                  <Select.Option key={option.value} value={option.value}>
+                    {option.label}
+                  </Select.Option>
+                ))}
+              </Select>
+              {errorMsg && (
+                <Tooltip title={errorMsg}>
+                  <ExclamationCircleFilled
+                    style={{ color: 'var(--color-fail)', fontSize: '14px' }}
+                  />
+                </Tooltip>
+              )}
+            </div>
           );
         };
         break;
 
       case 'group_select':
         column.render = (text: any, record: any, index: number) => {
+          const errorMsg = record[`${name}_error`];
           const handleGroupChange = (val: number | number[] | undefined) => {
             const groupArray = Array.isArray(val) ? val : val ? [val] : [];
             handleChange(groupArray, record, index);
           };
 
           return (
-            <GroupTreeSelector
-              value={text}
-              onChange={handleGroupChange}
-              {...widget_props}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <GroupTreeSelector
+                value={text}
+                onChange={handleGroupChange}
+                status={errorMsg ? 'error' : ''}
+                style={{ flex: 1 }}
+                {...widget_props}
+              />
+              {errorMsg && (
+                <Tooltip title={errorMsg}>
+                  <ExclamationCircleFilled
+                    style={{ color: 'var(--color-fail)', fontSize: '14px' }}
+                  />
+                </Tooltip>
+              )}
+            </div>
           );
         };
         break;
 
       case 'password':
-        column.render = (text: any, record: any, index: number) => (
-          <Password
-            value={text}
-            onChange={(value) => handleChange(value, record, index)}
-            placeholder={widget_props.placeholder || label}
-            {...widget_props}
-          />
-        );
+        column.render = (text: any, record: any, index: number) => {
+          const errorMsg = record[`${name}_error`];
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Password
+                value={text}
+                clickToEdit={false}
+                onChange={(value) => handleChange(value, record, index)}
+                placeholder={widget_props.placeholder || label}
+                status={errorMsg ? 'error' : ''}
+                style={{ flex: 1 }}
+                {...widget_props}
+              />
+              {errorMsg && (
+                <Tooltip title={errorMsg}>
+                  <ExclamationCircleFilled
+                    style={{ color: 'var(--color-fail)', fontSize: '14px' }}
+                  />
+                </Tooltip>
+              )}
+            </div>
+          );
+        };
         break;
 
       default:

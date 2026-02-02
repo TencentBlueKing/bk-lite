@@ -4,16 +4,21 @@ from apps.node_mgmt.constants.node import NodeConstants
 class ControllerConstants:
     """控制器相关常量"""
 
+    # Windows 安装路径
+    WINDOWS_INSTALL_DIR = "C:\\bklite\\fusion-collectors"
+
     CONTROLLER = [
         {
             "os": "linux",
             "name": "Controller",
             "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
+            "version_command": "cat /opt/fusion-collectors/VERSION",
         },
         {
             "os": "windows",
             "name": "Controller",
             "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
+            "version_command": f"type {WINDOWS_INSTALL_DIR}\\VERSION",
         },
     ]
 
@@ -33,6 +38,7 @@ class ControllerConstants:
 
     # Etag缓存时间（秒）
     E_CACHE_TIMEOUT = 60 * 5  # 5分钟
+
 
     # 控制器下发目录
     CONTROLLER_INSTALL_DIR = {
@@ -59,13 +65,13 @@ class ControllerConstants:
 
     # 卸载命令
     UNINSTALL_COMMAND = {
-        NodeConstants.LINUX_OS: "cd /opt/fusion-collectors && ./uninstall.sh",
+        NodeConstants.LINUX_OS: "cd /opt/fusion-collectors && sudo chmod +x uninstall.sh && sudo ./uninstall.sh",
         NodeConstants.WINDOWS_OS: "powershell -command \"Remove-Item -Path {} -Recurse\"",
     }
 
     # 控制器目录删除命令
     CONTROLLER_DIR_DELETE_COMMAND = {
-        NodeConstants.LINUX_OS: "rm -rf /opt/fusion-collectors",
+        NodeConstants.LINUX_OS: "sudo rm -rf /opt/fusion-collectors",
         NodeConstants.WINDOWS_OS: "powershell -command \"Remove-Item -Path {} -Recurse\"",
     }
 
@@ -91,4 +97,12 @@ class ControllerConstants:
     NODE_TYPE_ENUM = {
         NODE_TYPE_CONTAINER: "容器节点",
         NODE_TYPE_HOST: "主机节点",
+    }
+
+    WAITING = "waiting"
+    INSTALLED = "installed"
+    # 手动安装控制器状态
+    MANUAL_INSTALL_STATUS_ENUM = {
+        WAITING: "等待安装",
+        INSTALLED: "安装成功",
     }

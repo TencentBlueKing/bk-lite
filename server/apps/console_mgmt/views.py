@@ -6,7 +6,6 @@ from django.db import transaction
 from django.http import JsonResponse
 
 from apps.core.utils.loader import LanguageLoader
-from apps.rpc.opspilot import OpsPilot
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import Group, Role, User
 from apps.system_mgmt.models.app import App
@@ -71,8 +70,6 @@ def init_user_set(request):
     res = client.init_user_default_attributes(kwargs["user_id"], kwargs["group_name"], request.user.group_list[0]["id"])
     if not res["result"]:
         return JsonResponse(res)
-    opspilot_client = OpsPilot()
-    res = opspilot_client.init_user_set(res["data"]["group_id"], kwargs["group_name"])
     return JsonResponse(res)
 
 
@@ -148,8 +145,7 @@ def validate_email_code(request):
         # 使用check_password验证
         if check_password(input_code, hashed_code):
             return JsonResponse({"result": True, "message": loader.get("success.verification_success", "Verification successful")})
-        else:
-            return JsonResponse({"result": False, "message": loader.get("error.verification_code_incorrect", "Verification code is incorrect")})
+        return JsonResponse({"result": False, "message": loader.get("error.verification_code_incorrect", "Verification code is incorrect")})
     except Exception as e:
         return JsonResponse({"result": False, "message": str(e)})
 
@@ -265,10 +261,6 @@ def get_user_info(request):
             "password_last_modified": user.password_last_modified.isoformat() if user.password_last_modified else None,
             "temporary_pwd": user.temporary_pwd,
         }
-
-        # 记录操作日志
-        log_operation(request, "execute", "console_mgmt", f"查询用户信息: {user.username}")
-
         return JsonResponse({"result": True, "data": user_info})
     except User.DoesNotExist:
         return JsonResponse({"result": False, "message": loader.get("error.user_not_found", "User not found")})

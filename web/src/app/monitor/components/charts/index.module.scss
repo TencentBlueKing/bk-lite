@@ -2,6 +2,7 @@
     margin-top: 10px;
     pointer-events: auto;
     max-height: 300px;
+    max-width: 390px;
     overflow-y: auto;
     font-size: 14px;
     background: var(--color-bg-1);
@@ -15,12 +16,10 @@
     height: 100%;
     position: relative;
     background: var(--color-bg-1);
+}
 
-    :global {
-        .recharts-tooltip-wrapper {
-            z-index: 9;
-        }
-    }
+.chart :global(.recharts-tooltip-wrapper) {
+    z-index: 9;
 }
 
 .noData {

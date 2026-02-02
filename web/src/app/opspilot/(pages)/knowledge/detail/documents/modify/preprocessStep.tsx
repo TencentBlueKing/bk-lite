@@ -50,12 +50,12 @@ const PreprocessStep: React.FC<{
       desc: t('knowledge.documents.semanticChunkDesc'), 
       icon: 'yuyirenwu' 
     },
-    // { 
-    //   key: 'full', 
-    //   title: t('knowledge.documents.noChunk'), 
-    //   desc: t('knowledge.documents.noChunkDesc'), 
-    //   icon: 'fenge1' 
-    // },
+    { 
+      key: 'full', 
+      title: t('knowledge.documents.noChunk'), 
+      desc: t('knowledge.documents.noChunkDesc'), 
+      icon: 'fenge1' 
+    },
   ];
 
   const [chunkType, setChunkType] = useState<keyof typeof chunkImages>(
@@ -173,7 +173,7 @@ const PreprocessStep: React.FC<{
 
   return (
     <div>
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-4 gap-4 mb-6">
         {chunkTypes.map((type) => (
           <Card
             key={type.key}

@@ -104,12 +104,14 @@ const Node = () => {
   const cancelInstall = useCallback(() => {
     setShowNodeTable(true);
     setShowInstallController(false);
-  }, []);
+    getNodes(searchFilters);
+  }, [searchFilters]);
 
   const cancelWait = useCallback(() => {
     setShowNodeTable(true);
     setShowInstallCollectorTable(false);
-  }, []);
+    getNodes(searchFilters);
+  }, [searchFilters]);
 
   const tableColumns = useMemo(() => {
     if (!activeColumns?.length) return columns;
@@ -141,7 +143,11 @@ const Node = () => {
     const installMethods = selectedNodes.map((node) => node.install_method);
     const uniqueInstallMethods = [...new Set(installMethods)];
     // 控制器：检查操作系统和安装方式是否都一致
-    return uniqueOS.length !== 1 || uniqueInstallMethods.length !== 1;
+    return (
+      uniqueOS.length !== 1 ||
+      uniqueInstallMethods.length !== 1 ||
+      uniqueInstallMethods.includes('manual')
+    );
   }, [selectedRowKeys, nodeList]);
 
   const getFirstSelectedNodeOS = useCallback(() => {
@@ -157,10 +163,18 @@ const Node = () => {
       record.operating_system === 'linux'
         ? 'natsexecutor_linux'
         : 'natsexecutor_windows';
-    return [
-      ...(record.status?.collectors || []),
-      ...(record.status?.collectors_install || []),
-    ].filter((collector: any) => collector.collector_id !== natsexecutorId);
+    const collectors = record.status?.collectors || [];
+    const collectorsInstall = record.status?.collectors_install || [];
+    // 获取已在 collectors 中的 collector_id 集合
+    const collectorIds = new Set(collectors.map((c: any) => c.collector_id));
+    // 过滤 collectors_install,排除已在 collectors 中的采集器
+    const filteredCollectorsInstall = collectorsInstall.filter(
+      (c: any) => !collectorIds.has(c.collector_id)
+    );
+    // 合并并排除 NATS-Executor
+    return [...collectors, ...filteredCollectorsInstall].filter(
+      (collector: any) => collector.collector_id !== natsexecutorId
+    );
   };
 
   useEffect(() => {
@@ -297,6 +311,7 @@ const Node = () => {
           const installMethodLabel =
             nodeStateEnum?.install_method?.[installMethodValue] ||
             installMethodValue;
+          const isAutoInstall = installMethodValue === 'auto';
 
           // 获取节点类型映射
           const nodeTypeValue = record.node_type;
@@ -325,7 +340,7 @@ const Node = () => {
                         ? 'rongqifuwuContainerServi'
                         : 'zhuji'
                     }
-                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                    style={{ fontSize: '28px', cursor: 'pointer' }}
                   />
                 </div>
               </Tooltip>
@@ -337,7 +352,7 @@ const Node = () => {
                 <div className="flex items-center">
                   <Icon
                     type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
-                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                    style={{ fontSize: '26px', cursor: 'pointer' }}
                   />
                 </div>
               </Tooltip>
@@ -348,12 +363,12 @@ const Node = () => {
               >
                 <div className="flex items-center">
                   <Icon
-                    type={
-                      installMethodValue === 'auto'
-                        ? 'daohang_007'
-                        : 'ArtboardCopy'
-                    }
-                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                    type={isAutoInstall ? 'daohang_007' : 'rengongganyu'}
+                    style={{
+                      fontSize: isAutoInstall ? '32px' : '24px',
+                      transform: isAutoInstall ? 'none' : 'translateX(2px)',
+                      cursor: 'pointer',
+                    }}
                   />
                 </div>
               </Tooltip>
@@ -400,6 +415,43 @@ const Node = () => {
                 </Tag>
               </Tooltip>
             </>
+          );
+        },
+      },
+      {
+        title: t('node-manager.cloudregion.node.sidecarVersion'),
+        dataIndex: 'version',
+        key: 'version',
+        onCell: () => ({
+          style: {
+            minWidth: 100,
+          },
+        }),
+        render: (_: any, record: TableDataItem) => {
+          const versions = record.versions || [];
+          const currentVersion = versions.find(
+            (item: TableDataItem) => item.component_type === 'controller'
+          );
+          const version = currentVersion?.version;
+          if (!version) return <span>--</span>;
+          return (
+            <div className="flex items-center gap-2">
+              <span>{version}</span>
+              {currentVersion?.upgradeable && (
+                <Tooltip
+                  title={`${t(
+                    'node-manager.cloudregion.node.controllerVersionTip'
+                  )}: ${currentVersion?.latest_version || '--'}`}
+                >
+                  <div>
+                    <Icon
+                      type="shengji"
+                      style={{ fontSize: '16px', cursor: 'pointer' }}
+                    />
+                  </div>
+                </Tooltip>
+              )}
+            </div>
           );
         },
       },

@@ -8,11 +8,10 @@ from apps.cmdb.node_configs.base import BaseNodeParams
 class NetworkNodeParams(BaseNodeParams):
     supported_model_id = "network"  # 通过此属性自动注册
     plugin_name = "snmp_facts"  # 插件名称
-    interval = 300  # 网络设备采集间隔：300秒
+    interval = 60  # 网络设备采集间隔：300秒
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # 当 instance.model_id 为 "vmware_vc" 时，PLUGIN_MAP 配置为 "vmware_info"
         self.PLUGIN_MAP.update({self.model_id: self.plugin_name})
         self.host_field = "ip_addr"
 
@@ -35,28 +34,32 @@ class NetworkNodeParams(BaseNodeParams):
         #     "community": "",
         # }
         """
-
+        _community = "PASSWORD_community_{instance_id}".format(instance_id=self._instance_id)
+        _authkey = "PASSWORD_authkey_{instance_id}".format(instance_id=self._instance_id)
+        _privkey = "PASSWORD_privkey_{instance_id}".format(instance_id=self._instance_id)
         credential_data = {
             "snmp_port": self.credential.get("snmp_port", 161),
-            "community": self.credential.get("community", ""),
+            "community": "${" + _community + "}",  # 团体字 仅v1/v2c使用
             "version": self.credential.get("version", ""),
             "username": self.credential.get("username", ""),
             "level": self.credential.get("level", ""),
-            "integrity": self.credential.get("integrity", ""),
-            "privacy": self.credential.get("privacy", ""),
-            "authkey": self.credential.get("authkey", ""),
-            "privkey": self.credential.get("privkey", ""),
-            "timeout": self.credential.get("timeout", "1"),
+            "integrity": self.credential.get("integrity", ""),  # 哈希算法
+            "privacy": self.credential.get("privacy", ""),  # 加密算法
+            "authkey": "${" + _authkey + "}",
+            "privkey": "${" + _privkey + "}"
         }
-        if self.model_id == "network_topo":
-            credential_data.update({"topo": "true"})
         return credential_data
 
-    def get_instance_id(self, instance):
-        """
-        获取实例 id
-        """
-        if self.has_set_instances:
-            return f"{self.instance.id}_{instance['inst_name']}"
-        else:
-            return f"{self.instance.id}_{instance}"
+    def env_config(self, *args, **kwargs):
+        env_config = {
+            f"PASSWORD_authkey_{self._instance_id}": self.credential.get("authkey", ""),
+            f"PASSWORD_privkey_{self._instance_id}": self.credential.get("privkey", ""),
+            f"PASSWORD_community_{self._instance_id}": self.credential.get("community", ""),
+        }
+        return env_config
+
+
+class NetworkTopoNodeParams(NetworkNodeParams):
+    supported_model_id = "network_topo"
+    plugin_name = "snmp_facts"
+    interval = 300

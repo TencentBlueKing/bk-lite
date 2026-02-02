@@ -7,7 +7,7 @@ from apps.core.encoders import PrettyJSONEncoder
 from apps.core.mixinx import EncryptMixin
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.opspilot.enum import ActionChoice, SkillTypeChoices
+from apps.opspilot.enum import SkillTypeChoices
 
 
 class LLMModel(models.Model, EncryptMixin):
@@ -23,7 +23,13 @@ class LLMModel(models.Model, EncryptMixin):
     team = models.JSONField(default=list)
     is_build_in = models.BooleanField(default=True, verbose_name="是否内置")
     is_demo = models.BooleanField(default=False)
-    model_type = models.ForeignKey("ModelType", on_delete=models.SET_NULL, verbose_name="模型类型", blank=True, null=True)
+    model_type = models.ForeignKey(
+        "ModelType",
+        on_delete=models.SET_NULL,
+        verbose_name="模型类型",
+        blank=True,
+        null=True,
+    )
     label = models.CharField(max_length=100, verbose_name="标签", blank=True, null=True)
 
     def __str__(self):
@@ -61,7 +67,13 @@ class EmbedProvider(models.Model, EncryptMixin):
     enabled = models.BooleanField(default=True, verbose_name="是否启用")
     team = models.JSONField(default=list)
     is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
-    model_type = models.ForeignKey("ModelType", on_delete=models.SET_NULL, verbose_name="模型类型", blank=True, null=True)
+    model_type = models.ForeignKey(
+        "ModelType",
+        on_delete=models.SET_NULL,
+        verbose_name="模型类型",
+        blank=True,
+        null=True,
+    )
 
     def __str__(self):
         return self.name
@@ -98,7 +110,13 @@ class RerankProvider(models.Model, EncryptMixin):
     enabled = models.BooleanField(default=True, verbose_name="是否启用")
     team = models.JSONField(default=list)
     is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
-    model_type = models.ForeignKey("ModelType", on_delete=models.SET_NULL, verbose_name="模型类型", blank=True, null=True)
+    model_type = models.ForeignKey(
+        "ModelType",
+        on_delete=models.SET_NULL,
+        verbose_name="模型类型",
+        blank=True,
+        null=True,
+    )
 
     def save(self, *args, **kwargs):
         if "api_key" in self.rerank_config:
@@ -133,7 +151,13 @@ class OCRProvider(models.Model, EncryptMixin):
     enabled = models.BooleanField(default=True, verbose_name="是否启用")
     team = models.JSONField(default=list)
     is_build_in = models.BooleanField(default=True, verbose_name="是否内置")
-    model_type = models.ForeignKey("ModelType", on_delete=models.SET_NULL, verbose_name="模型类型", blank=True, null=True)
+    model_type = models.ForeignKey(
+        "ModelType",
+        on_delete=models.SET_NULL,
+        verbose_name="模型类型",
+        blank=True,
+        null=True,
+    )
 
     def __str__(self):
         return self.name
@@ -152,7 +176,13 @@ class OCRProvider(models.Model, EncryptMixin):
 
 class LLMSkill(MaintainerInfo):
     name = models.CharField(max_length=255, verbose_name="名称")
-    llm_model = models.ForeignKey("LLMModel", on_delete=models.CASCADE, verbose_name="LLM模型", blank=True, null=True)
+    llm_model = models.ForeignKey(
+        "LLMModel",
+        on_delete=models.CASCADE,
+        verbose_name="LLM模型",
+        blank=True,
+        null=True,
+    )
     skill_id = models.CharField(max_length=255, verbose_name="技能ID", blank=True, null=True)
     skill_prompt = models.TextField(blank=True, null=True, verbose_name="技能提示词")
 
@@ -170,15 +200,26 @@ class LLMSkill(MaintainerInfo):
     tools = models.JSONField(default=list)
 
     temperature = models.FloatField(default=0.7, verbose_name="温度")
-    skill_type = models.IntegerField(choices=SkillTypeChoices.choices, default=SkillTypeChoices.BASIC_TOOL, verbose_name="技能类型")
+    skill_type = models.IntegerField(
+        choices=SkillTypeChoices.choices,
+        default=SkillTypeChoices.BASIC_TOOL,
+        verbose_name="技能类型",
+    )
     enable_rag_strict_mode = models.BooleanField(default=False, verbose_name="启用RAG严格模式")
     is_template = models.BooleanField(default=False, verbose_name="是否模板")
     enable_km_route = models.BooleanField(default=False, verbose_name="启用知识库路由")
-    km_llm_model = models.ForeignKey("LLMModel", on_delete=models.CASCADE, blank=True, null=True, related_name="km_llm_model")
+    km_llm_model = models.ForeignKey(
+        "LLMModel",
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name="km_llm_model",
+    )
     guide = models.TextField(default="", verbose_name="技能引导", blank=True, null=True)
     enable_suggest = models.BooleanField(default=False, verbose_name="启用建议")
     enable_query_rewrite = models.BooleanField(default=False, verbose_name="问题优化")
     instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name="实例ID", db_index=True)
+    is_builtin = models.BooleanField(default=False, verbose_name="是否内置", db_index=True)
 
     def __str__(self):
         return self.name
@@ -207,19 +248,6 @@ class SkillTools(MaintainerInfo, TimeInfo):
 
     class Meta:
         db_table = "model_provider_mgmt_skilltools"
-
-
-class SkillRule(MaintainerInfo, TimeInfo):
-    skill = models.ForeignKey("LLMSkill", on_delete=models.CASCADE, verbose_name="技能")
-    name = models.CharField(max_length=255, verbose_name="规则名称")
-    description = models.TextField(blank=True, null=True, verbose_name="描述")
-    condition = models.JSONField(default=dict, verbose_name="条件")
-    action = models.IntegerField(default=0, verbose_name="动作", choices=ActionChoice.CHOICE)
-    action_set = models.JSONField(default=dict, verbose_name="动作设置")
-    is_enabled = models.BooleanField(default=True, verbose_name="是否启用")
-
-    class Meta:
-        db_table = "model_provider_mgmt_skillrule"
 
 
 class SkillRequestLog(models.Model):

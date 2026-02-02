@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import { Spin, Input, Button, Tag, message } from 'antd';
+import { Spin, Input, Button, Tag, message, Empty } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
@@ -24,6 +24,7 @@ import TreeSelector from '@/app/monitor/components/treeSelector';
 import { useSearchParams } from 'next/navigation';
 import Permission from '@/components/permission';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { EXCLUDED_CHILD_OBJECTS } from '@/app/monitor/constants/integration';
 import { cloneDeep } from 'lodash';
 
 const Integration = () => {
@@ -36,6 +37,8 @@ const Integration = () => {
   const authContext = useAuth();
   const token = authContext?.token || null;
   const tokenRef = useRef(token);
+  const pluginAbortControllerRef = useRef<AbortController | null>(null);
+  const pluginRequestIdRef = useRef<number>(0);
   const searchParams = useSearchParams();
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');
@@ -54,9 +57,15 @@ const Integration = () => {
   }, [isLoading]);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !objects?.length) return;
     getPluginList({ monitor_object_id: objectId });
-  }, [objectId, isLoading]);
+  }, [objectId, isLoading, objects]);
+
+  useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
 
   const handleNodeDrag = async (data: TreeSortData[]) => {
     try {
@@ -69,20 +78,47 @@ const Integration = () => {
     }
   };
 
+  const cancelAllRequests = () => {
+    pluginAbortControllerRef.current?.abort();
+  };
+
   const handleObjectChange = async (id: string) => {
+    cancelAllRequests();
     setObjectId(id === 'all' ? '' : id);
   };
 
   const getPluginList = async (params = {}) => {
+    pluginAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    pluginAbortControllerRef.current = abortController;
+    const currentRequestId = ++pluginRequestIdRef.current;
     setPluginList([]);
     setSelectedApp(null);
     setExportDisabled(true);
     setPageLoading(true);
     try {
-      const data = await getMonitorPlugin(params);
-      setPluginList(data);
+      const data = await getMonitorPlugin(params, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== pluginRequestIdRef.current) return;
+      // 根据objects的顺序对插件列表进行排序
+      const sortedData = data.sort((a: ObjectItem, b: ObjectItem) => {
+        const indexA = objects.findIndex(
+          (obj) => obj.id === a.parent_monitor_object
+        );
+        const indexB = objects.findIndex(
+          (obj) => obj.id === b.parent_monitor_object
+        );
+        // 如果找不到对应的object,放在最后
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+      });
+      setPluginList(sortedData);
     } finally {
-      setPageLoading(false);
+      if (currentRequestId === pluginRequestIdRef.current) {
+        setPageLoading(false);
+      }
     }
   };
 
@@ -107,17 +143,7 @@ const Integration = () => {
           children: [],
         };
       }
-      if (
-        ![
-          'Pod',
-          'Node',
-          'Docker Container',
-          'ESXI',
-          'VM',
-          'DataStorage',
-          'CVM',
-        ].includes(item.name)
-      ) {
+      if (!EXCLUDED_CHILD_OBJECTS.includes(item.name)) {
         acc[item.type].children.push({
           title: item.display_name || '--',
           label: item.name || '--',
@@ -271,75 +297,79 @@ const Integration = () => {
           </div>
         </div>
         <Spin spinning={pageLoading}>
-          <div
-            className={`grid gap-4 w-full ${integrationStyle.integrationList}`}
-            style={{
-              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-            }}
-          >
-            {pluginList.map((app) => {
-              const parentObject: any = objects.find(
-                (item) => item.id === app.parent_monitor_object
-              );
-              const objectName = parentObject?.name || '';
+          {!pluginList.length ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ) : (
+            <div
+              className={`grid gap-4 w-full ${integrationStyle.integrationList}`}
+              style={{
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+              }}
+            >
+              {pluginList.map((app) => {
+                const parentObject: any = objects.find(
+                  (item) => item.id === app.parent_monitor_object
+                );
+                const objectName = parentObject?.name || '';
 
-              return (
-                <div
-                  key={app.id}
-                  className="p-2"
-                  onClick={() => onAppClick(app)}
-                >
-                  <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
-                    <div className="flex items-center space-x-4 my-2">
-                      <Icon
-                        type={getIconByObjectName(objectName, objects)}
-                        className="text-[48px] min-w-[48px]"
-                      />
-                      <div
-                        style={{
-                          width: 'calc(100% - 60px)',
-                        }}
-                      >
-                        <h2
-                          title={app.display_name}
-                          className="text-xl font-bold m-0 hide-text"
-                        >
-                          {app.display_name || '--'}
-                        </h2>
-                        <Tag className="mt-[4px]">
-                          {app.collect_type || '--'}
-                        </Tag>
-                      </div>
-                    </div>
-                    <p
-                      className={`mb-[15px] text-[var(--color-text-3)] text-[13px] ${integrationStyle.lineClamp3}`}
-                      title={app.display_description || '--'}
-                    >
-                      {app.display_description || '--'}
-                    </p>
-                    <div className="w-full h-[32px] flex justify-center items-end">
-                      <Permission
-                        requiredPermissions={['Setting']}
-                        className="w-full"
-                      >
-                        <Button
-                          icon={<PlusOutlined />}
-                          type="primary"
-                          className="w-full rounded-md transition-opacity duration-300"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            linkToDetial(app);
+                return (
+                  <div
+                    key={app.id}
+                    className="p-2"
+                    onClick={() => onAppClick(app)}
+                  >
+                    <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
+                      <div className="flex items-center space-x-4 my-2">
+                        <Icon
+                          type={getIconByObjectName(objectName, objects)}
+                          className="text-[48px] min-w-[48px]"
+                        />
+                        <div
+                          style={{
+                            width: 'calc(100% - 60px)',
                           }}
                         >
-                          {t('monitor.integrations.access')}
-                        </Button>
-                      </Permission>
+                          <h2
+                            title={app.display_name}
+                            className="text-xl font-bold m-0 hide-text"
+                          >
+                            {app.display_name || '--'}
+                          </h2>
+                          <Tag className="mt-[4px]">
+                            {app.collect_type || '--'}
+                          </Tag>
+                        </div>
+                      </div>
+                      <p
+                        className={`mb-[15px] text-[var(--color-text-3)] text-[13px] ${integrationStyle.lineClamp3}`}
+                        title={app.display_description || '--'}
+                      >
+                        {app.display_description || '--'}
+                      </p>
+                      <div className="w-full h-[32px] flex justify-center items-end">
+                        <Permission
+                          requiredPermissions={['Setting']}
+                          className="w-full"
+                        >
+                          <Button
+                            icon={<PlusOutlined />}
+                            type="primary"
+                            className="w-full rounded-md transition-opacity duration-300"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              linkToDetial(app);
+                            }}
+                          >
+                            {t('monitor.integrations.access')}
+                          </Button>
+                        </Permission>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </Spin>
       </div>
       <ImportModal ref={importRef} onSuccess={onTxtClear} />

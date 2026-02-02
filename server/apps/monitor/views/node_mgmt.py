@@ -1,11 +1,8 @@
 from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 
-from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.web_utils import WebUtils
-from apps.monitor.models import CollectConfig
 from apps.monitor.services.node_mgmt import InstanceConfigService
-from apps.monitor.utils.config_format import ConfigFormat
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.core.logger import monitor_logger as logger
 
@@ -45,11 +42,7 @@ class NodeMgmtView(ViewSet):
 
     @action(methods=['post'], detail=False, url_path='get_instance_asso_config')
     def get_instance_child_config(self, request):
-        data = InstanceConfigService.get_instance_configs(
-            request.data["instance_id"],
-            request.data["collector"],
-            request.data["collect_type"],
-        )
+        data = InstanceConfigService.get_instance_configs(request.data["instance_id"])
         return WebUtils.response_success(data)
 
     @action(methods=['post'], detail=False, url_path='get_config_content')

@@ -36,15 +36,24 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
 
   const searchParams = useSearchParams();
   const instId: string = searchParams.get('inst_id') || '';
-  const builtinAttr = ['auto_collect', 'collect_time', 'collect_task'];
 
   useEffect(() => {
-    setAttrList(propertyList);
+    // propertyList是模型属性列表+值
+    // console.log("test7.4", propertyList);
+
+    // 深拷贝避免修改原始数据
+    const list = deepClone(propertyList);
+
+    setAttrList(list);
   }, [propertyList]);
 
   useEffect(() => {
     if (attrList.length) {
-      initData(attrList);
+
+      // 深拷贝避免修改原始数据
+      const newAttrList = deepClone(attrList);
+
+      initData(newAttrList);
     }
   }, [propertyList, instDetail, userList, attrList]);
 
@@ -56,7 +65,10 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     const fieldKey = config.id;
     let fieldValue = config.values[fieldKey];
 
-    const fieldAttr = attrList.find((item) => item.attr_id === fieldKey);
+    // 从分组结构中查找属性
+    const fieldAttr: any = attrList
+      .flatMap((group: any) => group.attrs || [])
+      .find((item: any) => item.attr_id === fieldKey);
     if (fieldAttr?.attr_type === 'organization' && fieldValue != null) {
       fieldValue = Array.isArray(fieldValue) ? fieldValue : [fieldValue];
     }
@@ -66,137 +78,155 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     await updateInstance(instId, params);
     message.success(t('successfullyModified'));
     const list = deepClone(attrList);
-    const [target, index] = list.reduce(
-      (acc: any, item: AttrFieldType, idx: number) => {
-        return item.attr_id === fieldKey ? [item, idx] : acc;
-      },
-      [undefined, -1]
-    );
-    if (
-      config.type === 'success' ||
-      (config.type === 'fail' && !target?.is_required)
-    ) {
-      list[index].isEdit = false;
-      list[index].value = fieldValue;
-      setAttrList(list);
+
+    // 从分组结构中查找并更新属性的编辑
+    for (const group of list) {
+      const target = group.attrs?.find((item: any) => item.attr_id === fieldKey);
+      if (target) {
+        if (config.type === 'success' || (config.type === 'fail' && !target?.is_required)) {
+          target.isEdit = false;
+          target.value = fieldValue;
+        }
+        break;
+      }
     }
+    setAttrList(list);
     onsuccessEdit();
   };
 
   const initData = (list: any) => {
+    // 遍历分组，得到每组列表
     list.forEach((item: any) => {
-      item.value = item.value || instDetail[item.attr_id];
-      item.key = item.attr_id;
-      item.label = item.is_required ? (
-        <>
-          {item.attr_name}
-          <span className={informationList.required}></span>
-        </>
-      ) : (
-        <>{item.attr_name}</>
-      );
-      item.isEdit = item.isEdit || false;
-      item.children = (
-        <Form key={item.attr_id} form={form}>
-          <div
-            key={item.key}
-            className={`flex items-center justify-between ${informationList.formItem}`}
-          >
-            <div className="flex items-center w-full">
-              {item.isEdit ? (
-                <Form.Item
-                  name={item.key}
-                  rules={[
-                    {
-                      required: item.is_required,
-                      message: '',
-                    },
-                  ]}
-                  initialValue={item.value}
-                  className="mb-0 w-full"
-                >
+      const itemList = item.attrs;
+
+      // 遍历每组列表，得到每个属性
+      itemList.forEach((item: any) => {
+        item.value = item.value || instDetail[item.attr_id];
+        item.key = item.attr_id;
+        item.label = item.is_required ? (
+          <>
+            {item.attr_name}
+            <span className={informationList.required}></span>
+          </>
+        ) : (
+          <>{item.attr_name}</>
+        );
+        item.isEdit = item.isEdit || false;
+        item.children = (
+          <Form key={item.attr_id} form={form}>
+            <div
+              key={item.key}
+              className={`flex items-center justify-between ${informationList.formItem}`}
+            >
+              <div className="flex items-center w-full">
+                {item.isEdit ? (
+                  <Form.Item
+                    name={item.key}
+                    rules={[
+                      {
+                        required: item.is_required,
+                        message: '',
+                      },
+                    ]}
+                    initialValue={item.value}
+                    className="mb-0 w-full"
+                  >
+                    <>
+                      {getFieldItem({
+                        fieldItem: item,
+                        userList,
+                        isEdit: true,
+                      })}
+                    </>
+                  </Form.Item>
+                ) : (
                   <>
                     {getFieldItem({
                       fieldItem: item,
                       userList,
-                      isEdit: true,
+                      isEdit: false,
+                      value: item.value,
                     })}
                   </>
-                </Form.Item>
-              ) : (
-                <>
-                  {getFieldItem({
-                    fieldItem: item,
-                    userList,
-                    isEdit: false,
-                    value: item.value,
-                  })}
-                </>
-              )}
+                )}
+              </div>
+              <div className={`flex items-center ${informationList.operateBtn}`}>
+                {item.isEdit ? (
+                  <>
+                    <Button
+                      type="link"
+                      size="small"
+                      className="ml-[4px]"
+                      icon={<CheckOutlined />}
+                      onClick={() => confirmEdit(item.key)}
+                    />
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<CloseOutlined />}
+                      onClick={() => cancelEdit(item.key)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    {item.editable && (
+                      <PermissionWrapper
+                        requiredPermissions={['Edit']}
+                        instPermissions={instDetail.permission}
+                      >
+                        <Button
+                          type="link"
+                          size="small"
+                          className="ml-[4px]"
+                          icon={<EditOutlined />}
+                          onClick={() => enableEdit(item.key)}
+                        />
+                      </PermissionWrapper>
+                    )}
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<CopyOutlined />}
+                      onClick={() => onCopy(item, item.value)}
+                    />
+                  </>
+                )}
+              </div>
             </div>
-            <div className={`flex items-center ${informationList.operateBtn}`}>
-              {item.isEdit ? (
-                <>
-                  <Button
-                    type="link"
-                    size="small"
-                    className="ml-[4px]"
-                    icon={<CheckOutlined />}
-                    onClick={() => confirmEdit(item.key)}
-                  />
-                  <Button
-                    type="link"
-                    size="small"
-                    icon={<CloseOutlined />}
-                    onClick={() => cancelEdit(item.key)}
-                  />
-                </>
-              ) : (
-                <>
-                  {item.editable && (
-                    <PermissionWrapper
-                      requiredPermissions={['Edit']}
-                      instPermissions={instDetail.permission}
-                    >
-                      <Button
-                        type="link"
-                        size="small"
-                        className="ml-[4px]"
-                        icon={<EditOutlined />}
-                        onClick={() => enableEdit(item.key)}
-                      />
-                    </PermissionWrapper>
-                  )}
-                  <Button
-                    type="link"
-                    size="small"
-                    icon={<CopyOutlined />}
-                    onClick={() => onCopy(item, item.value)}
-                  />
-                </>
-              )}
-            </div>
-          </div>
-        </Form>
-      );
-    });
+          </Form>
+        );
+      });
+    })
+
     setFieldList(list);
   };
 
   const enableEdit = (id: string) => {
     const list = deepClone(attrList);
-    const index = list.findIndex((item: AttrFieldType) => item.attr_id === id);
-    list[index].isEdit = true;
+    // 通过for循环遍历分组，找到对应的属性并设置编辑状态
+    for (const group of list) {
+      const attr = group.attrs?.find((item: any) => item.attr_id === id);
+      if (attr) {
+        attr.isEdit = true;
+        break;
+      }
+    }
     setAttrList(list);
   };
 
   const cancelEdit = (id: string) => {
     const list = deepClone(attrList);
-    const index = list.findIndex((item: AttrFieldType) => item.attr_id === id);
-    list[index].isEdit = false;
-    const obj: any = {};
-    obj[id] = list[index].value;
-    form.setFieldsValue(obj);
+    // 通过for循环遍历分组，恢复表单值为修改前的原始值
+    for (const group of list) {
+      const attr = group.attrs?.find((item: any) => item.attr_id === id);
+      if (attr) {
+        attr.isEdit = false;
+        const obj: any = {};
+        obj[id] = attr.value;
+        form.setFieldsValue(obj);
+        break;
+      }
+    }
     setAttrList(list);
   };
 
@@ -238,69 +268,76 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     message.success(t('successfulCopied'));
   };
 
+  // 提取 organization 字段并分离其他字段
+  const organizationAttrs: any[] = [];
+  const otherGroups = fieldList.map((group: any) => {
+    //我猜可能不止一个组织字段，所以需要过滤出 organization 字段
+    const organizationItems = (group.attrs || []).filter(
+      (attr: any) => attr.attr_id === 'organization'
+    );
+    const otherAttrs = (group.attrs || []).filter(
+      (attr: any) => attr.attr_id !== 'organization'
+    );
+
+    // 提取 organization 字段
+    if (organizationItems.length > 0) {
+      organizationAttrs.push(...organizationItems);
+    }
+
+    // 返回其他字段
+    return {
+      ...group,
+      attrs: otherAttrs,
+    };
+  }).filter((group: any) => group.attrs && group.attrs.length > 0);
+
+  // 合并所有需要显示的分组
+  const displayGroups = [];
+  if (organizationAttrs.length > 0) {
+    displayGroups.push({
+      id: 'organization-group',
+      group_name: t('common.group'),
+      attrs: organizationAttrs,
+      is_collapsed: false,
+    });
+  }
+
+  // 合并其他字段
+  displayGroups.push(...otherGroups);
+
   return (
     <div>
-      <Collapse
-        bordered={false}
-        className={informationList.list}
-        accordion
-        defaultActiveKey="group"
-        expandIcon={({ isActive }) => (
-          <CaretRightOutlined rotate={isActive ? 90 : 0} />
-        )}
-      >
-        <Panel header={t('common.group')} key="group">
-          <Descriptions
-            bordered
-            items={fieldList?.filter((item) => item.key === 'organization')}
-            column={2}
-          />
-        </Panel>
-      </Collapse>
-      <Collapse
-        bordered={false}
-        className={informationList.list}
-        defaultActiveKey="information"
-        accordion
-        expandIcon={({ isActive }) => (
-          <CaretRightOutlined rotate={isActive ? 90 : 0} />
-        )}
-      >
-        <Panel header={t('information')} key="information">
-          <Descriptions
-            bordered
-            items={fieldList?.filter(
-              (item: any) =>
-                ![...builtinAttr, 'organization'].includes(item.key)
-            )}
-            column={2}
-          />
-        </Panel>
-      </Collapse>
-      {fieldList?.filter((el: any) => builtinAttr.includes(el.key))?.length ? (
+      {/* 通过遍历 fieldList，自动添加Collapse折叠面板容器，并设置默认展开 */}
+      {displayGroups && displayGroups.length > 0 && (
         <Collapse
+          style={{ background: 'var(--color-bg-1) ' }}
           bordered={false}
           className={informationList.list}
-          defaultActiveKey="systemBuiltIn"
-          accordion
+          // accordion // 手风琴效果先不用，看后面需求来决定是否使用
+          // 默认展开的相关逻辑（后端传一个默认展开的id数组）
+          defaultActiveKey={displayGroups
+            .filter((item: any) => !item.is_collapsed)
+            .map((item: any) => String(item.id))}
+          // 折叠面板的展开图标
           expandIcon={({ isActive }) => (
             <CaretRightOutlined rotate={isActive ? 90 : 0} />
           )}
         >
-          <Panel header={t('systemBuiltIn')} key="systemBuiltIn">
-            <Descriptions
-              bordered
-              items={fieldList?.filter((item: any) =>
-                builtinAttr.includes(item.key)
-              )}
-              column={2}
-            />
-          </Panel>
+          {displayGroups.map((group: any) => (
+            <Panel
+              key={String(group.id)}
+              header={group.group_name}
+            >
+              <Descriptions
+                bordered
+                items={group.attrs || []}
+                column={2}
+              />
+            </Panel>
+          ))}
         </Collapse>
-      ) : (
-        ''
       )}
-    </div>
+    </div >
   );
 };
 

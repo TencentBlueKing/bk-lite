@@ -3,6 +3,8 @@ import type {
   ConfigParams,
   ConfigListParams,
 } from '@/app/node-manager/types/cloudregion';
+import React from 'react';
+import { AxiosRequestConfig } from 'axios';
 
 /**
  * 配置管理API Hook
@@ -12,8 +14,15 @@ const useConfigApi = () => {
   const { get, post, del, patch } = useApiClient();
 
   // 获取配置文件列表
-  const getConfiglist = async (params: ConfigListParams) => {
-    return await post('/node_mgmt/api/configuration/config_node_asso/', params);
+  const getConfiglist = async (
+    params: ConfigListParams,
+    config?: AxiosRequestConfig
+  ) => {
+    return await post(
+      '/node_mgmt/api/configuration/config_node_asso/',
+      params,
+      config
+    );
   };
 
   // 查询节点信息以及关联的配置
@@ -22,13 +31,16 @@ const useConfigApi = () => {
   };
 
   // 获取子配置文件列表
-  const getChildConfig = async (params: {
-    collector_config_id: string;
-    search?: string;
-    page?: number;
-    page_size?: number;
-  }) => {
-    return await get('/node_mgmt/api/child_config', { params });
+  const getChildConfig = async (
+    params: {
+      collector_config_id: string;
+      config_type?: string;
+      page?: number;
+      page_size?: number;
+    },
+    config?: AxiosRequestConfig
+  ) => {
+    return await get('/node_mgmt/api/child_config', { params, ...config });
   };
 
   // 创建一个配置文件
@@ -59,14 +71,19 @@ const useConfigApi = () => {
     return await patch(`/node_mgmt/api/child_config/${id}`, data);
   };
 
-  // 部分更新采集器
-  const updateCollector = async (id: string, data: ConfigParams) => {
+  // 部分更新配置
+  const updateConfig = async (id: string, data: ConfigParams) => {
     return await patch(`/node_mgmt/api/configuration/${id}/`, data);
   };
 
-  // 删除采集器配置
-  const deleteCollector = async (id: string) => {
+  // 删除配置
+  const deleteConfig = async (id: string) => {
     return await del(`/node_mgmt/api/configuration/${id}/`);
+  };
+
+  // 删除子配置
+  const deleteSubConfig = async (id: React.Key) => {
+    return await del(`/node_mgmt/api/child_config/${id}/`);
   };
 
   // 应用指定采集器配置文件到指定节点
@@ -105,11 +122,12 @@ const useConfigApi = () => {
     createConfig,
     createChildConfig,
     updateChildConfig,
-    updateCollector,
-    deleteCollector,
+    updateConfig,
+    deleteConfig,
     applyConfig,
     cancelApply,
     batchDeleteCollector,
+    deleteSubConfig,
   };
 };
 

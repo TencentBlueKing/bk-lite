@@ -26,6 +26,8 @@ class MiddlewareCollectMetrics(CollectBase):
                     self.timestamp_gt = True
             # 原始版本没有result，2025.11.27修改stargazer格式，将采集数据放到result中
             result_data = {}
+            if index_data["metric"].get("collect_status", 'success') == 'failed':
+                continue
             if index_data["metric"].get("result", False) or index_data["metric"].get("success", False):
                 result_json = index_data["metric"].get("result", "{}")
                 if result_json and result_json != "{}":
@@ -47,7 +49,51 @@ class MiddlewareCollectMetrics(CollectBase):
             self.collection_metrics_dict[metric_name].append(index_dict)
 
     def get_inst_name(self, data):
-        return f"{data['ip_addr']}-{self.model_id}-{data['port']}"
+        ip_candidate = self.get_ip_addr(data)
+        port = ""
+        if isinstance(data, dict):
+            port = data.get("port") or data.get("listen_port") or ""
+        if ip_candidate and port:
+            return f"{ip_candidate}-{self.model_id}-{port}"
+        if ip_candidate:
+            return ip_candidate
+        fallback = self._extract_instance_identifier(data)
+        if fallback:
+            return fallback
+        return self.inst_name or ""
+
+    def get_ip_addr(self, data):
+        ip_addr = ""
+        if isinstance(data, dict):
+            ip_addr = data.get("ip_addr") or data.get("host") or data.get("bk_host_innerip")
+        if ip_addr:
+            return ip_addr
+        identifier = self._extract_instance_identifier(data)
+        if identifier:
+            return identifier
+        return self.inst_name or ""
+
+    @staticmethod
+    def _extract_instance_identifier(data):
+        if not isinstance(data, dict):
+            return ""
+        instance_id = data.get("instance_id", "")
+        if instance_id and "_" in instance_id:
+            parts = instance_id.split("_", 1)
+            if len(parts) == 2 and parts[1]:
+                return parts[1]
+        return instance_id or ""
+
+    def get_keepalived_inst_name(self, data):
+        ip_addr = self.get_ip_addr(data)
+        router_id = ""
+        if isinstance(data, dict):
+            router_id = data.get("virtual_router_id", "")
+        if ip_addr and router_id:
+            return f"{ip_addr}-{self.model_id}-{router_id}"
+        if router_id:
+            return router_id
+        return self.get_inst_name(data)
 
     @property
     def model_field_mapping(self):
@@ -147,6 +193,16 @@ class MiddlewareCollectMetrics(CollectBase):
                 "custom_Log":"custom_Log",
                 "include":"include",
             },
+            "consul": {
+                "inst_name": self.get_inst_name,
+                "ip_addr": "ip_addr",
+                "port": "port",
+                "install_path": "install_path",
+                "version": "version",
+                "data_dir": "data_dir",
+                "conf_path": "conf_path",
+                "role": "role",
+            },
             "activemq":{
                 "inst_name": self.get_inst_name,
                 "ip_addr":"ip_addr",
@@ -171,7 +227,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "name": "name",
             },
             "keepalived": {
-                "inst_name":  lambda data: f"{data['ip_addr']}-{self.model_id}-{data['virtual_router_id']}",
+                "inst_name": self.get_keepalived_inst_name,
                 "ip_addr": "ip_addr",
                 "bk_obj_id": "bk_obj_id",
                 "version": "version",
@@ -209,9 +265,70 @@ class MiddlewareCollectMetrics(CollectBase):
                 "jvm_para": "jvm_para",
                 "max_threads": "max_threads",
             },
+            "docker": {
+                "inst_name": self.get_docker_inst_name,
+                "ip_addr": self.get_ip_addr,
+                "port": lambda data: data.get("port") or self._extract_primary_port(data),
+                "container_id": "container_id",
+                "status": "status",
+                "command": "command",
+                "created": "created",
+                "image": "image",
+                "networks": lambda data: self.format_json_field(data.get("networks")),
+                "ports": "ports",
+                "mounts": lambda data: self.format_json_field(data.get("mounts")),
+            },
         }
 
         return mapping
+
+    @staticmethod
+    def extract_nested_value(data, parent_key, child_key, default=""):
+        parent = data.get(parent_key) or {}
+        if isinstance(parent, dict):
+            return parent.get(child_key, default)
+        return default
+
+    def get_docker_inst_name(self, data):
+        # 若采集结果已经提供 inst_name (容器名)，优先使用
+        if data.get("inst_name"):
+            return data["inst_name"]
+        # 否则退化为 ip-模型名-端口
+        return self.get_inst_name(data)
+
+    @staticmethod
+    def format_json_field(value):
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _extract_primary_port(data):
+        if not isinstance(data, dict):
+            return ""
+        port = data.get("port")
+        if port:
+            return port
+        ports_field = data.get("ports")
+        if isinstance(ports_field, list) and ports_field:
+            first_port = ports_field[0]
+            if isinstance(first_port, dict):
+                return first_port.get("host_port") or first_port.get("container_port") or ""
+        if isinstance(ports_field, str):
+            try:
+                parsed = json.loads(ports_field)
+                if isinstance(parsed, list) and parsed:
+                    first = parsed[0]
+                    if isinstance(first, dict):
+                        return first.get("host_port") or first.get("container_port") or ""
+            except Exception:
+                return ""
+        return ""
 
     def format_metrics(self):
         for metric_key, metrics in self.collection_metrics_dict.items():
@@ -230,6 +347,4 @@ class MiddlewareCollectMetrics(CollectBase):
                     result.append(data)
             self.result[self.model_id] = result
 
-    def prom_sql(self):
-        sql = " or ".join(m for m in self._metrics)
-        return sql
+

@@ -123,7 +123,10 @@ ALIYUN_COLLECT_CLUSTER = [
     "aliyun_kafka_info_gauge", "aliyun_clb_info_gauge"
 ]
 
-HOST_COLLECT_METRIC = ["host_info_gauge"]
+HOST_COLLECT_METRIC = {
+    "host": ["host_info_gauge"],
+    "physcial_server": ["physcial_server_info_gauge","disk_info_gauge","memory_info_gauge","nic_info_gauge","gpu_info_gauge"],
+}
 
 DB_COLLECT_METRIC_MAP = {
     "es": ["es_info_gauge"],
@@ -143,6 +146,8 @@ MIDDLEWARE_METRIC_MAP = {
     "etcd": ["etcd_info_gauge"],
     "rabbitmq": ["rabbitmq_info_gauge"],
     "tomcat": ["tomcat_info_gauge"],
+    "consul": ["consul_info_gauge"],
+    "docker": ["docker_info_gauge"],
     "apache": ["apache_info_gauge"],
     "activemq": ["activemq_info_gauge"],
     "weblogic": ["weblogic_info_gauge"],

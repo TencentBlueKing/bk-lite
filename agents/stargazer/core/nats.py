@@ -12,12 +12,12 @@ NATS 统一模块 - 简洁高效的 NATS 集成
 import os
 import ssl
 import json
-import asyncio
 from typing import Optional, List, Callable, Dict, Any, Awaitable
 from dataclasses import dataclass, field
 from nats.aio.client import Client as NATS
 from sanic import Sanic
 from sanic.log import logger
+import asyncio
 
 
 # ==================== 配置类 ====================
@@ -27,9 +27,17 @@ class NATSConfig:
     """NATS 配置（统一管理所有配置项）"""
     servers: List[str] = field(default_factory=lambda: ["nats://localhost:4222"])
     name: str = "nats-client"
-    connect_timeout: int = 5
+    connect_timeout: int = 10  # 增加到10秒
     max_reconnect_attempts: int = 5
     reconnect_time_wait: int = 2
+
+    # 新增：ping 间隔和最大未响应 ping 数
+    ping_interval: int = 60
+    max_outstanding_pings: int = 2
+
+    # 认证配置
+    user: Optional[str] = None
+    password: Optional[str] = None
 
     # TLS 配置
     tls_enabled: bool = False
@@ -42,15 +50,45 @@ class NATSConfig:
     @classmethod
     def from_env(cls, service_name: str = "nats-client") -> "NATSConfig":
         """从环境变量加载配置"""
+        import re
+
         nats_urls = os.getenv("NATS_URLS", "nats://localhost:4222")
-        servers = [url.strip() for url in nats_urls.split(",")]
+        servers_list = [url.strip() for url in nats_urls.split(",")]
+
+        # 解析第一个 URL，提取用户名密码和清理后的 server 地址
+        user = None
+        password = None
+        cleaned_servers = []
+
+        for url in servers_list:
+            # 匹配格式: protocol://user:pass@host:port 或 protocol://host:port
+            match = re.match(r'^(.*?://)(?:([^:]+):([^@]+)@)?(.+)$', url)
+            if match:
+                protocol, url_user, url_pass, host_port = match.groups()
+
+                # 提取用户名密码（只从第一个 URL 提取）
+                if url_user and url_pass and not user:
+                    user = url_user
+                    password = url_pass
+
+                # 重新构建不包含用户名密码的 URL
+                cleaned_url = f"{protocol}{host_port}"
+                cleaned_servers.append(cleaned_url)
+            else:
+                cleaned_servers.append(url)
+
+        logger.info(f"Parsed NATS servers: {cleaned_servers}, user: {user}, has_password: {bool(password)}")
 
         return cls(
-            servers=servers,
+            servers=cleaned_servers,
             name=service_name,
-            connect_timeout=int(os.getenv("NATS_CONNECT_TIMEOUT", "5")),
+            user=user,
+            password=password,
+            connect_timeout=int(os.getenv("NATS_CONNECT_TIMEOUT", "10")),  # 增加到10秒
             max_reconnect_attempts=int(os.getenv("NATS_MAX_RECONNECT_ATTEMPTS", "5")),
             reconnect_time_wait=int(os.getenv("NATS_RECONNECT_TIME_WAIT", "2")),
+            ping_interval=int(os.getenv("NATS_PING_INTERVAL", "60")),
+            max_outstanding_pings=int(os.getenv("NATS_MAX_OUTSTANDING_PINGS", "2")),
             tls_enabled=os.getenv("NATS_TLS_ENABLED", "false").lower() == "true",
             tls_insecure=os.getenv("NATS_TLS_INSECURE", "false").lower() == "true",
             tls_ca_file=os.getenv("NATS_TLS_CA_FILE"),
@@ -92,8 +130,17 @@ class NATSConfig:
             "connect_timeout": self.connect_timeout,
             "max_reconnect_attempts": self.max_reconnect_attempts,
             "reconnect_time_wait": self.reconnect_time_wait,
+            "ping_interval": self.ping_interval,
+            "max_outstanding_pings": self.max_outstanding_pings,
         }
 
+        # 添加认证信息
+        if self.user:
+            options["user"] = self.user
+        if self.password:
+            options["password"] = self.password
+
+        # 添加 TLS 配置
         tls_context = self.create_ssl_context()
         if tls_context:
             options["tls"] = tls_context
@@ -118,10 +165,76 @@ class NATSClient:
     async def connect(self) -> None:
         """连接到 NATS 服务器"""
         if self.nc and not self.nc.is_closed:
+            logger.info("NATS already connected, reusing existing connection")
             return
 
-        self.nc = await NATS().connect(**self.config.to_connect_options())
-        logger.info(f"Connected to NATS: {self.config.servers}")
+        try:
+            logger.info(f"[NATSClient] Connecting to NATS servers: {self.config.servers}")
+            logger.info(f"[NATSClient] Connection timeout: {self.config.connect_timeout}s")
+            logger.info(f"[NATSClient] TLS enabled: {self.config.tls_enabled}")
+            logger.info(f"[NATSClient] User: {self.config.user}")
+
+            # 尝试DNS解析检查
+            try:
+                import socket
+                for server in self.config.servers:
+                    # 从URL中提取主机名和端口
+                    if '://' in server:
+                        host_part = server.split('://')[1]
+                        if ':' in host_part:
+                            host = host_part.split(':')[0]
+                            port = host_part.split(':')[1]
+                        else:
+                            host = host_part
+                            port = '4222'
+
+                        logger.info(f"[NATSClient] Resolving DNS for {host}...")
+                        ip = socket.gethostbyname(host)
+                        logger.info(f"[NATSClient] DNS resolved: {host} -> {ip}")
+            except Exception as dns_err:
+                logger.warning(f"[NATSClient] DNS resolution check failed: {dns_err}")
+
+            connect_options = self.config.to_connect_options()
+            logger.info(f"[NATSClient] Connect options: timeout={connect_options.get('connect_timeout')}s, "
+                       f"max_reconnect_attempts={connect_options.get('max_reconnect_attempts')}, "
+                       f"reconnect_wait={connect_options.get('reconnect_time_wait')}s")
+
+            # 创建 NATS 实例并连接
+            self.nc = NATS()
+
+            # 使用 asyncio.wait_for 添加额外的超时保护
+            try:
+                await asyncio.wait_for(
+                    self.nc.connect(**connect_options),
+                    timeout=self.config.connect_timeout + 5  # 额外5秒缓冲
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"[NATSClient] Connection timeout after {self.config.connect_timeout + 5}s")
+                raise ConnectionError(f"NATS connection timeout to {self.config.servers}")
+
+            if self.nc.is_connected:
+                logger.info(f"[NATSClient] ✓ Successfully connected to NATS: {self.config.servers}")
+                logger.info(f"[NATSClient] Connection status - is_connected: {self.nc.is_connected}, is_closed: {self.nc.is_closed}")
+            else:
+                logger.error(f"[NATSClient] Connection failed - not connected!")
+                raise ConnectionError("NATS connection failed")
+
+        except asyncio.TimeoutError as te:
+            logger.error(f"[NATSClient] Connection timeout: {te}")
+            logger.error(f"[NATSClient] This usually means:")
+            logger.error(f"[NATSClient]   1. NATS server is not reachable (network issue)")
+            logger.error(f"[NATSClient]   2. NATS server is not running on {self.config.servers}")
+            logger.error(f"[NATSClient]   3. Firewall is blocking the connection")
+            logger.error(f"[NATSClient]   4. DNS resolution failed")
+            self.nc = None
+            raise ConnectionError(f"NATS connection timeout to {self.config.servers}")
+        except Exception as e:
+            logger.error(f"[NATSClient] Failed to connect to NATS: {e}")
+            logger.error(f"[NATSClient] Connection details - servers: {self.config.servers}, tls: {self.config.tls_enabled}")
+            import traceback
+            logger.error(f"[NATSClient] Traceback: {traceback.format_exc()}")
+            self.nc = None  # 确保 nc 为 None
+            raise  # 重新抛出异常，让调用者知道连接失败了
 
     async def request(self, subject: str, data: Any, timeout: float = 60.0) -> Any:
         """发送请求并等待响应"""
@@ -309,6 +422,7 @@ def initialize_nats(app: Sanic, service_name: str = "stargazer") -> NATSSanic:
     """初始化 NATS（在 server.py 中调用）"""
     global _nats_instance
     _nats_instance = NATSSanic(app, service_name)
+    print("NATS initialized successfully.")
     return _nats_instance
 
 
@@ -324,4 +438,3 @@ def get_nats() -> NATSSanic:
     if _nats_instance is None:
         raise RuntimeError("NATS not initialized. Call initialize_nats() first.")
     return _nats_instance
-

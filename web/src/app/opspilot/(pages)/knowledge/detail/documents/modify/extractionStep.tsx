@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Button, Select, Switch, Form, message, Image } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Button, Select, Switch, Form, message, Image, Alert } from 'antd';
+import { WarningOutlined } from '@ant-design/icons';
+import Link from 'next/link';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
@@ -40,6 +42,10 @@ const ExtractionStep: React.FC<{
   const [ocrModels, setOcrModels] = useState<ModelOption[]>([]);
   const [loadingOcrModels, setLoadingOcrModels] = useState<boolean>(true);
   const [selectedOcrModel, setSelectedOcrModel] = useState<string | null>(null);
+
+  const allOcrModelsDisabled = useMemo(() => {
+    return ocrModels.length > 0 && ocrModels.every((model) => !model.enabled);
+  }, [ocrModels]);
 
   // Extraction methods configuration
   const extractionMethods = {
@@ -99,11 +105,17 @@ const ExtractionStep: React.FC<{
   // Word: fullText + chapter (default: chapter)
   // Excel: fullText + worksheet + row (default: row)  
   // PDF: fullText + page (default: page)
+  // PPT: fullText + page (default: fullText)
   // Others: fullText only
   const getAvailableExtractionMethods = (extension: string) => {
     const ext = extension.toLowerCase();
 
-    if (ext === 'docx' || ext === 'doc') {
+    if (ext === 'ppt' || ext === 'pptx') {
+      return {
+        methods: ['fullText', 'page'],
+        default: 'fullText',
+      };
+    } else if (ext === 'docx' || ext === 'doc') {
       return {
         methods: ['fullText', 'chapter'],
         default: 'chapter',
@@ -236,7 +248,12 @@ const ExtractionStep: React.FC<{
       title: t('knowledge.documents.actions'),
       key: 'actions',
       render: (_: unknown, record: any, index: number) => (
-        <Button type="link" onClick={() => handleConfigure(record, index)}>
+        <Button 
+          type="link" 
+          onClick={() => handleConfigure(record, index)}
+          disabled={loadingOcrModels}
+          loading={loadingOcrModels}
+        >
           {t('knowledge.documents.config')}
         </Button>
       ),
@@ -245,7 +262,9 @@ const ExtractionStep: React.FC<{
 
   const handleConfigure = (record: { defaultMethod: keyof typeof extractionMethods; extension: string; [key: string]: any }, index: number) => {
     const documentConfig = knowledgeDocumentList[index];
-    const defaultModel = ocrModels.find((model) => model.name === 'PaddleOCR');
+    const paddleOCR = ocrModels.find((model) => model.name === 'PaddleOCR' && model.enabled);
+    const firstEnabledModel = ocrModels.find((model) => model.enabled);
+    const defaultModel = paddleOCR || firstEnabledModel;
     const availableMethods = getAvailableExtractionMethods(record.extension);
 
     setSelectedDocument({ ...record, index, availableMethods });
@@ -253,16 +272,17 @@ const ExtractionStep: React.FC<{
     setOcrEnabled(
       (documentConfig?.enable_ocr_parse ?? extractionMethods[availableMethods.default as keyof typeof extractionMethods]?.defaultOCR) || false
     );
-    setSelectedOcrModel(documentConfig?.ocr_model || (defaultModel ? defaultModel.id : null));
-
+    
+    let ocrModelToSelect = documentConfig?.ocr_model;
     if (extractionConfig && extractionConfig.knowledge_document_list) {
       const doc = extractionConfig.knowledge_document_list.find((d) => d.id === record.key);
       if (doc) {
-        setSelectedMethod(doc.parse_type as keyof typeof extractionMethods || availableMethods.default);
+        setSelectedMethod((doc.parse_type as any) || availableMethods.default);
         setOcrEnabled(doc.enable_ocr_parse);
-        setSelectedOcrModel(doc.ocr_model);
+        ocrModelToSelect = doc.ocr_model;
       }
     }
+    setSelectedOcrModel(ocrModelToSelect || (defaultModel ? defaultModel.id : null));
 
     setModalVisible(true);
   };
@@ -339,7 +359,7 @@ const ExtractionStep: React.FC<{
                 </Option>
               ))}
             </Select>
-            {selectedMethod === 'fullText' && (
+            {selectedMethod && ['chapter', 'fullText'].includes(selectedMethod) && (
               <div className={`rounded-md p-4 mb-6 ${styles.configItem}`}>
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-sm font-semibold">{t('knowledge.documents.ocrEnhancement')}</h3>
@@ -356,8 +376,9 @@ const ExtractionStep: React.FC<{
                       style={{ width: '100%' }}
                       disabled={!ocrEnabled}
                       loading={loadingOcrModels}
-                      value={selectedOcrModel}
+                      value={allOcrModelsDisabled ? undefined : selectedOcrModel}
                       onChange={(value) => setSelectedOcrModel(value)}
+                      placeholder={allOcrModelsDisabled ? t('knowledge.documents.ocrModelNotConfigured') : undefined}
                     >
                       {ocrModels.map((model) => (
                         <Option key={model.id} value={model.id} disabled={!model.enabled}>
@@ -365,6 +386,22 @@ const ExtractionStep: React.FC<{
                         </Option>
                       ))}
                     </Select>
+                    {allOcrModelsDisabled && (
+                      <Alert
+                        className="mt-2"
+                        type="warning"
+                        showIcon
+                        icon={<WarningOutlined />}
+                        message={
+                          <span>
+                            {t('knowledge.documents.ocrModelNotConfiguredTip')}{' '}
+                            <Link href="/opspilot/provider?tab=4" className="text-[var(--color-primary)]">
+                              {t('knowledge.documents.modelConfig')}
+                            </Link>
+                          </span>
+                        }
+                      />
+                    )}
                   </Form.Item>
                 )}
               </div>

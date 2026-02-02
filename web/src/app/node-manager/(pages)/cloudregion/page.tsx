@@ -16,6 +16,7 @@ import CloudRegionModal from './cloudregionModal';
 import DeployModal from './deployModal';
 import { ModalRef } from '@/app/node-manager/types';
 import { useMenuItem } from '@/app/node-manager/hooks/node';
+import { cloneDeep } from 'lodash';
 const { confirm } = Modal;
 
 const CloudRegion = () => {
@@ -36,8 +37,14 @@ const CloudRegion = () => {
     try {
       const data = await getCloudList();
       const regionData = (data || []).map((item: CloudRegionCardProps) => {
-        item.description = item.introduction;
+        const regionItem = cloneDeep(item);
+        item.description = regionItem.display_introduction;
+        item.name = regionItem.display_name;
+        item.introduction = regionItem.display_introduction;
+        item.originalName = regionItem.name;
+        item.originalDescription = regionItem.introduction;
         item.icon = 'yunquyu';
+        item.proxy_address = regionItem.proxy_address;
         // 处理 services 转换为 tagList
         if (item.services?.length) {
           item.tagList = item.services.map((service: any) => {
@@ -71,14 +78,13 @@ const CloudRegion = () => {
   }, [isLoading]);
 
   const navigateToNode = (item: CloudRegionItem) => {
-    if (
-      (item.services || []).find((service) => service.status === 'not_deployed')
-    ) {
-      deployModalRef.current?.showModal(item as any);
-      return;
-    }
+    const isNotDeployed = (item.services || []).find(
+      (service) => service.status === 'not_deployed'
+    );
+    const notDeployed = isNotDeployed ? 1 : 0;
+    const menu = isNotDeployed ? 'environment' : 'node';
     router.push(
-      `/node-manager/cloudregion/node?cloud_region_id=${item.id}&name=${item.name}`
+      `/node-manager/cloudregion/${menu}?cloud_region_id=${item.id}&name=${item.originalName}&displayName=${item.name}&not_deployed=${notDeployed}&proxy_address=${item.proxy_address}`
     );
   };
 
@@ -134,7 +140,7 @@ const CloudRegion = () => {
               </Button>
             </PermissionWrapper>
           </Menu.Item>
-          {data?.name !== 'default' && (
+          {data?.originalName !== 'default' && (
             <Menu.Item className="!p-0" onClick={() => handleDelete(data.id)}>
               <PermissionWrapper
                 requiredPermissions={['Delete']}

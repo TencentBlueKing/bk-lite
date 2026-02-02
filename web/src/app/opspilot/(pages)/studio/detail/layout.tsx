@@ -81,7 +81,6 @@ const KnowledgeDetailLayout = ({ children }: { children: React.ReactNode }) => {
     };
 
     const originalMenuItems = getMenuItemsForPath(menus, pathname ?? '');
-    console.log('Original Menu Items:', originalMenuItems);
 
     // Prevent menu flashing while loading bot type
     if (isLoadingBotType) {

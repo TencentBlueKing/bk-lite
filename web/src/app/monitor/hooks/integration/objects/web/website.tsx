@@ -1,18 +1,9 @@
-import { useWebsiteTelegraf } from '../../plugins/web/websiteTelegraf';
-
 export const useWebsiteConfig = () => {
-  const plugin = useWebsiteTelegraf();
-
-  // 所有插件配置
-  const plugins = {
-    Website: plugin,
-  };
-
   return {
     instance_type: 'web',
     dashboardDisplay: [
       {
-        indexId: 'http_success.rate',
+        indexId: 'http_node_success_rate',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
@@ -22,7 +13,7 @@ export const useWebsiteConfig = () => {
         },
       },
       {
-        indexId: 'http_duration',
+        indexId: 'http_response_response_time',
         displayType: 'single',
         sortIndex: 1,
         displayDimension: [],
@@ -63,14 +54,16 @@ export const useWebsiteConfig = () => {
       },
     ],
     tableDiaplay: [
-      { type: 'enum', key: 'http_success.rate' },
-      { type: 'value', key: 'http_duration' },
-      { type: 'enum', key: 'http_code' },
+      { type: 'progress', key: 'http_node_success_rate' },
+      { type: 'value', key: 'http_response_response_time' },
+      { type: 'value', key: 'http_response_http_response_code' },
     ],
     groupIds: {
       list: ['instance_id'],
       default: ['instance_id'],
     },
-    plugins,
+    collectTypes: {
+      Website: 'web',
+    },
   };
 };

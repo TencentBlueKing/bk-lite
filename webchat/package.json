@@ -1,0 +1,28 @@
+{
+  "name": "webchat",
+  "version": "1.0.0",
+  "description": "A web chat library with SSE support, similar to Rasa-web",
+  "private": true,
+  "scripts": {
+    "dev": "cd packages/webchat-demo && npm run dev",
+    "build": "npm run build:core && npm run build:ui && npm run build:demo",
+    "build:core": "cd packages/webchat-core && npm run build",
+    "build:ui": "cd packages/webchat-ui && npm run build",
+    "build:demo": "cd packages/webchat-demo && npm run build",
+    "test": "echo 'No tests configured yet'",
+    "lint": "echo 'No linter configured yet'",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist packages/*/.next"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "typescript": "^5.0.0",
+    "turbo": "^1.13.0",
+    "prettier": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

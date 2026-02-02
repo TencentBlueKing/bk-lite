@@ -18,6 +18,7 @@ class Controller(TimeInfo, MaintainerInfo):
     os = models.CharField(max_length=50, choices=OS_TYPE, verbose_name="操作系统类型")
     name = models.CharField(max_length=100, verbose_name="控制器名称")
     description = models.TextField(blank=True, verbose_name="控制器描述")
+    version_command = models.CharField(max_length=500, blank=True, default="", verbose_name="获取版本命令")
 
     class Meta:
         verbose_name = "控制器信息"
@@ -71,10 +72,10 @@ class Collector(TimeInfo, MaintainerInfo):
     introduction = models.TextField(blank=True, verbose_name="采集器介绍")
     icon = models.CharField(max_length=100, default="", verbose_name="图标key")
     controller_default_run = models.BooleanField(default=False, verbose_name="控制器默认运行")
-    enabled_default_config = models.BooleanField(default=False, verbose_name="是否启用默认初始化的配置")
     default_config = JSONField(default=dict, verbose_name="默认初始化的配置")
     tags = JSONField(default=list, verbose_name="标签")
     package_name = models.CharField(max_length=100, blank=True, default="", verbose_name="包名称")
+    is_pre = models.BooleanField(default=True, verbose_name='是否预定义')
 
     class Meta:
         verbose_name = "采集器信息"

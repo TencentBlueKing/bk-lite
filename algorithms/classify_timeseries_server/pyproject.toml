@@ -23,6 +23,11 @@ dependencies = [
     "matplotlib>=3.9.0",
     "pandas>=2.2.0",
     "numpy>=1.26.0",
+    "sktime>=0.30.0",
+    "prophet>=1.1.5",
+    "hyperopt>=0.2.7",
+    "setuptools>=68.0.0",
+    "minio>=7.2.20",
 ]
 
 [dependency-groups]

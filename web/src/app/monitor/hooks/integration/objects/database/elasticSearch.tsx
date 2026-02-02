@@ -1,20 +1,16 @@
-import { useElasticSearchTelegraf } from '../../plugins/database/elasticSearchTelegraf';
-
 export const useElasticSearchConfig = () => {
-  const ElasticSearchTelegraf = useElasticSearchTelegraf();
-  const plugins = {
-    ElasticSearch: ElasticSearchTelegraf,
-  };
-
   return {
     instance_type: 'elasticsearch',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'value', key: 'elasticsearch_fs_total_available_in_bytes' },
-      { type: 'value', key: 'elasticsearch_http_current_open' },
-      { type: 'value', key: 'elasticsearch_indices_docs_count' },
+      { type: 'enum', key: 'elasticsearch_cluster_health_status_code' },
+      { type: 'value', key: 'elasticsearch_cluster_health_unassigned_shards' },
+      { type: 'progress', key: 'elasticsearch_jvm_mem_heap_used_percent' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'ElasticSearch-Exporter': 'exporter',
+      ElasticSearch: 'database',
+    },
   };
 };

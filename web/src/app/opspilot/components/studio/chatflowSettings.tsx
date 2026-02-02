@@ -20,6 +20,15 @@ const nodeCategories = [
       { type: 'restful', icon: 'RESTfulAPI', labelKey: 'chatflow.restful' },
       { type: 'openai', icon: 'icon-test2', labelKey: 'chatflow.openai' },
       { type: 'agui', icon: 'huifu-copy', labelKey: 'chatflow.agui' },
+    ]
+  },
+  {
+    key: 'applications',
+    labelKey: 'chatflow.applications',
+    items: [
+      { type: 'embedded_chat', icon: 'wendaduihua', labelKey: 'chatflow.embeddedChat' },
+      { type: 'web_chat', icon: 'WebSphereMQ', labelKey: 'chatflow.webChat' },
+      { type: 'mobile', icon: 'zhuji', labelKey: 'chatflow.mobile' },
       { type: 'enterprise_wechat', icon: 'qiwei2', labelKey: 'chatflow.enterpriseWechat' },
       { type: 'dingtalk', icon: 'dingding', labelKey: 'chatflow.dingtalk' },
       { type: 'wechat_official', icon: 'weixingongzhonghao', labelKey: 'chatflow.wechatOfficial' },
@@ -36,7 +45,8 @@ const nodeCategories = [
     key: 'logic',
     labelKey: 'chatflow.logicNodes',
     items: [
-      { type: 'condition', icon: 'tiaojianfenzhi', labelKey: 'chatflow.condition' }
+      { type: 'condition', icon: 'tiaojianfenzhi', labelKey: 'chatflow.condition' },
+      { type: 'intent_classification', icon: 'question-circle-fill', labelKey: 'chatflow.intentClassification' }
     ]
   },
   {

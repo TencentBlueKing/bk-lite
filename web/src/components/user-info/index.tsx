@@ -38,7 +38,7 @@ const UserInfo: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [includeChildren, setIncludeChildren] = useState<boolean>(false);
 
-  const username = displayName || session?.user?.username || 'Test';
+  const username = displayName || (session?.user as any)?.username || 'Test';
 
   // 初始化时从 cookie 读取 include_children 状态
   useEffect(() => {
@@ -48,11 +48,22 @@ const UserInfo: React.FC = () => {
     }
   }, []);
 
+  // 刷新页面逻辑
+  const refreshPage = useCallback(() => {
+    const pathSegments = pathname ? pathname.split('/').filter(Boolean) : [];
+    if (pathSegments.length > 2) {
+      router.push(`/${pathSegments.slice(0, 2).join('/')}`);
+    } else {
+      window.location.reload();
+    }
+  }, [pathname, router]);
+
   // 处理复选框变化
   const handleIncludeChildrenChange = useCallback((checked: boolean) => {
     setIncludeChildren(checked);
     Cookies.set('include_children', checked ? '1' : '0', { expires: 365 });
-  }, []);
+    refreshPage();
+  }, [refreshPage]);
 
   const federatedLogout = useCallback(async () => {
     setIsLoading(true);
@@ -114,19 +125,13 @@ const UserInfo: React.FC = () => {
 
     setSelectedGroup(nextGroup);
     setDropdownVisible(false);
-
-    const pathSegments = pathname ? pathname.split('/').filter(Boolean) : [];
-    if (pathSegments.length > 2) {
-      router.push(`/${pathSegments.slice(0, 2).join('/')}`);
-    } else {
-      window.location.reload();
-    }
-  }, [groupTree, pathname, router, setSelectedGroup]);
+    refreshPage();
+  }, [groupTree, pathname, router, setSelectedGroup, refreshPage]);
 
   const dropdownItems: MenuProps['items'] = useMemo(() => {
     const filterGroups = (groups: Group[]): Group[] => {
       return groups
-        .filter(group => isSuperUser || session?.user?.username === 'kayla' || group.name !== 'OpsPilotGuest')
+        .filter(group => isSuperUser || (session?.user as any)?.username === 'kayla' || group.name !== 'OpsPilotGuest')
         .map(group => ({
           ...group,
           subGroups: group.subGroups ? filterGroups(group.subGroups) : undefined,

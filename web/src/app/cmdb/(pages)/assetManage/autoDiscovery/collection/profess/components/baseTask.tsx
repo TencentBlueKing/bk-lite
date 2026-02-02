@@ -17,12 +17,22 @@ import { FieldModalRef } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import GroupTreeSelector from '@/components/group-tree-select';
+import { useAssetManageStore } from '@/app/cmdb/store';
 
 import {
   CYCLE_OPTIONS,
   NETWORK_DEVICE_OPTIONS,
   createTaskValidationRules,
 } from '@/app/cmdb/constants/professCollection';
+
+const IP_SELECTION_NODE_IDS = [
+  'network_topo',
+  'network',
+  'databases',
+  'host_manage',
+  'middleware',
+];
+
 import {
   CaretRightOutlined,
   QuestionCircleOutlined,
@@ -67,8 +77,8 @@ interface BaseTaskFormProps {
 }
 
 export interface BaseTaskRef {
-  instOptions: { label: string; value: string; [key: string]: any }[];
-  accessPoints: { label: string; value: string; [key: string]: any }[];
+  instOptions: { label: string; value: string;[key: string]: any }[];
+  accessPoints: { label: string; value: string;[key: string]: any }[];
   selectedData: TableItem[];
   ipRange: string[];
   collectionType: string;
@@ -95,6 +105,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     },
     ref
   ) => {
+    const { editingId, scan_cycle_type } = useAssetManageStore();
     const { model_id: modelId } = modelItem;
     const { t } = useTranslation();
     const instanceApi = useInstanceApi();
@@ -140,6 +151,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       'databases',
       'cloud',
       'host_manage',
+      'middleware',
     ].includes(nodeId as string);
 
     const instColumns = [
@@ -346,9 +358,35 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const showFieldModal = async () => {
       try {
         const attrList = await modelApi.getModelAttrList(modelId);
+        // API 返回扁平数组，需要转换为分组结构
+        const groupMap = new Map<string, any[]>();
+        (attrList || []).forEach((attr: any) => {
+          const groupName = attr.attr_group;
+          if (!groupMap.has(groupName)) {
+            groupMap.set(groupName, []);
+          }
+          groupMap.get(groupName)!.push(attr);
+        });
+
+        // 转换为 FullInfoGroupItem[] 格式
+        const groupedAttrList = Array.from(groupMap.entries()).map(
+          ([groupName, attrs], index) => ({
+            id: index,
+            group_name: groupName,
+            attrs,
+            order: index,
+            is_collapsed: false,
+            description: '',
+            attrs_count: attrs.length,
+            can_move_up: false,
+            can_move_down: false,
+            can_delete: false,
+          })
+        );
+
         fieldRef.current?.showModal({
           type: 'add',
-          attrList,
+          attrList: groupedAttrList,
           formInfo: {},
           subTitle: '',
           title: t('common.addNew'),
@@ -403,24 +441,30 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               rules={rules.cycle}
             >
               <Radio.Group>
-                <div className="space-y-3">
-                  <div className="flex items-center">
-                    <Radio value={CYCLE_OPTIONS.DAILY}>
-                      {t('Collection.dailyAt')}
-                      <Form.Item
-                        name="dailyTime"
-                        noStyle
-                        dependencies={['cycle']}
-                        rules={rules.dailyTime}
-                      >
-                        <TimePicker
-                          className="w-40 ml-2"
-                          format="HH:mm"
-                          placeholder={t('common.selectTip')}
-                        />
-                      </Form.Item>
-                    </Radio>
-                  </div>
+                <div className="flex flex-col gap-3">
+                  {/* 每天一次 */}
+                  {editingId && scan_cycle_type !== "cycle"
+                    ? (
+                      <div className="flex items-center" title={t('Collection.cycleDeprecated')}>
+                        <Radio value={CYCLE_OPTIONS.DAILY} disabled={true}>
+                          {t('Collection.dailyAt')}
+                          <Form.Item
+                            name="dailyTime"
+                            noStyle
+                            dependencies={['cycle']}
+                            rules={rules.dailyTime}
+                          >
+                            <TimePicker
+                              className="w-40 ml-2"
+                              format="HH:mm"
+                              placeholder={t('common.selectTip')}
+                            />
+                          </Form.Item>
+                        </Radio>
+                      </div>
+                    )
+                    : (null)}
+                  {/* 每隔几分钟执行一次 */}
                   <div className="flex items-center">
                     <Radio value={CYCLE_OPTIONS.INTERVAL}>
                       <Space>
@@ -441,11 +485,41 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                       </Space>
                     </Radio>
                   </div>
-                  <Radio value={CYCLE_OPTIONS.ONCE}>
-                    {t('Collection.executeOnce')}
-                  </Radio>
+                  {/* 执行一次 */}
+                  {editingId && scan_cycle_type !== "cycle"
+                    ? (<Radio value={CYCLE_OPTIONS.ONCE} disabled={true} title={t('Collection.cycleDeprecated')}>
+                      {t('Collection.executeOnce')}
+                    </Radio>)
+                    : (null)}
                 </div>
               </Radio.Group>
+            </Form.Item>
+
+            {/* 组织 */}
+            <Form.Item
+              label={t('organization')}
+              name="organization"
+              rules={[
+                {
+                  required: true,
+                  message: t('common.inputMsg') + t('organization'),
+                },
+              ]}
+            >
+              <GroupTreeSelector
+                placeholder={t('common.selectTip')}
+                value={ipRangeOrg}
+                onChange={(value) => {
+                  const orgArray = Array.isArray(value)
+                    ? value
+                    : value
+                      ? [value]
+                      : [];
+                  setIpRangeOrg(orgArray);
+                  form.setFieldValue('organization', orgArray);
+                }}
+                multiple={true}
+              />
             </Form.Item>
 
             {/* 实例选择 */}
@@ -476,12 +550,9 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             )}
 
             {/* ip选择 */}
-            {nodeId &&
-              ['network_topo', 'network', 'databases', 'host_manage'].includes(
-                nodeId
-              ) && (
+            {nodeId && IP_SELECTION_NODE_IDS.includes(nodeId) && (
               <>
-                {(
+                {
                   <Radio.Group
                     value={collectionType}
                     className="ml-8 mb-6"
@@ -490,7 +561,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     <Radio value="ip">{t('Collection.chooseIp')}</Radio>
                     <Radio value="asset">{t('Collection.chooseAsset')}</Radio>
                   </Radio.Group>
-                )}
+                }
 
                 {collectionType === 'ip' ? (
                   <>
@@ -502,41 +573,30 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                       rules={[
                         {
                           required: true,
-                          message:
-                              t('common.inputMsg') + t('Collection.ipRange'),
+                          validator: (_, value) => {
+                            const ipReg =
+                              /^((2[0-4]\d|25[0-5]|[01]?\d\d?)\.){3}(2[0-4]\d|25[0-5]|[01]?\d\d?)$/;
+                            if (
+                              !value?.length ||
+                              !ipReg.test(value[0]) ||
+                              !ipReg.test(value[1])
+                            ) {
+                              return Promise.reject(
+                                new Error(
+                                  t('common.inputMsg') + t('Collection.ipRange')
+                                )
+                              );
+                            }
+                            return Promise.resolve();
+                          },
                         },
                       ]}
                     >
                       <IpRangeInput value={ipRange} onChange={onIpChange} />
                     </Form.Item>
-                    <Form.Item
-                      label={t('organization')}
-                      name="organization"
-                      rules={[
-                        {
-                          required: true,
-                          message: t('common.inputMsg') + t('organization'),
-                        },
-                      ]}
-                    >
-                      <GroupTreeSelector
-                        placeholder={t('common.selectTip')}
-                        value={ipRangeOrg}
-                        onChange={(value) => {
-                          const orgArray = Array.isArray(value)
-                            ? value
-                            : value
-                              ? [value]
-                              : [];
-                          setIpRangeOrg(orgArray);
-                          form.setFieldValue('organization', orgArray);
-                        }}
-                        multiple={false}
-                      />
-                    </Form.Item>
                   </>
                 ) : (
-                /* 选择资产 */
+                  /* 选择资产 */
                   <Form.Item
                     name="assetInst"
                     label={instPlaceholder}

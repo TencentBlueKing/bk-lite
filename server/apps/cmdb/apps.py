@@ -1,5 +1,4 @@
 import sys
-
 from django.apps import AppConfig
 
 
@@ -8,6 +7,9 @@ class CmdbConfig(AppConfig):
     name = "apps.cmdb"
 
     def ready(self):
-        is_running_migrations = 'makemigrations' in sys.argv or 'migrate' in sys.argv
-        if not is_running_migrations:
-            import apps.cmdb.nats  # noqa
+        import apps.cmdb.nats.nats  # noqa
+        
+        # 仅在 runserver 时初始化所有缓存（避免在 migrate 等命令时加载）
+        if 'runserver' in sys.argv:
+            from apps.cmdb.display_field import init_all_caches_on_startup
+            init_all_caches_on_startup()

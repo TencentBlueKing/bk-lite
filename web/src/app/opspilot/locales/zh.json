@@ -92,6 +92,7 @@
   },
   "tool": {
     "text": "文本",
+    "textarea": "文本域",
     "deleteConfirm": "你确定要删除此工具吗？",
     "parameters": "参数",
     "addTool": "添加工具",
@@ -117,7 +118,9 @@
     "fetchToolsFailed": "获取工具列表失败",
     "subToolDescription": "子工具描述",
     "items": "个",
-    "description": "描述"
+    "description": "描述",
+    "checkbox": "复选框",
+    "number": "数字"
   },
   "knowledge": {
     "goToTesting": "前往测试",
@@ -206,7 +209,10 @@
       "llmModel": "LLM模型",
       "enterQaCount": "请输入问答对数量",
       "qaPairsUpdateFailed": "问答对更新失败",
-      "chunks": "个分块"
+      "chunks": "个分块",
+      "totalQAPairsSuffix": "个问答对",
+      "qaCountPerChunk": "问答对数量(每块)",
+      "totalQAPairsPrefix": "共"
     },
     "documents": {
       "status": "状态",
@@ -317,12 +323,16 @@
       "preprocessFailed": "无法启动预处理",
       "chunkSize": "分块数",
       "ocrEnhancementDesc": "OCR（光学字符识别）技术用于识别和将图像中的字符转换为可编辑文本，提高文本识别的准确性和有效性。",
+      "ocrModelNotConfigured": "未配置 OCR 模型",
+      "ocrModelNotConfiguredTip": "OCR 功能需要先配置 OCR 模型，请先完成配置",
+      "modelConfig": "模型配置",
       "method": "方法",
       "semanticDescription": "保留完整语义单元（如章节、段落、函数模块），适合需逻辑关联的长文本处理，但对文档结构或算法依赖性较高。",
       "pageDescription": "保留PPT每页的视觉和内容独立性，适合处理包含分页逻辑的演示文稿，便于后续分块或按页检索。",
       "trainWarning": "重要提示",
       "semanticFormats": "结构化文档（Word、Markdown）、技术文档（PDF 带目录）。",
-      "fullTextMethod": "直接提取全部文本内容，并对扫描版PDF启用OCR识别图像文字。"
+      "fullTextMethod": "直接提取全部文本内容，并对扫描版PDF启用OCR识别图像文字。",
+      "lastSyncTime": "最后同步时间"
     },
     "knowledgeGraph": {
       "relationships": "关系",
@@ -476,7 +486,12 @@
     "editAnnotation": "编辑标注",
     "knowledgeDetails": "知识详情",
     "clear": "清除对话",
-    "removeAnnotation": "删除标注"
+    "removeAnnotation": "删除标注",
+    "onlyImageAllowed": "只能上传图片文件",
+    "imageTooLarge": "图片大小不能超过 5MB",
+    "uploadImage": "上传图片",
+    "referenceDocSource": "引用文档来源",
+    "referenceQASource": "引用问答对来源"
   },
   "settings": {
     "secret": {
@@ -746,7 +761,42 @@
       "dingtalkParams": "钉钉参数",
       "pleaseEnterOutputParams": "请输入输出参数",
       "equals": "等于",
-      "apiUrl": "URL"
+      "apiUrl": "URL",
+      "appTags": "应用标签",
+      "appDescription": "应用描述",
+      "pleaseEnterAppDescription": "请输入应用描述",
+      "enterAppName": "输入应用名称",
+      "appTagProductivity": "效率",
+      "appTagSocial": "社交",
+      "pleaseEnterAppName": "请输入应用名称",
+      "appTagWork": "工作",
+      "appTagEntertainment": "娱乐",
+      "appTagEducation": "教育",
+      "selectAppTags": "选择应用标签",
+      "appTagBusiness": "商务",
+      "enterAppDescription": "输入应用描述",
+      "appName": "应用名称",
+      "pleaseSelectAppTags": "请选择应用标签",
+      "appTagAutomation": "自动化",
+      "appTagSecurityAudit": "安全审计",
+      "appTagOpsPlanning": "运维规划",
+      "pleaseSelectAppIcon": "请选择应用图标",
+      "appTagMonitorAlarm": "监控告警",
+      "appTagRoutineOps": "日常运维",
+      "appIcon": "应用图标",
+      "appTagPerformanceAnalysis": "性能分析",
+      "intents": "意图列表",
+      "intentDescription": "意图描述",
+      "intentNamePlaceholder": "请输入意图名称",
+      "removeIntent": "删除意图",
+      "classification": "分类",
+      "intentTopicPlaceholder": "请输入分类主题名称（每行一个）",
+      "intentNameRequired": "意图名称不能为空",
+      "intentDescPlaceholder": "请输入意图描述（可选）",
+      "intentClassification": "意图分类",
+      "addIntent": "添加意图",
+      "intentName": "意图名称",
+      "intentClassificationConfig": "意图分类配置"
     },
     "collapseSidebar": "收缩侧边栏",
     "messages": {
@@ -901,7 +951,12 @@
     "validate": "验证",
     "notConfigured": "未配置",
     "pleaseEnterNotificationContent": "请输入通知内容",
-    "restful": "RESTful API"
+    "restful": "RESTful API",
+    "mobile": "移动端",
+    "webChat": "Web对话",
+    "embeddedChat": "嵌入式对话",
+    "applications": "应用",
+    "intentClassification": "意图分类"
   },
   "provider": {
     "form": {

@@ -5,16 +5,19 @@ import React, {
   forwardRef,
   useImperativeHandle,
   useRef,
-  useEffect,
 } from 'react';
-import { Tag, Empty, Button, Spin, Badge } from 'antd';
 import {
-  RightOutlined,
-  GlobalOutlined,
-  EditOutlined,
-  WindowsOutlined,
-  AppleOutlined,
-} from '@ant-design/icons';
+  Tag,
+  Empty,
+  Button,
+  Spin,
+  Badge,
+  Popconfirm,
+  message,
+  Input,
+} from 'antd';
+import { RightOutlined, GlobalOutlined, EditOutlined } from '@ant-design/icons';
+import Icon from '@/components/icon';
 import OperateDrawer from '@/app/node-manager/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
 import { useTelegrafMap } from '@/app/node-manager/hooks/node';
@@ -35,6 +38,7 @@ import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import CustomTable from '@/components/custom-table';
 import ConfigModal from './configModal';
 import PermissionWrapper from '@/components/permission';
+import { useUserInfoContext } from '@/context/userInfo';
 
 interface CollectorDetailDrawerProps extends ModalSuccess {
   nodeStateEnum?: any;
@@ -46,8 +50,18 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const { convertToLocalizedTime } = useLocalizedTime();
     const statusMap = useTelegrafMap();
     const cloudId = useCloudId();
-    const { getConfiglist, getChildConfig } = useNodeManagerApi();
+    const { getConfiglist, getChildConfig, deleteSubConfig } =
+      useNodeManagerApi();
+    const commonContext = useUserInfoContext();
+    const adminRef = useRef(commonContext?.roles || []);
+    const isAdmin =
+      adminRef.current.includes('admin') ||
+      adminRef.current.includes('node--admin');
     const configModalRef = useRef<ModalRef>(null);
+    const configAbortControllerRef = useRef<AbortController | null>(null);
+    const configRequestIdRef = useRef<number>(0);
+    const subConfigAbortControllerRef = useRef<AbortController | null>(null);
+    const subConfigRequestIdRef = useRef<number>(0);
     const [visible, setVisible] = useState<boolean>(false);
     const [selectedCollector, setSelectedCollector] =
       useState<TableDataItem | null>(null);
@@ -63,19 +77,49 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       total: 0,
       pageSize: 10,
     });
+    const [searchKeyword, setSearchKeyword] = useState<string>('');
+    const [inputValue, setInputValue] = useState<string>('');
 
     useImperativeHandle(ref, () => ({
       showModal: ({ collectors, row }) => {
         setVisible(true);
-        setCollectors(collectors);
+        // 过滤采集器列表:如果同一个collector_id同时存在于collectors和collectors_install中,只保留collectors中的
+        const collectorsFromStatus = row.status?.collectors || [];
+        const collectorsInstallFromStatus =
+          row.status?.collectors_install || [];
+        const collectorIds = new Set(
+          collectorsFromStatus.map((c: any) => c.collector_id)
+        );
+        const filteredCollectors = [
+          ...collectors.filter((c: any) =>
+            collectorsFromStatus.some(
+              (sc: any) => sc.collector_id === c.collector_id
+            )
+          ),
+          ...collectors.filter(
+            (c: any) =>
+              collectorsInstallFromStatus.some(
+                (sc: any) => sc.collector_id === c.collector_id
+              ) && !collectorIds.has(c.collector_id)
+          ),
+        ];
+        setCollectors(filteredCollectors);
         setForm(row);
-        if (collectors.length > 0) {
-          const sortedCollectors = [...collectors].sort((a, b) => {
+        if (filteredCollectors.length > 0) {
+          const sortedCollectors = [...filteredCollectors].sort((a, b) => {
             const priorityA = STATUS_CODE_PRIORITY[a.status] || 999;
             const priorityB = STATUS_CODE_PRIORITY[b.status] || 999;
             return priorityA - priorityB;
           });
           const firstCollector = sortedCollectors[0];
+          // 处理message为对象的情况
+          if (
+            firstCollector.message &&
+            typeof firstCollector.message === 'object'
+          ) {
+            firstCollector.message =
+              firstCollector.message?.final_message || '';
+          }
           setSelectedCollector(firstCollector);
           setMainConfig({
             key: '',
@@ -99,12 +143,20 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
 
     // 加载所有配置数据（只调用一次 config_node_asso 接口）
     const loadAllConfigs = async (nodeId: string, firstCollectorId: string) => {
+      configAbortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      configAbortControllerRef.current = abortController;
+      const currentRequestId = ++configRequestIdRef.current;
       setMainConfigLoading(true);
       try {
-        const configList = await getConfiglist({
-          cloud_region_id: cloudId,
-          node_id: nodeId,
-        });
+        const configList = await getConfiglist(
+          {
+            cloud_region_id: cloudId,
+            node_id: nodeId,
+          },
+          { signal: abortController.signal }
+        );
+        if (currentRequestId !== configRequestIdRef.current) return;
         const configData: ConfigData[] = configList.map(
           (config: ConfigListProps) => ({
             ...config,
@@ -121,14 +173,16 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         );
         if (targetConfig) {
           setMainConfig(targetConfig);
-          loadSubConfigs(targetConfig.key);
+          loadSubConfigs({ configId: targetConfig.key });
         } else {
           setMainConfig(null);
         }
       } catch (error) {
         console.error('Failed to load configs:', error);
       } finally {
-        setMainConfigLoading(false);
+        if (currentRequestId === configRequestIdRef.current) {
+          setMainConfigLoading(false);
+        }
       }
     };
 
@@ -139,7 +193,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       );
       if (targetConfig) {
         setMainConfig(targetConfig);
-        loadSubConfigs(targetConfig.key);
+        loadSubConfigs({ configId: targetConfig.key, page: 1, configType: '' });
       } else {
         setMainConfig(null);
         setSubConfigs([]);
@@ -148,20 +202,33 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     };
 
     // 加载子配置
-    const loadSubConfigs = async (
-      configId: string,
-      page?: number,
-      pageSize?: number
-    ) => {
+    const loadSubConfigs = async ({
+      configId,
+      page,
+      pageSize,
+      configType,
+    }: {
+      configId: string;
+      page?: number;
+      pageSize?: number;
+      configType?: string;
+    }) => {
+      subConfigAbortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      subConfigAbortControllerRef.current = abortController;
+      const currentRequestId = ++subConfigRequestIdRef.current;
       setSubConfigLoading(true);
       try {
         const params = {
           collector_config_id: configId,
-          search: '',
           page: page || subConfigPagination.current,
           page_size: pageSize || subConfigPagination.pageSize,
+          config_type: configType === undefined ? searchKeyword : configType,
         };
-        const res = await getChildConfig(params);
+        const res = await getChildConfig(params, {
+          signal: abortController.signal,
+        });
+        if (currentRequestId !== subConfigRequestIdRef.current) return;
         const data = res.items.map((item: any) => ({
           ...item,
           key: item.id,
@@ -176,20 +243,11 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       } catch (error) {
         console.error('Failed to load sub configs:', error);
       } finally {
-        setSubConfigLoading(false);
+        if (currentRequestId === subConfigRequestIdRef.current) {
+          setSubConfigLoading(false);
+        }
       }
     };
-
-    // 子配置分页变化
-    useEffect(() => {
-      if (mainConfig && visible) {
-        loadSubConfigs(
-          mainConfig.key,
-          subConfigPagination.current,
-          subConfigPagination.pageSize
-        );
-      }
-    }, [subConfigPagination.current, subConfigPagination.pageSize]);
 
     const getSortedGroupedCollectors = () => {
       const groupedCollectors = collectors.reduce((groups, collector) => {
@@ -208,6 +266,8 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     };
 
     const handleCancel = () => {
+      configAbortControllerRef.current?.abort();
+      subConfigAbortControllerRef.current?.abort();
       setVisible(false);
       setCollectors([]);
       setSelectedCollector(null);
@@ -217,9 +277,23 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       setSubConfigPagination({ current: 1, total: 0, pageSize: 10 });
       setMainConfigLoading(false);
       setSubConfigLoading(false);
+      setSearchKeyword('');
+      setInputValue('');
     };
 
     const handleCollectorClick = (collector: TableDataItem) => {
+      subConfigAbortControllerRef.current?.abort();
+      setSubConfigs([]);
+      setSubConfigPagination((pre) => ({
+        ...pre,
+        count: 0,
+        current: 1,
+      }));
+      setSearchKeyword('');
+      setInputValue('');
+      if (collector.message && typeof collector.message === 'object') {
+        collector.message = collector.message?.final_message || '';
+      }
       setSelectedCollector(collector);
       if (collector.collector_id) {
         filterMainConfigByCollectorId(collector.collector_id as string);
@@ -248,7 +322,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const handleConfigModalSuccess = async (operateType: string) => {
       if (['add_child', 'edit_child'].includes(operateType)) {
         if (mainConfig) {
-          await loadSubConfigs(mainConfig.key);
+          await loadSubConfigs({ configId: mainConfig.key });
         }
         return;
       }
@@ -283,17 +357,82 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         width: 100,
         fixed: 'right' as const,
         render: (_: any, record: any) => (
-          <PermissionWrapper requiredPermissions={['EditSubConfiguration']}>
-            <Button type="link" onClick={() => handleSubConfigEdit(record)}>
-              {t('common.edit')}
-            </Button>
-          </PermissionWrapper>
+          <>
+            <PermissionWrapper requiredPermissions={['EditSubConfiguration']}>
+              <Button type="link" onClick={() => handleSubConfigEdit(record)}>
+                {t('common.edit')}
+              </Button>
+            </PermissionWrapper>
+            {isAdmin && (
+              <Popconfirm
+                title={t(`common.prompt`)}
+                description={t(
+                  'node-manager.cloudregion.Configuration.deleteSubConfigWarning'
+                )}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                onConfirm={() => {
+                  handleDelete(record.key);
+                }}
+              >
+                <Button type="link" danger className="ml-[10px]">
+                  {t('common.delete')}
+                </Button>
+              </Popconfirm>
+            )}
+          </>
         ),
       },
     ];
 
+    const handleDelete = (id: number) => {
+      setSubConfigLoading(true);
+      deleteSubConfig(id)
+        .then(() => {
+          message.success(t('common.delSuccess'));
+          loadSubConfigs({ configId: mainConfig?.key as string });
+        })
+        .catch(() => {
+          setSubConfigLoading(false);
+        });
+    };
+
     const handleSubConfigTableChange = (pagination: any) => {
       setSubConfigPagination(pagination);
+      if (mainConfig) {
+        loadSubConfigs({
+          configId: mainConfig.key,
+          page: pagination.current,
+          pageSize: pagination.pageSize,
+        });
+      }
+    };
+
+    const handleSearch = (value: string) => {
+      setSearchKeyword(value);
+      setSubConfigPagination((prev) => ({ ...prev, current: 1 }));
+      if (mainConfig) {
+        loadSubConfigs({
+          configId: mainConfig.key,
+          page: 1,
+          pageSize: subConfigPagination.pageSize,
+          configType: value,
+        });
+      }
+    };
+
+    const handleClearSearch = () => {
+      setInputValue('');
+      setSearchKeyword('');
+      setSubConfigPagination((prev) => ({ ...prev, current: 1 }));
+      if (mainConfig) {
+        loadSubConfigs({
+          configId: mainConfig.key,
+          page: 1,
+          pageSize: subConfigPagination.pageSize,
+          configType: '',
+        });
+      }
     };
 
     const getStatusInfo = (status: number) => {
@@ -308,13 +447,14 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     };
 
     const getOSIcon = () => {
-      const os = form?.operating_system?.toLowerCase();
-      if (os?.includes('windows')) {
-        return <WindowsOutlined style={{ fontSize: '14px' }} />;
-      } else if (os?.includes('linux')) {
-        return <AppleOutlined style={{ fontSize: '14px' }} />;
-      }
-      return null;
+      const osValue = form?.operating_system;
+      return (
+        <Icon
+          className="mr-[8px] center-align"
+          type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
+          style={{ transform: 'scale(1.3)', display: 'inline-block' }}
+        />
+      );
     };
 
     const getOSLabel = () => {
@@ -328,11 +468,15 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
           title={form?.name || '--'}
           subTitle={
             <>
-              <Tag icon={<GlobalOutlined />} color="blue" className="text-xs">
+              <Tag
+                icon={<GlobalOutlined />}
+                color="blue"
+                className="text-[14px]"
+              >
                 {form?.ip || '--'}
               </Tag>
               {form?.operating_system && (
-                <Tag icon={getOSIcon()} color="green" className="text-xs">
+                <Tag color="green" icon={getOSIcon()} className="text-[14px]">
                   {getOSLabel()}
                 </Tag>
               )}
@@ -422,7 +566,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                 })}
               </div>
             </div>
-            <div className="w-2/3 pl-4 flex flex-col overflow-hidden">
+            <div className="w-2/3 pl-4 flex flex-col overflow-y-auto">
               {selectedCollector ? (
                 <div className="space-y-4 flex flex-col h-full">
                   {/* 采集器名称 */}
@@ -470,9 +614,14 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                             }
                           )}
                         </span>
-                        {selectedCollector.message || '--'}
+                        <span style={{ whiteSpace: 'pre-line' }}>
+                          {selectedCollector.message || '--'}
+                        </span>
                       </span>
-                      <p className="mt-[4px]">
+                      <p
+                        className="mt-[4px]"
+                        style={{ whiteSpace: 'pre-line' }}
+                      >
                         {selectedCollector.verbose_message || ''}
                       </p>
                     </div>
@@ -504,22 +653,31 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                     </div>
                     {/* 子配置 */}
                     {mainConfig && (
-                      <div className="flex-1 flex flex-col overflow-hidden">
+                      <div className="flex-1 flex flex-col">
                         <div className="bg-[var(--color-fill-2)] rounded-t flex items-center justify-between p-[10px] flex-shrink-0">
                           <span className="text-sm font-bold">
                             {t(
                               'node-manager.cloudregion.Configuration.subconfiguration'
                             )}
                           </span>
-                          <span className="text-xs text-[var(--color-text-3)]">
-                            {subConfigPagination.total || 0}
-                            {t('common.items')}
-                          </span>
+                          <Input.Search
+                            placeholder={t(
+                              'node-manager.cloudregion.Configuration.searchPlaceholder'
+                            )}
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onSearch={handleSearch}
+                            onClear={handleClearSearch}
+                            allowClear
+                            style={{ width: 250 }}
+                          />
                         </div>
-                        <div className="flex-1 overflow-hidden">
+                        <div className="flex-1">
                           <CustomTable
                             scroll={{
-                              y: 'calc(100vh - 460px)',
+                              y: !subConfigs?.length
+                                ? 'auto'
+                                : 'calc(100vh - 482px)',
                               x: 'max-content',
                             }}
                             columns={subConfigColumns}

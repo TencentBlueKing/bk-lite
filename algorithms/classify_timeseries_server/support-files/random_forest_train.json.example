@@ -1,0 +1,172 @@
+{
+  "_comment": "Random Forest 时间序列训练配置文件",
+  "_usage": "复制为 random_forest_train.json 并根据需要修改参数",
+  
+  "model": {
+    "type": "RandomForest",
+    "_type_desc": "模型类型，使用随机森林算法",
+    "_type_comparison": "相比 GradientBoosting：RandomForest 训练更快，抗过拟合能力更强，但可能精度稍低",
+    "name": "timeseries_rf_model",
+    "_name_desc": "模型名称，用于 MLflow 记录和标识"
+  },
+  
+  "hyperparams": {
+    "_comment": "模型超参数配置（自动进行超参数搜索）",
+    
+    "use_feature_engineering": true,
+    "_use_feature_engineering_desc": "是否使用完整特征工程。false=简单滞后窗口，true=使用下方 feature_engineering 配置",
+    
+    "random_state": 42,
+    "_random_state_desc": "随机种子，保证结果可复现",
+    
+    "max_evals": 50,
+    "_max_evals_desc": "超参数搜索的最大评估次数。早停配置将自动根据此值计算（patience ≈ max_evals * 0.25，最小10，最大30）",
+    "_max_evals_recommendation": "RandomForest 训练较快，可以设置更大的值（如 100）以找到更优参数",
+    
+    "metric": "rmse",
+    "_metric_options": ["rmse", "mae", "mape"],
+    "_metric_desc": "优化目标指标。rmse=均方根误差，mae=平均绝对误差，mape=平均绝对百分比误差",
+    
+    "search_space": {
+      "_comment": "超参数搜索空间 - Random Forest 特定参数",
+      
+      "n_estimators": [50, 100, 200, 300],
+      "_n_estimators_desc": "树的数量候选值。RandomForest 中更多的树通常更好，过拟合风险较小",
+      "_n_estimators_recommendation": "推荐范围：100-300，更多的树会提升性能但增加训练和推理时间",
+      
+      "max_depth": [3, 5, 10, 15, null],
+      "_max_depth_desc": "树最大深度候选值。null 表示不限制深度（树会完全生长）",
+      "_max_depth_comparison": "RandomForest 可以使用更深的树（如 15 或 null），因为多个树的平均会减少过拟合",
+      "_max_depth_recommendation": "数据充足时可尝试 null（不限制），数据较少时使用 10-15",
+      
+      "min_samples_split": [2, 5, 10],
+      "_min_samples_split_desc": "节点分裂所需最小样本数。越大越保守，可防止过拟合",
+      "_min_samples_split_recommendation": "默认 2 即可，数据噪声大时使用 5-10",
+      
+      "min_samples_leaf": [1, 2, 4],
+      "_min_samples_leaf_desc": "叶节点最小样本数。越大越平滑，模型越保守",
+      "_min_samples_leaf_recommendation": "默认 1 即可，需要更平滑的预测时使用 2-4",
+      
+      "max_features": ["sqrt", "log2"],
+      "_max_features_desc": "每棵树随机选择的最大特征数",
+      "_max_features_options": {
+        "sqrt": "特征数的平方根（推荐，适合大多数情况）",
+        "log2": "特征数的对数（更保守，适合高维数据）",
+        "null": "使用所有特征（不推荐，会降低树之间的多样性）"
+      },
+      "_max_features_recommendation": "'sqrt' 是最常用且效果好的选择",
+      
+      "lag_features": [6, 12, 24],
+      "_lag_features_desc": "滞后特征数量候选值。仅在 use_feature_engineering=false 时使用，表示使用连续的 1..N 期滞后值作为特征",
+      "_lag_features_note": "当 use_feature_engineering=true 时，此参数被 feature_engineering.lag_periods 替代"
+    }
+  },
+  
+  "feature_engineering": {
+    "_comment": "完整特征工程配置（仅当 use_feature_engineering=true 时生效）",
+    "_warning": "use_feature_engineering=true 时，以下所有字段均为必填项",
+    "_rf_advantage": "RandomForest 能自动处理特征选择，即使特征数很多也不易过拟合",
+    
+    "lag_periods": [1, 2, 3, 7, 14],
+    "_lag_periods_desc": "明确的滞后期列表（默认[1,2,3,7,14]）。如 [1,2,3] 表示使用 t-1, t-2, t-3 作为特征",
+    "_lag_periods_examples": {
+      "日数据": [1, 2, 3, 7, 14, 30],
+      "周数据": [1, 2, 4, 8, 12],
+      "月数据": [1, 2, 3, 6, 12, 24]
+    },
+    "_lag_periods_rf_tip": "RandomForest 可以处理更多滞后特征而不易过拟合，可以尝试更长的滞后期",
+    
+    "rolling_windows": [7, 14, 30],
+    "_rolling_windows_desc": "滚动窗口大小列表（默认[7,14,30]）。对每个窗口计算统计特征（均值、标准差等）",
+    "_rolling_windows_rf_tip": "可以添加更多窗口大小（如 [3, 7, 14, 30, 60]），RandomForest 会自动选择重要的特征",
+    
+    "rolling_features": ["mean", "std", "min", "max"],
+    "_rolling_features_desc": "滚动窗口统计函数（默认['mean','std','min','max']）",
+    "_rolling_features_options": ["mean", "std", "min", "max", "median", "sum"],
+    "_rolling_features_rf_tip": "可以包含所有统计函数，RandomForest 的特征重要性会自动识别有用的特征",
+    
+    "use_temporal_features": true,
+    "_use_temporal_features_desc": "是否提取时间特征（默认true）。包括：年、月、日、星期、小时、季度、是否周末等",
+    "_use_temporal_features_rf_advantage": "RandomForest 能很好地利用分类型时间特征（如星期、月份）捕捉季节性模式",
+    
+    "use_cyclical_features": false,
+    "_use_cyclical_features_desc": "是否使用周期性编码（默认false）。将月份、星期等用 sin/cos 编码以保留周期性",
+    "_use_cyclical_features_note": "RandomForest 本身能处理周期性，不使用 sin/cos 编码通常也能工作良好",
+    "_use_cyclical_features_when_to_use": "当数据有明显周期性且需要平滑过渡时（如小时数据 23->0）可以启用",
+    
+    "use_diff_features": true,
+    "_use_diff_features_desc": "是否使用差分特征（默认true）。有助于捕捉趋势变化",
+    "_use_diff_features_rf_tip": "差分特征能帮助 RandomForest 更好地识别趋势和变化点",
+    
+    "diff_periods": [1],
+    "_diff_periods_desc": "差分期数列表（默认[1]）。仅在 use_diff_features=true 时生效",
+    "_diff_periods_examples": {
+      "一阶差分": [1],
+      "一阶+季节性差分": [1, 12],
+      "多阶差分": [1, 7, 30]
+    }
+  }, 
+  
+  "preprocessing": {
+    "_comment": "数据预处理配置",
+
+    "handle_missing": "interpolate",
+    "_handle_missing_options": ["interpolate", "ffill", "bfill", "drop", "median"],
+    "_handle_missing_desc": "缺失值处理方式：interpolate=线性插值，ffill=前向填充，bfill=后向填充，drop=删除，median=中位数填充",
+    
+    "max_missing_ratio": 0.3,
+    "_max_missing_ratio_desc": "允许的最大缺失率（默认0.3=30%）。数据缺失率超过此值将报错",
+    
+    "interpolation_limit": 3,
+    "_interpolation_limit_desc": "插值最多填充的连续缺失点数（默认3）。连续缺失超过此数量将保留NaN"
+  },
+  
+  "mlflow": {
+    "_comment": "MLflow 实验跟踪配置",
+    "experiment_name": "timeseries_random_forest",
+    "_experiment_name_desc": "MLflow 实验名称。用于组织和管理训练运行"
+  },
+  
+  "_model_characteristics": {
+    "_comment": "Random Forest 模型特性说明（仅供参考，不是配置项）",
+    "优点": [
+      "训练速度快（可并行训练，n_jobs=-1 使用所有CPU核心）",
+      "抗过拟合能力强（通过多树集成和随机采样）",
+      "不需要特征缩放（基于树的模型）",
+      "能自动进行特征选择（通过特征重要性）",
+      "对参数不敏感（相比 GradientBoosting 更容易调参）",
+      "能处理高维数据（特征数多时表现依然良好）"
+    ],
+    "缺点": [
+      "预测精度可能略低于 GradientBoosting",
+      "模型文件较大（保存所有树）",
+      "推理速度相对较慢（需要所有树投票）"
+    ],
+    "适用场景": [
+      "数据量中等到大（几千到几十万样本）",
+      "特征维度高（几十到几百个特征）",
+      "需要快速训练和迭代",
+      "对过拟合敏感的场景",
+      "计算资源充足（多核CPU）"
+    ],
+    "调参建议": [
+      "1. 先固定 n_estimators=100，调整 max_depth 和 min_samples_leaf",
+      "2. 找到合适的树结构后，增加 n_estimators 到 200-300",
+      "3. max_features='sqrt' 通常是最佳选择，数据噪声大时可尝试 'log2'",
+      "4. 如果训练时间不是问题，可以设置 max_depth=null 让树完全生长",
+      "5. 观察特征重要性，移除不重要的特征可以加速训练"
+    ]
+  },
+  
+  "_comparison_with_gradient_boosting": {
+    "_comment": "与 Gradient Boosting 的对比（仅供参考）",
+    "训练速度": "RandomForest 更快（可并行）",
+    "预测精度": "GradientBoosting 通常更高",
+    "过拟合风险": "RandomForest 更低",
+    "参数敏感度": "RandomForest 更低（更容易调参）",
+    "特征选择": "RandomForest 自动进行，GradientBoosting 需要手动",
+    "模型解释性": "两者都提供特征重要性，类似",
+    "推理速度": "GradientBoosting 更快（树更少）",
+    "选择建议": "快速原型用 RandomForest，追求极致精度用 GradientBoosting"
+  }
+}

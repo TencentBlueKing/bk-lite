@@ -1,16 +1,8 @@
-.multipleSelect {
-  :global {
-    .ant-select-selector {
-      width: 100% !important;
-    }
-  }
+.multipleSelect :global(.ant-select-selector) {
+  width: 100% !important;
 }
 
-.tokenSetWrapper {
-  :global {
-    .ant-form-item {
-      position: relative;
-      margin-bottom: 24px;
-    }
-  }
+.tokenSetWrapper :global(.ant-form-item) {
+  position: relative;
+  margin-bottom: 24px;
 }

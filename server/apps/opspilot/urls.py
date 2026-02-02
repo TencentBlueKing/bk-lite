@@ -5,6 +5,7 @@ from apps.opspilot import views
 from apps.opspilot.viewsets import (
     BotViewSet,
     ChannelViewSet,
+    ChatApplicationViewSet,
     EmbedProviderViewSet,
     FileKnowledgeViewSet,
     HistoryViewSet,
@@ -19,13 +20,11 @@ from apps.opspilot.viewsets import (
     QAPairsViewSet,
     RasaModelViewSet,
     RerankProviderViewSet,
-    RuleViewSet,
     SkillRequestLogViewSet,
     SkillToolsViewSet,
     WebPageKnowledgeViewSet,
     WorkFlowTaskResultViewSet,
 )
-from apps.opspilot.viewsets.quota_rule_view import QuotaRuleViewSet
 
 router = routers.DefaultRouter()
 # model_provider
@@ -33,7 +32,6 @@ router.register(r"model_provider_mgmt/embed_provider", EmbedProviderViewSet)
 router.register(r"model_provider_mgmt/rerank_provider", RerankProviderViewSet)
 router.register(r"model_provider_mgmt/ocr_provider", OCRProviderViewSet)
 router.register(r"model_provider_mgmt/llm", LLMViewSet)
-router.register(r"model_provider_mgmt/rule", RuleViewSet)
 router.register(r"model_provider_mgmt/llm_model", LLMModelViewSet)
 router.register(r"model_provider_mgmt/skill_tools", SkillToolsViewSet)
 router.register(r"model_provider_mgmt/skill_log", SkillRequestLogViewSet)
@@ -44,6 +42,7 @@ router.register(r"bot_mgmt/bot", BotViewSet)
 router.register(r"bot_mgmt/rasa_model", RasaModelViewSet, basename="rasa_model")
 router.register(r"bot_mgmt/history", HistoryViewSet)
 router.register(r"bot_mgmt/workflow_task_result", WorkFlowTaskResultViewSet)
+router.register(r"bot_mgmt/chat_application", ChatApplicationViewSet)
 
 # channel
 router.register(r"channel_mgmt/channel", ChannelViewSet)
@@ -56,9 +55,6 @@ router.register(r"knowledge_mgmt/web_page_knowledge", WebPageKnowledgeViewSet)
 router.register(r"knowledge_mgmt/manual_knowledge", ManualKnowledgeViewSet)
 router.register(r"knowledge_mgmt/qa_pairs", QAPairsViewSet)
 router.register(r"knowledge_mgmt/knowledge_graph", KnowledgeGraphViewSet)
-
-# quota
-router.register(r"quota_rule_mgmt/quota_rule", QuotaRuleViewSet)
 
 urlpatterns = router.urls
 

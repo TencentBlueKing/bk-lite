@@ -18,11 +18,17 @@ export interface ThresholdItem {
 interface ThresholdListProps {
   data: ThresholdItem[];
   onChange?: (data: ThresholdItem[]) => void;
+  calculationUnit: string;
+  onUnitChange: (unit: string) => void;
+  unitOptions?: any[];
 }
 
 const ThresholdList: React.FC<ThresholdListProps> = ({
   data = [],
   onChange,
+  calculationUnit,
+  onUnitChange,
+  unitOptions = [],
 }) => {
   const { t } = useTranslation();
 
@@ -38,8 +44,18 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
     onChange?.(newData);
   };
 
+  const handleUnitChange = (value: string) => {
+    onUnitChange(value);
+  };
+
   return (
     <>
+      <style jsx>{`
+        :global(.threshold-unit-select .ant-select-selector) {
+          border-top-left-radius: 0 !important;
+          border-bottom-left-radius: 0 !important;
+        }
+      `}</style>
       {data.map((item, index) => (
         <div
           key={item.level}
@@ -75,11 +91,27 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
             <InputNumber
               style={{
                 width: '200px',
-                borderRadius: '0 6px 6px 0',
+                borderRadius: '0',
               }}
               min={0}
               value={item.value}
               onChange={(val) => handleValueChange(val, index)}
+            />
+            <Select
+              value={calculationUnit}
+              className="threshold-unit-select"
+              style={{
+                width: 180,
+              }}
+              showSearch
+              filterOption={(input, option) =>
+                option.label.toLowerCase().includes(input.toLowerCase())
+              }
+              options={unitOptions.map((option) => ({
+                label: option.display_unit || option.unit_name,
+                value: option.unit_id,
+              }))}
+              onChange={handleUnitChange}
             />
           </div>
         </div>

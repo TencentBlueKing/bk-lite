@@ -25,3 +25,4 @@ report.html
 mlruns
 uv.lock
 docs/api/*.md
+ca.pem
