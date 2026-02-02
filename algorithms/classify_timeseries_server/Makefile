@@ -16,3 +16,6 @@ update:
 
 serving:
 	uv run python -m bentoml serve classify_timeseries_server.serving.service:MLService
+
+release:
+	docker build -t bklite/classify_timeseries_server:latest -f ./support-files/release/Dockerfile . --push
