@@ -2,12 +2,13 @@
 
 import React from 'react';
 import { useTranslation } from '@/utils/i18n';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import TopSection from '@/components/top-section';
 import WithSideMenuLayout from '@/components/sub-layout';
 import TaskProgress from '@/app/opspilot/components/task-progress'
 import OnelineEllipsisIntro from '@/app/opspilot/components/oneline-ellipsis-intro';
 import { DocumentsProvider, useDocuments } from '@/app/opspilot/context/documentsContext';
+import { KnowledgeProvider, useKnowledge } from '@/app/opspilot/context/knowledgeContext';
 
 interface KnowledgeDetailLayoutProps {
   children: React.ReactNode;
@@ -15,31 +16,18 @@ interface KnowledgeDetailLayoutProps {
 
 const LayoutContent: React.FC<KnowledgeDetailLayoutProps> = ({ children }) => {
   const { t } = useTranslation();
-  const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const id = searchParams?.get('id') || '';
-  const name = searchParams?.get('name') || '';
-  const desc = searchParams?.get('desc') || '';
   
+  const { knowledgeInfo } = useKnowledge();
   const { mainTabKey } = useDocuments();
 
   const handleBackButtonClick = () => {
-    const pathSegments = pathname ? pathname.split('/').filter(Boolean) : [];
-    if (pathSegments.length >= 3) {
-      if (pathSegments.length === 3) {
-        router.push('/knowledge');
-      } else if (pathSegments.length > 3) {
-        router.push(`/opspilot/knowledge/detail?id=${id}&name=${name}&desc=${desc}`);
-      }
-    }
-    else {
-      router.back();
-    }
+    router.push('/opspilot/knowledge');
   };
 
   const intro = (
-    <OnelineEllipsisIntro name={name} desc={desc}></OnelineEllipsisIntro>
+    <OnelineEllipsisIntro name={knowledgeInfo.name} desc={knowledgeInfo.introduction}></OnelineEllipsisIntro>
   );
 
   // Show TaskProgress on documents page (source_files/qa_pairs/knowledge_graph tabs), result pages
@@ -133,11 +121,13 @@ const LayoutContent: React.FC<KnowledgeDetailLayoutProps> = ({ children }) => {
 
 const KnowledgeDetailLayout: React.FC<KnowledgeDetailLayoutProps> = ({ children }) => {
   return (
-    <DocumentsProvider>
-      <LayoutContent>
-        {children}
-      </LayoutContent>
-    </DocumentsProvider>
+    <KnowledgeProvider>
+      <DocumentsProvider>
+        <LayoutContent>
+          {children}
+        </LayoutContent>
+      </DocumentsProvider>
+    </KnowledgeProvider>
   );
 };
 

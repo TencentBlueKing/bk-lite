@@ -562,9 +562,11 @@ def execute_chat_flow(request, bot_id, node_id):
         # 创建ChatFlow引擎 - 使用数据库中的工作流配置
         engine = create_chat_flow_engine(bot_chat_flow, node_id)
 
-        # 获取当前节点类型
+        # 获取当前节点类型并设置 entry_type
         node_obj = engine._get_node_by_id(node_id)
         node_type = node_obj.get("type") if node_obj else None
+        engine.entry_type = node_type  # 设置入口类型
+
         # 准备输入数据
         input_data = {
             "last_message": message,

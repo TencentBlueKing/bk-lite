@@ -876,6 +876,7 @@
     "debug": "Debug",
     "executeNode": "Execute Node",
     "selectNotificationMethod": "Please select notification method",
+    "addNotificationChannel": "Add Notification Channel",
     "executeFailed": "Node execution failed",
     "day": "Day",
     "enterNotificationContent": "Please enter notification content",

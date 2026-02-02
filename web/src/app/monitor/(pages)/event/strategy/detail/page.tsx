@@ -39,6 +39,14 @@ import MetricPreview from './metricPreview';
 import VariablesTable from './variablesTable';
 const defaultGroup = ['instance_id'];
 
+// 过滤无效的单位值（none 和 short 已从单位列表中移除，不能作为单位值）
+const filterInvalidUnit = (unit: string | null | undefined): string | null => {
+  if (!unit || unit === 'none' || unit === 'short') {
+    return null;
+  }
+  return unit;
+};
+
 const StrategyOperation = () => {
   const { t } = useTranslation();
   const { post, put, isLoading } = useApiClient();
@@ -172,7 +180,24 @@ const StrategyOperation = () => {
         ...initForm,
         no_data_alert_name: defaultNoDataAlertName
       });
-      setMetric(_metricId);
+      // 只有在指标数据加载完成后才设置 metric，确保 Select 组件能正确显示选中值
+      if (initMetricData.length > 0 && _metricId) {
+        const metricExists = initMetricData.some(
+          (item) => item.name === _metricId
+        );
+        if (metricExists) {
+          setMetric(_metricId);
+          // 同时设置 labels，确保条件维度能正常使用
+          const target = initMetricData.find((item) => item.name === _metricId);
+          if (target) {
+            const _labels = (target?.dimensions || []).map((item) => item.name);
+            setLabels(_labels);
+            setCalculationUnit(filterInvalidUnit(target?.unit));
+          }
+        }
+      } else if (!_metricId) {
+        setMetric(null);
+      }
       const instanceIdStr = searchParams.get('instanceId');
       let instanceIds: string[] = [];
       if (instanceIdStr) {
@@ -186,7 +211,7 @@ const StrategyOperation = () => {
     } else {
       dealDetail(formData);
     }
-  }, [type, formData, pluginList, channelList]);
+  }, [type, formData, pluginList, channelList, initMetricData]);
 
   useEffect(() => {
     if (
@@ -261,7 +286,7 @@ const StrategyOperation = () => {
     });
     setGroupBy(group_by || []);
     feedbackThreshold(thresholdList);
-    setCalculationUnit(calculation_unit || null);
+    setCalculationUnit(filterInvalidUnit(calculation_unit));
     setPeriod(period?.value || null);
     setPeriodUnit(period?.type || 'min');
     setAlgorithm(data.algorithm || null);
@@ -348,8 +373,28 @@ const StrategyOperation = () => {
     const target = metrics.find((item) => item.name === val);
     const _labels = (target?.dimensions || []).map((item) => item.name);
     setLabels(_labels);
-    // 自动设置告警阈值单位为指标的默认单位
-    setCalculationUnit(target?.unit || null);
+    // 自动设置告警阈值单位为指标的默认单位（过滤掉 none 和 short）
+    const filteredUnit = filterInvalidUnit(target?.unit);
+    if (filteredUnit) {
+      setCalculationUnit(filteredUnit);
+      return;
+    }
+    const unitList = commonContext?.unitList || [];
+    const baseFilteredList = unitList.filter(
+      (item) => !['none', 'short'].includes(item.unit_id)
+    );
+    const metricUnitItem = unitList.find(
+      (item) => item.unit_id === target?.unit
+    );
+    let defaultUnit: string | null = null;
+    if (metricUnitItem) {
+      // 找到相同 system 的第一个单位
+      const sameSystemUnit = baseFilteredList.find(
+        (item) => item.system === metricUnitItem.system
+      );
+      defaultUnit = sameSystemUnit?.unit_id || null;
+    }
+    setCalculationUnit(defaultUnit);
   };
 
   const getMetrics = async (params = {}, type = '') => {
