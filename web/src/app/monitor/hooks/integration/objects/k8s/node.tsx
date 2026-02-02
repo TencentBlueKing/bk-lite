@@ -9,8 +9,8 @@ export const useNodeConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '15%',
-        },
+          width: '15%'
+        }
       },
       {
         indexId: 'node_cpu_load1',
@@ -21,12 +21,12 @@ export const useNodeConfig = () => {
           { value: 1, color: '#27C274' }, // 绿色区域
           { value: 2, color: '#FF9214' }, // 黄色区域
           { value: 4, color: '#D97007' }, // 黄色区域
-          { value: 20, color: '#F43B2C' }, // 红色区域
+          { value: 20, color: '#F43B2C' } // 红色区域
         ],
         style: {
           height: '200px',
-          width: '15%',
-        },
+          width: '15%'
+        }
       },
       {
         indexId: 'node_cpu_load5',
@@ -37,12 +37,12 @@ export const useNodeConfig = () => {
           { value: 1.5, color: '#27C274' }, // 绿色区域
           { value: 3, color: '#FF9214' }, // 黄色区域
           { value: 5, color: '#D97007' }, // 黄色区域
-          { value: 20, color: '#F43B2C' }, // 红色区域
+          { value: 20, color: '#F43B2C' } // 红色区域
         ],
         style: {
           height: '200px',
-          width: '15%',
-        },
+          width: '15%'
+        }
       },
       {
         indexId: 'node_cpu_utilization',
@@ -51,8 +51,8 @@ export const useNodeConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '32%',
-        },
+          width: '32%'
+        }
       },
       {
         indexId: 'node_app_memory_utilization',
@@ -61,8 +61,8 @@ export const useNodeConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '32%',
-        },
+          width: '32%'
+        }
       },
       {
         indexId: 'node_io_current',
@@ -71,8 +71,8 @@ export const useNodeConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '32%',
-        },
+          width: '32%'
+        }
       },
       {
         indexId: 'node_network_receive',
@@ -81,8 +81,8 @@ export const useNodeConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '32%',
-        },
+          width: '32%'
+        }
       },
       {
         indexId: 'node_network_transmit',
@@ -91,17 +91,22 @@ export const useNodeConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '32%',
-        },
-      },
+          width: '32%'
+        }
+      }
     ],
-    tableDiaplay: [{ type: 'progress', key: 'node_cpu_utilization' }],
+    tableDiaplay: [
+      { type: 'enum', key: 'node_status_condition' },
+      { type: 'progress', key: 'node_cpu_utilization' },
+      { type: 'progress', key: 'node_memory_utilization' },
+      { type: 'progress', key: 'node_disk_usage_rate' }
+    ],
     groupIds: {
       list: ['node'],
-      default: ['node'],
+      default: ['node']
     },
     collectTypes: {
-      K8S: 'k8s',
-    },
+      K8S: 'k8s'
+    }
   };
 };

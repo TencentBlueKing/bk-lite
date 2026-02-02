@@ -321,6 +321,7 @@
       "setAlertConditions": "Set up alert conditions",
       "configureNotifications": "Configure notifications",
       "notifier": "Notifier",
+      "notifierTagsPlaceholder": "Enter notifier and press Enter to add",
       "activeAlarmsMapTips": "Display a map of the distribution of all active alarms that meet the filtering criteria.",
       "historicalAlarms": "Historical Alarms",
       "successfullyClosed": "Closed Successfully !",

@@ -249,7 +249,8 @@
             "sync": "同步",
             "modify": "编辑",
             "delete": "删除",
-            "syncing": "同步中"
+            "syncing": "同步中",
+            "copy": "复制任务"
         },
         "taskDetail": {
             "title": "任务详情",

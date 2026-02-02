@@ -7,7 +7,7 @@ import {
   CloseCircleOutlined,
   ClockCircleOutlined,
   SyncOutlined,
-  ExclamationCircleFilled,
+  ExclamationCircleFilled
 } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -27,7 +27,7 @@ import Icon from '@/components/icon';
 const Installing: React.FC<InstallingProps> = ({
   onNext,
   cancel,
-  installData,
+  installData
 }) => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
@@ -52,35 +52,35 @@ const Installing: React.FC<InstallingProps> = ({
       success: {
         color: 'success',
         text: t('node-manager.cloudregion.node.installSuccess'),
-        icon: <CheckCircleOutlined />,
+        icon: <CheckCircleOutlined />
       },
       installed: {
         color: 'success',
         text: t('node-manager.cloudregion.node.installSuccess'),
-        icon: <CheckCircleOutlined />,
+        icon: <CheckCircleOutlined />
       },
       error: {
         color: 'error',
         text: t('node-manager.cloudregion.node.installError'),
-        icon: <CloseCircleOutlined />,
+        icon: <CloseCircleOutlined />
       },
       timeout: {
         color: 'error',
         text: t('node-manager.cloudregion.node.installTimeout'),
-        icon: <ClockCircleOutlined />,
+        icon: <ClockCircleOutlined />
       },
       waiting: {
         color: 'processing',
         text: isManualInstall
           ? t('node-manager.cloudregion.node.waitingManual')
           : t('node-manager.cloudregion.node.remoteInstalling'),
-        icon: <SyncOutlined spin />,
+        icon: <SyncOutlined spin />
       },
       installing: {
         color: 'processing',
         text: t('node-manager.cloudregion.node.remoteInstalling'),
-        icon: <SyncOutlined spin />,
-      },
+        icon: <SyncOutlined spin />
+      }
     };
   }, [t, installData?.installMethod]);
 
@@ -90,7 +90,7 @@ const Installing: React.FC<InstallingProps> = ({
         title: t('node-manager.cloudregion.node.ipAdrress'),
         dataIndex: 'ip',
         width: 100,
-        key: 'ip',
+        key: 'ip'
       },
       {
         title: t('node-manager.cloudregion.node.nodeName'),
@@ -98,7 +98,7 @@ const Installing: React.FC<InstallingProps> = ({
         width: 120,
         key: 'node_name',
         ellipsis: true,
-        render: (value: string) => value || '--',
+        render: (value: string) => value || '--'
       },
       {
         title: t('node-manager.cloudregion.node.operateSystem'),
@@ -120,7 +120,7 @@ const Installing: React.FC<InstallingProps> = ({
               <span>{osLabel}</span>
             </Tag>
           );
-        },
+        }
       },
       {
         title: t('node-manager.cloudregion.node.organaziton'),
@@ -130,7 +130,7 @@ const Installing: React.FC<InstallingProps> = ({
         ellipsis: true,
         render: (value: string[]) => {
           return <>{showGroupNames(value || []) || '--'}</>;
-        },
+        }
       },
       {
         title: t('node-manager.cloudregion.node.installationMethod'),
@@ -144,12 +144,12 @@ const Installing: React.FC<InstallingProps> = ({
               ? t('node-manager.cloudregion.node.manualInstall')
               : t('node-manager.cloudregion.node.remoteInstall');
           return <>{installWay}</>;
-        },
+        }
       },
       {
         title: t('node-manager.cloudregion.node.installStatus'),
         dataIndex: 'status',
-        width: 150,
+        width: 200,
         key: 'status',
         ellipsis: true,
         render: (value: string) => {
@@ -168,7 +168,7 @@ const Installing: React.FC<InstallingProps> = ({
               <span>{status.text}</span>
             </Tag>
           );
-        },
+        }
       },
       {
         title: t('common.actions'),
@@ -222,8 +222,8 @@ const Installing: React.FC<InstallingProps> = ({
               )}
             </>
           );
-        },
-      },
+        }
+      }
     ];
   }, [installData?.installMethod, copyingNodeIds]);
 
@@ -253,8 +253,8 @@ const Installing: React.FC<InstallingProps> = ({
       form: {
         logs,
         ip: row.ip,
-        nodeName: row.node_name,
-      },
+        nodeName: row.node_name
+      }
     });
   };
 
@@ -268,7 +268,7 @@ const Installing: React.FC<InstallingProps> = ({
         const manualTaskList = installData.manualTaskList || [];
         if (manualTaskList.length > 0) {
           const statusData = await getManualInstallStatus({
-            node_ids: installData.taskIds,
+            node_ids: installData.taskIds
           });
           data = manualTaskList.map((item: TableDataItem) => {
             const statusInfo = statusData.find(
@@ -277,14 +277,14 @@ const Installing: React.FC<InstallingProps> = ({
             return {
               ...item,
               status: statusInfo?.status || null,
-              result: statusInfo?.result || null,
+              result: statusInfo?.result || null
             };
           });
         }
       }
       const newTableData = data.map((item: TableDataItem, index: number) => ({
         ...item,
-        id: index,
+        id: index
       }));
       setTableData(newTableData);
       // 如果弹窗正在查看某个节点的日志,实时更新该节点的日志
@@ -334,7 +334,7 @@ const Installing: React.FC<InstallingProps> = ({
       onOk: () => {
         clearTimer();
         cancel(); // 返回节点列表
-      },
+      }
     });
   };
 
@@ -346,7 +346,7 @@ const Installing: React.FC<InstallingProps> = ({
       const installCommand = result || '';
       handleCopy({
         value: installCommand,
-        showSuccessMessage: false,
+        showSuccessMessage: false
       });
       notification.success({
         message: t('node-manager.cloudregion.node.commandCopied'),
@@ -369,7 +369,7 @@ const Installing: React.FC<InstallingProps> = ({
         ),
         icon: <CheckCircleFilled style={{ color: 'var(--color-success)' }} />,
         placement: 'top',
-        style: isLinux ? undefined : { width: 480 },
+        style: isLinux ? undefined : { width: 480 }
       });
     } finally {
       setCopyingNodeIds((prev) => prev.filter((id) => id !== row.id));
@@ -380,14 +380,14 @@ const Installing: React.FC<InstallingProps> = ({
     retryModalRef.current?.showModal({
       type: 'retryInstall',
       ...row,
-      task_id: installData.taskIds,
+      task_id: installData.taskIds
     });
   };
 
   const handleOperationGuidance = async (row: TableDataItem) => {
     operationGuidanceRef.current?.showModal({
       type: 'edit',
-      form: row,
+      form: row
     });
   };
 

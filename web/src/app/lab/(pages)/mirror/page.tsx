@@ -1,11 +1,11 @@
 "use client";
-import { Segmented, Menu, Button } from 'antd';
+import { Segmented, Menu, Button, message } from 'antd';
 import stlyes from '@/app/lab/styles/index.module.scss';
 import { useState, useEffect, useRef } from 'react';
 import EntityList from '@/components/entity-list';
 import useLabManage from '@/app/lab/api/mirror';
 import LabImageModal from './labImageModal';
-import { ModalRef } from '@/app/lab/types';
+import { ModalRef, LabImageItem } from '@/app/lab/types';
 import { useTranslation } from '@/utils/i18n';
 
 const MirrorManage = () => {
@@ -18,7 +18,7 @@ const MirrorManage = () => {
   ];
 
   const { getIdeImages, getInfraImages, deleteImage } = useLabManage();
-  const [tableData, setTableData] = useState<any[]>([]);
+  const [tableData, setTableData] = useState<LabImageItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   // tab切换时请求镜像列表
@@ -31,17 +31,16 @@ const MirrorManage = () => {
       } else {
         res = await getInfraImages();
       }
-      const _res = res?.map((item: any) => {
+      const _res = res?.map((item: LabImageItem) => {
         return {
           ...item,
           icon: 'tucengshuju',
           creator: item?.created_by || '--',
         }
       });
-      console.log(_res);
       setTableData(_res || []);
     } catch (e) {
-      console.log(e);
+      console.error(e);
       setTableData([]);
     } finally {
       setLoading(false);
@@ -86,9 +85,9 @@ const MirrorManage = () => {
   );
 
   // 卡片点击
-  const handleCardClick = (item: any) => {
-    console.log(item);
+  const handleCardClick = (item: LabImageItem) => {
     // 可跳转详情或弹窗
+    console.log(item)
   };
 
   // 新增
@@ -107,15 +106,19 @@ const MirrorManage = () => {
     setLoading(true);
     try {
       await deleteImage(id);
+      message.success(t('common.deleteSuccess'));
       fetchImages(activeTab);
     } catch (e) {
-      console.log(e);
+      console.error('删除镜像失败:', e);
+      message.error(t('common.deleteFailed'));
+    } finally {
+      setLoading(false);
     }
   };
 
   // 搜索
   const handleSearch = () => {
-    // 搜索逻辑
+    // TODO: 待实现搜索功能
   };
 
   return (

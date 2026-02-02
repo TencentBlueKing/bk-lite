@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+*.log
+.yolo_runs/
+mlruns/
+test_dataset/
+.vscode/
+support-files/scripts/data

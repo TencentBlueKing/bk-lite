@@ -67,7 +67,7 @@ const TrainTaskHistory = ({
         return record.status ?
           (
             <Tag color={RUN_STATUS_MAP[record.status as string]}>
-              {t(`traintask.${RUN_TEXT_MAP[record.status]}`)}
+              {t(`mlops-common.${RUN_TEXT_MAP[record.status]}`)}
             </Tag>
           )
           : (<p>--</p>)

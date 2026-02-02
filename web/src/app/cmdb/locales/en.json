@@ -253,7 +253,8 @@
             "sync": "Sync",
             "modify": "Modify",
             "delete": "Delete",
-            "syncing": "Syncing"
+            "syncing": "Syncing",
+            "copy": "Copy Task"
         },
         "taskDetail": {
             "title": "Task Detail",

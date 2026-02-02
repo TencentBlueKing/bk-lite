@@ -15,6 +15,7 @@ import {
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
 import { formatTaskValues } from '../hooks/formatTaskValues';
+import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 
 interface RegionItem {
   cloud_type: string;
@@ -58,6 +59,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
   const [regions, setRegions] = useState<RegionItem[]>([]);
   const [loadingRegions, setLoadingRegions] = useState(false);
   const collectApi = useCollectApi();
+  const { copyTaskData, setCopyTaskData } = useAssetManageStore();
 
   const {
     form,
@@ -110,22 +112,40 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     },
   });
 
+  // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
+  const buildFormValues = (values: any, isCopy: boolean) => {
+    const regionItem = values.credential?.regions;
+    return {
+      ...values,
+      taskName: isCopy ? '' : values.name,
+      accessKey: isCopy ? values.credential?.accessKey : PASSWORD_PLACEHOLDER,
+      accessSecret: isCopy ? '' : PASSWORD_PLACEHOLDER,
+      regionId: regionItem?.resource_id,
+      organization: values.team || [],
+      timeout: values.timeout,
+      instId: values.instances?.[0]?._id,
+      accessPointId: values.access_point?.[0]?.id,
+    };
+  };
+
   const fetchRegions = async (
     accessKey: string,
     accessSecret: string,
     cloudRegionId: string,
-    refreshFlag = true,
+    refreshFlag = true
   ) => {
     if (!accessKey || !accessSecret) return;
     setLoadingRegions(true);
     try {
-      const data = await collectApi.getCollectRegions({
+      const res = await collectApi.getCollectRegions({
         model_id: modelId,
         access_key: accessKey,
         access_secret: accessSecret,
         cloud_id: cloudRegionId,
       });
-      setRegions(data || []);
+      if (res.result) {
+        setRegions(res.data);
+      }
       if (refreshFlag) {
         message.success(t('common.updateSuccess'));
       }
@@ -174,24 +194,27 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
 
   useEffect(() => {
     const initForm = async () => {
-      if (editId) {
+      if (copyTaskData) {
+        const values = copyTaskData;
+        const regionItem = values.credential?.regions;
+
+        // 复制任务中回填表单数据（此时任务名称和密码为空，需要用户手动输入）
+        form.setFieldsValue(buildFormValues(values, true));
+        setRegions(regionItem ? [regionItem] : []);
+      } else if (editId) {
         const values = await fetchTaskDetail(editId);
-        const regions = values.credential?.regions || [];
-        form.setFieldsValue({
-          ...values,
-          accessKey: PASSWORD_PLACEHOLDER,
-          accessSecret: PASSWORD_PLACEHOLDER,
-          regionId: regions?.resource_id,
-          organization: values.team || [],
-          accessPointId: values.access_point?.[0]?.id,
-        });
+        const regionItem = values.credential?.regions;
+
+        // 编辑任务中回填表单数据
+        form.setFieldsValue(buildFormValues(values, false));
+        setRegions(regionItem ? [regionItem] : []);
         handleRefreshRegions(false);
       } else {
         form.setFieldsValue(CLOUD_FORM_INITIAL_VALUES);
       }
     };
     initForm();
-  }, [modelId]);
+  }, [modelId, copyTaskData, setCopyTaskData]);
 
   const RegionSelect: React.FC<RegionSelectProps> = ({
     value,
