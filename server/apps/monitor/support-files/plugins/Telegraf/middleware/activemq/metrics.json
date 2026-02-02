@@ -12,7 +12,7 @@
   "metrics": [
     {
       "metric_group": "Topic",
-      "name": "topics_consumer_count",
+      "name": "activemq_topics_consumer_count",
       "display_name": "Topic Consumer Count",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -23,7 +23,7 @@
     },
     {
       "metric_group": "Topic",
-      "name": "topics_dequeue_count",
+      "name": "activemq_topics_dequeue_count",
       "display_name": "Topic Dequeue Count",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -34,7 +34,7 @@
     },
     {
       "metric_group": "Topic",
-      "name": "topics_enqueue_count",
+      "name": "activemq_topics_enqueue_count",
       "display_name": "Topic Enqueue Count",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -45,7 +45,7 @@
     },
     {
       "metric_group": "Topic",
-      "name": "topics_size",
+      "name": "activemq_topics_size",
       "display_name": "Topic Current Size",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
