@@ -876,6 +876,7 @@
     "debug": "调试",
     "executeNode": "执行节点",
     "selectNotificationMethod": "请选择通知方式",
+    "addNotificationChannel": "新增通知渠道",
     "executeFailed": "节点执行失败",
     "day": "日",
     "enterNotificationContent": "请输入通知内容",

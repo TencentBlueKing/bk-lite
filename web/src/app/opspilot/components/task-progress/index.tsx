@@ -66,7 +66,7 @@ const TaskProgress: React.FC<TaskProgressProps> = ({ activeTabKey, pageType = 'd
         // For documents (source_files), only pass knowledge_base_id
 
         const data: Task[] = await fetchMyTasks(params);
-        
+
         // Only update state if this is still the current request
         if (isCurrentRequest) {
           setTasks(data);
@@ -81,7 +81,7 @@ const TaskProgress: React.FC<TaskProgressProps> = ({ activeTabKey, pageType = 'd
 
     fetchTasks();
     const interval = setInterval(fetchTasks, 10000);
-    
+
     return () => {
       isCurrentRequest = false;
       clearInterval(interval);
@@ -90,14 +90,14 @@ const TaskProgress: React.FC<TaskProgressProps> = ({ activeTabKey, pageType = 'd
 
   // For result page, show QA task statuses if available
   const shouldShowQAStatuses = pageType === 'result' && qaTaskStatuses.length > 0;
-  
+
   // Don't render if no tasks and no QA statuses
   if (tasks.length === 0 && !shouldShowQAStatuses) {
     return null;
   }
 
   return (
-    <div className="p-4 absolute bottom-10 left-0 w-full max-h-[300px] overflow-y-auto">
+    <div className="p-4 absolute bottom-0 left-0 w-full max-h-[300px] overflow-y-auto">
       {/* Render QA task statuses for result page */}
       {shouldShowQAStatuses && qaTaskStatuses.map((qaStatus, index) => (
         <div key={`qa-${index}`} className="mb-2">
@@ -112,7 +112,7 @@ const TaskProgress: React.FC<TaskProgressProps> = ({ activeTabKey, pageType = 'd
           </div>
         </div>
       ))}
-      
+
       {/* Render regular tasks for other pages */}
       {tasks.map((task) => (
         <div key={task.id} className="mb-2">
