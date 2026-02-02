@@ -2,7 +2,6 @@
 
 import asyncio
 import os
-import re
 import tempfile
 import threading
 import time
@@ -21,12 +20,11 @@ from loguru import logger
 from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 # 安全配置
-DEFAULT_TIMEOUT = 60
-MAX_RETRIES = 4
+MAX_RETRIES = 2
 MAX_LOGIN_FAILURES = 2  # 登录失败最大重试次数
 
 # 浏览器超时配置（秒），可通过环境变量调整
-BROWSER_LLM_TIMEOUT = int(os.getenv("BROWSER_LLM_TIMEOUT", "60"))  # LLM 调用超时
+BROWSER_LLM_TIMEOUT = int(os.getenv("BROWSER_LLM_TIMEOUT", "30"))  # LLM 调用超时
 BROWSER_STEP_TIMEOUT = int(os.getenv("BROWSER_STEP_TIMEOUT", "60"))  # 单步执行超时（包含导航、页面加载等）
 
 # 会话缓存：用于在同一个 Agent 运行周期内共享浏览器用户数据目录
@@ -204,7 +202,6 @@ def _cleanup_expired_sessions() -> None:
                 expired_keys.append(key)
 
         for key in expired_keys:
-            logger.debug(f"清理过期的浏览器会话缓存: {key}")
             del _SESSION_CACHE[key]
 
 
@@ -281,9 +278,9 @@ def _validate_url(url: str) -> bool:
         raise ValueError(f"URL验证失败: {e}")
 
 
-def _extract_sensitive_data(task: str) -> tuple[Optional[Dict[str, str]], str]:
+def _build_sensitive_data(username: Optional[str] = None, password: Optional[str] = None) -> Optional[Dict[str, str]]:
     """
-    从任务描述中提取敏感数据（如用户名、密码），用于执行时使用实际值，输出时脱敏
+    从独立参数构建 sensitive_data 字典
 
     browser-use 的 sensitive_data 参数工作原理:
     1. Task 中使用 <secret>占位符名</secret> 格式
@@ -291,91 +288,28 @@ def _extract_sensitive_data(task: str) -> tuple[Optional[Dict[str, str]], str]:
     3. LLM 输出 <secret>占位符</secret>，browser-use 在执行动作时替换为实际值
     4. 日志/输出中始终显示 <secret>占位符</secret>，保护真实凭证
 
+    注意：凭据应通过 browse_website 的 username/password 参数传递，
+    而不是写在 task 文本中。LLM 已在 react_agent_system_message.jinja2
+    中被严格约束使用参数传递方式。
+
     Args:
-        task: 任务描述字符串
+        username: 用户名（可选）
+        password: 密码（可选）
 
     Returns:
-        Tuple of:
-        - Dict mapping placeholder to actual value, e.g., {"x_password": "WeOps2023", "x_username": "admin"}
-          如果没有检测到敏感数据则返回 None
-        - 脱敏后的任务文本（敏感信息被替换为 <secret>占位符</secret> 格式）
+        Dict mapping placeholder to actual value, e.g., {"x_password": "123456", "x_username": "admin"}
+        如果没有凭据则返回 None
     """
-    if not task:
-        return None, task
-    logger.info(f"全文task: {task}")
+    if not username and not password:
+        return None
+
     sensitive_data: Dict[str, str] = {}
-    masked_task = task
+    if username:
+        sensitive_data["x_username"] = username
+    if password:
+        sensitive_data["x_password"] = password
 
-    # 敏感数据检测模式（支持中英文）
-    # 格式: (pattern, placeholder)
-    # pattern 中: group(1)=前缀, group(2)=敏感值, group(3)=可选后缀
-    # 注意：占位符会被包裹成 <secret>placeholder</secret> 格式
-    # 分隔符说明：支持空白、逗号、句号、顿号、"和"、"以及"等作为值的结束边界
-    sensitive_patterns = [
-        # === 密码相关 ===
-        # 中文：密码是xxx / 密码：xxx / 密码:xxx / 密码 xxx（支持括号内的说明）
-        # 密码值只匹配非空白、非中文字符（即只匹配ASCII字符、数字、常见符号）
-        # [^\s\u4e00-\u9fff] 匹配非空白且非中文的字符
-        (
-            r"(密码\s*(?:是|为)?\s*[:：]?\s*)([^\s\u4e00-\u9fff]+)(\s*[（(].*?[)）])?(?=[\s\u4e00-\u9fff,，。、;；]|$)",
-            "x_password",
-        ),
-        # 英文：password: xxx / password=xxx / password xxx
-        # 同样排除中文字符
-        (
-            r"(password\s*[:=]?\s*[\"']?)([^\s\u4e00-\u9fff]+?)([\"']?)(?=[\s\u4e00-\u9fff,，。;；]|$)",
-            "x_password",
-        ),
-        # pwd: xxx / pwd=xxx / pwd xxx
-        (
-            r"(pwd\s*[:=]?\s*[\"']?)([^\s\u4e00-\u9fff]+?)([\"']?)(?=[\s\u4e00-\u9fff,，。;；]|$)",
-            "x_password",
-        ),
-        # === 用户名相关 ===
-        # 中文：用户名是xxx / 账号是xxx / 用户名：xxx 等
-        # 注意：需要在"和"、"以及"、"密码"等词前停止匹配
-        # 用户名值只匹配非空白、非中文字符
-        (
-            r"((?:用户名|用户|账号|帐号)\s*(?:是|为)?\s*[:：]?\s*)([^\s\u4e00-\u9fff]+)()(?=[\s\u4e00-\u9fff,，。、;；]|和|以及|密码|pwd|password|$)",
-            "x_username",
-        ),
-        # 英文：username / user + 分隔符 + 值
-        (
-            r"((?:username|user)\s*[:=]?\s*[\"']?)([^\s\u4e00-\u9fff]+?)([\"']?)(?=[\s\u4e00-\u9fff,，。;；]|and|password|pwd|$)",
-            "x_username",
-        ),
-    ]
-
-    # 遍历所有模式，提取并替换敏感数据
-    for pattern, placeholder in sensitive_patterns:
-        # 如果该占位符已存在（同类型的敏感数据已处理），跳过
-        if placeholder in sensitive_data:
-            continue
-
-        match = re.search(pattern, masked_task, re.IGNORECASE)
-        if match:
-            # 获取完整匹配和敏感值
-            if len(match.groups()) >= 2:
-                actual_value = match.group(2).strip("\"'")  # 实际敏感值
-            else:
-                actual_value = match.group(1).strip("\"'")
-
-            # 避免捕获到标点符号
-            actual_value = actual_value.rstrip("，。,.")
-            if actual_value:
-                sensitive_data[placeholder] = actual_value
-                # 在任务文本中替换敏感值为 <secret>占位符</secret> 格式
-                # 这样 LLM 会输出相同格式，browser-use 在执行时替换为实际值
-                secret_placeholder = f"<secret>{placeholder}</secret>"
-                masked_task = re.sub(
-                    pattern,
-                    lambda m: f"{m.group(1)}{secret_placeholder}{m.group(3) if len(m.groups()) >= 3 and m.group(3) else ''}",
-                    masked_task,
-                    count=1,
-                    flags=re.IGNORECASE,
-                )
-
-    return (sensitive_data if sensitive_data else None, masked_task)
+    return sensitive_data
 
 
 def _create_login_failure_hook(
@@ -427,9 +361,6 @@ def _create_login_failure_hook(
             # 获取当前浏览器状态
             browser_state = await agent.browser_session.get_browser_state_summary()
             page_title = browser_state.title if browser_state else ""
-            page_url = browser_state.url if browser_state else ""
-
-            logger.debug(f"[Step {step_num}] 登录失败检测: 页面标题='{page_title}', URL='{page_url}'")
 
             # 只检测页面标题，不检测 LLM 思考过程（避免误判）
             # LLM 可能在 thinking/evaluation 中描述 "if login fails..." 等假设性内容
@@ -454,15 +385,13 @@ def _create_login_failure_hook(
                         f"登录失败次数超过限制({max_failures}次)，已停止执行。" f"页面标题: {state['last_failure_reason']}",
                         state["login_failure_count"],
                     )
-            else:
-                logger.debug(f"[Step {step_num}] 登录失败检测: 未检测到失败（页面标题正常）")
 
         except LoginFailureError:
             # 重新抛出登录失败异常
             raise
-        except Exception as e:
+        except Exception:
             # 其他异常只记录日志，不影响主流程
-            logger.debug(f"[Step {step_num}] 登录失败检测时发生异常（忽略）: {e}")
+            pass
 
     return login_failure_hook, state
 
@@ -537,6 +466,7 @@ async def _browse_website_async(
     sensitive_data: Optional[Dict[str, str]] = None,
     masked_task: Optional[str] = None,
     user_data_dir: Optional[str] = None,
+    locale: str = "en",
 ) -> Dict[str, Any]:
     """
     异步浏览网站并执行任务
@@ -552,6 +482,7 @@ async def _browse_website_async(
                        任务中使用占位符 <secret>，执行时替换为实际值，输出时显示占位符
         masked_task: 脱敏后的任务文本（用于日志输出），如果为 None 则使用原始 task
         user_data_dir: 浏览器用户数据目录，用于在多次调用间保持会话状态（cookies、localStorage等）
+        locale: 用户语言设置，用于控制 browser-use 输出语言（如 "zh-Hans" 使用中文，其他使用英文）
 
     Returns:
         Dict[str, Any]: 执行结果
@@ -603,7 +534,7 @@ async def _browse_website_async(
         if task_to_check and url.lower() in task_to_check.lower():
             final_task = task or ""
         else:
-            final_task = f"首先，导航到 {url}。然后，{task}" if task else f"导航到 {url}"
+            final_task = f"首先，导航到 {url} \n 然后，{task}" if task else f"导航到 {url}"
 
         # 创建步骤回调适配器
         register_callback = _create_step_callback_adapter(step_callback, max_steps)
@@ -612,9 +543,9 @@ async def _browse_website_async(
         has_credentials = sensitive_data is not None and len(sensitive_data) > 0
         login_failure_hook, login_state = _create_login_failure_hook(has_credentials)
 
-        # 扩展系统提示 - 根据 DEBUG 模式选择语言
-        # DEBUG 模式下使用中文，便于调试和阅读
-        if getattr(settings, "DEBUG", False):
+        # 扩展系统提示 - 根据用户语言设置选择输出语言
+        # 中文 locale（如 "zh-Hans", "zh-CN", "zh"）使用中文输出
+        if locale.startswith("zh"):
             extend_system_message = """
 【语言要求】你的所有思考(thinking)、评估(evaluation)、记忆(memory)、下一步目标(next_goal)输出必须使用中文。
 
@@ -694,7 +625,7 @@ CORE RULES (MUST FOLLOW):
             register_new_step_callback=register_callback,
             extend_system_message=extend_system_message,
             max_actions_per_step=5,  # 每步最多5个动作，避免过度操作
-            max_failures=3,  # 最大失败重试次数
+            max_failures=2,  # 最大失败重试次数
             sensitive_data=sensitive_data,  # 敏感数据脱敏
             llm_timeout=BROWSER_LLM_TIMEOUT,  # LLM 调用超时
             step_timeout=BROWSER_STEP_TIMEOUT,  # 单步执行超时（包含导航等待）
@@ -883,33 +814,25 @@ def browse_website(
             api_key=llm_config.openai_api_key,
             base_url=llm_config.openai_api_base,
         )
+        # logger.info(f"task: {task}\n username: {username}\n password: {password}")
 
-        # 从 task 中提取敏感数据
-        sensitive_data, masked_task = _extract_sensitive_data(task) if task else (None, task)
+        # 从独立参数构建 sensitive_data（凭据应通过 username/password 参数传递）
+        sensitive_data = _build_sensitive_data(username=username, password=password)
 
-        # 合并独立参数中的凭据（优先级更高）
-        # username/password 参数直接传入的凭据会覆盖 task 中提取的同名凭据
-        if username or password:
-            if sensitive_data is None:
-                sensitive_data = {}
-            if username:
-                sensitive_data["x_username"] = username
-                logger.info("从 username 参数添加凭据: x_username=***")
-            if password:
-                sensitive_data["x_password"] = password
-                logger.info("从 password 参数添加凭据: x_password=***")
-
-            # 如果 task 中没有提及凭据占位符，自动添加提示
-            # 这样浏览器 agent 知道有凭据可用
-            if masked_task and "x_username" in sensitive_data and "<secret>x_username</secret>" not in masked_task:
-                # 在 task 开头添加凭据提示
-                credential_hint = "【凭据已提供】用户名: <secret>x_username</secret>"
-                if "x_password" in sensitive_data:
-                    credential_hint += ", 密码: <secret>x_password</secret>"
-                masked_task = f"{credential_hint}。{masked_task}"
+        # 如果有凭据，在 task 开头添加提示，让浏览器 agent 知道有凭据可用
+        masked_task = task
+        if sensitive_data and task:
+            credential_hint = "【凭据已提供】用户名: <secret>x_username</secret>"
+            if "x_password" in sensitive_data:
+                credential_hint += ", 密码: <secret>x_password</secret>"
+            masked_task = f"{credential_hint}。{task}"
+            logger.info("凭据已通过 username/password 参数传递: x_username=***, x_password=***")
 
         # 获取或创建共享的浏览器用户数据目录（基于 thread_id/run_id 缓存，用于保持会话状态）
         user_data_dir = _get_or_create_user_data_dir(config)
+
+        # 获取用户语言设置，用于控制 browser-use 输出语言
+        locale = getattr(llm_config, "locale", "en") if llm_config else "en"
 
         result = _run_async_task(
             _browse_website_async(
@@ -920,6 +843,7 @@ def browse_website(
                 sensitive_data=sensitive_data,
                 masked_task=masked_task,
                 user_data_dir=user_data_dir,
+                locale=locale,
             )
         )
         return result
@@ -932,7 +856,13 @@ def browse_website(
 
 
 @tool()
-def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, config: RunnableConfig = None) -> Dict[str, Any]:
+def extract_webpage_info(
+    url: str,
+    selectors: Optional[Dict[str, str]] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    config: RunnableConfig = None,
+) -> Dict[str, Any]:
     """
     从网页中提取特定信息
 
@@ -961,10 +891,18 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
        - url="https://example.com/list"
        - selectors={"items": "所有列表项"}
 
+    4. 提取需要登录的页面信息：
+       - url="https://admin.example.com/dashboard"
+       - username="admin"
+       - password="123456"
+       - selectors={"stats": "统计数据", "alerts": "告警信息"}
+
     Args:
         url (str): 目标网站URL（必填）
         selectors (dict, optional): 要提取的信息字典
             键：字段名，值：字段描述
+        username (str, optional): 登录用户名。当页面需要登录时使用
+        password (str, optional): 登录密码。当页面需要登录时使用
         config (RunnableConfig): 工具配置（自动传递）
             - 可通过 config["configurable"]["browser_step_callback"] 传递步骤回调函数
 
@@ -1001,10 +939,23 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
         else:
             task = "提取页面的主要内容，包括标题、正文和关键信息"
 
-        sensitive_data, masked_task = _extract_sensitive_data(task) if task else (None, task)
+        # 从独立参数构建 sensitive_data（凭据应通过 username/password 参数传递）
+        sensitive_data = _build_sensitive_data(username=username, password=password)
+
+        # 如果有凭据，在 task 开头添加提示，让浏览器 agent 知道有凭据可用
+        masked_task = task
+        if sensitive_data and task:
+            credential_hint = "【凭据已提供】用户名: <secret>x_username</secret>"
+            if "x_password" in sensitive_data:
+                credential_hint += ", 密码: <secret>x_password</secret>"
+            masked_task = f"{credential_hint}。{task}"
+            logger.info("凭据已通过 username/password 参数传递: x_username=***, x_password=***")
 
         # 获取或创建共享的浏览器用户数据目录（基于 thread_id/run_id 缓存，用于保持会话状态）
         user_data_dir = _get_or_create_user_data_dir(config)
+
+        # 获取用户语言设置，用于控制 browser-use 输出语言
+        locale = getattr(llm_config, "locale", "en") if llm_config else "en"
 
         result = _run_async_task(
             _browse_website_async(
@@ -1015,6 +966,7 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
                 sensitive_data=sensitive_data,
                 masked_task=masked_task,
                 user_data_dir=user_data_dir,
+                locale=locale,
             )
         )
 

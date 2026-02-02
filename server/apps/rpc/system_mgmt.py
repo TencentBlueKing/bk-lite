@@ -114,14 +114,25 @@ class SystemMgmt(object):
         return_data = self.client.run("search_channel_list", channel_type=channel_type)
         return return_data
 
-    def send_msg_with_channel(self, channel_id, title, content, receivers):
+    def send_msg_with_channel(self, channel_id, title, content, receivers, attachments=None):
         """
+        通过指定通道发送消息
         :param channel_id: 1 通道id
         :param title: 邮件主题  企微传空字符串即可
         :param content: 正文
         :param receivers: [1,2,3,4] 用户的ID列表
+        :param attachments: 附件列表（仅email通道支持），格式为:
+            [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]
+            注意: 附件内容必须是base64编码的字符串，因为NATS使用JSON序列化传输
         """
-        return_data = self.client.run("send_msg_with_channel", channel_id=channel_id, title=title, content=content, receivers=receivers)
+        return_data = self.client.run(
+            "send_msg_with_channel",
+            channel_id=channel_id,
+            title=title,
+            content=content,
+            receivers=receivers,
+            attachments=attachments,
+        )
         return return_data
 
     def send_email_to_receiver(self, title, content, receiver):

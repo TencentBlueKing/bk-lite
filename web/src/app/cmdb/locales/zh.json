@@ -155,7 +155,7 @@
         "cycleDeprecated": "定时执行和一次性执行功能已下线，请调整配置为周期执行",
         "fullTitle": "全面采集",
         "fullMessage": "您可以根据通过创建全面采集任务，针对批量的主机采集多数资产信息。",
-        "professionalTitle": "专业采集",
+        "professionalTitle": "采集",
         "professionalMessage": "您可以根据通过创建采集任务，自动采集不同对象的配置信息和关联信息。",
         "inputTaskPlaceholder": "请输入任务名称",
         "addTaskTitle": "新增任务",
@@ -228,7 +228,8 @@
             "authPassword": "认证密钥",
             "hashAlgorithm": "散列算法",
             "encryptAlgorithm": "加密算法",
-            "encryptKey": "加密密钥"
+            "encryptKey": "加密密钥",
+            "collectRelationships": "是否采集关系"
         },
         "cloudTask": {
             "accessKey": "秘匙",

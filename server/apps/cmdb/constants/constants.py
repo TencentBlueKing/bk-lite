@@ -294,12 +294,9 @@ COLLECT_OBJ_TREE = [
         "children": [
             {"id": "network", "model_id": "network", "name": "NetWork", "task_type": CollectPluginTypes.SNMP,
              "type": CollectDriverTypes.PROTOCOL, "tag": ["SNMP", "Interfaces"],
-             "desc": "通过SNMP协议发现网络设备及其基本信息",
+             "desc": "通过SNMP协议发现网络设备和网络拓扑及其基本信息",
              "encrypted_fields": ["authkey", "privkey", "community"]
-             },
-            {"id": "network_topo", "model_id": "network_topo", "name": "网络拓扑", "task_type": CollectPluginTypes.SNMP,
-             "type": CollectDriverTypes.PROTOCOL, "tag": ["SNMP", "IFTable", "ARP"], "desc": "采集网络设备连接关系",
-             "encrypted_fields": ["authkey", "privkey", "community"]}
+             }
         ],
     },
     {

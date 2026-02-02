@@ -252,11 +252,12 @@ class CollectModelService(object):
         return result
 
     @classmethod
-    def list_regions(cls, credential):
-        stargazer = Stargazer()
+    def list_regions(cls, credential, cloud_name):
+        instance_id = f"{cloud_name}_stargazer"
+        stargazer = Stargazer(instance_id=instance_id)
         result = stargazer.list_regions(credential)
         if result["success"]:
-            result = result["regions"]
+            result = result["regions"].get("result", [])
         return result
 
     @classmethod

@@ -4,6 +4,7 @@ from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
 from apps.rpc.log import Log
@@ -12,7 +13,7 @@ from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.operation_analysis import OperationAnalysisRPC
 from apps.rpc.opspilot import OpsPilot
 from apps.rpc.system_mgmt import SystemMgmt
-from apps.system_mgmt.models import GroupDataRule
+from apps.system_mgmt.models import GroupDataRule, UserRule
 from apps.system_mgmt.serializers import GroupDataRuleSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -32,12 +33,19 @@ class GroupDataRuleViewSet(LanguageViewSet):
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
         rule_name = obj.name
+        rule_id = obj.id
+
+        # 获取绑定到此规则的用户，在删除前获取
+        affected_users = list(UserRule.objects.filter(group_rule_id=rule_id).values("username", "domain"))
 
         response = super().destroy(request, *args, **kwargs)
 
         # 记录操作日志
         if response.status_code == 204:
             log_operation(request, "delete", "data_rule", f"删除数据权限: {rule_name}")
+            # 清除受影响用户的权限缓存
+            if affected_users:
+                clear_users_permission_cache(affected_users)
 
         return response
 
@@ -54,12 +62,19 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
     @HasPermission("data_permission-Edit")
     def update(self, request, *args, **kwargs):
+        obj = self.get_object()
+        rule_id = obj.id
+
         response = super().update(request, *args, **kwargs)
 
         # 记录操作日志
         if response.status_code == 200:
             rule_name = response.data.get("name", "")
             log_operation(request, "update", "data_rule", f"编辑数据权限: {rule_name}")
+            # 清除绑定到此规则的用户的权限缓存
+            affected_users = list(UserRule.objects.filter(group_rule_id=rule_id).values("username", "domain"))
+            if affected_users:
+                clear_users_permission_cache(affected_users)
 
         return response
 

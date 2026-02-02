@@ -129,6 +129,8 @@
     "updateFail": "Failed to update",
     "execute": "Execute",
     "copy": "Copy",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit Fullscreen",
     "reset": "Reset",
     "inputPassword": "Please input the password",
     "builtin": "Built-in",
