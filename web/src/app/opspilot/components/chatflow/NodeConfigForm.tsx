@@ -549,7 +549,15 @@ export const NodeConfigForm: React.FC<any> = ({
               <Radio value="enterprise_wechat_bot">{t('chatflow.enterpriseWechatBot')}</Radio>
             </Radio.Group>
           </Form.Item>
-          <Form.Item name="notificationMethod" label={t('chatflow.notificationMethod')} rules={[{ required: true }]}>
+          <Form.Item name="notificationMethod" label={
+            <div className="flex items-center justify-between" style={{ width: '600px' }}>
+              <span>{t('chatflow.notificationMethod')}</span>
+              <Link href="/system-manager/channel" target="_blank" className="text-blue-500 hover:text-blue-600 text-xs flex items-center gap-1 whitespace-nowrap">
+                <PlusOutlined />
+                {t('chatflow.addNotificationChannel')}
+              </Link>
+            </div>
+          } rules={[{ required: true }]}>
             <Select placeholder={t('chatflow.selectNotificationMethod')} loading={loadingChannels}>
               {notificationChannels.map((c: any) => <Option key={c.id} value={c.id}>{c.name}</Option>)}
             </Select>

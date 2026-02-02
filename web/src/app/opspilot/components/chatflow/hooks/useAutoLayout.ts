@@ -109,7 +109,9 @@ export const useAutoLayout = (): UseAutoLayoutReturn => {
         const isHorizontal = direction === 'LR';
         const layoutedNodes: Node[] = [];
         
-        // 为每一层的节点计算位置
+        // 为每一层的节点计算位置（使用正数坐标）
+        const START_OFFSET = 100; // 距离画布边缘的起始偏移
+        
         nodesByLevel.forEach((nodesInLevel, level) => {
           const levelNodeCount = nodesInLevel.length;
           
@@ -121,18 +123,14 @@ export const useAutoLayout = (): UseAutoLayoutReturn => {
             
             if (isHorizontal) {
               // 水平布局：level 决定 X，indexInLevel 决定 Y
-              x = level * (width + horizontalGap);
-              // 居中对齐同层节点
-              const totalHeight = levelNodeCount * height + (levelNodeCount - 1) * verticalGap;
-              const startY = -totalHeight / 2;
-              y = startY + indexInLevel * (height + verticalGap) + height / 2;
+              x = START_OFFSET + level * (width + horizontalGap);
+              // 从起始位置开始排列
+              y = START_OFFSET + indexInLevel * (height + verticalGap);
             } else {
               // 垂直布局：level 决定 Y，indexInLevel 决定 X
-              y = level * (height + verticalGap);
-              // 居中对齐同层节点
-              const totalWidth = levelNodeCount * width + (levelNodeCount - 1) * horizontalGap;
-              const startX = -totalWidth / 2;
-              x = startX + indexInLevel * (width + horizontalGap) + width / 2;
+              y = START_OFFSET + level * (height + verticalGap);
+              // 从起始位置开始排列
+              x = START_OFFSET + indexInLevel * (width + horizontalGap);
             }
             
             layoutedNodes.push({

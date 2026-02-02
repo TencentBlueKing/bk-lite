@@ -46,7 +46,7 @@ import { useNodeDrop } from './hooks/useNodeDrop';
 import { useHelperLines } from './hooks/useHelperLines';
 import { useAutoLayout } from './hooks/useAutoLayout';
 import HelperLines from './HelperLines';
-import { PartitionOutlined } from '@ant-design/icons';
+import { PartitionOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
 
 const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onSave, initialData }, ref) => {
   const { t } = useTranslation();
@@ -58,6 +58,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   const [selectedEdges, setSelectedEdges] = useState<any[]>([]);
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 0.6 });
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isInteractive, setIsInteractive] = useState(true);
   const lastSaveData = useRef<string>('');
 
   const [nodes, setNodes] = useNodesState(
@@ -139,8 +140,15 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       const { nodes: layoutedNodes } = await getLayoutedElements(nodes, edges, { direction });
       console.log('Layout complete, new positions:', layoutedNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y })));
       setNodes(layoutedNodes);
+      
+      // 布局完成后自动适应视图
+      if (reactFlowInstance) {
+        setTimeout(() => {
+          reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
+        }, 50);
+      }
     },
-    [nodes, edges, getLayoutedElements, setNodes]
+    [nodes, edges, getLayoutedElements, setNodes, reactFlowInstance]
   );
 
   const handleConfigNode = useCallback((nodeId: string) => {
@@ -182,13 +190,20 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   const onInit = useCallback((instance: any) => {
     setReactFlowInstance(instance);
     setViewport(instance.getViewport());
-  }, []);
+    
+    // 如果有初始节点数据，自动适应视图
+    if (initialData?.nodes && initialData.nodes.length > 0) {
+      setTimeout(() => {
+        instance.fitView({ padding: 0.2, duration: 400 });
+      }, 50);
+    }
+  }, [initialData]);
 
   const onConnect = useCallback(
     (params: Connection) => {
       if (!params.source || !params.target) return;
       if (params.source === params.target) return;
-      
+
       setEdges((eds) => addEdge(params, eds));
     },
     [setEdges]
@@ -202,17 +217,17 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
         const { clientX, clientY } = 'changedTouches' in event ? event.changedTouches[0] : event;
         const targetNode = document.elementFromPoint(clientX, clientY)?.closest('.react-flow__node');
-        
+
         if (targetNode) {
           const targetNodeId = targetNode.getAttribute('data-id');
           const sourceNodeId = connectionState.fromNode.id;
-          
+
           if (targetNodeId && targetNodeId !== sourceNodeId) {
             const targetNodeData = nodes.find(n => n.id === targetNodeId);
             const noInputTypes = ['celery', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'];
             const nodeType = targetNodeData?.data?.type as string;
             const hasInputHandle = nodeType && !noInputTypes.includes(nodeType);
-            
+
             if (hasInputHandle) {
               const newEdge: Connection = {
                 source: sourceNodeId,
@@ -237,11 +252,11 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   const handleSaveConfig = useCallback((nodeId: string, values: any) => {
     const { name, ...config } = values;
     let isIntentClassification = false;
-    
+
     setNodes((nds) => {
       const targetNode = nds.find(n => n.id === nodeId);
       isIntentClassification = targetNode?.data.type === 'intent_classification';
-      
+
       const updatedNodes = nds.map((node) => {
         if (node.id === nodeId) {
           // 为意图分类节点添加时间戳强制更新
@@ -252,7 +267,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
             // 添加时间戳确保 React 检测到变化
             ...(node.data.type === 'intent_classification' ? { _timestamp: Date.now() } : {})
           };
-          
+
           return {
             ...node,
             data: updatedData
@@ -260,12 +275,12 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
         }
         return node;
       });
-      
+
       // 如果是意图分类节点，更新相关的连线
       if (targetNode?.data.type === 'intent_classification') {
         const newIntents = config.intents || [];
         const validIntentNames = new Set(newIntents.map((intent: any) => intent.name));
-        
+
         // 先清理无效的边（移除已删除意图的连线）
         setEdges((eds) => {
           return eds.filter(edge => {
@@ -277,25 +292,25 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
           });
         });
       }
-      
+
       // 立即触发 onSave 回调，同步更新上层状态
       if (onSave) {
         onSave(updatedNodes, edges);
       }
-      
+
       return updatedNodes;
     });
-    
+
     // 如果是意图分类节点，强制重新挂载来刷新连接点
     if (isIntentClassification) {
       setTimeout(() => {
         setNodes((nds) => {
           const targetNode = nds.find(n => n.id === nodeId);
           if (!targetNode) return nds;
-          
+
           // 先移除节点
           const filtered = nds.filter(n => n.id !== nodeId);
-          
+
           // 立即恢复节点（使用当前找到的 targetNode，而不是闭包中的旧数据）
           setTimeout(() => {
             setNodes((current) => {
@@ -306,12 +321,12 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
               return [...current, targetNode];
             });
           }, 0);
-          
+
           return filtered;
         });
       }, 50);
     }
-    
+
     setIsConfigDrawerVisible(false);
   }, [setNodes, setEdges, edges, onSave, reactFlowInstance]);
 
@@ -356,6 +371,13 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
             selectionKeyCode={null}
             multiSelectionKeyCode={null}
             connectionMode={ConnectionMode.Strict}
+            nodesDraggable={isInteractive}
+            nodesConnectable={isInteractive}
+            elementsSelectable={true}
+            zoomOnScroll={isInteractive}
+            panOnScroll={isInteractive}
+            panOnDrag={isInteractive}
+            zoomOnDoubleClick={isInteractive}
             isValidConnection={(connection) => {
               if (!connection.source || !connection.target) return false;
               if (connection.source === connection.target) return false;
@@ -371,7 +393,14 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
               zoomable
               ariaLabel="Flowchart minimap"
             />
-            <Controls>
+            <Controls showInteractive={false}>
+              <ControlButton
+                onClick={() => setIsInteractive(!isInteractive)}
+                title={isInteractive ? t('chatflow.lock') : t('chatflow.unlock')}
+                className={!isInteractive ? 'react-flow__controls-interactive' : ''}
+              >
+                {isInteractive ? <UnlockOutlined /> : <LockOutlined />}
+              </ControlButton>
               <ControlButton onClick={() => handleAutoLayout('LR')} title={t('chatflow.autoLayout')}>
                 <PartitionOutlined />
               </ControlButton>
