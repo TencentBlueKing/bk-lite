@@ -13,6 +13,7 @@ import { KnowledgeBase, RagScoreThresholdItem, KnowledgeBaseRagSource } from '@/
 import { SelectTool } from '@/app/opspilot/types/tool';
 import ToolSelector from '@/app/opspilot/components/skill/toolSelector';
 import { useSkillApi } from '@/app/opspilot/api/skill';
+import { useSkill } from '@/app/opspilot/context/skillContext';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -22,6 +23,7 @@ const SkillSettingsPage: React.FC = () => {
   const { groups, loading: groupsLoading } = useGroups();
   const { t } = useTranslation();
   const { fetchSkillDetail, fetchKnowledgeBases, fetchLlmModels, saveSkillDetail } = useSkillApi();
+  const { refreshSkillInfo } = useSkill();
   const searchParams = useSearchParams();
   const id = searchParams ? searchParams.get('id') : null;
 
@@ -166,6 +168,7 @@ const SkillSettingsPage: React.FC = () => {
       setSaveLoading(true);
       await saveSkillDetail(id, payload);
       message.success(t('common.saveSuccess'));
+      refreshSkillInfo();
     } catch (error) {
       console.error(t('common.saveFailed'), error);
     } finally {

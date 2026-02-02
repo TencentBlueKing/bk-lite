@@ -2,25 +2,23 @@
 
 import React from 'react';
 import { useTranslation } from '@/utils/i18n';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import TopSection from '@/components/top-section';
 import WithSideMenuLayout from '@/components/sub-layout';
 import OnelineEllipsisIntro from '@/app/opspilot/components/oneline-ellipsis-intro';
+import { SkillProvider, useSkill } from '@/app/opspilot/context/skillContext';
 
-const SkillSettingsLayout = ({ children }: { children: React.ReactNode }) => {
+const LayoutContent = ({ children }: { children: React.ReactNode }) => {
   const { t } = useTranslation();
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const name = searchParams?.get('name') || '';
-  const desc = searchParams?.get('desc') || '';
-
+  const { skillInfo } = useSkill();
 
   const handleBackButtonClick = () => {
     router.push('/opspilot/skill');
   };
 
   const intro = (
-    <OnelineEllipsisIntro name={name} desc={desc}></OnelineEllipsisIntro>
+    <OnelineEllipsisIntro name={skillInfo.name} desc={skillInfo.introduction}></OnelineEllipsisIntro>
   );
 
   return (
@@ -32,6 +30,14 @@ const SkillSettingsLayout = ({ children }: { children: React.ReactNode }) => {
     >
       {children}
     </WithSideMenuLayout>
+  );
+};
+
+const SkillSettingsLayout = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <SkillProvider>
+      <LayoutContent>{children}</LayoutContent>
+    </SkillProvider>
   );
 };
 
