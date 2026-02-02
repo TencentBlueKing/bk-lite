@@ -12,7 +12,7 @@
       "description": "",
       "default_metric": "any({instance_type='k8s'}) by (instance_id)",
       "instance_id_keys": ["instance_id"],
-      "supplementary_indicators": ["cluster_cpu_utilization"],
+      "supplementary_indicators": ["cluster_pod_count", "cluster_node_count", "cluster_cpu_utilization", "cluster_memory_utilization"],
       "metrics": [
         {
           "metric_group": "Counts",
@@ -68,7 +68,7 @@
       "description": "",
       "default_metric": "prometheus_remote_write_kube_pod_info",
       "instance_id_keys": ["instance_id", "pod"],
-      "supplementary_indicators": ["prometheus_remote_write_kube_pod_status_phase"],
+      "supplementary_indicators": ["prometheus_remote_write_kube_pod_status_phase", "pod_cpu_utilization", "pod_memory_utilization"],
       "metrics": [
         {
           "metric_group": "Status",
@@ -168,7 +168,7 @@
       "description": "",
       "default_metric": "prometheus_remote_write_kube_node_info",
       "instance_id_keys": ["instance_id", "node"],
-      "supplementary_indicators": ["node_cpu_utilization"],
+      "supplementary_indicators": ["node_status_condition", "node_cpu_utilization", "node_memory_utilization", "node_disk_usage_rate"],
       "metrics": [
         {
           "metric_group": "Status",

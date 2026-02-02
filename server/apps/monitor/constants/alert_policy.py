@@ -2,7 +2,7 @@ class AlertConstants:
     """告警相关常量"""
 
     # 补偿机制配置
-    MAX_BACKFILL_COUNT = 10  # 每次任务执行最多补偿的周期数
+    MAX_BACKFILL_COUNT = 30  # 每次任务执行最多补偿的周期数
     MAX_BACKFILL_SECONDS = (
         24 * 3600
     )  # 最大补偿时间范围（秒），超过此范围的历史数据不再补偿
