@@ -113,8 +113,6 @@ export const useAutoLayout = (): UseAutoLayoutReturn => {
         const START_OFFSET = 100; // 距离画布边缘的起始偏移
         
         nodesByLevel.forEach((nodesInLevel, level) => {
-          const levelNodeCount = nodesInLevel.length;
-          
           nodesInLevel.forEach((node, indexInLevel) => {
             const width = node.measured?.width ?? nodeWidth;
             const height = node.measured?.height ?? nodeHeight;
