@@ -1601,6 +1601,10 @@ monitor_object_metric:
     weblogic_threadpool_queue_length_value:
       desc: 线程池请求队列中的任务数量，反映请求积压情况。队列长度过长意味着大量请求等待处理，可能需要增加线程池资源或优化请求处理逻辑。
       name: 线程池队列长度
+  TCP:
+    ConnectStatus:
+      name: 连接状态
+      desc: 该指标反映云平台 API 的可访问性、账号凭证有效性以及采集链路的整体健康状况
   CVM:
     CPUUsage_gauge:
       name: CPU 利用率

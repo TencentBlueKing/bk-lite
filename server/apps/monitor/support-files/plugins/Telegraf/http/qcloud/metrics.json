@@ -12,8 +12,20 @@
       "description": "",
       "default_metric": "any({instance_type='qcloud'}) by (instance_id)",
       "instance_id_keys": ["instance_id"],
-      "supplementary_indicators": [],
-      "metrics": []
+      "supplementary_indicators": ["ConnectStatus"],
+      "metrics": [
+        {
+          "metric_group": "Base",
+          "name": "ConnectStatus",
+          "display_name": "Connect Status",
+          "instance_id_keys": ["instance_id"],
+          "data_type": "Enum",
+          "unit": "[{\"name\":\"异常\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "This metric reflects the availability of cloud APIs, the validity of account credentials, and the overall health of the data collection pipeline.",
+          "query": "ConnectStatus{__$labels__}"
+        }
+      ]
     },
     {
       "name": "CVM",
