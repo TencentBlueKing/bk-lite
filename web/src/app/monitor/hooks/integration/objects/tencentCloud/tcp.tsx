@@ -2,13 +2,10 @@ export const useTcpConfig = () => {
   return {
     instance_type: 'qcloud',
     dashboardDisplay: [],
-    tableDiaplay: [
-      { type: 'progress', key: 'CPUUsage_gauge' },
-      { type: 'progress', key: 'MemUsage_gauge' },
-    ],
+    tableDiaplay: [{ type: 'enum', key: 'ConnectStatus' }],
     groupIds: {},
     collectTypes: {
-      'Tencent Cloud': 'http',
-    },
+      'Tencent Cloud': 'http'
+    }
   };
 };

@@ -9,8 +9,8 @@ export const usePodConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '15%',
-        },
+          width: '15%'
+        }
       },
       {
         indexId: 'pod_cpu_utilization',
@@ -19,8 +19,8 @@ export const usePodConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '32%',
-        },
+          width: '32%'
+        }
       },
       {
         indexId: 'pod_memory_utilization',
@@ -29,8 +29,8 @@ export const usePodConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '32%',
-        },
+          width: '32%'
+        }
       },
       {
         indexId: 'pod_io_writes',
@@ -39,8 +39,8 @@ export const usePodConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '32%',
-        },
+          width: '32%'
+        }
       },
       {
         indexId: 'pod_io_read',
@@ -49,19 +49,21 @@ export const usePodConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '32%',
-        },
-      },
+          width: '32%'
+        }
+      }
     ],
     tableDiaplay: [
       { type: 'enum', key: 'prometheus_remote_write_kube_pod_status_phase' },
+      { type: 'progress', key: 'pod_cpu_utilization' },
+      { type: 'progress', key: 'pod_memory_utilization' }
     ],
     groupIds: {
       list: ['uid'],
-      default: ['uid'],
+      default: ['uid']
     },
     collectTypes: {
-      K8S: 'k8s',
-    },
+      K8S: 'k8s'
+    }
   };
 };
