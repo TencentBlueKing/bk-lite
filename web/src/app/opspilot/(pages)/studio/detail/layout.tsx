@@ -100,17 +100,8 @@ const KnowledgeDetailLayout = ({ children }: { children: React.ReactNode }) => {
   }, [menus, pathname, botType, isLoadingBotType]);
 
   const handleBackButtonClick = () => {
-    const pathSegments = pathname ? pathname.split('/').filter(Boolean) : [];
-    if (pathSegments.length >= 3) {
-      if (pathSegments.length === 3) {
-        router.push('/opspilot/studio');
-      } else if (pathSegments.length > 3) {
-        router.push(`/opspilot/studio/detail?id=${id}&name=${name}&desc=${desc}`);
-      }
-    }
-    else {
-      router.back();
-    }
+    // Always navigate back to studio list page
+    router.push('/opspilot/studio');
   };
 
   const intro = (

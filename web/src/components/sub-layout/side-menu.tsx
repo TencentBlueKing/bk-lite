@@ -53,8 +53,20 @@ const SideMenu: React.FC<SideMenuProps> = ({
   return (
     <aside className={`w-[216px] pr-4 flex flex-shrink-0 flex-col h-full ${sideMenuStyle.sideMenu}`}>
       {children && (
-        <div className={`p-4 rounded-md mb-3 h-[80px] ${sideMenuStyle.introduction}`}>
-          {children}
+        <div className={`${showBackButton ? 'pl-2 pr-4 py-4' : 'p-4'} rounded-md mb-3 h-[80px] ${sideMenuStyle.introduction}`}>
+          <div className="flex items-start h-full w-full">
+            {showBackButton && (
+              <button
+                className="flex items-center justify-center w-5 h-5 mt-0.5 mr-1.5 rounded cursor-pointer hover:bg-[var(--color-bg-3)] flex-shrink-0"
+                onClick={onBackButtonClick}
+              >
+                <ArrowLeftOutlined className="text-sm" />
+              </button>
+            )}
+            <div className="flex-1 overflow-hidden">
+              {children}
+            </div>
+          </div>
         </div>
       )}
       <nav className={`flex-1 relative rounded-md ${sideMenuStyle.nav}`}>
@@ -74,14 +86,6 @@ const SideMenu: React.FC<SideMenuProps> = ({
           <>
             {taskProgressComponent}
           </>
-        )}
-        {showBackButton && (
-          <button
-            className="absolute bottom-4 left-4 flex items-center py-2 rounded-md text-sm"
-            onClick={onBackButtonClick}
-          >
-            <ArrowLeftOutlined className="mr-2" />
-          </button>
         )}
       </nav>
     </aside>

@@ -18,24 +18,13 @@ const LayoutContent: React.FC<KnowledgeDetailLayoutProps> = ({ children }) => {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const id = searchParams?.get('id') || '';
   const name = searchParams?.get('name') || '';
   const desc = searchParams?.get('desc') || '';
   
   const { mainTabKey } = useDocuments();
 
   const handleBackButtonClick = () => {
-    const pathSegments = pathname ? pathname.split('/').filter(Boolean) : [];
-    if (pathSegments.length >= 3) {
-      if (pathSegments.length === 3) {
-        router.push('/knowledge');
-      } else if (pathSegments.length > 3) {
-        router.push(`/opspilot/knowledge/detail?id=${id}&name=${name}&desc=${desc}`);
-      }
-    }
-    else {
-      router.back();
-    }
+    router.push('/opspilot/knowledge');
   };
 
   const intro = (
