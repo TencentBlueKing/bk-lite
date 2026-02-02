@@ -50,21 +50,22 @@ func (jsc *JetStreamClient) DownloadToFile(fileKey, targetPath, fileName string)
 	}
 	defer obj.Close() // 确保关闭对象
 
-	// 读取对象内容
-	data, err := io.ReadAll(obj)
-	if err != nil {
-		return fmt.Errorf("failed to read object data: %v", err)
-	}
-
 	// 确定保存路径
 	fullPath := fmt.Sprintf("%s/%s", targetPath, fileName)
 
-	// 写入文件到本地
-	err = os.WriteFile(fullPath, data, 0644)
+	// 创建目标文件
+	file, err := os.Create(fullPath)
 	if err != nil {
-		return fmt.Errorf("failed to write file to target path %s: %v", fullPath, err)
+		return fmt.Errorf("failed to create file at %s: %v", fullPath, err)
+	}
+	defer file.Close()
+
+	// 流式复制，避免一次性加载到内存导致 OOM
+	written, err := io.Copy(file, obj)
+	if err != nil {
+		return fmt.Errorf("failed to write file: %v", err)
 	}
 
-	log.Printf("File successfully downloaded to %s", fullPath)
+	log.Printf("File successfully downloaded to %s (%d bytes)", fullPath, written)
 	return nil
 }
