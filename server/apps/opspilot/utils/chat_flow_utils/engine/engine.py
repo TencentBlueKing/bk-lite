@@ -26,6 +26,61 @@ from .node_registry import node_registry
 
 
 class ChatFlowEngine:
+    # AGUI 协议中需要过滤的事件类型（工具调用相关和运行状态相关）
+    # 用于 _extract_final_message 方法提取真实文本内容时过滤
+    AGUI_SKIP_TYPES = frozenset(
+        {
+            # 工具调用相关事件
+            "TOOL_CALL_START",
+            "TOOL_CALL_ARGS",
+            "TOOL_CALL_END",
+            "TOOL_CALL_RESULT",
+            # 运行状态事件
+            "RUN_STARTED",
+            "RUN_FINISHED",
+            "RUN_ERROR",
+            # 消息边界事件（不包含实际内容）
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_END",
+            # 自定义事件
+            "CUSTOM",
+        }
+    )
+
+    def __init__(self, instance: BotWorkFlow, start_node_id: str = None, entry_type: str = None):
+        self.instance = instance
+        self.start_node_id = start_node_id
+        self.entry_type = entry_type or WorkFlowExecuteType.OPENAI  # 默认为 openai
+        self.variable_manager = VariableManager()
+        self.execution_contexts: Dict[str, NodeExecutionContext] = {}
+
+        # 用于跟踪最后执行的节点输出
+        self.last_message = None
+
+        # 用于跟踪节点执行顺序
+        self.execution_order = 0
+
+        # 解析流程图
+        self.nodes = self._parse_nodes(instance.flow_json)
+        self.edges = self._parse_edges(instance.flow_json)
+
+        # 构建节点ID到节点的映射字典（用于 O(1) 查找）
+        self._node_map: Dict[str, Dict[str, Any]] = {node.get("id"): node for node in self.nodes if node.get("id")}
+
+        # 识别所有入口节点（没有父节点的节点）
+        self.entry_nodes = self._identify_entry_nodes()
+
+        # 构建完整拓扑图（用于验证）
+        self.full_topology = self._build_topology()
+
+        # 自定义节点执行器映射（支持字符串类型）
+        self.custom_node_executors: Dict[str, Callable] = {}
+
+        # 执行配置
+        self.max_parallel_nodes = 5
+        self.max_retry_count = 3
+        self.execution_timeout = 300  # 5分钟超时
+
     def _initialize_variables(self, input_data: Dict[str, Any]):
         """初始化变量管理器
 
@@ -103,6 +158,10 @@ class ChatFlowEngine:
         if not target_agent_node:
             return self._create_error_response("未找到可执行的agents节点")
 
+        # 为入口节点创建执行上下文记录（入口节点不需要真正执行，但需要记录）
+        if start_node:
+            self.set_start_node_variable(input_data, start_node)
+
         # 执行前置节点
         final_input_data = self._execute_prerequisite_nodes(nodes_to_execute_before, input_data)
 
@@ -132,6 +191,11 @@ class ChatFlowEngine:
             嵌套的异步生成器：直接调用节点的 execute_method 获取流
             """
             accumulated_content = []
+
+            # 使用公共方法创建 agents 节点的执行上下文
+            agent_node_id = target_agent_node.get("id")
+            agent_context = self._create_node_execution_context(node=target_agent_node, input_data=final_input_data, status=NodeStatus.RUNNING)
+
             try:
                 logger.info(f"[SSE-Engine] 开始流处理 - protocol: {protocol_type}, node: {node_id}")
 
@@ -150,16 +214,6 @@ class ChatFlowEngine:
                         try:
                             data_str = chunk[6:].strip()
                             data_json = json.loads(data_str)
-
-                            # if protocol_type == "AGUI":
-                            #     # AGUI 协议: TEXT_MESSAGE_CONTENT 类型
-                            #     if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
-                            #         accumulated_content += data_json.get("delta", "")
-                            # else:
-                            #     # SSE/OpenAI 协议: 提取 content/message/text 字段
-                            #     content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
-                            #     if content:
-                            #         accumulated_content += content
                             accumulated_content.append(data_json)
                         except (json.JSONDecodeError, ValueError):
                             pass
@@ -168,25 +222,73 @@ class ChatFlowEngine:
 
                 logger.info(f"[SSE-Engine] 流处理完成 - 共生成 {chunk_index} 个chunk")
 
+                # 更新 agents 节点执行上下文 - 成功
+                final_message = self._extract_final_message(accumulated_content)
+                agent_context.end_time = time.time()
+                agent_context.status = NodeStatus.COMPLETED
+                agent_context.output_data = {"last_message": final_message}
+
+                # 更新节点执行顺序
+                self._update_node_execution_order(agent_node_id)
+
                 # 记录系统输出到对话历史
                 if accumulated_content:
+                    threading.Thread(
+                        target=lambda: self._record_conversation_history(user_id, accumulated_content, "bot", entry_type, node_id, session_id),
+                        daemon=True,
+                    ).start()
 
-                    def record_history_in_background():
-                        from asgiref.sync import async_to_sync
+                # 检查是否有后续节点
+                next_nodes = self._get_next_nodes(target_agent_node.get("id"), {"success": True, "data": {}})
 
-                        async_to_sync(sync_to_async(self._record_conversation_history, thread_sensitive=False))(
-                            user_id, accumulated_content, "bot", entry_type, node_id, session_id
-                        )
+                if next_nodes:
+                    # 有后续节点：不在此处记录，让后续节点执行完成后统一记录
+                    logger.info(f"[SSE-Engine] 有 {len(next_nodes)} 个后续节点，延迟记录执行结果")
+                else:
+                    # 没有后续节点：直接记录成功执行结果
+                    # 捕获变量，避免闭包延迟绑定问题
+                    captured_final_message = final_message
+                    captured_start_node_type = start_node.get("type", "") if start_node else None
 
-                    threading.Thread(target=record_history_in_background, daemon=True).start()
+                    def record_success_result_in_background():
+                        try:
+                            self._record_execution_result(input_data, captured_final_message, True, captured_start_node_type)
+                        except Exception as record_err:
+                            logger.error(f"[SSE-Engine] 记录成功执行结果失败: {record_err}")
+
+                    threading.Thread(target=record_success_result_in_background, daemon=True).start()
 
                 # 执行后续节点(在后台异步执行,不阻塞流式响应)
                 self._execute_subsequent_nodes_async(target_agent_node, accumulated_content)
 
             except Exception as e:
                 logger.error(f"[SSE-Engine] Stream error: {e}", exc_info=True)
+
+                # 更新 agents 节点执行上下文 - 失败
+                agent_context.end_time = time.time()
+                agent_context.status = NodeStatus.FAILED
+                agent_context.error_message = str(e)
+
+                # 更新节点执行顺序
+                self._update_node_execution_order(agent_node_id)
+
                 error_data = {"type": "ERROR", "error": f"流处理错误: {str(e)}", "timestamp": int(time.time() * 1000)}
                 yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+
+                # 记录失败执行结果到 WorkFlowTaskResult
+                # 捕获异常信息，避免闭包引用在 except 块结束后被删除的变量
+                error_msg = str(e)
+                error_type_name = type(e).__name__
+
+                def record_error_result_in_background():
+                    try:
+                        error_result = {"success": False, "error": error_msg, "error_type": error_type_name}
+                        start_node_type = start_node.get("type", "") if start_node else None
+                        self._record_execution_result(input_data, error_result, False, start_node_type)
+                    except Exception as record_err:
+                        logger.error(f"[SSE-Engine] 记录失败执行结果失败: {record_err}")
+
+                threading.Thread(target=record_error_result_in_background, daemon=True).start()
 
         # 直接使用嵌套的异步生成器创建 StreamingHttpResponse
         response = StreamingHttpResponse(generate_stream(), content_type="text/event-stream")
@@ -202,6 +304,75 @@ class ChatFlowEngine:
 
         logger.info(f"[SSE-Engine] 返回 StreamingHttpResponse - protocol: {protocol_type}")
         return response
+
+    def set_start_node_variable(self, input_data: dict[str, Any] | dict[Any, Any], start_node: dict[str, Any]):
+        """设置入口节点的执行上下文和变量（入口节点直接标记为完成）"""
+        start_node_id = start_node.get("id")
+
+        # 使用公共方法创建执行上下文
+        start_context = self._create_node_execution_context(node=start_node, input_data=input_data, status=NodeStatus.COMPLETED)
+
+        # 入口节点直接完成，设置 output_data 和 end_time
+        start_context.output_data = input_data
+        start_context.end_time = time.time()
+
+        # 更新节点执行顺序
+        self._update_node_execution_order(start_node_id)
+
+        logger.info(f"[SSE-Engine] 入口节点已记录: {start_node_id} ({start_node.get('type')})")
+
+    def _create_node_execution_context(
+        self,
+        node: Dict[str, Any],
+        input_data: Dict[str, Any],
+        status: NodeStatus = NodeStatus.RUNNING,
+    ) -> NodeExecutionContext:
+        """创建节点执行上下文并注册变量（公共方法）
+
+        Args:
+            node: 节点配置
+            input_data: 输入数据
+            status: 初始状态，默认 RUNNING
+
+        Returns:
+            NodeExecutionContext: 创建的执行上下文
+        """
+        node_id = node.get("id")
+        node_type = node.get("type")
+        node_name = node.get("data", {}).get("label", "") or node.get("data", {}).get("name", "") or node_id
+
+        # 创建执行上下文
+        context = NodeExecutionContext(node_id=node_id, flow_id=str(self.instance.id))
+        context.start_time = time.time()
+        context.status = status
+        context.input_data = input_data
+
+        # 保存节点信息到变量管理器
+        self.variable_manager.set_variable(f"node_{node_id}_type", node_type)
+        self.variable_manager.set_variable(f"node_{node_id}_name", node_name)
+
+        # 保存输出参数名（用于失败时也使用用户指定的输出参数名）
+        node_config = node.get("data", {}).get("config", {})
+        output_key = node_config.get("outputParams", "last_message")
+        self.variable_manager.set_variable(f"node_{node_id}_output_key", output_key)
+
+        # 注册到 execution_contexts
+        self.execution_contexts[node_id] = context
+
+        return context
+
+    def _update_node_execution_order(self, node_id: str) -> int:
+        """更新节点执行顺序计数器并保存到变量管理器
+
+        Args:
+            node_id: 节点ID
+
+        Returns:
+            int: 当前节点的执行顺序编号
+        """
+        self.execution_order += 1
+        self.variable_manager.set_variable(f"node_{node_id}_index", self.execution_order)
+        return self.execution_order
 
     def _find_target_agent_node(self, start_node, last_node, is_agui_protocol: bool, is_openai_protocol: bool):
         """查找目标agents节点及前置节点"""
@@ -256,156 +427,49 @@ class ChatFlowEngine:
             node_type = node.get("type")
             executor = self._get_node_executor(node_type)
 
-            result = executor.execute(node_id, node, temp_engine_data)
+            # 使用公共方法创建执行上下文
+            context = self._create_node_execution_context(node=node, input_data=temp_engine_data, status=NodeStatus.RUNNING)
 
-            self.variable_manager.set_variable(f"node_{node_id}_output", result)
-            if isinstance(result, dict):
-                temp_engine_data.update(result)
+            try:
+                result = executor.execute(node_id, node, temp_engine_data)
+
+                # 更新执行上下文 - 成功
+                context.end_time = time.time()
+                context.status = NodeStatus.COMPLETED
+                context.output_data = result
+
+                # 更新节点执行顺序
+                self._update_node_execution_order(node_id)
+
+                self.variable_manager.set_variable(f"node_{node_id}_output", result)
+                if isinstance(result, dict):
+                    temp_engine_data.update(result)
+            except Exception as e:
+                # 更新执行上下文 - 失败
+                context.end_time = time.time()
+                context.status = NodeStatus.FAILED
+                context.error_message = str(e)
+
+                # 更新节点执行顺序
+                self._update_node_execution_order(node_id)
+
+                logger.exception(f"[SSE-Engine] 前置节点 {node_id} ({node_type}) 执行失败: {str(e)}")
+                # 记录错误到 WorkFlowTaskResult
+                error_result = {
+                    "success": False,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "failed_node_id": node_id,
+                    "failed_node_type": node_type,
+                }
+                self._record_execution_result(input_data, error_result, False, node_type)
+                # 重新抛出异常，让上层处理
+                raise
 
         return temp_engine_data
 
-    def _create_streaming_generator(
-        self,
-        execute_method,
-        target_agent_node,
-        final_input_data: Dict[str, Any],
-        user_id: str,
-        entry_type: str,
-        is_agui_protocol: bool,
-        node_id: str = "",
-    ):
-        """创建流式输出生成器（支持异步）"""
-
-        async def wrapped_async_generator():
-            """异步包装生成器，用于AGUI协议"""
-            accumulated_output = []
-
-            try:
-                # 在异步上下文中调用同步的 execute_method，使用 sync_to_async
-                # 将同步方法包装为异步方法
-                async_execute = sync_to_async(execute_method, thread_sensitive=False)
-                async_gen = await async_execute(target_agent_node.get("id"), target_agent_node, final_input_data)
-
-                chunk_count = 0
-                async for chunk in async_gen:
-                    chunk_count += 1
-                    chunk_str = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
-
-                    # 过滤统计信息
-                    if chunk_str.startswith("# STATS:"):
-                        continue
-
-                    # 立即 yield,确保流式输出
-                    logger.debug(f"[SSE-Engine-AGUI] Yielding chunk #{chunk_count}, length: {len(chunk_str)}")
-                    yield chunk
-
-                    # 收集输出内容
-                    self._accumulate_output(chunk_str, accumulated_output, is_agui_protocol)
-
-                logger.info(f"[SSE-Engine-AGUI] 流式输出完成 - 总共 {chunk_count} 个chunk")
-
-                # 记录完整输出 - 在异步上下文中使用 sync_to_async
-                await sync_to_async(self._record_bot_output, thread_sensitive=False)(
-                    user_id, accumulated_output, entry_type, node_id, final_input_data["session_id"]
-                )
-
-            except Exception as e:
-                logger.error(f"[SSE-Engine] 流式执行过程中出错: {str(e)}")
-                logger.exception(e)
-                yield f"data: {json.dumps({'result': False, 'error': str(e)})}\n\n"
-                yield "data: [DONE]\n\n"
-
-        # AGUI协议返回异步生成器
-        if is_agui_protocol:
-            return wrapped_async_generator()
-
-        # 非AGUI协议也返回异步生成器（统一处理）
-        async def wrapped_sse_generator():
-            """异步包装生成器，用于SSE/OpenAI协议"""
-            accumulated_output = []
-
-            try:
-                # 在异步上下文中调用同步的 execute_method
-                async_execute = sync_to_async(execute_method, thread_sensitive=False)
-                async_gen = await async_execute(target_agent_node.get("id"), target_agent_node, final_input_data)
-
-                async for chunk in async_gen:
-                    chunk_str = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
-
-                    # 过滤统计信息
-                    if chunk_str.startswith("# STATS:"):
-                        continue
-
-                    yield chunk
-
-                    # 收集输出内容
-                    self._accumulate_output(chunk_str, accumulated_output, is_agui_protocol)
-
-                # 记录完整输出 - 在异步上下文中使用 sync_to_async
-                await sync_to_async(self._record_bot_output, thread_sensitive=False)(
-                    user_id, accumulated_output, entry_type, node_id, final_input_data["session_id"]
-                )
-
-            except Exception as e:
-                logger.error(f"[SSE-Engine] 流式执行过程中出错: {str(e)}")
-                logger.exception(e)
-                yield f"data: {json.dumps({'result': False, 'error': str(e)})}\n\n"
-                yield "data: [DONE]\n\n"
-
-        return wrapped_sse_generator()
-
-    def _accumulate_output(self, chunk_str: str, accumulated_output: List[str], is_agui_protocol: bool):
-        """累积输出内容"""
-        if chunk_str and not chunk_str.strip().endswith("[DONE]"):
-            if chunk_str.startswith("data: "):
-                data_str = chunk_str[6:].strip()
-                try:
-                    if data_str:
-                        data_json = json.loads(data_str)
-                        if is_agui_protocol:
-                            if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
-                                delta = data_json.get("delta", "")
-                                if delta:
-                                    accumulated_output.append(delta)
-                        else:
-                            content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
-                            if content:
-                                accumulated_output.append(content)
-                except json.JSONDecodeError:
-                    accumulated_output.append(data_str)
-
-    def _record_bot_output(self, user_id: str, accumulated_output: List[str], entry_type: str, node_id: str = "", session_id: str = ""):
-        """记录机器人输出对话历史"""
-        if user_id and accumulated_output and entry_type != "celery":
-            try:
-                full_output = "".join(accumulated_output)
-                WorkFlowConversationHistory.objects.create(
-                    bot_id=self.instance.bot_id,
-                    node_id=node_id,
-                    user_id=user_id,
-                    conversation_role="bot",
-                    conversation_content=full_output,
-                    conversation_time=timezone.now(),
-                    entry_type=entry_type,
-                    session_id=session_id,
-                )
-            except Exception as e:
-                logger.error(f"[SSE] 记录系统输出对话历史失败: {str(e)}")
-
-    def _create_error_generator(self, error_message: str):
-        """创建错误生成器"""
-        logger.error(f"[SSE-Engine] {error_message}")
-
-        def err_gen():
-            yield f"data: {json.dumps({'result': False, 'error': error_message})}\n\n"
-            yield "data: [DONE]\n\n"
-
-        return err_gen()
-
     def _create_error_response(self, error_message: str):
         """创建错误的 StreamingHttpResponse"""
-        from django.http import StreamingHttpResponse
-
         logger.error(f"[SSE-Engine] {error_message}")
 
         async def error_gen():
@@ -424,10 +488,13 @@ class ChatFlowEngine:
             agent_node: agents节点配置
             agent_output: agents节点的输出内容
         """
-        import threading
 
         def execute_in_background():
             """后台线程执行函数"""
+            all_success = True  # 跟踪所有节点是否都成功
+            last_error_result = None  # 记录最后一个错误信息
+            first_input_data = None  # 记录第一个节点的输入数据
+
             try:
                 # 获取后续节点
                 next_nodes = self._get_next_nodes(agent_node.get("id"), {"success": True, "data": {}})
@@ -447,6 +514,7 @@ class ChatFlowEngine:
 
                 # 准备节点输入
                 node_input = {"last_message": final_message}
+                first_input_data = node_input.copy()
 
                 # 执行每个后续节点
                 for next_node_id in next_nodes:
@@ -463,10 +531,21 @@ class ChatFlowEngine:
                             logger.warning(f"[SSE-Engine] 找不到节点执行器: {node_type}")
                             continue
 
+                        # 使用公共方法创建执行上下文
+                        context = self._create_node_execution_context(node=next_node, input_data=node_input, status=NodeStatus.RUNNING)
+
                         logger.info(f"[SSE-Engine] 执行后续节点: {next_node_id} ({node_type})")
 
                         # 执行节点
                         result = executor.execute(next_node_id, next_node, node_input)
+
+                        # 更新执行上下文 - 成功
+                        context.end_time = time.time()
+                        context.status = NodeStatus.COMPLETED
+                        context.output_data = result
+
+                        # 更新节点执行顺序
+                        self._update_node_execution_order(next_node_id)
 
                         logger.info(f"[SSE-Engine] 后续节点 {next_node_id} 执行完成: {result}")
 
@@ -475,12 +554,49 @@ class ChatFlowEngine:
                             node_input.update(result)
 
                     except Exception as e:
-                        logger.error(f"[SSE-Engine] 后续节点 {next_node_id} 执行失败: {str(e)}", exc_info=True)
+                        all_success = False
+                        # 更新执行上下文 - 失败
+                        if next_node_id in self.execution_contexts:
+                            context = self.execution_contexts[next_node_id]
+                            context.end_time = time.time()
+                            context.status = NodeStatus.FAILED
+                            context.error_message = str(e)
+
+                            # 更新节点执行顺序
+                            self._update_node_execution_order(next_node_id)
+
+                        logger.exception(f"[SSE-Engine] 后续节点 {next_node_id} 执行失败: {str(e)}")
+                        # 记录错误信息，稍后统一记录
+                        last_error_result = {
+                            "success": False,
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                            "failed_node_id": next_node_id,
+                            "failed_node_type": node_type,
+                            "stage": "subsequent_node",
+                        }
                         # 继续执行其他节点
                         continue
 
+                # 所有后续节点执行完成后，统一记录执行结果
+                try:
+                    if all_success:
+                        # 全部成功
+                        self._record_execution_result(first_input_data or {}, node_input, True)  # 最后一个节点的输出作为最终结果
+                    else:
+                        # 有失败节点
+                        self._record_execution_result(first_input_data or {}, last_error_result or {"error": "后续节点执行失败"}, False)
+                except Exception as record_err:
+                    logger.error(f"[SSE-Engine] 记录后续节点执行结果失败: {record_err}")
+
             except Exception as e:
                 logger.error(f"[SSE-Engine] 后续节点执行失败: {str(e)}", exc_info=True)
+                # 记录整体后续节点执行错误
+                try:
+                    error_result = {"success": False, "error": str(e), "error_type": type(e).__name__, "stage": "subsequent_nodes_overall"}
+                    self._record_execution_result({}, error_result, False)
+                except Exception as record_err:
+                    logger.error(f"[SSE-Engine] 记录后续节点整体错误失败: {record_err}")
 
         # 在后台线程中执行
         thread = threading.Thread(target=execute_in_background, daemon=True, name="SSE-SubsequentNodes")
@@ -489,6 +605,8 @@ class ChatFlowEngine:
 
     def _extract_final_message(self, accumulated_content: list) -> str:
         """从累积的流式内容中提取最终消息
+
+        只提取真实的文本内容，过滤掉工具调用相关的事件。
 
         Args:
             accumulated_content: 累积的数据列表
@@ -499,7 +617,6 @@ class ChatFlowEngine:
         if not accumulated_content:
             return ""
 
-        # 尝试从最后一个消息中提取
         final_msg_parts = []
 
         for data in accumulated_content:
@@ -507,62 +624,56 @@ class ChatFlowEngine:
                 continue
 
             data_type = data.get("type", "")
+            data_object = data.get("object", "")
 
-            # 处理不同协议的消息类型
+            # 跳过 AGUI 协议中的非文本内容事件
+            if data_type in self.AGUI_SKIP_TYPES:
+                continue
+
+            # 处理 OpenAI 格式的流式响应
+            # 格式: {"choices": [{"delta": {"content": "..."}, ...}], "object": "chat.completion.chunk", ...}
+            if data_object == "chat.completion.chunk" or "choices" in data:
+                choices = data.get("choices")
+                if not choices or not isinstance(choices, list):
+                    continue
+                for choice in choices:
+                    if not isinstance(choice, dict):
+                        continue
+                    delta = choice.get("delta")
+                    if not isinstance(delta, dict):
+                        continue
+                    content = delta.get("content", "")
+                    if content:
+                        final_msg_parts.append(content)
+                continue
+
+            # 处理 AGUI 协议的文本消息内容
             if data_type == "TEXT_MESSAGE_CONTENT":
-                # AGUI 协议
                 delta = data.get("delta", "")
                 if delta:
                     final_msg_parts.append(delta)
-            elif data_type in ["message", "content", "text"]:
-                # SSE/OpenAI 协议
-                content = data.get("content") or data.get("message") or data.get("text", "")
-                if content:
-                    final_msg_parts.append(content)
-            else:
-                # 尝试直接提取常见字段
+                continue
+
+            # 处理其他 SSE 协议格式（非 AGUI）
+            # 注意：只有在没有 type 字段时才使用 fallback 逻辑
+            if not data_type:
+                if data_object in ["message", "content", "text"]:
+                    content = data.get("content") or data.get("message") or data.get("text", "")
+                    if content:
+                        final_msg_parts.append(content)
+                    continue
+
+                # 尝试直接提取常见字段（仅用于无 type 的数据）
                 for key in ["content", "message", "text", "delta"]:
                     value = data.get(key)
                     if value and isinstance(value, str):
                         final_msg_parts.append(value)
                         break
 
-        final_message = "".join(final_msg_parts) if final_msg_parts else str(accumulated_content[-1] if accumulated_content else "")
+        final_message = "".join(final_msg_parts) if final_msg_parts else ""
 
         logger.info(f"[SSE-Engine] 提取的最终消息长度: {len(final_message)}")
         return final_message
-
-    """聊天流程执行引擎"""
-
-    def __init__(self, instance: BotWorkFlow, start_node_id: str = None):
-        self.instance = instance
-        self.start_node_id = start_node_id
-        self.variable_manager = VariableManager()
-        self.execution_contexts: Dict[str, NodeExecutionContext] = {}
-
-        # 用于跟踪最后执行的节点输出
-        self.last_message = None
-
-        # 用于跟踪节点执行顺序
-        self.execution_order = 0
-
-        # 解析流程图
-        self.nodes = self._parse_nodes(instance.flow_json)
-        self.edges = self._parse_edges(instance.flow_json)
-
-        # 识别所有入口节点（没有父节点的节点）
-        self.entry_nodes = self._identify_entry_nodes()
-
-        # 构建完整拓扑图（用于验证）
-        self.full_topology = self._build_topology()
-
-        # 自定义节点执行器映射（支持字符串类型）
-        self.custom_node_executors: Dict[str, Callable] = {}
-
-        # 执行配置
-        self.max_parallel_nodes = 5
-        self.max_retry_count = 3
-        self.execution_timeout = 300  # 5分钟超时
 
     def register_node_executor(self, node_type: str, executor: Callable):
         """注册自定义节点执行器
@@ -588,31 +699,46 @@ class ChatFlowEngine:
             input_data: 输入数据
             result: 执行结果
             success: 是否执行成功
-            start_node_type: 启动节点类型
+            start_node_type: 启动节点类型（已废弃，使用 self.entry_type）
         """
         try:
-            # 确定执行类型
+            # 使用实例的 entry_type，优先级：self.entry_type > start_node_type > 默认值
             execute_type = WorkFlowExecuteType.OPENAI  # 默认值
-            if start_node_type:
-                if start_node_type.lower() in [choice[0] for choice in WorkFlowExecuteType.choices]:
-                    execute_type = start_node_type.lower()
+            effective_type = self.entry_type or start_node_type
+            if effective_type:
+                if effective_type.lower() in [choice[0] for choice in WorkFlowExecuteType.choices]:
+                    execute_type = effective_type.lower()
 
-            # 收集所有节点的输出数据
+            # 收集所有节点的输出数据（包括失败节点的错误信息）
             output_data = {}
             for node_id, context in self.execution_contexts.items():
-                if context.output_data:
-                    # 从变量管理器获取节点的执行信息
-                    node_index = self.variable_manager.get_variable(f"node_{node_id}_index")
-                    node_type = self.variable_manager.get_variable(f"node_{node_id}_type")
-                    node_name = self.variable_manager.get_variable(f"node_{node_id}_name")
+                # 从变量管理器获取节点的执行信息
+                node_index = self.variable_manager.get_variable(f"node_{node_id}_index")
+                node_type = self.variable_manager.get_variable(f"node_{node_id}_type")
+                node_name = self.variable_manager.get_variable(f"node_{node_id}_name")
+                # 获取用户指定的输出参数名
+                output_key = self.variable_manager.get_variable(f"node_{node_id}_output_key") or "last_message"
 
-                    output_data[node_id] = {
-                        "index": node_index,
-                        "name": node_name,
-                        "type": node_type,
-                        "input_data": context.input_data,
-                        "output": context.output_data,
-                    }
+                # 构建节点数据
+                node_data = {
+                    "index": node_index,
+                    "name": node_name,
+                    "type": node_type,
+                    "input_data": context.input_data,
+                    "status": context.status.value if hasattr(context.status, "value") else str(context.status),
+                }
+
+                # 根据节点状态记录输出或错误信息
+                if context.output_data:
+                    node_data["output"] = context.output_data
+                if context.error_message:
+                    node_data["error"] = context.error_message
+                    # 失败节点：使用用户指定的输出参数名存储错误信息
+                    node_data["output"] = {output_key: context.error_message}
+
+                # 只记录有实际数据的节点（有输出或有错误）
+                if context.output_data or context.error_message:
+                    output_data[node_id] = node_data
 
             # 确定状态
             status = WorkFlowTaskStatus.SUCCESS if success else WorkFlowTaskStatus.FAIL
@@ -678,6 +804,29 @@ class ChatFlowEngine:
 
         return errors
 
+    def _serialize_execution_contexts(self) -> Dict[str, Any]:
+        """将 execution_contexts 序列化为可 JSON 化的字典
+
+        处理 NodeStatus 枚举等不可直接序列化的类型
+
+        Returns:
+            可 JSON 序列化的执行上下文字典
+        """
+        result = {}
+        for node_id, context in self.execution_contexts.items():
+            ctx_dict = {}
+            for key, value in context.__dict__.items():
+                # 处理枚举类型
+                if hasattr(value, "value"):
+                    ctx_dict[key] = value.value
+                # 处理其他不可序列化的类型
+                elif isinstance(value, (str, int, float, bool, list, dict, type(None))):
+                    ctx_dict[key] = value
+                else:
+                    ctx_dict[key] = str(value)
+            result[node_id] = ctx_dict
+        return result
+
     def execute(self, input_data: Dict[str, Any] = None, timeout: int = None) -> Dict[str, Any]:
         """执行流程
 
@@ -713,7 +862,11 @@ class ChatFlowEngine:
             chosen_start_node = self.start_node_id or (self.entry_nodes[0] if self.entry_nodes else None)
             if not chosen_start_node or not start_node:
                 error_msg = "没有找到起始节点" if not chosen_start_node else f"指定的起始节点不存在: {chosen_start_node}"
-                error_result = {"success": False, "error": error_msg, "execution_time": time.time() - start_time}
+                error_result = {
+                    "success": False,
+                    "error": error_msg,
+                    "execution_time": time.time() - start_time,
+                }
                 self._record_execution_result(input_data, error_result, False)
                 return error_result
 
@@ -724,17 +877,58 @@ class ChatFlowEngine:
             self._record_conversation_history(user_id, input_message, "user", entry_type, node_id, session_id)
 
             # 执行节点链
-            self._execute_node_chain(chosen_start_node, input_data, timeout - (time.time() - start_time))
+            chain_result = self._execute_node_chain(chosen_start_node, input_data, timeout - (time.time() - start_time))
 
             # 获取执行结果并记录
             execution_time = time.time() - start_time
-            final_last_message = self.variable_manager.get_variable("last_message")
 
-            # 记录系统输出
-            self._record_conversation_history(user_id, final_last_message, "bot", entry_type, node_id, session_id)
-            self._record_execution_result(input_data, final_last_message, True, start_node.get("type", ""))
+            # 检查节点链执行结果，判断是否有节点执行失败
+            is_success, error_info = self._check_chain_result(chain_result)
 
-            return final_last_message
+            if is_success:
+                # 所有节点执行成功
+                final_last_message = self.variable_manager.get_variable("last_message")
+
+                # 记录系统输出
+                self._record_conversation_history(user_id, final_last_message, "bot", entry_type, node_id, session_id)
+                self._record_execution_result(input_data, final_last_message, True, start_node.get("type", ""))
+
+                return final_last_message
+            else:
+                # 有节点执行失败
+                failed_node_id = error_info.get("node_id")
+                error_message = error_info.get("error", "节点执行失败")
+
+                # 尝试从失败节点的执行上下文中获取输出数据
+                # 如果失败节点有部分输出，使用该输出；否则使用错误信息
+                failed_context = self.execution_contexts.get(failed_node_id)
+                if failed_context and failed_context.output_data:
+                    # 失败节点有输出数据（可能是部分执行的结果）
+                    final_output = failed_context.output_data
+                else:
+                    # 没有输出数据，构造包含错误信息的输出
+                    # 保持与成功时一致的简洁格式，但包含错误信息
+                    final_output = {"error": error_message, "failed_node_id": failed_node_id, "failed_node_type": error_info.get("node_type")}
+
+                # 记录失败时的对话历史（bot 输出为错误信息）
+                error_output_message = f"工作流执行失败: {error_message}"
+                self._record_conversation_history(user_id, error_output_message, "bot", entry_type, node_id, session_id)
+
+                # 构造用于记录的完整错误结果（包含详细信息用于调试）
+                error_record = {
+                    "success": False,
+                    "error": error_message,
+                    "failed_node_id": failed_node_id,
+                    "failed_node_type": error_info.get("node_type"),
+                    "execution_time": execution_time,
+                    "execution_contexts": self._serialize_execution_contexts(),
+                }
+
+                # 记录失败结果到数据库
+                self._record_execution_result(input_data, error_record, False, start_node.get("type", ""))
+
+                # 返回简洁的输出格式，与成功时保持一致
+                return final_output
 
         except Exception as e:
             execution_time = time.time() - start_time
@@ -744,7 +938,7 @@ class ChatFlowEngine:
                 "success": False,
                 "error": str(e),
                 "variables": self.variable_manager.get_all_variables(),
-                "execution_contexts": {k: v.__dict__ for k, v in self.execution_contexts.items()},
+                "execution_contexts": self._serialize_execution_contexts(),
                 "execution_time": execution_time,
             }
 
@@ -792,6 +986,50 @@ class ChatFlowEngine:
             )
         except Exception as e:
             logger.error(f"记录{role}对话历史失败: {str(e)}")
+
+    def _check_chain_result(self, chain_result: Dict[str, Any]) -> tuple:
+        """检查节点链执行结果，判断是否有节点执行失败
+
+        递归检查整个执行结果树，找出第一个失败的节点
+
+        Args:
+            chain_result: 节点链执行结果
+
+        Returns:
+            tuple: (is_success, error_info)
+                - is_success: 是否所有节点都执行成功
+                - error_info: 如果失败，包含失败节点的信息 {"node_id", "node_type", "error"}
+        """
+        if not isinstance(chain_result, dict):
+            return True, {}
+
+        # 检查当前结果是否失败
+        if chain_result.get("success") is False:
+            return False, {
+                "node_id": chain_result.get("node_id"),
+                "node_type": chain_result.get("node_type"),
+                "error": chain_result.get("error", "未知错误"),
+            }
+
+        # 检查 current_node（如果存在）
+        current_node = chain_result.get("current_node")
+        if current_node and isinstance(current_node, dict):
+            if current_node.get("success") is False:
+                return False, {
+                    "node_id": current_node.get("node_id"),
+                    "node_type": current_node.get("node_type"),
+                    "error": current_node.get("error", "未知错误"),
+                }
+
+        # 递归检查 next_nodes（如果存在）
+        next_nodes = chain_result.get("next_nodes")
+        if next_nodes and isinstance(next_nodes, dict):
+            for node_id, node_result in next_nodes.items():
+                is_success, error_info = self._check_chain_result(node_result)
+                if not is_success:
+                    return False, error_info
+
+        return True, {}
 
     def _execute_node_chain(self, node_id: str, input_data: Dict[str, Any], remaining_timeout: float) -> Dict[str, Any]:
         """执行节点链
@@ -874,15 +1112,13 @@ class ChatFlowEngine:
         if not node:
             return {"success": False, "error": f"节点不存在: {node_id}"}
 
-        # 创建执行上下文
-        context = NodeExecutionContext(node_id=node_id, flow_id=str(self.instance.id))
-        context.start_time = time.time()
-        context.status = NodeStatus.RUNNING
-        context.input_data = input_data
-        self.execution_contexts[node_id] = context
-
         node_type = node.get("type", "")
+
+        # 使用公共方法创建执行上下文
+        context = self._create_node_execution_context(node=node, input_data=input_data, status=NodeStatus.RUNNING)
+
         logger.info(f"开始执行节点: {node_id} (类型: {node_type})")
+
         try:
             # 获取执行器
             executor = self._get_node_executor(node_type)
@@ -939,19 +1175,11 @@ class ChatFlowEngine:
 
             logger.info(f"节点 {node_id} 执行成功")
 
-            # 增加执行顺序计数
-            self.execution_order += 1
-
-            # 获取节点名称
-            node_name = node.get("data", {}).get("label", "") or node.get("data", {}).get("name", "") or node_id
+            # 更新节点执行顺序
+            self._update_node_execution_order(node_id)
 
             # 将节点结果保存到变量管理器（保持原有的节点结果存储机制）
             self.variable_manager.set_variable(f"node_{node_id}_result", result)
-
-            # 记录节点执行信息（顺序、类型、名称）
-            self.variable_manager.set_variable(f"node_{node_id}_index", self.execution_order)
-            self.variable_manager.set_variable(f"node_{node_id}_type", node_type)
-            self.variable_manager.set_variable(f"node_{node_id}_name", node_name)
 
             return {
                 "success": True,
@@ -965,6 +1193,9 @@ class ChatFlowEngine:
             context.end_time = time.time()
             context.status = NodeStatus.FAILED
             context.error_message = str(e)
+
+            # 更新节点执行顺序（失败节点也需要记录顺序）
+            self._update_node_execution_order(node_id)
 
             logger.error(f"节点 {node_id} 执行失败: {str(e)}")
 
@@ -1174,11 +1405,8 @@ class ChatFlowEngine:
         return topology
 
     def _get_node_by_id(self, node_id: str) -> Optional[Dict[str, Any]]:
-        """根据ID获取节点"""
-        for node in self.nodes:
-            if node.get("id") == node_id:
-                return node
-        return None
+        """根据ID获取节点（O(1) 复杂度）"""
+        return self._node_map.get(node_id)
 
     def get_execution_summary(self) -> Dict[str, Any]:
         """获取执行摘要"""
@@ -1187,7 +1415,7 @@ class ChatFlowEngine:
             "total_nodes": len(self.nodes),
             "total_edges": len(self.edges),
             "entry_nodes": self.entry_nodes,
-            "execution_contexts": {k: v.__dict__ for k, v in self.execution_contexts.items()},
+            "execution_contexts": self._serialize_execution_contexts(),
             "variables": self.variable_manager.get_all_variables(),
         }
 
