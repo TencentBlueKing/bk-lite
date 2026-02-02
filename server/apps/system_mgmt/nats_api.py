@@ -715,7 +715,7 @@ def reset_pwd(username, domain, password):
 
 @nats_client.register
 def wechat_user_register(user_id, nick_name):
-    user, is_first_login = User.objects.update_or_create(username=user_id, defaults={"display_name": nick_name})
+    user, is_first_login = User.objects.get_or_create(username=user_id, defaults={"display_name": nick_name})
     default_group = Group.objects.filter(name="OpsPilotGuest", parent_id=0).first()
     if not user.group_list and default_group:
         user.group_list = [default_group.id]
