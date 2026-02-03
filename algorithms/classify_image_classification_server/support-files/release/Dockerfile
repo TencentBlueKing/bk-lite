@@ -49,6 +49,10 @@ RUN rm -rf /root/.cache/matplotlib /root/.cache/fontconfig
 
 RUN apt-get reinstall -y supervisor
 
+# 链接 supervisor 配置文件到默认配置目录
+RUN mkdir -p /etc/supervisor/conf.d && \
+    ln -sf /apps/support-files/release/supervisor/app.conf /etc/supervisor/conf.d/app.conf
+
 ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-cls.pt /apps/yolo_models/yolo11n-cls.pt
 ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11x-cls.pt /apps/yolo_models/yolo11x-cls.pt
 ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11s-cls.pt /apps/yolo_models/yolo11s-cls.pt
