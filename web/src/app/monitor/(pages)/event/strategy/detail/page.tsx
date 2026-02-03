@@ -756,6 +756,9 @@ const StrategyOperation = () => {
                 calculationUnit={calculationUnit}
                 scrollContainerRef={formContainerRef}
                 anchorRef={basicInfoRef}
+                fixedGroupByList={
+                  getGroupIds(monitorName as string)?.list || defaultGroup
+                }
               />
             </div>
           </div>

@@ -36,6 +36,7 @@ interface MetricPreviewProps {
   calculationUnit?: string | null;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   anchorRef?: RefObject<HTMLDivElement | null>;
+  fixedGroupByList?: string[];
 }
 
 const MetricPreview: React.FC<MetricPreviewProps> = ({
@@ -51,7 +52,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   threshold,
   calculationUnit,
   scrollContainerRef,
-  anchorRef
+  anchorRef,
+  fixedGroupByList = []
 }) => {
   const { t } = useTranslation();
   const { get } = useApiClient();
@@ -334,6 +336,10 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       const selectedInst = instances.find(
         (item) => item.instance_id === selectedInstance
       );
+      // 判断 showInstName：groupBy 为空或 groupBy 的值都在固定列表中时为 true
+      const showInstName = groupBy.some((item) =>
+        fixedGroupByList.includes(item)
+      );
       let list = [
         {
           instance_id_values: selectedInst.instance_id_values,
@@ -342,7 +348,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
           instance_id_keys: currentMetric?.instance_id_keys || [],
           dimensions: currentMetric?.dimensions || [],
           title: currentMetric?.display_name || '--',
-          showInstName: true
+          showInstName
         }
       ];
       if (!selectedInst) {
