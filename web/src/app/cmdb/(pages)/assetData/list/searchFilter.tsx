@@ -45,6 +45,9 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   const { t } = useTranslation();
   const { RangePicker } = DatePicker;
 
+  // 是否折叠收藏的筛选条件
+  const [isCompact, setIsCompact] = useState<boolean>(false);
+
   // 监听器，同步 store 中的 searchAttr 到本地状态
   useEffect(() => {
     if (searchAttr_store !== searchAttr) {
@@ -62,6 +65,16 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
       }));
     }
   }, [attrList.length]);
+
+  // 监听窗口大小变化，更新是否折叠收藏的筛选条件
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 1430px)');
+    const updateCompact = () => setIsCompact(mediaQuery.matches);
+    updateCompact();
+    mediaQuery.addEventListener('change', updateCompact);
+    return () => mediaQuery.removeEventListener('change', updateCompact);
+  }, []);
 
   const onSearchValueChange = (value: any, isExact?: boolean) => {
     setSearchValue(value);
@@ -142,7 +155,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
 
   const handleDeleteSavedFilter = (filter: SavedFilter, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    
+
     Modal.confirm({
       title: t('common.confirm'),
       content: t('common.delConfirmCxt'),
@@ -173,17 +186,22 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
     });
   };
 
-  const visibleSavedFilters = savedFilters.slice(0, 3);
-  const moreSavedFilters = savedFilters.slice(3);
+  // 显示收藏的筛选条件
+  const visibleSavedFilters = isCompact
+    ? savedFilters.slice(0, 1)
+    : savedFilters.slice(0, 3);
+  const moreSavedFilters = isCompact
+    ? savedFilters.slice(1)
+    : savedFilters.slice(3);
 
   const moreFiltersMenuItems: MenuProps['items'] = moreSavedFilters.map((filter) => ({
     key: filter.id,
     label: (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span onClick={() => handleApplySavedFilter(filter)}>{filter.name}</span>
-        <CloseOutlined 
+        <CloseOutlined
           style={{ marginLeft: 8, color: '#999', fontSize: '10px' }}
-          onClick={(e) => handleDeleteSavedFilter(filter, e)} 
+          onClick={(e) => handleDeleteSavedFilter(filter, e)}
         />
       </div>
     ),
@@ -399,7 +417,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
         ></Button>
         {showExactSearch && (
           <Checkbox onChange={onExactSearchChange}>
-            {t('Model.isExactSearch')}
+            {isCompact ? t('Model.isExactSearch_abbreviation') : t('Model.isExactSearch')}
           </Checkbox>
         )}
 
@@ -408,7 +426,9 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           <div className={searchFilterStyle.savedFiltersWrapper}>
             <div className={searchFilterStyle.savedFiltersLabel}>
               <StarFilled className={searchFilterStyle.starIcon} />
-              <span>{t('FilterBar.savedFilters')}：</span>
+              <span>
+                {!isCompact && t('FilterBar.savedFilters')}：
+              </span>
             </div>
             <div className={searchFilterStyle.savedFiltersTags}>
               {visibleSavedFilters.map((filter) => {
