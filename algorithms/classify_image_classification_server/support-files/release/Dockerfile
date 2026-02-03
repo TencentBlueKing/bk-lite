@@ -28,6 +28,13 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
     pip3 config set global.trusted-host "$(echo $NEXUS_PYTHON_REPOSITY | sed -E 's|^https?://([^/:]+).*|\1|')"; \
     fi
 
+# 下载 YOLO 模型到镜像
+ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-cls.pt /apps/yolo_models/yolo11n-cls.pt
+ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11x-cls.pt /apps/yolo_models/yolo11x-cls.pt
+ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11s-cls.pt /apps/yolo_models/yolo11s-cls.pt
+ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11m-cls.pt /apps/yolo_models/yolo11m-cls.pt
+ADD https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11l-cls.pt /apps/yolo_models/yolo11l-cls.pt
+
 ADD . .
 
 # 设置脚本可执行权限
