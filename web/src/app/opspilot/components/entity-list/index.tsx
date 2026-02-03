@@ -18,6 +18,7 @@ interface EntityListProps<T> {
   itemTypeSingle: string;
   beforeDelete?: (item: T, deleteCallback: () => void) => void;
   onCreateFromTemplate?: (itemType: string) => void;
+  onTogglePin?: (item: T) => Promise<void>;
   pageSize?: number;
 }
 
@@ -34,6 +35,7 @@ const EntityList = <T,>({
   itemTypeSingle, 
   beforeDelete, 
   onCreateFromTemplate,
+  onTogglePin,
   pageSize = 20
 }: EntityListProps<T>) => {
   const { t } = useTranslation();
@@ -235,6 +237,19 @@ const EntityList = <T,>({
       setIsModalVisible(true);
     } else if (action === 'delete') {
       handleDelete(item);
+    } else if (action === 'pin') {
+      handleTogglePin(item);
+    }
+  };
+
+  const handleTogglePin = async (item: T) => {
+    if (onTogglePin) {
+      try {
+        await onTogglePin(item);
+        fetchItems(true);
+      } catch {
+        message.error(t('common.saveFailed'));
+      }
     }
   };
 

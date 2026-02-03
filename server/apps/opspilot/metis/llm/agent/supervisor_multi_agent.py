@@ -1,8 +1,8 @@
-from typing import TypedDict, Annotated, List, Dict, Any, Optional, Literal
+from typing import Annotated, Any, Dict, List, Literal, Optional, TypedDict
 
-from langgraph.graph import add_messages, StateGraph, END
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.graph import END, StateGraph, add_messages
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -14,74 +14,54 @@ from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
 class AgentConfig(BaseModel):
     """单个 Agent 配置"""
+
     name: str = Field(..., description="Agent 名称，用于识别和路由")
     description: str = Field(..., description="Agent 功能描述，用于 Supervisor 决策")
     system_message_prompt: str = Field(default="", description="Agent 专属系统提示词")
-    tools_servers: List[ToolsServer] = Field(
-        default_factory=list, description="Agent 专属工具服务")
+    tools_servers: List[ToolsServer] = Field(default_factory=list, description="Agent 专属工具服务")
     temperature: float = Field(default=0.7, description="Agent 温度参数")
-    context_window_size: Optional[int] = Field(
-        default=None,
-        description="上下文窗口大小（消息数量）。None 表示使用全部消息"
-    )
+    context_window_size: Optional[int] = Field(default=None, description="上下文窗口大小（消息数量）。None 表示使用全部消息")
 
 
 class SupervisorMultiAgentRequest(BasicLLMRequest):
     """Supervisor Multi-Agent 请求配置"""
 
     # Supervisor 配置
-    supervisor_system_prompt: str = Field(
-        default="你是一个团队主管，负责协调多个专业 Agent 完成任务。",
-        description="Supervisor 的系统提示词"
-    )
-    supervisor_model: Optional[str] = Field(
-        default=None,
-        description="Supervisor 使用的模型，不指定则使用全局 model"
-    )
+    supervisor_system_prompt: str = Field(default="你是一个团队主管，负责协调多个专业 Agent 完成任务。", description="Supervisor 的系统提示词")
+    supervisor_model: Optional[str] = Field(default=None, description="Supervisor 使用的模型，不指定则使用全局 model")
 
     # Agent 配置
-    agents: List[AgentConfig] = Field(
-        default_factory=list,
-        description="所有 Agent 的配置列表"
-    )
+    agents: List[AgentConfig] = Field(default_factory=list, description="所有 Agent 的配置列表")
 
     # 执行策略
-    max_iterations: int = Field(
-        default=10,
-        description="最大迭代次数，防止无限循环"
-    )
+    max_iterations: int = Field(default=10, description="最大迭代次数，防止无限循环")
 
     output_mode: Literal["full_history", "last_message"] = Field(
         default="last_message",
-        description="输出模式：full_history 包含完整历史，last_message 仅包含最终响应"
+        description="输出模式：full_history 包含完整历史，last_message 仅包含最终响应",
     )
 
     # 上下文管理
     default_context_window_size: Optional[int] = Field(
         default=None,
-        description="默认上下文窗口大小（消息数量）。None 表示使用全部消息，优先级低于 Agent 级配置"
+        description="默认上下文窗口大小（消息数量）。None 表示使用全部消息，优先级低于 Agent 级配置",
     )
     supervisor_context_window_size: Optional[int] = Field(
         default=None,
-        description="Supervisor 决策时的上下文窗口大小。None 表示使用全部消息"
+        description="Supervisor 决策时的上下文窗口大小。None 表示使用全部消息",
     )
 
 
 class SupervisorMultiAgentResponse(BasicLLMResponse):
     """Supervisor Multi-Agent 响应"""
 
-    executed_agents: List[str] = Field(
-        default_factory=list,
-        description="执行过的 Agent 名称列表"
-    )
-    iterations: int = Field(
-        default=0,
-        description="实际迭代次数"
-    )
+    executed_agents: List[str] = Field(default_factory=list, description="执行过的 Agent 名称列表")
+    iterations: int = Field(default=0, description="实际迭代次数")
 
 
 class SupervisorMultiAgentState(TypedDict):
     """Supervisor Multi-Agent 状态"""
+
     messages: Annotated[list, add_messages]
     graph_request: SupervisorMultiAgentRequest
     active_agent: Optional[str]  # 当前活跃的 Agent
@@ -119,17 +99,13 @@ class SupervisorMultiAgentNode(ToolsNodes):
                 temperature=agent_config.temperature,
                 tools_servers=agent_config.tools_servers,
                 user_id=request.user_id,
-                thread_id=request.thread_id
+                thread_id=request.thread_id,
             )
 
             await agent_node.setup(agent_request)
             self.agent_tools_map[agent_config.name] = agent_node
 
-            logger.info(
-                f"  ✓ Agent [{agent_config.name}] 初始化完成 - "
-                f"工具数: {len(agent_node.tools)}, "
-                f"温度: {agent_config.temperature}"
-            )
+            logger.info(f"  ✓ Agent [{agent_config.name}] 初始化完成 - " f"工具数: {len(agent_node.tools)}, " f"温度: {agent_config.temperature}")
 
         logger.info(f"✅ 共初始化 {len(request.agents)} 个 Agent")
 
@@ -141,20 +117,15 @@ class SupervisorMultiAgentNode(ToolsNodes):
         executed_agents = state.get("executed_agents", [])
 
         logger.info("=" * 80)
-        logger.info(
-            f"🎯 Supervisor 第 {current_iteration} 轮决策（上限: {request.max_iterations}）")
-        logger.info(
-            f"📊 已执行 Agent: {executed_agents if executed_agents else '无'}")
+        logger.info(f"🎯 Supervisor 第 {current_iteration} 轮决策（上限: {request.max_iterations}）")
+        logger.info(f"📊 已执行 Agent: {executed_agents if executed_agents else '无'}")
         logger.info(f"� 已完成 {len(executed_agents)} 次 Agent 调用")
 
         # 检查是否超过最大迭代次数
         if state.get("iterations", 0) >= request.max_iterations:
             logger.warning(f"⚠️  达到最大迭代次数 {request.max_iterations}，强制结束")
             logger.info("=" * 80)
-            return {
-                "next_action": "FINISH",
-                "iterations": current_iteration
-            }
+            return {"next_action": "FINISH", "iterations": current_iteration}
 
         # 准备 Supervisor 提示词
         supervisor_prompt = self._build_supervisor_prompt(request, state)
@@ -165,14 +136,13 @@ class SupervisorMultiAgentNode(ToolsNodes):
         llm = self.get_llm_client(request, disable_stream=True)
         decision_messages = [
             SystemMessage(content=supervisor_prompt),
-            HumanMessage(content="请决策下一步：选择一个 Agent 执行任务，或者返回 FINISH 结束。")
+            HumanMessage(content="请决策下一步：选择一个 Agent 执行任务，或者返回 FINISH 结束。"),
         ]
 
         response = llm.invoke(decision_messages)
         decision = response.content.strip()
 
-        logger.info(
-            f"💭 Supervisor 原始决策: {decision[:200]}{'...' if len(decision) > 200 else ''}")
+        logger.info(f"💭 Supervisor 原始决策: {decision[:200]}{'...' if len(decision) > 200 else ''}")
 
         # 解析决策
         next_action = self._parse_supervisor_decision(decision, request)
@@ -184,19 +154,12 @@ class SupervisorMultiAgentNode(ToolsNodes):
 
         logger.info("=" * 80)
 
-        return {
-            "next_action": next_action,
-            "iterations": current_iteration,
-            "messages": [response]  # 保留 Supervisor 的思考过程
-        }
+        return {"next_action": next_action, "iterations": current_iteration, "messages": [response]}  # 保留 Supervisor 的思考过程
 
     def _build_supervisor_prompt(self, request: SupervisorMultiAgentRequest, state: SupervisorMultiAgentState) -> str:
         """构建 Supervisor 提示词"""
         # 构建 Agent 列表描述
-        agents_desc = "\n".join([
-            f"- {agent.name}: {agent.description}"
-            for agent in request.agents
-        ])
+        agents_desc = "\n".join([f"- {agent.name}: {agent.description}" for agent in request.agents])
 
         # 已执行的 Agent 列表
         executed = state.get("executed_agents", [])
@@ -204,28 +167,19 @@ class SupervisorMultiAgentNode(ToolsNodes):
 
         # 最近的对话上下文（使用智能选择策略）
         all_messages = state.get("messages", [])
-        recent_messages = self._select_context_messages(
-            all_messages,
-            request.supervisor_context_window_size
-        )
+        recent_messages = self._select_context_messages(all_messages, request.supervisor_context_window_size)
 
-        context_desc = "\n".join([
-            f"{msg.__class__.__name__}: {msg.content[:100]}..."
-            for msg in recent_messages
-        ])
+        context_desc = "\n".join([f"{msg.__class__.__name__}: {msg.content[:100]}..." for msg in recent_messages])
 
         template_data = {
             "supervisor_system_prompt": request.supervisor_system_prompt,
             "agents_desc": agents_desc,
             "executed_desc": executed_desc,
             "context_desc": context_desc,
-            "user_message": request.user_message
+            "user_message": request.user_message,
         }
 
-        return TemplateLoader.render_template(
-            'prompts/graph/supervisor_decision_prompt',
-            template_data
-        )
+        return TemplateLoader.render_template("prompts/graph/supervisor_decision_prompt", template_data)
 
     def _parse_supervisor_decision(self, decision: str, request: SupervisorMultiAgentRequest) -> str:
         """解析 Supervisor 决策结果"""
@@ -244,8 +198,7 @@ class SupervisorMultiAgentNode(ToolsNodes):
 
         # 默认返回第一个 Agent（降级策略）
         fallback_agent = request.agents[0].name if request.agents else "FINISH"
-        logger.warning(
-            f"⚠️  无法解析 Supervisor 决策 [{decision[:100]}]，降级选择: {fallback_agent}")
+        logger.warning(f"⚠️  无法解析 Supervisor 决策 [{decision[:100]}]，降级选择: {fallback_agent}")
         return fallback_agent
 
     async def agent_executor_node(self, agent_name: str):
@@ -263,18 +216,16 @@ class SupervisorMultiAgentNode(ToolsNodes):
             logger.info("=" * 80)
 
             # 获取 Agent 配置
-            agent_config = next(
-                (a for a in request.agents if a.name == agent_name), None)
+            agent_config = next((a for a in request.agents if a.name == agent_name), None)
             if not agent_config:
                 logger.error(f"❌ 未找到 Agent 配置: {agent_name}")
                 return {
                     "messages": [AIMessage(content=f"错误：未找到 Agent {agent_name}")],
-                    "executed_agents": state.get("executed_agents", []) + [agent_name]
+                    "executed_agents": state.get("executed_agents", []) + [agent_name],
                 }
 
             logger.info(f"📋 Agent 描述: {agent_config.description}")
-            logger.info(
-                f"🛠️  工具列表: {[ts.name for ts in agent_config.tools_servers]}")
+            logger.info(f"🛠️  工具列表: {[ts.name for ts in agent_config.tools_servers]}")
 
             # 获取 Agent 专属的 ToolsNodes
             agent_node = node_builder.agent_tools_map.get(agent_name)
@@ -282,7 +233,7 @@ class SupervisorMultiAgentNode(ToolsNodes):
                 logger.error(f"❌ 未初始化 Agent: {agent_name}")
                 return {
                     "messages": [AIMessage(content=f"错误：Agent {agent_name} 未初始化")],
-                    "executed_agents": state.get("executed_agents", []) + [agent_name]
+                    "executed_agents": state.get("executed_agents", []) + [agent_name],
                 }
 
             # 创建临时 StateGraph 用于 ReAct Agent
@@ -298,15 +249,18 @@ class SupervisorMultiAgentNode(ToolsNodes):
 
             logger.info("⚙️  正在编译 Agent 执行图...")
             # 使用可复用的 ReAct 节点构建
+            # next_node=END 使 ReAct 循环结束后直接终止临时图
             react_entry_node = await agent_node.build_react_nodes(
                 graph_builder=temp_graph_builder,
                 composite_node_name=f"{agent_name}_react",
                 additional_system_prompt=agent_system_prompt,
-                next_node=END
+                next_node=END,
             )
 
+            # 设置起始节点
+            # 注意：不需要额外添加 wrapper → END 的边，因为 build_react_nodes
+            # 已经通过 next_node 参数设置了 ReAct 循环结束后的去向
             temp_graph_builder.set_entry_point(react_entry_node)
-            temp_graph_builder.add_edge(react_entry_node, END)
 
             # 编译并执行
             temp_graph = temp_graph_builder.compile()
@@ -319,21 +273,14 @@ class SupervisorMultiAgentNode(ToolsNodes):
             if window_size is None:
                 window_size = request.default_context_window_size
 
-            context_messages = node_builder._select_context_messages(
-                all_messages, window_size
-            )
+            context_messages = node_builder._select_context_messages(all_messages, window_size)
 
             logger.info(
-                f"💬 上下文消息: 原始 {len(all_messages)} 条 -> "
-                f"选择 {len(context_messages)} 条"
-                f"{f' (窗口: {window_size})' if window_size else ' (无限制)'}"
+                f"💬 上下文消息: 原始 {len(all_messages)} 条 -> " f"选择 {len(context_messages)} 条" f"{f' (窗口: {window_size})' if window_size else ' (无限制)'}"
             )
             logger.info("▶️  开始执行 Agent 任务...")
 
-            result = await temp_graph.ainvoke(
-                {"messages": context_messages},
-                config=config
-            )
+            result = await temp_graph.ainvoke({"messages": context_messages}, config=config)
 
             # 获取完整的响应消息列表
             result_messages = result.get("messages", [])
@@ -342,7 +289,7 @@ class SupervisorMultiAgentNode(ToolsNodes):
                 return {
                     "messages": [AIMessage(content=f"[Agent: {agent_name}]\n{agent_name} 未产生有效响应")],
                     "active_agent": agent_name,
-                    "executed_agents": state.get("executed_agents", []) + [agent_name]
+                    "executed_agents": state.get("executed_agents", []) + [agent_name],
                 }
 
             # 找出新增的消息（排除输入的上下文消息）
@@ -366,11 +313,10 @@ class SupervisorMultiAgentNode(ToolsNodes):
                 return {
                     "messages": [AIMessage(content=f"[Agent: {agent_name}]\n{agent_name} 未产生新的响应")],
                     "active_agent": agent_name,
-                    "executed_agents": state.get("executed_agents", []) + [agent_name]
+                    "executed_agents": state.get("executed_agents", []) + [agent_name],
                 }
 
-            logger.info(
-                f"✅ Agent [{agent_name}] 执行完成，产生 {len(new_messages)} 条新消息")
+            logger.info(f"✅ Agent [{agent_name}] 执行完成，产生 {len(new_messages)} 条新消息")
 
             # 为最后一条 AIMessage 添加 Agent 来源标记
             # 保持工具调用消息不变，这样可以实时看到工具执行过程
@@ -387,24 +333,21 @@ class SupervisorMultiAgentNode(ToolsNodes):
                 if i == last_ai_msg_idx and isinstance(msg, AIMessage) and msg.content:
                     # 只标记最后一个 AIMessage
                     marked_content = f"[Agent: {agent_name}]\n{msg.content}"
-                    marked_messages.append(AIMessage(
-                        content=marked_content,
-                        response_metadata=getattr(
-                            msg, 'response_metadata', {}),
-                        tool_calls=getattr(msg, 'tool_calls', []),
-                        usage_metadata=getattr(msg, 'usage_metadata', None)
-                    ))
+                    marked_messages.append(
+                        AIMessage(
+                            content=marked_content,
+                            response_metadata=getattr(msg, "response_metadata", {}),
+                            tool_calls=getattr(msg, "tool_calls", []),
+                            usage_metadata=getattr(msg, "usage_metadata", None),
+                        )
+                    )
                 else:
                     # 保留其他所有消息（工具调用、工具结果等）
                     marked_messages.append(msg)
 
             logger.info("=" * 80)
 
-            return {
-                "messages": marked_messages,
-                "active_agent": agent_name,
-                "executed_agents": state.get("executed_agents", []) + [agent_name]
-            }
+            return {"messages": marked_messages, "active_agent": agent_name, "executed_agents": state.get("executed_agents", []) + [agent_name]}
 
         return _execute_agent
 
@@ -418,11 +361,7 @@ class SupervisorMultiAgentNode(ToolsNodes):
         # 返回 Agent 名称作为路由目标
         return next_action or "FINISH"
 
-    def _select_context_messages(
-        self,
-        messages: List[BaseMessage],
-        window_size: Optional[int] = None
-    ) -> List[BaseMessage]:
+    def _select_context_messages(self, messages: List[BaseMessage], window_size: Optional[int] = None) -> List[BaseMessage]:
         """
         智能选择上下文消息
 
@@ -462,14 +401,10 @@ class SupervisorMultiAgentNode(ToolsNodes):
             for i in range(start_idx - 1, -1, -1):
                 if isinstance(messages[i], HumanMessage):
                     selected = messages[i:]
-                    logger.debug(
-                        f"为保持对话完整性，向前扩展到 HumanMessage，最终选择 {len(selected)} 条消息"
-                    )
+                    logger.debug(f"为保持对话完整性，向前扩展到 HumanMessage，最终选择 {len(selected)} 条消息")
                     break
 
-        logger.debug(
-            f"上下文截断：原始 {len(messages)} 条 -> 选择 {len(selected)} 条"
-        )
+        logger.debug(f"上下文截断：原始 {len(messages)} 条 -> 选择 {len(selected)} 条")
         return selected
 
 
@@ -515,18 +450,14 @@ class SupervisorMultiAgentGraph(BasicGraph):
 
         # 连接基础图到 Supervisor
         graph_builder.add_edge(last_edge, "supervisor")
-        logger.info(f"  ✓ 连接基础图 -> Supervisor")
+        logger.info("  ✓ 连接基础图 -> Supervisor")
 
         # 添加条件边：Supervisor -> Agent 或 END
         agent_routes = {agent.name: agent.name for agent in request.agents}
         agent_routes["FINISH"] = END
 
-        graph_builder.add_conditional_edges(
-            "supervisor",
-            node_builder.should_continue,
-            agent_routes
-        )
-        logger.info(f"  ✓ 添加条件路由: Supervisor -> Agents/END")
+        graph_builder.add_conditional_edges("supervisor", node_builder.should_continue, agent_routes)
+        logger.info("  ✓ 添加条件路由: Supervisor -> Agents/END")
 
         # 所有 Agent 执行完后返回 Supervisor
         for agent_config in request.agents:
@@ -552,14 +483,13 @@ class SupervisorMultiAgentGraph(BasicGraph):
         completion_token = 0
 
         for message in result.get("messages", []):
-            if isinstance(message, AIMessage) and hasattr(message, 'response_metadata'):
-                token_usage = message.response_metadata.get('token_usage', {})
-                prompt_token += token_usage.get('prompt_tokens', 0)
-                completion_token += token_usage.get('completion_tokens', 0)
+            if isinstance(message, AIMessage) and hasattr(message, "response_metadata"):
+                token_usage = message.response_metadata.get("token_usage", {})
+                prompt_token += token_usage.get("prompt_tokens", 0)
+                completion_token += token_usage.get("completion_tokens", 0)
 
         # 根据 output_mode 处理最终消息
-        final_message = self._extract_final_message(
-            result, request.output_mode)
+        final_message = self._extract_final_message(result, request.output_mode)
 
         return SupervisorMultiAgentResponse(
             message=final_message,
@@ -567,7 +497,7 @@ class SupervisorMultiAgentGraph(BasicGraph):
             prompt_tokens=prompt_token,
             completion_tokens=completion_token,
             executed_agents=result.get("executed_agents", []),
-            iterations=result.get("iterations", 0)
+            iterations=result.get("iterations", 0),
         )
 
     def _extract_final_message(self, result: Dict[str, Any], output_mode: str) -> str:
@@ -586,10 +516,7 @@ class SupervisorMultiAgentGraph(BasicGraph):
 
         elif output_mode == "full_history":
             # 返回所有 AI 消息的组合
-            ai_messages = [
-                msg.content for msg in messages
-                if isinstance(msg, AIMessage)
-            ]
+            ai_messages = [msg.content for msg in messages if isinstance(msg, AIMessage)]
             return "\n\n---\n\n".join(ai_messages)
 
         return "未知的 output_mode"

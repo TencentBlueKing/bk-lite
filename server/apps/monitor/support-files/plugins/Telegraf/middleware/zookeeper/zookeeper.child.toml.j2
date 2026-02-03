@@ -1,4 +1,5 @@
 [[inputs.zookeeper]]
+    startup_error_behavior = "retry"
     servers = ["{{ url }}"]
     timeout = "{{ timeout }}s"
     interval = "{{ interval }}s"

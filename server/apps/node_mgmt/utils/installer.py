@@ -7,7 +7,16 @@ from apps.rpc.executor import Executor
 
 
 # 获取安装命令
-def get_install_command(os, package_name, cloud_region_id, sidecar_token, server_url, groups, node_name, node_id):
+def get_install_command(
+    os,
+    package_name,
+    cloud_region_id,
+    sidecar_token,
+    server_url,
+    groups,
+    node_name,
+    node_id,
+):
     """获取安装命令"""
     unzip_run_command = ControllerConstants.RUN_COMMAND.get(os)
     unzip_run_command = unzip_run_command.format(
@@ -23,7 +32,17 @@ def get_install_command(os, package_name, cloud_region_id, sidecar_token, server
 
 
 # 获取手动安装命令
-def get_manual_install_command(os, package_id, cloud_region_id, sidecar_token, server_url, groups, node_name, node_id, webhook_url):
+def get_manual_install_command(
+    os,
+    package_id,
+    cloud_region_id,
+    sidecar_token,
+    server_url,
+    groups,
+    node_name,
+    node_id,
+    webhook_url,
+):
     """获取手动安装命令"""
     api_url = f"{webhook_url.rstrip('/')}/infra/kubernetes" if webhook_url else None
 
@@ -38,16 +57,16 @@ def get_manual_install_command(os, package_id, cloud_region_id, sidecar_token, s
             "node_id": node_id,
             "zone_id": cloud_region_id,
             "group_id": groups,
-            "file_url": "http://download.example.com/collector-windows.zip"
+            "file_url": "http://download.example.com/collector-windows.zip",
         }
 
         # 使用 requests 调用外部 API
         response = requests.post(
             api_url,
             json=params,
-            headers={'Content-Type': 'application/json'},
+            headers={"Content-Type": "application/json"},
             timeout=InstallerConstants.REQUEST_TIMEOUT,
-            verify=False  # 跳过 SSL 证书验证
+            verify=False,  # 跳过 SSL 证书验证
         )
 
         # 检查响应状态
@@ -58,10 +77,12 @@ def get_manual_install_command(os, package_id, cloud_region_id, sidecar_token, s
 
         # 解析响应（假设返回的是 {"yaml": "..."} 格式）
         response_data = response.json()
-        yaml_content = response_data.get('yaml')
+        yaml_content = response_data.get("yaml")
 
         if not yaml_content:
-            raise BaseAppException("Invalid response from infra API: missing 'yaml' field")
+            raise BaseAppException(
+                "Invalid response from infra API: missing 'yaml' field"
+            )
 
         return yaml_content
 
@@ -73,8 +94,11 @@ def get_manual_install_command(os, package_id, cloud_region_id, sidecar_token, s
         raise BaseAppException(f"Failed to parse response from infra API: {str(e)}")
     except Exception as e:
         import traceback
+
         error_detail = traceback.format_exc()
-        raise BaseAppException(f"Failed to render config: {str(e)} | Detail: {error_detail}")
+        raise BaseAppException(
+            f"Failed to render config: {str(e)} | Detail: {error_detail}"
+        )
 
 
 # 获取卸载命令
@@ -87,40 +111,112 @@ def get_uninstall_command(os):
 # 执行本地命令
 def exec_command_to_local(instance_id, command):
     exe_obj = Executor(instance_id)
-    result = exe_obj.execute_local(command, timeout=600)
+    result = exe_obj.execute_local(
+        command, timeout=InstallerConstants.COMMAND_EXECUTE_TIMEOUT
+    )
     return result
 
 
 # 执行远程命令
-def exec_command_to_remote(instance_id, ip, username, password, command, port=22, private_key=None, passphrase=None):
+def exec_command_to_remote(
+    instance_id,
+    ip,
+    username,
+    password,
+    command,
+    port=22,
+    private_key=None,
+    passphrase=None,
+):
     exe_obj = Executor(instance_id)
-    result = exe_obj.execute_ssh(command, ip, username, password=password, private_key=private_key, passphrase=passphrase, timeout=600, port=port)
+    result = exe_obj.execute_ssh(
+        command,
+        ip,
+        username,
+        password=password,
+        private_key=private_key,
+        passphrase=passphrase,
+        timeout=InstallerConstants.COMMAND_EXECUTE_TIMEOUT,
+        port=port,
+    )
     return result
 
 
 # 文件下发到本地
 def download_to_local(instance_id, bucket_name, file_key, file_name, target_path):
     exe_obj = Executor(instance_id)
-    result = exe_obj.download_to_local(bucket_name, file_key, file_name, target_path, timeout=600)
+    result = exe_obj.download_to_local(
+        bucket_name,
+        file_key,
+        file_name,
+        target_path,
+        timeout=InstallerConstants.NATS_OPERATION_TIMEOUT,
+    )
     return result
 
 
 # 文件下发到远程
-def download_to_remote(instance_id, bucket_name, file_key, file_name, target_path, host, username, password, port=22, private_key=None, passphrase=None):
+def download_to_remote(
+    instance_id,
+    bucket_name,
+    file_key,
+    file_name,
+    target_path,
+    host,
+    username,
+    password,
+    port=22,
+    private_key=None,
+    passphrase=None,
+):
     exe_obj = Executor(instance_id)
-    result = exe_obj.download_to_remote(bucket_name, file_key, file_name, target_path, host, username, password, private_key=private_key, passphrase=passphrase, timeout=600, port=port)
+    result = exe_obj.download_to_remote(
+        bucket_name,
+        file_key,
+        file_name,
+        target_path,
+        host,
+        username,
+        password,
+        private_key=private_key,
+        passphrase=passphrase,
+        timeout=InstallerConstants.FILE_TRANSFER_TIMEOUT,
+        port=port,
+    )
     return result
 
 
 # 本机文件下发到远程
-def transfer_file_to_remote(instance_id, local_path, remote_path, host, username, password, port=22, private_key=None, passphrase=None):
+def transfer_file_to_remote(
+    instance_id,
+    local_path,
+    remote_path,
+    host,
+    username,
+    password,
+    port=22,
+    private_key=None,
+    passphrase=None,
+):
     exe_obj = Executor(instance_id)
-    result = exe_obj.transfer_file_to_remote(local_path, remote_path, host, username, password, private_key=private_key, passphrase=passphrase, timeout=600, port=port)
+    result = exe_obj.transfer_file_to_remote(
+        local_path,
+        remote_path,
+        host,
+        username,
+        password,
+        private_key=private_key,
+        passphrase=passphrase,
+        timeout=InstallerConstants.FILE_TRANSFER_TIMEOUT,
+        port=port,
+    )
     return result
 
 
 # 解压文件
 def unzip_file(instance_id, file_path, target_path):
     exe_obj = Executor(instance_id)
-    result = exe_obj.unzip_local(file_path, target_path, timeout=600)
+    result = exe_obj.unzip_local(
+        file_path, target_path, timeout=InstallerConstants.NATS_OPERATION_TIMEOUT
+    )
     return result

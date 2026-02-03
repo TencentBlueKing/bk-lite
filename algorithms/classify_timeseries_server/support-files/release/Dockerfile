@@ -2,7 +2,7 @@ FROM python:3.12
 WORKDIR /apps
 ARG NEXUS_PYTHON_REPOSITY
 
-RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list.d/debian.sources
+#RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list.d/debian.sources
 
 RUN apt-get update -y
 RUN apt-get install -y vim supervisor unzip curl fonts-wqy-zenhei

@@ -3,8 +3,8 @@
  * 负责处理不同类型的 AG-UI 消息
  */
 
-import { AGUIMessage } from '@/app/opspilot/types/chat';
-import { CustomChatMessage } from '@/app/opspilot/types/global';
+import { AGUIMessage, BrowserStepProgressValue } from '@/app/opspilot/types/chat';
+import { CustomChatMessage, BrowserStepProgressData, BrowserStepsHistory } from '@/app/opspilot/types/global';
 import { ToolCallInfo, renderToolCallCard, renderErrorMessage, initToolCallTooltips } from './toolCallRenderer';
 
 export interface MessageUpdateFn {
@@ -23,6 +23,7 @@ export class AGUIMessageHandler {
   private toolCallsRef: Map<string, ToolCallInfo>;
   private botMessage: CustomChatMessage;
   private updateMessages: MessageUpdateFn;
+  private browserStepsHistory: BrowserStepProgressData[] = [];
 
   constructor(
     botMessage: CustomChatMessage,
@@ -33,7 +34,6 @@ export class AGUIMessageHandler {
     this.updateMessages = updateMessages;
     this.toolCallsRef = toolCallsRef;
     
-    // 初始化 tooltip 事件监听（只在浏览器环境执行一次）
     if (typeof window !== 'undefined') {
       initToolCallTooltips();
     }
@@ -42,13 +42,19 @@ export class AGUIMessageHandler {
   /**
    * 更新消息内容
    */
-  private updateMessageContent(content: string) {
+  private updateMessageContent(
+    content: string,
+    browserStepProgress?: BrowserStepProgressData | null,
+    browserStepsHistory?: BrowserStepsHistory | null
+  ) {
     this.updateMessages(prevMessages =>
       prevMessages.map(msgItem =>
         msgItem.id === this.botMessage.id
           ? {
             ...msgItem,
             content,
+            browserStepProgress: browserStepProgress !== undefined ? browserStepProgress : msgItem.browserStepProgress,
+            browserStepsHistory: browserStepsHistory !== undefined ? browserStepsHistory : msgItem.browserStepsHistory,
             updateAt: new Date().toISOString()
           }
           : msgItem
@@ -74,7 +80,7 @@ export class AGUIMessageHandler {
           content = renderToolCallCard(block.id, toolInfo);
         }
       } else if (block.type === 'thinking') {
-        content = '<div class="thinking-loader" style="display: flex; align-items: center; gap: 8px; color: #999;"><span style="display: inline-flex; gap: 4px;"><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.32s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.16s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both;"></span></span></div><style>@keyframes thinking-dot { 0%, 80%, 100% { transform: scale(0); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; } }</style>';
+        content = '<div class="thinking-loader" style="display: flex; align-items: center; gap: 8px; color: #999; margin-bottom: 8px;"><span style="display: inline-flex; gap: 4px;"><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.32s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.16s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both;"></span></span></div><style>@keyframes thinking-dot { 0%, 80%, 100% { transform: scale(0); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; } }</style>';
       }
 
       if (content) {
@@ -144,10 +150,9 @@ export class AGUIMessageHandler {
    * 处理 TOOL_CALL_START 事件
    */
   handleToolCallStart(toolCallId: string, toolCallName: string) {
-    // 提交当前文本块
+    this.clearThinkingPrompt();
     this.flushCurrentTextBlock();
     
-    // 添加工具调用块
     this.contentBlocks.push({ type: 'toolCall', id: toolCallId });
     
     this.toolCallsRef.set(toolCallId, {
@@ -201,6 +206,41 @@ export class AGUIMessageHandler {
     const errorMessage = renderErrorMessage(message, 'run_error', code);
     this.contentBlocks.push({ type: 'text', content: errorMessage });
     this.updateMessageContent(this.getFullContent());
+  }
+
+  handleBrowserStepProgress(value: BrowserStepProgressValue) {
+    this.clearThinkingPrompt();
+    const stepData = value as BrowserStepProgressData;
+    
+    const existingIndex = this.browserStepsHistory.findIndex(
+      s => s.step_number === stepData.step_number
+    );
+    
+    if (existingIndex >= 0) {
+      this.browserStepsHistory[existingIndex] = stepData;
+    } else {
+      this.browserStepsHistory.push(stepData);
+    }
+    
+    this.browserStepsHistory.sort((a, b) => a.step_number - b.step_number);
+    
+    const history: BrowserStepsHistory = {
+      steps: [...this.browserStepsHistory],
+      isRunning: true
+    };
+    
+    this.updateMessageContent(this.getFullContent(), stepData, history);
+  }
+
+  handleBrowserStepComplete() {
+    if (this.browserStepsHistory.length > 0) {
+      const history: BrowserStepsHistory = {
+        steps: [...this.browserStepsHistory],
+        isRunning: false
+      };
+      const lastStep = this.browserStepsHistory[this.browserStepsHistory.length - 1];
+      this.updateMessageContent(this.getFullContent(), lastStep, history);
+    }
   }
 
   /**
@@ -259,7 +299,14 @@ export class AGUIMessageHandler {
         return true;
 
       case 'RUN_FINISHED':
+        this.handleBrowserStepComplete();
         return true;
+
+      case 'CUSTOM':
+        if (aguiData.name === 'browser_step_progress' && aguiData.value) {
+          this.handleBrowserStepProgress(aguiData.value as BrowserStepProgressValue);
+        }
+        return false;
 
       default:
         console.warn('[AG-UI] Unknown message type:', aguiData.type);

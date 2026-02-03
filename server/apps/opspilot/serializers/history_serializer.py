@@ -1,8 +1,8 @@
-from apps.core.utils.serializers import I18nSerializer
+from apps.core.utils.serializers import UsernameSerializer
 from apps.opspilot.models import BotConversationHistory
 
 
-class HistorySerializer(I18nSerializer):
+class HistorySerializer(UsernameSerializer):
     class Meta:
         model = BotConversationHistory
         fields = "__all__"

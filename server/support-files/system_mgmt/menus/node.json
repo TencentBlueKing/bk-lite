@@ -4,11 +4,11 @@
   "url": "/node-manager/cloudregion",
   "icon": "node",
   "tags": [
-    "云区域",
-    "探针管理",
-    "节点管理"
+    "tag.cloud_region",
+    "tag.probe_management",
+    "tag.node_management"
   ],
-  "description": "Used to centrally manage nodes under various cloud regions and install various probes on each node to collect monitoring data, configuration information, logs and other information",
+  "description": "app.node",
   "menus": [
     {
       "name": "Cloud Region",

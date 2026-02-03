@@ -15,4 +15,7 @@ update:
 	copier update 
 
 serving:
-	uv run python -m bentoml serve classify_classification_server.serving.service:MLService
+	uv run python -m bentoml serve classify_text_classification_server.serving.service:MLService
+
+release:
+	docker build -t bklite/classify_text_classification_server:latest -f ./support-files/release/Dockerfile . --push

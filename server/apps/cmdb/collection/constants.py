@@ -112,6 +112,7 @@ NETWORK_INTERFACES_RELATIONS = "network_topo_info_gauge"
 
 PROTOCOL_METRIC_MAP = {
     "mysql": ["mysql_info_gauge"],
+    "postgresql": ["postgresql_info_gauge"],
     "oracle": ["oracle_info_gauge"],
     "mssql": ["mssql_info_gauge"],
 }

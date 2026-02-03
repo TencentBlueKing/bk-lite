@@ -9,8 +9,8 @@ export const useClusterConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '15%',
-        },
+          width: '15%'
+        }
       },
       {
         indexId: 'cluster_node_count',
@@ -19,8 +19,8 @@ export const useClusterConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '15%',
-        },
+          width: '15%'
+        }
       },
       {
         indexId: 'k8s_cluster',
@@ -29,17 +29,22 @@ export const useClusterConfig = () => {
         displayDimension: [],
         style: {
           height: '200px',
-          width: '32%',
-        },
-      },
+          width: '32%'
+        }
+      }
     ],
-    tableDiaplay: [{ type: 'value', key: 'cluster_cpu_utilization' }],
+    tableDiaplay: [
+      { type: 'value', key: 'cluster_pod_count' },
+      { type: 'value', key: 'cluster_node_count' },
+      { type: 'progress', key: 'cluster_cpu_utilization' },
+      { type: 'progress', key: 'cluster_memory_utilization' }
+    ],
     groupIds: {
       list: ['instance_id'],
-      default: ['instance_id'],
+      default: ['instance_id']
     },
     collectTypes: {
-      K8S: 'k8s',
-    },
+      K8S: 'k8s'
+    }
   };
 };

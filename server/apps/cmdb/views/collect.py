@@ -140,8 +140,11 @@ class CollectModelViewSet(AuthViewSet):
         查询云的所有区域
         """
         params = requests.data
+        cloud_id = requests.data["cloud_id"]
+        cloud_list = NodeMgmt().cloud_region_list()
+        cloud_id_map = {i["id"]:i["name"] for i in cloud_list}
         params["model_id"] = params["model_id"].split("_account", 1)[0]
-        result = CollectModelService.list_regions(params)
+        result = CollectModelService.list_regions(params, cloud_name=cloud_id_map[cloud_id])
         return WebUtils.response_success(result)
 
     @HasPermission("auto_collection-View")

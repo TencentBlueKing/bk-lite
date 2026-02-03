@@ -1,6 +1,6 @@
-import { create } from 'zustand'//导入依赖
+import { create } from 'zustand'
+import type { SavedFilterItem } from '@/app/cmdb/api/userConfig';
 
-// 定义筛选项类型
 export interface FilterItem {
   field: string;
   type: string;
@@ -9,26 +9,39 @@ export interface FilterItem {
   end?: string;
 }
 
-// 定义 Store 类型
+export type SavedFilter = SavedFilterItem;
+
+interface UserConfigs {
+  cmdb_saved_filters?: Record<string, SavedFilterItem[]>;
+  [key: string]: unknown;
+}
+
 interface AssetDataStore {
   query_list: FilterItem[];
   searchAttr: string;
   case_sensitive: boolean;
+  cloud_list: { proxy_id: string; proxy_name: string }[];
+  user_configs: UserConfigs;
   add: (item: FilterItem) => FilterItem[];
   remove: (index: number) => FilterItem[];
   clear: () => FilterItem[];
   update: (index: number, item: FilterItem) => FilterItem[];
   setCaseSensitive: (value: boolean) => void;
+  setQueryList: (items: FilterItem[]) => FilterItem[];
+  setCloudList: (list: { proxy_id: string; proxy_name: string }[]) => void;
+  setUserConfigs: (configs: UserConfigs) => void;
+  updateUserConfig: (key: string, value: unknown) => void;
+  getSavedFilters: (modelId: string) => SavedFilterItem[];
+  applySavedFilter: (filter: SavedFilter) => FilterItem[];
 }
 
-//创建store
 const useAssetDataStore = create<AssetDataStore>((set, get) => ({
-  //创建数据
-  query_list: [], // 筛选条件列表
-  searchAttr: "inst_name", // 当前搜索字段
-  case_sensitive: false, // 是否精确匹配（大小写敏感）
+  query_list: [],
+  searchAttr: "inst_name",
+  case_sensitive: false,
+  cloud_list: [],
+  user_configs: {},
 
-  // 方法
   add: (item: FilterItem) => {
     set((state) => ({ query_list: [...state.query_list, item] }));
     return get().query_list;
@@ -36,7 +49,6 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   remove: (index: number) => {
     set((state) => ({
       query_list: state.query_list.filter((_, i) => i !== index),
-      current_query: state.query_list[index] // 保留当前删除的筛选项
     }));
     return get().query_list;
   },
@@ -55,7 +67,33 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   setCaseSensitive: (value: boolean) => {
     set({ case_sensitive: value });
   },
+  setQueryList: (items: FilterItem[]) => {
+    set({ query_list: items });
+    return get().query_list;
+  },
+  setCloudList: (list: { proxy_id: string; proxy_name: string }[]) => {
+    set({ cloud_list: list });
+  },
+
+  setUserConfigs: (configs: UserConfigs) => {
+    set({ user_configs: configs });
+  },
+
+  updateUserConfig: (key: string, value: unknown) => {
+    set((state) => ({
+      user_configs: { ...state.user_configs, [key]: value },
+    }));
+  },
+
+  getSavedFilters: (modelId: string) => {
+    const savedFilters = get().user_configs.cmdb_saved_filters;
+    return savedFilters?.[modelId] || [];
+  },
+
+  applySavedFilter: (filter: SavedFilter) => {
+    set({ query_list: filter.filters as FilterItem[] });
+    return filter.filters as FilterItem[];
+  },
 }))
 
-//导出store
 export default useAssetDataStore;

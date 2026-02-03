@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.fields import empty
 
-from apps.alerts.constants import AlertStatus, IncidentStatus, NotifyResultStatus
+from apps.alerts.constants import AlertStatus, IncidentStatus, NotifyResultStatus, SessionStatus
 from apps.alerts.models import AlertSource, Alert, Event, Level, AlertAssignment, AlertShield, Incident, SystemSetting, \
     NotifyResult, OperatorLog
 from apps.system_mgmt.models.user import User
@@ -65,8 +65,6 @@ class EventModelSerializer(serializers.ModelSerializer):
             "end_time": {"read_only": True},
             "labels": {"write_only": True},
             # "raw_data": {"write_only": True},
-            "search_vector": {"write_only": True},
-            # "labels": {"write_only": True},
         }
 
     @staticmethod
@@ -112,7 +110,6 @@ class AlertModelSerializer(serializers.ModelSerializer):
             "created_at": {"read_only": True},
             "updated_at": {"read_only": True},
             "operator": {"write_only": True},
-            "search_vector": {"write_only": True},
             "labels": {"write_only": True},
         }
 

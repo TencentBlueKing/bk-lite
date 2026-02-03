@@ -109,8 +109,16 @@ export const getDocumentColumns = (
 
       const color = statusColors[record.train_status?.toString()] || 'geekblue';
       const text = record.train_status_display || '--';
+      const isError = record.train_status === 2;
+      const errorMessage = record.error_message;
 
-      return <Tag color={color}>{text}</Tag>;
+      const tag = <Tag color={color}>{text}</Tag>;
+
+      if (isError && errorMessage) {
+        return <Tooltip title={errorMessage}>{tag}</Tooltip>;
+      }
+
+      return tag;
     },
   },
   ...(activeTabKey === 'web_page' ? [

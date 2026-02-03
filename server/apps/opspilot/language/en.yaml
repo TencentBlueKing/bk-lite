@@ -186,3 +186,605 @@ error:
   knowledge_base_training: The knowledge base is training and cannot be modified.
   knowledge_base_used_by_skills: ''
   knowledge_base_delete_related_data_failed: ''
+tools:
+  kubernetes:
+    name: Kubernetes Tools
+    description: |
+      Kubernetes Tools Module
+
+      This module contains all Kubernetes-related tool functions, categorized into different sub-modules:
+      - resources: Basic resource query tools
+      - diagnostics: Fault diagnosis and monitoring tools
+      - analysis: Configuration analysis and policy checking tools
+      - utils: Common utility functions
+
+      **Tool Categories:**
+
+      1. Basic Resource Query Tools:
+         - get_kubernetes_namespaces: Get namespace list
+         - list_kubernetes_pods: List Pods
+         - list_kubernetes_nodes: List nodes
+         - list_kubernetes_deployments: List deployments
+         - list_kubernetes_services: List services
+         - list_kubernetes_events: List events
+         - get_kubernetes_resource_yaml: Get resource YAML
+         - get_kubernetes_pod_logs: Get Pod logs
+
+      2. Fault Diagnosis and Monitoring Tools:
+         - get_failed_kubernetes_pods: Get failed Pods
+         - get_pending_kubernetes_pods: Get Pods in Pending state
+         - get_high_restart_kubernetes_pods: Get Pods with high restart counts
+         - get_kubernetes_node_capacity: Get node capacity
+         - diagnose_kubernetes_pod_issues: Diagnose Pod issues
+
+      3. Configuration Analysis and Policy Checking Tools:
+         - check_kubernetes_resource_quotas: Check resource quotas
+         - check_kubernetes_network_policies: Check network policies
+         - analyze_deployment_configurations: Analyze deployment configurations
+         - check_kubernetes_hpa_status: Check HPA status
+
+      4. Self-healing Tools:
+         - restart_pod: Restart Pod
+         - scale_deployment: Scale deployment
+         - rollback_deployment: Rollback deployment
+    tools:
+      analyze_deployment_configurations:
+        description: Analyze Deployment configuration rationality, check resource configuration, probe settings, replica strategy, etc. for each Deployment, and identify potential issues.
+      analyze_pod_restart_pattern:
+        description: Deep analysis of Pod restart patterns to identify root causes. Analyzes container exit code meanings, identifies CrashLoopBackOff restart patterns, correlates recent events, and provides targeted fix recommendations.
+      batch_restart_pods:
+        description: Batch restart Pods to improve operations efficiency. Supports batch selection of Pods by label selector or specified Pod name list.
+      check_kubernetes_daemonsets:
+        description: Check DaemonSet status
+      check_kubernetes_endpoints:
+        description: Check Service Endpoints status to help diagnose service discovery issues
+      check_kubernetes_hpa_status:
+        description: Check HPA (Horizontal Pod Autoscaler) status
+      check_kubernetes_ingress:
+        description: Check Ingress configuration and status
+      check_kubernetes_jobs:
+        description: Check Job and CronJob status
+      check_kubernetes_network_policies:
+        description: Check network policy configuration
+      check_kubernetes_persistent_volumes:
+        description: Check persistent volume status and usage
+      check_kubernetes_resource_quotas:
+        description: Check resource quota usage
+      check_kubernetes_statefulsets:
+        description: Check StatefulSet status
+      check_network_policies_blocking:
+        description: Check if NetworkPolicy is blocking traffic, troubleshoot network connectivity issues between services
+      check_oom_events:
+        description: Check OOM (Out of Memory) events, identify memory configuration issues
+      check_pod_distribution:
+        description: Check Pod distribution, evaluate high availability and single point of failure risks
+      check_pvc_capacity:
+        description: Check PVC (Persistent Volume Claim) usage, identify disk full risks
+      check_scaling_capacity:
+        description: Pre-scaling capacity check to avoid Pending due to insufficient resources
+      cleanup_failed_pods:
+        description: Batch cleanup failed Pods to release resources
+      compare_deployment_revisions:
+        description: Compare Deployment version differences, understand change content
+      delete_kubernetes_resource:
+        description: Delete Kubernetes resource, supports graceful termination
+      describe_kubernetes_resource:
+        description: Describe specified Kubernetes resource, get detailed resource information, similar to kubectl describe
+      diagnose_kubernetes_pod_issues:
+        description: Deep diagnosis of all issues for a single Pod - one-stop troubleshooting
+      diagnose_pending_pod_issues:
+        description: Diagnose the root cause of Pod Pending scheduling failure
+      explain_kubernetes_resource:
+        description: Explain Kubernetes resource type, provide detailed description of specified resource type
+      find_configmap_consumers:
+        description: Find ConfigMap consumers, evaluate the impact scope of changes
+      get_deployment_revision_history:
+        description: Get Deployment version history for rollback decisions
+      get_failed_kubernetes_pods:
+        description: Discover all failed or abnormal Pods in the cluster
+      get_high_restart_kubernetes_pods:
+        description: Discover frequently restarting unstable Pods
+      get_kubernetes_contexts:
+        description: Get kubectl context information, display currently available contexts and active context
+      get_kubernetes_namespaces:
+        description: List all namespaces in the cluster
+      get_kubernetes_node_capacity:
+        description: View cluster node resource capacity and usage
+      get_kubernetes_orphaned_resources:
+        description: Discover orphaned resources (not managed by controller) - resource cleanup and audit
+      get_kubernetes_pod_logs:
+        description: Get Pod container logs - locate application errors
+      get_kubernetes_resource_yaml:
+        description: Get YAML configuration for specified Kubernetes resource
+      get_pending_kubernetes_pods:
+        description: Discover Pods in Pending state that cannot be scheduled or started
+      get_resource_events_timeline:
+        description: Get resource event timeline, trace problem evolution process
+      kubectl_get_all_resources:
+        description: View all major resources in namespace - panoramic view
+      kubectl_get_resources:
+        description: Advanced resource query - flexible filtering like kubectl get
+      kubernetes_troubleshooting_guide:
+        description: Kubernetes troubleshooting guide, provide systematic troubleshooting process based on keywords
+      list_kubernetes_api_resources:
+        description: List Kubernetes API resources, display available API resource types in the cluster
+      list_kubernetes_deployments:
+        description: List deployments with optional namespace filter
+      list_kubernetes_events:
+        description: List events with optional namespace filter
+      list_kubernetes_nodes:
+        description: List all nodes and their status
+      list_kubernetes_pods:
+        description: View Pod list and basic status
+      list_kubernetes_services:
+        description: List services with optional namespace filter
+      restart_pod:
+        description: Restart Pod for fault recovery or configuration reload
+      rollback_deployment:
+        description: Rollback Deployment to specified version for quick service recovery
+      scale_deployment:
+        description: Scale Deployment or StatefulSet - respond to traffic changes
+      trace_service_chain:
+        description: Trace Service call chain, from Service → Endpoint → Pod, locate traffic anomalies
+      validate_probe_configuration:
+        description: Validate health check probe configuration, ensure service reliability
+      verify_kubernetes_connection:
+        description: Verify K8s cluster connection and permissions - first step in troubleshooting
+      wait_for_pod_ready:
+        description: Wait for Pod ready, verify operation success
+  ssh:
+    name: SSH Tools
+    description: |
+      SSH Remote Operations Tool Module
+
+      This module provides a complete SSH remote operations toolkit for Agent to manage and operate remote devices via SSH.
+      Tools are categorized into different sub-modules:
+
+      - connection: SSH connection management tools (connection testing, server info retrieval)
+      - execute: Command execution tools (execute commands, scripts, get output)
+      - transfer: SFTP file transfer tools (upload, download, list directory, delete)
+      - batch: Batch operation tools (batch command execution, batch upload, host availability check)
+      - utils: Common utility functions
+
+      **Key Features:**
+      - Support for password and SSH key authentication
+      - Support for single-host and batch operations
+      - Complete file transfer functionality (SFTP)
+      - Detailed error handling and result feedback
+      - Concurrent execution for improved batch operation efficiency
+
+      **Use Cases:**
+      - Remote server operations management
+      - Batch configuration deployment
+      - Log collection and analysis
+      - Application deployment and updates
+      - System monitoring and inspection
+
+      **Tool List:**
+      - test_ssh_connection: Test SSH connection
+      - get_ssh_server_info: Get server information
+      - ssh_execute_command: Execute SSH command
+      - ssh_execute_script: Execute script
+      - upload_file: Upload file
+      - download_file: Download file
+      - batch_execute_commands: Batch execute commands
+      - check_hosts_availability: Check host availability
+    tools:
+      test_ssh_connection:
+        description: Test if SSH connection is available, verify authentication credentials, check if SSH server is reachable
+      get_ssh_server_info:
+        description: Get detailed SSH server information including operating system, hostname, kernel version, and system architecture
+      ssh_execute_command:
+        description: Execute command on remote SSH server, supports working directory and environment variables, returns stdout, stderr and exit code
+      ssh_execute_script:
+        description: Execute script content on remote server without uploading script file first, supports multiple interpreters (bash, sh, python, etc.)
+      ssh_get_command_output:
+        description: Simplified version that executes command and returns only stdout, suitable for quick information retrieval scenarios
+      upload_file:
+        description: Upload file to remote server via SFTP, supports automatic remote directory creation
+      download_file:
+        description: Download file from remote server, supports automatic local directory creation
+      list_remote_directory:
+        description: List remote directory contents, shows file and subdirectory size, permissions, modification time, etc.
+      delete_remote_file:
+        description: Delete file on remote server, this operation is irreversible, use with caution
+      batch_execute_commands:
+        description: Batch execute same command on multiple servers, supports concurrent execution, automatically aggregates results from all servers
+      batch_upload_files:
+        description: Batch upload files to multiple servers, supports concurrent upload, suitable for configuration distribution and script deployment
+      check_hosts_availability:
+        description: Batch check SSH host connection status, quickly locate connection issues, returns available and unavailable host lists
+  current_time:
+    name: Current Time
+    description: |
+      Date and Time Tool Module
+
+      This module contains all date and time related tool functions:
+      - current_time: Get current time tool
+
+      **Tool List:**
+      - get_current_time: Get current system time, supports timezone specification
+    tools:
+      get_current_time:
+        description: This tool can be used to get the current time
+  duckduckgo:
+    name: DuckDuckGo Search
+    description: |
+      Search Tool Module
+
+      This module contains all search-related tool functions:
+      - duckduckgo: DuckDuckGo search tool
+
+      **Key Features:**
+      - Web search through DuckDuckGo
+      - Get real-time internet information
+      - Support multiple search types
+
+      **Tool List:**
+      - duckduckgo_search: DuckDuckGo web search
+    tools:
+      duckduckgo_search:
+        description: |
+          Perform a search using DuckDuckGo and return the results.
+
+          Parameters:
+          - query: Search query
+          - max_results: Maximum number of results, default is 5
+
+          Returns: List of search results
+  fetch:
+    name: HTTP Fetch
+    description: |
+      Fetch Tool Module
+
+      This module provides a complete web content retrieval and HTTP request toolkit for Agent to interact with external APIs and web pages.
+      Tools are categorized into different sub-modules:
+
+      - http: HTTP request tools (GET, POST, PUT, DELETE, PATCH)
+      - fetch: Advanced content fetching tools (HTML, JSON, plain text, Markdown)
+      - formatter: Content formatting tools (HTML to text, HTML to Markdown, JSON parsing)
+      - utils: Common utility functions
+
+      **Key Features:**
+      - Support all standard HTTP methods (GET, POST, PUT, DELETE, PATCH)
+      - Automatic handling of various content formats (HTML, JSON, text, Markdown)
+      - Support custom headers and parameters
+      - Support large content segmented fetching
+      - Smart content extraction and cleaning
+      - Complete error handling
+
+      **Use Cases:**
+      - Call external REST APIs
+      - Fetch web page content and data
+      - Download and parse JSON data
+      - Extract web page text content
+      - Convert web pages to Markdown
+      - Integrate with third-party services
+
+      **Tool Categories:**
+
+      1. HTTP Request Tools:
+         - http_get: Send GET request
+         - http_post: Send POST request
+         - http_put: Send PUT request
+         - http_delete: Send DELETE request
+         - http_patch: Send PATCH request
+
+      2. Advanced Fetch Tools:
+         - fetch_html: Fetch HTML content
+         - fetch_txt: Fetch plain text content
+         - fetch_markdown: Fetch Markdown format content
+         - fetch_json: Fetch and parse JSON data
+
+      3. Formatting Tools:
+         - html_to_text: HTML to plain text
+         - html_to_markdown: HTML to Markdown
+         - parse_json: Parse JSON
+         - extract_main_content: Extract main content
+    tools:
+      http_get:
+        description: Send HTTP GET request, fetch URL content, supports custom headers and parameters
+      http_post:
+        description: Send HTTP POST request, submit data to server, supports JSON and form data
+      http_put:
+        description: Send HTTP PUT request, used for updating resources
+      http_delete:
+        description: Send HTTP DELETE request, used for deleting resources
+      http_patch:
+        description: Send HTTP PATCH request, used for partial resource updates
+      fetch_html:
+        description: Fetch HTML content from URL, returns complete HTML document
+      fetch_txt:
+        description: Fetch plain text content from URL, automatically cleans HTML tags
+      fetch_markdown:
+        description: Fetch URL content and convert to Markdown format for easier reading and processing
+      fetch_json:
+        description: Fetch JSON data from URL and automatically parse it
+      html_to_text:
+        description: Convert HTML content to plain text, removes all tags
+      html_to_markdown:
+        description: Convert HTML content to Markdown format
+      parse_json:
+        description: Parse JSON string into Python object
+      format_json:
+        description: Format JSON string to make it more readable
+      extract_main_content:
+        description: Extract main content from HTML, removes navigation, ads and other irrelevant elements
+  github:
+    name: GitHub
+    description: |
+      GitHub Tool Module
+
+      This module contains all GitHub-related tool functions, categorized into different sub-modules:
+      - commits: Commits query tools
+
+      **Key Features:**
+      - Query GitHub repository commit history
+      - Support paginated queries
+      - Get commit details
+
+      **Tool List:**
+      - get_github_commits: Get GitHub commits
+      - get_github_commits_with_pagination: Get GitHub commits with pagination
+    tools:
+      get_github_commits:
+        description: |
+          Get commits from a specified GitHub repository within a time range, grouped by user. Query based on user-specified time, do not guess.
+
+          Parameters:
+          - owner (str): GitHub repository owner username or organization name
+          - repo (str): GitHub repository name
+          - since (str): Start time, ISO 8601 format, e.g., 2025-09-08T00:00:00Z
+          - until (str): End time, ISO 8601 format, e.g., 2025-09-15T00:00:00Z
+          - token (str, optional): GitHub Personal Access Token for higher API limits and private repository access
+
+          Returns: JSON string of commits data grouped by user
+      get_github_commits_with_pagination:
+        description: |
+          Get commits from a specified GitHub repository within a time range (with pagination support), grouped by user.
+
+          When there are many commits, GitHub API returns paginated results. This tool can automatically handle pagination to get complete commit data.
+
+          Parameters:
+          - owner (str): GitHub repository owner username or organization name
+          - repo (str): GitHub repository name
+          - since (str): Start time, ISO 8601 format
+          - until (str): End time, ISO 8601 format
+          - token (str, optional): GitHub Personal Access Token
+          - max_pages (int): Maximum number of pages to fetch, default 10
+
+          Returns: JSON string of commits data grouped by user
+  jenkins:
+    name: Jenkins
+    description: |
+      Jenkins Tool Module
+
+      This module contains all Jenkins-related tool functions for interacting with Jenkins CI/CD servers.
+
+      **Key Features:**
+      - List Jenkins jobs
+      - Trigger Jenkins builds
+      - Support parameterized builds
+
+      **Tool List:**
+      - list_jenkins_jobs: List Jenkins jobs
+      - trigger_jenkins_build: Trigger Jenkins build
+    tools:
+      list_jenkins_jobs:
+        description: List Jenkins build jobs. This tool helps users get the Jenkins job list. When the build target is unclear, use this tool directly to provide suggestions to users.
+      trigger_jenkins_build:
+        description: |
+          This tool is used to trigger Jenkins build jobs.
+          Requirements:
+          1. When the build target is unclear, do not execute the task, tell the user similar job names
+          2. Do not build disabled jobs
+  postgres:
+    name: PostgreSQL
+    description: |
+      PostgreSQL Operations Tool Module
+
+      This module contains all PostgreSQL-related operations tool functions, categorized into different sub-modules:
+      - resources: Basic resource query tools (databases/tables/indexes/roles, etc.)
+      - dynamic: Dynamic SQL query tools (safe dynamic query generation and execution)
+      - query: Advanced query analysis tools (statistics/bloat/IO, etc.)
+      - diagnostics: Fault diagnosis tools (slow queries/locks/connections/replication, etc.)
+      - analysis: Configuration analysis tools (cache/connection pool/statistics, etc.)
+      - optimization: Performance optimization recommendation tools (indexes/configuration/VACUUM, etc.)
+      - tracing: Slow query tracing and session analysis tools
+      - monitoring: Monitoring metrics collection tools
+      - utils: Common utility functions
+
+      **Tool Categories:**
+
+      1. Basic Resource Query Tools:
+         - list_postgres_databases: List databases
+         - list_postgres_tables: List tables
+         - list_postgres_indexes: List indexes
+         - get_table_structure: Get table structure
+         - list_postgres_roles: List roles
+
+      2. Dynamic SQL Query Tools:
+         - get_table_schema_details: Get detailed table structure information
+         - search_tables_by_keyword: Search tables and columns by keyword
+         - execute_safe_select: Execute safe SELECT query
+         - explain_query_plan: Get query execution plan
+         - get_sample_data: Get sample data from table
+
+      3. Fault Diagnosis Tools:
+         - diagnose_slow_queries: Diagnose slow queries
+         - diagnose_lock_conflicts: Diagnose lock conflicts
+         - diagnose_connection_issues: Diagnose connection issues
+         - check_database_health: Check database health
+         - check_replication_lag: Check replication lag
+
+      4. Performance Optimization Recommendation Tools:
+         - check_unused_indexes: Check unused indexes
+         - recommend_vacuum_strategy: Recommend VACUUM strategy
+         - recommend_index_optimization: Recommend index optimization
+         - check_configuration_tuning: Check configuration tuning
+    tools:
+      # Basic Resource Query Tools
+      get_current_database_info:
+        description: Get current database connection info including database name, current user, PostgreSQL version and schema search path
+      list_postgres_databases:
+        description: List all databases with basic info including size, connections, owner, encoding and collation
+      list_postgres_tables:
+        description: List tables in specified database with info including table size, index size, estimated rows and last analyze time
+      list_postgres_indexes:
+        description: List index info including definition, size, scan count and rows read, useful for identifying unused indexes
+      list_postgres_schemas:
+        description: List all schemas showing owner and table count for each schema
+      get_table_structure:
+        description: Get table structure details including all columns with types, defaults, nullability, and constraints like primary keys, unique constraints, foreign keys
+      list_postgres_extensions:
+        description: List installed PostgreSQL extensions including name, version, schema and description
+      list_postgres_roles:
+        description: List database roles (users) with role attributes (superuser, create DB, create role, etc.) and connection limits
+      get_database_config:
+        description: Get database configuration parameters including key performance settings like shared_buffers, work_mem, max_connections with current values and sources
+      # Dynamic SQL Query Tools
+      get_table_schema_details:
+        description: Get detailed table structure including columns, primary keys, foreign keys, indexes and column comments for building dynamic queries and understanding data relationships
+      search_tables_by_keyword:
+        description: Search tables and columns by keyword to discover business entities and their data storage locations
+      execute_safe_select:
+        description: Execute safe SELECT queries supporting aggregations, multi-table joins and complex queries, with SELECT * and sensitive field queries prohibited
+      explain_query_plan:
+        description: Get query execution plan showing estimated cost, rows and index usage for optimizing dynamically generated queries
+      get_sample_data:
+        description: Get sample data from table to understand data format and content, requires explicit column names and auto-filters sensitive fields
+      # Advanced Query Analysis Tools
+      query_table_stats:
+        description: Query table statistics including sequential and index scan counts, insert/update/delete stats, identify hot tables
+      query_index_usage:
+        description: Query index usage statistics, identify unused indexes, analyze index efficiency for optimizing index design
+      query_bloat_analysis:
+        description: Analyze table and index bloat, estimate bloat ratio, identify severely bloated tables, calculate reclaimable space
+      query_table_io_stats:
+        description: Query table I/O statistics including disk block reads and cache hits, calculate cache hit ratio, identify I/O hotspots
+      search_objects:
+        description: Search database objects with fuzzy matching for tables/views/functions/sequences, display object metadata
+      # Fault Diagnosis Tools
+      diagnose_slow_queries:
+        description: Diagnose slow queries using pg_stat_statements, show average/max execution time and call counts
+      diagnose_lock_conflicts:
+        description: Detect lock conflicts and blocking, show blocking relationships and blocked query info for troubleshooting deadlocks
+      diagnose_connection_issues:
+        description: Diagnose connection pool issues, show current and max connections, group connections by database/user/state
+      check_database_health:
+        description: Overall database health check covering connections, deadlocks, long transactions, providing health score and issue list
+      check_replication_lag:
+        description: Check master-slave replication lag, show WAL send and receive status, identify replication slot status
+      diagnose_autovacuum_issues:
+        description: Diagnose AUTOVACUUM issues, check last VACUUM time for tables, identify tables not VACUUMed and dead tuple counts
+      get_failed_transactions:
+        description: Get failed and rolled back transaction info for troubleshooting application errors and analyzing transaction failure causes
+      # Configuration Analysis Tools
+      analyze_cache_hit_ratio:
+        description: Analyze cache hit ratio, calculate overall ratio, group by database, provide shared_buffers optimization recommendations
+      analyze_connection_pool_usage:
+        description: Analyze connection pool usage, show active/idle connection distribution, identify long-idle connections, group by application and user
+      analyze_table_statistics:
+        description: Analyze table statistics freshness, check last ANALYZE time, identify tables with stale statistics
+      analyze_checkpoint_activity:
+        description: Analyze checkpoint activity, count checkpoints by type, show checkpoint writes, analyze trigger reasons
+      analyze_transaction_patterns:
+        description: Analyze transaction patterns, count commits and rollbacks, calculate rollback ratio, identify high-rollback databases
+      # Performance Optimization Recommendation Tools
+      check_unused_indexes:
+        description: Check unused indexes, identify never-used indexes, calculate space savings, provide deletion recommendations
+      recommend_vacuum_strategy:
+        description: Recommend VACUUM strategy, identify tables needing VACUUM, recommend VACUUM type and priority
+      recommend_index_optimization:
+        description: Recommend index optimization, identify tables with excessive sequential scans, suggest index creation, identify duplicate and redundant indexes
+      check_configuration_tuning:
+        description: Check configuration parameters and provide tuning recommendations, compare with recommended values
+      # Slow Query Tracing and Session Analysis Tools
+      get_top_queries:
+        description: Get top queries sorted by multiple dimensions (mean time/total time/calls/I/O), identify performance bottleneck queries
+      trace_lock_chain:
+        description: Trace lock wait chain, build lock wait dependency chain, show lock info per process, identify root blocking process
+      get_active_sessions:
+        description: Get active session info showing user/database/query/state for all active sessions, filter by duration
+      analyze_query_pattern:
+        description: Analyze query patterns, count SELECT/INSERT/UPDATE/DELETE proportions, identify query hotspots
+      # Monitoring Metrics Collection Tools
+      get_database_metrics:
+        description: Get database-level monitoring metrics including connections, transactions, cache hit ratio and other core metrics
+      get_table_metrics:
+        description: Get table-level monitoring metrics including read/write stats, index usage and table bloat maintenance status
+      get_replication_metrics:
+        description: Get replication monitoring metrics, show all replication connection status, monitor WAL send and receive lag
+      get_bgwriter_stats:
+        description: Get background writer process statistics, show bgwriter stats, monitor checkpoint activity, analyze buffer allocation
+      get_wal_metrics:
+        description: Get WAL monitoring metrics, show current WAL position, monitor WAL write stats, check WAL archive status
+  python:
+    name: Python Executor
+    description: |
+      Python Tool Module
+
+      This module contains all Python-related tool functions:
+      - executor: Python code execution tool
+
+      **Key Features:**
+      - Safely execute Python code
+      - Support data processing and computation
+      - Return execution results
+
+      **Tool List:**
+      - python_execute_direct: Directly execute Python code
+    tools:
+      python_execute_direct:
+        description: Tool for directly executing Python code, high-risk and malicious code execution is prohibited, supports data processing and computation with execution results returned
+  shell:
+    name: Shell Executor
+    description: |
+      Shell Tool Module
+
+      Execute commands in system shell for automation operations, building, deployment, and information retrieval scenarios.
+
+      **Security Requirements:**
+      1. High-risk commands are not allowed (e.g., rm -rf /, dd, mkfs, etc.)
+      2. Commands requiring interactive input are not allowed
+      3. Commands that may leak sensitive information are not allowed
+      4. Command purpose and risks should be clarified before execution
+
+      **Tool List:**
+      - shell_execute: Execute shell command list, execute in order and return results
+    tools:
+      shell_execute:
+        description: Execute command list in system shell, execute in order and return results for each command including stdout, stderr and exit code
+  browser_use:
+    name: Browser Automation
+    description: |
+      Browser Operations Tool Module
+
+      This module provides AI-based browser automation tools using Browser-Use for intelligent web interaction.
+      Tools can understand natural language task descriptions and automatically execute complex web operations.
+
+      **Key Features:**
+      - AI-driven intelligent web operations
+      - Handle dynamically loaded JavaScript content
+      - Support clicking, form filling, scrolling, and other interactions
+      - Smart information extraction and recognition
+      - Automatically handle common web elements
+
+      **Use Cases:**
+      - Automated web testing and data collection
+      - Interact with websites that require interaction
+      - Extract structured data from dynamic web pages
+      - Execute complex web automation workflows
+
+      **Dependencies:**
+      - browser-use: AI browser automation framework
+      - playwright: Browser driver (dependency of browser-use)
+
+      **Tool List:**
+      - browse_website: Visit website and execute tasks
+      - extract_webpage_info: Extract specific information from web pages
+    tools:
+      browse_website:
+        description: Visit website and execute specified tasks, supports AI-driven intelligent web operations including clicking, form filling, scrolling and other interactions
+      extract_webpage_info:
+        description: Extract specific information from web pages, supports dynamically loaded JavaScript content, returns structured data

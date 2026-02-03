@@ -1924,6 +1924,10 @@ monitor_object_metric:
         which may require increasing thread pool resources or optimizing request processing
         logic.
       name: Thread Pool Queue Length
+  TCP:
+    ConnectStatus:
+      name: Connect Status
+      desc: This metric reflects the availability of cloud APIs, the validity of account credentials, and the overall health of the data collection pipeline.
   CVM:
     CPUUsage_gauge:
       name: CPU Utilization
@@ -1989,8 +1993,6 @@ monitor_object_metric:
     net_bytesTx_average_gauge:
       name: Network transmit rate
       desc: The network transmit rate represents the amount of data sent out per second and is an important criterion for measuring network traffic
-  Cluster:
-    cluster_node_count:
   Cluster:
     cluster_pod_count:
       name: Pod Count
@@ -2148,7 +2150,7 @@ monitor_object_metric:
   ElasticSearch:
     elasticsearch_cluster_health_status_code:
       name: Cluster Health Status
-      desc: Core cluster health metric, reflects cluster health via status values: 1=normal (green), 2=replica missing, 3=primary missing (failure); red status impacts data availability
+      desc: "Core cluster health metric, reflects cluster health via status values: 1=normal (green), 2=replica missing, 3=primary missing (failure); red status impacts data availability"
     elasticsearch_cluster_health_active_primary_shards:
       name: Active Primary Shards
       desc: Core data availability metric, represents the count of active primary shards; missing primary shards block data read/write; ensure consistency with expected count
@@ -2622,13 +2624,6 @@ monitor_object_metric_group:
     Base: Base
     Bandwidth: Bandwidth
     Packet Error: Packet Error
-  Node:
-    Net: Net
-    Status: Status
-    Memory: Memory
-    Load: Load
-    Disk: Disk
-    CPU: CPU
   WebLogic-JMX:
     Threadpool: Thread Pool
     Application: Application

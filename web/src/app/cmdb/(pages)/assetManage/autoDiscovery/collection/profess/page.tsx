@@ -57,7 +57,8 @@ interface PluginCardProps {
 const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
   const collectApi = useCollectApi();
-  const { editingId, setEditingId } = useAssetManageStore();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { editingId, setEditingId, copyTaskData: _copyTaskData, setCopyTaskData } = useAssetManageStore();
   const syncStatusConfig = React.useMemo(() => getExecStatusConfig(t), [t]);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [categoryList, setCategoryList] = useState<TreeNode[]>([]);
@@ -330,6 +331,19 @@ const ProfessionalCollection: React.FC = () => {
     setDrawerVisible(true);
   };
 
+
+  // 复制任务
+  const handleCopy = async (record: CollectTask) => {
+    try {
+      const data = await collectApi.getCollectDetail(record.id.toString());
+      setCopyTaskData(data);
+      setEditingId(null);
+      setDrawerVisible(true);
+    } catch (error) {
+      console.error('Failed to fetch task details:', error);
+    }
+  };
+
   const handleDelete = (record: CollectTask) => {
     Modal.confirm({
       title: t('common.delConfirm'),
@@ -377,7 +391,8 @@ const ProfessionalCollection: React.FC = () => {
   );
 
   const closeDrawer = () => {
-    setEditingId(null);
+    setEditingId(null);// 编辑任务数据置空
+    setCopyTaskData(null); // 复制任务数据置空
     setDrawerVisible(false);
     setTaskDocDrawerVisible(false);
   };
@@ -420,6 +435,7 @@ const ProfessionalCollection: React.FC = () => {
       vm: VMTask,
       cloud: CloudTask,
       host: HostTask,
+      db: HostTask,
       middleware: HostTask,
       snmp: SNMPTask,
       protocol: SQLTask,
@@ -504,6 +520,20 @@ const ProfessionalCollection: React.FC = () => {
               onClick={() => handleEdit(record)}
             >
               {t('Collection.table.modify')}
+            </Button>
+          </PermissionWrapper>
+          {/* 复制任务按钮 */}
+          <PermissionWrapper
+            requiredPermissions={['Edit']}
+            instPermissions={record.permission}
+          >
+            <Button
+              type="link"
+              size="small"
+              disabled={executing}
+              onClick={() => handleCopy(record)}
+            >
+              {t('Collection.table.copy')}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper
@@ -725,7 +755,7 @@ const ProfessionalCollection: React.FC = () => {
         className={`cursor-pointer transition-all ${isActive
           ? 'border-blue-500 shadow-md bg-blue-50'
           : 'border-gray-200 hover:border-blue-300'
-        }`}
+          }`}
         styles={{ body: { padding: '12px' } }}
         onClick={() => handlePluginCardClick(tab.id)}
       >

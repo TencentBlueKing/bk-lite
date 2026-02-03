@@ -43,6 +43,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           id: tool.id,
           name: tool.display_name || tool.name,
           icon: tool.icon || 'gongjuji',
+          description: tool.description_tr || tool.description || '',
           kwargs: (tool.params.kwargs || [])
             .filter((kwarg: any) => kwarg.key)
             .map((kwarg: any) => ({
@@ -149,6 +150,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
         loading={loading}
         options={tools}
         isNeedGuide={false}
+        showToolDetail={true}
         selectedOptions={defaultTools.map((tool) => tool.id)}
         onOk={handleModalConfirm}
         onCancel={handleModalCancel}

@@ -16,3 +16,6 @@ update:
 
 serving:
 	uv run python -m bentoml serve classify_object_detection_server.serving.service:MLService --reload
+
+release:
+	docker build -t bklite/classify_object_detection_server:latest -f ./support-files/release/Dockerfile . --push

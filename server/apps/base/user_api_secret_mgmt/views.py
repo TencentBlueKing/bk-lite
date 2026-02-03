@@ -1,5 +1,4 @@
 from django.http import JsonResponse
-from django.utils.translation import gettext as _
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,6 +6,13 @@ from rest_framework.response import Response
 from apps.base.models import UserAPISecret
 from apps.base.user_api_secret_mgmt.serializers import UserAPISecretSerializer
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.loader import LanguageLoader
+
+
+def _get_loader(request) -> LanguageLoader:
+    """获取基于用户locale的LanguageLoader"""
+    locale = getattr(getattr(request, "user", None), "locale", None) or "en"
+    return LanguageLoader(app="core", default_lang=locale)
 
 
 class UserAPISecretViewSet(viewsets.ModelViewSet):
@@ -33,7 +39,13 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
         username = request.user.username
         current_team = request.COOKIES.get("current_team")
         if UserAPISecret.objects.filter(username=username, team=current_team).exists():
-            return JsonResponse({"result": False, "message": _("This user already has an API Secret")})
+            loader = _get_loader(request)
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": loader.get("error.api_secret_exists", "This user already has an API Secret"),
+                }
+            )
         additional_data = {
             "username": username,
             "api_secret": UserAPISecret.generate_api_secret(),

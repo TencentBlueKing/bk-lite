@@ -1,4 +1,5 @@
 [[inputs.elasticsearch]]
+    startup_error_behavior = "retry"
     servers = ["{{ server }}"]
     username = "{{ username }}"
     password = "${PASSWORD__{{ config_id }}}"

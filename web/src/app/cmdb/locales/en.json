@@ -13,7 +13,15 @@
         "filterItems": "Filter Items:",
         "cancel": "Cancel",
         "confirm": "Confirm",
-        "clearConditions": "Clear All"
+        "clearConditions": "Clear All",
+        "saveFilters": "Save Filters",
+        "savedFilters": "Saved Filters",
+        "filterName": "Name",
+        "moreSavedFilters": "More Saved",
+        "saveSuccess": "Saved successfully",
+        "deleteSuccess": "Deleted successfully",
+        "filterNameRequired": "Please enter a filter name",
+        "noFiltersToSave": "No filters to save"
     },
     "deleteTitle": "Do you want to delete this item?",
     "disassociationTitle": "Are you sure to cancel the association?",
@@ -182,6 +190,7 @@
         "syncSuccess": "Sync Successfully!",
         "syncFailed": "Sync Failed",
         "ipRange": "IP Range",
+        "ipRangeOrderInvalid": "Start IP must not be greater than End IP",
         "chooseIp": "Choose IP",
         "chooseAsset": "Choose Asset",
         "everyMinute": "Every",
@@ -223,7 +232,8 @@
             "authPassword": "Authentication Password",
             "hashAlgorithm": "Hash algorithm",
             "encryptAlgorithm": "Encryption algorithm",
-            "encryptKey": "Encryption key"
+            "encryptKey": "Encryption key",
+            "collectRelationships": "Collect Relationships"
         },
         "cloudTask": {
             "accessKey": "AccessKey",
@@ -243,7 +253,8 @@
             "sync": "Sync",
             "modify": "Modify",
             "delete": "Delete",
-            "syncing": "Syncing"
+            "syncing": "Syncing",
+            "copy": "Copy Task"
         },
         "taskDetail": {
             "title": "Task Detail",

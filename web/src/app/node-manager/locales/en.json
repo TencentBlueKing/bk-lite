@@ -176,7 +176,9 @@
         "runPackageDesc": "Run the installation package as an administrator and copy the installation parameters to the installation input box.",
         "installParams": "Installation Parameters",
         "importantNote": "Important Note",
-        "importantNoteDesc": "Installation parameters are strictly bound to the host. Ensure that the parameters match the current host information and do not cross-use them."
+        "importantNoteDesc": "Installation parameters are strictly bound to the host. Ensure that the parameters match the current host information and do not cross-use them.",
+        "downloadSuccess": "Download Successful",
+        "downloadFailed": "Download Failed"
       },
       "editform": {
         "Introduction": "Introduction",

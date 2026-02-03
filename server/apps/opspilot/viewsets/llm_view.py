@@ -12,6 +12,7 @@ from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
 from apps.opspilot.utils.agui_chat import stream_agui_chat
+from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
 from apps.opspilot.utils.mcp_client import MCPClient
 from apps.opspilot.utils.sse_chat import stream_chat
 
@@ -34,6 +35,27 @@ class LLMViewSet(AuthViewSet):
     queryset = LLMSkill.objects.all()
     filterset_class = LLMFilter
     permission_key = "skill"
+
+    def query_by_groups(self, request, queryset):
+        """重写排序逻辑：置顶优先，再按 ID 倒序"""
+        new_queryset = self.get_queryset_by_permission(request, queryset)
+        return self._list(new_queryset.order_by("-is_pinned", "-id"))
+
+    @action(methods=["POST"], detail=True)
+    @HasPermission("skill_setting-Edit")
+    def toggle_pin(self, request, pk=None):
+        """切换技能置顶状态"""
+        instance = self.get_object()
+        if not request.user.is_superuser:
+            current_team = request.COOKIES.get("current_team", "0")
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
+            if not has_permission:
+                message = self.loader.get("error.permission_update_denied") if self.loader else "You do not have permission to update this instance"
+                return JsonResponse({"result": False, "message": message})
+        instance.is_pinned = not instance.is_pinned
+        instance.save(update_fields=["is_pinned"])
+        return JsonResponse({"result": True, "data": {"is_pinned": instance.is_pinned}})
 
     @action(methods=["GET"], detail=False)
     @HasPermission("skill_list-View")
@@ -132,11 +154,15 @@ class LLMViewSet(AuthViewSet):
             instance.rag_score_threshold_map = score_threshold_map
             knowledge_base_list = KnowledgeBase.objects.filter(id__in=list(score_threshold_map.keys()))
             instance.knowledge_base.set(knowledge_base_list)
+        # 当 enable_rag=False 时，清空知识库和阈值配置
+        if "enable_rag" in params and not params["enable_rag"]:
+            instance.knowledge_base.clear()
+            instance.rag_score_threshold_map = {}
         instance.save()
         return JsonResponse({"result": True})
 
     @staticmethod
-    def _create_error_stream_response(error_message):
+    def create_error_stream_response(error_message):
         """
         创建错误的流式响应
         用于在流式模式下返回错误信息
@@ -187,12 +213,18 @@ class LLMViewSet(AuthViewSet):
             if not request.user.is_superuser:
                 current_team = request.COOKIES.get("current_team", "0")
                 include_children = request.COOKIES.get("include_children", "0") == "1"
-                has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True, include_children=include_children)
+                has_permission = self.get_has_permission(
+                    request.user,
+                    skill_obj,
+                    current_team,
+                    is_check=True,
+                    include_children=include_children,
+                )
                 if not has_permission:
                     message = (
                         self.loader.get("error.no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
                     )
-                    return self._create_error_stream_response(message)
+                    return self.create_error_stream_response(message)
 
             current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
             if current_ip:
@@ -207,14 +239,15 @@ class LLMViewSet(AuthViewSet):
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
             params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
+            params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
             # 调用stream_chat函数返回流式响应
             return stream_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
         except LLMSkill.DoesNotExist:
             message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
-            return self._create_error_stream_response(message)
+            return self.create_error_stream_response(message)
         except Exception as e:
             logger.exception(e)
-            return self._create_error_stream_response(str(e))
+            return self.create_error_stream_response(str(e))
 
     @action(methods=["POST"], detail=False)
     @HasPermission("skill_setting-View")
@@ -250,12 +283,18 @@ class LLMViewSet(AuthViewSet):
             if not request.user.is_superuser:
                 current_team = request.COOKIES.get("current_team", "0")
                 include_children = request.COOKIES.get("include_children", "0") == "1"
-                has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True, include_children=include_children)
+                has_permission = self.get_has_permission(
+                    request.user,
+                    skill_obj,
+                    current_team,
+                    is_check=True,
+                    include_children=include_children,
+                )
                 if not has_permission:
                     message = (
                         self.loader.get("error.no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
                     )
-                    return self._create_error_stream_response(message)
+                    return self.create_error_stream_response(message)
 
             current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
             if current_ip:
@@ -270,15 +309,16 @@ class LLMViewSet(AuthViewSet):
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
             params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
+            params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
 
             # 调用AGUI协议的流式响应
             return stream_agui_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
         except LLMSkill.DoesNotExist:
             message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
-            return self._create_error_stream_response(message)
+            return self.create_error_stream_response(message)
         except Exception as e:
             logger.exception(e)
-            return self._create_error_stream_response(str(e))
+            return self.create_error_stream_response(str(e))
 
 
 class ObjFilter(FilterSet):
@@ -433,6 +473,7 @@ class SkillToolsViewSet(AuthViewSet):
             server_url: MCP server 地址
             enable_auth: 是否启用基本认证
             auth_token: 基本认证的 token
+            force_refresh: 是否强制刷新缓存（可选，默认 False）
         返回格式:
             {
                 "result": True,
@@ -442,16 +483,24 @@ class SkillToolsViewSet(AuthViewSet):
                         "description": "tool description",
                         "input_schema": {...}
                     }
-                ]
+                ],
+                "cached": True/False  # 是否来自缓存
             }
         """
         server_url = request.data.get("server_url")
         enable_auth = request.data.get("enable_auth", False)
         auth_token = request.data.get("auth_token", "")
+        force_refresh = request.data.get("force_refresh", False)
 
         if not server_url:
             message = self.loader.get("error.server_url_required") if self.loader else "MCP server URL is required"
             return JsonResponse({"result": False, "message": message})
+
+        # 先查缓存（非强制刷新时）
+        if not force_refresh:
+            cached_tools = get_cached_mcp_tools(server_url, auth_token)
+            if cached_tools is not None:
+                return JsonResponse({"result": True, "data": cached_tools, "cached": True})
 
         # 构建 MCP 客户端配置
         mcp_config = {"server_url": server_url}
@@ -468,8 +517,9 @@ class SkillToolsViewSet(AuthViewSet):
         try:
             with MCPClient(**mcp_config) as mcp_client:
                 tools = mcp_client.get_tools()
-                # MCPClient 已经返回了格式化后的数据,直接返回
-                return JsonResponse({"result": True, "data": tools})
+                # 缓存结果
+                set_cached_mcp_tools(server_url, tools, auth_token)
+                return JsonResponse({"result": True, "data": tools, "cached": False})
         except Exception as e:
             logger.exception(e)
             message = self.loader.get("error.mcp_server_error") if self.loader else "Error occurred while fetching MCP tools"

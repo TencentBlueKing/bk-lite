@@ -11,7 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import transaction
 
-from apps.alerts.constants import LogAction, LogTargetType
+from apps.alerts.constants import LogAction, LogTargetType, SessionStatus
 from apps.alerts.filters import AlertSourceModelFilter, AlertModelFilter, EventModelFilter, LevelModelFilter, \
     IncidentModelFilter, SystemSettingModelFilter, OperatorLogModelFilter
 from apps.alerts.models import AlertSource, Alert, Event, Level, Incident, SystemSetting, OperatorLog
@@ -55,7 +55,7 @@ class AlterModelViewSet(ModelViewSet):
     告警视图集
     """
     # -level 告警等级排序
-    queryset = Alert.objects.all()
+    queryset = Alert.objects.exclude(session_status__in=SessionStatus.NO_CONFIRMED)
     serializer_class = AlertModelSerializer
     ordering_fields = ["created_at"]
     ordering = ["-created_at"]

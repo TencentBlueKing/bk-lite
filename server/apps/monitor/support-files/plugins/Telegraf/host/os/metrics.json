@@ -195,7 +195,7 @@
       "query": "rate(diskio_reads{instance_type=\"os\", __$labels__}[5m])",
       "display_name": "Disk Read IOPS",
       "data_type": "Number",
-      "unit": "cps",
+      "unit": "counts",
       "dimensions": [
         {
           "name": "name",
@@ -240,7 +240,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_total",
-      "query": "any(disk_total{instance_type=\"os\", __$labels__}) by (device)",
+      "query": "any(disk_total{instance_type=\"os\", __$labels__}) by (instance_id, device)",
       "display_name": "Disk Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -256,7 +256,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_free",
-      "query": "any(disk_free{instance_type=\"os\", __$labels__}) by (device)",
+      "query": "any(disk_free{instance_type=\"os\", __$labels__}) by (instance_id, device)",
       "display_name": "Disk Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -272,7 +272,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_used_percent",
-      "query": "any(disk_used_percent{instance_type=\"os\", __$labels__}) by (device)",
+      "query": "any(disk_used_percent{instance_type=\"os\", __$labels__}) by (instance_id, device)",
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -288,7 +288,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_inodes_used_percent",
-      "query": "any(disk_inodes_used_percent{instance_type=\"os\", __$labels__}) by (device)",
+      "query": "any(disk_inodes_used_percent{instance_type=\"os\", __$labels__}) by (instance_id, device)",
       "display_name": "Inode Usage",
       "data_type": "Number",
       "unit": "percent",

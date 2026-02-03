@@ -17,6 +17,7 @@ import {
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
 import { formatTaskValues } from '../hooks/formatTaskValues';
+import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 
 interface VMTaskFormProps {
   onClose: () => void;
@@ -36,6 +37,7 @@ const VMTask: React.FC<VMTaskFormProps> = ({
   const { t } = useTranslation();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const localeContext = useLocale();
+  const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
 
   const {
@@ -88,29 +90,39 @@ const VMTask: React.FC<VMTaskFormProps> = ({
     [t, form]
   );
 
+  // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
+  const buildFormValues = (values: any, isCopy: boolean) => ({
+    ...values,
+    taskName: isCopy ? '' : values.name,
+    enterType:
+      values.input_method === 0 ? ENTER_TYPE.AUTOMATIC : ENTER_TYPE.APPROVAL,
+    accessPointId: values.access_point?.[0]?.id,
+    organization: values.team || [],
+    username: values.credential?.username,
+    password: isCopy ? '' : PASSWORD_PLACEHOLDER,
+    port: values.credential?.port,
+    sslVerify: values.credential?.ssl,
+    instId: values.instances?.[0]?._id,
+  });
+
   useEffect(() => {
     const initForm = async () => {
-      if (editId) {
+      if (copyTaskData) {
+        const values = copyTaskData;
+
+        // 复制任务中回填表单数据（此时任务名称和密码为空，需要用户手动输入）
+        form.setFieldsValue(buildFormValues(values, true));
+      } else if (editId) {
         const values = await fetchTaskDetail(editId);
-        form.setFieldsValue({
-          ...values,
-          enterType:
-            values.input_method === 0
-              ? ENTER_TYPE.AUTOMATIC
-              : ENTER_TYPE.APPROVAL,
-          accessPointId: values.access_point?.[0]?.id,
-          organization: values.team || [],
-          username: values.credential?.username,
-          password: PASSWORD_PLACEHOLDER,
-          port: values.credential?.port,
-          sslVerify: values.credential?.ssl,
-        });
+
+        // 编辑任务中回填表单数据
+        form.setFieldsValue(buildFormValues(values, false));
       } else {
         form.setFieldsValue(VM_FORM_INITIAL_VALUES);
       }
     };
     initForm();
-  }, [modelId]);
+  }, [modelId, copyTaskData, setCopyTaskData]);
 
   return (
     <Spin spinning={loading}>

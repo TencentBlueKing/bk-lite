@@ -32,7 +32,7 @@ export interface GroupConfig {
 
 export interface ModelConfig {
   type: string;
-  modelForm: any;
+  modelForm?: Partial<ModelItem>;
   subTitle: string;
   title: string;
 }

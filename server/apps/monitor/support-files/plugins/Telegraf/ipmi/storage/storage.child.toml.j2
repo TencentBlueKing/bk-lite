@@ -1,4 +1,5 @@
 [[inputs.ipmi_sensor]]
+    startup_error_behavior = "retry"
     servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@{{ protocol }}({{ ip }})"]
     interval = "{{ interval }}s"
     [inputs.ipmi_sensor.tags]
