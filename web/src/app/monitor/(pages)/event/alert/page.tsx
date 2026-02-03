@@ -128,7 +128,11 @@ const Alert: React.FC = () => {
       title: t('monitor.events.alertName'),
       dataIndex: 'content',
       key: 'content',
-      width: 120
+      onCell: () => ({
+        style: {
+          minWidth: 150
+        }
+      })
     },
     {
       title: t('monitor.events.alertType'),
@@ -704,7 +708,7 @@ const Alert: React.FC = () => {
             />
             <CustomTable
               className="w-full"
-              scroll={{ y: 'calc(100vh - 640px)', x: 'calc(100vw - 320px)' }}
+              scroll={{ y: 'calc(100vh - 640px)', x: 'max-content' }}
               columns={columns}
               dataSource={tableData}
               pagination={pagination}
