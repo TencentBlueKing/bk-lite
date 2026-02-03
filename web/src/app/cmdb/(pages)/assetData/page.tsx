@@ -644,6 +644,8 @@ const AssetDataContent = () => {
     setPagination((prev) => ({ ...prev, current: 1 }));
     setGroupId(targetGroup.classification_id);
     setModelList(targetGroup.list.map((item) => ({ key: item.model_id, label: item.model_name, icn: item.icn })));
+    setPropertyListGroups([]);
+    setPropertyList([]);
     router.push(`/cmdb/assetData?modelId=${key}&classificationId=${targetGroup.classification_id}`);
     getInitData(key, null);
   };
@@ -669,12 +671,12 @@ const AssetDataContent = () => {
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Add']}>
-            <Button type="link" className="mr-[10px]" onClick={() => showCopyModal(record)}>
+            <Button type="link" className="mr-[10px]" disabled={!propertyListGroups.length} onClick={() => showCopyModal(record)}>
               {t('common.copy')}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Edit']} instPermissions={record.permission}>
-            <Button type="link" className="mr-[10px]" onClick={() => showAttrModal('edit', record)}>
+            <Button type="link" className="mr-[10px]" disabled={!propertyListGroups.length} onClick={() => showAttrModal('edit', record)}>
               {t('common.edit')}
             </Button>
           </PermissionWrapper>
@@ -693,7 +695,7 @@ const AssetDataContent = () => {
       .filter((col) => displayFieldKeys.includes(col.key as string))
       .sort((a, b) => displayFieldKeys.indexOf(a.key as string) - displayFieldKeys.indexOf(b.key as string));
     setCurrentColumns([...orderedColumns, actionColumn]);
-  }, [propertyList, displayFieldKeys]);
+  }, [propertyList, displayFieldKeys, propertyListGroups]);
 
   const batchOperateItems: MenuProps['items'] = [
     {
@@ -709,7 +711,7 @@ const AssetDataContent = () => {
           </a>
         </PermissionWrapper>
       ),
-      disabled: !selectedRowKeys.length,
+      disabled: !selectedRowKeys.length || !propertyListGroups.length,
     },
     {
       key: 'batchDelete',
