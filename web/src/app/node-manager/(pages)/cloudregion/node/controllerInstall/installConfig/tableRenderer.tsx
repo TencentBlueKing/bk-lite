@@ -3,7 +3,7 @@ import { Input, InputNumber, Select, Button, Tooltip } from 'antd';
 import {
   PlusCircleOutlined,
   MinusCircleOutlined,
-  ExclamationCircleFilled,
+  ExclamationCircleFilled
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import GroupSelect from '@/components/group-tree-select';
@@ -26,21 +26,21 @@ export const useTableRenderer = () => {
       type,
       widget_props = {},
       required = false,
-      rules = [],
+      rules = []
     } = columnConfig;
 
     const column: any = {
       title: label,
       dataIndex: name,
       key: name,
-      width: widget_props.width || 150,
+      width: widget_props.width || 150
     };
 
     const handleChange = (value: any, record: any, index: number) => {
       const newData = [...dataSource];
       newData[index] = {
         ...newData[index],
-        [name]: value,
+        [name]: value
       };
       // onChange时触发验证
       let errorMsg: string | null = null;
@@ -85,7 +85,7 @@ export const useTableRenderer = () => {
       // 更新错误状态
       newData[index] = {
         ...newData[index],
-        [`${name}_error`]: errorMsg,
+        [`${name}_error`]: errorMsg
       };
 
       onTableDataChange(newData);
@@ -227,7 +227,7 @@ export const useTableRenderer = () => {
                       style={{
                         fontSize: 16,
                         color: 'var(--color-primary)',
-                        fontWeight: 'bold',
+                        fontWeight: 'bold'
                       }}
                       onClick={() => {
                         const newData = [...dataSource];
@@ -235,7 +235,7 @@ export const useTableRenderer = () => {
                           ...newData[index],
                           [name]: '',
                           private_key: '',
-                          key_file_name: undefined,
+                          key_file_name: undefined
                         };
                         onTableDataChange(newData);
                       }}
@@ -262,7 +262,7 @@ export const useTableRenderer = () => {
                               [name]: '',
                               private_key: content,
                               key_file_name: file.name,
-                              [`${name}_error`]: null,
+                              [`${name}_error`]: null
                             };
                             onTableDataChange(newData);
                           };
@@ -321,7 +321,7 @@ export const useTableRenderer = () => {
       width: 80,
       fixed: 'right' as const,
       key: 'action',
-      render: (value: string, row: any, index: number) => {
+      render: (value: string, row: any) => {
         return (
           <>
             <Button
@@ -329,7 +329,7 @@ export const useTableRenderer = () => {
               icon={<PlusCircleOutlined />}
               onClick={() => onAdd(row)}
             ></Button>
-            {!!index && (
+            {dataSource.length > 1 && (
               <Button
                 type="link"
                 icon={<MinusCircleOutlined />}
@@ -338,12 +338,12 @@ export const useTableRenderer = () => {
             )}
           </>
         );
-      },
+      }
     };
   };
 
   return {
     renderTableColumn,
-    renderActionColumn,
+    renderActionColumn
   };
 };
