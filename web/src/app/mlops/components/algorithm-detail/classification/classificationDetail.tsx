@@ -241,7 +241,7 @@ const ClassificationDetail = () => {
           <Breadcrumb
             separator=">"
             items={[
-              { title: <a href="#" onClick={() => router.push(`/mlops/manage/list`)}>{t(`datasets.datasets`)}</a> },
+              { title: <a href="#" onClick={() => router.push(`/mlops/${algorithmType}/datasets`)}>{t(`datasets.datasets`)}</a> },
               { title: t(`datasets.datasetsDetail`) }
             ]}
           />
