@@ -37,9 +37,6 @@ class ChunkHelper(ChatServerHelper):
         a_kwargs = dict({"extra_prompt": answer_prompt}, **llm_setting["answer"])
         for i in content_list:
             generate_count = cls.generate_qa(q_kwargs, a_kwargs, i, embed_config, es_index, qa_pairs_obj, only_question, task_obj)
-            # res = cls.update_document_qa_pairs_count(es_index, generate_count, i["chunk_id"])
-            # if not res:
-            #     logger.error(f"Failed to update document QA pairs count for chunk_id ID: {i['chunk_id']}")
             success_count += generate_count
         return success_count
 
@@ -377,9 +374,6 @@ class ChunkHelper(ChatServerHelper):
         a_kwargs = dict({"extra_prompt": qa_pairs_obj.answer_prompt}, **llm_setting["answer"])
         for i in content_list:
             generate_count = cls.generate_qa(q_kwargs, a_kwargs, i, embed_config, es_index, qa_pairs_obj, only_question, task_obj)
-            # res = cls.update_document_qa_pairs_count(es_index, generate_count, i["chunk_id"])
-            # if not res:
-            #     logger.error(f"Failed to update document QA pairs count for chunk_id ID: {i['chunk_id']}")
             success_count += generate_count
         return success_count
 

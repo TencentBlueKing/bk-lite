@@ -3,9 +3,8 @@ from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import LanguageViewSet
-from apps.opspilot.models import WebPageKnowledge
+from apps.opspilot.models import KnowledgeDocument, WebPageKnowledge
 from apps.opspilot.serializers import WebPageKnowledgeSerializer
-from apps.opspilot.utils.knowledge_utils import KnowledgeDocumentUtils
 
 
 class WebPageKnowledgeViewSet(LanguageViewSet):
@@ -21,7 +20,7 @@ class WebPageKnowledgeViewSet(LanguageViewSet):
         if not kwargs.get("url").strip():
             return JsonResponse({"result": False, "data": "url is required"})
         kwargs["knowledge_source_type"] = "web_page"
-        new_doc = KnowledgeDocumentUtils.get_new_document(kwargs, request.user.username, request.user.domain)
+        new_doc = KnowledgeDocument.create_new_document(kwargs, request.user.username, request.user.domain)
         knowledge_obj = WebPageKnowledge.objects.create(
             knowledge_document_id=new_doc.id,
             url=kwargs.get("url", "").strip(),

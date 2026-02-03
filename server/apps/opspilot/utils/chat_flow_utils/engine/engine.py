@@ -1224,32 +1224,6 @@ class ChatFlowEngine:
 
         return results
 
-    def _extract_final_data_from_result(self, result: Dict[str, Any]) -> Any:
-        """从复杂的执行结果中提取最终数据
-
-        Args:
-            result: 节点执行结果
-
-        Returns:
-            最终的数据输出
-        """
-        if not isinstance(result, dict):
-            return result
-
-        # 如果有 next_nodes，说明还有后续节点，取其中最后一个的数据
-        if "next_nodes" in result and result["next_nodes"]:
-            # 递归查找最深层的数据
-            for node_result in result["next_nodes"].values():
-                final_data = self._extract_final_data_from_result(node_result)
-                if final_data is not None:
-                    return final_data
-
-        # 如果没有后续节点，返回当前节点的数据
-        if "data" in result:
-            return result["data"]
-
-        return None
-
     def _get_node_executor(self, node_type: str):
         """获取节点执行器
 
