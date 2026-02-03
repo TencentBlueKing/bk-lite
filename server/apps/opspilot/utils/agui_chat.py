@@ -12,7 +12,7 @@ import time
 from django.http import StreamingHttpResponse
 
 from apps.opspilot.models import LLMModel, SkillRequestLog
-from apps.opspilot.services.llm_service import llm_service
+from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers
 
 logger = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     skill_type = params.get("skill_type")
     params.pop("group", 0)
 
-    chat_kwargs, doc_map, title_map = llm_service.format_chat_server_kwargs(params, llm_model)
+    chat_kwargs, doc_map, title_map = chat_service.format_chat_server_kwargs(params, llm_model)
 
     # 用于存储最终统计信息的共享变量
     final_stats = {"content": []}
