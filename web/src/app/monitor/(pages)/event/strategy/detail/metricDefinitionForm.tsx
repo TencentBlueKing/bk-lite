@@ -128,15 +128,6 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
     form.setFieldsValue({ metric: metric || undefined });
   }, [metric, form]);
 
-  useEffect(() => {
-    // 当 conditions 变化时，触发条件维度字段的重新验证
-    if (conditions.length) {
-      form.validateFields(['_conditions_validator']).catch(() => {
-        // 忽略验证错误，只是为了更新验证状态
-      });
-    }
-  }, [conditions, form]);
-
   // 验证指标
   const validateMetric = async () => {
     if (!metric) {
