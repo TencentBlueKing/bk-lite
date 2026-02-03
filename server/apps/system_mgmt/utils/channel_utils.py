@@ -111,19 +111,14 @@ def send_by_bot(channel_obj: Channel, content, receivers):
     payload = {"msgtype": "markdown", "markdown": {"content": content}}
 
     # 优先使用 bot_key（企业微信机器人），其次使用 webhook_url（通用 webhook）
-    channel_obj.decrypt_field("bot_key", channel_config)
-    bot_key = channel_config.get("bot_key")
-    if bot_key:
-        url = f"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={bot_key}"
-        res = requests.post(url, json=payload)
-    else:
-        channel_obj.decrypt_field("webhook_url", channel_config)
-        webhook_url = channel_config.get("webhook_url")
-        if not webhook_url:
-            return {"result": False, "message": "no bot_key or webhook_url configured"}
-        res = requests.post(webhook_url, json=payload)
-
+    channel_obj.decrypt_field("webhook_url", channel_config)
+    webhook_url = channel_config.get("webhook_url")
+    if not webhook_url:
+        channel_obj.decrypt_field("bot_key", channel_config)
+        bot_key = channel_config.get("bot_key")
+        webhook_url = f"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={bot_key}"
     try:
+        res = requests.post(webhook_url, json=payload, timeout=5)
         return res.json()
     except Exception as e:
         logger.exception(e)
