@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Popover, Spin, Tour } from 'antd';
+import { Popover, Spin, Tour, Tooltip } from 'antd';
 import { CaretDownFilled } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { usePermissions } from '@/context/permissions';
@@ -167,16 +167,17 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
             </div>
           </Popover>
         </div>
-        <div className="flex items-center flex-shrink-0 space-x-4">
+        <div className="flex items-center flex-shrink-0 gap-4">
           <Notifications />
           {hasViewedTour && (
-            <div
-              className="text-xs flex items-center mr-2 text-[var(--color-text-3)] cursor-pointer hover:text-[var(--color-primary)]"
-              onClick={handleDocumentClick}
-            >
-              <Icon type="shiyongwendang" className="mr-1" />
-              {t('common.officialDocument')}
-            </div>
+            <Tooltip title={t('common.officialDocument')}>
+              <div
+                className="flex items-center justify-center cursor-pointer text-[var(--color-text-3)] hover:text-[var(--color-primary)] transition-colors"
+                onClick={handleDocumentClick}
+              >
+                <Icon type="shiyongwendang" className="text-[16px]" />
+              </div>
+            </Tooltip>
           )}
           <UserInfo />
         </div>
