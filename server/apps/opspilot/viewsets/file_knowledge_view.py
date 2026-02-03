@@ -5,9 +5,8 @@ from rest_framework.decorators import action
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import LanguageViewSet
-from apps.opspilot.models import FileKnowledge
+from apps.opspilot.models import FileKnowledge, KnowledgeDocument
 from apps.opspilot.serializers import FileKnowledgeSerializer
-from apps.opspilot.utils.knowledge_utils import KnowledgeDocumentUtils
 
 
 class FileKnowledgeViewSet(LanguageViewSet):
@@ -34,7 +33,7 @@ class FileKnowledgeViewSet(LanguageViewSet):
                     continue
                 kwargs["name"] = title
                 kwargs["knowledge_source_type"] = "file"
-                new_doc = KnowledgeDocumentUtils.get_new_document(kwargs, username, domain)
+                new_doc = KnowledgeDocument.create_new_document(kwargs, username, domain)
                 content_file = ContentFile(file_obj.read(), name=title)
                 file_knowledge_list.append(FileKnowledge(file=content_file, knowledge_document_id=new_doc.id))
             objs = FileKnowledge.objects.bulk_create(file_knowledge_list, batch_size=10)

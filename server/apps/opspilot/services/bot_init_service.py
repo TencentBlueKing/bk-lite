@@ -21,11 +21,3 @@ class BotInitService:
                 rasa_model.save()
         except Exception as e:
             print(e)
-        # Bot.objects.get_or_create(
-        #     name="OpsPilot",
-        #     defaults={
-        #         "created_by": self.owner,
-        #         "rasa_model": rasa_model,
-        #         "introduction": "Intelligent Operations Assistant",
-        #     },
-        # )
