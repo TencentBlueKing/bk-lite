@@ -1,4 +1,9 @@
 {
+  "menu": {
+    "datasets": "Datasets",
+    "training": "Training Tasks",
+    "serving": "Model Serving"
+  },
   "mlops-common": {
     "time": "Time",
     "action": "Action",

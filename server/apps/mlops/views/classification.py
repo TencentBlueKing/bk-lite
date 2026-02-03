@@ -218,7 +218,7 @@ class ClassificationServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="classify-text-classification:latest",
+                    train_image="bklite/classify_text_classification_server:latest",
                 )
 
                 serving.container_info = result
@@ -319,7 +319,7 @@ class ClassificationServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="classify-text-classification:latest",
+                    train_image="bklite/classify_text_classification_server:latest",
                 )
 
                 # 正常启动成功，仅更新容器信息
@@ -794,7 +794,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="classify-text-classification:latest",
+                train_image="bklite/classify_text_classification_server:latest",
             )
 
             # 更新任务状态
