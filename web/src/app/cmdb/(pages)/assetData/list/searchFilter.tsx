@@ -247,6 +247,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           </Select>
         );
       case 'enum':
+        const enumOpts = Array.isArray(selectedAttr.option) ? selectedAttr.option : [];
         return (
           <Select
             allowClear
@@ -265,7 +266,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
               return true;
             }}
           >
-            {selectedAttr.option?.map((opt) => (
+            {enumOpts.map((opt) => (
               <Select.Option key={opt.id} value={opt.id}>
                 {opt.name}
               </Select.Option>

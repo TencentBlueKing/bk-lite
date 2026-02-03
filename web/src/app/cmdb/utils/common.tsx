@@ -2,7 +2,7 @@ import { BUILD_IN_MODEL, CREDENTIAL_LIST } from '@/app/cmdb/constants/asset';
 import { getSvgIcon } from './utils';
 import dayjs from 'dayjs';
 import { AttrFieldType } from '@/app/cmdb/types/assetManage';
-import { Tag, Select, Input, DatePicker, Tooltip } from 'antd';
+import { Tag, Select, Input, InputNumber, DatePicker, Tooltip } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -16,6 +16,8 @@ import {
   OriginOrganization,
   OriginSubGroupItem,
   EnumList,
+  TimeAttrOption,
+  StrAttrOption,
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
@@ -307,14 +309,19 @@ export const getAssetColumns = (config: {
       case 'enum':
         return {
           ...columnItem,
-          render: (_: unknown, record: any) => (
-            <>
-              {item.option?.find((item: EnumList) => item.id === record[attrId])
-                ?.name || '--'}
-            </>
-          ),
+          render: (_: unknown, record: any) => {
+            const enumOptions = Array.isArray(item.option) ? item.option : [];
+            return (
+              <>
+                {enumOptions.find((opt: EnumList) => opt.id === record[attrId])
+                  ?.name || '--'}
+              </>
+            );
+          },
         };
-      case 'time':
+      case 'time': {
+        const timeOption = item.option as TimeAttrOption | undefined;
+        const dateFormat = timeOption?.display_format === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM-DD HH:mm:ss';
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
@@ -322,30 +329,26 @@ export const getAssetColumns = (config: {
             if (Array.isArray(val)) {
               return (
                 <>
-                  {dayjs(val[0]).format('YYYY-MM-DD HH:mm:ss')} -{' '}
-                  {dayjs(val[1]).format('YYYY-MM-DD HH:mm:ss')}
+                  {dayjs(val[0]).format(dateFormat)} -{' '}
+                  {dayjs(val[1]).format(dateFormat)}
                 </>
               );
             }
             return (
-              <> {val ? dayjs(val).format('YYYY-MM-DD HH:mm:ss') : '--'} </>
+              <> {val ? dayjs(val).format(dateFormat) : '--'} </>
             );
           },
         };
+      }
       default:
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
-            // 获取云区域列表（注意获取时机，防止获取到空数组）
             const cloudOptions = useAssetDataStore.getState().cloud_list;
-            // console.log("test8.25:cloudOptions", cloudOptions);
 
-            // 特殊处理-云区域字段 + modelId=host（主机）时
             const modelId = record.model_id;
             if (attrId === 'cloud' && modelId === 'host') {
-              // 原本是字符串格式，需要转换为数字格式
               const cloudId = +record[attrId];
-              // 查找与Id匹配的云区域中文名
               const cloudName = cloudOptions.find(
                 (option: any) => option.proxy_id === cloudId
               );
@@ -361,7 +364,6 @@ export const getAssetColumns = (config: {
             return (
               <EllipsisWithTooltip
                 className="whitespace-nowrap overflow-hidden text-ellipsis"
-                // 云区域字段特殊处理
                 text={record[attrId] || '--'}
               ></EllipsisWithTooltip>
             )
@@ -406,6 +408,7 @@ export const getFieldItem = (config: {
           </Select>
         );
       case 'enum':
+        const enumOpts = Array.isArray(config.fieldItem.option) ? config.fieldItem.option : [];
         return (
           <Select
             showSearch
@@ -418,7 +421,7 @@ export const getFieldItem = (config: {
               return true;
             }}
           >
-            {config.fieldItem.option?.map((opt) => (
+            {enumOpts.map((opt) => (
               <Select.Option key={opt.id} value={opt.id}>
                 {opt.name}
               </Select.Option>
@@ -441,8 +444,21 @@ export const getFieldItem = (config: {
       case 'organization':
         return <GroupTreeSelector multiple={true} />;
       case 'time':
-        return <DatePicker showTime format="YYYY-MM-DD HH:mm:ss" />;
+        const timeOption = config.fieldItem.option as TimeAttrOption;
+        const displayFormat = timeOption?.display_format || 'datetime';
+        const showTime = displayFormat === 'datetime';
+        const format =
+          displayFormat === 'datetime' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD';
+        return <DatePicker showTime={showTime} format={format} />;
+      case 'int':
+        return <InputNumber style={{ width: '100%' }} />;
       default:
+        if (config.fieldItem.attr_type === 'str') {
+          const strOption = config.fieldItem.option as StrAttrOption;
+          if (strOption?.widget_type === 'multi_line') {
+            return <Input.TextArea rows={4} />;
+          }
+        }
         return <Input />;
     }
   }
@@ -492,12 +508,12 @@ export const getFieldItem = (config: {
     case 'bool':
       return config.value ? 'Yes' : 'No';
     case 'enum':
-      // 处理多选情况（数组）
+      const enumOptions = Array.isArray(config.fieldItem.option) ? config.fieldItem.option : [];
       if (Array.isArray(config.value)) {
         if (config.value.length === 0) return '--';
         const enumNames = config.value
           .map((val: any) => {
-            return config.fieldItem.option?.find(
+            return enumOptions.find(
               (item: EnumList) => item.id === val
             )?.name;
           })
@@ -505,13 +521,19 @@ export const getFieldItem = (config: {
           .join('，');
         return enumNames || '--';
       }
-      // 处理单选情况
       return (
-        config.fieldItem.option?.find(
-          (item: EnumList) => item.id === config.value
+        enumOptions.find(
+          (item: EnumList) => item.id === config.value,
         )?.name || '--'
       );
     default:
+      if (config.fieldItem.attr_type === 'time' && config.value) {
+        const timeOpt = config.fieldItem.option as TimeAttrOption;
+        const displayFmt = timeOpt?.display_format || 'datetime';
+        const fmt =
+          displayFmt === 'datetime' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD';
+        return dayjs(config.value).format(fmt);
+      }
       return config.value || '--';
   }
 };
