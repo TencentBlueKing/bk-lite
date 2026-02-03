@@ -1,4 +1,9 @@
 {
+  "menu": {
+    "datasets": "数据集",
+    "training": "训练任务",
+    "serving": "能力发布"
+  },
   "mlops-common": {
     "time": "时间",
     "action": "操作",

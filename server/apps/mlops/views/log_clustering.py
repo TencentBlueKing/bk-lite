@@ -163,7 +163,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="classify-log:latest",
+                train_image="bklite/classify_log_server:latest",
             )
 
             # 更新任务状态
@@ -910,7 +910,7 @@ class LogClusteringServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="classify-log:latest",
+                    train_image="bklite/classify_log_server:latest",
                 )
 
                 # 启动成功，更新容器信息
@@ -1047,7 +1047,7 @@ class LogClusteringServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=instance.port,
-                    train_image="classify-log:latest",
+                    train_image="bklite/classify_log_server:latest",
                 )
 
                 instance.container_info = result
@@ -1106,7 +1106,7 @@ class LogClusteringServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="classify-log:latest",
+                    train_image="bklite/classify_log_server:latest",
                 )
 
                 serving.container_info = result

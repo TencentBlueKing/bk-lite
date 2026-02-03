@@ -12,6 +12,7 @@ wheels/
 *.log
 .yolo_runs/
 mlruns/
+yolo_models/
 test_dataset/
 .vscode/
 support-files/scripts/data

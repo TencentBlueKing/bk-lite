@@ -1,113 +1,508 @@
 {
   "zh": [
     {
-      "title": "数据集",
-      "icon": "Gc_103_face-Data",
-      "url": "/mlops/manage",
-      "name": "Datasets",
+      "title": "异常检测",
+      "icon": "yichangjiance",
+      "url": "/mlops/anomaly_detection",
+      "name": "anomaly_detection",
       "hasDetail": true,
       "children": [
         {
-          "title": "异常检测",
+          "title": "数据集",
           "icon": "Gc_103_face-Data",
-          "url": "/mlops/manage/list",
-          "name": "anomaly_detection_datasets"
+          "url": "/mlops/anomaly_detection/datasets",
+          "name": "anomaly_detection_datasets",
+          "withParentPermission": true
         },
         {
           "title": "数据集详情",
-          "url": "/mlops/manage/detail",
-          "name": "anomaly_detection_datasets_detail"
+          "url": "/mlops/anomaly_detection/detail",
+          "name": "anomaly_detection_detail",
+          "isNotMenuItem": true
         },
         {
           "title": "数据标注",
-          "url": "/mlops/manage/annotation",
-          "name": "anomaly_detection_datasets_detail"
+          "url": "/mlops/anomaly_detection/annotation",
+          "name": "anomaly_detection_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "训练任务",
+          "icon": "renwu",
+          "url": "/mlops/anomaly_detection/training",
+          "name": "anomaly_detection_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "能力发布",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/anomaly_detection/serving",
+          "name": "anomaly_detection_serving",
+          "withParentPermission": true
         }
       ]
     },
     {
-      "title": "训练任务",
-      "icon": "renwu",
-      "url": "/mlops/task",
-      "name": "Train Tasks",
+      "title": "时序预测",
+      "icon": "shixuyuce",
+      "url": "/mlops/timeseries_predict",
+      "name": "timeseries_predict",
       "hasDetail": true,
       "children": [
         {
-          "title": "任务列表",
-          "url": "/mlops/task/list",
-          "icon": "guanli",
-          "name": "train_tasks"
+          "title": "数据集",
+          "icon": "Gc_103_face-Data",
+          "url": "/mlops/timeseries_predict/datasets",
+          "name": "timeseries_predict_datasets",
+          "withParentPermission": true
+        },
+        {
+          "title": "数据集详情",
+          "url": "/mlops/timeseries_predict/detail",
+          "name": "timeseries_predict_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "数据标注",
+          "url": "/mlops/timeseries_predict/annotation",
+          "name": "timeseries_predict_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "训练任务",
+          "icon": "renwu",
+          "url": "/mlops/timeseries_predict/training",
+          "name": "timeseries_predict_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "能力发布",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/timeseries_predict/serving",
+          "name": "timeseries_predict_serving",
+          "withParentPermission": true
         }
       ]
     },
     {
-      "title": "能力发布",
-      "icon": "nenglifabuguanli",
-      "url": "/mlops/model-release",
-      "name": "Model Release",
+      "title": "日志聚类",
+      "icon": "julei",
+      "url": "/mlops/log_clustering",
+      "name": "log_clustering",
       "hasDetail": true,
       "children": [
         {
-          "title": "发布列表",
-          "url": "/mlops/model-release/list",
-          "icon": "guanli",
-          "name": "model_release"
+          "title": "数据集",
+          "icon": "Gc_103_face-Data",
+          "url": "/mlops/log_clustering/datasets",
+          "name": "log_clustering_datasets",
+          "withParentPermission": true
+        },
+        {
+          "title": "数据集详情",
+          "url": "/mlops/log_clustering/detail",
+          "name": "log_clustering_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "数据标注",
+          "url": "/mlops/log_clustering/annotation",
+          "name": "log_clustering_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "训练任务",
+          "icon": "renwu",
+          "url": "/mlops/log_clustering/training",
+          "name": "log_clustering_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "能力发布",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/log_clustering/serving",
+          "name": "log_clustering_serving",
+          "withParentPermission": true
+        }
+      ]
+    },
+    {
+      "title": "文本分类",
+      "icon": "wenbenfenlei",
+      "url": "/mlops/classification",
+      "name": "classification",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "数据集",
+          "icon": "Gc_103_face-Data",
+          "url": "/mlops/classification/datasets",
+          "name": "classification_datasets",
+          "withParentPermission": true
+        },
+        {
+          "title": "数据集详情",
+          "url": "/mlops/classification/detail",
+          "name": "classification_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "数据标注",
+          "url": "/mlops/classification/annotation",
+          "name": "classification_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "训练任务",
+          "icon": "renwu",
+          "url": "/mlops/classification/training",
+          "name": "classification_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "能力发布",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/classification/serving",
+          "name": "classification_serving",
+          "withParentPermission": true
+        }
+      ]
+    },
+    {
+      "title": "图片分类",
+      "icon": "tupianfenlei",
+      "url": "/mlops/image_classification",
+      "name": "image_classification",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "数据集",
+          "icon": "Gc_103_face-Data",
+          "url": "/mlops/image_classification/datasets",
+          "name": "image_classification",
+          "withParentPermission": true
+        },
+        {
+          "title": "数据集详情",
+          "url": "/mlops/image_classification/detail",
+          "name": "image_classification_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "数据标注",
+          "url": "/mlops/image_classification/annotation",
+          "name": "image_classification_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "训练任务",
+          "icon": "renwu",
+          "url": "/mlops/image_classification/training",
+          "name": "image_classification_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "能力发布",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/image_classification/serving",
+          "name": "image_classification_serving",
+          "withParentPermission": true
+        }
+      ]
+    },
+    {
+      "title": "目标检测",
+      "icon": "mubiaojiance",
+      "url": "/mlops/object_detection",
+      "name": "object_detection",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "数据集",
+          "icon": "Gc_103_face-Data",
+          "url": "/mlops/object_detection/datasets",
+          "name": "object_detection_datasets",
+          "withParentPermission": true
+        },
+        {
+          "title": "数据集详情",
+          "url": "/mlops/object_detection/detail",
+          "name": "object_detection_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "数据标注",
+          "url": "/mlops/object_detection/annotation",
+          "name": "object_detection_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "训练任务",
+          "icon": "renwu",
+          "url": "/mlops/object_detection/training",
+          "name": "object_detection_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "能力发布",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/object_detection/serving",
+          "name": "object_detection_serving",
+          "withParentPermission": true
         }
       ]
     }
   ],
   "en": [
     {
-      "title": "DataSet",
-      "icon": "Gc_103_face-Data",
-      "url": "/mlops/manage",
-      "name": "Datasets",
+      "title": "Anomaly Detection",
+      "icon": "yichangjiance",
+      "url": "/mlops/anomaly_detection",
+      "name": "anomaly_detection",
       "hasDetail": true,
       "children": [
         {
-          "title": "AnomalyDetection",
+          "title": "Datasets",
           "icon": "Gc_103_face-Data",
-          "url": "/mlops/manage/list",
-          "name": "anomaly_detection_datasets"
+          "url": "/mlops/anomaly_detection/datasets",
+          "name": "anomaly_detection_datasets",
+          "withParentPermission": true
         },
         {
-          "Title": "DatasetDetail",
-          "url": "/mlops/manage/detail",
-          "name": "anomaly_detection_datasets_detail"
+          "title": "Dataset Detail",
+          "url": "/mlops/anomaly_detection/detail",
+          "name": "anomaly_detection_detail",
+          "isNotMenuItem": true
         },
         {
-          "title": "ModalRelease",
-          "url": "/mlops/manage/annotation",
-          "name": "anomaly_detection_datasets_tag"
+          "title": "Data Annotation",
+          "url": "/mlops/anomaly_detection/annotation",
+          "name": "anomaly_detection_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Training Tasks",
+          "icon": "renwu",
+          "url": "/mlops/anomaly_detection/training",
+          "name": "anomaly_detection_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "Model Serving",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/anomaly_detection/serving",
+          "name": "anomaly_detection_serving",
+          "withParentPermission": true
         }
       ]
     },
     {
-      "title": "TrainTask",
-      "icon": "xunlianrenwu",
-      "url": "/mlops/task",
-      "name": "Train Tasks",
+      "title": "Timeseries Predict",
+      "icon": "shixuyuce",
+      "url": "/mlops/timeseries_predict",
+      "name": "timeseries_predict",
       "hasDetail": true,
       "children": [
         {
-          "title": "TaskList",
-          "url": "/mlops/task/list",
-          "name": "train_test"
+          "title": "Datasets",
+          "icon": "Gc_103_face-Data",
+          "url": "/mlops/timeseries_predict/datasets",
+          "name": "timeseries_predict_datasets",
+          "withParentPermission": true
+        },
+        {
+          "title": "Dataset Detail",
+          "url": "/mlops/timeseries_predict/detail",
+          "name": "timeseries_predict_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Data Annotation",
+          "url": "/mlops/timeseries_predict/annotation",
+          "name": "timeseries_predict_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Training Tasks",
+          "icon": "renwu",
+          "url": "/mlops/timeseries_predict/training",
+          "name": "timeseries_predict_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "Model Serving",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/timeseries_predict/serving",
+          "name": "timeseries_predict_serving",
+          "withParentPermission": true
         }
       ]
     },
     {
-      "title": "ModalRelease",
-      "icon": "nenglifabuguanli",
-      "url": "/mlops/model-release",
-      "name": "Model Release",
+      "title": "Log Clustering",
+      "icon": "rizhijulei",
+      "url": "/mlops/log_clustering",
+      "name": "log_clustering",
       "hasDetail": true,
       "children": [
         {
-          "title": "Publication list",
-          "url": "/mlops/model-release/list",
-          "icon": "guanli",
-          "name": "model_release"
+          "title": "Datasets",
+          "icon": "Gc_103_face-Data",
+          "url": "/mlops/log_clustering/datasets",
+          "name": "log_clustering_datasets",
+          "withParentPermission": true
+        },
+        {
+          "title": "Dataset Detail",
+          "url": "/mlops/log_clustering/detail",
+          "name": "log_clustering_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Data Annotation",
+          "url": "/mlops/log_clustering/annotation",
+          "name": "log_clustering_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Training Tasks",
+          "icon": "renwu",
+          "url": "/mlops/log_clustering/training",
+          "name": "log_clustering_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "Model Serving",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/log_clustering/serving",
+          "name": "log_clustering_serving",
+          "withParentPermission": true
+        }
+      ]
+    },
+    {
+      "title": "Text Classification",
+      "icon": "wenbenfenlei",
+      "url": "/mlops/classification",
+      "name": "classification",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "Datasets",
+          "icon": "Gc_103_face-Data",
+          "url": "/mlops/classification/datasets",
+          "name": "classification_datasets",
+          "withParentPermission": true
+        },
+        {
+          "title": "Dataset Detail",
+          "url": "/mlops/classification/detail",
+          "name": "classification_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Data Annotation",
+          "url": "/mlops/classification/annotation",
+          "name": "classification_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Training Tasks",
+          "icon": "renwu",
+          "url": "/mlops/classification/training",
+          "name": "classification_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "Model Serving",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/classification/serving",
+          "name": "classification_serving",
+          "withParentPermission": true
+        }
+      ]
+    },
+    {
+      "title": "Image Classification",
+      "icon": "tupianfenlei",
+      "url": "/mlops/image_classification",
+      "name": "image_classification",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "Datasets",
+          "icon": "Gc_103_face-Data",
+          "url": "/mlops/image_classification/datasets",
+          "name": "image_classification_datasets",
+          "withParentPermission": true
+        },
+        {
+          "title": "Dataset Detail",
+          "url": "/mlops/image_classification/detail",
+          "name": "image_classification_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Data Annotation",
+          "url": "/mlops/image_classification/annotation",
+          "name": "image_classification_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Training Tasks",
+          "icon": "renwu",
+          "url": "/mlops/image_classification/training",
+          "name": "image_classification_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "Model Serving",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/image_classification/serving",
+          "name": "image_classification_serving",
+          "withParentPermission": true
+        }
+      ]
+    },
+    {
+      "title": "Object Detection",
+      "icon": "mubiaojiance",
+      "url": "/mlops/object_detection",
+      "name": "object_detection",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "Datasets",
+          "icon": "Gc_103_face-Data",
+          "url": "/mlops/object_detection/datasets",
+          "name": "object_detection_datasets",
+          "withParentPermission": true
+        },
+        {
+          "title": "Dataset Detail",
+          "url": "/mlops/object_detection/detail",
+          "name": "object_detection_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Data Annotation",
+          "url": "/mlops/object_detection/annotation",
+          "name": "object_detection_annotation",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Training Tasks",
+          "icon": "renwu",
+          "url": "/mlops/object_detection/training",
+          "name": "object_detection_training",
+          "withParentPermission": true
+        },
+        {
+          "title": "Model Serving",
+          "icon": "nenglifabuguanli",
+          "url": "/mlops/object_detection/serving",
+          "name": "object_detection_serving",
+          "withParentPermission": true
         }
       ]
     }

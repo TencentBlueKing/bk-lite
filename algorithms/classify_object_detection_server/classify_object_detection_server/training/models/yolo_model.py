@@ -33,16 +33,63 @@ class YOLODetectionModel(BaseObjectDetectionModel):
         初始化YOLO检测模型.
 
         Args:
-            model_name: YOLO模型名称（如 'yolo11n.pt', 'yolo11s.pt', 'yolo11m.pt' 等）
+            model_name: YOLO模型名称（如 'yolo11n.pt', 'yolo11s.pt', 'yolo11m.pt' 等）或绝对路径
             **hyperparams: 其他超参数
         """
-        self.model_name = model_name
+        # 解析模型路径（名称 → 本地路径）
+        self.model_name = self._resolve_model_path(model_name)
         self.hyperparams = hyperparams
         self.yolo = None
         self.class_names = None
         self._results = None
 
         logger.info(f"YOLODetectionModel初始化: {self.model_name}")
+
+    @staticmethod
+    def _resolve_model_path(model_name: str) -> str:
+        """解析模型名称为本地路径.
+
+        优先使用本地模型文件，如果不存在则回退到Ultralytics在线下载模式。
+
+        Args:
+            model_name: 模型名称（如 "yolo11n.pt"）或绝对路径
+
+        Returns:
+            解析后的模型路径（本地路径或原始名称）
+
+        Examples:
+            >>> _resolve_model_path("yolo11n.pt")
+            "/apps/yolo_models/yolo11n.pt"  # 如果文件存在
+
+            >>> _resolve_model_path("/custom/path/model.pt")
+            "/custom/path/model.pt"  # 绝对路径直接返回
+
+            >>> _resolve_model_path("yolo11n.pt")
+            "yolo11n.pt"  # 本地文件不存在时回退
+        """
+        from pathlib import Path
+        from classify_object_detection_server import PROJECT_ROOT
+
+        # 1. 如果是绝对路径，直接返回
+        if Path(model_name).is_absolute():
+            logger.info(f"使用自定义模型路径: {model_name}")
+            return model_name
+
+        # 2. 构建本地路径
+        local_model_path = PROJECT_ROOT / "yolo_models" / model_name
+
+        # 3. 检查文件是否存在
+        if local_model_path.exists():
+            logger.info(f"✓ 使用本地模型: {local_model_path}")
+            return str(local_model_path)
+
+        # 4. 回退到原始名称（触发Ultralytics在线下载）
+        logger.warning(
+            f"⚠️  本地模型文件不存在: {local_model_path}\n"
+            f"   将使用 Ultralytics 在线下载模式: {model_name}\n"
+            f"   提示：请在构建 Docker 镜像前将模型文件放入 yolo_models/ 目录"
+        )
+        return model_name
 
     def _get_param_value(self, param_name: str, default_value):
         """
