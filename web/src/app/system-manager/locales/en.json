@@ -291,7 +291,7 @@
         "smtp_usessl": "Use SSL",
         "smtp_server": "Smtp Server",
         "description": "Description",
-        "bot_key": "Bot Key",
+        "webhook_url": "Webhook URL",
         "mail_sender": "Mail Sender",
         "port": "Port",
         "type": "Type",
