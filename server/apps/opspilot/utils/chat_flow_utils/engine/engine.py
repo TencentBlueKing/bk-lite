@@ -250,13 +250,10 @@ class ChatFlowEngine:
                     captured_final_message = final_message
                     captured_start_node_type = start_node.get("type", "") if start_node else None
 
-                    def record_success_result_in_background():
-                        try:
-                            self._record_execution_result(input_data, captured_final_message, True, captured_start_node_type)
-                        except Exception as record_err:
-                            logger.error(f"[SSE-Engine] 记录成功执行结果失败: {record_err}")
-
-                    threading.Thread(target=record_success_result_in_background, daemon=True).start()
+                    threading.Thread(
+                        target=lambda: self._record_execution_result(input_data, captured_final_message, True, captured_start_node_type),
+                        daemon=True,
+                    ).start()
 
                 # 执行后续节点(在后台异步执行,不阻塞流式响应)
                 self._execute_subsequent_nodes_async(target_agent_node, accumulated_content)
@@ -279,16 +276,17 @@ class ChatFlowEngine:
                 # 捕获异常信息，避免闭包引用在 except 块结束后被删除的变量
                 error_msg = str(e)
                 error_type_name = type(e).__name__
+                start_node_type = start_node.get("type", "") if start_node else None
 
-                def record_error_result_in_background():
-                    try:
-                        error_result = {"success": False, "error": error_msg, "error_type": error_type_name}
-                        start_node_type = start_node.get("type", "") if start_node else None
-                        self._record_execution_result(input_data, error_result, False, start_node_type)
-                    except Exception as record_err:
-                        logger.error(f"[SSE-Engine] 记录失败执行结果失败: {record_err}")
-
-                threading.Thread(target=record_error_result_in_background, daemon=True).start()
+                threading.Thread(
+                    target=lambda: self._record_execution_result(
+                        input_data,
+                        {"success": False, "error": error_msg, "error_type": error_type_name},
+                        False,
+                        start_node_type,
+                    ),
+                    daemon=True,
+                ).start()
 
         # 直接使用嵌套的异步生成器创建 StreamingHttpResponse
         response = StreamingHttpResponse(generate_stream(), content_type="text/event-stream")
@@ -493,7 +491,6 @@ class ChatFlowEngine:
             """后台线程执行函数"""
             all_success = True  # 跟踪所有节点是否都成功
             last_error_result = None  # 记录最后一个错误信息
-            first_input_data = None  # 记录第一个节点的输入数据
 
             try:
                 # 获取后续节点
@@ -518,13 +515,14 @@ class ChatFlowEngine:
 
                 # 执行每个后续节点
                 for next_node_id in next_nodes:
+                    node_type = ""
                     try:
                         next_node = self._get_node_by_id(next_node_id)
                         if not next_node:
                             logger.warning(f"[SSE-Engine] 后续节点不存在: {next_node_id}")
                             continue
 
-                        node_type = next_node.get("type")
+                        node_type = next_node.get("type", "")
                         executor = self._get_node_executor(node_type)
 
                         if not executor:
@@ -674,23 +672,6 @@ class ChatFlowEngine:
 
         logger.info(f"[SSE-Engine] 提取的最终消息长度: {len(final_message)}")
         return final_message
-
-    def register_node_executor(self, node_type: str, executor: Callable):
-        """注册自定义节点执行器
-
-        Args:
-            node_type: 节点类型（字符串）
-            executor: 执行器函数或类实例，须实现 execute(node_id, node_config, input_data) 方法
-        """
-        self.custom_node_executors[node_type] = executor
-
-    def get_last_message(self) -> str:
-        """获取最后执行的节点输出
-
-        Returns:
-            最后一个节点的输出内容
-        """
-        return self.last_message or ""
 
     def _record_execution_result(self, input_data: Dict[str, Any], result: Any, success: bool, start_node_type: str = None) -> None:
         """记录工作流执行结果
@@ -1319,12 +1300,13 @@ class ChatFlowEngine:
         next_nodes = []
 
         for edge in self.edges:
-            if edge.get("source") == node_id:
-                # 检查边的条件
-                if self._should_follow_edge(edge, node_result):
-                    target = edge.get("target")
-                    if target:
-                        next_nodes.append(target)
+            if edge.get("source") != node_id:
+                continue
+            if not self._should_follow_edge(edge, node_result):
+                continue
+            target = edge.get("target")
+            if target:
+                next_nodes.append(target)
 
         return next_nodes
 
@@ -1407,17 +1389,6 @@ class ChatFlowEngine:
     def _get_node_by_id(self, node_id: str) -> Optional[Dict[str, Any]]:
         """根据ID获取节点（O(1) 复杂度）"""
         return self._node_map.get(node_id)
-
-    def get_execution_summary(self) -> Dict[str, Any]:
-        """获取执行摘要"""
-        return {
-            "flow_id": str(self.instance.id),
-            "total_nodes": len(self.nodes),
-            "total_edges": len(self.edges),
-            "entry_nodes": self.entry_nodes,
-            "execution_contexts": self._serialize_execution_contexts(),
-            "variables": self.variable_manager.get_all_variables(),
-        }
 
 
 # 向后兼容别名

@@ -15,12 +15,13 @@ from apps.rpc.system_mgmt import SystemMgmt
 class HttpActionNode(BaseNodeExecutor):
     """支持模板变量的HTTP请求节点"""
 
-    def _render_template(self, content: str, node_id: str) -> str:
+    def _render_template(self, content: str, node_id: str, template_context: Dict[str, Any]) -> str:
         """使用Jinja2渲染模板
 
         Args:
             content: 待渲染内容
             node_id: 节点ID
+            template_context: 模板上下文变量
 
         Returns:
             渲染后的内容
@@ -29,7 +30,6 @@ class HttpActionNode(BaseNodeExecutor):
             return content
 
         try:
-            template_context = self.variable_manager.get_all_variables()
             template = jinja2.Template(str(content))
             return template.render(**template_context)
         except Exception as e:
@@ -47,9 +47,12 @@ class HttpActionNode(BaseNodeExecutor):
         if not url:
             raise ValueError(f"HTTP节点 {node_id} 请求URL为空")
 
+        # 获取一次模板上下文，后续所有渲染共用
+        template_context = self.variable_manager.get_all_variables()
+
         try:
-            request_kwargs = self._prepare_request_kwargs(config, node_id, timeout)
-            response = self._send_http_request(method, url, request_kwargs, config, node_id)
+            request_kwargs = self._prepare_request_kwargs(config, node_id, timeout, template_context)
+            response = self._send_http_request(method, url, request_kwargs, config, node_id, template_context)
             result = self._process_response(response)
 
             logger.info(f"HTTP节点 {node_id} 执行完成")
@@ -60,10 +63,8 @@ class HttpActionNode(BaseNodeExecutor):
         except requests.exceptions.RequestException as e:
             raise ValueError(f"HTTP请求失败: {e}")
 
-    def _prepare_request_kwargs(self, config: Dict[str, Any], node_id: str, timeout: int) -> Dict[str, Any]:
+    def _prepare_request_kwargs(self, config: Dict[str, Any], node_id: str, timeout: int, template_context: Dict[str, Any]) -> Dict[str, Any]:
         """准备HTTP请求参数"""
-        template_context = self.variable_manager.get_all_variables()
-
         # 处理请求头
         headers_dict = self._process_key_value_pairs(config.get("headers", []), "header", node_id, template_context)
 
@@ -82,7 +83,7 @@ class HttpActionNode(BaseNodeExecutor):
             for item in items:
                 if isinstance(item, dict) and "key" in item and "value" in item:
                     key = item["key"]
-                    value = self._render_template(str(item["value"]), node_id)
+                    value = self._render_template(str(item["value"]), node_id, template_context)
                     result_dict[key] = value
 
         return result_dict
@@ -93,7 +94,7 @@ class HttpActionNode(BaseNodeExecutor):
         if not request_body:
             return None
 
-        rendered_body = self._render_template(str(request_body), node_id)
+        rendered_body = self._render_template(str(request_body), node_id, template_context)
 
         # 尝试解析为JSON
         try:
@@ -101,7 +102,9 @@ class HttpActionNode(BaseNodeExecutor):
         except json.JSONDecodeError:
             return rendered_body
 
-    def _send_http_request(self, method: str, url: str, request_kwargs: Dict[str, Any], config: Dict[str, Any], node_id: str):
+    def _send_http_request(
+        self, method: str, url: str, request_kwargs: Dict[str, Any], config: Dict[str, Any], node_id: str, template_context: Dict[str, Any]
+    ):
         """发送HTTP请求"""
         logger.info(f"HTTP动作节点 {node_id}: {method} {url}")
 
@@ -127,7 +130,6 @@ class HttpActionNode(BaseNodeExecutor):
             return http_func(url, **request_kwargs)
 
         # 其他方法需要处理请求体
-        template_context = self.variable_manager.get_all_variables()
         request_data = self._prepare_request_body(config, node_id, template_context)
 
         if request_data is not None:
