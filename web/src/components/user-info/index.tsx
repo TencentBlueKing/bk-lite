@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Dropdown, Space, Avatar, MenuProps, message, Checkbox, Tree } from 'antd';
+import { Dropdown, Avatar, MenuProps, message, Checkbox, Tree } from 'antd';
 import type { DataNode } from 'antd/lib/tree';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
@@ -245,14 +245,12 @@ const UserInfo: React.FC = () => {
           open={dropdownVisible}
           onOpenChange={setDropdownVisible}
         >
-          <a className='cursor-pointer' onClick={(e) => e.preventDefault()}>
-            <Space className='text-sm'>
-              <Avatar size={20} style={{ backgroundColor: 'var(--color-primary)', verticalAlign: 'middle' }}>
-                {username.charAt(0).toUpperCase()}
-              </Avatar>
-              {username}
-              <DownOutlined style={{ fontSize: '10px' }} />
-            </Space>
+          <a className='cursor-pointer flex items-center gap-1.5' onClick={(e) => e.preventDefault()}>
+            <Avatar size={20} style={{ backgroundColor: 'var(--color-primary)', fontSize: '12px' }}>
+              {username.charAt(0).toUpperCase()}
+            </Avatar>
+            <span className="text-sm">{username}</span>
+            <DownOutlined className="text-[10px]" />
           </a>
         </Dropdown>
       )}

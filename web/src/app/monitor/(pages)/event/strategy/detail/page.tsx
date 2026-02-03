@@ -373,6 +373,11 @@ const StrategyOperation = () => {
     const target = metrics.find((item) => item.name === val);
     const _labels = (target?.dimensions || []).map((item) => item.name);
     setLabels(_labels);
+    // 重置分组维度为默认值、清空条件维度
+    const defaultGroupBy =
+      getGroupIds(monitorName as string)?.default || defaultGroup;
+    setGroupBy(defaultGroupBy);
+    setConditions([]);
     // 自动设置告警阈值单位为指标的默认单位（过滤掉 none 和 short）
     const filteredUnit = filterInvalidUnit(target?.unit);
     if (filteredUnit) {
@@ -756,6 +761,9 @@ const StrategyOperation = () => {
                 calculationUnit={calculationUnit}
                 scrollContainerRef={formContainerRef}
                 anchorRef={basicInfoRef}
+                fixedGroupByList={
+                  getGroupIds(monitorName as string)?.list || defaultGroup
+                }
               />
             </div>
           </div>

@@ -2,6 +2,7 @@ from pathlib import Path
 from django.core.files.base import ContentFile
 from apps.node_mgmt.models import PackageVersion
 from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.constants.package import PackageConstants
 from apps.core.logger import node_logger as logger
 
 
@@ -29,21 +30,25 @@ def package_version_upload(_type, options):
         updated_by="system",
     )
 
-    # 检查文件是否存在
-    pk_v = PackageVersion.objects.filter(os=_os, object=_object, version=version).first()
+    pk_v = PackageVersion.objects.filter(
+        os=_os, object=_object, version=version
+    ).first()
     if pk_v:
-        logger.warning(f"{_type} 包版本已存在!")
-        return
+        if version != PackageConstants.VERSION_LATEST:
+            logger.warning(f"{_type} 包版本已存在!")
+            return
 
     with path_obj.open("rb") as f:
         file_content = f.read()
 
-    # 创建 Django 的 ContentFile 对象
     django_file = ContentFile(file_content, name=file_name)
-
-    # 上传文件，成功了再保存数据
     PackageService.upload_file(django_file, data)
 
-    PackageVersion.objects.create(**data)
+    if pk_v:
+        pk_v.name = file_name
+        pk_v.save(update_fields=["name", "updated_at"])
+        logger.info(f"{_type} latest 版本已覆盖更新")
+        return data
 
+    PackageVersion.objects.create(**data)
     return data
