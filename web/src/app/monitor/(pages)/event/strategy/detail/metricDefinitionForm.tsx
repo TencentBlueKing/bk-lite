@@ -1,4 +1,10 @@
-import React, { useEffect, useCallback, useState, useRef } from 'react';
+import React, {
+  useEffect,
+  useCallback,
+  useState,
+  useRef,
+  useMemo
+} from 'react';
 import {
   Form,
   Input,
@@ -7,7 +13,7 @@ import {
   Tooltip,
   InputNumber,
   Button,
-  FormInstance,
+  FormInstance
 } from 'antd';
 import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -16,7 +22,7 @@ import {
   IndexViewItem,
   FilterItem,
   MetricItem,
-  ListItem,
+  ListItem
 } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import { useScheduleList, useMethodList } from '@/app/monitor/hooks/event';
@@ -70,13 +76,20 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   onPeriodChange,
   onPeriodUnitChange,
   onAlgorithmChange,
-  isTrap,
+  isTrap
 }) => {
   const { t } = useTranslation();
   const METHOD_LIST = useMethodList();
   const SCHEDULE_LIST = useScheduleList();
   const CONDITION_LIST = useConditionList();
   const { getGroupIds } = useObjectConfigInfo();
+
+  // 合并分组维度列表：固定列表 + 标签列表，去重
+  const groupByOptions = useMemo(() => {
+    const fixedList = getGroupIds(monitorName)?.list || defaultGroup;
+    const merged = [...fixedList, ...labels];
+    return [...new Set(merged)];
+  }, [monitorName, labels, getGroupIds]);
 
   // 条件维度输入框的本地状态（用于即时显示）
   const [localConditionValues, setLocalConditionValues] = useState<
@@ -101,7 +114,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
     debounce((val: number | null) => {
       onPeriodChange(val);
     }, 500),
-    [onPeriodChange],
+    [onPeriodChange]
   );
 
   // 处理汇聚周期输入变化
@@ -220,8 +233,8 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
               rules={[
                 {
                   required: true,
-                  message: t('common.required'),
-                },
+                  message: t('common.required')
+                }
               ]}
             >
               <TextArea
@@ -257,8 +270,8 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                     title: item.name,
                     options: (item.child || []).map((tex: MetricItem) => ({
                       label: tex.display_name,
-                      value: tex.name,
-                    })),
+                      value: tex.name
+                    }))
                   }))}
                   onChange={onMetricChange}
                 />
@@ -283,13 +296,11 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   value={groupBy}
                   onChange={onGroupChange}
                 >
-                  {(getGroupIds(monitorName)?.list || defaultGroup).map(
-                    (item: string) => (
-                      <Option value={item} key={item}>
-                        {item}
-                      </Option>
-                    )
-                  )}
+                  {groupByOptions.map((item: string) => (
+                    <Option value={item} key={item}>
+                      {item}
+                    </Option>
+                  ))}
                 </Select>
                 <div className="text-[var(--color-text-3)] mt-[8px]">
                   {t('monitor.events.groupDimensionTip')}
@@ -398,8 +409,8 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
           rules={[
             {
               required: true,
-              message: t('common.required'),
-            },
+              message: t('common.required')
+            }
           ]}
         >
           <InputNumber
@@ -451,13 +462,13 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                 rules={[
                   {
                     required: true,
-                    message: t('common.required'),
-                  },
+                    message: t('common.required')
+                  }
                 ]}
               >
                 <Select
                   style={{
-                    width: '100%',
+                    width: '100%'
                   }}
                   placeholder={t('monitor.events.convergenceMethod')}
                   showSearch
@@ -468,7 +479,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                       <Tooltip
                         overlayInnerStyle={{
                           whiteSpace: 'pre-line',
-                          color: 'var(--color-text-1)',
+                          color: 'var(--color-text-1)'
                         }}
                         placement="rightTop"
                         arrow={false}
