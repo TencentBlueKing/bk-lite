@@ -39,7 +39,6 @@ class ControllerConstants:
     # Etag缓存时间（秒）
     E_CACHE_TIMEOUT = 60 * 5  # 5分钟
 
-
     # 控制器下发目录
     CONTROLLER_INSTALL_DIR = {
         NodeConstants.LINUX_OS: {"storage_dir": "/tmp", "install_dir": "/tmp"},
@@ -58,7 +57,7 @@ class ControllerConstants:
         ),
         NodeConstants.WINDOWS_OS: (
             "powershell -command "
-            "\"Set-ExecutionPolicy Unrestricted -Force; & "
+            '"Set-ExecutionPolicy Unrestricted -Force; & '
             "'{}\\install.ps1' -ServerUrl {} -ServerToken {} -Cloud {} -Group {} -NodeName {} -NodeId {}\""
         ),
     }
@@ -66,13 +65,13 @@ class ControllerConstants:
     # 卸载命令
     UNINSTALL_COMMAND = {
         NodeConstants.LINUX_OS: "cd /opt/fusion-collectors && sudo chmod +x uninstall.sh && sudo ./uninstall.sh",
-        NodeConstants.WINDOWS_OS: "powershell -command \"Remove-Item -Path {} -Recurse\"",
+        NodeConstants.WINDOWS_OS: 'powershell -command "Remove-Item -Path {} -Recurse"',
     }
 
     # 控制器目录删除命令
     CONTROLLER_DIR_DELETE_COMMAND = {
         NodeConstants.LINUX_OS: "sudo rm -rf /opt/fusion-collectors",
-        NodeConstants.WINDOWS_OS: "powershell -command \"Remove-Item -Path {} -Recurse\"",
+        NodeConstants.WINDOWS_OS: 'powershell -command "Remove-Item -Path {} -Recurse"',
     }
 
     # 标签字段
@@ -105,4 +104,16 @@ class ControllerConstants:
     MANUAL_INSTALL_STATUS_ENUM = {
         WAITING: "等待安装",
         INSTALLED: "安装成功",
+    }
+
+    # Sidecar 配置文件路径
+    SIDECAR_CONFIG_PATH = {
+        NodeConstants.LINUX_OS: "/etc/sidecar/sidecar.yaml",
+        NodeConstants.WINDOWS_OS: r"C:\bklite\fusion-collectors\sidecar.yaml",
+    }
+
+    # Sidecar 服务重启命令
+    SIDECAR_RESTART_CMD = {
+        NodeConstants.LINUX_OS: ("systemctl restart sidecar.service", None),
+        NodeConstants.WINDOWS_OS: ("Restart-Service sidecar", "powershell"),
     }
