@@ -42,8 +42,7 @@ class ChatFlowEngine:
             # 消息边界事件（不包含实际内容）
             "TEXT_MESSAGE_START",
             "TEXT_MESSAGE_END",
-            # 自定义事件
-            "CUSTOM",
+            # 注意：CUSTOM 类型不在此过滤，需要处理 browser_step_progress 事件
         }
     )
 
@@ -158,12 +157,13 @@ class ChatFlowEngine:
         if not target_agent_node:
             return self._create_error_response("未找到可执行的agents节点")
 
-        # 为入口节点创建执行上下文记录（入口节点不需要真正执行，但需要记录）
+        # 为入口节点创建执行上下文记录，同时获取映射后的输出数据
+        mapped_input_data = input_data
         if start_node:
-            self.set_start_node_variable(input_data, start_node)
+            mapped_input_data = self.set_start_node_variable(input_data, start_node)
 
-        # 执行前置节点
-        final_input_data = self._execute_prerequisite_nodes(nodes_to_execute_before, input_data)
+        # 执行前置节点（使用映射后的数据）
+        final_input_data = self._execute_prerequisite_nodes(nodes_to_execute_before, mapped_input_data)
 
         # 根据协议类型选择执行方法
         executor = self._get_node_executor(target_agent_node.get("type"))
@@ -226,7 +226,16 @@ class ChatFlowEngine:
                 final_message = self._extract_final_message(accumulated_content)
                 agent_context.end_time = time.time()
                 agent_context.status = NodeStatus.COMPLETED
-                agent_context.output_data = {"last_message": final_message}
+
+                # 使用节点配置的 outputParams 作为输出 key
+                agent_config = target_agent_node.get("data", {}).get("config", {})
+                agent_output_key = agent_config.get("outputParams", "last_message")
+                agent_context.output_data = {agent_output_key: final_message}
+
+                # 提取 browser_use 步骤信息并保存到 output_data
+                browser_steps = self._extract_browser_steps(accumulated_content)
+                if browser_steps:
+                    agent_context.output_data["browser_steps"] = browser_steps
 
                 # 更新节点执行顺序
                 self._update_node_execution_order(agent_node_id)
@@ -303,21 +312,46 @@ class ChatFlowEngine:
         logger.info(f"[SSE-Engine] 返回 StreamingHttpResponse - protocol: {protocol_type}")
         return response
 
-    def set_start_node_variable(self, input_data: dict[str, Any] | dict[Any, Any], start_node: dict[str, Any]):
-        """设置入口节点的执行上下文和变量（入口节点直接标记为完成）"""
-        start_node_id = start_node.get("id")
+    def set_start_node_variable(self, input_data: dict[str, Any] | dict[Any, Any], start_node: dict[str, Any]) -> dict[str, Any]:
+        """设置入口节点的执行上下文和变量（入口节点直接标记为完成）
 
-        # 使用公共方法创建执行上下文
-        start_context = self._create_node_execution_context(node=start_node, input_data=input_data, status=NodeStatus.COMPLETED)
+        入口节点负责将输入消息映射到配置的 outputParams 键名，供后续节点使用。
+        例如：agui 节点配置 outputParams="agui_msg"，则将 last_message 的值映射到 agui_msg。
+
+        Returns:
+            映射后的输出数据，包含 outputParams 配置的键名
+        """
+        start_node_id = start_node.get("id")
+        node_config = start_node.get("data", {}).get("config", {})
+
+        # 获取入口节点的输入输出参数配置
+        input_key = node_config.get("inputParams", "last_message")
+        output_key = node_config.get("outputParams", "last_message")
+
+        # 获取输入消息（优先使用 inputParams 配置的键，其次 last_message，最后 message）
+        input_message = input_data.get(input_key) or input_data.get("last_message") or input_data.get("message", "")
+
+        # 构建精简的输入数据（只保留 inputParams 配置的参数）
+        filtered_input = {input_key: input_message}
+
+        # 构建精简的输出数据（只保留 outputParams 配置的参数）
+        filtered_output = {output_key: input_message}
+
+        logger.info(f"[SSE-Engine] 入口节点参数映射: {input_key} -> {output_key}, 消息长度: {len(str(input_message))}")
+
+        # 使用公共方法创建执行上下文（使用精简的输入数据）
+        start_context = self._create_node_execution_context(node=start_node, input_data=filtered_input, status=NodeStatus.COMPLETED)
 
         # 入口节点直接完成，设置 output_data 和 end_time
-        start_context.output_data = input_data
+        start_context.output_data = filtered_output
         start_context.end_time = time.time()
 
         # 更新节点执行顺序
         self._update_node_execution_order(start_node_id)
 
         logger.info(f"[SSE-Engine] 入口节点已记录: {start_node_id} ({start_node.get('type')})")
+
+        return filtered_output
 
     def _create_node_execution_context(
         self,
@@ -628,6 +662,10 @@ class ChatFlowEngine:
             if data_type in self.AGUI_SKIP_TYPES:
                 continue
 
+            # 跳过 CUSTOM 类型（如 browser_step_progress），由 _extract_browser_steps 处理
+            if data_type == "CUSTOM":
+                continue
+
             # 处理 OpenAI 格式的流式响应
             # 格式: {"choices": [{"delta": {"content": "..."}, ...}], "object": "chat.completion.chunk", ...}
             if data_object == "chat.completion.chunk" or "choices" in data:
@@ -673,6 +711,38 @@ class ChatFlowEngine:
         logger.info(f"[SSE-Engine] 提取的最终消息长度: {len(final_message)}")
         return final_message
 
+    def _extract_browser_steps(self, accumulated_content: list) -> List[Dict[str, Any]]:
+        """从累积的流式内容中提取 browser_use 步骤信息
+
+        解析 CUSTOM 类型的 browser_step_progress 事件，提取 step 和 evaluation 信息。
+
+        Args:
+            accumulated_content: 累积的数据列表
+
+        Returns:
+            browser_steps 列表，格式: [{"step": 1, "evaluation": "..."}, ...]
+        """
+        if not accumulated_content:
+            return []
+
+        browser_steps = []
+        for data in accumulated_content:
+            if not isinstance(data, dict):
+                continue
+            if data.get("type") != "CUSTOM" or data.get("name") != "browser_step_progress":
+                continue
+            value = data.get("value", {})
+            if not isinstance(value, dict):
+                continue
+            step_number = value.get("step_number")
+            evaluation = value.get("evaluation")
+            if step_number is not None:
+                browser_steps.append({"step": step_number, "evaluation": evaluation or ""})
+
+        if browser_steps:
+            logger.info(f"[SSE-Engine] 提取到 {len(browser_steps)} 个 browser_use 步骤")
+        return browser_steps
+
     def _record_execution_result(self, input_data: Dict[str, Any], result: Any, success: bool, start_node_type: str = None) -> None:
         """记录工作流执行结果
 
@@ -700,12 +770,17 @@ class ChatFlowEngine:
                 # 获取用户指定的输出参数名
                 output_key = self.variable_manager.get_variable(f"node_{node_id}_output_key") or "last_message"
 
+                # 获取节点配置的输入参数名，只记录该参数（而非完整的 input_data）
+                node_config = self._node_map.get(node_id, {}).get("data", {}).get("config", {})
+                input_key = node_config.get("inputParams", "last_message")
+                filtered_input = {input_key: context.input_data.get(input_key)} if context.input_data else {}
+
                 # 构建节点数据
                 node_data = {
                     "index": node_index,
                     "name": node_name,
                     "type": node_type,
-                    "input_data": context.input_data,
+                    "input_data": filtered_input,
                     "status": context.status.value if hasattr(context.status, "value") else str(context.status),
                 }
 
