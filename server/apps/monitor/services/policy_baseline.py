@@ -172,15 +172,15 @@ class PolicyBaselineService:
             metrics = metric_query_service.query_aggregation_metrics(self.policy.period)
 
             result = {}
-            instance_id_keys = metric_query_service.instance_id_keys
+            group_by_keys = self.policy.group_by or []
 
             for metric_info in metrics.get("data", {}).get("result", []):
                 instance_id_tuple = tuple(
-                    [metric_info["metric"].get(key) for key in instance_id_keys]
+                    [metric_info["metric"].get(key) for key in group_by_keys]
                 )
                 metric_instance_id = str(instance_id_tuple)
                 monitor_instance_id = (
-                    str(instance_id_tuple[0]) if instance_id_tuple else ""
+                    str((instance_id_tuple[0],)) if instance_id_tuple else ""
                 )
 
                 if monitor_instance_id in instances_map:

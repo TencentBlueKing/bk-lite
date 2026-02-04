@@ -12,7 +12,7 @@ import {
   Pagination,
   ObjectItem,
   ModalRef,
-  TableDataItem,
+  TableDataItem
 } from '@/app/monitor/types';
 import { SourceFeild } from '@/app/monitor/types/event';
 import CustomTable from '@/components/custom-table';
@@ -42,7 +42,7 @@ const Strategy: React.FC = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
@@ -59,7 +59,7 @@ const Strategy: React.FC = () => {
       title: t('common.name'),
       dataIndex: 'name',
       key: 'name',
-      width: 100,
+      width: 100
     },
     {
       title: t('monitor.events.monitoringTarget'),
@@ -80,7 +80,7 @@ const Strategy: React.FC = () => {
             {record.source.values?.length || 0}
           </Button>
         </Permission>
-      ),
+      )
     },
     {
       title: t('common.creator'),
@@ -106,7 +106,7 @@ const Strategy: React.FC = () => {
         ) : (
           <>--</>
         );
-      },
+      }
     },
     {
       title: t('common.createTime'),
@@ -115,7 +115,7 @@ const Strategy: React.FC = () => {
       width: 160,
       render: (_, { created_at }) => (
         <>{created_at ? convertToLocalizedTime(created_at) : '--'}</>
-      ),
+      )
     },
     {
       title: t('monitor.events.executionTime'),
@@ -124,7 +124,7 @@ const Strategy: React.FC = () => {
       width: 160,
       render: (_, { last_run_time }) => (
         <>{last_run_time ? convertToLocalizedTime(last_run_time) : '--'}</>
-      ),
+      )
     },
     {
       title: t('monitor.events.effective'),
@@ -143,7 +143,7 @@ const Strategy: React.FC = () => {
             checked={record.enable}
           />
         </Permission>
-      ),
+      )
     },
     {
       title: t('common.action'),
@@ -181,8 +181,8 @@ const Strategy: React.FC = () => {
             </Popconfirm>
           </Permission>
         </>
-      ),
-    },
+      )
+    }
   ];
 
   useEffect(() => {
@@ -218,15 +218,15 @@ const Strategy: React.FC = () => {
       type: 'add',
       form: {
         ...row.source,
-        id: row.id,
-      },
+        id: row.id
+      }
     });
   };
 
   const onChooseAssets = async (assets: SourceFeild, id: number) => {
     setTableLoading(true);
     patchMonitorPolicy(id, {
-      source: assets,
+      source: assets
     })
       .then(() => {
         message.success(t('common.successfullyModified'));
@@ -242,7 +242,7 @@ const Strategy: React.FC = () => {
       name: text ? '' : searchText,
       page: pagination.current,
       page_size: pagination.pageSize,
-      monitor_object_id: objectId || '',
+      monitor_object_id: objectId || ''
     };
   };
 
@@ -250,7 +250,7 @@ const Strategy: React.FC = () => {
     try {
       setEnableLoading(true);
       await patchMonitorPolicy(id, {
-        enable: val,
+        enable: val
       });
       message.success(t(val ? 'common.started' : 'common.closed'));
       getAssetInsts(objectId);
@@ -273,13 +273,13 @@ const Strategy: React.FC = () => {
       const params = getParams(text);
       params.monitor_object_id = objectId;
       const data = await getMonitorPolicy('', params, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       if (currentRequestId !== policyRequestIdRef.current) return;
       setTableData(data.items || []);
       setPagination((pre) => ({
         ...pre,
-        total: data.count,
+        total: data.count
       }));
     } finally {
       if (currentRequestId === policyRequestIdRef.current) {
@@ -292,7 +292,7 @@ const Strategy: React.FC = () => {
     try {
       setTreeLoading(true);
       const data: ObjectItem[] = await getMonitorObject({
-        add_policy_count: true,
+        add_policy_count: true
       });
       setObjects(data);
       const _treeData = getTreeData(cloneDeep(data));
@@ -304,22 +304,25 @@ const Strategy: React.FC = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.type]) {
-        acc[item.type] = {
-          title: item.display_type || '--',
-          key: item.type,
-          children: [],
-        };
-      }
-      acc[item.type].children.push({
-        title: (item.display_name || '--') + `(${item.policy_count})`,
-        label: item.name || '--',
-        key: item.id,
-        children: [],
-      });
-      return acc;
-    }, {} as Record<string, TreeItem>);
+    const groupedData = data.reduce(
+      (acc, item) => {
+        if (!acc[item.type]) {
+          acc[item.type] = {
+            title: item.display_type || '--',
+            key: item.type,
+            children: []
+          };
+        }
+        acc[item.type].children.push({
+          title: (item.display_name || '--') + `(${item.policy_count})`,
+          label: item.name || '--',
+          key: item.id,
+          children: []
+        });
+        return acc;
+      },
+      {} as Record<string, TreeItem>
+    );
     return Object.values(groupedData);
   };
 
@@ -351,7 +354,7 @@ const Strategy: React.FC = () => {
       monitorName,
       type,
       id: row.id,
-      name: row.name,
+      name: row.name
     });
     const targetUrl = `/monitor/event/strategy/detail?${params.toString()}`;
     router.push(targetUrl);

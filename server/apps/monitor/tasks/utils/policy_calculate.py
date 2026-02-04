@@ -114,7 +114,7 @@ def _build_dimensions(instance_id_tuple, instance_id_keys: list) -> dict:
 
 def _extract_monitor_instance_id(instance_id_tuple) -> str:
     if isinstance(instance_id_tuple, tuple) and len(instance_id_tuple) > 0:
-        return str(instance_id_tuple[0])
+        return str((instance_id_tuple[0],))
     return str(instance_id_tuple)
 
 

@@ -17,6 +17,16 @@ import { PlusOutlined, MinusCircleOutlined, QuestionCircleOutlined } from "@ant-
 import OperateModal from "@/components/operate-modal";
 import useLabManage from "@/app/lab/api/mirror";
 import { useTranslation } from "@/utils/i18n";
+import {
+  objectToPairs,
+  pairsToObject,
+  stringArrayToPairs,
+  pairsToStringArray,
+  numberArrayToPairs,
+  pairsToNumberArray,
+  transformObjectArray
+} from "@/app/lab/utils/formTransform";
+import { RESOURCE_DEFAULTS, VALIDATION } from "@/app/lab/constants";
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -64,11 +74,11 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
       if (data) {
         const formValues = {
           ...data,
-          default_env_pairs: Object.entries(data.default_env || {}).map(([key, value]) => ({ key, value })),
-          default_command_pairs: (data.default_command || []).map((cmd: string) => ({ command: cmd })),
-          default_args_pairs: (data.default_args || []).map((arg: string) => ({ arg: arg })),
-          expose_ports_pairs: (data.expose_ports || []).map((port: number) => ({ port: port })),
-          volume_mount_pairs: (data.volume_mounts || []).map((mount: any) => ({
+          default_env_pairs: objectToPairs(data.default_env),
+          default_command_pairs: stringArrayToPairs(data.default_command, 'command'),
+          default_args_pairs: stringArrayToPairs(data.default_args, 'arg'),
+          expose_ports_pairs: numberArrayToPairs(data.expose_ports, 'port'),
+          volume_mount_pairs: transformObjectArray(data.volume_mounts, (mount) => ({
             container_path: mount.container_path,
             host_path: mount.host_path,
             read_only: mount.read_only
@@ -95,52 +105,8 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
     try {
       setLoading(true);
       const values = await form.validateFields();
-      console.log(values);
-      // return;
 
-      // 处理环境变量格式
-      const default_env: Record<string, string> = {};
-      if (values.default_env_pairs) {
-        values.default_env_pairs.forEach((pair: { key: string; value: string }) => {
-          if (pair.key && pair.value) {
-            default_env[pair.key] = pair.value;
-          }
-        });
-      }
-
-      // 处理启动命令格式
-      const default_command: string[] = [];
-      if (values.default_command_pairs) {
-        values.default_command_pairs.forEach((pair: { command: string }) => {
-          if (pair.command) {
-            default_command.push(pair.command);
-          }
-        });
-      }
-
-      // 处理启动参数格式
-      const default_args: string[] = [];
-      if (values.default_args_pairs) {
-        values.default_args_pairs.forEach((pair: { arg: string }) => {
-          if (pair.arg) {
-            default_args.push(pair.arg);
-          }
-        });
-      }
-
-      // 处理暴露端口格式
-      const expose_ports: number[] = [];
-      if (values.expose_ports_pairs) {
-        values.expose_ports_pairs.forEach((pair: { port: number }) => {
-          if (pair.port) {
-            expose_ports.push(Number(pair.port));
-          }
-        });
-      }
-
-      // 处理卷挂载格式
-      const volume_mounts = values.volume_mount_pairs || [];
-
+      // 使用工具函数处理表单数据转换
       const formData: LabImageFormData = {
         name: values.name,
         version: values.version,
@@ -148,15 +114,13 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
         description: values.description,
         image: values.image || "null",
         default_port: values.default_port,
-        default_env,
-        default_command,
-        default_args,
+        default_env: pairsToObject(values.default_env_pairs),
+        default_command: pairsToStringArray(values.default_command_pairs, 'command'),
+        default_args: pairsToStringArray(values.default_args_pairs, 'arg'),
         default_user: values.default_user,
-        expose_ports,
-        volume_mounts
+        expose_ports: pairsToNumberArray(values.expose_ports_pairs, 'port'),
+        volume_mounts: values.volume_mount_pairs || []
       };
-
-      console.log(formData);
 
       if (editData) {
         // 编辑模式
@@ -175,6 +139,7 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
 
     } catch (error) {
       console.error(t(`common.valFailed`), error);
+      message.error(t(`lab.manage.operationFailed`));
     } finally {
       setLoading(false);
     }
@@ -188,16 +153,16 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
 
   return (
     <OperateModal
-      title={editData ? t(`lab.manage.editImage`) : t(`lab.manage.updateImage`)}
+      title={editData ? t(`lab.manage.editImage`) : t(`lab.manage.addImage`)}
       open={open}
       onCancel={handleCancel}
       // width={800}
       footer={[
         <Button key="cancel" onClick={handleCancel}>
-          取消
+          {t('common.cancel')}
         </Button>,
         <Button key="submit" type="primary" loading={loading} onClick={handleSubmit}>
-          确认
+          {t('common.confirm')}
         </Button>
       ]}
       destroyOnClose
@@ -206,7 +171,7 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
         form={form}
         layout="vertical"
         initialValues={{
-          default_port: 8888,
+          default_port: RESOURCE_DEFAULTS.PORT,
           image_type: 'ide'
         }}
       >
@@ -217,7 +182,7 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
               label={t(`lab.manage.imageName`)}
               rules={[
                 { required: true, message: t(`lab.manage.nameMsg`) },
-                { max: 100, message: t(`lab.manage.nameCharMsg`) }
+                { max: VALIDATION.NAME_MAX_LENGTH, message: t(`lab.manage.nameCharMsg`) }
               ]}
             >
               <Input placeholder={t(`lab.manage.nameMsg`)} />
@@ -229,53 +194,13 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
               label={t(`lab.manage.imageVersion`)}
               rules={[
                 { required: true, message: t(`lab.manage.versionMsg`) },
-                { max: 50, message: t(`lab.manage.versionCharMsg`) }
+                { max: VALIDATION.VERSION_MAX_LENGTH, message: t(`lab.manage.versionCharMsg`) }
               ]}
             >
               <Input placeholder={t(`lab.manage.versionExample`)} />
             </Form.Item>
           </Col>
         </Row>
-
-        {/* <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item
-              name="image_type"
-              label={t(`lab.manage.imageType`)}
-              rules={[{ required: true, message: t(`lab.manage.imageType`) }]}
-            >
-              <Select placeholder={t(`lab.manage.imageType`)}>
-                <Option value="ide">{t(`lab.manage.ide`)}</Option>
-                <Option value="infra">{t(`lab.manage.infra`)}</Option>
-              </Select>
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item
-              name="default_port"
-              label={t(`lab.manage.defaultPort`)}
-              rules={[{ required: true, message: t(`lab.manage.portMsg`) }]}
-            >
-              <InputNumber
-                min={1}
-                max={65535}
-                placeholder="8888"
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-          </Col>
-        </Row> */}
-
-        {/* <Form.Item
-          name="image"
-          label={t(`lab.manage.imageUrl`)}
-          // rules={[
-          //   { required: true, message: t(`lab.manage.urlMsg`) },
-          //   { max: 200, message: t(`lab.manage.urlCharMsg`) }
-          // ]}
-        >
-          <Input placeholder={t(`lab.manage.urlExample`)} />
-        </Form.Item> */}
 
         <Form.Item
           name="description"
@@ -284,7 +209,7 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
           <TextArea
             rows={3}
             placeholder={t(`lab.manage.descriptionMsg`)}
-            maxLength={500}
+            maxLength={VALIDATION.DESCRIPTION_MAX_LENGTH}
             showCount
           />
         </Form.Item>

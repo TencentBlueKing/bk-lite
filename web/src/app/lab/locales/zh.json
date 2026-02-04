@@ -5,6 +5,7 @@
       "infra": "基础设施镜像",
       "editImage": "编辑镜像",
       "updateImage": "更新镜像",
+      "addImage": "添加镜像",
       "imageUpdatedSuccess": "镜像更新成功",
       "imageCreatedSuccess": "镜像创建成功",
       "imageName": "镜像名称",

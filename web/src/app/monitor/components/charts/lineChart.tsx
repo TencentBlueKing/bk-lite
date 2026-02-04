@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  memo,
+  useRef
+} from 'react';
 import { Empty } from 'antd';
 import {
   XAxis,
@@ -82,6 +89,22 @@ const LineChart: React.FC<LineChartProps> = memo(
     const [hoveredThreshold, setHoveredThreshold] =
       useState<ThresholdField | null>(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [containerHeight, setContainerHeight] = useState<number>(0);
+    const [containerWidth, setContainerWidth] = useState<number>(0);
+
+    // 监听容器尺寸变化
+    useEffect(() => {
+      const updateSize = () => {
+        if (containerRef.current) {
+          setContainerHeight(containerRef.current.clientHeight);
+          setContainerWidth(containerRef.current.clientWidth);
+        }
+      };
+      updateSize();
+      window.addEventListener('resize', updateSize);
+      return () => window.removeEventListener('resize', updateSize);
+    }, []);
 
     const chartAreaKeys = useMemo(() => getChartAreaKeys(data), [data]);
 
@@ -239,6 +262,7 @@ const LineChart: React.FC<LineChartProps> = memo(
 
     return (
       <div
+        ref={containerRef}
         className={`flex w-full h-full ${
           showDimensionFilter || showDimensionTable ? 'flex-row' : 'flex-col'
         }`}
@@ -272,12 +296,18 @@ const LineChart: React.FC<LineChartProps> = memo(
 
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <Tooltip
-                  offset={20}
+                  offset={-1}
                   content={
                     <CustomTooltip
                       unit={unit}
                       visible={!isDragging}
                       metric={metric as MetricItem}
+                      maxHeight={
+                        containerHeight ? containerHeight * 0.75 : undefined
+                      }
+                      maxWidth={
+                        containerWidth ? containerWidth * 0.8 : undefined
+                      }
                     />
                   }
                 />

@@ -20,6 +20,9 @@ import {
   AttrFieldType,
   EnumList,
   AttrGroup,
+  StrAttrOption,
+  TimeAttrOption,
+  IntAttrOption,
 } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
@@ -125,12 +128,25 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
             },
           ]);
         } else {
-          const optionArray = Array.isArray(attrInfo.option)
-            ? attrInfo.option
-            : [];
-          setEnumList(
-            optionArray.length > 0 ? optionArray : [{ id: '', name: '' }],
-          );
+          const option = attrInfo.option;
+          if (attrInfo.attr_type === 'enum' && Array.isArray(option)) {
+            setEnumList(option.length > 0 ? option : [{ id: '', name: '' }]);
+          } else {
+            setEnumList([{ id: '', name: '' }]);
+          }
+          if (attrInfo.attr_type === 'str' && option && typeof option === 'object' && !Array.isArray(option)) {
+            const strOption = option as StrAttrOption;
+            attrInfo.validation_type = strOption.validation_type;
+            attrInfo.custom_regex = strOption.custom_regex;
+            attrInfo.widget_type = strOption.widget_type;
+          } else if (attrInfo.attr_type === 'time' && option && typeof option === 'object' && !Array.isArray(option)) {
+            const timeOption = option as TimeAttrOption;
+            attrInfo.display_format = timeOption.display_format;
+          } else if (attrInfo.attr_type === 'int' && option && typeof option === 'object' && !Array.isArray(option)) {
+            const intOption = option as IntAttrOption;
+            attrInfo.min_value = intOption.min_value;
+            attrInfo.max_value = intOption.max_value;
+          }
         }
         setAttrInfo(attrInfo);
       },
@@ -142,16 +158,39 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           (group) => group.id === values.group_id,
         );
 
-        // 只有枚举类型才处理 enumList
-        let option = [];
+        let option: EnumList[] | StrAttrOption | TimeAttrOption | IntAttrOption | Record<string, unknown> = {};
+
         if (values.attr_type === 'enum') {
           const enumArray = Array.isArray(enumList) ? enumList : [];
           const flag = enumArray.every((item) => !!item.id && !!item.name);
           option = flag ? enumArray : [];
+        } else if (values.attr_type === 'str') {
+          option = {
+            validation_type: values.validation_type || 'unrestricted',
+            custom_regex: values.custom_regex || '',
+            widget_type: values.widget_type || 'single_line',
+          } as StrAttrOption;
+        } else if (values.attr_type === 'time') {
+          option = {
+            display_format: values.display_format || 'datetime',
+          } as TimeAttrOption;
+        } else if (values.attr_type === 'int') {
+          option = {
+            min_value: values.min_value || '',
+            max_value: values.max_value || '',
+          } as IntAttrOption;
         }
 
+        const restValues = { ...values };
+        delete restValues.validation_type;
+        delete restValues.custom_regex;
+        delete restValues.widget_type;
+        delete restValues.display_format;
+        delete restValues.min_value;
+        delete restValues.max_value;
+
         operateAttr({
-          ...values,
+          ...restValues,
           option,
           attr_group: selectedGroup?.group_name || '',
           model_id: modelId,
@@ -296,6 +335,12 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               </Select>
             </Form.Item>
             <Form.Item<AttrFieldType>
+              label={t('Model.userPrompt')}
+              name="user_prompt"
+            >
+              <Input placeholder={t('Model.userPromptPlaceholder')} />
+            </Form.Item>
+            <Form.Item<AttrFieldType>
               label={t('type')}
               name="attr_type"
               rules={[{ required: true, message: t('required') }]}
@@ -333,6 +378,15 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                         strategy={verticalListSortingStrategy}
                       >
                         <ul className="bg-[var(--color-bg-hover)] p-[10px]">
+                          <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
+                            <span className="mr-[4px] w-[14px]"></span>
+                            <span className="mr-[10px] w-2/5">
+                              {t('fieldKey')}
+                            </span>
+                            <span className="mr-[10px] w-2/5">
+                              {t('fieldValue')}
+                            </span>
+                          </li>
                           {enumList.map((enumItem, index) => (
                             <SortableItem
                               key={index}
@@ -341,14 +395,18 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                             >
                               <HolderOutlined className="mr-[4px]" />
                               <Input
-                                placeholder={t('fieldKey')}
-                                className="mr-[10px] w-1/5"
+                                placeholder={
+                                  t('common.inputTip') + t('fieldKey')
+                                }
+                                className="mr-[10px] w-2/5"
                                 value={enumItem.id}
                                 onChange={(e) => onEnumKeyChange(e, index)}
                               />
                               <Input
-                                placeholder={t('fieldValue')}
-                                className="mr-[10px] w-3/5"
+                                placeholder={
+                                  t('common.inputTip') + t('fieldValue')
+                                }
+                                className="mr-[10px] w-2/5"
                                 value={enumItem.name}
                                 onChange={(e) => onEnumValChange(e, index)}
                               />
@@ -368,6 +426,111 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                       </SortableContext>
                     </DndContext>
                   </Form.Item>
+                ) : getFieldValue('attr_type') === 'time' ? (
+                  <Form.Item label={t('Model.validationRules')}>
+                    <div className="bg-[var(--color-bg-hover)] p-4 rounded">
+                      <Form.Item<AttrFieldType>
+                        name="display_format"
+                        initialValue="datetime"
+                        className="mb-0"
+                      >
+                        <Radio.Group>
+                          <Radio value="datetime">{t('Model.datetime')}</Radio>
+                          <Radio value="date">{t('Model.date')}</Radio>
+                        </Radio.Group>
+                      </Form.Item>
+                    </div>
+                  </Form.Item>
+                ) : getFieldValue('attr_type') === 'int' ? (
+                  <>
+                    <Form.Item label={t('Model.validationRules')}>
+                      <div className="bg-[var(--color-bg-hover)] p-4 rounded">
+                        <div className="flex items-center gap-4">
+                          <Form.Item<AttrFieldType>
+                            label={t('Model.min')}
+                            name="min_value"
+                            className="mb-0 flex-1"
+                          >
+                            <Input placeholder={t('common.inputTip')} />
+                          </Form.Item>
+                          <span>—</span>
+                          <Form.Item<AttrFieldType>
+                            label={t('Model.max')}
+                            name="max_value"
+                            className="mb-0 flex-1"
+                          >
+                            <Input placeholder={t('common.inputTip')} />
+                          </Form.Item>
+                        </div>
+                      </div>
+                    </Form.Item>
+                  </>
+                ) : getFieldValue('attr_type') === 'str' ? (
+                  <>
+                    <Form.Item label={t('Model.validationRules')}>
+                      <div className="bg-[var(--color-bg-hover)] p-4 rounded">
+                        <Form.Item<AttrFieldType>
+                          name="validation_type"
+                          initialValue="unrestricted"
+                          className="mb-3"
+                        >
+                          <Select>
+                            <Option value="unrestricted">
+                              {t('Model.unrestricted')}
+                            </Option>
+                            <Option value="ipv4">{t('Model.ipv4')}</Option>
+                            <Option value="ipv6">{t('Model.ipv6')}</Option>
+                            <Option value="email">{t('Model.email')}</Option>
+                            <Option value="mobile_phone">
+                              {t('Model.mobile_phone')}
+                            </Option>
+                            <Option value="url">{t('Model.url')}</Option>
+                            <Option value="json">{t('Model.json')}</Option>
+                            <Option value="custom">
+                              {t('Model.customRegex')}
+                            </Option>
+                          </Select>
+                        </Form.Item>
+                        <Form.Item
+                          noStyle
+                          shouldUpdate={(prevValues, currentValues) =>
+                            prevValues.validation_type !==
+                            currentValues.validation_type
+                          }
+                        >
+                          {({ getFieldValue: getFieldVal }) =>
+                            getFieldVal('validation_type') === 'custom' ? (
+                              <Form.Item<AttrFieldType>
+                                name="custom_regex"
+                                rules={[
+                                  {
+                                    required: true,
+                                    message: t('Model.customRegexRequired'),
+                                  },
+                                ]}
+                              >
+                                <Input
+                                  placeholder={t('Model.customRegexRequired')}
+                                />
+                              </Form.Item>
+                            ) : null
+                          }
+                        </Form.Item>
+                      </div>
+                    </Form.Item>
+                    <Form.Item<AttrFieldType>
+                      label={t('Model.widgetType')}
+                      name="widget_type"
+                      initialValue="single_line"
+                    >
+                      <Radio.Group>
+                        <Radio value="single_line">
+                          {t('Model.singleLine')}
+                        </Radio>
+                        <Radio value="multi_line">{t('Model.multiLine')}</Radio>
+                      </Radio.Group>
+                    </Form.Item>
+                  </>
                 ) : null
               }
             </Form.Item>

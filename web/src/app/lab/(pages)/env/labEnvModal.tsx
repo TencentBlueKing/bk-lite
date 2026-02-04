@@ -18,7 +18,8 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useLabEnv from '@/app/lab/api/env';
 import useLabManage from '@/app/lab/api/mirror';
-import type { ModalRef } from '@/app/lab/types';
+import type { ModalRef, InfraInstanceInfo } from '@/app/lab/types';
+import { RESOURCE_DEFAULTS, VALIDATION, REGEX, PLACEHOLDERS } from '@/app/lab/constants';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -72,17 +73,15 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
       setOpen(true);
 
       if (data) {
-        // 编辑模式，填充表单数据
+        // 编辑模式,填充表单数据
         // 从 infra_instances_info 中提取镜像ID用于回显
         let infraImageIds: (number | string)[] = [];
         
         if (data.infra_instances_info && data.infra_instances_info.length > 0) {
           // 从实例信息中提取对应的镜像ID
           infraImageIds = data.infra_instances_info
-            .map((instance: any) => instance.image || instance.image_id)
-            .filter((id: any) => id !== undefined && id !== null);
-          
-          console.log('从实例信息提取镜像ID:', infraImageIds);
+            .map((instance: InfraInstanceInfo) => instance.image || instance.image_id)
+            .filter((id): id is number | string => id !== undefined && id !== null);
         } else if (data.infra_images && data.infra_images.length > 0) {
           // 如果有 infra_images 字段，直接使用
           infraImageIds = data.infra_images;
@@ -99,10 +98,10 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
         // 新建模式，重置表单
         form.resetFields();
         form.setFieldsValue({
-          cpu: 2,
-          memory: '4Gi',
-          gpu: 0,
-          volume_size: '50Gi',
+          cpu: RESOURCE_DEFAULTS.CPU,
+          memory: RESOURCE_DEFAULTS.MEMORY,
+          gpu: RESOURCE_DEFAULTS.GPU,
+          volume_size: RESOURCE_DEFAULTS.VOLUME,
           infra_images: []
         });
       }
@@ -127,7 +126,6 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
         promises.push(
           getImageList().then(response => {
             setImagesList(response || []);
-            console.log('IDE镜像:', response);
           })
         );
       }
@@ -137,7 +135,6 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
         promises.push(
           getInfraImages().then(response => {
             setInfraImagesList(response || []);
-            console.log('基础设施镜像:', response);
           })
         );
       }
@@ -160,11 +157,10 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
     try {
       setLoading(true);
       const values = await form.validateFields();
-      console.log(values);
       const image_name = imagesList.find(item => item.id === values?.ide_image)?.name || '';
       const formData: LabEnvFormData = {
         name: values.name,
-        description: values.descriptions || image_name,
+        description: values.description || image_name,
         ide_image: values.ide_image,
         infra_images: values.infra_images || [],
         cpu: values.cpu,
@@ -173,8 +169,6 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
         volume_size: values.volume_size,
         endpoint: values.endpoint
       };
-
-      console.log('提交环境数据:', formData);
 
       if (editData) {
         // 编辑模式
@@ -208,8 +202,7 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
   // 验证内存格式
   const validateMemoryFormat = (_: any, value: string) => {
     if (!value) return Promise.resolve();
-    const memoryPattern = /^(\d+)([MmGgTt][Ii]?)$/;
-    if (!memoryPattern.test(value)) {
+    if (!REGEX.K8S_RESOURCE.test(value)) {
       return Promise.reject(new Error(t(`lab.manage.memoryFormat`)));
     }
     return Promise.resolve();
@@ -218,8 +211,7 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
   // 验证存储格式
   const validateVolumeFormat = (_: any, value: string) => {
     if (!value) return Promise.resolve();
-    const volumePattern = /^(\d+)([MmGgTt][Ii]?)$/;
-    if (!volumePattern.test(value)) {
+    if (!REGEX.K8S_RESOURCE.test(value)) {
       return Promise.reject(new Error(t(`lab.manage.volumeFormat`)));
     }
     return Promise.resolve();
@@ -243,10 +235,10 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
         form={form}
         layout="vertical"
         initialValues={{
-          cpu: 2,
-          memory: '4Gi',
-          gpu: 0,
-          volume_size: '50Gi'
+          cpu: RESOURCE_DEFAULTS.CPU,
+          memory: RESOURCE_DEFAULTS.MEMORY,
+          gpu: RESOURCE_DEFAULTS.GPU,
+          volume_size: RESOURCE_DEFAULTS.VOLUME
         }}
       >
         <Row gutter={24}>
@@ -256,7 +248,7 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
               label={t(`lab.manage.envName`)}
               rules={[
                 { required: true, message: t(`lab.manage.envNameRequired`) },
-                { max: 100, message: t(`lab.manage.envNameMaxLength`) }
+                { max: VALIDATION.NAME_MAX_LENGTH, message: t(`lab.manage.envNameMaxLength`) }
               ]}
             >
               <Input placeholder={t(`lab.manage.enterEnvName`)} />
@@ -297,7 +289,7 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
           <TextArea
             rows={3}
             placeholder={t(`lab.manage.enterDescription`)}
-            maxLength={500}
+            maxLength={VALIDATION.DESCRIPTION_MAX_LENGTH}
             showCount
           />
         </Form.Item>
@@ -318,13 +310,13 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
               }
               rules={[
                 { required: true, message: t(`lab.manage.cpuRequired`) },
-                { type: 'number', min: 1, max: 32, message: t(`lab.manage.cpuRange`) }
+                { type: 'number', min: VALIDATION.CPU_RANGE.MIN, max: VALIDATION.CPU_RANGE.MAX, message: t(`lab.manage.cpuRange`) }
               ]}
             >
               <InputNumber
-                min={1}
-                max={32}
-                placeholder="2"
+                min={VALIDATION.CPU_RANGE.MIN}
+                max={VALIDATION.CPU_RANGE.MAX}
+                placeholder={PLACEHOLDERS.CPU}
                 style={{ width: '100%' }}
                 addonAfter={t(`lab.manage.coreUnit`)}
               />
@@ -346,7 +338,7 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
                 { validator: validateMemoryFormat }
               ]}
             >
-              <Input placeholder="4Gi" />
+              <Input placeholder={PLACEHOLDERS.MEMORY} />
             </Form.Item>
           </Col>
         </Row>
@@ -365,13 +357,13 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
               }
               rules={[
                 { required: true, message: t(`lab.manage.gpuRequired`) },
-                { type: 'number', min: 0, max: 8, message: t(`lab.manage.gpuRange`) }
+                { type: 'number', min: VALIDATION.GPU_RANGE.MIN, max: VALIDATION.GPU_RANGE.MAX, message: t(`lab.manage.gpuRange`) }
               ]}
             >
               <InputNumber
-                min={0}
-                max={8}
-                placeholder="0"
+                min={VALIDATION.GPU_RANGE.MIN}
+                max={VALIDATION.GPU_RANGE.MAX}
+                placeholder={PLACEHOLDERS.GPU}
                 style={{ width: '100%' }}
                 addonAfter={t(`lab.manage.pieceUnit`)}
               />
@@ -393,7 +385,7 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
                 { validator: validateVolumeFormat }
               ]}
             >
-              <Input placeholder="50Gi" />
+              <Input placeholder={PLACEHOLDERS.VOLUME} />
             </Form.Item>
           </Col>
         </Row>
