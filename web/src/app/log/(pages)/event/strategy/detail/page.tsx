@@ -208,7 +208,7 @@ const StrategyOperation = () => {
       message.success(msg);
       goBack();
     } catch (error) {
-      console.log(error);
+      console.error(error);
     } finally {
       setConfirmLoading(false);
     }

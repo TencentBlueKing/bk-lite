@@ -69,7 +69,6 @@ const ControlPage = () => {
             parentElement.style.padding = '';
           }
         } catch (e) {
-          console.log('clean padding:', e);
         }
       };
     }

@@ -42,12 +42,10 @@ const BaseInfo = () => {
       ]);
 
       // 模型属性列表+值：propertData.groups
-      // console.log("test7.5", propertData.groups);
 
       setPropertyList(propertData.groups);
       setInstDetail(instDetailData);
     } catch {
-      console.log('获取数据失败');
     } finally {
       setPageLoading(false);
     }

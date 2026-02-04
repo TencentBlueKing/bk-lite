@@ -74,7 +74,6 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
         setLoading(false);
       });
     }).catch((info) => {
-      console.log('Validate Failed: ', info);
     });
   };
 

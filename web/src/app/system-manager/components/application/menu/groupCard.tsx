@@ -189,7 +189,6 @@ const MenuGroupCard: React.FC<MenuGroupCardProps> = ({
                 <div
                   draggable={editingPageName !== page.name}
                   onDragStart={(e) => {
-                    console.log('页面开始拖拽:', page.display_name, 'index:', pageIndex);
                     onPageDragStart(e, pageIndex, page);
                   }}
                   onDragOver={(e) => {
@@ -198,7 +197,6 @@ const MenuGroupCard: React.FC<MenuGroupCardProps> = ({
                     onPageDragOver(e, pageIndex);
                   }}
                   onDrop={(e) => {
-                    console.log('groupCard 内部 onDrop 触发, pageIndex:', pageIndex);
                     e.preventDefault();
                     e.stopPropagation();
                     onPageDrop(e, pageIndex);

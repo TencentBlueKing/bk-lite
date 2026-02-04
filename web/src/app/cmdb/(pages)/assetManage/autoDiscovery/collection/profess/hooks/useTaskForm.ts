@@ -64,7 +64,6 @@ export const useTaskForm = ({
     try {
       setLoading(true);
       const data = await collectApi.getCollectDetail(id.toString());
-      // console.log('test2.5:getCollectDetail', data.cycle_value_type);
       useAssetManageStore.getState().setScanCycleType(data.cycle_value_type || null);
       const cycleFields = getCycleFormValues(data);
       form.setFieldsValue({
@@ -86,7 +85,6 @@ export const useTaskForm = ({
       setSubmitLoading(true);
       const params = formatValues(values);
       if (editId) {
-        // console.log('test2.3', params.scan_cycle.value_type);
         if (params.scan_cycle.value_type === "cycle") {
           await collectApi.updateCollect(editId.toString(), params);
           message.success(t('successfullyModified'));

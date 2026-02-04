@@ -39,7 +39,6 @@ function deleteCookie(name: string): void {
 export function saveAuthToken(userData: AuthData): void {
   try {
     setCookie('bklite_token', userData.token, AUTH_EXPIRY_HOURS);
-    console.log('Auth token saved successfully');
   } catch (error) {
     console.error('Failed to save auth token:', error);
   }
@@ -51,7 +50,6 @@ export function saveAuthToken(userData: AuthData): void {
 export function clearAuthToken(): void {
   try {
     deleteCookie('bklite_token');
-    console.log('Auth token cleared successfully');
   } catch (error) {
     console.error('Failed to clear auth token:', error);
   }

@@ -200,7 +200,6 @@ export const usePluginFromJson = () => {
             return formValues;
           },
           getParams: (formData: any, configForm: any) => {
-            console.log(configForm);
             // 兼容两种格式：有 base 和没有 base
             const result: any = {
               ...configForm,
@@ -273,7 +272,6 @@ export const usePluginFromJson = () => {
             if (config.extra_edit_fields) {
               Object.entries(config.extra_edit_fields).forEach(
                 ([fieldName, transformConfig]: [string, any]) => {
-                  console.log(fieldName);
                   // transformConfig 直接是转换配置，不再有嵌套的 transform_on_edit
                   if (transformConfig) {
                     const transformedValue = DataMapper.transformValue(

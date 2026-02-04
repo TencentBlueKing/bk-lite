@@ -235,7 +235,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
             ? 'prometheus_remote_write_kube_pod_status_phase'
             : 'node_status_condition')
       );
-      console.log(tagetMerticItem);
       if (isStringArray(tagetMerticItem?.unit || '')) {
         const unitInfo = JSON.parse(tagetMerticItem.unit).map(
           (item: TableDataItem) => ({

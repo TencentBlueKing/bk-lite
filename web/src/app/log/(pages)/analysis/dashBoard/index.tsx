@@ -172,7 +172,6 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         other: otherConfig,
         view_sets: layout,
       };
-      console.log(saveData);
     };
 
     const removeWidget = (id: string) => {

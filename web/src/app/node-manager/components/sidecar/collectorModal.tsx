@@ -47,7 +47,6 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
 
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form, title, key }) => {
-        console.log(type);
         const info = cloneDeep(form) as TableDataItem;
         const {
           display_name,

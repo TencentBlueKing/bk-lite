@@ -145,7 +145,6 @@ const KnowledgeGraphEditPage: React.FC = () => {
               
               try {
                 existingConfig = await fetchKnowledgeGraphById(currentGraphId);
-                console.log('获取到的现有配置:', existingConfig);
                 
                 selectedDocIds = existingConfig.doc_list.map((doc: any) => doc.id.toString());
                 
@@ -238,7 +237,6 @@ const KnowledgeGraphEditPage: React.FC = () => {
         });
         
         setDocumentData(newDocumentData);
-        console.log('预加载的文档数据:', newDocumentData);
         
       } catch (error) {
         console.error('Failed to preload document data:', error);
@@ -335,8 +333,6 @@ const KnowledgeGraphEditPage: React.FC = () => {
         })
       };
       
-      console.log('保存知识图谱配置:', saveParams);
-      console.log('编辑模式:', isEditMode, '图谱ID:', graphId);
       
       if (isEditMode && graphId) {
         await updateKnowledgeGraph(graphId, saveParams);

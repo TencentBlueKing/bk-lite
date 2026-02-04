@@ -70,7 +70,7 @@ const GroupMoadal = forwardRef<GroupModalRef, GroupModalProps>(
         handleCancel();
         onSuccess();
       } catch (error) {
-        console.log(error);
+        console.error(error);
       } finally {
         setConfirmLoading(false);
       }

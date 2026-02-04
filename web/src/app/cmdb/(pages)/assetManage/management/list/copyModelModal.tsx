@@ -117,7 +117,7 @@ const CopyModelModal = forwardRef<CopyModelModalRef, CopyModelModalProps>(
           );
         }
       } catch (error) {
-        console.log(error);
+        console.error(error);
       } finally {
         setConfirmLoading(false);
       }

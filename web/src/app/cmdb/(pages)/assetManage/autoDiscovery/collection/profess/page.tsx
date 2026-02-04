@@ -137,7 +137,6 @@ const ProfessionalCollection: React.FC = () => {
         items: CollectTask[];
         count: number;
       };
-      // console.log('test2.4:getCollectList', data);
       setTableData(data.items || []);
       tableCountRef.current = data.items.length || 0;
       setPaginationUI((prev) => ({
@@ -302,7 +301,6 @@ const ProfessionalCollection: React.FC = () => {
   };
 
   const handleCreate = () => {
-    // console.log('test2.1');
     setEditingId(null);
     setDrawerVisible(true);
   };
@@ -410,7 +408,6 @@ const ProfessionalCollection: React.FC = () => {
   };
 
   const getTaskContent = () => {
-    // console.log('test2.2', selectedCategoryRef.current.category, currentPlugin);
     if (!selectedCategoryRef.current.category || !currentPlugin) return null;
 
     if (!currentPlugin) return null;

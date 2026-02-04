@@ -165,7 +165,6 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
       onSave(node.id, configData);
       message.success(t('chatflow.messages.nodeConfigured'));
     }).catch((errorInfo) => {
-      console.log('Validation failed:', errorInfo);
     });
   };
 

@@ -149,7 +149,6 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
       }, 0);
     },
     beforeUpload: async (file) => {
-      console.log('触发上传')
       if (!config) return Upload.LIST_IGNORE;
 
       if (config.fileType === 'csv') {

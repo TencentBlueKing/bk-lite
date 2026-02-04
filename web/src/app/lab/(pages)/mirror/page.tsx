@@ -87,7 +87,6 @@ const MirrorManage = () => {
   // 卡片点击
   const handleCardClick = (item: LabImageItem) => {
     // 可跳转详情或弹窗
-    console.log(item)
   };
 
   // 新增

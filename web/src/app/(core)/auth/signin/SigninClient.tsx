@@ -263,7 +263,6 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
         qrcode: userData.qrcode || false,
       };
 
-      console.log('Completing authentication with user data:', userDataForAuth);
 
       if (userData.token) {
         saveAuthToken({
@@ -286,7 +285,6 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
         callbackUrl: callbackUrl || "/",
       }) as any;
       
-      console.log('SignIn result:', result);
       
       if (result?.error) {
         console.error('SignIn error:', result.error);
@@ -294,10 +292,8 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
         setIsLoading(false);
       } else if (result?.ok) {
         if (userData.redirect_url) {
-          console.log('Redirecting to server-provided redirect_url:', userData.redirect_url);
           window.location.href = userData.redirect_url;
         } else {
-          console.log('SignIn successful, redirecting to:', callbackUrl || "/");
           window.location.href = callbackUrl || "/";
         }
       } else {
@@ -313,8 +309,6 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
   };
 
   const handleWechatSignIn = async () => {
-    console.log("Starting WeChat login process...");
-    console.log("Callback URL:", callbackUrl || "/");
     
     signIn("wechat", { 
       callbackUrl: callbackUrl || "/",
@@ -326,7 +320,6 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
     if (bkSettings?.url) {
       const currentDomain = window.location.origin;
       const bkLoginUrl = `${bkSettings.url}?callbackUrl=${encodeURIComponent(currentDomain)}`;
-      console.log("Redirecting to BK login:", bkLoginUrl);
       window.location.href = bkLoginUrl;
     }
   };

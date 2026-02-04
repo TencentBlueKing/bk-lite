@@ -87,7 +87,6 @@ const SettingsPage: React.FC = () => {
         }
       })
       .catch(errorInfo => {
-        console.log(`${t('common.valFailed')}: ${errorInfo}`);
       });
   };
 

@@ -51,7 +51,7 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
       const data = await getModelDetail(modelId);
       setModelDetail(data);
     } catch (error) {
-      console.log(error);
+      console.error(error);
     }
   };
 
@@ -60,7 +60,7 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
       const data = await getClassificationList();
       setGroupList(data);
     } catch (error) {
-      console.log(error);
+      console.error(error);
     }
   };
 

@@ -8,7 +8,6 @@ export const GET = async (request: NextRequest) => {
     const locale = searchParams.get('locale') === 'en' ? 'en' : 'zh';
     
     const clientId = searchParams.get('clientId') || 'ops-console';
-    console.log(`Fetching versions for clientId: ${clientId}, locale: ${locale}`);
 
     const versionsDirectory = path.join(process.cwd(), `public/app/versions/${clientId}/${locale}`);
 

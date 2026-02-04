@@ -27,7 +27,6 @@ const uploadChunk = (
 
     // 模拟块上传，实际应用中替换为实际上传请求
     setTimeout(() => {
-      console.log(`Uploaded chunk ${index} of ${fileName}`);
       resolve(true);
     }, 500); // 模拟500ms延迟
   });

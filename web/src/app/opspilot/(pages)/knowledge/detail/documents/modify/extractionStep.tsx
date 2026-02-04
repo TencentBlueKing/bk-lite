@@ -310,7 +310,6 @@ const ExtractionStep: React.FC<{
     updatedList[selectedDocument.index] = updatedConfig;
 
     setKnowledgeDocumentList(updatedList);
-    console.log('Updated knowledge document list:', updatedList);
 
     if (onConfigChange) {
       onConfigChange({

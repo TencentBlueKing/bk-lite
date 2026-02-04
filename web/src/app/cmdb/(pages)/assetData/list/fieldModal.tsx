@@ -430,7 +430,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         onSuccess(confirmType ? instId : '');
         handleCancel();
       } catch (error) {
-        console.log(error);
+        console.error(error);
       } finally {
         setConfirmLoading(false);
       }

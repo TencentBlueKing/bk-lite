@@ -273,7 +273,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         onSuccess();
         handleCancel();
       } catch (error) {
-        console.log(error);
+        console.error(error);
       } finally {
         setConfirmLoading(false);
       }

@@ -105,7 +105,6 @@ export const getNewAuthSourceFormFields = ({
           value={dynamicForm.getFieldValue('sync_time') ? dayjs(dynamicForm.getFieldValue('sync_time'), 'HH:mm') : undefined}
           onChange={(time) => {
             const timeString = time ? time.format('HH:mm') : '';
-            console.log('Selected sync time:', timeString);
             dynamicForm.setFieldsValue({ sync_time: timeString });
           }}
           className="mx-2 min-w-[100px]"

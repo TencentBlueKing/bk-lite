@@ -63,7 +63,7 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       handleCancel();
       onSuccess();
     } catch (error) {
-      console.log(error);
+      console.error(error);
     } finally {
       setConfirmLoading(false);
     }

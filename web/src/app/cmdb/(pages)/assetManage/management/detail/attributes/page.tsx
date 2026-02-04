@@ -170,7 +170,7 @@ const Attributes: React.FC = () => {
 
       setTableData(allAttrs);
     } catch (error) {
-      console.log(error);
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -272,7 +272,7 @@ const Attributes: React.FC = () => {
       await fetchGroupsAndData();
       message.success(t('common.updateSuccess'));
     } catch (error) {
-      console.log(error);
+      console.error(error);
       message.error(t('common.updateFailed'));
     }
   };
@@ -284,7 +284,7 @@ const Attributes: React.FC = () => {
       await fetchGroupsAndData();
       message.success(t('common.updateSuccess'));
     } catch (error) {
-      console.log(error);
+      console.error(error);
       message.error(t('common.updateFailed'));
     }
   };
@@ -352,7 +352,7 @@ const Attributes: React.FC = () => {
         await fetchGroupsAndData();
         message.success(t('common.updateSuccess'));
       } catch (error) {
-        console.log(error);
+        console.error(error);
         message.error(t('common.updateFailed'));
       } finally {
         setDraggingAttr(null);
@@ -373,7 +373,7 @@ const Attributes: React.FC = () => {
       });
       message.success(t('common.updateSuccess'));
     } catch (error) {
-      console.log(error);
+      console.error(error);
       message.error(t('common.updateFailed'));
       fetchGroupsAndData();
     } finally {
@@ -411,7 +411,7 @@ const Attributes: React.FC = () => {
       await fetchGroupsAndData();
       message.success(t('common.updateSuccess'));
     } catch (error) {
-      console.log(error);
+      console.error(error);
       message.error(t('common.updateFailed'));
     } finally {
       setDraggingAttr(null);

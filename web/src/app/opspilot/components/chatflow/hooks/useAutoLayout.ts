@@ -79,7 +79,6 @@ const calculateNodeLevels = (nodes: Node[], edges: Edge[]): Map<string, number> 
 export const useAutoLayout = (): UseAutoLayoutReturn => {
   const getLayoutedElements = useCallback(
     async (nodes: Node[], edges: Edge[], options: LayoutOptions = {}) => {
-      console.log('[useAutoLayout] Starting layout with', nodes.length, 'nodes and', edges.length, 'edges');
       
       const {
         direction = 'LR',
@@ -90,11 +89,9 @@ export const useAutoLayout = (): UseAutoLayoutReturn => {
       } = options;
 
       try {
-        console.log('[useAutoLayout] Using custom layout algorithm...');
         
         // 计算每个节点的层级
         const levels = calculateNodeLevels(nodes, edges);
-        console.log('[useAutoLayout] Node levels calculated');
         
         // 按层级分组节点
         const nodesByLevel = new Map<number, Node[]>();
@@ -141,7 +138,6 @@ export const useAutoLayout = (): UseAutoLayoutReturn => {
           });
         });
 
-        console.log('[useAutoLayout] Layout complete, returning', layoutedNodes.length, 'nodes');
         return { nodes: layoutedNodes, edges };
       } catch (error) {
         console.error('[useAutoLayout] Error during layout:', error);

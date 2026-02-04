@@ -180,19 +180,17 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
                   }
                 }
               } catch {
-                console.log('error', trimmed);
               }
             }
           } catch (error: any) {
             if (error?.name === 'AbortError') {
-              console.log('Log stream was cancelled');
               break;
             }
             break;
           }
         }
       } catch (error: any) {
-        console.log(error);
+        console.error(error);
         fetchData?.(false);
       } finally {
         isStreaming.current = false;

@@ -88,7 +88,7 @@ const AssociationsModal = forwardRef<AssoModalRef, AssoModalProps>(
         onSuccess();
         handleCancel();
       } catch (error) {
-        console.log(error);
+        console.error(error);
       } finally {
         setConfirmLoading(false);
       }

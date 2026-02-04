@@ -5,7 +5,6 @@ import { NextRequest, NextResponse } from 'next/server';
 // Handle the actual logout API
 export const POST = async (req: NextRequest) => {
   try {
-    console.log('Received POST request for logout.');
 
     // Attempt to get the JWT from the request
     const token = await getToken({ req });

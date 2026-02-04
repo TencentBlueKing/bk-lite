@@ -296,7 +296,7 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
           total: data.count,
         }));
       } catch (error) {
-        console.log(error);
+        console.error(error);
       } finally {
         setTableLoading(false);
       }

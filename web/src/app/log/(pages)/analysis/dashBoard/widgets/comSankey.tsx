@@ -326,7 +326,6 @@ const Sankey: React.FC<SankeyProps> = ({
         style={{ height: '100%', width: '100%' }}
         onChartReady={(chart: any) => {
           setChartInstance(chart);
-          console.log(chartInstance);
         }}
       />
     </div>

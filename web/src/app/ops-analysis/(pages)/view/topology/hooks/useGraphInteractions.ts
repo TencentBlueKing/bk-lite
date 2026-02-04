@@ -169,9 +169,7 @@ export const useContextMenuAndModal = (
       const nodeName = sourceNode.getAttrs()?.label?.text || sourceNode.id;
 
       if (key === 'viewAlarms') {
-        console.log('查看告警列表:', nodeName);
       } else if (key === 'viewMonitor') {
-        console.log('查看监控详情:', nodeName);
       }
     },
     []

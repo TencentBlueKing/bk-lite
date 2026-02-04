@@ -42,7 +42,6 @@ async function handleProxy(req: NextRequest): Promise<NextResponse> {
     targetUrl += searchParams;
   }
 
-  console.log(`[PROXY] Forwarding Request: ${req.method} ${targetUrl}`);
 
   // 复制原始请求头，追加 X-Forwarded-* 自定义请求头
   const headers = new Headers(req.headers);
@@ -63,7 +62,6 @@ async function handleProxy(req: NextRequest): Promise<NextResponse> {
     const proxyResponse = await fetch(targetUrl, fetchOptions);
 
     // 转发响应及其内容
-    console.log(`[PROXY] Response Status: ${proxyResponse.status} from ${targetUrl}`);
     const clonedBody = proxyResponse.body;
 
     return new NextResponse(clonedBody, {

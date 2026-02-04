@@ -22,7 +22,6 @@ async function getWeChatConfig() {
       console.error("Failed to get WeChat settings:", responseData);
       return null;
     }
-    console.log("WeChat settings fetched successfully:", responseData.data);
     return responseData.data;
   } catch (error) {
     console.error("Error fetching WeChat settings:", error);
@@ -54,7 +53,6 @@ export async function getAuthOptions(): Promise<AuthOptions> {
           // This is used when the login validation has already been done in SigninClient
           if (credentials.skipValidation === 'true' && credentials.userData) {
             const userData = JSON.parse(credentials.userData);
-            console.log("Parsed userData:", userData);
             
             // Ensure required fields are present
             if (!userData.id && !userData.username) {
@@ -117,7 +115,6 @@ export async function getAuthOptions(): Promise<AuthOptions> {
     }),
   ];
   
-  console.log("Credentials wechatConfig", wechatConfig);
   if (wechatConfig && wechatConfig.app_id && wechatConfig.app_secret) {
     providers.push(
       WeChatProvider({
@@ -126,9 +123,6 @@ export async function getAuthOptions(): Promise<AuthOptions> {
         redirectUri: `${wechatConfig.redirect_uri}/api/auth/callback/wechat`,
       }) as unknown as any
     );
-    console.log("WeChat provider added successfully");
-  } else {
-    console.log("WeChat configuration is incomplete or unavailable. Skipping WeChat provider.");
   }
 
   return {

@@ -112,7 +112,7 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
         handleCancel();
         onSuccess(params);
       } catch (error) {
-        console.log(error);
+        console.error(error);
       } finally {
         setConfirmLoading(false);
       }

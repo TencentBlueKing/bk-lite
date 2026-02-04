@@ -120,10 +120,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setIsAutoSigningIn(false);
           }
         } else {
-          console.log('No valid user information in response');
         }
       } else {
-        console.log('No existing authentication found or API call failed');
       }
     } catch (error) {
       console.error("Error checking existing authentication:", error);
