@@ -18,7 +18,7 @@ class JetStreamService:
     async def connect(self):
         # 复用 nats_client 的连接逻辑，统一使用 NATS_OPTIONS
         self.nc = await get_nc_client()
-        self.js = self.nc.jetstream()
+        self.js = self.nc.jetstream(timeout=120)
         try:
             self.object_store = await self.js.object_store(self.bucket_name)
         except BucketNotFoundError:
