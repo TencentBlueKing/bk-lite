@@ -2,7 +2,6 @@ import { RefObject } from 'react';
 import { FormInstance } from 'antd';
 import { DatasetType } from '@/app/mlops/types';
 import type { Option } from '@/types';
-import { CLASSIFICATION_ALGORITHM_CONFIGS, CLASSIFICATION_ALGORITHM_SCENARIOS } from '@/app/mlops/constants';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import { useGenericDatasetForm } from './useGenericDatasetForm';
 
@@ -24,11 +23,6 @@ export const useClassificationForm = ({ datasetOptions, onSuccess, formRef }: Us
 
   return useGenericDatasetForm({
     datasetType: DatasetType.CLASSIFICATION,
-    algorithmConfigs: CLASSIFICATION_ALGORITHM_CONFIGS,
-    algorithmScenarios: CLASSIFICATION_ALGORITHM_SCENARIOS,
-    algorithmOptions: [
-      { value: 'XGBoost', label: 'XGBoost' },
-    ],
     datasetOptions,
     formRef,
     onSuccess,

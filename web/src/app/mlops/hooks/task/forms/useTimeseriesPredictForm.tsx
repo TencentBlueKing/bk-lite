@@ -1,7 +1,6 @@
 import { RefObject } from 'react';
 import type { FormInstance } from 'antd';
 import type { Option } from '@/types';
-import { TIMESERIES_ALGORITHM_CONFIGS, TIMESERIES_ALGORITHM_SCENARIOS } from '@/app/mlops/constants';
 import { DatasetType } from '@/app/mlops/types';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import { useGenericDatasetForm } from './useGenericDatasetForm';
@@ -13,9 +12,9 @@ interface UseTimeseriesPredictFormProps {
   formRef: RefObject<FormInstance>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const useTimeseriesPredictForm = ({
   datasetOptions,
-  // activeTag,
   onSuccess,
   formRef
 }: UseTimeseriesPredictFormProps) => {
@@ -28,13 +27,6 @@ export const useTimeseriesPredictForm = ({
 
   return useGenericDatasetForm({
     datasetType: DatasetType.TIMESERIES_PREDICT,
-    algorithmConfigs: TIMESERIES_ALGORITHM_CONFIGS,
-    algorithmScenarios: TIMESERIES_ALGORITHM_SCENARIOS,
-    algorithmOptions: [
-      { value: 'GradientBoosting', label: 'GradientBoosting' },
-      { value: 'RandomForest', label: 'RandomForest' },
-      { value: 'Prophet', label: 'Prophet' },
-    ],
     datasetOptions,
     formRef,
     onSuccess,

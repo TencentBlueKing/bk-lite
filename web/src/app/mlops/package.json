@@ -13,6 +13,8 @@
     "@types/file-saver": "^2.0.7",
     "@labelu/image-annotator-react": "^2.5.0",
     "@labelu/image": "^1.5.0",
-    "@labelu/components-react": "^1.8.0"
+    "@labelu/components-react": "^1.8.0",
+    "ace-builds": "^1.38.1",
+    "react-ace": "^14.0.1"
   }
 }

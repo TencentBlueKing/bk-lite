@@ -1,7 +1,6 @@
 import { RefObject } from 'react';
 import { FormInstance } from 'antd';
 import type { Option } from '@/types';
-import { OBJECT_DETECTION_ALGORITHM_CONFIGS, OBJECT_DETECTION_ALGORITHM_SCENARIOS } from '@/app/mlops/constants';
 import { DatasetType } from '@/app/mlops/types';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import { useGenericDatasetForm } from './useGenericDatasetForm';
@@ -24,11 +23,6 @@ export const useObjectDetectionForm = ({ datasetOptions, onSuccess, formRef }: U
 
   return useGenericDatasetForm({
     datasetType: DatasetType.OBJECT_DETECTION,
-    algorithmConfigs: OBJECT_DETECTION_ALGORITHM_CONFIGS,
-    algorithmScenarios: OBJECT_DETECTION_ALGORITHM_SCENARIOS,
-    algorithmOptions: [
-      { value: 'YOLODetection', label: 'YOLODetection' },
-    ],
     datasetOptions,
     formRef,
     onSuccess,
