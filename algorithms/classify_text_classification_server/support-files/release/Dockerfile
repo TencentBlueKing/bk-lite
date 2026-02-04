@@ -28,6 +28,10 @@ RUN pip3 install -e ".[dev]"
 # 清理 matplotlib 字体缓存，让其重新扫描字体
 RUN rm -rf /root/.cache/matplotlib /root/.cache/fontconfig
 
-RUN apt-get reinstall -y supervisor 
+RUN apt-get reinstall -y supervisor
+
+# 链接 supervisor 配置文件到默认配置目录
+RUN mkdir -p /etc/supervisor/conf.d && \
+    ln -sf /apps/support-files/release/supervisor/app.conf /etc/supervisor/conf.d/app.conf
 
 ENTRYPOINT ["/bin/bash","/apps/support-files/release/startup.sh"]
