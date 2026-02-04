@@ -77,6 +77,7 @@ class Command(BaseCommand):
         call_command("init_field_groups")
         call_command("init_display_fields")
         call_command("cmdb_migrate_scalar_to_list")
+        call_command("migrate_field_constraints")
 
     def _init_console_mgmt(self):
         """控制台管理资源初始化"""

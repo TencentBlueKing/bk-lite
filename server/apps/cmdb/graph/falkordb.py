@@ -17,6 +17,13 @@ from apps.cmdb.graph.format_type import (
     ParameterCollector,
     FORMAT_TYPE_PARAMS,
 )
+from apps.cmdb.constants.field_constraints import (
+    USER_PROMPT,
+    DEFAULT_USER_PROMPT,
+    DEFAULT_STRING_CONSTRAINT,
+    DEFAULT_NUMBER_CONSTRAINT,
+    DEFAULT_TIME_CONSTRAINT
+)
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -242,18 +249,19 @@ class FalkorDBClient:
         return {"props": validated_props} if validated_props else {}
 
     def create_entity(
-        self,
-        label: str,
-        properties: dict,
-        check_attr_map: dict,
-        exist_items: list,
-        operator: str = None,
+            self,
+            label: str,
+            properties: dict,
+            check_attr_map: dict,
+            exist_items: list,
+            operator: str = None,
+            attrs: list = None,
     ):
         """
         快速创建一个实体
         """
         result = self._create_entity(
-            label, properties, check_attr_map, exist_items, operator
+            label, properties, check_attr_map, exist_items, operator, attrs
         )
         return result
 
@@ -270,7 +278,9 @@ class FalkorDBClient:
 
         for exist_item in exist_items:
             for attr in check_attrs:
-                if exist_item.get(attr) == item[attr]:
+                exist_item_attr = exist_item.get(attr)
+                item_attr = item.get(attr)
+                if exist_item_attr and item_attr and item_attr == exist_item_attr:
                     not_only_attr.add(attr)
 
         if not not_only_attr:
@@ -311,17 +321,29 @@ class FalkorDBClient:
         return {k: v for k, v in item.items() if k in check_attr_map}
 
     def _create_entity(
-        self,
-        label: str,
-        properties: dict,
-        check_attr_map: dict,
-        exist_items: list,
-        operator: str = None,
+            self,
+            label: str,
+            properties: dict,
+            check_attr_map: dict,
+            exist_items: list,
+            operator: str = None,
+            attrs: list = None,
     ):
         # 验证标签（不能参数化）
         validated_label = CQLValidator.validate_label(label)
         if not validated_label:
             raise BaseAppException("label is empty")
+
+        # 字段类型约束校验
+        if attrs:
+            from apps.cmdb.validators import FieldValidator
+            validation_errors = FieldValidator.validate_instance_data(properties, attrs)
+            if validation_errors:
+                error_msg = "; ".join([
+                    f"{err['field_name']}: {err['error']}"
+                    for err in validation_errors
+                ])
+                raise BaseAppException(f"字段校验失败: {error_msg}")
 
         # 校验唯一属性
         self.check_unique_attr(
@@ -351,14 +373,14 @@ class FalkorDBClient:
         return self.entity_to_dict(entity)
 
     def create_edge(
-        self,
-        label: str,
-        a_id: int,
-        a_label: str,
-        b_id: int,
-        b_label: str,
-        properties: dict,
-        check_asst_key: str,
+            self,
+            label: str,
+            a_id: int,
+            a_label: str,
+            b_id: int,
+            b_label: str,
+            properties: dict,
+            check_asst_key: str,
     ):
         """
         快速创建一条边
@@ -369,14 +391,14 @@ class FalkorDBClient:
         return result
 
     def _create_edge(
-        self,
-        label: str,
-        a_id: int,
-        a_label: str,
-        b_id: int,
-        b_label: str,
-        properties: dict,
-        check_asst_key: str = "model_asst_id",
+            self,
+            label: str,
+            a_id: int,
+            a_label: str,
+            b_id: int,
+            b_label: str,
+            properties: dict,
+            check_asst_key: str = "model_asst_id",
     ):
         # 验证标签和关系类型
         validated_label = CQLValidator.validate_relation(label)
@@ -445,12 +467,13 @@ class FalkorDBClient:
         return self.edge_to_dict(edge)
 
     def batch_create_entity(
-        self,
-        label: str,
-        properties_list: list,
-        check_attr_map: dict,
-        exist_items: list,
-        operator: str = None,
+            self,
+            label: str,
+            properties_list: list,
+            check_attr_map: dict,
+            exist_items: list,
+            operator: str = None,
+            attrs: list = None,
     ):
         """批量创建实体"""
         results = []
@@ -458,7 +481,7 @@ class FalkorDBClient:
             result = {}
             try:
                 entity = self._create_entity(
-                    label, properties, check_attr_map, exist_items, operator
+                    label, properties, check_attr_map, exist_items, operator, attrs
                 )
                 result.update(data=entity, success=True, message="")
                 exist_items.append(entity)
@@ -469,12 +492,12 @@ class FalkorDBClient:
         return results
 
     def batch_create_edge(
-        self,
-        label: str,
-        a_label: str,
-        b_label: str,
-        edge_list: list,
-        check_asst_key: str,
+            self,
+            label: str,
+            a_label: str,
+            b_label: str,
+            edge_list: list,
+            check_asst_key: str,
     ):
         """批量创建边"""
         results = []
@@ -494,11 +517,11 @@ class FalkorDBClient:
         return results
 
     def format_search_params(
-        self,
-        params: list,
-        param_type: str = "AND",
-        param_collector: ParameterCollector = None,
-        case_sensitive: bool = True,
+            self,
+            params: list,
+            param_type: str = "AND",
+            param_collector: ParameterCollector = None,
+            case_sensitive: bool = True,
     ):
         """
         查询参数格式化（参数化版本）
@@ -519,9 +542,9 @@ class FalkorDBClient:
 
         # 如果使用实例 collector 且没有传入外部 collector，重置它（独立查询）
         if (
-            collector is self._param_collector
-            and param_collector is None
-            and self.ENABLE_PARAMETERIZATION
+                collector is self._param_collector
+                and param_collector is None
+                and self.ENABLE_PARAMETERIZATION
         ):
             collector.reset()
 
@@ -554,7 +577,7 @@ class FalkorDBClient:
         return final_str, collector.get_params() if self.ENABLE_PARAMETERIZATION else {}
 
     def format_final_params(
-        self, search_params: list, search_param_type: str = "AND", permission_params=""
+            self, search_params: list, search_param_type: str = "AND", permission_params=""
     ):
         """格式化最终参数"""
         search_params_str, _ = self.format_search_params(
@@ -570,16 +593,16 @@ class FalkorDBClient:
         return f"{search_params_str} AND {permission_params}"
 
     def query_entity(
-        self,
-        label: str,
-        params: list,
-        format_permission_dict: dict = {},
-        page: dict = None,
-        order: str = None,
-        order_type: str = "ASC",
-        param_type="AND",
-        organization_field: str = "organization",
-        case_sensitive: bool = True,
+            self,
+            label: str,
+            params: list,
+            format_permission_dict: dict = {},
+            page: dict = None,
+            order: str = None,
+            order_type: str = "ASC",
+            param_type="AND",
+            organization_field: str = "organization",
+            case_sensitive: bool = True,
     ):
         """
         查询实体（参数化版本）
@@ -762,11 +785,11 @@ class FalkorDBClient:
         return self.entity_to_list(objs)
 
     def query_edge(
-        self,
-        label: str,
-        params: list,
-        param_type: str = "AND",
-        return_entity: bool = False,
+            self,
+            label: str,
+            params: list,
+            param_type: str = "AND",
+            return_entity: bool = False,
     ):
         """
         查询边（参数化版本）
@@ -814,17 +837,24 @@ class FalkorDBClient:
         return properties_str if properties_str == "" else properties_str[:-1]
 
     def set_entity_properties(
-        self,
-        label: str,
-        entity_ids: list,
-        properties: dict,
-        check_attr_map: dict,
-        exist_items: list,
-        check: bool = True,
+            self,
+            label: str,
+            entity_ids: list,
+            properties: dict,
+            check_attr_map: dict,
+            exist_items: list,
+            check: bool = True,
+            attrs: list = None,
     ):
         """
         设置实体属性
+        
+        根据 label 类型执行不同的逻辑:
+        - label == "instance": 校验实例数据是否符合模型字段约束
+        - label == "model": 确保模型字段定义包含必要的默认值
         """
+        from apps.cmdb.constants.constants import MODEL, INSTANCE
+
         if check:
             # 校验唯一属性
             self.check_unique_attr(
@@ -844,19 +874,79 @@ class FalkorDBClient:
                 properties, check_attr_map.get("editable", {})
             )
 
+        # 根据 label 类型执行不同的校验逻辑
+        if label == INSTANCE and attrs:
+            # 实例：字段类型约束校验
+            from apps.cmdb.validators import FieldValidator
+            validation_errors = FieldValidator.validate_instance_data(properties, attrs)
+            if validation_errors:
+                error_msg = "; ".join([
+                    f"{err['field_name']}: {err['error']}"
+                    for err in validation_errors
+                ])
+                raise BaseAppException(f"字段校验失败: {error_msg}")
+
+        elif label == MODEL and "attrs" in properties:
+            # 模型：确保字段定义包含必要的默认值
+            try:
+                attrs_list = json.loads(properties["attrs"]) if isinstance(properties["attrs"], str) else properties[
+                    "attrs"]
+
+                # 为每个字段补充默认值
+                for attr in attrs_list:
+                    # 1. 确保有 user_prompt 字段
+                    if USER_PROMPT not in attr:
+                        attr.update(DEFAULT_USER_PROMPT)
+
+                    # 2. 确保 option 字段存在
+                    if "option" not in attr:
+                        attr["option"] = {}
+
+                    option = attr["option"]
+                    attr_type = attr.get("attr_type")
+
+                    # 3. 根据字段类型补充默认约束
+                    if attr_type == "str" and option:
+                        if "validation_type" not in option:
+                            option.update(DEFAULT_STRING_CONSTRAINT.copy())
+                    elif attr_type in ["int", "float"] and option:
+                        if "min_value" not in option or "max_value" not in option:
+                            option.update(DEFAULT_NUMBER_CONSTRAINT.copy())
+                    elif attr_type == "time" and option:
+                        if "display_format" not in option:
+                            option.update(DEFAULT_TIME_CONSTRAINT.copy())
+
+                # 更新回 properties
+                properties["attrs"] = json.dumps(attrs_list, ensure_ascii=False)
+
+            except (json.JSONDecodeError, TypeError, KeyError) as e:
+                logger.warning(f"处理模型字段默认值时出错: {e}")
+
         nodes = self.batch_update_node_properties(label, entity_ids, properties)
         return self.entity_to_list(nodes)
 
     def batch_update_entity_properties(
-        self,
-        label: str,
-        entity_ids: list,
-        properties: dict,
-        check_attr_map: dict,
-        check: bool = True,
+            self,
+            label: str,
+            entity_ids: list,
+            properties: dict,
+            check_attr_map: dict,
+            check: bool = True,
+            attrs: list = None,
     ):
         """批量更新实体属性"""
         if check:
+            # 字段类型约束校验
+            if attrs:
+                from apps.cmdb.validators import FieldValidator
+                validation_errors = FieldValidator.validate_instance_data(properties, attrs)
+                if validation_errors:
+                    error_msg = "; ".join([
+                        f"{err['field_name']}: {err['error']}"
+                        for err in validation_errors
+                    ])
+                    raise BaseAppException(f"字段校验失败: {error_msg}")
+
             # 校验必填项
             self.check_required_attr(
                 properties, check_attr_map.get("is_required", {}), is_update=True
@@ -873,7 +963,7 @@ class FalkorDBClient:
         return {"data": self.entity_to_list(nodes), "success": True, "message": ""}
 
     def batch_update_node_properties(
-        self, label: str, node_ids: Union[int, List[int]], properties: dict
+            self, label: str, node_ids: Union[int, List[int]], properties: dict
     ):
         """批量更新节点属性（参数化版本）"""
         validated_label = CQLValidator.validate_label(label) if label else ""
@@ -1091,7 +1181,7 @@ class FalkorDBClient:
             return {}
 
     def convert_to_cypher_match(
-        self, label_str: str, model_id: str, params_str: str, dst: bool = True
+            self, label_str: str, model_id: str, params_str: str, dst: bool = True
     ) -> str:
         edge_type = "dst" if dst else "src"
         default_match = (
@@ -1187,7 +1277,7 @@ class FalkorDBClient:
         )
 
     def query_topo_lite(
-        self, label: str, inst_id: int, depth: int = 3, exclude_ids=None
+            self, label: str, inst_id: int, depth: int = 3, exclude_ids=None
     ):
         """查询实例拓扑：限制返回层级，减少前端一次性渲染与网络传输压力"""
 
@@ -1300,7 +1390,7 @@ class FalkorDBClient:
         return node
 
     def format_topo_lite(
-        self, start_id, objs, entity_is_src=True, depth: int = 3, exclude_ids=None
+            self, start_id, objs, entity_is_src=True, depth: int = 3, exclude_ids=None
     ):
         """格式化拓扑数据：限制层级并支持排除父节点集合"""
 
@@ -1346,7 +1436,7 @@ class FalkorDBClient:
                 edge
                 for edge in edges
                 if edge.get("src_inst_id") not in exclude_id_set
-                and edge.get("dst_inst_id") not in exclude_id_set
+                   and edge.get("dst_inst_id") not in exclude_id_set
             ]
 
         entities = list(entity_map.values())
@@ -1363,20 +1453,20 @@ class FalkorDBClient:
         )
 
     def create_node_lite(
-        self,
-        entity,
-        edges,
-        entities,
-        entity_is_src=True,
-        level: int = 1,
-        max_depth: int = 3,
+            self,
+            entity,
+            edges,
+            entities,
+            entity_is_src=True,
+            level: int = 1,
+            max_depth: int = 3,
     ):
         node = {
             "_id": entity.get("_id"),
             "model_id": entity.get("model_id"),
             "inst_name": entity.get("inst_name")
-            or entity.get("ip_addr")
-            or str(entity.get("_id")),
+                         or entity.get("ip_addr")
+                         or str(entity.get("_id")),
             "children": [],
         }
 
@@ -1419,7 +1509,7 @@ class FalkorDBClient:
         return None
 
     def entity_count(
-        self, label: str, group_by_attr: str, format_permission_dict: dict
+            self, label: str, group_by_attr: str, format_permission_dict: dict
     ):
         """
         按指定字段分组统计实体数量（参数化版本）
@@ -1503,13 +1593,13 @@ class FalkorDBClient:
         return result
 
     def full_text_stats(
-        self,
-        search: str,
-        permission_params: str = "",
-        inst_name_params: str = "",
-        created: str = "",
-        case_sensitive: bool = False,
-        permission_params_dict: dict = None,
+            self,
+            search: str,
+            permission_params: str = "",
+            inst_name_params: str = "",
+            created: str = "",
+            case_sensitive: bool = False,
+            permission_params_dict: dict = None,
     ) -> dict:
         """
         全文检索 - 模型统计接口（参数化版本）
@@ -1634,16 +1724,16 @@ class FalkorDBClient:
         return {"total": total, "model_stats": model_stats}
 
     def full_text_by_model(
-        self,
-        search: str,
-        model_id: str,
-        permission_params: str = "",
-        inst_name_params: str = "",
-        created: str = "",
-        page: int = 1,
-        page_size: int = 10,
-        case_sensitive: bool = False,
-        permission_params_dict: dict = None,
+            self,
+            search: str,
+            model_id: str,
+            permission_params: str = "",
+            inst_name_params: str = "",
+            created: str = "",
+            page: int = 1,
+            page_size: int = 10,
+            case_sensitive: bool = False,
+            permission_params_dict: dict = None,
     ) -> dict:
         """
         全文检索 - 模型数据查询接口
@@ -1804,12 +1894,12 @@ class FalkorDBClient:
         }
 
     def full_text(
-        self,
-        search: str,
-        permission_params: str = "",
-        inst_name_params: str = "",
-        created: str = "",
-        case_sensitive: bool = False,
+            self,
+            search: str,
+            permission_params: str = "",
+            inst_name_params: str = "",
+            created: str = "",
+            case_sensitive: bool = False,
     ):
         """
         全文检索（兼容旧接口，参数化版本）
@@ -1907,12 +1997,13 @@ class FalkorDBClient:
         return result
 
     def batch_save_entity(
-        self,
-        label: str,
-        properties_list: list,
-        check_attr_map: dict,
-        exist_items: list,
-        operator: str = None,
+            self,
+            label: str,
+            properties_list: list,
+            check_attr_map: dict,
+            exist_items: list,
+            operator: str = None,
+            attrs: list = None,
     ):
         """批量保存实体，支持新增与更新"""
         unique_key = check_attr_map.get(ModelConstraintKey.unique.value, {}).keys()
@@ -1941,6 +2032,7 @@ class FalkorDBClient:
                             entity_ids=[node.get("_id")],
                             properties=properties,
                             check_attr_map=check_attr_map,
+                            attrs=attrs,
                         )
                         results["data"] = results["data"][0]
                         update_results.append(results)
@@ -1965,5 +2057,6 @@ class FalkorDBClient:
             check_attr_map=check_attr_map,
             exist_items=exist_items,
             operator=operator,
+            attrs=attrs,
         )
         return add_results, update_results

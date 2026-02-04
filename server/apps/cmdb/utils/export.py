@@ -60,6 +60,9 @@ class Export:
             "字段标识(请勿编辑)"], 0
 
         for attr_info in self.attrs:
+            # 过滤掉 _display 冗余字段
+            if attr_info.get("is_display_field"):
+                continue
             attr_name = f'{attr_info["attr_name"]}(必填)' if attr_info.get("is_required") else attr_info["attr_name"]
             attrs_name.append(attr_name)
             attrs_id.append(attr_info["attr_id"])
@@ -129,20 +132,23 @@ class Export:
     def export_inst_list(self, inst_list):
         """导出实例列表"""
         workbook = self.generate_header()
-        # 找出枚举属性
+        # 找出枚举属性(过滤掉 _display 字段)
         enum_field_dict = {
             attr_info["attr_id"]: {i["id"]: i["name"] for i in attr_info["option"]}
             for attr_info in self.attrs
-            if attr_info["attr_type"] in {ORGANIZATION, USER, ENUM}
+            if attr_info["attr_type"] in {ORGANIZATION, USER, ENUM} and not attr_info.get("is_display_field")
         }
         user_option_dict = {
             attr_info["attr_id"]: {i.get("id"): i for i in attr_info.get("option", [])}
             for attr_info in self.attrs
-            if attr_info["attr_type"] == USER
+            if attr_info["attr_type"] == USER and not attr_info.get("is_display_field")
         }
         for inst_info in inst_list:
             sheet_data = [""]
             for attr in self.attrs:
+                # 过滤掉 _display 冗余字段
+                if attr.get("is_display_field"):
+                    continue
                 if attr["attr_type"] in {ORGANIZATION, USER}:
                     # attr_id_value = inst_info.get(attr["attr_id"], [])
                     # if not isinstance(attr_id_value, list):
