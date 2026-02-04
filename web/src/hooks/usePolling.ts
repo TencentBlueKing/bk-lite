@@ -61,11 +61,6 @@ export const usePolling = (
     return () => clearTimer();
   }, [interval, enabled]);
 
-  // 组件卸载时确保清理定时器
-  useEffect(() => {
-    return () => clearTimer();
-  }, []);
-
   return { clearTimer };
 };
 

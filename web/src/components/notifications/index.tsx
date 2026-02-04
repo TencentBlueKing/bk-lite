@@ -61,12 +61,11 @@ const Notifications = () => {
         : `/console_mgmt/notifications/?page=${pageNum}&page_size=10`;
 
       const response = await get(url);
-      if (pageNum === 1) {
-        setNotifications(response.items);
-      } else {
-        setNotifications(prev => [...prev, ...response.items]);
-      }
-      setHasMore(response.count > notifications.length + response.items.length);
+      setNotifications(prev => {
+        const newNotifications = pageNum === 1 ? response.items : [...prev, ...response.items];
+        setHasMore(response.count > newNotifications.length);
+        return newNotifications;
+      });
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
     } finally {
