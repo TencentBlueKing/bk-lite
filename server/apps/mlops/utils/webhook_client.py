@@ -55,10 +55,10 @@ class WebhookClient:
         Returns:
             str: webhook 基础 URL,如果未配置则返回 None
         """
-        webhook_base_url = os.getenv("WEBHOOK", None)
+        webhook_base_url = os.getenv("WEBHOOK_SERVER_URL", None)
 
         if not webhook_base_url:
-            logger.warning("环境变量 WEBHOOK 未配置")
+            logger.warning("环境变量 WEBHOOK_SERVER_URL 未配置")
             return None
 
         # 确保 URL 以 / 结尾
@@ -106,8 +106,8 @@ class WebhookClient:
         Returns:
             tuple: (is_valid, error_message)
         """
-        if not os.getenv("WEBHOOK"):
-            return False, "环境变量 WEBHOOK 未配置"
+        if not os.getenv("WEBHOOK_SERVER_URL"):
+            return False, "环境变量 WEBHOOK_SERVER_URL 未配置"
         return True, ""
 
     @staticmethod
@@ -133,7 +133,7 @@ class WebhookClient:
 
         if runtime == "kubernetes":
             # Kubernetes: 从环境变量读取 namespace
-            k8s_namespace = os.getenv("KUBERNETES_NAMESPACE", "mlops")
+            k8s_namespace = os.getenv("MLOPS_KUBERNETES_NAMESPACE", "mlops")
             payload["namespace"] = k8s_namespace
         else:
             # Docker: 从环境变量读取 network_mode
@@ -161,7 +161,7 @@ class WebhookClient:
         """
         url = WebhookClient.build_url(endpoint)
         if not url:
-            raise WebhookError("环境变量 WEBHOOK 未配置")
+            raise WebhookError("环境变量 WEBHOOK_SERVER_URL 未配置")
 
         logger.debug(f"请求 webhookd - URL: {url}, Payload: {payload}")
 

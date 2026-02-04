@@ -76,7 +76,7 @@ setup_device_args "$DEVICE" || {
     exit 1
 }
 
-# 启动 serving 容器（使用 Makefile 统一入口）
+# 启动 serving 容器（使用 Dockerfile 定义的 ENTRYPOINT: startup.sh -> supervisord）
 DOCKER_OUTPUT=$(docker run -d \
     --name "$ID" \
     --network "$NETWORK_MODE" \
@@ -93,9 +93,7 @@ DOCKER_OUTPUT=$(docker run -d \
     -e MLFLOW_MODEL_URI="$MLFLOW_MODEL_URI" \
     -e WORKERS="$WORKERS" \
     -e ALLOW_DUMMY_FALLBACK="false" \
-    --entrypoint "make" \
-    "$TRAIN_IMAGE" \
-    serving 2>&1)
+    "$TRAIN_IMAGE" 2>&1)
 
 DOCKER_STATUS=$?
 

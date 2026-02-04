@@ -8,6 +8,9 @@ export interface Studio {
   team: string[];
   team_name: string[];
   online: boolean;
+  is_pinned?: boolean;
+  bot_type?: number;
+  permissions?: string[];
   [key: string]: any;
 }
 

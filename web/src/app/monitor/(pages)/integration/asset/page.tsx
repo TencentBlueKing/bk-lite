@@ -8,10 +8,10 @@ import {
   Tag,
   Popconfirm,
   Space,
-  Tooltip,
+  Tooltip
 } from 'antd';
 import useApiClient from '@/utils/request';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import assetStyle from './index.module.scss';
@@ -23,20 +23,20 @@ import {
   Organization,
   Pagination,
   TableDataItem,
-  ObjectItem,
+  ObjectItem
 } from '@/app/monitor/types';
 import {
   ObjectInstItem,
-  TemplateDrawerRef,
+  TemplateDrawerRef
 } from '@/app/monitor/types/integration';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
-import { DownOutlined } from '@ant-design/icons';
+import { DownOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
 import {
   showGroupName,
-  getBaseInstanceColumn,
+  getBaseInstanceColumn
 } from '@/app/monitor/utils/common';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import TreeSelector from '@/app/monitor/components/treeSelector';
@@ -62,6 +62,7 @@ const Asset = () => {
   const commonContext = useCommon();
   const { convertToLocalizedTime } = useLocalizedTime();
   const searchparams = useSearchParams();
+  const router = useRouter();
   const urlObjId = searchparams.get('objId');
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
@@ -75,7 +76,7 @@ const Asset = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
@@ -94,7 +95,7 @@ const Asset = () => {
   const handleAssetMenuClick: MenuProps['onClick'] = (e) => {
     openInstanceModal(
       {
-        keys: selectedRowKeys,
+        keys: selectedRowKeys
       },
       e.key
     );
@@ -102,7 +103,7 @@ const Asset = () => {
 
   const assetMenuProps = {
     items: assetMenuItems,
-    onClick: handleAssetMenuClick,
+    onClick: handleAssetMenuClick
   };
 
   const openTemplateDrawer = (
@@ -116,7 +117,7 @@ const Asset = () => {
       objName: objects.find((item) => item.id === objectId)?.name || '',
       monitorObjId: objectId,
       plugins: record.plugins || [],
-      showTemplateList: options?.showTemplateList ?? true,
+      showTemplateList: options?.showTemplateList ?? true
     });
   };
 
@@ -128,8 +129,8 @@ const Asset = () => {
         key: 'plugins',
         onCell: () => ({
           style: {
-            minWidth: 150,
-          },
+            minWidth: 150
+          }
         }),
         render: (_, record: any) => {
           const plugins = record.plugins || [];
@@ -145,7 +146,7 @@ const Asset = () => {
                     : 'error',
                   text: isAuto
                     ? t('monitor.integrations.automatic')
-                    : t('monitor.integrations.manual'),
+                    : t('monitor.integrations.manual')
                 };
 
                 const statusText =
@@ -171,7 +172,7 @@ const Asset = () => {
                       onClick={() =>
                         openTemplateDrawer(record, {
                           selectedConfigId: isAuto ? plugin.name : undefined,
-                          showTemplateList: false,
+                          showTemplateList: false
                         })
                       }
                     >
@@ -182,7 +183,7 @@ const Asset = () => {
               })}
             </div>
           );
-        },
+        }
       },
       {
         title: t('monitor.group'),
@@ -190,15 +191,15 @@ const Asset = () => {
         key: 'organization',
         onCell: () => ({
           style: {
-            minWidth: 120,
-          },
+            minWidth: 120
+          }
         }),
         render: (_, { organization }) => (
           <EllipsisWithTooltip
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
             text={showGroupName(organization, organizationList)}
           />
-        ),
+        )
       },
       {
         title: t('common.action'),
@@ -258,17 +259,17 @@ const Asset = () => {
               </Popconfirm>
             </Permission>
           </>
-        ),
-      },
+        )
+      }
     ];
     const row = objects.find((item) => item.id === objectId) || {};
     return [
       ...getBaseInstanceColumn({
         objects,
         row: row as ObjectItem,
-        t,
+        t
       }),
-      ...columnItems,
+      ...columnItems
     ];
   }, [objects, objectId, t, convertToLocalizedTime]);
 
@@ -318,7 +319,7 @@ const Asset = () => {
     objectId,
     pagination.current,
     pagination.pageSize,
-    searchText,
+    searchText
   ]);
 
   const onRefresh = () => {
@@ -349,7 +350,7 @@ const Asset = () => {
     instanceRef.current?.showModal({
       title: t(`common.${type}`),
       type,
-      form: row,
+      form: row
     });
   };
 
@@ -364,7 +365,7 @@ const Asset = () => {
       instance_id: row.instance_id,
       icon: monitorItem?.icon || OBJECT_DEFAULT_ICON,
       instance_name: row.instance_name,
-      instance_id_values: row.instance_id_values,
+      instance_id_values: row.instance_id_values
     };
     const queryString = new URLSearchParams(params).toString();
     const url = `/monitor/view/detail?${queryString}`;
@@ -386,16 +387,16 @@ const Asset = () => {
         page: pagination.current,
         page_size: pagination.pageSize,
         name: type === 'clear' ? '' : searchText,
-        id: objectId,
+        id: objectId
       };
       const data = await getInstanceListByPrimaryObject(params, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       if (currentRequestId !== assetRequestIdRef.current) return;
       setTableData(data?.results || []);
       setPagination((prev: Pagination) => ({
         ...prev,
-        total: data?.count || 0,
+        total: data?.count || 0
       }));
     } finally {
       if (currentRequestId === assetRequestIdRef.current) {
@@ -409,7 +410,7 @@ const Asset = () => {
       setTreeLoading(type !== 'timer');
       const params = {
         name: '',
-        add_instance_count: true,
+        add_instance_count: true
       };
       const data = await getMonitorObject(params);
       setObjects(data);
@@ -425,23 +426,26 @@ const Asset = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.type]) {
-        acc[item.type] = {
-          title: item.display_type || '--',
-          key: item.type,
-          children: [],
-        };
-      }
-      if (!EXCLUDED_CHILD_OBJECTS.includes(item.name)) {
-        acc[item.type].children.push({
-          title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
-          key: item.id,
-          children: [],
-        });
-      }
-      return acc;
-    }, {} as Record<string, TreeItem>);
+    const groupedData = data.reduce(
+      (acc, item) => {
+        if (!acc[item.type]) {
+          acc[item.type] = {
+            title: item.display_type || '--',
+            key: item.type,
+            children: []
+          };
+        }
+        if (!EXCLUDED_CHILD_OBJECTS.includes(item.name)) {
+          acc[item.type].children.push({
+            title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
+            key: item.id,
+            children: []
+          });
+        }
+        return acc;
+      },
+      {} as Record<string, TreeItem>
+    );
     return Object.values(groupedData);
   };
 
@@ -450,7 +454,7 @@ const Asset = () => {
     try {
       const data = {
         instance_ids: [row.instance_id],
-        clean_child_config: true,
+        clean_child_config: true
       };
       await deleteMonitorInstance(data);
       message.success(t('common.successfullyDeleted'));
@@ -466,6 +470,12 @@ const Asset = () => {
     getAssetInsts(objectId, 'clear');
   };
 
+  // 跳转到集成列表页面进行接入
+  const goToIntegration = () => {
+    const targetUrl = `/monitor/integration/list?objId=${objectId}`;
+    router.push(targetUrl);
+  };
+
   //判断是否禁用按钮
   const onSelectChange = (newSelectedRowKeys: React.Key[]) => {
     setSelectedRowKeys(newSelectedRowKeys);
@@ -478,9 +488,9 @@ const Asset = () => {
       return {
         disabled: Array.isArray(record.permission)
           ? !record.permission.includes('Operate')
-          : false,
+          : false
       };
-    },
+    }
   };
 
   return (
@@ -505,6 +515,14 @@ const Asset = () => {
             onClear={clearText}
           ></Input>
           <div className="flex">
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              className="mr-[8px]"
+              onClick={goToIntegration}
+            >
+              {t('monitor.integrations.access')}
+            </Button>
             <Dropdown
               className="mr-[8px]"
               overlayClassName="customMenu"

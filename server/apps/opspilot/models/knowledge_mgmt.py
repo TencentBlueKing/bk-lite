@@ -84,6 +84,30 @@ class KnowledgeDocument(MaintainerInfo, TimeInfo):
             self.instance_id = str(uuid.uuid4())
         super().save(*args, **kwargs)
 
+    @classmethod
+    def create_new_document(cls, kwargs, username, domain="domain.com", ocr_model=None):
+        """创建新的知识文档
+
+        Args:
+            kwargs: 包含 knowledge_base_id, name, knowledge_source_type 的字典
+            username: 创建者用户名
+            domain: 域名，默认 domain.com
+            ocr_model: OCR 模型，可选
+
+        Returns:
+            KnowledgeDocument: 新创建的文档对象
+        """
+        return cls.objects.create(
+            knowledge_base_id=kwargs["knowledge_base_id"],
+            name=kwargs["name"],
+            knowledge_source_type=kwargs["knowledge_source_type"],
+            created_by=username,
+            train_status=DocumentStatus.PENDING,
+            enable_ocr_parse=True,
+            ocr_model=ocr_model,
+            domain=domain,
+        )
+
     # delete 方法已移除，使用 post_delete signal 处理 ES 内容清理
     # 见 apps.opspilot.signals.knowledge_signals.cleanup_knowledge_document_es_content
 

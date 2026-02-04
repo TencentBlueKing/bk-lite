@@ -1,6 +1,6 @@
 'use client';
 
-import React, {
+import {
   useState,
   forwardRef,
   useImperativeHandle,
@@ -17,15 +17,16 @@ import {
   Col,
   Row,
   Checkbox,
+  Tooltip,
 } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
-import { AttrFieldType, UserItem, FullInfoGroupItem, FullInfoAttrItem, FieldConfig } from '@/app/cmdb/types/assetManage';
-import { deepClone } from '@/app/cmdb/utils/common';
+import { AttrFieldType, UserItem, FullInfoGroupItem, FullInfoAttrItem, FieldConfig, TimeAttrOption, StrAttrOption } from '@/app/cmdb/types/assetManage';
+import { deepClone, getStringValidationRule, getNumberRangeRule, normalizeTimeValueForForm, normalizeTimeValueForSubmit } from '@/app/cmdb/utils/common';
 import { useInstanceApi } from '@/app/cmdb/api';
-import dayjs from 'dayjs';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import styles from './filterBar.module.scss';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
@@ -69,23 +70,18 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
       }
     }, [groupVisible, instanceData]);
 
-    // 当编辑弹窗打开+模型为host时，获取云区域选项test8.8
     useEffect(() => {
       if (groupVisible && modelId === 'host') {
-        // 使用store中的云区域列表数据替代直接获取
         setProxyOptions(useAssetDataStore.getState().cloud_list || []);
       }
     }, [groupVisible, modelId]);
 
-    // 监听 ip_addr 和 cloud，自动填充 inst_name
     const ipValue = Form.useWatch('ip_addr', form);
     const cloudValue = Form.useWatch('cloud', form);
     useEffect(() => {
-      // 当模型为host时，自动填充 inst_name + could_id
       if (modelId === 'host') {
-        // 确保cloudValue是数字格式（后台传来的字符串格式）
         const cloudName = proxyOptions.find(
-          (opt: any) => opt.proxy_id === +cloudValue
+          (opt: any) => opt.proxy_id === +cloudValue,
         )?.proxy_name;
         if (ipValue && cloudName) {
           form.setFieldsValue({
@@ -106,10 +102,6 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         model_id,
         list,
       }) => {
-        // 打印属性标题列表+值
-        // console.log('test7.9', attrList);
-
-        // 开启弹窗的交互
         setGroupVisible(true);
         setSubTitle(subTitle);
         setType(type);
@@ -119,14 +111,14 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         setSelectedRows(list);
         const forms = deepClone(formInfo);
 
-        // 提取所有属性并扁平化，用于在315行数据中查找
         const allAttrs = attrList.flatMap((group) => group.attrs || []);
 
-        // 转换日期和组织字段格式（复制和编辑都需要）
         for (const key in forms) {
-          const target = allAttrs.find((item: FullInfoAttrItem) => item.attr_id === key);
+          const target = allAttrs.find(
+            (item: FullInfoAttrItem) => item.attr_id === key,
+          );
           if (target?.attr_type === 'time' && forms[key]) {
-            forms[key] = dayjs(forms[key], 'YYYY-MM-DD HH:mm:ss');
+            forms[key] = normalizeTimeValueForForm(target, forms[key]);
           } else if (target?.attr_type === 'organization' && forms[key]) {
             forms[key] = forms[key]
               .map((item: any) => Number(item))
@@ -134,7 +126,6 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
           }
         }
 
-        // 复制操作时，覆盖组织字段为当前选中的分组
         if (type === 'add') {
           Object.assign(forms, {
             organization: selectedGroup?.id
@@ -158,7 +149,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
     };
 
     const renderFormLabel = (item: FullInfoAttrItem) => {
-      return (
+      const labelContent = (
         <div className="flex items-center">
           {type === 'batchEdit' && item.editable && !item.is_only ? (
             <Checkbox
@@ -175,8 +166,35 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
           {item.is_required && type !== 'batchEdit' && (
             <span className="text-[#ff4d4f] ml-1">*</span>
           )}
+          {item.user_prompt && (
+            <Tooltip title={item.user_prompt}>
+              <QuestionCircleOutlined className="ml-1 text-gray-400 cursor-help" />
+            </Tooltip>
+          )}
         </div>
       );
+      return labelContent;
+    };
+
+    const getFieldRules = (item: FullInfoAttrItem) => {
+      const rules: any[] = [
+        {
+          required: item.is_required && type !== 'batchEdit',
+          message: t('required'),
+        },
+      ];
+
+      if (item.attr_type === 'str') {
+        const stringRule = getStringValidationRule(item, t);
+        if (stringRule) rules.push(stringRule);
+      }
+
+      if (item.attr_type === 'int') {
+        const numberRule = getNumberRangeRule(item, t);
+        if (numberRule) rules.push(numberRule);
+      }
+
+      return rules;
     };
 
     const renderFormField = (item: FullInfoAttrItem) => {
@@ -198,10 +216,13 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
               {proxyOptions.map((opt) => {
                 // 确保proxy_id是字符串格式
                 return (
-                  <Select.Option key={String(opt.proxy_id)} value={String(opt.proxy_id)}>
+                  <Select.Option
+                    key={String(opt.proxy_id)}
+                    value={String(opt.proxy_id)}
+                  >
                     {opt.proxy_name}
                   </Select.Option>
-                )
+                );
               })}
             </Select>
           );
@@ -209,12 +230,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
 
         // 特殊处理-主机的云区域ID显示,但是不允许修改（弹窗中）
         if (item.attr_id === 'cloud_id' && modelId === 'host') {
-          return (
-            <Input
-              disabled={true}
-              placeholder={t('common.inputTip')}
-            />
-          );
+          return <Input disabled={true} placeholder={t('common.inputTip')} />;
         }
 
         // 新增+编辑弹窗中，用户字段为多选
@@ -260,7 +276,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
                   return true;
                 }}
               >
-                {(Array.isArray(item.option) ? item.option : item.option ? JSON.parse(item.option) : []).map((opt: any) => (
+                {(Array.isArray(item.option) ? item.option : []).map((opt: any) => (
                   <Select.Option key={opt.id} value={opt.id}>
                     {opt.name}
                   </Select.Option>
@@ -284,12 +300,19 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
               </Select>
             );
           case 'time':
+            const timeOption = item.option as TimeAttrOption;
+            const displayFormat = timeOption?.display_format || 'datetime';
+            const showTime = displayFormat === 'datetime';
+            const format =
+              displayFormat === 'datetime'
+                ? 'YYYY-MM-DD HH:mm:ss'
+                : 'YYYY-MM-DD';
             return (
               <DatePicker
                 placeholder={t('common.selectTip')}
-                showTime
+                showTime={showTime}
                 disabled={fieldDisabled}
-                format="YYYY-MM-DD HH:mm:ss"
+                format={format}
                 style={{ width: '100%' }}
               />
             );
@@ -306,6 +329,18 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
               />
             );
           default:
+            if (item.attr_type === 'str') {
+              const strOption = item.option as StrAttrOption;
+              if (strOption?.widget_type === 'multi_line') {
+                return (
+                  <Input.TextArea
+                    rows={4}
+                    placeholder={t('common.inputTip')}
+                    disabled={fieldDisabled || hostDisabled}
+                  />
+                );
+              }
+            }
             return (
               <Input
                 placeholder={t('common.inputTip')}
@@ -322,16 +357,16 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
       form
         .validateFields()
         .then((values) => {
-          // 从分组中提取所有属性并扁平化，用于在315行数据中查找
           const allAttrs = formItems.flatMap((group) => group.attrs || []);
           for (const key in values) {
-            const target = allAttrs.find((item: FullInfoAttrItem) => item.attr_id === key);
-            if (target?.attr_type === 'time' && values[key]) {
-              values[key] = values[key].format('YYYY-MM-DD HH:mm:ss');
+            const target = allAttrs.find(
+              (item: FullInfoAttrItem) => item.attr_id === key,
+            );
+            if (target && values[key] !== undefined) {
+              values[key] = normalizeTimeValueForSubmit(target, values[key]);
             }
           }
 
-          //显示规范云区域提交参数
           if (values.cloud) {
             values.cloud = String(values.cloud);
           }
@@ -356,7 +391,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         const isBatchEdit = type === 'batchEdit';
         if (isBatchEdit) {
           const hasEnabledFields = Object.values(enabledFields).some(
-            (enabled) => enabled
+            (enabled) => enabled,
           );
           if (!hasEnabledFields) {
             message.warning(t('common.inputTip'));
@@ -376,7 +411,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
           formData = params;
         }
         const msg: string = t(
-          type === 'add' ? 'successfullyAdded' : 'successfullyModified'
+          type === 'add' ? 'successfullyAdded' : 'successfullyModified',
         );
         let result: any;
         if (type === 'add') {
@@ -436,15 +471,14 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             </div>
           }
         >
-          {/* 编辑弹窗的内容部分 */}
           <Form form={form} layout="vertical">
-            {/* 遍历所有提取 organization 字段 */}
             {(() => {
               const organizationAttrs = formItems.flatMap((group) =>
-                (group.attrs || []).filter((attr) => attr.attr_id === 'organization')
+                (group.attrs || []).filter(
+                  (attr) => attr.attr_id === 'organization',
+                ),
               );
 
-              // 返回 organization 字段的数据
               return (
                 <>
                   <div className={styles.groupOrganization}>
@@ -457,12 +491,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
                           className="mb-4"
                           name={item.attr_id}
                           label={renderFormLabel(item)}
-                          rules={[
-                            {
-                              required: item.is_required && type !== 'batchEdit',
-                              message: t('required'),
-                            },
-                          ]}
+                          rules={getFieldRules(item)}
                         >
                           {renderFormField(item)}
                         </Form.Item>
@@ -470,22 +499,18 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
                     ))}
                   </Row>
                 </>
-              )
+              );
             })()}
 
-            {/* 其他分组（不包含 organization 字段） */}
             {formItems.map((group) => {
               const otherAttrs = (group.attrs || []).filter(
-                (attr) => attr.attr_id !== 'organization'
+                (attr) => attr.attr_id !== 'organization',
               );
               if (otherAttrs.length === 0) return null;
 
-              // 返回其他分组的数据
               return (
                 <div key={group.id}>
-                  <div className={styles.groupOther}>
-                    {group.group_name}
-                  </div>
+                  <div className={styles.groupOther}>{group.group_name}</div>
                   <Row gutter={24}>
                     {otherAttrs.map((item) => (
                       <Col span={12} key={item.attr_id}>
@@ -493,12 +518,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
                           className="mb-4"
                           name={item.attr_id}
                           label={renderFormLabel(item)}
-                          rules={[
-                            {
-                              required: item.is_required && type !== 'batchEdit',
-                              message: t('required'),
-                            },
-                          ]}
+                          rules={getFieldRules(item)}
                         >
                           {renderFormField(item)}
                         </Form.Item>

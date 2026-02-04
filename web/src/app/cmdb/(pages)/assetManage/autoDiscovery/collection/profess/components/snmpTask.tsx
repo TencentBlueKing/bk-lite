@@ -15,7 +15,7 @@ import {
 } from '@/app/cmdb/constants/professCollection';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import { formatTaskValues } from '../hooks/formatTaskValues';
-import { Form, Spin, Input, Select, Collapse, InputNumber,} from 'antd';
+import { Form, Spin, Input, Select, Collapse, InputNumber, Switch } from 'antd';
 
 interface SNMPTaskFormProps {
   onClose: () => void;

@@ -109,8 +109,6 @@ spec:
       containers:
       - name: serve
         image: ${TRAIN_IMAGE}
-        command: ["make"]
-        args: ["serving"]
         ports:
         - containerPort: ${CONTAINER_PORT}
           name: http

@@ -42,17 +42,6 @@ class VariableManager:
         """
         return self._variables.get(name, default)
 
-    def has_variable(self, name: str) -> bool:
-        """检查变量是否存在
-
-        Args:
-            name: 变量名
-
-        Returns:
-            变量是否存在
-        """
-        return name in self._variables
-
     def delete_variable(self, name: str) -> None:
         """删除变量
 
@@ -60,10 +49,6 @@ class VariableManager:
             name: 变量名
         """
         self._variables.pop(name, None)
-
-    def clear_variables(self) -> None:
-        """清空所有变量"""
-        self._variables.clear()
 
     def get_all_variables(self) -> Dict[str, Any]:
         """获取所有变量的副本

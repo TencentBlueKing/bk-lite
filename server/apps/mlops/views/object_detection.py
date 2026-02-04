@@ -383,7 +383,7 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="classify-object-detection:latest",  # YOLO 目标检测训练镜像
+                train_image="bklite/classify_object_detection_server:latest",  # YOLO 目标检测训练镜像
                 device=device,
             )
 
@@ -938,7 +938,7 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="classify-object-detection:latest",
+                    train_image="bklite/classify_object_detection_server:latest",
                     device=device,
                 )
 
@@ -1046,7 +1046,7 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="classify-object-detection:latest",  # YOLO 目标检测推理镜像
+                    train_image="bklite/classify_object_detection_server:latest",  # YOLO 目标检测推理镜像
                     device=device,
                 )
 

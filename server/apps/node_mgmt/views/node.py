@@ -14,9 +14,13 @@ from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.sidecar import Node, NodeOrganization
 from config.drf.pagination import CustomPageNumberPagination
-from apps.node_mgmt.serializers.node import NodeSerializer, BatchBindingNodeConfigurationSerializer, \
-    BatchOperateNodeCollectorSerializer
+from apps.node_mgmt.serializers.node import (
+    NodeSerializer,
+    BatchBindingNodeConfigurationSerializer,
+    BatchOperateNodeCollectorSerializer,
+)
 from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar
 
 
 class NodeFilterHandler:
@@ -26,7 +30,7 @@ class NodeFilterHandler:
     def normalize_bool_value(value):
         """规范化布尔值"""
         if isinstance(value, str):
-            return value.lower() in ('true', '1', 'yes')
+            return value.lower() in ("true", "1", "yes")
         elif isinstance(value, bool):
             return value
         return bool(value) if value is not None else None
@@ -52,7 +56,7 @@ class NodeFilterHandler:
             if not isinstance(condition, dict):
                 continue
 
-            value = NodeFilterHandler.normalize_bool_value(condition.get('value'))
+            value = NodeFilterHandler.normalize_bool_value(condition.get("value"))
             if value is not None:
                 values.append(value)
 
@@ -71,16 +75,16 @@ class NodeFilterHandler:
         # upgradeable=True: 筛选有可升级版本的节点
         if final_value:
             return queryset.filter(
-                component_versions__component_type='controller',
-                component_versions__upgradeable=True
+                component_versions__component_type="controller",
+                component_versions__upgradeable=True,
             ).distinct()
 
         # upgradeable=False: 排除有可升级版本的节点
         else:
             upgradeable_node_ids = Node.objects.filter(
-                component_versions__component_type='controller',
-                component_versions__upgradeable=True
-            ).values_list('id', flat=True)
+                component_versions__component_type="controller",
+                component_versions__upgradeable=True,
+            ).values_list("id", flat=True)
             return queryset.exclude(id__in=upgradeable_node_ids)
 
     @staticmethod
@@ -107,16 +111,16 @@ class NodeFilterHandler:
                 if not isinstance(condition, dict):
                     continue
 
-                lookup_expr = condition.get('lookup_expr', 'exact')
-                value = condition.get('value')
+                lookup_expr = condition.get("lookup_expr", "exact")
+                value = condition.get("value")
 
-                if value is None or value == '':
+                if value is None or value == "":
                     continue
 
                 # 规范化布尔值
-                if lookup_expr == 'bool':
+                if lookup_expr == "bool":
                     value = NodeFilterHandler.normalize_bool_value(value)
-                    lookup_expr = 'exact'
+                    lookup_expr = "exact"
 
                 # 构建查询键
                 lookup_key = f"{field_name}__{lookup_expr}"
@@ -141,7 +145,7 @@ class NodeFilterHandler:
 
         # 特殊字段列表（需要自定义处理逻辑）
         SPECIAL_FIELDS = {
-            'upgradeable': cls.handle_upgradeable_filter,
+            "upgradeable": cls.handle_upgradeable_filter,
             # 未来可以在这里添加其他特殊字段处理器
             # 'custom_field': cls.handle_custom_field_filter,
         }
@@ -170,15 +174,20 @@ class NodeFilterHandler:
         return queryset
 
 
-class NodeViewSet(mixins.DestroyModelMixin,
-                  GenericViewSet):
-    queryset = Node.objects.all().prefetch_related('nodeorganization_set').order_by("-created_at")
+class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
+    queryset = (
+        Node.objects.all()
+        .prefetch_related("nodeorganization_set")
+        .order_by("-created_at")
+    )
     pagination_class = CustomPageNumberPagination
     serializer_class = NodeSerializer
     search_fields = ["id", "name", "ip", "cloud_region_id", "install_method"]
 
     def add_permission(self, permission, items):
-        node_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
+        node_permission_map = {
+            i["id"]: i["permission"] for i in permission.get("instance", [])
+        }
         for node_info in items:
             if node_info["id"] in node_permission_map:
                 node_info["permission"] = node_permission_map[node_info["id"]]
@@ -196,21 +205,32 @@ class NodeViewSet(mixins.DestroyModelMixin,
         )
 
         # 应用权限过滤
-        queryset = permission_filter(Node, permission, team_key="nodeorganization__organization__in", id_key="id__in")
+        queryset = permission_filter(
+            Node,
+            permission,
+            team_key="nodeorganization__organization__in",
+            id_key="id__in",
+        )
 
         # 应用自定义查询参数格式化（统一处理所有过滤条件）
-        custom_filters = request.data.get('filters')
+        custom_filters = request.data.get("filters")
         if custom_filters:
             queryset = NodeFilterHandler.apply_filters(queryset, custom_filters)
 
         # 根据组织筛选
-        organization_ids = request.query_params.get('organization_ids') or request.data.get('organization_ids')
+        organization_ids = request.query_params.get(
+            "organization_ids"
+        ) or request.data.get("organization_ids")
         if organization_ids:
-            organization_ids = organization_ids.split(',')
-            queryset = queryset.filter(nodeorganization__organization__in=organization_ids).distinct()
+            organization_ids = organization_ids.split(",")
+            queryset = queryset.filter(
+                nodeorganization__organization__in=organization_ids
+            ).distinct()
 
         # 根据云区域筛选
-        cloud_region_id = request.query_params.get('cloud_region_id') or request.data.get('cloud_region_id')
+        cloud_region_id = request.query_params.get(
+            "cloud_region_id"
+        ) or request.data.get("cloud_region_id")
         if cloud_region_id:
             queryset = queryset.filter(cloud_region_id=cloud_region_id)
 
@@ -218,7 +238,7 @@ class NodeViewSet(mixins.DestroyModelMixin,
         queryset = NodeSerializer.setup_eager_loading(queryset)
 
         # 按创建时间倒序排序（最新的在前）
-        queryset = queryset.order_by('-created_at')
+        queryset = queryset.order_by("-created_at")
 
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -252,28 +272,30 @@ class NodeViewSet(mixins.DestroyModelMixin,
         name = request.data.get("name")
         organizations = request.data.get("organizations")
 
-        # 更新节点名称
         if name is not None:
             node.name = name
             node.save()
 
-        # 如果 organizations 字段有传递（即使是空数组也进）
         if organizations is not None:
-            # ① 删除原有组织关联
             NodeOrganization.objects.filter(node=node).delete()
-
-            # ② 批量创建新的组织关联（允许空列表 → 自动清空）
             new_relations = [
                 NodeOrganization(node=node, organization=org_id)
                 for org_id in organizations
             ]
             NodeOrganization.objects.bulk_create(new_relations)
 
+        if name is not None or organizations is not None:
+            sync_node_properties_to_sidecar.delay(
+                node_id=node.id, name=name, organizations=organizations
+            )
+
         return WebUtils.response_success()
 
     @action(methods=["get"], detail=False, url_path=r"enum", filter_backends=[])
     def enum(self, request, *args, **kwargs):
-        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+        lan = LanguageLoader(
+            app=LanguageConstants.APP, default_lang=request.user.locale
+        )
 
         # 翻译标签枚举
         translated_tags = {}
@@ -281,25 +303,37 @@ class NodeViewSet(mixins.DestroyModelMixin,
             name_key = f"{LanguageConstants.COLLECTOR_TAG}.{tag_key}"
             translated_tags[tag_key] = {
                 "is_app": tag_value["is_app"],
-                "name": lan.get(name_key) or tag_value["name"]
+                "name": lan.get(name_key) or tag_value["name"],
             }
 
         # 翻译控制器状态枚举
         translated_sidecar_status = {}
         for status_key, status_value in ControllerConstants.SIDECAR_STATUS_ENUM.items():
             status_name_key = f"{LanguageConstants.CONTROLLER_STATUS}.{status_key}"
-            translated_sidecar_status[status_key] = lan.get(status_name_key) or status_value
+            translated_sidecar_status[status_key] = (
+                lan.get(status_name_key) or status_value
+            )
 
         # 翻译控制器安装方式枚举
         translated_install_method = {}
         for method_key, method_value in ControllerConstants.INSTALL_METHOD_ENUM.items():
-            method_name_key = f"{LanguageConstants.CONTROLLER_INSTALL_METHOD}.{method_key}"
-            translated_install_method[method_key] = lan.get(method_name_key) or method_value
+            method_name_key = (
+                f"{LanguageConstants.CONTROLLER_INSTALL_METHOD}.{method_key}"
+            )
+            translated_install_method[method_key] = (
+                lan.get(method_name_key) or method_value
+            )
 
         # 翻译操作系统枚举
         translated_os = {
-            NodeConstants.LINUX_OS: lan.get(f"{LanguageConstants.OS}.{NodeConstants.LINUX_OS}") or NodeConstants.LINUX_OS_DISPLAY,
-            NodeConstants.WINDOWS_OS: lan.get(f"{LanguageConstants.OS}.{NodeConstants.WINDOWS_OS}") or NodeConstants.WINDOWS_OS_DISPLAY,
+            NodeConstants.LINUX_OS: lan.get(
+                f"{LanguageConstants.OS}.{NodeConstants.LINUX_OS}"
+            )
+            or NodeConstants.LINUX_OS_DISPLAY,
+            NodeConstants.WINDOWS_OS: lan.get(
+                f"{LanguageConstants.OS}.{NodeConstants.WINDOWS_OS}"
+            )
+            or NodeConstants.WINDOWS_OS_DISPLAY,
         }
 
         enum_data = dict(
@@ -318,8 +352,12 @@ class NodeViewSet(mixins.DestroyModelMixin,
         serializer = BatchBindingNodeConfigurationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         node_ids = serializer.validated_data["node_ids"]
-        collector_configuration_id = serializer.validated_data["collector_configuration_id"]
-        result, message = NodeService.batch_binding_node_configuration(node_ids, collector_configuration_id)
+        collector_configuration_id = serializer.validated_data[
+            "collector_configuration_id"
+        ]
+        result, message = NodeService.batch_binding_node_configuration(
+            node_ids, collector_configuration_id
+        )
 
         # 清除cache中的etag
         for node_id in node_ids:
@@ -347,7 +385,9 @@ class NodeViewSet(mixins.DestroyModelMixin,
 
     @action(detail=False, methods=["post"], url_path="node_config_asso")
     def get_node_config_asso(self, request):
-        nodes = Node.objects.prefetch_related("collectorconfiguration_set").filter(cloud_region_id=request.data["cloud_region_id"])
+        nodes = Node.objects.prefetch_related("collectorconfiguration_set").filter(
+            cloud_region_id=request.data["cloud_region_id"]
+        )
         if request.data.get("ids"):
             nodes = nodes.filter(id__in=request.data["ids"])
 

@@ -16,3 +16,6 @@ update:
 
 serving:
 	uv run python -m bentoml serve classify_image_classification_server.serving.service:MLService --reload
+
+release:
+	docker build -t bklite/classify_image_classification_server:latest -f ./support-files/release/Dockerfile . --push

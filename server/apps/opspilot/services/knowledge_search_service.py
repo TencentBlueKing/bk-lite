@@ -12,59 +12,6 @@ from apps.opspilot.models import EmbedProvider, KnowledgeBase, KnowledgeGraph, R
 
 
 class KnowledgeSearchService:
-    @classmethod
-    def build_search_params(
-        cls,
-        knowledge_base_folder: KnowledgeBase,
-        query: str,
-        embed_mode_config: Dict[str, Any],
-        rerank_model,
-        kwargs: Dict[str, Any],
-        score_threshold: float,
-    ) -> Dict[str, Any]:
-        """构建搜索参数
-
-        Args:
-            knowledge_base_folder: 知识库文件夹对象
-            query: 搜索查询
-            embed_mode_config: 嵌入模型
-            rerank_model: 重排序模型
-            kwargs: 搜索配置参数
-            score_threshold: 分数阈值，低于此分数的结果将被过滤
-        Returns:
-            Dict[str, Any]: 构建好的搜索参数字典
-        """
-        rerank_model_address = rerank_model_api_key = rerank_model_name = ""
-        if kwargs["enable_rerank"]:
-            rerank_config = rerank_model.decrypted_rerank_config_config
-            rerank_model_address = rerank_config["base_url"]
-            rerank_model_api_key = rerank_config["api_key"] or " "
-            rerank_model_name = rerank_model.rerank_config.get("model", rerank_model.name)
-        params = {
-            "index_name": knowledge_base_folder.knowledge_index_name(),
-            "search_query": query,
-            "metadata_filter": {"enabled": "true"},
-            "score_threshold": score_threshold,
-            "k": kwargs.get("rag_size", 50),
-            "qa_size": kwargs.get("qa_size", 50),
-            "search_type": kwargs["search_type"],
-            "enable_rerank": kwargs["enable_rerank"],
-            "embed_model_base_url": embed_mode_config["base_url"],
-            "embed_model_api_key": embed_mode_config["api_key"] or " ",
-            "embed_model_name": embed_mode_config["model"],
-            "rerank_model_base_url": rerank_model_address,
-            "rerank_model_api_key": rerank_model_api_key,
-            "rerank_model_name": rerank_model_name,
-            "rerank_top_k": kwargs["rerank_top_k"],
-            "rag_recall_mode": kwargs.get("rag_recall_mode", "chunk"),
-            "enable_naive_rag": kwargs["enable_naive_rag"],
-            "enable_graph_rag": False,
-            "enable_qa_rag": kwargs["enable_qa_rag"],
-            "graph_rag_request": {},
-        }
-
-        return params
-
     @staticmethod
     def set_graph_rag_request(knowledge_base_folder, kwargs, query):
         graph_rag_request = {}

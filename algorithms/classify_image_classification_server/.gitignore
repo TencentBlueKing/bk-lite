@@ -11,4 +11,5 @@ wheels/
 .env
 *.log
 .yolo_runs/
+yolo_models
 support-files/scripts/data

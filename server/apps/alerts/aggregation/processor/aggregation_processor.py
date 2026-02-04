@@ -1,10 +1,9 @@
 from datetime import timedelta
 from typing import List, Dict, Any
 import logging
-
+import re
 from django.utils import timezone
 from django.db import transaction
-
 from apps.alerts.aggregation.recovery.recovery_checker import AlertRecoveryChecker
 from apps.alerts.models import AlarmStrategy, Event, Alert
 from apps.alerts.constants import EventAction, AlarmStrategyType, AlertStatus
@@ -282,12 +281,13 @@ class AggregationProcessor:
         critical_level = [str(i) for i in [global_level[0]]]
         normal_level = [str(i) for i in global_level[1:]]
         result["fingerprint"] = str_to_md5(raw_fingerprint)
+        fingerprint_is_md5 = re.fullmatch(r"[0-9a-fA-F]{32}", raw_fingerprint)
         if str(now_level) in critical_level:
-            if 'EVENT-' not in raw_fingerprint:
+            if not fingerprint_is_md5:
                 result["alert_title"] = f"{raw_fingerprint} 发生严重问题"
                 result["alert_description"] = f"影响范围：{result["alert_description"]}"
         if str(now_level) in normal_level:
-            if 'EVENT-' not in raw_fingerprint:
+            if not fingerprint_is_md5:
                 result["alert_title"] = f"{raw_fingerprint} 检测到异常"
                 result["alert_description"] = f"影响范围：{result["alert_description"]}"
             

@@ -401,7 +401,7 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="classify-image-classification:latest",  # YOLO 训练镜像
+                train_image="bklite/classify_image_classification_server:latest",  # YOLO 训练镜像
                 device=device,
             )
 
@@ -960,7 +960,7 @@ class ImageClassificationServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="classify-image-classification:latest",
+                    train_image="bklite/classify_image_classification_server:latest",
                     device=device,
                 )
 
@@ -1068,7 +1068,7 @@ class ImageClassificationServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="classify-image-classification:latest",  # YOLO 推理镜像
+                    train_image="bklite/classify_image_classification_server:latest",  # YOLO 推理镜像
                     device=device,
                 )
 

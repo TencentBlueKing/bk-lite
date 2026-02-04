@@ -1,24 +1,43 @@
+from typing import AsyncGenerator
+
 from apps.rpc.jetstream import JetStreamService
 
 
-# 文件上传
 async def upload_file_to_s3(file, s3_file_path):
     jetstream = JetStreamService()
     await jetstream.connect()
-    # 读取文件数据
-    file_data = file.read()  # 读取整个文件内容为字节流
-    file_name = file.name  # 获取原始文件名
+    file_data = file.read()
+    file_name = file.name
     await jetstream.put(s3_file_path, file_data, description=file_name)
     await jetstream.close()
 
 
-# 下载文件
 async def download_file_by_s3(s3_file_path):
     jetstream = JetStreamService()
     await jetstream.connect()
     file, name = await jetstream.get(s3_file_path)
     await jetstream.close()
     return file, name
+
+
+async def stream_download_file_by_s3(
+    s3_file_path: str, chunk_size: int = 1024 * 1024
+) -> AsyncGenerator[tuple[bytes, str, int], None]:
+    """
+    流式下载文件，避免大文件内存堆积。
+
+    Yields:
+        tuple[bytes, str, int]: (chunk_data, filename, total_size)
+    """
+    jetstream = JetStreamService()
+    await jetstream.connect()
+    try:
+        async for chunk, filename, total_size in jetstream.get_streaming(
+            s3_file_path, chunk_size
+        ):
+            yield chunk, filename, total_size
+    finally:
+        await jetstream.close()
 
 
 # 删除文件

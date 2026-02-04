@@ -142,7 +142,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="classify-anomaly:latest",
+                train_image="bklite/classify_anomaly_server:latest",
             )
 
             # 更新任务状态
@@ -968,7 +968,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="classify-anomaly:latest",
+                    train_image="bklite/classify_anomaly_server:latest",
                 )
 
                 # 启动成功，仅更新容器信息
@@ -1122,7 +1122,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=instance.port,
-                    train_image="classify-anomaly:latest",
+                    train_image="bklite/classify_anomaly_server:latest",
                 )
 
                 # 更新容器信息（status 由用户控制，不修改）
@@ -1188,7 +1188,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="classify-anomaly:latest",
+                    train_image="bklite/classify_anomaly_server:latest",
                 )
 
                 # 正常启动成功，仅更新容器信息

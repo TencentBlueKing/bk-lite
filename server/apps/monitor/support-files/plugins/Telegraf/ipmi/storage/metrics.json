@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='storage'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["ipmi_chassis_power_state", "ipmi_power_watts", "ipmi_temperature_celsius"],
+  "supplementary_indicators": ["ipmi_chassis_power_state", "ipmi_fan_speed_rpm", "ipmi_temperature_celsius"],
   "metrics": [
     {
       "metric_group": "Power",

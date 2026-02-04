@@ -165,9 +165,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
   };
 
   const handleTagClick = (filter: FilterItem, index: number) => {
-    // 同步切换搜索框的选项
-    // console.log("test4:filter", filter);
-
     setEditingFilter({ ...filter });
     setEditingIndex(index);
     setClickedTagIndex(index);
@@ -412,10 +409,11 @@ const FilterBar: React.FC<FilterBarProps> = ({
           </Form.Item>
         );
       case 'enum':
+        const enumOpts = Array.isArray(fieldInfo?.option) ? fieldInfo.option : [];
         return (
           <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectValue') }]}>
             <Select placeholder={t('FilterBar.pleaseSelect')} allowClear showSearch style={{ width: '100%' }}>
-              {fieldInfo?.option?.map((opt) => (
+              {enumOpts.map((opt) => (
                 <Select.Option key={opt.id} value={opt.id}>
                   {opt.name}
                 </Select.Option>

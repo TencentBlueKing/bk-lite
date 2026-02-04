@@ -10,8 +10,7 @@ import jinja2
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMModel, LLMSkill
-from apps.opspilot.services.chat_service import ChatService
-from apps.opspilot.services.llm_service import llm_service
+from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 
@@ -176,7 +175,7 @@ class AgentNode(BaseNodeExecutor):
         skill_type = llm_params.get("skill_type")
         llm_params.pop("group", 0)
 
-        chat_kwargs, _, _ = llm_service.format_chat_server_kwargs(llm_params, llm_model)
+        chat_kwargs, _, _ = chat_service.format_chat_server_kwargs(llm_params, llm_model)
         # 创建 agent 实例
         graph, request = create_agent_instance(skill_type, chat_kwargs)
 
