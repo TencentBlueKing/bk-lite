@@ -1343,18 +1343,11 @@ class ChatFlowEngine:
 
         # 检查是否是分支节点的条件边
         if source_handle.lower() in ["true", "false"]:
-            # 这是一条分支边，需要根据分支节点的执行结果判断
             condition_result = node_result["data"].get("condition_result")
-            if condition_result is not None:
-                if source_handle.lower() == "true" and condition_result:
-                    return True
-                elif source_handle.lower() == "false" and not condition_result:
-                    return True
-                else:
-                    return False
-            else:
+            if condition_result is None:
                 logger.warning(f"分支边缺少条件结果，edge: {edge.get('id', 'unknown')}")
                 return False
+            return (source_handle.lower() == "true") == bool(condition_result)
 
         # 默认跟随边（对于非分支、非意图节点的普通边）
         return True
