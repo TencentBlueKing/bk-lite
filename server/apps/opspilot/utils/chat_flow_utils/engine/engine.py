@@ -168,18 +168,13 @@ class ChatFlowEngine:
         # 根据协议类型选择执行方法
         executor = self._get_node_executor(target_agent_node.get("type"))
         execute_method = None
-        protocol_type = None
 
         if is_agui_protocol and hasattr(executor, "agui_execute"):
             execute_method = executor.agui_execute
-            protocol_type = "AGUI"
         elif hasattr(executor, "sse_execute"):
             execute_method = executor.sse_execute
-            protocol_type = "SSE"
 
-        if execute_method:
-            logger.info(f"[SSE-Engine] 使用{protocol_type}协议执行agents节点: {target_agent_node.get('id')}")
-        else:
+        if not execute_method:
             logger.error(f"[SSE-Engine] agents节点不支持流式执行: {target_agent_node.get('id')}")
 
         if not execute_method:
@@ -197,13 +192,9 @@ class ChatFlowEngine:
             agent_context = self._create_node_execution_context(node=target_agent_node, input_data=final_input_data, status=NodeStatus.RUNNING)
 
             try:
-                logger.info(f"[SSE-Engine] 开始流处理 - protocol: {protocol_type}, node: {node_id}")
-
                 # 同步调用 execute_method,它会返回一个异步生成器
                 async_execute = sync_to_async(execute_method, thread_sensitive=False)
                 stream_generator = await async_execute(target_agent_node.get("id"), target_agent_node, final_input_data)
-
-                logger.info(f"[SSE-Engine] 获得流生成器: {type(stream_generator)}")
 
                 chunk_index = 0
                 # 直接迭代异步生成器
@@ -219,8 +210,6 @@ class ChatFlowEngine:
                             pass
 
                     yield chunk
-
-                logger.info(f"[SSE-Engine] 流处理完成 - 共生成 {chunk_index} 个chunk")
 
                 # 更新 agents 节点执行上下文 - 成功
                 final_message = self._extract_final_message(accumulated_content)
@@ -252,7 +241,7 @@ class ChatFlowEngine:
 
                 if next_nodes:
                     # 有后续节点：不在此处记录，让后续节点执行完成后统一记录
-                    logger.info(f"[SSE-Engine] 有 {len(next_nodes)} 个后续节点，延迟记录执行结果")
+                    pass
                 else:
                     # 没有后续节点：直接记录成功执行结果
                     # 捕获变量，避免闭包延迟绑定问题
@@ -309,7 +298,6 @@ class ChatFlowEngine:
         response["Access-Control-Allow-Headers"] = "Cache-Control"
         response["Transfer-Encoding"] = "chunked"
 
-        logger.info(f"[SSE-Engine] 返回 StreamingHttpResponse - protocol: {protocol_type}")
         return response
 
     def set_start_node_variable(self, input_data: dict[str, Any] | dict[Any, Any], start_node: dict[str, Any]) -> dict[str, Any]:
@@ -337,8 +325,6 @@ class ChatFlowEngine:
         # 构建精简的输出数据（只保留 outputParams 配置的参数）
         filtered_output = {output_key: input_message}
 
-        logger.info(f"[SSE-Engine] 入口节点参数映射: {input_key} -> {output_key}, 消息长度: {len(str(input_message))}")
-
         # 使用公共方法创建执行上下文（使用精简的输入数据）
         start_context = self._create_node_execution_context(node=start_node, input_data=filtered_input, status=NodeStatus.COMPLETED)
 
@@ -348,8 +334,6 @@ class ChatFlowEngine:
 
         # 更新节点执行顺序
         self._update_node_execution_order(start_node_id)
-
-        logger.info(f"[SSE-Engine] 入口节点已记录: {start_node_id} ({start_node.get('type')})")
 
         return filtered_output
 
@@ -451,7 +435,6 @@ class ChatFlowEngine:
         if not nodes_to_execute_before:
             return input_data
 
-        logger.info(f"[SSE-Engine] 执行 {len(nodes_to_execute_before)} 个前置节点")
         temp_engine_data = input_data.copy()
 
         for i, node in enumerate(nodes_to_execute_before):
@@ -531,10 +514,7 @@ class ChatFlowEngine:
                 next_nodes = self._get_next_nodes(agent_node.get("id"), {"success": True, "data": {}})
 
                 if not next_nodes:
-                    logger.info(f"[SSE-Engine] agents节点 {agent_node.get('id')} 没有后续节点")
                     return
-
-                logger.info(f"[SSE-Engine] 开始执行 {len(next_nodes)} 个后续节点: {next_nodes}")
 
                 # 准备输入数据
                 # 从累积的内容中提取最终消息
@@ -566,8 +546,6 @@ class ChatFlowEngine:
                         # 使用公共方法创建执行上下文
                         context = self._create_node_execution_context(node=next_node, input_data=node_input, status=NodeStatus.RUNNING)
 
-                        logger.info(f"[SSE-Engine] 执行后续节点: {next_node_id} ({node_type})")
-
                         # 执行节点
                         result = executor.execute(next_node_id, next_node, node_input)
 
@@ -578,8 +556,6 @@ class ChatFlowEngine:
 
                         # 更新节点执行顺序
                         self._update_node_execution_order(next_node_id)
-
-                        logger.info(f"[SSE-Engine] 后续节点 {next_node_id} 执行完成: {result}")
 
                         # 更新输入为下一个节点准备
                         if result and isinstance(result, dict):
@@ -633,7 +609,6 @@ class ChatFlowEngine:
         # 在后台线程中执行
         thread = threading.Thread(target=execute_in_background, daemon=True, name="SSE-SubsequentNodes")
         thread.start()
-        logger.info("[SSE-Engine] 已启动后台线程执行后续节点")
 
     def _extract_final_message(self, accumulated_content: list) -> str:
         """从累积的流式内容中提取最终消息
@@ -708,7 +683,6 @@ class ChatFlowEngine:
 
         final_message = "".join(final_msg_parts) if final_msg_parts else ""
 
-        logger.info(f"[SSE-Engine] 提取的最终消息长度: {len(final_message)}")
         return final_message
 
     def _extract_browser_steps(self, accumulated_content: list) -> List[Dict[str, Any]]:
@@ -739,8 +713,6 @@ class ChatFlowEngine:
             if step_number is not None:
                 browser_steps.append({"step": step_number, "evaluation": evaluation or ""})
 
-        if browser_steps:
-            logger.info(f"[SSE-Engine] 提取到 {len(browser_steps)} 个 browser_use 步骤")
         return browser_steps
 
     def _record_execution_result(self, input_data: Dict[str, Any], result: Any, success: bool, start_node_type: str = None) -> None:
@@ -819,8 +791,6 @@ class ChatFlowEngine:
                 last_output=last_output,
                 execute_type=execute_type,
             )
-
-            logger.info(f"工作流执行结果已记录: flow_id={self.instance.id}, status={status}")
 
         except Exception as e:
             logger.error(f"记录工作流执行结果失败: {str(e)}")
@@ -901,8 +871,6 @@ class ChatFlowEngine:
         start_time = time.time()
         user_id = input_data.get("user_id", "")
         input_message = input_data.get("last_message", "") or input_data.get("message", "")
-
-        logger.info(f"开始执行流程: flow_id={self.instance.id}, user_id={user_id}")
 
         # 验证流程
         validation_errors = self.validate_flow()
@@ -1173,8 +1141,6 @@ class ChatFlowEngine:
         # 使用公共方法创建执行上下文
         context = self._create_node_execution_context(node=node, input_data=input_data, status=NodeStatus.RUNNING)
 
-        logger.info(f"开始执行节点: {node_id} (类型: {node_type})")
-
         try:
             # 获取执行器
             executor = self._get_node_executor(node_type)
@@ -1191,7 +1157,6 @@ class ChatFlowEngine:
             intent_previous_output = self.variable_manager.get_variable("intent_previous_output")
             if intent_previous_output is not None:
                 # 当前节点是意图分类后的目标节点，使用保存的前置节点输出
-                logger.info(f"节点 {node_id} 使用意图分类的前置节点输出")
                 input_value = intent_previous_output
                 # 清除标记，避免影响后续节点
                 self.variable_manager.delete_variable("intent_previous_output")
@@ -1217,19 +1182,14 @@ class ChatFlowEngine:
                         # 避免覆盖前置节点的输出
                         if node_type not in ["condition", "branch", "intent"]:
                             self.variable_manager.set_variable("last_message", output_value)
-                        else:
-                            logger.info(f"节点类型 {node_type} 不更新全局变量 last_message")
                     else:
                         # 非last_message的输出直接设置到全局变量
-                        logger.info(f"设置全局变量 {output_key}={output_value}")
                         self.variable_manager.set_variable(output_key, output_value)
 
             # 更新上下文
             context.end_time = time.time()
             context.status = NodeStatus.COMPLETED
             context.output_data = result
-
-            logger.info(f"节点 {node_id} 执行成功")
 
             # 更新节点执行顺序
             self._update_node_execution_order(node_id)
@@ -1274,8 +1234,6 @@ class ChatFlowEngine:
         Returns:
             并行执行结果
         """
-        logger.info(f"并行执行节点: {node_ids}")
-
         results = {}
         timeout_per_node = remaining_timeout / len(node_ids)
 
@@ -1376,14 +1334,11 @@ class ChatFlowEngine:
         if intent_result:
             # 这是意图分类节点，检查边的sourceHandle是否匹配意图结果
             if source_handle and source_handle == intent_result:
-                logger.info(f"意图路由匹配: sourceHandle={source_handle}, 意图结果={intent_result}")
                 return True
             elif source_handle:
-                logger.debug(f"意图路由不匹配: sourceHandle={source_handle}, 意图结果={intent_result}")
                 return False
             else:
                 # 没有sourceHandle的边，默认不跟随（意图节点必须有明确的sourceHandle）
-                logger.debug("意图分类节点的边缺少sourceHandle，不跟随")
                 return False
 
         # 检查是否是分支节点的条件边
@@ -1392,13 +1347,10 @@ class ChatFlowEngine:
             condition_result = node_result["data"].get("condition_result")
             if condition_result is not None:
                 if source_handle.lower() == "true" and condition_result:
-                    logger.info(f"分支边判断: true路径匹配，条件结果: {condition_result}")
                     return True
                 elif source_handle.lower() == "false" and not condition_result:
-                    logger.info(f"分支边判断: false路径匹配，条件结果: {condition_result}")
                     return True
                 else:
-                    logger.info(f"分支边判断: 路径不匹配，sourceHandle: {source_handle}, 条件结果: {condition_result}")
                     return False
             else:
                 logger.warning(f"分支边缺少条件结果，edge: {edge.get('id', 'unknown')}")
