@@ -11,7 +11,7 @@ import { useStudioApi } from '@/app/opspilot/api/studio';
 
 const StudioPage: React.FC = () => {
   const { t } = useTranslation();
-  const { deleteStudio } = useStudioApi();
+  const { deleteStudio, toggleBotPin } = useStudioApi();
 
   const beforeDelete = (studio: Studio, deleteCallback: () => void) => {
     const onDelete = async () => {
@@ -38,6 +38,15 @@ const StudioPage: React.FC = () => {
     }
   };
 
+  const beforePin = async (studio: Studio) => {
+    try {
+      await toggleBotPin(studio.id);
+      message.success(studio.is_pinned ? t('common.unpinSuccess') : t('common.pinSuccess'));
+    } catch {
+      message.error(t('common.operationFailed'));
+    }
+  };
+
   return (
     <EntityList<Studio>
       endpoint="/opspilot/bot_mgmt/bot/"
@@ -50,6 +59,7 @@ const StudioPage: React.FC = () => {
       )}
       itemTypeSingle="studio"
       beforeDelete={beforeDelete}
+      onTogglePin={beforePin}
     />
   );
 };

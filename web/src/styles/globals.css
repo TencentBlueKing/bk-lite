@@ -315,3 +315,25 @@ html:not(.dark) body {
       content: "LOADING...";
   }
 }
+
+/* 禁用的菜单项但允许内部交互 */
+.ant-dropdown-menu-submenu-disabled,
+.ant-dropdown-menu-item-disabled {
+  pointer-events: auto !important;
+}
+
+.ant-dropdown-menu-submenu-disabled > *,
+.ant-dropdown-menu-item-disabled > * {
+  pointer-events: auto !important;
+}
+
+/* Tree 组件内所有元素都可交互 */
+.ant-dropdown-menu-item-disabled .ant-tree,
+.ant-dropdown-menu-item-disabled .ant-tree *,
+.ant-dropdown-menu-item-disabled .ant-tree-switcher,
+.ant-dropdown-menu-item-disabled .ant-tree-node-content-wrapper,
+.ant-dropdown-menu-item-disabled .ant-input,
+.ant-dropdown-menu-item-disabled .ant-checkbox-wrapper {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
