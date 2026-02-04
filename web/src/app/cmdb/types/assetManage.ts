@@ -155,6 +155,13 @@ export interface IntAttrOption {
   max_value: string | number;
 }
 
+// 属性字段最小结构（用于工具函数）
+export interface AttrLike {
+  attr_type: string;
+  option: unknown;
+  is_required?: boolean;
+}
+
 // 属性 option 联合类型
 export type AttrOption = EnumList[] | StrAttrOption | TimeAttrOption | IntAttrOption | Record<string, unknown>;
 

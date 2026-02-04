@@ -24,23 +24,12 @@ import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
-import { AttrFieldType, UserItem, FullInfoGroupItem, FullInfoAttrItem, FieldConfig, StrAttrOption, TimeAttrOption, IntAttrOption } from '@/app/cmdb/types/assetManage';
-import { deepClone } from '@/app/cmdb/utils/common';
+import { AttrFieldType, UserItem, FullInfoGroupItem, FullInfoAttrItem, FieldConfig, TimeAttrOption, StrAttrOption } from '@/app/cmdb/types/assetManage';
+import { deepClone, getStringValidationRule, getNumberRangeRule, normalizeTimeValueForForm, normalizeTimeValueForSubmit } from '@/app/cmdb/utils/common';
 import { useInstanceApi } from '@/app/cmdb/api';
-import dayjs from 'dayjs';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import styles from './filterBar.module.scss';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
-
-// 字符串验证正则表达式
-const VALIDATION_PATTERNS: Record<string, RegExp> = {
-  ipv4: /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/,
-  ipv6: /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|(([0-9a-fA-F]{1,4}:){1,6}|:):((:[0-9a-fA-F]{1,4}){1,6}|:)|::([fF]{4}(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/,
-  email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-  mobile_phone: /^1[3-9]\d{9}$/,
-  url: /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$/,
-  json: /^[\s]*(\{[\s\S]*\}|\[[\s\S]*\])[\s]*$/,
-};
 
 interface FieldModalProps {
   onSuccess: (instId?: string) => void;
@@ -129,7 +118,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             (item: FullInfoAttrItem) => item.attr_id === key,
           );
           if (target?.attr_type === 'time' && forms[key]) {
-            forms[key] = dayjs(forms[key], 'YYYY-MM-DD HH:mm:ss');
+            forms[key] = normalizeTimeValueForForm(target, forms[key]);
           } else if (target?.attr_type === 'organization' && forms[key]) {
             forms[key] = forms[key]
               .map((item: any) => Number(item))
@@ -187,74 +176,6 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
       return labelContent;
     };
 
-    // 生成字符串验证规则
-    const getStringValidationRule = (item: FullInfoAttrItem) => {
-      const strOption = item.option as StrAttrOption;
-      if (!strOption?.validation_type || strOption.validation_type === 'unrestricted') {
-        return null;
-      }
-
-      if (strOption.validation_type === 'custom' && strOption.custom_regex) {
-        try {
-          return {
-            pattern: new RegExp(strOption.custom_regex),
-            message: t('Model.customRegexRequired'),
-          };
-        } catch {
-          console.error('Invalid custom regex:', strOption.custom_regex);
-          return null;
-        }
-      }
-
-      if (VALIDATION_PATTERNS[strOption.validation_type]) {
-        return {
-          pattern: VALIDATION_PATTERNS[strOption.validation_type],
-          message: `${t('common.inputMsg')}${t(`Model.${strOption.validation_type}`)}`,
-        };
-      }
-
-      return null;
-    };
-
-    // 生成数字范围验证规则
-    const getNumberRangeRule = (item: FullInfoAttrItem) => {
-      const intOption = item.option as IntAttrOption;
-      const hasMin =
-        intOption?.min_value !== undefined &&
-        intOption?.min_value !== '' &&
-        intOption?.min_value !== null;
-      const hasMax =
-        intOption?.max_value !== undefined &&
-        intOption?.max_value !== '' &&
-        intOption?.max_value !== null;
-
-      if (!hasMin && !hasMax) return null;
-
-      return {
-        validator: (_: any, value: any) => {
-          if (value === undefined || value === null || value === '') {
-            return Promise.resolve();
-          }
-          const numValue = Number(value);
-
-          if (hasMin && numValue < Number(intOption.min_value)) {
-            return Promise.reject(
-              new Error(`${t('Model.min')}: ${intOption.min_value}`),
-            );
-          }
-
-          if (hasMax && numValue > Number(intOption.max_value)) {
-            return Promise.reject(
-              new Error(`${t('Model.max')}: ${intOption.max_value}`),
-            );
-          }
-
-          return Promise.resolve();
-        },
-      };
-    };
-
-    // 生成字段验证规则
     const getFieldRules = (item: FullInfoAttrItem) => {
       const rules: any[] = [
         {
@@ -263,15 +184,13 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         },
       ];
 
-      // 字符串类型验证
       if (item.attr_type === 'str') {
-        const stringRule = getStringValidationRule(item);
+        const stringRule = getStringValidationRule(item, t);
         if (stringRule) rules.push(stringRule);
       }
 
-      // 数字类型范围验证
       if (item.attr_type === 'int') {
-        const numberRule = getNumberRangeRule(item);
+        const numberRule = getNumberRangeRule(item, t);
         if (numberRule) rules.push(numberRule);
       }
 
@@ -438,20 +357,13 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
       form
         .validateFields()
         .then((values) => {
-          // 从分组中提取所有属性并扁平化，用于在315行数据中查找
           const allAttrs = formItems.flatMap((group) => group.attrs || []);
           for (const key in values) {
             const target = allAttrs.find(
               (item: FullInfoAttrItem) => item.attr_id === key,
             );
-            if (target?.attr_type === 'time' && values[key]) {
-              const timeOpt = target.option as TimeAttrOption;
-              const displayFmt = timeOpt?.display_format || 'datetime';
-              if (displayFmt === 'date') {
-                values[key] = values[key].format('YYYY-MM-DD') + ' 00:00:00';
-              } else {
-                values[key] = values[key].format('YYYY-MM-DD HH:mm:ss');
-              }
+            if (target && values[key] !== undefined) {
+              values[key] = normalizeTimeValueForSubmit(target, values[key]);
             }
           }
 
