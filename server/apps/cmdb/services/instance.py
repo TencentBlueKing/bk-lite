@@ -76,14 +76,14 @@ class InstanceManage(object):
 
     @staticmethod
     def instance_list(
-        model_id: str,
-        params: list,
-        page: int,
-        page_size: int,
-        order: str,
-        permission_map: dict,
-        creator: str = None,
-        case_sensitive: bool = True,
+            model_id: str,
+            params: list,
+            page: int,
+            page_size: int,
+            order: str,
+            permission_map: dict,
+            creator: str = None,
+            case_sensitive: bool = True,
     ):
         """实例列表"""
 
@@ -146,7 +146,7 @@ class InstanceManage(object):
                 INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}]
             )
             result = ag.create_entity(
-                INSTANCE, instance_info, check_attr_map, exist_items, operator
+                INSTANCE, instance_info, check_attr_map, exist_items, operator, attrs
             )
 
         create_change_record(
@@ -163,7 +163,7 @@ class InstanceManage(object):
 
     @staticmethod
     def instance_update(
-        user_groups: list, roles: list, inst_id: int, update_attr: dict, operator: str
+            user_groups: list, roles: list, inst_id: int, update_attr: dict, operator: str
     ):
         """修改实例属性"""
         inst_info = InstanceManage.query_entity_by_id(inst_id)
@@ -221,7 +221,7 @@ class InstanceManage(object):
             )
             exist_items = [i for i in exist_items if i["_id"] != inst_id]
             result = ag.set_entity_properties(
-                INSTANCE, [inst_id], update_attr, check_attr_map, exist_items
+                INSTANCE, [inst_id], update_attr, check_attr_map, exist_items, attrs=attrs
             )
 
         create_change_record(
@@ -303,7 +303,7 @@ class InstanceManage(object):
             )
             exist_items = [i for i in exist_items if i["_id"] not in inst_ids]
             result = ag.set_entity_properties(
-                INSTANCE, inst_ids, update_attr, check_attr_map, exist_items
+                INSTANCE, inst_ids, update_attr, check_attr_map, exist_items, attrs=attrs
             )
 
         after_dict = {i["_id"]: i for i in result}
@@ -326,7 +326,7 @@ class InstanceManage(object):
 
     @staticmethod
     def instance_batch_delete(
-        user_groups: list, roles: list, inst_ids: list, operator: str
+            user_groups: list, roles: list, inst_ids: list, operator: str
     ):
         """批量删除实例"""
         inst_list = InstanceManage.query_entity_by_ids(inst_ids)
@@ -631,11 +631,11 @@ class InstanceManage(object):
         return results
 
     def inst_import_support_edit(
-        self,
-        model_id: str,
-        file_stream: bytes,
-        operator: str,
-        allowed_org_ids: list = None,
+            self,
+            model_id: str,
+            file_stream: bytes,
+            operator: str,
+            allowed_org_ids: list = None,
     ):
         """实例导入-支持编辑"""
         attrs = ModelManage.search_model_attr_v2(model_id)
@@ -662,7 +662,9 @@ class InstanceManage(object):
             logger.warning(
                 f"模型 {model_id} 数据导入验证失败，错误数量: {len(_import.validation_errors)}"
             )
-            return {"success": False, "message": error_summary + error_details}
+            success_count = len([i for i in add_results if i.get("success", False)])
+            error_summary += f"已成功导入 {success_count} 条数据，失败 {len(_import.inst_list) - success_count} 条数据。\n 错误信息: {error_summary + error_details}"
+            return {"success": False, "message": error_summary}
 
         add_changes = [
             dict(
@@ -733,13 +735,13 @@ class InstanceManage(object):
 
     @staticmethod
     def inst_export(
-        model_id: str,
-        ids: list,
-        permissions_map: dict = {},
-        created: str = "",
-        creator: str = "",
-        attr_list: list = [],
-        association_list: list = [],
+            model_id: str,
+            ids: list,
+            permissions_map: dict = {},
+            created: str = "",
+            creator: str = "",
+            attr_list: list = [],
+            association_list: list = [],
     ):
         """实例导出"""
         attrs = ModelManage.search_model_attr_v2(model_id)
@@ -959,11 +961,11 @@ class InstanceManage(object):
 
     @classmethod
     def fulltext_search(
-        cls,
-        search: str,
-        permission_map: dict,
-        creator: str = "",
-        case_sensitive: bool = False,
+            cls,
+            search: str,
+            permission_map: dict,
+            creator: str = "",
+            case_sensitive: bool = False,
     ):
         """
         全文检索（兼容旧接口）
@@ -999,11 +1001,11 @@ class InstanceManage(object):
 
     @classmethod
     def fulltext_search_stats(
-        cls,
-        search: str,
-        permission_map: dict,
-        creator: str = "",
-        case_sensitive: bool = False,
+            cls,
+            search: str,
+            permission_map: dict,
+            creator: str = "",
+            case_sensitive: bool = False,
     ):
         """
         全文检索 - 模型统计接口
@@ -1049,14 +1051,14 @@ class InstanceManage(object):
 
     @classmethod
     def fulltext_search_by_model(
-        cls,
-        search: str,
-        model_id: str,
-        permission_map: dict,
-        creator: str = "",
-        page: int = 1,
-        page_size: int = 10,
-        case_sensitive: bool = False,
+            cls,
+            search: str,
+            model_id: str,
+            permission_map: dict,
+            creator: str = "",
+            page: int = 1,
+            page_size: int = 10,
+            case_sensitive: bool = False,
     ):
         """
         全文检索 - 模型数据查询接口
