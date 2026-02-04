@@ -65,6 +65,7 @@
         "unassigned": "Unassigned",
         "auto_close": "Auto Closed",
         "recovered": "Recovery",
+        "auto_recovery": "Auto Recovery",
         "resolved": "Resolved",
         "closed": "Closed",
         "close": "close",

@@ -63,7 +63,7 @@ class AlterModelViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
-        queryset = Alert.objects.annotate(
+        queryset = Alert.objects.filter(session_status=SessionStatus.CONFIRMED).annotate(
             event_count_annotated=Count('events'),
             # 通过事件获取告警源名称（去重）
             source_names_annotated=StringAgg('events__source__name', delimiter=', ', distinct=True),
