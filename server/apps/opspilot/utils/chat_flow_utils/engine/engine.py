@@ -685,21 +685,23 @@ class ChatFlowEngine:
 
         return final_message
 
-    def _extract_browser_steps(self, accumulated_content: list) -> List[Dict[str, Any]]:
+    def _extract_browser_steps(self, accumulated_content: list) -> List[str]:
         """从累积的流式内容中提取 browser_use 步骤信息
 
-        解析 CUSTOM 类型的 browser_step_progress 事件，提取 step 和 evaluation 信息。
+        解析 CUSTOM 类型的 browser_step_progress 事件，提取 step_number、next_goal 和 evaluation。
+        格式化为纯字符串列表，最后一个元素为最终评估结果。
 
         Args:
             accumulated_content: 累积的数据列表
 
         Returns:
-            browser_steps 列表，格式: [{"step": 1, "evaluation": "..."}, ...]
+            browser_steps 字符串列表，格式: ["step1 xxx", "step2 xxx", ..., "最终结果: xxx"]
         """
         if not accumulated_content:
             return []
 
         browser_steps = []
+        last_evaluation = ""
         for data in accumulated_content:
             if not isinstance(data, dict):
                 continue
@@ -709,9 +711,15 @@ class ChatFlowEngine:
             if not isinstance(value, dict):
                 continue
             step_number = value.get("step_number")
-            evaluation = value.get("evaluation")
-            if step_number is not None:
-                browser_steps.append({"step": step_number, "evaluation": evaluation or ""})
+            next_goal = value.get("next_goal", "")
+            evaluation = value.get("evaluation", "")
+            if step_number is not None and next_goal:
+                browser_steps.append(f"步骤{step_number} {next_goal}")
+            if evaluation:
+                last_evaluation = evaluation
+
+        if last_evaluation:
+            browser_steps.append(f"最终结果: {last_evaluation}")
 
         return browser_steps
 

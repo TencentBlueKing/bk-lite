@@ -894,8 +894,35 @@ class BasicGraph(ABC):
     async def execute(self, request: BasicLLMRequest) -> BasicLLMResponse:
         """执行图并返回完整响应，包含 token 统计"""
         try:
+            # 创建 browser_steps 收集器（纯字符串列表）
+            browser_steps_collector: List[str] = []
+            last_evaluation: str = ""
+
+            def sync_step_callback(step_info: Dict[str, Any]) -> None:
+                """同步回调，收集 browser_use 步骤信息并格式化为字符串"""
+                nonlocal last_evaluation
+                step_number = step_info.get("step_number", 0)
+                next_goal = step_info.get("next_goal", "")
+                evaluation = step_info.get("evaluation", "")
+
+                # 记录步骤: "step{n} {next_goal}"
+                if next_goal:
+                    browser_steps_collector.append(f"step{step_number} {next_goal}")
+
+                # 保存最新的 evaluation 用于最终结果
+                if evaluation:
+                    last_evaluation = evaluation
+
             graph = await self.compile_graph(request)
-            result = await self.invoke(graph, request)
+            result = await self.invoke(
+                graph,
+                request,
+                extra_configurable={"browser_step_callback": sync_step_callback},
+            )
+
+            # 添加最终结果
+            if last_evaluation:
+                browser_steps_collector.append(f"最终结果: {last_evaluation}")
 
             prompt_token = 0
             completion_token = 0
@@ -912,6 +939,7 @@ class BasicGraph(ABC):
                 total_tokens=prompt_token + completion_token,
                 prompt_tokens=prompt_token,
                 completion_tokens=completion_token,
+                browser_steps=browser_steps_collector,
             )
         except BaseException as e:
             # 处理所有异常，包括 TaskGroup 异常
