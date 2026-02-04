@@ -31,7 +31,7 @@ const useApiClient = () => {
   const { t } = useTranslation();
   const authContext = useAuth();
   const { data: session } = useSession();
-  const token = (session?.user as any)?.token || authContext?.token || null;
+  const token = session?.user?.token || authContext?.token || null;
   const tokenRef = useRef(token);
   const [isLoading, setIsLoading] = useState(true);
 

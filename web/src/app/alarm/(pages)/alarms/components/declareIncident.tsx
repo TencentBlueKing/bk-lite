@@ -19,7 +19,7 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
   const { t } = useTranslation();
   const { userList, levelListIncident } = useCommon();
   const { data: session } = useSession();
-  const currentUsername = (session?.user as any)?.username || '';
+  const currentUsername = session?.user?.username || '';
   const assigneeOptions = userList.map((u) => ({
     label: `${u.display_name} (${u.username})`,
     value: u.username,

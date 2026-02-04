@@ -40,7 +40,7 @@ const UserInfo: React.FC = () => {
   const [searchValue, setSearchValue] = useState<string>('');
   const [userExpandedKeys, setUserExpandedKeys] = useState<string[]>([]);
 
-  const username = displayName || (session?.user as any)?.username || 'Test';
+  const username = displayName || session?.user?.username || 'Test';
 
   // 初始化时从 cookie 读取 include_children 状态
   useEffect(() => {
@@ -172,7 +172,7 @@ const UserInfo: React.FC = () => {
   const dropdownItems: MenuProps['items'] = useMemo(() => {
     const filterGroups = (groups: Group[]): Group[] => {
       return groups
-        .filter(group => isSuperUser || (session?.user as any)?.username === 'kayla' || group.name !== 'OpsPilotGuest')
+        .filter(group => isSuperUser || session?.user?.username === 'kayla' || group.name !== 'OpsPilotGuest')
         .map(group => ({
           ...group,
           subGroups: group.subGroups ? filterGroups(group.subGroups) : undefined,
