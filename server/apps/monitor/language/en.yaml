@@ -1924,6 +1924,10 @@ monitor_object_metric:
         which may require increasing thread pool resources or optimizing request processing
         logic.
       name: Thread Pool Queue Length
+  TCP:
+    ConnectStatus:
+      name: Connect Status
+      desc: This metric reflects the availability of cloud APIs, the validity of account credentials, and the overall health of the data collection pipeline.
   CVM:
     CPUUsage_gauge:
       name: CPU Utilization

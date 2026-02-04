@@ -1,7 +1,7 @@
 {
   "client_id": "mlops",
   "name": "MLOps",
-  "url": "/mlops/manage",
+  "url": "/mlops/anomaly_detection",
   "description": "app.mlops",
   "icon": "moxingguanli1",
   "tags": [
@@ -12,61 +12,127 @@
   ],
   "menus": [
     {
-      "name": "Datasets",
+      "name": "Anomaly Detection",
       "children": [
         {
-          "id": "anomaly_detection_datasets",
+          "id": "anomaly_detection",
           "display_name": "Anomaly Detection",
-          "name": "anomaly_detection_datasets",
-          "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
-          ]
-        },
-        {
-          "id": "anomaly_detection_datasets_detail",
-          "display_name": "Anomaly Detection",
-          "name": "anomaly_detection_datasets_detail",
-          "operation": [
-            "File View",
-            "File Delete",
-            "File Upload",
-            "File Edit"
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Train Tasks",
-      "children": [
-        {
-          "id": "train_tasks",
-          "display_name": "Train Tasks",
-          "name": "train_tasks",
+          "name": "anomaly_detection",
           "operation": [
             "View",
             "Add",
             "Edit",
             "Delete",
+            "File View",
+            "File Delete",
+            "File Upload",
+            "File Edit",
             "Train"
           ]
         }
       ]
     },
     {
-      "name": "Model Release",
+      "name": "Timeseries Predict",
       "children": [
         {
-          "id": "model_release",
-          "display_name": "Model Release",
-          "name": "model_release",
+          "id": "timeseries_predict",
+          "display_name": "Timeseries Predict",
+          "name": "timeseries_predict",
           "operation": [
             "View",
             "Add",
             "Edit",
-            "Delete"
+            "Delete",
+            "File View",
+            "File Delete",
+            "File Upload",
+            "File Edit",
+            "Train"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Log Clustering",
+      "children": [
+        {
+          "id": "log_clustering",
+          "display_name": "Log Clustering",
+          "name": "log_clustering",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete",
+            "File View",
+            "File Delete",
+            "File Upload",
+            "File Edit",
+            "Train"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Text Classification",
+      "children": [
+        {
+          "id": "classification",
+          "display_name": "Text Classification",
+          "name": "classification",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete",
+            "File View",
+            "File Delete",
+            "File Upload",
+            "File Edit",
+            "Train"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Image Classification",
+      "children": [
+        {
+          "id": "image_classification",
+          "display_name": "Image Classification",
+          "name": "image_classification",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete",
+            "File View",
+            "File Delete",
+            "File Upload",
+            "File Edit",
+            "Train"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Object Detection",
+      "children": [
+        {
+          "id": "object_detection",
+          "display_name": "Object Detection",
+          "name": "object_detection",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete",
+            "File View",
+            "File Delete",
+            "File Upload",
+            "File Edit",
+            "Train"
           ]
         }
       ]
@@ -81,7 +147,14 @@
     {
       "name": "normal",
       "role_name": "mlops_normal",
-      "menus": ["anomaly_detection_datasets-View","train_tasks-View","model_release-View"]
+      "menus": [
+        "anomaly_detection-View",
+        "timeseries_predict-View",
+        "log_clustering-View",
+        "classification-View",
+        "image_classification-View",
+        "object_detection-View"
+      ]
     }
   ]
 }

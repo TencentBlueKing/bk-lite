@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Progress } from 'antd';
-import { RightOutlined, CheckCircleFilled, LoadingOutlined } from '@ant-design/icons';
+import { Progress, Image } from 'antd';
+import { RightOutlined, CheckCircleFilled, LoadingOutlined, EyeOutlined } from '@ant-design/icons';
 import { BrowserStepProgressData, BrowserStepAction, BrowserStepsHistory } from '@/app/opspilot/types/global';
 
 interface BrowserStepProgressProps {
@@ -139,6 +139,27 @@ const StepDetail: React.FC<StepDetailProps> = ({ data, isExpanded }) => {
           </div>
           <div className="text-xs text-[var(--color-text-2)] pl-4 break-words">
             {data.evaluation}
+          </div>
+        </div>
+      )}
+      
+      {data.screenshot && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-3)] mb-1">
+            <span>📸</span>
+            <span>Screenshot</span>
+          </div>
+          <div className="pl-4">
+            <Image 
+              src={data.screenshot.startsWith('data:') ? data.screenshot : `data:image/png;base64,${data.screenshot}`}
+              alt={`Step ${data.step_number} screenshot`}
+              width={200}
+              preview={{
+                getContainer: () => document.body,
+                mask: <span className="flex items-center gap-1"><EyeOutlined /> Preview</span>,
+                zIndex: 9999
+              }}
+            />
           </div>
         </div>
       )}

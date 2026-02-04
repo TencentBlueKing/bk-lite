@@ -17,6 +17,7 @@ import Icon from '@/components/icon';
 import { useStudioApi } from '@/app/opspilot/api/studio';
 import ChatflowSettings from '@/app/opspilot/components/studio/chatflowSettings';
 import { useUnsavedChanges } from '@/app/opspilot/hooks/useUnsavedChanges';
+import { useStudio } from '@/app/opspilot/context/studioContext';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -51,6 +52,7 @@ const StudioSettingsPage: React.FC = () => {
   const searchParams = useSearchParams();
   const botId = searchParams ? searchParams.get('id') : null;
   const { fetchInitialData, saveBotConfig, toggleOnlineStatus } = useStudioApi();
+  const { refreshBotInfo } = useStudio();
 
   const IconMap: any = {
     enterprise_wechat: 'qiwei2',
@@ -177,6 +179,7 @@ const StudioSettingsPage: React.FC = () => {
 
       await saveBotConfig(botId, payload);
       message.success(t(isPublish ? 'common.publishSuccess' : 'common.saveSuccess'));
+      refreshBotInfo();
       
       if (isPublish) {
         setOnline(true);
@@ -366,6 +369,7 @@ const StudioSettingsPage: React.FC = () => {
         edges: [...workflowData.edges] 
       });
       setHasUnsavedChanges(false);
+      refreshBotInfo();
       
       message.success(t(isPublish ? 'common.publishSuccess' : 'common.saveSuccess'));
       

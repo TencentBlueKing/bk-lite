@@ -5,6 +5,7 @@
       "infra": "Infrastructure Image",
       "editImage": "Edit Image",
       "updateImage": "Update Image",
+      "addImage": "Add Image",
       "imageUpdatedSuccess": "Image updated successfully",
       "imageCreatedSuccess": "Image created successfully",
       "imageName": "Image Name",

@@ -14,6 +14,7 @@ import {
 } from '@/app/cmdb/constants/professCollection';
 import { formatTaskValues, buildCredential } from '../hooks/formatTaskValues';
 import { Form, Spin, Input, Collapse, InputNumber } from 'antd';
+import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 
 interface SQLTaskFormProps {
   onClose: () => void;
@@ -33,6 +34,7 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
   const { t } = useTranslation();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const localeContext = useLocale();
+  const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
 
   const {
@@ -90,9 +92,35 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
     },
   });
 
+  // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
+  const buildFormValues = (values: any, isCopy: boolean, ipRange?: string[]) => {
+    const credential = values.credential || {};
+    return {
+      ipRange,
+      ...values,
+      ...values.credential,
+      taskName: isCopy ? '' : values.name,
+      user: credential.user || credential.username,
+      password: isCopy ? '' : PASSWORD_PLACEHOLDER,
+      organization: values.team || [],
+      accessPointId: values.access_point?.[0]?.id,
+    };
+  };
+
   useEffect(() => {
     const initForm = async () => {
-      if (editId) {
+      if (copyTaskData) {
+        const values = copyTaskData;
+        const ipRange = values.ip_range?.split('-');
+        if (values.ip_range?.length) {
+          baseRef.current?.initCollectionType(ipRange, 'ip');
+        } else {
+          baseRef.current?.initCollectionType(values.instances, 'asset');
+        }
+
+        // 复制任务中回填表单数据（此时任务名称和密码为空，需要用户手动输入）
+        form.setFieldsValue(buildFormValues(values, true, ipRange));
+      } else if (editId) {
         const values = await fetchTaskDetail(editId);
         const ipRange = values.ip_range?.split('-');
         if (values.ip_range?.length) {
@@ -100,20 +128,15 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
         } else {
           baseRef.current?.initCollectionType(values.instances, 'asset');
         }
-        form.setFieldsValue({
-          ipRange,
-          ...values,
-          ...values.credential,
-          password: PASSWORD_PLACEHOLDER,
-          organization: values.team || [],
-          accessPointId: values.access_point?.[0]?.id,
-        });
+
+        // 编辑任务中回填表单数据
+        form.setFieldsValue(buildFormValues(values, false, ipRange));
       } else {
         form.setFieldsValue(SQL_FORM_INITIAL_VALUES);
       }
     };
     initForm();
-  }, [modelId]);
+  }, [modelId, copyTaskData, setCopyTaskData]);
 
   return (
     <Spin spinning={loading}>

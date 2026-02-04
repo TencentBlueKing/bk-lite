@@ -57,7 +57,7 @@ const StrategyOperation = () => {
         getFields(),
         getChannelList(),
         getGroups(),
-        detailId && getStragyDetail(),
+        detailId && getStragyDetail()
       ]).finally(() => {
         setPageLoading(false);
       });
@@ -76,7 +76,7 @@ const StrategyOperation = () => {
         period: 5,
         schedule: 5,
         alert_type: 'keyword',
-        collect_type: '',
+        collect_type: ''
       };
       form.setFieldsValue(initForm);
       setTerm('or');
@@ -93,7 +93,7 @@ const StrategyOperation = () => {
 
   const getFields = async () => {
     const data = await getCollectTypesById({
-      collect_type_id: objId,
+      collect_type_id: objId
     });
     const fields = data?.attrs || [];
     setFieldList(fields);
@@ -102,7 +102,7 @@ const StrategyOperation = () => {
   const getGroups = async () => {
     const data = await getLogStreams({
       page_size: -1,
-      page: 1,
+      page: 1
     });
     setStreamList(data || []);
   };
@@ -114,7 +114,7 @@ const StrategyOperation = () => {
       period: period?.value || '',
       schedule: schedule?.value || '',
       query: alert_condition.query || '',
-      group_by: alert_condition.group_by || null,
+      group_by: alert_condition.group_by || null
     };
     if (alert_type === 'aggregate') {
       setTerm(alert_condition.rule?.mode || '');
@@ -135,15 +135,25 @@ const StrategyOperation = () => {
   const handleUnitChange = (val: string) => {
     setUnit(val);
     form.setFieldsValue({
-      schedule: null,
+      schedule: null
     });
   };
 
   const handlePeriodUnitChange = (val: string) => {
     setPeriodUnit(val);
     form.setFieldsValue({
-      period: null,
+      period: null
     });
+  };
+
+  const handleConditionsChange = (newConditions: FilterItem[]) => {
+    setConditions(newConditions);
+    form.validateFields(['rule']);
+  };
+
+  const handleTermChange = (val: string) => {
+    setTerm(val);
+    form.validateFields(['rule']);
   };
 
   const goBack = () => {
@@ -157,11 +167,11 @@ const StrategyOperation = () => {
       params.collect_type = objId;
       params.schedule = {
         type: unit,
-        value: values.schedule,
+        value: values.schedule
       };
       params.period = {
         type: periodUnit,
-        value: values.period,
+        value: values.period
       };
       if (params.notice_type_id) {
         params.notice_type =
@@ -169,13 +179,13 @@ const StrategyOperation = () => {
             ?.channel_type || '';
       }
       params.alert_condition = {
-        query: params.query,
+        query: params.query
       };
       if (params.alert_type === 'aggregate') {
         params.alert_condition.group_by = params.group_by;
         params.alert_condition.rule = {
           mode: term,
-          conditions,
+          conditions
         };
       }
       if (isEdit) {
@@ -236,7 +246,7 @@ const StrategyOperation = () => {
                 {
                   title: t('log.event.basicInformation'),
                   description: <BasicInfoForm />,
-                  status: 'process',
+                  status: 'process'
                 },
                 {
                   title: t('log.event.setAlertConditions'),
@@ -250,11 +260,11 @@ const StrategyOperation = () => {
                       streamList={streamList}
                       onUnitChange={handleUnitChange}
                       onPeriodUnitChange={handlePeriodUnitChange}
-                      onConditionsChange={setConditions}
-                      onTermChange={setTerm}
+                      onConditionsChange={handleConditionsChange}
+                      onTermChange={handleTermChange}
                     />
                   ),
-                  status: 'process',
+                  status: 'process'
                 },
                 {
                   title: t('log.event.configureNotifications'),
@@ -265,8 +275,8 @@ const StrategyOperation = () => {
                       onLinkToSystemManage={linkToSystemManage}
                     />
                   ),
-                  status: 'process',
-                },
+                  status: 'process'
+                }
               ]}
             />
           </Form>

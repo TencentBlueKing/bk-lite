@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='router'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["snmp_uptime", "device_total_incoming_traffic", "device_total_outgoing_traffic"],
+  "supplementary_indicators": ["interface_ifOperStatus", "interface_ifInErrors", "interface_ifOutDiscards"],
   "metrics": [
     {
       "metric_group": "Base",

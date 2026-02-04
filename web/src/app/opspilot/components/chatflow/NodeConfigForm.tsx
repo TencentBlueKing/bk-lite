@@ -227,20 +227,31 @@ export const NodeConfigForm: React.FC<any> = ({
 
       {nodeType === 'agents' && (
         <>
-          <Form.Item name="agent" label={t('chatflow.nodeConfig.selectAgent')} rules={[{ required: true }]}>
-            <Select
-              placeholder={t('chatflow.nodeConfig.pleaseSelectAgent')}
-              loading={loadingSkills}
-              showSearch
-              onChange={(agentId) => {
-                const selectedAgent = skills.find((s: any) => s.id === agentId);
-                if (selectedAgent) form.setFieldsValue({ agentName: selectedAgent.name });
-              }}
-              filterOption={(input, option) => option?.label?.toString().toLowerCase().includes(input.toLowerCase()) ?? false}
+          <div className="relative">
+            <Form.Item 
+              name="agent" 
+              label={t('chatflow.nodeConfig.selectAgent')}
+              rules={[{ required: true }]}
             >
-              {skills.map((s: any) => <Option key={s.id} value={s.id} label={s.name}>{s.name}</Option>)}
-            </Select>
-          </Form.Item>
+              <Select
+                placeholder={t('chatflow.nodeConfig.pleaseSelectAgent')}
+                loading={loadingSkills}
+                showSearch
+                onChange={(agentId) => {
+                  const selectedAgent = skills.find((s: any) => s.id === agentId);
+                  if (selectedAgent) form.setFieldsValue({ agentName: selectedAgent.name });
+                }}
+                filterOption={(input, option) => option?.label?.toString().toLowerCase().includes(input.toLowerCase()) ?? false}
+              >
+                {skills.map((s: any) => <Option key={s.id} value={s.id} label={s.name}>{s.name}</Option>)}
+              </Select>
+            </Form.Item>
+            <Link href="/opspilot/skill" target="_blank" className="absolute right-0 top-0">
+              <Button type="link" size="small" icon={<PlusOutlined />} className="text-blue-500 hover:text-blue-600 text-xs">
+                {t('chatflow.nodeConfig.addAgent')}
+              </Button>
+            </Link>
+          </div>
           <Form.Item name="agentName" className="hidden"><Input /></Form.Item>
           <Form.Item name="prompt" label={t('chatflow.nodeConfig.promptAppend')} tooltip={t('chatflow.nodeConfig.promptAppendTooltip')}>
             <TextArea rows={4} placeholder={t('chatflow.nodeConfig.promptPlaceholder')} />
@@ -333,9 +344,41 @@ export const NodeConfigForm: React.FC<any> = ({
             />
           </Form.Item>
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-xs">
-            <p className="text-gray-600 mb-1">
-              {t('chatflow.nodeConfig.webAccessAddress')}：
-            </p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-gray-600">
+                {t('chatflow.nodeConfig.webAccessAddress')}：
+              </p>
+              <Button
+                type="text"
+                size="small"
+                icon={<CopyOutlined />}
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => {
+                  try {
+                    const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/opspilot/studio/chat`;
+                    const textArea = document.createElement('textarea');
+                    textArea.value = url;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    textArea.style.top = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    
+                    if (successful) {
+                      message.success(t('copySuccess'));
+                    } else {
+                      message.error(t('copyFailed'));
+                    }
+                  } catch (error) {
+                    console.error('Copy failed:', error);
+                    message.error(t('copyFailed'));
+                  }
+                }}
+              />
+            </div>
             <div className="font-mono text-blue-600 break-all">
               {typeof window !== 'undefined' ? window.location.origin : ''}/opspilot/studio/chat
             </div>
@@ -506,7 +549,15 @@ export const NodeConfigForm: React.FC<any> = ({
               <Radio value="enterprise_wechat_bot">{t('chatflow.enterpriseWechatBot')}</Radio>
             </Radio.Group>
           </Form.Item>
-          <Form.Item name="notificationMethod" label={t('chatflow.notificationMethod')} rules={[{ required: true }]}>
+          <Form.Item name="notificationMethod" label={
+            <div className="flex items-center justify-between" style={{ width: '600px' }}>
+              <span>{t('chatflow.notificationMethod')}</span>
+              <Link href="/system-manager/channel" target="_blank" className="text-blue-500 hover:text-blue-600 text-xs flex items-center gap-1 whitespace-nowrap">
+                <PlusOutlined />
+                {t('chatflow.addNotificationChannel')}
+              </Link>
+            </div>
+          } rules={[{ required: true }]}>
             <Select placeholder={t('chatflow.selectNotificationMethod')} loading={loadingChannels}>
               {notificationChannels.map((c: any) => <Option key={c.id} value={c.id}>{c.name}</Option>)}
             </Select>

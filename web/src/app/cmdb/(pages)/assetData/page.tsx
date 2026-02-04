@@ -185,6 +185,9 @@ const AssetDataContent = () => {
   const importRef = useRef<ImportRef>(null);
   const instanceRef = useRef<RelationInstanceRef>(null);
   const exportRef = useRef<ExportModalRef>(null);
+  const topRowRef = useRef<HTMLDivElement | null>(null);
+  const leftActionsRef = useRef<HTMLDivElement | null>(null);
+  const actionSizerRef = useRef<HTMLDivElement | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Array<any>>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
@@ -217,8 +220,47 @@ const AssetDataContent = () => {
   const [modelInstCount, setModelInstCount] = useState<Record<string, number>>(
     {}
   );
+  // 是否折叠操作栏
+  const [isActionsCollapsed, setIsActionsCollapsed] = useState(false);
   const urlQueryInitialized = useRef(false);
   const initialDataLoaded = useRef(false);
+
+  // 监听窗口大小变化，更新折叠状态
+  useEffect(() => {
+    const rowEl = topRowRef.current;
+    const leftEl = leftActionsRef.current;
+    const sizerEl = actionSizerRef.current;
+    if (!rowEl || !leftEl || !sizerEl) return;
+
+    let frameId: number | null = null;
+    const updateCollapseState = () => {
+      if (!rowEl || !leftEl || !sizerEl) return;
+      const rowWidth = rowEl.getBoundingClientRect().width;
+      const leftContentWidth = leftEl.scrollWidth;
+      const sizerWidth = sizerEl.getBoundingClientRect().width;
+      const recoveryBuffer = 30;
+      const shouldCollapse = leftContentWidth + sizerWidth > rowWidth + recoveryBuffer;
+      setIsActionsCollapsed((prev) => (prev === shouldCollapse ? prev : shouldCollapse));
+    };
+
+    // 创建一个观察器，当窗口大小变化时，更新折叠状态
+    const observer = new ResizeObserver(() => {
+      if (frameId) cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(updateCollapseState);
+    });
+
+    // 监听窗口大小变化
+    observer.observe(rowEl);
+    observer.observe(leftEl);
+    observer.observe(sizerEl);
+    updateCollapseState();  // 更新折叠状态
+
+    // 不要忘记清理内存
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     // 主页中当模型为host时，获取云区域选项test8.7
@@ -276,14 +318,26 @@ const AssetDataContent = () => {
     });
   };
 
+  // 添加实例菜单项
   const addInstItems: MenuProps['items'] = [
     {
       key: '1',
-      label: <a onClick={() => showAttrModal('add')}>{t('common.add')}</a>,
+      label: (
+        <div
+          className={assetDataStyle.menuItemClickable}
+          onClick={() => showAttrModal('add')}
+        >
+          {t('common.add')}
+        </div>
+      ),
     },
     {
       key: '2',
-      label: <a onClick={showImportModal}>{t('import')}</a>,
+      label: (
+        <div className={assetDataStyle.menuItemClickable} onClick={showImportModal}>
+          {t('import')}
+        </div>
+      ),
     },
   ];
 
@@ -463,21 +517,41 @@ const AssetDataContent = () => {
     handleDeleteWithConfirm(() => batchDeleteInstances(selectedRowKeys));
   };
 
+  // 导出菜单项
   const exportItems: MenuProps['items'] = [
     {
       key: 'batchExport',
-      label: <a onClick={() => handleExport('selected')}>{t('selected')}</a>,
+      label: (
+        <div
+          className={assetDataStyle.menuItemClickable}
+          onClick={() => handleExport('selected')}
+        >
+          {t('selected')}
+        </div>
+      ),
       disabled: !selectedRowKeys.length,
     },
     {
       key: 'exportCurrentPage',
       label: (
-        <a onClick={() => handleExport('currentPage')}>{t('currentPage')}</a>
+        <div
+          className={assetDataStyle.menuItemClickable}
+          onClick={() => handleExport('currentPage')}
+        >
+          {t('currentPage')}
+        </div>
       ),
     },
     {
       key: 'exportAll',
-      label: <a onClick={() => handleExport('all')}>{t('all')}</a>,
+      label: (
+        <div
+          className={assetDataStyle.menuItemClickable}
+          onClick={() => handleExport('all')}
+        >
+          {t('all')}
+        </div>
+      ),
     },
   ];
 
@@ -548,22 +622,24 @@ const AssetDataContent = () => {
   const storeQueryList = useAssetDataStore((state) => state.query_list);
 
   useEffect(() => {
+    // 如果查询条件为空，则设置为 null，否则设置为查询条件
     const newQueryList = storeQueryList.length === 0 ? null
-      : storeQueryList.length === 1 ? storeQueryList[0]
-      : storeQueryList;
+      : storeQueryList.length === 1
+        ? storeQueryList[0]
+        : storeQueryList;
     setQueryList(newQueryList);
   }, [storeQueryList]);
 
   useEffect(() => {
     if (!urlQueryInitialized.current || !modelId) return;
-    
+
     const params = new URLSearchParams(searchParams.toString());
     if (storeQueryList.length > 0) {
       params.set('query_list', encodeURIComponent(JSON.stringify(storeQueryList)));
     } else {
       params.delete('query_list');
     }
-    
+
     const newUrl = `${pathname}?${params.toString()}`;
     const currentUrl = `${pathname}?${searchParams.toString()}`;
     if (newUrl !== currentUrl) {
@@ -571,7 +647,7 @@ const AssetDataContent = () => {
     }
   }, [storeQueryList, modelId, pathname, searchParams, router]);
 
-  const handleFilterBarChange = useCallback(() => {}, []);
+  const handleFilterBarChange = useCallback(() => { }, []);
 
   const checkDetail = (row = { _id: '', inst_name: '', ip_addr: '' }) => {
     const modelItem = modelList.find((item) => item.key === modelId);
@@ -644,6 +720,8 @@ const AssetDataContent = () => {
     setPagination((prev) => ({ ...prev, current: 1 }));
     setGroupId(targetGroup.classification_id);
     setModelList(targetGroup.list.map((item) => ({ key: item.model_id, label: item.model_name, icn: item.icn })));
+    setPropertyListGroups([]);
+    setPropertyList([]);
     router.push(`/cmdb/assetData?modelId=${key}&classificationId=${targetGroup.classification_id}`);
     getInitData(key, null);
   };
@@ -669,12 +747,12 @@ const AssetDataContent = () => {
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Add']}>
-            <Button type="link" className="mr-[10px]" onClick={() => showCopyModal(record)}>
+            <Button type="link" className="mr-[10px]" disabled={!propertyListGroups.length} onClick={() => showCopyModal(record)}>
               {t('common.copy')}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Edit']} instPermissions={record.permission}>
-            <Button type="link" className="mr-[10px]" onClick={() => showAttrModal('edit', record)}>
+            <Button type="link" className="mr-[10px]" disabled={!propertyListGroups.length} onClick={() => showAttrModal('edit', record)}>
               {t('common.edit')}
             </Button>
           </PermissionWrapper>
@@ -693,7 +771,7 @@ const AssetDataContent = () => {
       .filter((col) => displayFieldKeys.includes(col.key as string))
       .sort((a, b) => displayFieldKeys.indexOf(a.key as string) - displayFieldKeys.indexOf(b.key as string));
     setCurrentColumns([...orderedColumns, actionColumn]);
-  }, [propertyList, displayFieldKeys]);
+  }, [propertyList, displayFieldKeys, propertyListGroups]);
 
   const batchOperateItems: MenuProps['items'] = [
     {
@@ -709,7 +787,7 @@ const AssetDataContent = () => {
           </a>
         </PermissionWrapper>
       ),
-      disabled: !selectedRowKeys.length,
+      disabled: !selectedRowKeys.length || !propertyListGroups.length,
     },
     {
       key: 'batchDelete',
@@ -720,6 +798,41 @@ const AssetDataContent = () => {
       ),
       disabled: !selectedRowKeys.length,
     },
+  ];
+
+  // 添加实例菜单项，添加权限检查
+  const addInstItemsWithPermission: MenuProps['items'] = addInstItems.map(
+    (item) => {
+      if (!item || ('type' in item && item.type === 'divider') || !('label' in item)) {
+        return item;
+      }
+      return {
+        ...item,
+        label: (
+          <PermissionWrapper requiredPermissions={['Add']} fallback={item.label}>
+            {item.label}
+          </PermissionWrapper>
+        ),
+      };
+    }
+  );
+
+  const buildPrefixedItems = (items: MenuProps['items'], prefix: string) =>
+    items.map((item, index) => {
+      if (!item) return item;
+      const baseKey = 'key' in item && item.key ? item.key : `${prefix}-${index}`;
+      return {
+        ...item,
+        key: `${prefix}-${baseKey}`,
+      };
+    });
+
+  const collapsedMoreItems: MenuProps['items'] = [
+    ...buildPrefixedItems(addInstItemsWithPermission, 'add'),
+    { type: 'divider', key: 'divider-add-export' },
+    ...buildPrefixedItems(exportItems, 'export'),
+    { type: 'divider', key: 'divider-export-batch' },
+    ...buildPrefixedItems(batchOperateItems, 'batch'),
   ];
 
   return (
@@ -757,55 +870,69 @@ const AssetDataContent = () => {
             )}
           </div>
         </div>
+        {/* 右侧资产列表 */}
         <div className={assetDataStyle.assetList}>
-          <div className={`flex justify-between ${storeQueryList.length === 0 ? 'mb-4' : ''}`}>
+          <div
+            ref={topRowRef}
+            className={`flex justify-between ${storeQueryList.length === 0 ? 'mb-4' : ''}`}
+          >
+            {/* 左侧组织搜索框 */}
+            <div ref={leftActionsRef}>
+              <Space>
+                <GroupTreeSelector
+                  style={{
+                    width: '200px',
+                  }}
+                  placeholder={t('common.selectTip')}
+                  value={organization}
+                  onChange={selectOrganization}
+                  filterByRootId={
+                    selectedGroup?.id ? Number(selectedGroup.id) : undefined
+                  }
+                />
+                {/* 中间部分 */}
+                <SearchFilter
+                  key={modelId}
+                  proxyOptions={proxyOptions}
+                  userList={userList}
+                  modelId={modelId}
+                  attrList={propertyList.filter(
+                    (item) => item.attr_type !== 'organization'
+                  )}
+                  onSearch={handleSearch}
+                  onChange={handleFilterBarChange}
+                  onFilterChange={handleFilterBarChange}
+                />
+              </Space>
+            </div>
+            {/* 右侧操作按钮 */}
             <Space>
-              <GroupTreeSelector
-                style={{
-                  width: '200px',
-                }}
-                placeholder={t('common.selectTip')}
-                value={organization}
-                onChange={selectOrganization}
-                filterByRootId={
-                  selectedGroup?.id ? Number(selectedGroup.id) : undefined
-                }
-              />
-              <SearchFilter
-                key={modelId}
-                proxyOptions={proxyOptions}
-                userList={userList}
-                modelId={modelId}
-                attrList={propertyList.filter(
-                  (item) => item.attr_type !== 'organization'
-                )}
-                onSearch={handleSearch}
-                onChange={handleFilterBarChange}
-                onFilterChange={handleFilterBarChange}
-              />
-            </Space>
-            <Space>
-              <PermissionWrapper requiredPermissions={['Add']}>
-                <Dropdown menu={{ items: addInstItems }} placement="bottom">
-                  <Button type="primary">
+              <div
+                className={`${assetDataStyle.actionGroup} ${isActionsCollapsed ? assetDataStyle.actionGroupCollapsed : ''}`}
+                aria-hidden={isActionsCollapsed}
+              >
+                <PermissionWrapper requiredPermissions={['Add']}>
+                  <Dropdown menu={{ items: addInstItems }} placement="bottom">
+                    <Button type="primary">
+                      <Space>
+                        {t('common.addNew')}
+                        <DownOutlined />
+                      </Space>
+                    </Button>
+                  </Dropdown>
+                </PermissionWrapper>
+                <Dropdown menu={{ items: exportItems }} placement="bottom">
+                  <Button>
                     <Space>
-                      {t('common.addNew')}
+                      {t('export')}
                       <DownOutlined />
                     </Space>
                   </Button>
                 </Dropdown>
-              </PermissionWrapper>
-              <Dropdown menu={{ items: exportItems }} placement="bottom">
-                <Button>
-                  <Space>
-                    {t('export')}
-                    <DownOutlined />
-                  </Space>
-                </Button>
-              </Dropdown>
+              </div>
               <Dropdown
-                menu={{ items: batchOperateItems }}
-                disabled={!selectedRowKeys.length}
+                menu={{ items: isActionsCollapsed ? collapsedMoreItems : batchOperateItems }}
+                disabled={!isActionsCollapsed && !selectedRowKeys.length}
                 placement="bottom"
               >
                 <Button>
@@ -815,6 +942,28 @@ const AssetDataContent = () => {
                   </Space>
                 </Button>
               </Dropdown>
+            </Space>
+          </div>
+          <div ref={actionSizerRef} className={assetDataStyle.actionSizer}>
+            <Space>
+              <Button type="primary">
+                <Space>
+                  {t('common.addNew')}
+                  <DownOutlined />
+                </Space>
+              </Button>
+              <Button>
+                <Space>
+                  {t('export')}
+                  <DownOutlined />
+                </Space>
+              </Button>
+              <Button>
+                <Space>
+                  {t('more')}
+                  <DownOutlined />
+                </Space>
+              </Button>
             </Space>
           </div>
 
