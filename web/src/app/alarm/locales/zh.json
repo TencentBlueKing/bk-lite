@@ -64,6 +64,7 @@
         "new": "新",
         "unassigned": "未分派",
         "auto_close": "自动关闭",
+        "auto_recovery": "自动恢复",
         "recovered": "已恢复",
         "resolved": "已解决",
         "closed": "已关闭",
