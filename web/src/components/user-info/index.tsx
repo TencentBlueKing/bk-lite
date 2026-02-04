@@ -295,7 +295,7 @@ const UserInfo: React.FC = () => {
     ];
 
     return items;
-  }, [selectedGroup, groupTree, isLoading, includeChildren, isSuperUser, session, searchValue, userExpandedKeys, t, handleIncludeChildrenChange, handleChangeGroup]);
+  }, [selectedGroup, groupTree, isLoading, includeChildren, isSuperUser, session, searchValue, userExpandedKeys]);
 
   const handleMenuClick = ({ key }: any) => {
     // 如果点击的是 Tree 相关区域，不关闭菜单
