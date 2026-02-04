@@ -48,6 +48,7 @@
     "saveSuccess": "save successfully",
     "publishSuccess": "publish successfully",
     "saveFailed": "Failed to save them(s)",
+    "operationFailed": "Operation failed",
     "selectMsg": "Please select the ",
     "inputMsg": "Please input the ",
     "input": "Input",

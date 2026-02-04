@@ -10,7 +10,7 @@ interface StudioCardProps extends Studio {
 }
 
 const StudioCard: React.FC<StudioCardProps> = (props) => {
-  const { id, name, introduction, created_by, team_name, team, online, bot_type, permissions, onMenuClick } = props;
+  const { id, name, introduction, created_by, team_name, team, online, bot_type, is_pinned, permissions, onMenuClick } = props;
   const iconTypeMapping: [string, string] = ['jiqirenjiaohukapian', 'jiqiren'];
   const botTypeMapping: { [key: number]: string } = {
     1: 'Pilot',
@@ -29,6 +29,8 @@ const StudioCard: React.FC<StudioCardProps> = (props) => {
       online={online}
       bot_type={bot_type}
       botType={botTypeMapping[bot_type] || ''}
+      is_pinned={is_pinned}
+      showPinButton={true}
       permissions={permissions}
       onMenuClick={onMenuClick}
       redirectUrl="/opspilot/studio/detail"
