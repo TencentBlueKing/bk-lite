@@ -30,7 +30,7 @@ class ImageClassificationDatasetViewSet(ModelViewSet):
     serializer_class = ImageClassificationDatasetSerializer
     filterset_class = ImageClassificationDatasetFilter
     pagination_class = CustomPageNumberPagination
-    ordering = "-id"
+    ordering = ("-id",)
     permission_key = "dataset.image_classification_dataset"
 
     @HasPermission("image_classification_datasets-View")
@@ -1278,8 +1278,8 @@ class ImageClassificationServingViewSet(ModelViewSet):
                     {"error": "image 参数不能为空"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 获取实际运行端口
-            port = serving.container_info.get("port")
+            # 获取实际运行端口，防御性处理 container_info 为空的情况
+            port = (serving.container_info or {}).get("port")
             if not port:
                 return Response(
                     {"error": "服务端口未配置，请确认服务已启动"},

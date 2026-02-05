@@ -613,7 +613,11 @@ class TimeSeriesPredictTrainDataViewSet(ModelViewSet):
     @action(detail=True, methods=["post"], url_path="release")
     @HasPermission("timeseries_predict_train_data-Release")
     def release_file(self, request, *args, **kwargs):
-        pass
+        """发布训练数据文件（暂未实现）"""
+        return Response(
+            {"message": "此功能暂未实现"},
+            status=status.HTTP_501_NOT_IMPLEMENTED,
+        )
 
 
 class TimeSeriesPredictServingViewSet(ModelViewSet):
@@ -888,9 +892,10 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
         container_id = f"TimeseriesPredict_Serving_{instance.id}"
 
-        # 获取容器实际状态（更新前）
-        container_state = instance.container_info.get("state")
-        container_port = instance.container_info.get("port")
+        # 获取容器实际状态（更新前），防御性处理 container_info 为空的情况
+        container_info = instance.container_info or {}
+        container_state = container_info.get("state")
+        container_port = container_info.get("port")
 
         # 更新数据库
         response = super().update(request, *args, **kwargs)
@@ -1244,8 +1249,8 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     {"error": "data 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 获取实际运行端口
-            port = serving.container_info.get("port")
+            # 获取实际运行端口，防御性处理 container_info 为空的情况
+            port = (serving.container_info or {}).get("port")
             if not port:
                 return Response(
                     {"error": "服务端口未配置，请确认服务已启动"},
