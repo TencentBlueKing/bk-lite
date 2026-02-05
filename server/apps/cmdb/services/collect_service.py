@@ -75,6 +75,28 @@ class CollectModelService(object):
         return params, is_interval, scan_cycle
 
     @staticmethod
+    def format_update_credential(instance, data):
+        """
+        格式化更新时的凭据参数
+        """
+        credential = data.get("credential")
+        if not credential and not instance.is_k8s:
+            raise BaseAppException("采集凭据不能为空！")
+        if credential and "regions" in credential:
+            regions = credential.pop("regions")
+            if not credential:
+                # 说明之修改了regions
+                data["credential"] = instance.decrypt_credentials
+                data["credential"]["regions"] = regions
+            else:
+                data["credential"]["regions"] = regions
+        else:
+            old_credential = instance.decrypt_credentials
+            old_credential.update(credential)
+            data["credential"] = old_credential
+
+
+    @staticmethod
     def push_butch_node_params(instance):
         """
         格式化调用node的参数 并推送
@@ -144,7 +166,7 @@ class CollectModelService(object):
 
         cls.has_permission(request, instance, view_self)
         update_data, is_interval, scan_cycle = cls.format_params(request.data)
-
+        cls.format_update_credential(instance, update_data)
         # 使用数据库事务保证原子性
         with transaction.atomic():
             serializer = view_self.get_serializer(

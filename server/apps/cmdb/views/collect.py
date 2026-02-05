@@ -9,6 +9,7 @@ from django.db import transaction
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
+from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.permissions.inst_task_permission import InstanceTaskPermission
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
@@ -142,8 +143,12 @@ class CollectModelViewSet(AuthViewSet):
         params = requests.data
         cloud_id = requests.data["cloud_id"]
         cloud_list = NodeMgmt().cloud_region_list()
-        cloud_id_map = {i["id"]:i["name"] for i in cloud_list}
+        cloud_id_map = {i["id"]: i["name"] for i in cloud_list}
         params["model_id"] = params["model_id"].split("_account", 1)[0]
+        task_id = params.pop("task_id", None)
+        if task_id:
+            node_object = NodeParamsFactory.get_node_params(instance=self.queryset.get(id=task_id))
+            params.update(node_object.password)
         result = CollectModelService.list_regions(params, cloud_name=cloud_id_map[cloud_id])
         return WebUtils.response_success(result)
 
@@ -151,7 +156,7 @@ class CollectModelViewSet(AuthViewSet):
     @action(methods=["get"], detail=False, url_path="task_status")
     def task_status(self, request, *args, **kwargs):
         queryset = self.get_queryset()
-        filter_queryset = self.get_queryset_by_permission(request=request,queryset=queryset)
+        filter_queryset = self.get_queryset_by_permission(request=request, queryset=queryset)
         filter_queryset = filter_queryset.only("model_id", "exec_status")
         serializer = CollectModelIdStatusSerializer(filter_queryset, many=True, context={"request": request})
         data = {}
