@@ -89,7 +89,9 @@ const ViewList: React.FC<ViewListProps> = ({
         const isNormal = record.status === 'normal';
         return (
           <Tag color={isNormal ? 'success' : 'default'}>
-            {t(`monitor.integrations.${record.status}`)}
+            {isNormal
+              ? t('monitor.integrations.normal')
+              : t('monitor.integrations.unavailable')}
           </Tag>
         );
       }
