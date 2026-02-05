@@ -134,18 +134,26 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     cloudRegionId: string,
     refreshFlag = true
   ) => {
-    if (!accessKey || !accessSecret) return;
+    if (!accessKey || !accessSecret || !cloudRegionId) return;
     setLoadingRegions(true);
     try {
-      const res = await collectApi.getCollectRegions({
+      const isCredentialUnchanged =
+        accessKey === PASSWORD_PLACEHOLDER && accessSecret === PASSWORD_PLACEHOLDER;
+
+      const params: any = {
         model_id: modelId,
-        access_key: accessKey,
-        access_secret: accessSecret,
         cloud_id: cloudRegionId,
-      });
-      if (res.result) {
-        setRegions(res.data);
+      };
+
+      if (editId && isCredentialUnchanged) {
+        params.task_id = editId;
+      } else {
+        params.access_key = accessKey;
+        params.access_secret = accessSecret;
       }
+
+      const data = await collectApi.getCollectRegions(params);
+      setRegions(data || []);
       if (refreshFlag) {
         message.success(t('common.updateSuccess'));
       }
@@ -187,9 +195,17 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     );
   };
 
-  const handleCredentialChange = () => {
+  const handleCredentialChange = (changedField: 'accessKey' | 'accessSecret') => {
     setRegions([]);
-    form.setFieldValue('region', undefined);
+    form.setFieldValue('regionId', undefined);
+
+    if (!editId) return;
+
+    const otherField = changedField === 'accessKey' ? 'accessSecret' : 'accessKey';
+    const otherValue = form.getFieldValue(otherField);
+    if (otherValue === PASSWORD_PLACEHOLDER) {
+      form.setFieldValue(otherField, '');
+    }
   };
 
   useEffect(() => {
@@ -208,7 +224,11 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         // 编辑任务中回填表单数据
         form.setFieldsValue(buildFormValues(values, false));
         setRegions(regionItem ? [regionItem] : []);
-        handleRefreshRegions(false);
+
+        const cloudRegion = values.access_point?.[0]?.cloud_region || '';
+        if (cloudRegion) {
+          fetchRegions(PASSWORD_PLACEHOLDER, PASSWORD_PLACEHOLDER, cloudRegion, false);
+        }
       } else {
         form.setFieldsValue(CLOUD_FORM_INITIAL_VALUES);
       }
@@ -287,7 +307,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
               >
                 <Input
                   placeholder={t('common.inputTip')}
-                  onChange={handleCredentialChange}
+                  onChange={() => handleCredentialChange('accessKey')}
                   onFocus={(e) => {
                     if (!editId) return;
                     const value = e.target.value;
@@ -312,7 +332,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
               >
                 <Input.Password
                   placeholder={t('common.inputTip')}
-                  onChange={handleCredentialChange}
+                  onChange={() => handleCredentialChange('accessSecret')}
                   onFocus={(e) => {
                     if (!editId) return;
                     const value = e.target.value;
