@@ -87,6 +87,7 @@ INST_NAME_INFOS = [
         "editable": True,
         "option": {},
         "attr_group": "default",
+        "user_prompt": "用于区分不同实例的唯一名称",
         "is_pre": True,
     },
     {
@@ -99,6 +100,7 @@ INST_NAME_INFOS = [
         "option": [],
         "attr_group": "default",
         "is_pre": True,
+        "user_prompt": "实例所属的组织",
     },
 ]
 

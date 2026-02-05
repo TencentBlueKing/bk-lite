@@ -36,8 +36,8 @@ export const useClusterConfig = () => {
     tableDiaplay: [
       { type: 'value', key: 'cluster_pod_count' },
       { type: 'value', key: 'cluster_node_count' },
-      { type: 'progress', key: 'cluster_cpu_utilization' },
-      { type: 'progress', key: 'cluster_memory_utilization' }
+      { type: 'progress', key: 'cluster_memory_utilization' },
+      { type: 'progress', key: 'cluster_disk_utilization' }
     ],
     groupIds: {
       list: ['instance_id'],

@@ -13,13 +13,13 @@ import {
   ObjectItem,
   MetricItem,
   ChartDataItem,
-  OrganizationNode,
+  OrganizationNode
 } from '@/app/monitor/types';
 import { Group } from '@/types';
 import {
   APPOINT_METRIC_IDS,
   DERIVATIVE_OBJECTS,
-  OBJECT_DEFAULT_ICON,
+  OBJECT_DEFAULT_ICON
 } from '@/app/monitor/constants';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -64,7 +64,7 @@ export const findCascaderPath = (
     if (node.children) {
       const result = findCascaderPath(node.children, targetValue, [
         ...path,
-        node.value,
+        node.value
       ]);
       // 如果在子节点中找到了目标值，返回结果
       if (result.length) {
@@ -85,7 +85,7 @@ export const convertArray = (
     const newItem: CascaderItem = {
       value: item.id,
       label: item.name,
-      children: [],
+      children: []
     };
     const subGroups: OriginSubGroupItem[] = item.subGroups;
     if (subGroups && !!subGroups.length) {
@@ -220,7 +220,7 @@ export const calculateMetrics = (
     minValue,
     avgValue,
     sumValue,
-    latestValue,
+    latestValue
   };
 };
 
@@ -286,7 +286,7 @@ export const transformTreeData = (nodes: Group[]): CascaderItem[] => {
     const transformedNode: CascaderItem = {
       value: node.id,
       label: node.name,
-      children: [],
+      children: []
     };
     if (node.children?.length) {
       transformedNode.children = transformTreeData(node.children);
@@ -331,7 +331,7 @@ export const renderChart = (
         .map(([key, dimenValue]) => ({
           name: key,
           label: target.find((sec) => sec.name === key)?.description || key,
-          value: dimenValue,
+          value: dimenValue
         }))
         .filter((item) => target.find((tex) => tex.name === item.name));
       if (config[0]?.showInstName) {
@@ -347,7 +347,7 @@ export const renderChart = (
                     return pre.concat(item.metric[cur] as any);
                   }, [])
                 )
-            )?.instance_name || '--',
+            )?.instance_name || '--'
         });
       }
       if (existing) {
@@ -361,13 +361,13 @@ export const renderChart = (
         existing.details[`value${index + 1}`].push(...detailValue);
       } else {
         const details = {
-          [`value${index + 1}`]: detailValue,
+          [`value${index + 1}`]: detailValue
         };
         result.push({
           time: timestamp,
           title: config[0]?.title || '--',
           [`value${index + 1}`]: parseFloat(value),
-          details,
+          details
         });
       }
     });
@@ -419,11 +419,10 @@ export const getBaseInstanceColumn = (config: {
     {
       title: config.t('common.name'),
       dataIndex: 'instance_name',
-      width: 300,
       onCell: () => ({
         style: {
-          minWidth: 200,
-        },
+          minWidth: 150
+        }
       }),
       key: 'instance_name',
       render: (_: unknown, record: TableDataItem) => {
@@ -434,18 +433,18 @@ export const getBaseInstanceColumn = (config: {
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
           ></EllipsisWithTooltip>
         );
-      },
-    },
+      }
+    }
   ];
   if (isDerivative) {
     columnItems.unshift({
       title: title,
       dataIndex: 'base_instance_name',
-      width: 300,
+
       onCell: () => ({
         style: {
-          minWidth: 200,
-        },
+          minWidth: 150
+        }
       }),
       key: 'base_instance_name',
       render: (_: unknown, record: TableDataItem) => {
@@ -465,7 +464,7 @@ export const getBaseInstanceColumn = (config: {
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
           ></EllipsisWithTooltip>
         );
-      },
+      }
     });
   }
   return columnItems;
