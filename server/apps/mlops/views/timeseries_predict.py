@@ -610,15 +610,6 @@ class TimeSeriesPredictTrainDataViewSet(ModelViewSet):
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    @action(detail=True, methods=["post"], url_path="release")
-    @HasPermission("timeseries_predict_train_data-Release")
-    def release_file(self, request, *args, **kwargs):
-        """发布训练数据文件（暂未实现）"""
-        return Response(
-            {"message": "此功能暂未实现"},
-            status=status.HTTP_501_NOT_IMPLEMENTED,
-        )
-
 
 class TimeSeriesPredictServingViewSet(ModelViewSet):
     queryset = TimeSeriesPredictServing.objects.select_related(

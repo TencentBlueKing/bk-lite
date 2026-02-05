@@ -67,8 +67,7 @@ export const useGenericDatasetForm = ({
     algorithmConfigs,
     algorithmScenarios,
     algorithmOptions,
-    loading: configLoading,
-    isUsingFallback
+    loading: configLoading
   } = useAlgorithmConfigs(datasetType as AlgorithmType);
 
   const [modalState, setModalState] = useState<ModalState>({
@@ -92,7 +91,7 @@ export const useGenericDatasetForm = ({
     name: '',
     algorithm: '',
     dataset: 0,
-    dataset_version: 0,
+    dataset_version: '',
     max_evals: 50
   });
 
@@ -109,24 +108,20 @@ export const useGenericDatasetForm = ({
     const algorithm = data.algorithm;
     const algorithmConfig = algorithm ? algorithmConfigs[algorithm] : null;
 
-    if (!algorithmConfig) {
-      console.error(`Unknown algorithm: ${algorithm}`);
-      return {
-        name: '',
-        algorithm: '',
-        dataset: 0,
-        dataset_version: 0,
-        max_evals: 50
-      };
-    }
-
+    // 基础字段始终从 data 获取，与算法配置无关
     const result: TrainJobFormValues = {
-      name: data.name,
+      name: data.name || '',
       algorithm: data.algorithm || '',
       dataset: Number(data.dataset) || 0,
-      dataset_version: Number(data.dataset_version) || 0,
+      dataset_version: data.dataset_version ? String(data.dataset_version) : '',
       max_evals: data.max_evals || 50,
     };
+
+    // 如果没有算法配置，只返回基础字段
+    if (!algorithmConfig) {
+      console.warn(`Algorithm config not found for: ${algorithm}`);
+      return result;
+    }
 
     // 转换 hyperparams
     if (algorithmConfig.groups.hyperparams) {
@@ -164,7 +159,7 @@ export const useGenericDatasetForm = ({
         name: formValues.name,
         algorithm: formValues.algorithm,
         dataset: formValues.dataset,
-        dataset_version: formValues.dataset_version,
+        dataset_version: Number(formValues.dataset_version),
         max_evals: formValues.max_evals,
         status: 'pending',
         description: formValues.name || '',
@@ -194,7 +189,7 @@ export const useGenericDatasetForm = ({
       name: formValues.name,
       algorithm: formValues.algorithm,
       dataset: formValues.dataset,
-      dataset_version: formValues.dataset_version,
+      dataset_version: Number(formValues.dataset_version),
       max_evals: formValues.max_evals,
       status: 'pending',
       description: formValues.name || '',
@@ -265,7 +260,7 @@ export const useGenericDatasetForm = ({
       setDatasetVersions(_versionOptions);
       if (formData?.dataset_version) {
         formRef.current.setFieldsValue({
-          dataset_version: formData.dataset_version
+          dataset_version: String(formData.dataset_version)
         });
       }
     } catch (e) {
@@ -342,7 +337,7 @@ export const useGenericDatasetForm = ({
       name: '',
       algorithm: '',
       dataset: 0,
-      dataset_version: 0,
+      dataset_version: '',
       max_evals: 50
     });
     setIsShow(false);
@@ -427,7 +422,6 @@ export const useGenericDatasetForm = ({
     formRef,
     loadingState,
     configLoading,
-    isUsingFallback,
     showModal,
     handleSubmit,
     handleCancel,

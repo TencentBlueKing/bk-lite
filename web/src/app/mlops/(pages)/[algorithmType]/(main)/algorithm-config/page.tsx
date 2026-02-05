@@ -190,9 +190,16 @@ const AlgorithmConfigPage = () => {
       await updateAlgorithmConfig(id, { is_active: isActive });
       message.success(t('common.updateSuccess'));
       getConfigs();
-    } catch (e) {
+    } catch (e: unknown) {
       console.error(e);
-      message.error(t('common.error'));
+      // 尝试从错误中提取后端返回的具体信息
+      const error = e as { response?: { data?: { error?: string } } };
+      const errorMessage = error.response?.data?.error;
+      if (errorMessage) {
+        message.error(errorMessage);
+      } else {
+        message.error(t('common.error'));
+      }
     }
   };
 
@@ -201,9 +208,12 @@ const AlgorithmConfigPage = () => {
       await deleteAlgorithmConfig(id);
       message.success(t('common.delSuccess'));
       getConfigs();
-    } catch (e) {
-      console.error(e);
-      message.error(t('common.delFailed'));
+    } catch (error: unknown) {
+      console.error(error);
+      // 显示后端返回的具体错误信息（如：有训练任务正在使用此算法）
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      const errorMessage = axiosError.response?.data?.error || t('common.delFailed');
+      message.error(errorMessage);
     }
   };
 
