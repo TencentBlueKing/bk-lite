@@ -35,6 +35,6 @@ class ChannelSerializer(UsernameSerializer):
             config.setdefault("token", old_config.get("token", ""))
             config.setdefault("aes_key", old_config.get("aes_key", ""))
         elif validated_data["channel_type"] == ChannelChoices.ENTERPRISE_WECHAT_BOT:
-            Channel.encrypt_field("bot_key", config)
-            config.setdefault("bot_key", old_config.get("bot_key", ""))
+            Channel.encrypt_field("webhook_url", config)
+            config.setdefault("webhook_url", old_config.get("webhook_url", ""))
         validated_data["config"] = config

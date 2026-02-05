@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessageChunk
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMModel
-from apps.opspilot.services.llm_service import llm_service
+from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers, normalize_llm_error_message
 from apps.opspilot.utils.bot_utils import insert_skill_log
 
@@ -245,7 +245,7 @@ def create_stream_generator(params, skill_name, kwargs, current_ip, user_message
     skill_type = params.get("skill_type")
     params.pop("group", 0)
 
-    chat_kwargs, doc_map, title_map = llm_service.format_chat_server_kwargs(params, llm_model)
+    chat_kwargs, doc_map, title_map = chat_service.format_chat_server_kwargs(params, llm_model)
 
     # 用于存储最终统计信息的共享变量
     final_stats = {"content": ""}

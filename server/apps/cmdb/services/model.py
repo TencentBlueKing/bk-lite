@@ -236,16 +236,18 @@ class ModelManage(object):
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(MODEL, [])
             new_model = ag.create_entity(MODEL, new_model_data, CREATE_MODEL_CHECK_ATTR, exist_items)
-            
+
             # 创建模型与分类的关联
-            classification_info = ClassificationManage.search_model_classification_info(new_model_data["classification_id"])
+            classification_info = ClassificationManage.search_model_classification_info(
+                new_model_data["classification_id"])
             ag.create_edge(
                 SUBORDINATE_MODEL,
                 classification_info["_id"],
                 CLASSIFICATION,
                 new_model["_id"],
                 MODEL,
-                dict(classification_model_asst_id=f"{new_model['classification_id']}_{SUBORDINATE_MODEL}_{new_model['model_id']}"),
+                dict(
+                    classification_model_asst_id=f"{new_model['classification_id']}_{SUBORDINATE_MODEL}_{new_model['model_id']}"),
                 "classification_model_asst_id",
             )
 
@@ -280,27 +282,27 @@ class ModelManage(object):
             # 处理关系复制
             if copy_relationships:
                 associations = ModelManage.model_association_search(src_model_id)
-                
+
                 for assoc in associations:
                     # 确定新的源模型ID和目标模型ID
                     new_src_model_id = new_model_id if assoc["src_model_id"] == src_model_id else assoc["src_model_id"]
                     new_dst_model_id = new_model_id if assoc["dst_model_id"] == src_model_id else assoc["dst_model_id"]
-                    
+
                     # 如果关联的两端都是源模型（自关联），则两端都改为新模型
                     if assoc["src_model_id"] == src_model_id and assoc["dst_model_id"] == src_model_id:
                         new_src_model_id = new_model_id
                         new_dst_model_id = new_model_id
-                    
+
                     # 获取新的src和dst的_id
                     src_model_info_new = ModelManage.search_model_info(new_src_model_id)
                     dst_model_info_new = ModelManage.search_model_info(new_dst_model_id)
-                    
+
                     if not src_model_info_new or not dst_model_info_new:
                         continue
-                    
+
                     # 创建新的关联ID
                     new_model_asst_id = f'{new_src_model_id}_{assoc["asst_id"]}_{new_dst_model_id}'
-                    
+
                     # 复制关联关系
                     try:
                         ModelManage.model_association_create(
@@ -485,9 +487,9 @@ class ModelManage(object):
 
         attr = None
         for attr in attrs:
-            if attr["attr_id"] != attr_info["attr_id"]:
-                continue
-            attr = attr
+            if attr["attr_id"] == attr_info["attr_id"]:
+                attr = attr
+                break
 
         create_change_record(operator=username, model_id=model_id, label="模型管理",
                              _type=UPDATE_INST, message=f"修改模型属性. 模型名称: {model_info['model_name']}",

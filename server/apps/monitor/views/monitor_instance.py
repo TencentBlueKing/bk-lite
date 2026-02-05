@@ -13,6 +13,7 @@ from apps.monitor.models import (
 )
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
 from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -218,10 +219,12 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             # 删除配置对象
             config_objs.delete()
 
-        # 同步删除实例关联的分组规则
         MonitorObjectOrganizationRule.objects.filter(
             monitor_instance_id__in=instance_ids
         ).delete()
+
+        cleanup_policy_sources(instance_ids)
+
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=False, url_path="update_monitor_instance")

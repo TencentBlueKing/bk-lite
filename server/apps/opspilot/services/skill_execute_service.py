@@ -2,7 +2,7 @@ from django.conf import settings
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMSkill
-from apps.opspilot.services.llm_service import llm_service
+from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.utils.bot_utils import get_user_info
 
 
@@ -39,7 +39,7 @@ class SkillExecuteService:
             "enable_query_rewrite": llm_skill.enable_query_rewrite,
         }
 
-        result = llm_service.chat(params)
+        result = chat_service.chat(params)
         content = result["content"]
         if llm_skill.enable_rag_knowledge_source:
             knowledge_titles = {x["knowledge_title"] for x in result["citing_knowledge"]}

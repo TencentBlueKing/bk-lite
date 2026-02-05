@@ -108,13 +108,18 @@ def send_by_bot(channel_obj: Channel, content, receivers):
         to_user_mentions = " ".join(f"@{name}" for name in receivers)
         content = f"{content}\nTo: {to_user_mentions}"
     channel_config = channel_obj.config
-    channel_obj.decrypt_field("bot_key", channel_config)
-    bot_key = channel_config["bot_key"]
-    url = f"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={bot_key}"
-    res = requests.post(url, json={"msgtype": "markdown", "markdown": {"content": content}})
+    payload = {"msgtype": "markdown", "markdown": {"content": content}}
+
+    # 优先使用 bot_key（企业微信机器人），其次使用 webhook_url（通用 webhook）
+    channel_obj.decrypt_field("webhook_url", channel_config)
+    webhook_url = channel_config.get("webhook_url")
+    if not webhook_url:
+        channel_obj.decrypt_field("bot_key", channel_config)
+        bot_key = channel_config.get("bot_key")
+        webhook_url = f"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={bot_key}"
     try:
-        res = res.json()
-        return res
+        res = requests.post(webhook_url, json=payload, timeout=5)
+        return res.json()
     except Exception as e:
         logger.exception(e)
         return {"result": False, "message": "failed to send bot message"}

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Dropdown, Space, Avatar, MenuProps, message, Checkbox, Tree } from 'antd';
+import { Dropdown, Avatar, MenuProps, message, Checkbox, Tree, Input } from 'antd';
 import type { DataNode } from 'antd/lib/tree';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
@@ -37,6 +37,8 @@ const UserInfo: React.FC = () => {
   const [dropdownVisible, setDropdownVisible] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [includeChildren, setIncludeChildren] = useState<boolean>(false);
+  const [searchValue, setSearchValue] = useState<string>('');
+  const [userExpandedKeys, setUserExpandedKeys] = useState<string[]>([]);
 
   const username = displayName || (session?.user as any)?.username || 'Test';
 
@@ -47,6 +49,45 @@ const UserInfo: React.FC = () => {
       setIncludeChildren(true);
     }
   }, []);
+
+  // 初始化时默认展开所有节点
+  useEffect(() => {
+    if (groupTree.length > 0 && userExpandedKeys.length === 0) {
+      const collectAllKeys = (groups: Group[]): string[] => {
+        const keys: string[] = [];
+        const collect = (grps: Group[]) => {
+          grps.forEach(g => {
+            keys.push(g.id);
+            if (g.subGroups) collect(g.subGroups);
+          });
+        };
+        collect(groups);
+        return keys;
+      };
+      setUserExpandedKeys(collectAllKeys(groupTree));
+    }
+  }, [groupTree]);
+
+  // 搜索时自动展开所有节点（仅在从无搜索变为有搜索时触发）
+  const prevSearchValueRef = React.useRef<string>('');
+  useEffect(() => {
+    // 只在从无搜索变为有搜索时展开
+    if (searchValue && !prevSearchValueRef.current && groupTree.length > 0) {
+      const collectAllKeys = (groups: Group[]): string[] => {
+        const keys: string[] = [];
+        const collect = (grps: Group[]) => {
+          grps.forEach(g => {
+            keys.push(g.id);
+            if (g.subGroups) collect(g.subGroups);
+          });
+        };
+        collect(groups);
+        return keys;
+      };
+      setUserExpandedKeys(collectAllKeys(groupTree));
+    }
+    prevSearchValueRef.current = searchValue;
+  }, [searchValue]);
 
   // 刷新页面逻辑
   const refreshPage = useCallback(() => {
@@ -139,7 +180,31 @@ const UserInfo: React.FC = () => {
     };
 
     const filteredGroupTree = filterGroups(groupTree);
-    const treeData = convertGroupsToTreeData(filteredGroupTree, selectedGroup?.id);
+
+    // 搜索过滤逻辑（不分大小写）
+    const searchFilterGroups = (groups: Group[], searchText: string): Group[] => {
+      if (!searchText) return groups;
+
+      const lowerSearch = searchText.toLowerCase();
+      const result: Group[] = [];
+
+      for (const group of groups) {
+        const matchesSearch = group.name.toLowerCase().includes(lowerSearch);
+        const filteredSubGroups = group.subGroups ? searchFilterGroups(group.subGroups, searchText) : [];
+
+        if (matchesSearch || filteredSubGroups.length > 0) {
+          result.push({
+            ...group,
+            subGroups: filteredSubGroups.length > 0 ? filteredSubGroups : group.subGroups,
+          });
+        }
+      }
+
+      return result;
+    };
+
+    const searchFiltered = searchFilterGroups(filteredGroupTree, searchValue);
+    const treeData = convertGroupsToTreeData(searchFiltered, selectedGroup?.id);
 
     const items: MenuProps['items'] = [
       {
@@ -169,32 +234,42 @@ const UserInfo: React.FC = () => {
           {
             key: 'group-tree-container',
             label: (
-              <div className="w-full" style={{ width: '180px' }}>
+              <div
+                className="w-full"
+                style={{ width: '320px', maxHeight: '500px', display: 'flex', flexDirection: 'column' }}
+              >
                 <div
-                  className="w-full py-2 px-3 border-b border-[var(--color-border-2)]"
-                  onClick={(e) => e.stopPropagation()}
+                  className="w-full bg-[var(--color-bg-1)]"
+                  style={{ position: 'sticky', top: 0, zIndex: 10 }}
                 >
-                  <Checkbox
-                    checked={includeChildren}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      handleIncludeChildrenChange(e.target.checked);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <span className="text-sm">{t('common.includeSubgroups')}</span>
-                  </Checkbox>
+                  <div className="py-2 px-3 border-b border-[var(--color-border-2)]">
+                    <Checkbox
+                      checked={includeChildren}
+                      onChange={(e) => handleIncludeChildrenChange(e.target.checked)}
+                    >
+                      <span className="text-sm">{t('common.includeSubgroups')}</span>
+                    </Checkbox>
+                  </div>
+                  <div className="px-3 pt-2 pb-3">
+                    <Input
+                      placeholder={t('common.search')}
+                      value={searchValue}
+                      onChange={(e) => setSearchValue(e.target.value)}
+                      allowClear
+                      size="small"
+                    />
+                  </div>
                 </div>
                 <div
-                  className="w-full py-2"
-                  style={{ height: '900px', overflow: 'auto' }}
-                  onClick={(e) => e.stopPropagation()}
+                  className="w-full px-2 py-2"
+                  style={{ flex: 1, overflow: 'auto' }}
                 >
                   <Tree
                     treeData={treeData}
                     selectedKeys={selectedGroup ? [selectedGroup.id] : []}
+                    expandedKeys={userExpandedKeys}
+                    onExpand={(keys) => setUserExpandedKeys(keys as string[])}
                     onSelect={handleChangeGroup}
-                    defaultExpandAll
                     showLine
                     blockNode
                   />
@@ -202,10 +277,9 @@ const UserInfo: React.FC = () => {
               </div>
             ),
             disabled: true,
-            style: { cursor: 'default', padding: 0 },
+            style: { padding: 0, cursor: 'default' },
           },
         ],
-        popupClassName: 'user-groups-submenu'
       },
       { type: 'divider' },
       {
@@ -221,13 +295,23 @@ const UserInfo: React.FC = () => {
     ];
 
     return items;
-  }, [selectedGroup, groupTree, isLoading, includeChildren, isSuperUser, session]);
+  }, [selectedGroup, groupTree, isLoading, includeChildren, isSuperUser, session, searchValue, userExpandedKeys]);
 
   const handleMenuClick = ({ key }: any) => {
+    // 如果点击的是 Tree 相关区域，不关闭菜单
+    if (key === 'group-tree-container') {
+      return;
+    }
+
     if (key === 'version') setVersionVisible(true);
     if (key === 'userInfo') setUserInfoVisible(true);
     if (key === 'logout') federatedLogout();
+
     setDropdownVisible(false);
+  };
+
+  const handleOpenChange = (open: boolean) => {
+    setDropdownVisible(open);
   };
 
   return (
@@ -243,16 +327,14 @@ const UserInfo: React.FC = () => {
           }}
           trigger={['click']}
           open={dropdownVisible}
-          onOpenChange={setDropdownVisible}
+          onOpenChange={handleOpenChange}
         >
-          <a className='cursor-pointer' onClick={(e) => e.preventDefault()}>
-            <Space className='text-sm'>
-              <Avatar size={20} style={{ backgroundColor: 'var(--color-primary)', verticalAlign: 'middle' }}>
-                {username.charAt(0).toUpperCase()}
-              </Avatar>
-              {username}
-              <DownOutlined style={{ fontSize: '10px' }} />
-            </Space>
+          <a className='cursor-pointer flex items-center gap-1.5' onClick={(e) => e.preventDefault()}>
+            <Avatar size={20} style={{ backgroundColor: 'var(--color-primary)', fontSize: '12px' }}>
+              {username.charAt(0).toUpperCase()}
+            </Avatar>
+            <span className="text-sm">{username}</span>
+            <DownOutlined className="text-[10px]" />
           </a>
         </Dropdown>
       )}

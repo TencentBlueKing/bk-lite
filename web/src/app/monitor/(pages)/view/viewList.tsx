@@ -7,7 +7,7 @@ import useViewApi from '@/app/monitor/api/view';
 import { useTranslation } from '@/utils/i18n';
 import {
   getEnumColor,
-  getBaseInstanceColumn,
+  getBaseInstanceColumn
 } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
@@ -21,7 +21,7 @@ import {
   TableDataItem,
   IntegrationItem,
   ObjectItem,
-  MetricItem,
+  MetricItem
 } from '@/app/monitor/types';
 import { ViewListProps } from '@/app/monitor/types/view';
 import CustomTable from '@/components/custom-table';
@@ -31,7 +31,7 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ListItem } from '@/types';
 import {
   OBJECT_DEFAULT_ICON,
-  DERIVATIVE_OBJECTS,
+  DERIVATIVE_OBJECTS
 } from '@/app/monitor/constants';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
@@ -40,7 +40,7 @@ const ViewList: React.FC<ViewListProps> = ({
   objects,
   objectId,
   showTab,
-  updateTree,
+  updateTree
 }) => {
   const { isLoading } = useApiClient();
   const { getMonitorMetrics, getInstanceList, getMonitorPlugin } =
@@ -64,7 +64,7 @@ const ViewList: React.FC<ViewListProps> = ({
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
   const [frequence, setFrequence] = useState<number>(0);
   const [plugins, setPlugins] = useState<IntegrationItem[]>([]);
@@ -73,22 +73,22 @@ const ViewList: React.FC<ViewListProps> = ({
       title: t('monitor.views.reportTime'),
       dataIndex: 'time',
       key: 'time',
-      width: 160,
+      onCell: () => ({ style: { minWidth: 160 } }),
       sorter: (a: any, b: any) => a.time - b.time,
       render: (_, { time }) => (
         <>{time ? convertToLocalizedTime(new Date(time * 1000) + '') : '--'}</>
-      ),
+      )
     },
     {
       title: t('monitor.integrations.reportingStatus'),
       dataIndex: 'status',
       key: 'status',
-      width: 160,
+      onCell: () => ({ style: { minWidth: 100 } }),
       render: (_, record) => (
         <>
           {record?.status ? t(`monitor.integrations.${record.status}`) : '--'}
         </>
-      ),
+      )
     },
     {
       title: t('common.action'),
@@ -109,8 +109,8 @@ const ViewList: React.FC<ViewListProps> = ({
             {t('monitor.views.dashboard')}
           </Button>
         </>
-      ),
-    },
+      )
+    }
   ];
   const [tableColumn, setTableColumn] = useState<ColumnItem[]>(columns);
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
@@ -150,7 +150,7 @@ const ViewList: React.FC<ViewListProps> = ({
       setTableData([]);
       setPagination((prev: Pagination) => ({
         ...prev,
-        current: 1,
+        current: 1
       }));
       getColoumnAndData();
     }
@@ -178,7 +178,7 @@ const ViewList: React.FC<ViewListProps> = ({
     objectId,
     pagination.current,
     pagination.pageSize,
-    searchText,
+    searchText
   ]);
 
   // 条件过滤请求
@@ -213,8 +213,8 @@ const ViewList: React.FC<ViewListProps> = ({
       name: searchText,
       vm_params: {
         instance_id: colony || '',
-        node: node || '',
-      },
+        node: node || ''
+      }
     };
   };
 
@@ -225,7 +225,7 @@ const ViewList: React.FC<ViewListProps> = ({
     columnAbortControllerRef.current = abortController;
     const currentRequestId = ++columnRequestIdRef.current;
     const objParams = {
-      monitor_object_id: objectId,
+      monitor_object_id: objectId
     };
     const targetObject = objects.find((item) => item.id === objectId);
     const objName = targetObject?.name;
@@ -238,7 +238,7 @@ const ViewList: React.FC<ViewListProps> = ({
         getMetrics,
         getPlugins,
         showMultipleConditions &&
-          getInstanceQueryParams(objName as string, objParams, config),
+          getInstanceQueryParams(objName as string, objParams, config)
       ]);
       // 检查是否是最新的请求
       if (currentRequestId !== columnRequestIdRef.current) {
@@ -257,14 +257,14 @@ const ViewList: React.FC<ViewListProps> = ({
           return {
             id: item?.id,
             name: item?.name || '',
-            child: [],
+            child: []
           };
         });
       }
       setQueryData(queryForm);
       const _plugins = res[1].map((item: IntegrationItem) => ({
         label: getCollectType(objName as string, item.name as string),
-        value: item.id,
+        value: item.id
       }));
       setPlugins(_plugins);
       setMetrics(res[0] || []);
@@ -311,7 +311,7 @@ const ViewList: React.FC<ViewListProps> = ({
                     )}
                   </div>
                 );
-              },
+              }
             };
           }
           return {
@@ -319,7 +319,9 @@ const ViewList: React.FC<ViewListProps> = ({
               t(`monitor.views.${[item.key]}`) || target?.display_name || '--',
             dataIndex: item.key,
             key: item.key,
-            width: 200,
+            onCell: () => ({
+              style: { minWidth: 150 }
+            }),
             ...(item.type === 'value'
               ? {
                 sorter: (a: any, b: any) =>
@@ -334,7 +336,7 @@ const ViewList: React.FC<ViewListProps> = ({
               const metricItem: any = {
                 unit: metricUnit,
                 name: target?.name,
-                dimensions: target?.dimensions || [],
+                dimensions: target?.dimensions || []
               };
               return (
                 <div className="flex items-center justify-between">
@@ -358,7 +360,7 @@ const ViewList: React.FC<ViewListProps> = ({
                   )}
                 </div>
               );
-            },
+            }
           };
         });
         const originColumns = cloneDeep([
@@ -366,9 +368,9 @@ const ViewList: React.FC<ViewListProps> = ({
             objects,
             row: targetObject,
             t,
-            queryData: queryForm,
+            queryData: queryForm
           }),
-          ...columns,
+          ...columns
         ]);
         const indexToInsert = originColumns.length - 1;
         originColumns.splice(indexToInsert, 0, ..._columns);
@@ -420,7 +422,7 @@ const ViewList: React.FC<ViewListProps> = ({
         ? getInstanceSearch
         : getInstanceList;
       const data = await request(objectId, params, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       // 检查是否是最新的请求且 objectId 仍然匹配
       if (
@@ -430,7 +432,7 @@ const ViewList: React.FC<ViewListProps> = ({
         setTableData(data.results || []);
         setPagination((prev: Pagination) => ({
           ...prev,
-          total: data.count || 0,
+          total: data.count || 0
         }));
       }
     } finally {
@@ -455,7 +457,7 @@ const ViewList: React.FC<ViewListProps> = ({
       icon: monitorItem?.icon || OBJECT_DEFAULT_ICON,
       instance_id: app.instance_id,
       instance_name: app.instance_name,
-      instance_id_values: app.instance_id_values,
+      instance_id_values: app.instance_id_values
     };
     const params = new URLSearchParams(row);
     const targetUrl = `/monitor/view/detail?${params.toString()}`;
@@ -479,7 +481,7 @@ const ViewList: React.FC<ViewListProps> = ({
     viewRef.current?.showModal({
       title: t('monitor.views.indexView'),
       type: 'add',
-      form: row,
+      form: row
     });
   };
 
@@ -489,7 +491,7 @@ const ViewList: React.FC<ViewListProps> = ({
     setTableData([]);
     setPagination((prev: Pagination) => ({
       ...prev,
-      current: 1,
+      current: 1
     }));
   };
 
@@ -498,7 +500,7 @@ const ViewList: React.FC<ViewListProps> = ({
     setTableData([]);
     setPagination((prev: Pagination) => ({
       ...prev,
-      current: 1,
+      current: 1
     }));
   };
 
@@ -565,7 +567,7 @@ const ViewList: React.FC<ViewListProps> = ({
       <CustomTable
         scroll={{
           y: `calc(100vh - ${showTab ? '330px' : '280px'})`,
-          x: 'calc(100vw - 300px)',
+          x: 'max-content'
         }}
         columns={tableColumn}
         dataSource={tableData}
@@ -576,21 +578,21 @@ const ViewList: React.FC<ViewListProps> = ({
           showSetting: false,
           displayFieldKeys: [
             'elasticsearch_cluster_health_status_code',
-            'instance_name',
+            'instance_name'
           ],
           choosableFields: tableColumn.slice(0, tableColumn.length - 1),
           groupFields: [
             {
               title: t('monitor.events.basicInformation'),
               key: 'baseInfo',
-              child: columns.slice(0, 2),
+              child: columns.slice(0, 2)
             },
             {
               title: t('monitor.events.metricInformation'),
               key: 'metricInfo',
-              child: tableColumn.slice(2, tableColumn.length - 1),
-            },
-          ],
+              child: tableColumn.slice(2, tableColumn.length - 1)
+            }
+          ]
         }}
         onChange={handleTableChange}
       ></CustomTable>

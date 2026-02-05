@@ -2,7 +2,7 @@ import { BUILD_IN_MODEL, CREDENTIAL_LIST } from '@/app/cmdb/constants/asset';
 import { getSvgIcon } from './utils';
 import dayjs from 'dayjs';
 import { AttrFieldType } from '@/app/cmdb/types/assetManage';
-import { Tag, Select, Input, DatePicker, Tooltip } from 'antd';
+import { Tag, Select, Input, InputNumber, DatePicker, Tooltip } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -16,6 +16,10 @@ import {
   OriginOrganization,
   OriginSubGroupItem,
   EnumList,
+  TimeAttrOption,
+  StrAttrOption,
+  IntAttrOption,
+  AttrLike,
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
@@ -307,14 +311,19 @@ export const getAssetColumns = (config: {
       case 'enum':
         return {
           ...columnItem,
-          render: (_: unknown, record: any) => (
-            <>
-              {item.option?.find((item: EnumList) => item.id === record[attrId])
-                ?.name || '--'}
-            </>
-          ),
+          render: (_: unknown, record: any) => {
+            const enumOptions = Array.isArray(item.option) ? item.option : [];
+            return (
+              <>
+                {enumOptions.find((opt: EnumList) => opt.id === record[attrId])
+                  ?.name || '--'}
+              </>
+            );
+          },
         };
-      case 'time':
+      case 'time': {
+        const timeOption = item.option as TimeAttrOption | undefined;
+        const dateFormat = timeOption?.display_format === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM-DD HH:mm:ss';
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
@@ -322,30 +331,26 @@ export const getAssetColumns = (config: {
             if (Array.isArray(val)) {
               return (
                 <>
-                  {dayjs(val[0]).format('YYYY-MM-DD HH:mm:ss')} -{' '}
-                  {dayjs(val[1]).format('YYYY-MM-DD HH:mm:ss')}
+                  {dayjs(val[0]).format(dateFormat)} -{' '}
+                  {dayjs(val[1]).format(dateFormat)}
                 </>
               );
             }
             return (
-              <> {val ? dayjs(val).format('YYYY-MM-DD HH:mm:ss') : '--'} </>
+              <> {val ? dayjs(val).format(dateFormat) : '--'} </>
             );
           },
         };
+      }
       default:
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
-            // 获取云区域列表（注意获取时机，防止获取到空数组）
             const cloudOptions = useAssetDataStore.getState().cloud_list;
-            // console.log("test8.25:cloudOptions", cloudOptions);
 
-            // 特殊处理-云区域字段 + modelId=host（主机）时
             const modelId = record.model_id;
             if (attrId === 'cloud' && modelId === 'host') {
-              // 原本是字符串格式，需要转换为数字格式
               const cloudId = +record[attrId];
-              // 查找与Id匹配的云区域中文名
               const cloudName = cloudOptions.find(
                 (option: any) => option.proxy_id === cloudId
               );
@@ -361,7 +366,6 @@ export const getAssetColumns = (config: {
             return (
               <EllipsisWithTooltip
                 className="whitespace-nowrap overflow-hidden text-ellipsis"
-                // 云区域字段特殊处理
                 text={record[attrId] || '--'}
               ></EllipsisWithTooltip>
             )
@@ -406,6 +410,7 @@ export const getFieldItem = (config: {
           </Select>
         );
       case 'enum':
+        const enumOpts = Array.isArray(config.fieldItem.option) ? config.fieldItem.option : [];
         return (
           <Select
             showSearch
@@ -418,7 +423,7 @@ export const getFieldItem = (config: {
               return true;
             }}
           >
-            {config.fieldItem.option?.map((opt) => (
+            {enumOpts.map((opt) => (
               <Select.Option key={opt.id} value={opt.id}>
                 {opt.name}
               </Select.Option>
@@ -441,8 +446,21 @@ export const getFieldItem = (config: {
       case 'organization':
         return <GroupTreeSelector multiple={true} />;
       case 'time':
-        return <DatePicker showTime format="YYYY-MM-DD HH:mm:ss" />;
+        const timeOption = config.fieldItem.option as TimeAttrOption;
+        const displayFormat = timeOption?.display_format || 'datetime';
+        const showTime = displayFormat === 'datetime';
+        const format =
+          displayFormat === 'datetime' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD';
+        return <DatePicker showTime={showTime} format={format} />;
+      case 'int':
+        return <InputNumber style={{ width: '100%' }} />;
       default:
+        if (config.fieldItem.attr_type === 'str') {
+          const strOption = config.fieldItem.option as StrAttrOption;
+          if (strOption?.widget_type === 'multi_line') {
+            return <Input.TextArea rows={4} />;
+          }
+        }
         return <Input />;
     }
   }
@@ -492,12 +510,12 @@ export const getFieldItem = (config: {
     case 'bool':
       return config.value ? 'Yes' : 'No';
     case 'enum':
-      // 处理多选情况（数组）
+      const enumOptions = Array.isArray(config.fieldItem.option) ? config.fieldItem.option : [];
       if (Array.isArray(config.value)) {
         if (config.value.length === 0) return '--';
         const enumNames = config.value
           .map((val: any) => {
-            return config.fieldItem.option?.find(
+            return enumOptions.find(
               (item: EnumList) => item.id === val
             )?.name;
           })
@@ -505,13 +523,19 @@ export const getFieldItem = (config: {
           .join('，');
         return enumNames || '--';
       }
-      // 处理单选情况
       return (
-        config.fieldItem.option?.find(
-          (item: EnumList) => item.id === config.value
+        enumOptions.find(
+          (item: EnumList) => item.id === config.value,
         )?.name || '--'
       );
     default:
+      if (config.fieldItem.attr_type === 'time' && config.value) {
+        const timeOpt = config.fieldItem.option as TimeAttrOption;
+        const displayFmt = timeOpt?.display_format || 'datetime';
+        const fmt =
+          displayFmt === 'datetime' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD';
+        return dayjs(config.value).format(fmt);
+      }
       return config.value || '--';
   }
 };
@@ -579,4 +603,93 @@ export const filterNodesWithAllParents = (nodes: any, ids: any[]) => {
     }
   }
   return result;
+};
+
+export const VALIDATION_PATTERNS: Record<string, RegExp> = {
+  ipv4: /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/,
+  ipv6: /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|(([0-9a-fA-F]{1,4}:){1,6}|:):((:[0-9a-fA-F]{1,4}){1,6}|:)|::([fF]{4}(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/,
+  email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+  mobile_phone: /^1[3-9]\d{9}$/,
+  url: /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$/,
+  json: /^[\s]*(\{[\s\S]*\}|\[[\s\S]*\])[\s]*$/,
+};
+
+export const getStringValidationRule = (item: AttrLike, t: (key: string) => string) => {
+  const strOption = item.option as StrAttrOption;
+  if (!strOption?.validation_type || strOption.validation_type === 'unrestricted') {
+    return null;
+  }
+  if (strOption.validation_type === 'custom' && strOption.custom_regex) {
+    try {
+      return {
+        pattern: new RegExp(strOption.custom_regex),
+        message: t('Model.customRegexRequired'),
+      };
+    } catch {
+      return null;
+    }
+  }
+  if (VALIDATION_PATTERNS[strOption.validation_type]) {
+    return {
+      pattern: VALIDATION_PATTERNS[strOption.validation_type],
+      message: `${t('common.inputMsg')}${t(`Model.${strOption.validation_type}`)}`,
+    };
+  }
+  return null;
+};
+
+export const getNumberRangeRule = (item: AttrLike, t: (key: string) => string) => {
+  const intOption = item.option as IntAttrOption;
+  const hasMin = intOption?.min_value !== undefined && intOption?.min_value !== '' && intOption?.min_value !== null;
+  const hasMax = intOption?.max_value !== undefined && intOption?.max_value !== '' && intOption?.max_value !== null;
+  if (!hasMin && !hasMax) return null;
+  return {
+    validator: (_: unknown, value: unknown) => {
+      if (value === undefined || value === null || value === '') {
+        return Promise.resolve();
+      }
+      const numValue = Number(value);
+      if (hasMin && numValue < Number(intOption.min_value)) {
+        return Promise.reject(new Error(`${t('Model.min')}: ${intOption.min_value}`));
+      }
+      if (hasMax && numValue > Number(intOption.max_value)) {
+        return Promise.reject(new Error(`${t('Model.max')}: ${intOption.max_value}`));
+      }
+      return Promise.resolve();
+    },
+  };
+};
+
+export const getValidationRules = (item: AttrLike, t: (key: string) => string) => {
+  const rules: any[] = [];
+  if (item.is_required) {
+    rules.push({ required: true, message: '' });
+  }
+  if (item.attr_type === 'str') {
+    const strRule = getStringValidationRule(item, t);
+    if (strRule) rules.push(strRule);
+  } else if (item.attr_type === 'int') {
+    const intRule = getNumberRangeRule(item, t);
+    if (intRule) rules.push(intRule);
+  }
+  return rules;
+};
+
+export const normalizeTimeValueForForm = (item: AttrLike, value: unknown) => {
+  if (item.attr_type === 'time' && value && typeof value === 'string') {
+    return dayjs(value, 'YYYY-MM-DD HH:mm:ss');
+  }
+  return value;
+};
+
+export const normalizeTimeValueForSubmit = (item: AttrLike, value: unknown) => {
+  if (item.attr_type === 'time' && dayjs.isDayjs(value)) {
+    const timeOption = item.option as TimeAttrOption;
+    // date 格式约定: YYYY-MM-DD 00:00:00 (时分秒固定为0)
+    if (timeOption?.display_format === 'date') {
+      return value.format('YYYY-MM-DD') + ' 00:00:00';
+    }
+    return value.format('YYYY-MM-DD HH:mm:ss');
+  }
+  return value;
 };

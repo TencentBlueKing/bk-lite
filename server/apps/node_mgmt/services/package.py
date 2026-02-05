@@ -1,10 +1,13 @@
 import re
+from typing import AsyncGenerator
+
 from django.core.files.base import ContentFile
 from apps.node_mgmt.utils.s3 import (
     upload_file_to_s3,
     download_file_by_s3,
     delete_s3_file,
     list_s3_files,
+    stream_download_file_by_s3,
 )
 from asgiref.sync import async_to_sync
 from apps.node_mgmt.models.package import PackageVersion
@@ -120,6 +123,16 @@ class PackageService:
             for file in files
         ]
         return files
+
+    @staticmethod
+    async def stream_download_file(
+        package_obj,
+    ) -> AsyncGenerator[tuple[bytes, str, int], None]:
+        s3_file_path = f"{package_obj.os}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
+        async for chunk, filename, total_size in stream_download_file_by_s3(
+            s3_file_path
+        ):
+            yield chunk, filename, total_size
 
 
 # from config.components.temp_upload import FILE_UPLOAD_TEMP_DIR

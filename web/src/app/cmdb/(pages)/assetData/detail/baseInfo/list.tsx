@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import informationList from './list.module.scss';
-import { Form, Button, Collapse, Descriptions, message, Select } from 'antd';
-import { deepClone, getFieldItem } from '@/app/cmdb/utils/common';
+import { Form, Button, Collapse, Descriptions, message, Select, Tooltip } from 'antd';
+import {
+  deepClone,
+  getFieldItem,
+  getValidationRules,
+  normalizeTimeValueForForm,
+  normalizeTimeValueForSubmit,
+} from '@/app/cmdb/utils/common';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import type { DescriptionsProps } from 'antd';
@@ -16,6 +22,7 @@ import {
   CheckOutlined,
   CloseOutlined,
   CaretRightOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
 import { useInstanceApi } from '@/app/cmdb/api';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
@@ -40,43 +47,31 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const modelId: string = searchParams.get('model_id') || '';
   const instId: string = searchParams.get('inst_id') || '';
 
-  // 获取云区域列表
   const cloudOptions = (useAssetDataStore.getState().cloud_list || []).map((item: any) => ({
     proxy_id: String(item.proxy_id),
     proxy_name: item.proxy_name,
   }));
 
   useEffect(() => {
-    // 详情页中当模型为host时，获取云区域
     if (modelId == 'host') {
       getInstanceProxys()
         .then((data: any[]) => {
-
-          // 保存云区域列表到前端store
           useAssetDataStore.getState().setCloudList(data || []);
         })
         .catch(() => {
-          console.error('获取云区域列表失败');
+          console.error('Failed to fetch cloud list');
         });
     }
   }, []);
 
   useEffect(() => {
-    // propertyList是模型属性列表+值
-    // console.log("test7.4", propertyList);
-
-    // 深拷贝避免修改原始数据
     const list = deepClone(propertyList);
-
     setAttrList(list);
   }, [propertyList]);
 
   useEffect(() => {
     if (attrList.length) {
-
-      // 深拷贝避免修改原始数据
       const newAttrList = deepClone(attrList);
-
       initData(newAttrList);
     }
   }, [propertyList, instDetail, userList, attrList]);
@@ -87,30 +82,18 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     type: string;
   }) => {
     const fieldKey = config.id;
-    let fieldValue = config.values[fieldKey];
-
-    // 从分组结构中查找属性
     const fieldAttr: any = attrList
       .flatMap((group: any) => group.attrs || [])
       .find((item: any) => item.attr_id === fieldKey);
-    if (fieldAttr?.attr_type === 'organization' && fieldValue != null) {
-      fieldValue = Array.isArray(fieldValue) ? fieldValue : [fieldValue];
-    }
+    
+    const fieldValue = normalizeFieldValue(fieldKey, config.values[fieldKey], fieldAttr);
 
     const params: any = {};
-    // 规范云区域提交参数
-    if (fieldKey === 'cloud') {
-      params[fieldKey] = String(fieldValue);
-    } if (fieldKey === 'cloud_id') {
-      params[fieldKey] = +fieldValue;
-    } else {
-      params[fieldKey] = fieldValue;
-    }
+    params[fieldKey] = fieldValue;
     await updateInstance(instId, params);
     message.success(t('successfullyModified'));
     const list = deepClone(attrList);
 
-    // 从分组结构中查找并更新属性的编辑
     for (const group of list) {
       const target = group.attrs?.find((item: any) => item.attr_id === fieldKey);
       if (target) {
@@ -125,17 +108,15 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     onsuccessEdit();
   };
 
-  // 获取可以编辑的值
   const getEditableFieldValue = (fieldItem: any) =>
     fieldItem._originalValue ?? fieldItem.value;
-
 
   const normalizeFieldValue = (
     fieldKey: string,
     fieldValue: any,
     fieldAttr?: any
   ) => {
-    let value = fieldValue;
+    let value = normalizeTimeValueForSubmit(fieldAttr, fieldValue);
     if (fieldAttr?.attr_type === 'organization' && value != null) {
       value = Array.isArray(value) ? value : [value];
     }
@@ -162,7 +143,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
         if (item.editable && item.attr_id !== 'cloud_id') {
           item.isEdit = nextState;
           if (nextState) {
-            values[item.attr_id] = getEditableFieldValue(item);
+            const rawValue = getEditableFieldValue(item);
+            values[item.attr_id] = normalizeTimeValueForForm(item, rawValue);
           }
         }
       });
@@ -180,7 +162,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     const resetValues: any = {};
     attrList.forEach((group: any) => {
       (group.attrs || []).forEach((item: any) => {
-        resetValues[item.attr_id] = getEditableFieldValue(item);
+        const rawValue = getEditableFieldValue(item);
+        resetValues[item.attr_id] = normalizeTimeValueForForm(item, rawValue);
       });
     });
     form.setFieldsValue(resetValues);
@@ -225,41 +208,39 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   };
 
   const initData = (list: any) => {
-    // 遍历分组，得到每组列表
     list.forEach((item: any) => {
       const itemList = item.attrs;
 
-      // 遍历每组列表，得到每个属性
       itemList.forEach((item: any) => {
-        // 获取原始值 + 把原始值赋值给 value（用于正常情况下的渲染）
         const originalValue = item.value || instDetail[item.attr_id];
         item.value = originalValue;
 
-        // 特殊处理-主机的云区域显示中文名称（初始化时）
         if (item.attr_id === 'cloud' && modelId === 'host') {
           const cloudId = String(originalValue);
           const cloudName = cloudOptions.find(
             (option: any) => option.proxy_id === cloudId
           );
-          // 如果找到匹配项，将 item.value 设置为中文名字
           if (cloudName) {
             item.value = cloudName.proxy_name;
             item._originalValue = cloudId;
           } else if (originalValue) {
-            // 如果找不到匹配项，保存原始值用于后续匹配
             item._originalValue = cloudId;
           }
         }
         item.key = item.attr_id;
-        item.label = item.is_required ? (
+        item.label = (
           <>
             {item.attr_name}
-            <span className={informationList.required}></span>
+            {item.is_required && <span className={informationList.required}></span>}
+            {item.user_prompt && (
+              <Tooltip title={item.user_prompt}>
+                <QuestionCircleOutlined className="ml-1 text-gray-400 cursor-help" />
+              </Tooltip>
+            )}
           </>
-        ) : (
-          <>{item.attr_name}</>
         );
         item.isEdit = item.isEdit || false;
+        const formInitialValue = normalizeTimeValueForForm(item, item._originalValue ?? item.value);
         item.children = (
           <Form
             key={item.attr_id}
@@ -274,18 +255,11 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                 {item.isEdit ? (
                   <Form.Item
                     name={item.key}
-                    rules={[
-                      {
-                        required: item.is_required,
-                        message: '',
-                      },
-                    ]}
-                    // 编辑提交时，如果是云区域字段会用_originalValue的值（用于提交id数字字符串）
-                    initialValue={item._originalValue || item.value}
+                    rules={getValidationRules(item, t)}
+                    initialValue={formInitialValue}
                     className="mb-0 w-full"
                   >
                     <>
-                      {/* 特殊处理-主机的云区域为下拉选项（详情页中） */}
                       {item.attr_id === 'cloud' && modelId === 'host' ? (
                         <Select placeholder={t('common.selectTip')}>
                           {cloudOptions.map((opt) => (
@@ -337,7 +311,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                   </>
                 ) : (
                   <>
-                    {/* cloud_id 字段不允许编辑 */}
                     {item.editable && item.attr_id !== 'cloud_id' && (
                       <PermissionWrapper
                         requiredPermissions={['Edit']}
@@ -375,7 +348,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       return;
     }
     const list = deepClone(attrList);
-    // 通过for循环遍历分组，找到对应的属性并设置编辑状态
     for (const group of list) {
       const attr = group.attrs?.find((item: any) => item.attr_id === id);
       if (attr) {
@@ -391,13 +363,12 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       return;
     }
     const list = deepClone(attrList);
-    // 通过for循环遍历分组，恢复表单值为修改前的原始值
     for (const group of list) {
       const attr = group.attrs?.find((item: any) => item.attr_id === id);
       if (attr) {
         attr.isEdit = false;
         const obj: any = {};
-        obj[id] = attr.value;
+        obj[id] = normalizeTimeValueForForm(attr, attr._originalValue ?? attr.value);
         form.setFieldsValue(obj);
         break;
       }
@@ -405,12 +376,9 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     setAttrList(list);
   };
 
-  // 处理字段值变化的回调函数
   const handleValuesChange = (changedValues: any,) => {
-    // 当云区域（cloud）变化时，自动更新云区域ID（cloud_id）
     if (changedValues.cloud !== undefined && modelId === 'host') {
       const cloudId = changedValues.cloud;
-      // 将 cloud_id 设置为 cloud 的值（cloud_id为数字格式，cloud为字符串格式）
       form.setFieldsValue({
         cloud_id: cloudId ? Number(cloudId) : undefined,
       });
@@ -458,10 +426,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     message.success(t('successfulCopied'));
   };
 
-  // 提取 organization 字段并分离其他字段
   const organizationAttrs: any[] = [];
   const otherGroups = fieldList.map((group: any) => {
-    //我猜可能不止一个组织字段，所以需要过滤出 organization 字段
     const organizationItems = (group.attrs || []).filter(
       (attr: any) => attr.attr_id === 'organization'
     );
@@ -469,19 +435,16 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       (attr: any) => attr.attr_id !== 'organization'
     );
 
-    // 提取 organization 字段
     if (organizationItems.length > 0) {
       organizationAttrs.push(...organizationItems);
     }
 
-    // 返回其他字段
     return {
       ...group,
       attrs: otherAttrs,
     };
   }).filter((group: any) => group.attrs && group.attrs.length > 0);
 
-  // 合并所有需要显示的分组
   const displayGroups = [];
   if (organizationAttrs.length > 0) {
     displayGroups.push({
@@ -492,10 +455,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     });
   }
 
-  // 合并其他字段
   displayGroups.push(...otherGroups);
 
-  // 渲染详情页
   const hasEditableField = attrList.some((group: any) =>
     (group.attrs || []).some(
       (item: any) => item.editable && item.attr_id !== 'cloud_id'
@@ -554,8 +515,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           )}
         >
           {displayGroups.map((group: any) => {
-            // 遍历分组，得到最终的每组列表
-            // console.log("test8.16:group", group);
             return (
               <Panel
                 key={String(group.id)}

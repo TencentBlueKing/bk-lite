@@ -66,8 +66,8 @@ class ChannelViewSet(viewsets.ModelViewSet):
             config.setdefault("token", obj.config["token"])
             config.setdefault("aes_key", obj.config["aes_key"])
         elif obj.channel_type == "enterprise_wechat_bot":
-            obj.encrypt_field("bot_key", config)
-            config.setdefault("bot_key", obj.config["bot_key"])
+            obj.encrypt_field("webhook_url", config)
+            config.setdefault("webhook_url", obj.config["webhook_url"])
         obj.config = config
         obj.save()
 

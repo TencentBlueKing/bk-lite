@@ -93,12 +93,12 @@ const StudioLogsPage: React.FC = () => {
   const fetchWorkflowData = useCallback(async (dates: number[] = [], page = 1, pageSize = 10) => {
     setLoading(true);
     try {
-      const params: any = { 
+      const params: any = {
         bot_id: botId,
-        page, 
-        page_size: pageSize 
+        page,
+        page_size: pageSize
       };
-      
+
       if (dates && dates[0] && dates[1]) {
         params.start_time = new Date(dates[0]).toISOString();
         params.end_time = new Date(dates[1]).toISOString();
@@ -131,12 +131,12 @@ const StudioLogsPage: React.FC = () => {
   const fetchWorkflowLogsData = useCallback(async (dates: number[] = [], page = 1, pageSize = 10) => {
     setLoading(true);
     try {
-      const params: any = { 
+      const params: any = {
         bot_id: botId,
-        page, 
-        page_size: pageSize 
+        page,
+        page_size: pageSize
       };
-      
+
       if (dates && dates[0] && dates[1]) {
         params.start_time = new Date(dates[0]).toISOString();
         params.end_time = new Date(dates[1]).toISOString();
@@ -165,7 +165,7 @@ const StudioLogsPage: React.FC = () => {
       await fetchBotData();
       setInitialLoading(false);
     };
-    
+
     initializeComponent();
   }, [fetchBotData]);
 
@@ -179,7 +179,7 @@ const StudioLogsPage: React.FC = () => {
         }
       } else {
         fetchLogsData(searchText, dates, pagination.current, pagination.pageSize, selectedChannels);
-        
+
         const fetchChannelsData = async () => {
           try {
             const data = await fetchChannels(botId);
@@ -282,7 +282,7 @@ const StudioLogsPage: React.FC = () => {
       pageSize: pageSize || pagination.pageSize,
     };
     setPagination(newPagination);
-    
+
     if (botType === 3 && activeTab === 'trigger') {
       fetchWorkflowData(dates, newPagination.current, newPagination.pageSize);
     } else {
@@ -324,7 +324,7 @@ const StudioLogsPage: React.FC = () => {
     setSelectedChannels([]);
     setPagination({ ...pagination, current: 1 });
     setWorkflowLogsPagination({ ...workflowLogsPagination, current: 1 });
-    
+
     if (botType === 3) {
       if (activeTab === 'trigger') {
         fetchWorkflowData(value, 1, pagination.pageSize);
@@ -422,22 +422,22 @@ const StudioLogsPage: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (status, record) => {
-        const statusText = status === 'success' 
-          ? t('studio.logs.table.statusSuccess') 
-          : status === 'failed' 
-            ? t('studio.logs.table.statusFailed') 
+        const statusText = status === 'success'
+          ? t('studio.logs.table.statusSuccess')
+          : (status === 'failed' || status === 'fail')
+            ? t('studio.logs.table.statusFailed')
             : t('studio.logs.table.statusRunning');
-        
-        const statusColor = status === 'success' ? 'green' : status === 'failed' ? 'red' : 'orange';
-        
-        if (status === 'failed' && record.error_log) {
+
+        const statusColor = status === 'success' ? 'green' : (status === 'failed' || status === 'fail') ? 'red' : 'orange';
+
+        if ((status === 'failed' || status === 'fail') && record.error_log) {
           return (
             <Tooltip title={<pre className="max-w-md whitespace-pre-wrap">{record.error_log}</pre>}>
               <Tag color={statusColor}>{statusText}</Tag>
             </Tooltip>
           );
         }
-        
+
         return <Tag color={statusColor}>{statusText}</Tag>;
       },
     },
