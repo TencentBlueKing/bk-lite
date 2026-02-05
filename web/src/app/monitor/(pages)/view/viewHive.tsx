@@ -69,12 +69,8 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const metricList = useMemo(() => {
     if (objectId && objects?.length && mertics?.length) {
       const objName = objects.find((item) => item.id === objectId)?.name;
-      const nodeMetircs = [
-        { type: 'progress', key: 'node_cpu_utilization' },
-        { type: 'enum', key: 'node_status_condition' }
-      ];
       if (objName) {
-        const filterMetrics = isPod ? getTableDiaplay(objName) : nodeMetircs;
+        const filterMetrics = getTableDiaplay(objName);
         return mertics.filter((metric) =>
           filterMetrics.find((item: TableDataItem) => item.key === metric.name)
         );
@@ -232,7 +228,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         (item: MetricItem) =>
           item.name === (isPod ? 'pod_status_phase' : 'node_status_condition')
       );
-      console.log(tagetMerticItem);
       if (isStringArray(tagetMerticItem?.unit || '')) {
         const unitInfo = JSON.parse(tagetMerticItem.unit).map(
           (item: TableDataItem) => ({
