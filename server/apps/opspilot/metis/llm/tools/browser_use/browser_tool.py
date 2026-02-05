@@ -30,8 +30,20 @@ BROWSER_STEP_TIMEOUT = int(os.getenv("BROWSER_STEP_TIMEOUT", "60"))  # 单步执
 # 页面加载等待配置（秒），避免截图时页面仍在 loading
 # minimum_wait_page_load_time: 页面加载后最小等待时间，确保页面渲染完成后再截图
 # wait_for_network_idle_page_load_time: 等待网络请求完成的时间
-BROWSER_MIN_WAIT_PAGE_LOAD = float(os.getenv("BROWSER_MIN_WAIT_PAGE_LOAD", "2"))
-BROWSER_WAIT_NETWORK_IDLE = float(os.getenv("BROWSER_WAIT_NETWORK_IDLE", "2"))
+BROWSER_MIN_WAIT_PAGE_LOAD = float(os.getenv("BROWSER_MIN_WAIT_PAGE_LOAD", "1"))
+BROWSER_WAIT_NETWORK_IDLE = float(os.getenv("BROWSER_WAIT_NETWORK_IDLE", "1"))
+
+# 智能等待功能开关（默认关闭，保持向后兼容）
+BROWSER_SMART_WAIT_ENABLED = os.getenv("BROWSER_SMART_WAIT_ENABLED", "false").lower() == "true"
+
+# DOM 错误检测功能开关（默认开启，用于巡检任务中检测 Toast/错误提示）
+BROWSER_DOM_ERROR_DETECTION_ENABLED = os.getenv("BROWSER_DOM_ERROR_DETECTION_ENABLED", "true").lower() == "true"
+
+# 智能等待配置参数
+# 注意：智能等待采用"固定等待+检测"模式，而非"等待加载完成"模式
+# 这样可以检测出"页面加载太慢"的场景
+SMART_WAIT_DETECTION_TIME = float(os.getenv("SMART_WAIT_DETECTION_TIME", "3.0"))  # 固定等待时间（秒），等待后检测加载状态
+SMART_WAIT_RENDER_DELAY = float(os.getenv("SMART_WAIT_RENDER_DELAY", "0.3"))  # 额外渲染等待时间（秒）
 
 # 会话缓存：用于在同一个 Agent 运行周期内共享浏览器用户数据目录
 # 键: thread_id 或 run_id, 值: {"user_data_dir": str, "created_at": float}
@@ -318,6 +330,451 @@ def _build_sensitive_data(username: Optional[str] = None, password: Optional[str
     return sensitive_data
 
 
+def _create_smart_wait_hook() -> tuple[Callable, dict]:
+    """
+    创建智能页面加载检测的 on_step_start hook
+
+    采用"固定等待+检测"模式：
+    1. 固定等待 SMART_WAIT_DETECTION_TIME（默认 2s）
+    2. 等待结束后检测图片加载状态
+    3. 如果有未加载完成的图片，记录到状态中作为"加载慢"的证据
+    4. 不会等待图片加载完成，让 browser-use 直接截图
+
+    这样可以检测出"页面加载太慢"的场景，而不是掩盖问题。
+
+    Returns:
+        Tuple of:
+        - 异步 hook 函数
+        - 状态字典（包含检测到的慢加载信息）
+    """
+    state = {
+        "step_count": 0,
+        "total_wait_time": 0.0,
+        "slow_load_detected": [],  # 检测到的慢加载页面列表
+    }
+
+    async def smart_wait_hook(agent) -> None:
+        """固定等待后检测页面加载状态"""
+        import asyncio
+
+        state["step_count"] += 1
+        step_num = state["step_count"]
+        start_time = time.time()
+
+        try:
+            # 获取当前页面
+            page = await agent.browser_session.get_current_page()
+            if page is None:
+                logger.warning(f"[Step {step_num}] 智能等待: 无法获取页面对象")
+                return
+
+            # 先清理上一步可能遗留的警告元素（页面可能已经变化）
+            try:
+                await page.evaluate(
+                    """
+                    () => {
+                        const warning = document.getElementById('__slow_load_warning__');
+                        if (warning) warning.remove();
+                        const style = document.getElementById('__slow_load_warning_style__');
+                        if (style) style.remove();
+                    }
+                """
+                )
+            except Exception:
+                pass  # 忽略清理错误
+
+            # 固定等待指定时间
+            total_wait = SMART_WAIT_DETECTION_TIME + SMART_WAIT_RENDER_DELAY
+            await asyncio.sleep(total_wait)
+
+            # 等待结束后检测图片加载状态
+            try:
+                images_status = await page.evaluate(
+                    """
+                    () => {
+                        const images = document.querySelectorAll('img');
+                        if (images.length === 0) return { loaded: true, total: 0, pending: 0, pendingImages: [] };
+
+                        let loaded = 0;
+                        let pending = 0;
+                        let noSrc = 0;
+                        const pendingImages = [];
+
+                        for (const img of images) {
+                            // 检查图片是否在可视区域内
+                            const rect = img.getBoundingClientRect();
+                            const isVisible = rect.top < window.innerHeight && rect.bottom > 0 &&
+                                              rect.left < window.innerWidth && rect.right > 0;
+
+                            // 只检查可见的图片
+                            if (!isVisible) {
+                                loaded++;
+                                continue;
+                            }
+
+                            // 检查是否有有效的 src
+                            const hasSrc = img.src && img.src.startsWith('http');
+
+                            if (!hasSrc) {
+                                noSrc++;
+                                continue;
+                            }
+
+                            // 检查图片是否真正加载完成
+                            const isLoaded = img.complete &&
+                                             img.naturalWidth > 0 &&
+                                             img.naturalHeight > 0;
+
+                            if (isLoaded) {
+                                loaded++;
+                            } else {
+                                pending++;
+                                // 记录未加载图片的信息
+                                pendingImages.push({
+                                    src: img.src.substring(0, 100),
+                                    alt: img.alt || '',
+                                    position: `(${Math.round(rect.left)}, ${Math.round(rect.top)})`
+                                });
+                            }
+                        }
+
+                        return {
+                            loaded: pending === 0,
+                            total: images.length,
+                            pending: pending,
+                            loadedCount: loaded,
+                            noSrc: noSrc,
+                            pendingImages: pendingImages.slice(0, 10)  // 最多返回10个
+                        };
+                    }
+                """
+                )
+
+                # 处理返回值
+                if isinstance(images_status, str):
+                    import json
+
+                    images_status = json.loads(images_status)
+
+                pending_count = images_status.get("pending", 0)
+                total_count = images_status.get("total", 0)
+
+                # 如果有未加载完成的图片，记录为慢加载
+                if pending_count > 0:
+                    # 获取当前 URL
+                    current_url = ""
+                    try:
+                        browser_state = await agent.browser_session.get_browser_state_summary()
+                        current_url = browser_state.url if browser_state else ""
+                    except Exception:
+                        pass
+
+                    slow_load_info = {
+                        "step": step_num,
+                        "url": current_url,
+                        "pending_images": pending_count,
+                        "total_images": total_count,
+                        "wait_time": total_wait,
+                        "details": images_status.get("pendingImages", []),
+                    }
+                    state["slow_load_detected"].append(slow_load_info)
+
+                    logger.warning(f"[Step {step_num}] 页面加载检测: 发现 {pending_count}/{total_count} 张图片未加载完成 " f"(等待 {total_wait:.1f}s 后)，可能存在性能问题")
+
+                    # 在页面上注入一个可见的错误提示元素，让 LLM 在截图中看到
+                    # 这比修改 agent 状态更可靠，因为 LLM 会直接看到截图
+                    try:
+                        await page.evaluate(
+                            f"""
+                            () => {{
+                                // 先移除已存在的提示元素（每次都重新创建，确保显示最新信息）
+                                const existing = document.getElementById('__slow_load_warning__');
+                                if (existing) existing.remove();
+
+                                const warning = document.createElement('div');
+                                warning.id = '__slow_load_warning__';
+                                warning.style.cssText = `
+                                    position: fixed;
+                                    top: 10px;
+                                    right: 10px;
+                                    background: linear-gradient(135deg, #ff4d4f 0%, #cf1322 100%);
+                                    color: white;
+                                    padding: 16px 20px;
+                                    border-radius: 8px;
+                                    font-size: 16px;
+                                    font-weight: bold;
+                                    z-index: 2147483647;
+                                    box-shadow: 0 4px 20px rgba(255, 77, 79, 0.5), 0 0 0 3px rgba(255, 77, 79, 0.3);
+                                    max-width: 400px;
+                                    border: 2px solid #fff;
+                                    animation: pulse 1s ease-in-out infinite;
+                                `;
+
+                                // 添加脉冲动画样式
+                                if (!document.getElementById('__slow_load_warning_style__')) {{
+                                    const style = document.createElement('style');
+                                    style.id = '__slow_load_warning_style__';
+                                    style.textContent = `
+                                        @keyframes pulse {{
+                                            0%, 100% {{ transform: scale(1); opacity: 1; }}
+                                            50% {{ transform: scale(1.02); opacity: 0.9; }}
+                                        }}
+                                    `;
+                                    document.head.appendChild(style);
+                                }}
+
+                                warning.innerHTML = `
+                                    <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                                        <span style="font-size: 24px; margin-right: 10px;">🚨</span>
+                                        <span style="font-size: 18px;">页面加载异常 - 巡检发现问题</span>
+                                    </div>
+                                    <div style="font-weight: normal; font-size: 14px; line-height: 1.5;
+                                        background: rgba(0,0,0,0.2); padding: 10px; border-radius: 4px;">
+                                        ⏱️ 等待 <b>{total_wait:.1f}s</b> 后仍有 <b style="color: #ffeb3b;">{pending_count}/{total_count}</b> 张图片未加载完成<br>
+                                        📋 这是一个需要记录的性能问题
+                                    </div>
+                                `;
+                                document.body.appendChild(warning);
+
+                                // 注意：不设置自动移除，让警告持续显示直到下一步开始时被清理
+                                // 这样确保 LLM 在截图时一定能看到这个警告
+                            }}
+                        """
+                        )
+                        logger.info(f"[Step {step_num}] ✅ 已在页面注入慢加载警告提示 (DOM 注入成功)")
+                    except Exception as e:
+                        logger.warning(f"[Step {step_num}] ❌ 注入慢加载警告失败: {e}")
+                else:
+                    logger.debug(f"[Step {step_num}] 页面加载检测: 所有 {total_count} 张图片已加载完成")
+
+            except Exception as e:
+                logger.debug(f"[Step {step_num}] 页面加载检测异常: {e}")
+
+            wait_time = time.time() - start_time
+            state["total_wait_time"] += wait_time
+            logger.debug(f"[Step {step_num}] 智能等待完成，本次耗时 {wait_time:.2f}s，累计 {state['total_wait_time']:.2f}s")
+
+        except Exception as e:
+            logger.warning(f"[Step {step_num}] 智能等待异常: {e}")
+
+    return smart_wait_hook, state
+
+
+# DOM 错误检测：Toast/通知/错误提示的关键词和选择器
+DOM_ERROR_KEYWORDS_CN = [
+    "系统异常",
+    "请联系管理员",
+    "错误",
+    "失败",
+    "异常",
+    "操作失败",
+    "请求失败",
+    "服务异常",
+    "加载失败",
+    "网络错误",
+    "服务不可用",
+    "超时",
+]
+
+DOM_ERROR_KEYWORDS_EN = [
+    "error",
+    "failed",
+    "failure",
+    "exception",
+    "system error",
+    "contact administrator",
+    "load failed",
+    "network error",
+    "service unavailable",
+    "timeout",
+    "500",
+    "502",
+    "503",
+    "504",
+    "404",
+    "403",
+]
+
+
+def _create_dom_error_detection_hook(
+    is_inspection_task: bool = False,
+) -> tuple[Callable, dict]:
+    """
+    创建 DOM 错误检测的 on_step_end hook
+
+    通过 JavaScript 检测页面中的 Toast、通知、错误提示等元素，
+    将检测结果记录到日志中，供后续分析使用。
+
+    Args:
+        is_inspection_task: 是否为巡检任务（巡检任务会更严格地检测错误）
+
+    Returns:
+        Tuple of:
+        - 异步 hook 函数
+        - 状态字典（用于跟踪检测到的错误）
+    """
+    state = {
+        "step_count": 0,
+        "detected_errors": [],  # 检测到的错误列表
+        "last_error": None,
+    }
+
+    async def dom_error_detection_hook(agent) -> None:
+        """检测页面中的 Toast/错误提示元素"""
+        state["step_count"] += 1
+        step_num = state["step_count"]
+
+        try:
+            # 获取当前页面
+            page = await agent.browser_session.get_current_page()
+            if page is None:
+                return
+
+            # 使用 JavaScript 检测页面中的错误提示元素
+            # 这个脚本会检测常见的 Toast/Notification/Alert 组件
+            detection_result = await page.evaluate(
+                """
+                () => {
+                    const errors = [];
+
+                    // 错误关键词（中英文）
+                    const errorKeywords = [
+                        '系统异常', '请联系管理员', '错误', '失败', '异常',
+                        '操作失败', '请求失败', '服务异常', '加载失败', '网络错误',
+                        '服务不可用', '超时', 'error', 'failed', 'failure',
+                        'exception', 'timeout', '500', '502', '503', '504'
+                    ];
+
+                    // 常见的 Toast/Notification 选择器
+                    const toastSelectors = [
+                        // Ant Design
+                        '.ant-message', '.ant-notification', '.ant-alert',
+                        '.ant-message-notice', '.ant-notification-notice',
+                        // Element UI / Element Plus
+                        '.el-message', '.el-notification', '.el-alert',
+                        '.el-message--error', '.el-notification--error',
+                        // 通用选择器
+                        '.toast', '.notification', '.alert', '.message',
+                        '[class*="toast"]', '[class*="notification"]',
+                        '[class*="message-"]', '[class*="alert-"]',
+                        '[role="alert"]', '[role="status"]',
+                        // 错误样式
+                        '.error', '.danger', '.warning',
+                        '[class*="error"]', '[class*="danger"]',
+                        // 浮层/弹框
+                        '.popup', '.modal-error', '.dialog-error'
+                    ];
+
+                    // 检测所有匹配的元素
+                    for (const selector of toastSelectors) {
+                        try {
+                            const elements = document.querySelectorAll(selector);
+                            for (const el of elements) {
+                                // 检查元素是否可见
+                                const style = window.getComputedStyle(el);
+                                const isVisible = style.display !== 'none' &&
+                                                  style.visibility !== 'hidden' &&
+                                                  style.opacity !== '0' &&
+                                                  el.offsetParent !== null;
+
+                                if (!isVisible) continue;
+
+                                const text = el.innerText || el.textContent || '';
+                                const textLower = text.toLowerCase();
+
+                                // 检查是否包含错误关键词
+                                for (const keyword of errorKeywords) {
+                                    if (textLower.includes(keyword.toLowerCase())) {
+                                        // 获取元素位置
+                                        const rect = el.getBoundingClientRect();
+                                        const position = rect.top < 200 ? 'top' :
+                                                        rect.top > window.innerHeight - 200 ? 'bottom' : 'middle';
+                                        const horizontalPos = rect.left > window.innerWidth * 0.7 ? 'right' :
+                                                              rect.left < window.innerWidth * 0.3 ? 'left' : 'center';
+
+                                        // 检查是否有错误样式（红色）
+                                        const hasErrorStyle = style.color.includes('rgb(255') ||
+                                                             style.backgroundColor.includes('rgb(255') ||
+                                                             el.classList.toString().includes('error') ||
+                                                             el.classList.toString().includes('danger');
+
+                                        errors.push({
+                                            text: text.trim().substring(0, 200),
+                                            keyword: keyword,
+                                            selector: selector,
+                                            position: `${position}-${horizontalPos}`,
+                                            hasErrorStyle: hasErrorStyle,
+                                            tagName: el.tagName.toLowerCase()
+                                        });
+                                        break;  // 一个元素只记录一次
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            // 忽略选择器错误
+                        }
+                    }
+
+                    // 去重（基于文本内容）
+                    const uniqueErrors = [];
+                    const seenTexts = new Set();
+                    for (const err of errors) {
+                        const key = err.text.substring(0, 50);
+                        if (!seenTexts.has(key)) {
+                            seenTexts.add(key);
+                            uniqueErrors.push(err);
+                        }
+                    }
+
+                    return {
+                        hasErrors: uniqueErrors.length > 0,
+                        errors: uniqueErrors,
+                        timestamp: new Date().toISOString()
+                    };
+                }
+            """
+            )
+
+            # 处理返回值
+            if isinstance(detection_result, str):
+                import json
+
+                detection_result = json.loads(detection_result)
+
+            if detection_result and detection_result.get("hasErrors"):
+                detected_errors = detection_result.get("errors", [])
+                state["detected_errors"].extend(detected_errors)
+                state["last_error"] = detected_errors[0] if detected_errors else None
+
+                # 记录检测到的错误（重要：这些信息会在日志中显示，供调试使用）
+                for err in detected_errors:
+                    error_msg = (
+                        f"[Step {step_num}] DOM检测到错误提示: "
+                        f"位置={err.get('position')}, "
+                        f"关键词='{err.get('keyword')}', "
+                        f"内容='{err.get('text', '')[:100]}'"
+                    )
+                    logger.warning(error_msg)
+
+                    # 如果是巡检任务，将检测结果注入到 agent 的消息历史中
+                    # 这样 LLM 在下一步就能看到这个信息
+                    if is_inspection_task and hasattr(agent, "message_manager"):
+                        try:
+                            # 构造提示信息，让 LLM 知道页面有错误
+                            hint = f"【系统自动检测】页面{err.get('position', '')}区域发现错误提示: " f"'{err.get('text', '')[:100]}'"
+                            # 注入到 agent 的 injected_agent_state
+                            if hasattr(agent, "injected_agent_state"):
+                                current_state = agent.injected_agent_state or ""
+                                agent.injected_agent_state = f"{current_state}\n{hint}"
+                        except Exception as e:
+                            logger.debug(f"无法注入错误提示到 agent: {e}")
+
+        except Exception as e:
+            logger.debug(f"[Step {step_num}] DOM 错误检测异常: {e}")
+
+    return dom_error_detection_hook, state
+
+
 def _create_login_failure_hook(
     has_credentials: bool,
     max_failures: int = MAX_LOGIN_FAILURES,
@@ -553,6 +1010,46 @@ async def _browse_website_async(
         has_credentials = sensitive_data is not None and len(sensitive_data) > 0
         login_failure_hook, login_state = _create_login_failure_hook(has_credentials)
 
+        # 检测是否为巡检任务（用于 DOM 错误检测）
+        inspection_keywords = [
+            "巡检",
+            "检查",
+            "健康检查",
+            "功能验证",
+            "inspect",
+            "check",
+            "health check",
+            "verification",
+            "audit",
+            "patrol",
+        ]
+        task_lower = (task or "").lower()
+        is_inspection_task = any(kw in task_lower for kw in inspection_keywords)
+
+        # 创建 DOM 错误检测 hook（仅当启用且为巡检任务时）
+        dom_error_hook = None
+        dom_error_state = None
+        if BROWSER_DOM_ERROR_DETECTION_ENABLED and is_inspection_task:
+            dom_error_hook, dom_error_state = _create_dom_error_detection_hook(is_inspection_task=True)
+            logger.info("DOM 错误检测已启用（巡检任务）")
+
+        # 组合多个 on_step_end hooks
+        async def combined_step_end_hook(agent) -> None:
+            """组合执行所有 on_step_end hooks"""
+            # 先执行 DOM 错误检测（不会抛异常）
+            if dom_error_hook:
+                await dom_error_hook(agent)
+            # 再执行登录失败检测（可能抛 LoginFailureError）
+            if has_credentials:
+                await login_failure_hook(agent)
+
+        # 创建智能等待 hook（仅当启用时）
+        smart_wait_hook = None
+        smart_wait_state = None
+        if BROWSER_SMART_WAIT_ENABLED:
+            smart_wait_hook, smart_wait_state = _create_smart_wait_hook()
+            logger.info(f"智能等待已启用: 固定等待 {SMART_WAIT_DETECTION_TIME:.1f}s 后检测加载状态")
+
         # 扩展系统提示 - 根据用户语言设置选择输出语言
         # 中文 locale（如 "zh-Hans", "zh-CN", "zh"）使用中文输出
         if locale.startswith("zh"):
@@ -593,12 +1090,16 @@ async def _browse_website_async(
 
    在巡检任务中，必须判断页面是否存在异常。以下情况必须记录为【异常】：
 
-   (1) 错误弹框/提示（必须检查）：
-       - 红色背景、红色边框、红色文字的弹框、Toast、通知、Alert
-       - 包含以下关键词的任何提示：错误、失败、异常、Error、Failed、Exception、Fail
-       - 包含 HTTP 状态码的提示：500、502、503、504、404、403、超时、timeout
-       - 右上角、页面中央、底部出现的错误通知条
-       - 感叹号图标（⚠️、❗、!）配合的警告/错误提示
+   (1) 错误弹框/提示（必须检查，重点关注页面右上角区域）：
+        - 红色背景、红色边框、红色文字的弹框、Toast、通知、Alert
+        - 带有红色图标（❌、⊗、×、圆形感叹号）的 Toast 或通知，即使背景是浅色
+        - 包含以下关键词的任何提示（即使样式不明显也必须识别）：
+          * 中文：系统异常、请联系管理员、错误、失败、异常、操作失败、请求失败、服务异常
+          * 英文：Error、Failed、Exception、Fail、System Error、Contact Administrator
+        - 包含 HTTP 状态码的提示：500、502、503、504、404、403、超时、timeout
+        - 页面右上角的 Toast/通知条（这是最常见的错误提示位置，必须仔细检查）
+        - 页面中央、底部出现的错误通知条
+        - 感叹号图标（⚠️、❗、!）配合的警告/错误提示
 
     (2) 页面加载失败：
         - 页面显示"加载失败"、"网络错误"、"服务不可用"、"请求失败"
@@ -606,16 +1107,17 @@ async def _browse_website_async(
         - 出现"重试"、"刷新"、"重新加载"按钮提示
         - 页面内容区域显示"暂无数据"配合错误图标
 
-    (3) 页面加载速度过慢（重要 - 必须识别各类 loading 样式）：
-        - 如果点击菜单/链接后，页面加载时间超过2秒仍未完成，记录为【异常 - 页面加载速度过慢】
-        - 必须识别以下 loading 样式：
+    (3) 页面加载速度过慢 / 内容未加载完成（重要 - 必须仔细检查）：
+        - 【卡片/列表检查】：如果页面是卡片列表或网格布局，必须检查每张卡片：
+          * 有些卡片有缩略图，有些卡片是空白/纯色背景 → 记录为【异常 - 部分内容未加载】
+          * 卡片内只有文字标题，图片区域是空白 → 异常
+          * 对比：正常的卡片应该都有完整的缩略图/预览图
+        - 【通用 loading 样式】：
           * 旋转图标/spinner（圆形旋转动画）
           * 骨架屏（灰色占位块）
-          * 彩色圆点动画（如红、黄、绿、蓝四个圆点跳动，类似 Google 加载样式）
           * 进度条动画
           * "加载中..."、"Loading..." 文字提示
-          * 页面中央的任何动画图标
-        - 注意：这是性能问题，不是功能错误，需要单独标注
+        - 注意：这是性能问题，需要单独标注为【异常 - 页面加载速度过慢】或【异常 - 部分内容未加载】
         - 可继续执行后续检查，但必须记录此异常
 
     (4) 系统错误展示：
@@ -629,7 +1131,7 @@ async def _browse_website_async(
     - "首页: 正常"
     - "监控: 异常 - 右上角出现红色提示'数据加载失败'"
     - "告警: 异常 - 页面中央弹框显示'服务器错误 500'"
-    - "资产: 异常 - 页面加载速度过慢（超过2秒）"
+    - "数字大屏: 异常 - 部分内容未加载（13张卡片中有4张缩略图为空白）"
 """
         else:
             extend_system_message = """
@@ -674,12 +1176,16 @@ CORE RULES (MUST FOLLOW):
 
     When inspecting or checking page functionality, you MUST detect page anomalies. The following situations MUST be recorded as [ABNORMAL]:
 
-   (1) Error Popups/Notifications (MUST CHECK):
-       - Popups, Toasts, Notifications, Alerts with red background, red border, or red text
-       - Any prompt containing keywords: Error, Failed, Exception, Fail, Failure
-       - Prompts containing HTTP status codes: 500, 502, 503, 504, 404, 403, timeout
-       - Error notification bars appearing at top-right, center, or bottom of page
-       - Warning/error prompts with exclamation icons (⚠️, ❗, !)
+   (1) Error Popups/Notifications (MUST CHECK, pay special attention to the top-right corner):
+        - Popups, Toasts, Notifications, Alerts with red background, red border, or red text
+        - Toasts or notifications with red icons (❌, ⊗, ×, circled exclamation), even if background is light-colored
+        - Any prompt containing these keywords (must detect even if styling is subtle):
+          * Chinese: 系统异常, 请联系管理员, 错误, 失败, 异常, 操作失败, 请求失败, 服务异常
+          * English: Error, Failed, Exception, Fail, Failure, System Error, Contact Administrator
+        - Prompts containing HTTP status codes: 500, 502, 503, 504, 404, 403, timeout
+        - Toast/notification bars at top-right corner (most common error location, must check carefully)
+        - Error notification bars at center or bottom of page
+        - Warning/error prompts with exclamation icons (⚠️, ❗, !)
 
     (2) Page Load Failures:
         - Page displays "Load Failed", "Network Error", "Service Unavailable", "Request Failed"
@@ -687,16 +1193,17 @@ CORE RULES (MUST FOLLOW):
         - "Retry", "Refresh", "Reload" button prompts appear
         - Content area shows "No Data" with error icon
 
-    (3) Slow Page Load (IMPORTANT - Must recognize all loading styles):
-        - If page load time exceeds 2 seconds after clicking menu/link, record as [ABNORMAL - Slow page load]
-        - Must recognize these loading styles:
+    (3) Slow Page Load / Incomplete Content (IMPORTANT - Must check carefully):
+        - [Card/List Check]: If page shows card list or grid layout, must inspect each card:
+          * Some cards have thumbnails, some cards are blank/solid color → record as [ABNORMAL - Partial content not loaded]
+          * Card only shows text title, image area is blank → Abnormal
+          * Compare: Normal cards should all have complete thumbnails/preview images
+        - [Common loading styles]:
           * Spinning icons/spinners (circular rotating animation)
           * Skeleton screens (gray placeholder blocks)
-          * Colored dot animations (e.g., red, yellow, green, blue dots bouncing, Google-style loading)
           * Progress bar animations
           * "Loading...", "加载中..." text prompts
-          * Any animated icon in the center of the page
-        - Note: This is a performance issue, not a functional error, mark it separately
+        - Note: This is a performance issue, mark as [ABNORMAL - Slow page load] or [ABNORMAL - Partial content not loaded]
         - Continue with subsequent checks, but must record this anomaly
 
     (4) System Error Display:
@@ -710,7 +1217,7 @@ CORE RULES (MUST FOLLOW):
     - "Homepage: Normal"
     - "Monitor: Abnormal - Red toast appeared at top-right showing 'Data load failed'"
     - "Alerts: Abnormal - Modal in center showing 'Server Error 500'"
-    - "Assets: Abnormal - Slow page load (exceeded 2 seconds)"
+    - "Digital Dashboard: Abnormal - Partial content not loaded (4 of 13 card thumbnails are blank)"
 """
 
         # 创建 browser-use agent（带回调支持和优化配置）
@@ -727,14 +1234,31 @@ CORE RULES (MUST FOLLOW):
             step_timeout=BROWSER_STEP_TIMEOUT,  # 单步执行超时（包含导航等待）
         )
 
-        # 执行浏览任务（使用登录失败检测 hook）
+        # 执行浏览任务（使用组合的 on_step_end hook 和智能等待 hook）
+        # combined_step_end_hook 包含: DOM 错误检测 + 登录失败检测
         agent_result = await browser_agent.run(
             max_steps=max_steps,
-            on_step_end=login_failure_hook if has_credentials else None,
+            on_step_start=smart_wait_hook,
+            on_step_end=combined_step_end_hook if (dom_error_hook or has_credentials) else None,
         )
         # 提取结果
         final_result = agent_result.final_result()
         result_text = str(final_result) if final_result else "未获取到有效结果"
+
+        # 如果 DOM 错误检测发现了错误，将其附加到结果中
+        dom_detected_errors = []
+        if dom_error_state and dom_error_state.get("detected_errors"):
+            dom_detected_errors = [f"[DOM检测] {err.get('position', '')}: {err.get('text', '')[:100]}" for err in dom_error_state["detected_errors"]]
+            logger.info(f"DOM 错误检测结果: 发现 {len(dom_detected_errors)} 个错误提示")
+
+        # 如果智能等待检测到慢加载，将其附加到结果中
+        slow_load_detected = []
+        if smart_wait_state and smart_wait_state.get("slow_load_detected"):
+            slow_load_detected = [
+                f"[慢加载] Step {info.get('step')}: {info.get('pending_images')}/{info.get('total_images')} 张图片未加载 (URL: {info.get('url', '')[:80]})"
+                for info in smart_wait_state["slow_load_detected"]
+            ]
+            logger.info(f"慢加载检测结果: 发现 {len(slow_load_detected)} 个页面加载过慢")
 
         return {
             "success": agent_result.is_successful(),
@@ -744,6 +1268,8 @@ CORE RULES (MUST FOLLOW):
             "has_errors": agent_result.has_errors(),
             "errors": [str(err) for err in agent_result.errors() if err],
             "steps_taken": agent_result.number_of_steps(),
+            "dom_detected_errors": dom_detected_errors,  # DOM 检测到的错误
+            "slow_load_detected": slow_load_detected,  # 慢加载检测结果
         }
 
     except ImportError as e:
