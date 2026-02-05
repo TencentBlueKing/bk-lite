@@ -1,5 +1,11 @@
 from django_filters import FilterSet, CharFilter, DateTimeFilter, ChoiceFilter, BooleanFilter
-from apps.mlops.models.timeseries_predict import *
+from apps.mlops.models.timeseries_predict import (
+    TimeseriesPredictDataset,
+    TimeseriesPredictTrainData,
+    TimeseriesPredictDatasetRelease,
+    TimeseriesPredictTrainJob,
+    TimeseriesPredictServing,
+)
 
 
 class TimeSeriesPredictDatasetFilter(FilterSet):

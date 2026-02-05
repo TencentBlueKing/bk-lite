@@ -1,7 +1,13 @@
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
-from apps.mlops.models.log_clustering import *
+from apps.mlops.models.log_clustering import (
+    LogClusteringDataset,
+    LogClusteringTrainData,
+    LogClusteringDatasetRelease,
+    LogClusteringTrainJob,
+    LogClusteringServing,
+)
 
 
 class LogClusteringDatasetSerializer(AuthSerializer):

@@ -1,5 +1,11 @@
 from apps.core.utils.serializers import AuthSerializer
-from apps.mlops.models.image_classification import *
+from apps.mlops.models.image_classification import (
+    ImageClassificationDataset,
+    ImageClassificationTrainData,
+    ImageClassificationDatasetRelease,
+    ImageClassificationTrainJob,
+    ImageClassificationServing,
+)
 from rest_framework import serializers
 from apps.core.logger import mlops_logger as logger
 

@@ -1,5 +1,11 @@
 from django_filters import FilterSet, CharFilter, DateTimeFilter, ChoiceFilter, NumberFilter, BooleanFilter
-from apps.mlops.models.log_clustering import *
+from apps.mlops.models.log_clustering import (
+    LogClusteringDataset,
+    LogClusteringTrainData,
+    LogClusteringDatasetRelease,
+    LogClusteringTrainJob,
+    LogClusteringServing,
+)
 
 
 class LogClusteringDatasetFilter(FilterSet):

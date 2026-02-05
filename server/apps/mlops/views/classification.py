@@ -11,9 +11,27 @@ import json
 
 from apps.core.logger import mlops_logger as logger
 from apps.core.decorators.api_permission import HasPermission
-from apps.mlops.models.classification import *
-from apps.mlops.serializers.classification import *
-from apps.mlops.filters.classification import *
+from apps.mlops.models.classification import (
+    ClassificationDataset,
+    ClassificationTrainData,
+    ClassificationDatasetRelease,
+    ClassificationTrainJob,
+    ClassificationServing,
+)
+from apps.mlops.serializers.classification import (
+    ClassificationDatasetSerializer,
+    ClassificationTrainDataSerializer,
+    ClassificationDatasetReleaseSerializer,
+    ClassificationTrainJobSerializer,
+    ClassificationServingSerializer,
+)
+from apps.mlops.filters.classification import (
+    ClassificationDatasetFilter,
+    ClassificationTrainDataFilter,
+    ClassificationDatasetReleaseFilter,
+    ClassificationTrainJobFilter,
+    ClassificationServingFilter,
+)
 from config.drf.pagination import CustomPageNumberPagination
 from apps.mlops.utils.webhook_client import (
     WebhookClient,
@@ -842,6 +860,68 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
                 {"error": f"启动训练任务失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["post"], url_path="stop")
+    @HasPermission("train_tasks-Stop")
+    def stop(self, request, *args, **kwargs):
+        """
+        停止训练任务
+        """
+        try:
+            train_job = self.get_object()
+
+            # 检查任务状态
+            if train_job.status != "running":
+                return Response(
+                    {"error": "训练任务未在运行中"}, status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 构建训练任务标识
+            job_id = mlflow_service.build_job_id(
+                prefix=self.MLFLOW_PREFIX,
+                algorithm=train_job.algorithm,
+                train_job_id=train_job.id,
+            )
+
+            logger.info(f"停止训练任务: {job_id}")
+
+            # 调用 WebhookClient 停止任务（默认删除容器）
+            result = WebhookClient.stop(job_id)
+
+            # 更新任务状态
+            train_job.status = "pending"
+            train_job.save(update_fields=["status"])
+
+            logger.info(f"训练任务已停止: {job_id}")
+
+            return Response(
+                {
+                    "message": "训练任务已停止",
+                    "job_id": job_id,
+                    "train_job_id": train_job.id,
+                    "webhook_response": result,
+                }
+            )
+
+        except WebhookTimeoutError as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except WebhookConnectionError as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except WebhookError as e:
+            logger.error(f"停止训练任务失败: {e}")
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            logger.error(f"停止训练任务失败: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"停止训练任务失败: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

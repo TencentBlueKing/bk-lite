@@ -1,6 +1,12 @@
 from django_filters import FilterSet, CharFilter, DateTimeFilter, ChoiceFilter, BooleanFilter
 
-from apps.mlops.models.classification import *
+from apps.mlops.models.classification import (
+    ClassificationDataset,
+    ClassificationTrainData,
+    ClassificationDatasetRelease,
+    ClassificationTrainJob,
+    ClassificationServing,
+)
 
 
 class ClassificationDatasetFilter(FilterSet):

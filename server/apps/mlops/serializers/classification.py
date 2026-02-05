@@ -1,5 +1,11 @@
 from apps.core.utils.serializers import AuthSerializer
-from apps.mlops.models.classification import *
+from apps.mlops.models.classification import (
+    ClassificationDataset,
+    ClassificationTrainData,
+    ClassificationDatasetRelease,
+    ClassificationTrainJob,
+    ClassificationServing,
+)
 from rest_framework import serializers
 
 

@@ -1,7 +1,13 @@
 from django_filters import BooleanFilter, CharFilter, ChoiceFilter, DateTimeFilter, FilterSet, NumberFilter
 from django_filters.filters import DateFromToRangeFilter
 
-from apps.mlops.models.image_classification import *
+from apps.mlops.models.image_classification import (
+    ImageClassificationDataset,
+    ImageClassificationTrainData,
+    ImageClassificationDatasetRelease,
+    ImageClassificationTrainJob,
+    ImageClassificationServing,
+)
 
 
 class ImageClassificationDatasetFilter(FilterSet):

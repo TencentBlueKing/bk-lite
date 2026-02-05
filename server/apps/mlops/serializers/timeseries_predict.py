@@ -1,7 +1,13 @@
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
-from apps.mlops.models.timeseries_predict import *
+from apps.mlops.models.timeseries_predict import (
+    TimeseriesPredictDataset,
+    TimeseriesPredictTrainData,
+    TimeseriesPredictDatasetRelease,
+    TimeseriesPredictTrainJob,
+    TimeseriesPredictServing,
+)
 from apps.core.logger import mlops_logger as logger
 
 

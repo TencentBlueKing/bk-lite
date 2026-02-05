@@ -1,11 +1,47 @@
 from rest_framework import routers
 
-from apps.mlops.views.anomaly_detection import *
-from apps.mlops.views.image_classification import *
-from apps.mlops.views.timeseries_predict import *
-from apps.mlops.views.log_clustering import *
-from apps.mlops.views.classification import *
-from apps.mlops.views.object_detection import *
+from apps.mlops.views.anomaly_detection import (
+    AnomalyDetectionDatasetViewSet,
+    AnomalyDetectionTrainDataViewSet,
+    AnomalyDetectionTrainJobViewSet,
+    AnomalyDetectionDatasetReleaseViewSet,
+    AnomalyDetectionServingViewSet,
+)
+from apps.mlops.views.timeseries_predict import (
+    TimeSeriesPredictDatasetViewSet,
+    TimeSeriesPredictTrainDataViewSet,
+    TimeSeriesPredictTrainJobViewSet,
+    TimeSeriesPredictServingViewSet,
+    TimeSeriesPredictDatasetReleaseViewSet,
+)
+from apps.mlops.views.classification import (
+    ClassificationDatasetViewSet,
+    ClassificationTrainDataViewSet,
+    ClassificationTrainJobViewSet,
+    ClassificationDatasetReleaseViewSet,
+    ClassificationServingViewSet,
+)
+from apps.mlops.views.image_classification import (
+    ImageClassificationDatasetViewSet,
+    ImageClassificationTrainDataViewSet,
+    ImageClassificationDatasetReleaseViewSet,
+    ImageClassificationTrainJobViewSet,
+    ImageClassificationServingViewSet,
+)
+from apps.mlops.views.object_detection import (
+    ObjectDetectionDatasetViewSet,
+    ObjectDetectionTrainDataViewSet,
+    ObjectDetectionDatasetReleaseViewSet,
+    ObjectDetectionTrainJobViewSet,
+    ObjectDetectionServingViewSet,
+)
+from apps.mlops.views.log_clustering import (
+    LogClusteringDatasetViewSet,
+    LogClusteringTrainDataViewSet,
+    LogClusteringTrainJobViewSet,
+    LogClusteringDatasetReleaseViewSet,
+    LogClusteringServingViewSet,
+)
 from apps.mlops.views.algorithm_config import AlgorithmConfigViewSet
 
 router = routers.DefaultRouter()

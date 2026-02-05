@@ -1,5 +1,11 @@
 from apps.core.utils.serializers import AuthSerializer
-from apps.mlops.models.object_detection import *
+from apps.mlops.models.object_detection import (
+    ObjectDetectionDataset,
+    ObjectDetectionTrainData,
+    ObjectDetectionDatasetRelease,
+    ObjectDetectionTrainJob,
+    ObjectDetectionServing,
+)
 from rest_framework import serializers
 from apps.core.logger import mlops_logger as logger
 
