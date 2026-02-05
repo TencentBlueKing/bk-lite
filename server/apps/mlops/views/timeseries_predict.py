@@ -11,6 +11,7 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.utils import mlflow_service
+from apps.mlops.services import get_image_by_prefix
 import requests
 import os
 import pandas as pd
@@ -153,6 +154,10 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             logger.info(f"  Dataset: {train_job.dataset_version.dataset_file.name}")
             logger.info(f"  Config: {train_job.config_url.name}")
 
+            # 动态获取训练镜像
+            train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
+            logger.info(f"  Train Image: {train_image}")
+
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
@@ -163,7 +168,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="bklite/classify_timeseries_server:latest",
+                train_image=train_image,
             )
 
             # 更新任务状态
@@ -789,7 +794,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="bklite/classify_timeseries_server:latest",
+                    train_image=get_image_by_prefix(
+                        self.MLFLOW_PREFIX, serving.train_job.algorithm
+                    ),
                 )
 
                 # 启动成功，仅更新容器信息
@@ -943,7 +950,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=instance.port,
-                    train_image="bklite/classify_timeseries_server:latest",
+                    train_image=get_image_by_prefix(
+                        self.MLFLOW_PREFIX, instance.train_job.algorithm
+                    ),
                 )
 
                 # 更新容器信息（status 由用户控制，不修改）
@@ -1010,7 +1019,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="bklite/classify_timeseries_server:latest",
+                    train_image=get_image_by_prefix(
+                        self.MLFLOW_PREFIX, serving.train_job.algorithm
+                    ),
                 )
 
                 # 正常启动成功，仅更新容器信息

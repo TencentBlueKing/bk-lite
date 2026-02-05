@@ -16,6 +16,7 @@ from apps.alerts.constants import (
     AlertAssignmentMatchType,
     LogAction,
     LogTargetType,
+    SessionStatus,
 )
 from apps.alerts.service.alter_operator import AlertOperator
 from apps.alerts.service.reminder_service import ReminderService
@@ -192,8 +193,12 @@ class AlertAssignmentOperator:
             匹配的告警ID列表
         """
         # 先过滤未分派状态的告警
-        base_queryset = Alert.objects.filter(
-            alert_id__in=self.alert_id_list, status=AlertStatus.UNASSIGNED
+        base_queryset = (
+            Alert.objects.filter(alert_id__in=self.alert_id_list, status=AlertStatus.UNASSIGNED)
+            .exclude(
+                is_session_alert=True,
+                session_status__in=SessionStatus.NO_CONFIRMED,
+            )
         )
 
         # 排除已分派的告警
@@ -356,6 +361,26 @@ class AlertAssignmentOperator:
 
                 for alert in alerts:
                     try:
+                        if (
+                            alert.is_session_alert
+                            and alert.session_status != SessionStatus.CONFIRMED
+                        ):
+                            logger.info(
+                                "跳过会话观察期告警的自动分派: alert_id=%s, session_status=%s",
+                                alert.alert_id,
+                                alert.session_status,
+                            )
+                            results.append(
+                                {
+                                    "alert_id": alert.alert_id,
+                                    "success": False,
+                                    "assignment_id": assignment.id,
+                                    "assigned_to": [],
+                                    "message": "session alert observing",
+                                    "skip_session_alert": True,
+                                }
+                            )
+                            continue
                         # 使用AlertOperator执alert.alert_id行分派操作
                         operator = AlertOperator(
                             user="admin"

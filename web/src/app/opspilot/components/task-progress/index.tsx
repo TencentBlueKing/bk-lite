@@ -97,7 +97,7 @@ const TaskProgress: React.FC<TaskProgressProps> = ({ activeTabKey, pageType = 'd
   }
 
   return (
-    <div className="p-4 absolute bottom-0 left-0 w-full max-h-[300px] overflow-y-auto">
+    <div className="p-4 absolute bottom-6 left-0 w-full max-h-[300px] overflow-y-auto">
       {/* Render QA task statuses for result page */}
       {shouldShowQAStatuses && qaTaskStatuses.map((qaStatus, index) => (
         <div key={`qa-${index}`} className="mb-2">

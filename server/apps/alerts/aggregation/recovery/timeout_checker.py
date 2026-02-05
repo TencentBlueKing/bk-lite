@@ -48,12 +48,32 @@ class TimeoutChecker:
         """
         alert.session_status = SessionStatus.CONFIRMED
         alert.save(update_fields=["session_status", "updated_at"])
+        TimeoutChecker._trigger_auto_assignment(alert)
 
         logger.info(
             f"会话窗口超时确认: alert_id={alert.alert_id}, "
             f"fingerprint={alert.fingerprint}, "
             f"session_end_time={alert.session_end_time.isoformat()}"
         )
+
+    @staticmethod
+    def _trigger_auto_assignment(alert: Alert):
+        """会话转正后触发一次自动分派"""
+        from apps.alerts.tasks import async_auto_assignment_for_alerts
+
+        try:
+            async_auto_assignment_for_alerts.delay([alert.alert_id])
+            logger.info(
+                "会话窗口告警触发自动分派: alert_id=%s, session_status=%s",
+                alert.alert_id,
+                alert.session_status,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "会话窗口告警触发自动分派失败 alert_id=%s, error=%s",
+                alert.alert_id,
+                exc,
+            )
 
     @staticmethod
     def confirm_observing_alerts_by_strategy(strategy_id: int):

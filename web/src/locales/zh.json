@@ -49,6 +49,7 @@
     "saveSuccess": "保存成功",
     "publishSuccess": "发布成功",
     "saveFailed": "保存失败",
+    "operationFailed": "操作失败",
     "selectMsg": "请选择",
     "inputMsg": "请输入",
     "input": "输入",

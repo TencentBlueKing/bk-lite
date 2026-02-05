@@ -18,6 +18,8 @@ import {
   EnumList,
   TimeAttrOption,
   StrAttrOption,
+  IntAttrOption,
+  AttrLike,
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
@@ -601,4 +603,93 @@ export const filterNodesWithAllParents = (nodes: any, ids: any[]) => {
     }
   }
   return result;
+};
+
+export const VALIDATION_PATTERNS: Record<string, RegExp> = {
+  ipv4: /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/,
+  ipv6: /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|(([0-9a-fA-F]{1,4}:){1,6}|:):((:[0-9a-fA-F]{1,4}){1,6}|:)|::([fF]{4}(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/,
+  email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+  mobile_phone: /^1[3-9]\d{9}$/,
+  url: /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$/,
+  json: /^[\s]*(\{[\s\S]*\}|\[[\s\S]*\])[\s]*$/,
+};
+
+export const getStringValidationRule = (item: AttrLike, t: (key: string) => string) => {
+  const strOption = item.option as StrAttrOption;
+  if (!strOption?.validation_type || strOption.validation_type === 'unrestricted') {
+    return null;
+  }
+  if (strOption.validation_type === 'custom' && strOption.custom_regex) {
+    try {
+      return {
+        pattern: new RegExp(strOption.custom_regex),
+        message: t('Model.customRegexRequired'),
+      };
+    } catch {
+      return null;
+    }
+  }
+  if (VALIDATION_PATTERNS[strOption.validation_type]) {
+    return {
+      pattern: VALIDATION_PATTERNS[strOption.validation_type],
+      message: `${t('common.inputMsg')}${t(`Model.${strOption.validation_type}`)}`,
+    };
+  }
+  return null;
+};
+
+export const getNumberRangeRule = (item: AttrLike, t: (key: string) => string) => {
+  const intOption = item.option as IntAttrOption;
+  const hasMin = intOption?.min_value !== undefined && intOption?.min_value !== '' && intOption?.min_value !== null;
+  const hasMax = intOption?.max_value !== undefined && intOption?.max_value !== '' && intOption?.max_value !== null;
+  if (!hasMin && !hasMax) return null;
+  return {
+    validator: (_: unknown, value: unknown) => {
+      if (value === undefined || value === null || value === '') {
+        return Promise.resolve();
+      }
+      const numValue = Number(value);
+      if (hasMin && numValue < Number(intOption.min_value)) {
+        return Promise.reject(new Error(`${t('Model.min')}: ${intOption.min_value}`));
+      }
+      if (hasMax && numValue > Number(intOption.max_value)) {
+        return Promise.reject(new Error(`${t('Model.max')}: ${intOption.max_value}`));
+      }
+      return Promise.resolve();
+    },
+  };
+};
+
+export const getValidationRules = (item: AttrLike, t: (key: string) => string) => {
+  const rules: any[] = [];
+  if (item.is_required) {
+    rules.push({ required: true, message: '' });
+  }
+  if (item.attr_type === 'str') {
+    const strRule = getStringValidationRule(item, t);
+    if (strRule) rules.push(strRule);
+  } else if (item.attr_type === 'int') {
+    const intRule = getNumberRangeRule(item, t);
+    if (intRule) rules.push(intRule);
+  }
+  return rules;
+};
+
+export const normalizeTimeValueForForm = (item: AttrLike, value: unknown) => {
+  if (item.attr_type === 'time' && value && typeof value === 'string') {
+    return dayjs(value, 'YYYY-MM-DD HH:mm:ss');
+  }
+  return value;
+};
+
+export const normalizeTimeValueForSubmit = (item: AttrLike, value: unknown) => {
+  if (item.attr_type === 'time' && dayjs.isDayjs(value)) {
+    const timeOption = item.option as TimeAttrOption;
+    // date 格式约定: YYYY-MM-DD 00:00:00 (时分秒固定为0)
+    if (timeOption?.display_format === 'date') {
+      return value.format('YYYY-MM-DD') + ' 00:00:00';
+    }
+    return value.format('YYYY-MM-DD HH:mm:ss');
+  }
+  return value;
 };

@@ -18,6 +18,7 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.utils import mlflow_service
+from apps.mlops.services import get_image_by_prefix
 import os
 import requests
 import json
@@ -132,6 +133,10 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             logger.info(f"  Dataset: {train_job.dataset_version.dataset_file.name}")
             logger.info(f"  Config: {train_job.config_url.name}")
 
+            # 动态获取训练镜像
+            train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
+            logger.info(f"  Train Image: {train_image}")
+
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
@@ -142,7 +147,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="bklite/classify_anomaly_server:latest",
+                train_image=train_image,
             )
 
             # 更新任务状态
@@ -963,12 +968,17 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
 
             try:
                 # 调用 WebhookClient 启动服务
+                # 动态获取推理镜像
+                train_image = get_image_by_prefix(
+                    self.MLFLOW_PREFIX, serving.train_job.algorithm
+                )
+
                 result = WebhookClient.serve(
                     container_id,
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="bklite/classify_anomaly_server:latest",
+                    train_image=train_image,
                 )
 
                 # 启动成功，仅更新容器信息
@@ -1117,12 +1127,17 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
                 )
 
                 # 启动新容器
+                # 动态获取推理镜像
+                train_image = get_image_by_prefix(
+                    self.MLFLOW_PREFIX, instance.train_job.algorithm
+                )
+
                 result = WebhookClient.serve(
                     container_id,
                     mlflow_tracking_uri,
                     model_uri,
                     port=instance.port,
-                    train_image="bklite/classify_anomaly_server:latest",
+                    train_image=train_image,
                 )
 
                 # 更新容器信息（status 由用户控制，不修改）
@@ -1183,12 +1198,17 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
 
             try:
                 # 调用 WebhookClient 启动服务
+                # 动态获取推理镜像
+                train_image = get_image_by_prefix(
+                    self.MLFLOW_PREFIX, serving.train_job.algorithm
+                )
+
                 result = WebhookClient.serve(
                     serving_id,
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="bklite/classify_anomaly_server:latest",
+                    train_image=train_image,
                 )
 
                 # 正常启动成功，仅更新容器信息

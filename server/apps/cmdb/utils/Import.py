@@ -21,6 +21,7 @@ class Import:
         self.operator = operator
         self.inst_name_id_map = {}
         self.inst_id_name_map = {}
+        self.inst_list = []
         self.import_result_message = {"add": {"success": 0, "error": 0, "data": []},
                                       "update": {"success": 0, "error": 0, "data": []},
                                       "asso": {"success": 0, "error": 0, "data": []}}
@@ -324,7 +325,6 @@ class Import:
             # 只有当行有数据且没有验证错误时才添加到结果列表
             if row_has_data and len(item) > 1 and not row_has_validation_errors:
                 result.append(item)
-                print(item)
         return result, asso_key_map
 
     def get_check_attr_map(self):
@@ -340,18 +340,60 @@ class Import:
 
     def inst_list_save(self, inst_list):
         """实例列表保存"""
+        from apps.cmdb.validators import FieldValidator
+        from apps.cmdb.display_field import DisplayFieldHandler
+        
+        # 对每个实例进行字段校验和 _display 字段生成
+        processed_inst_list = []
+        for inst_data in inst_list:
+            # 1. 字段格式校验（与创建实例逻辑一致）
+            validation_errors = FieldValidator.validate_instance_data(inst_data, self.attrs)
+            if validation_errors:
+                # 收集所有字段校验错误
+                for err in validation_errors:
+                    error_msg = f"实例 {inst_data.get('inst_name', '未命名')}，字段 '{err['field_name']}'：{err['error']}"
+                    self.validation_errors.append(error_msg)
+                    logger.warning(error_msg)
+                continue  # 跳过有错误的实例
+            
+            # 2. 生成 _display 冗余字段（与创建实例逻辑一致）
+            inst_data = DisplayFieldHandler.build_display_fields(
+                self.model_id, inst_data, self.attrs
+            )
+            processed_inst_list.append(inst_data)
 
         with GraphClient() as ag:
-            result = ag.batch_create_entity(INSTANCE, inst_list, self.get_check_attr_map(), self.exist_items,
-                                            self.operator)
+            result = ag.batch_create_entity(INSTANCE, processed_inst_list, self.get_check_attr_map(), self.exist_items,
+                                            self.operator, self.attrs)
         return result
 
     def inst_list_update(self, inst_list):
         """实例列表更新"""
+        from apps.cmdb.validators import FieldValidator
+        from apps.cmdb.display_field import DisplayFieldHandler
+        
+        # 对每个实例进行字段校验和 _display 字段生成
+        processed_inst_list = []
+        for inst_data in inst_list:
+            # 1. 字段格式校验（与修改实例逻辑一致）
+            validation_errors = FieldValidator.validate_instance_data(inst_data, self.attrs)
+            if validation_errors:
+                # 收集所有字段校验错误
+                for err in validation_errors:
+                    error_msg = f"实例 {inst_data.get('inst_name', '未命名')}，字段 '{err['field_name']}'：{err['error']}"
+                    self.validation_errors.append(error_msg)
+                    logger.warning(error_msg)
+                continue  # 跳过有错误的实例
+            
+            # 2. 生成 _display 冗余字段（与修改实例逻辑一致）
+            inst_data = DisplayFieldHandler.build_display_fields(
+                self.model_id, inst_data, self.attrs
+            )
+            processed_inst_list.append(inst_data)
 
         with GraphClient() as ag:
-            add_results, update_results = ag.batch_save_entity(INSTANCE, inst_list, self.get_check_attr_map(),
-                                                               self.exist_items, self.operator)
+            add_results, update_results = ag.batch_save_entity(INSTANCE, processed_inst_list, self.get_check_attr_map(),
+                                                               self.exist_items, self.operator, self.attrs)
         return add_results, update_results
 
     def import_inst_list(self, file_stream: bytes):
@@ -363,24 +405,36 @@ class Import:
     def import_inst_list_support_edit(self, file_stream: bytes, allowed_org_ids: list = None):
         """将excel主机数据导入"""
         inst_list, asso_key_map = self.format_excel_data(file_stream, allowed_org_ids=allowed_org_ids)
-
-        # 如果存在验证错误，立即返回错误信息，不执行导入
-        if self.validation_errors:
-            logger.error(f"数据导入验证失败，共发现 {len(self.validation_errors)} 个错误")
-            error_result = []
-            for error in self.validation_errors:
-                error_result.append({"success": False, "data": {}, "message": error})
-            return error_result, [], []
-
+        self.inst_list = inst_list
+        # 执行导入（有错误的已在 format_excel_data 中被过滤）
         add_results, update_results = self.inst_list_update(inst_list)
+        
+        # 处理关联数据
         if not self.model_asso_map:
             logger.info(f"模型 {self.model_id} 没有关联模型, 无需处理关联数据")
-            self.format_import_result_message(add_results, update_results, [])
-            return add_results, update_results, []
-        self.format_import_asso_data(asso_key_map)
-        asso_result = self.add_asso_data(asso_key_map)
-        self.format_import_result_message(add_results, update_results, asso_result)
-        return add_results, update_results, asso_result
+            asso_result = []
+        else:
+            self.format_import_asso_data(asso_key_map)
+            asso_result = self.add_asso_data(asso_key_map)
+        
+        # 将验证错误转换为失败结果（这些数据在 Excel 解析或字段校验阶段就被过滤了）
+        validation_failed_results = []
+        if self.validation_errors:
+            logger.warning(f"数据导入过程中发现 {len(self.validation_errors)} 个验证错误，对应数据已跳过")
+            for error in self.validation_errors:
+                validation_failed_results.append({
+                    "success": False,
+                    "data": {},
+                    "message": error
+                })
+        
+        # 合并结果：验证失败 + 新增失败/成功 + 更新失败/成功
+        all_add_results = validation_failed_results + add_results
+        
+        # 格式化结果消息
+        self.format_import_result_message(all_add_results, update_results, asso_result)
+        
+        return all_add_results, update_results, asso_result
 
     def format_import_result_message(self, add_results, update_results, asso_result):
         """

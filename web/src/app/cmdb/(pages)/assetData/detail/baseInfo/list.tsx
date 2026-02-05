@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import informationList from './list.module.scss';
 import { Form, Button, Collapse, Descriptions, message, Select, Tooltip } from 'antd';
-import { deepClone, getFieldItem } from '@/app/cmdb/utils/common';
+import {
+  deepClone,
+  getFieldItem,
+  getValidationRules,
+  normalizeTimeValueForForm,
+  normalizeTimeValueForSubmit,
+} from '@/app/cmdb/utils/common';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import type { DescriptionsProps } from 'antd';
@@ -76,23 +82,14 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     type: string;
   }) => {
     const fieldKey = config.id;
-    let fieldValue = config.values[fieldKey];
-
     const fieldAttr: any = attrList
       .flatMap((group: any) => group.attrs || [])
       .find((item: any) => item.attr_id === fieldKey);
-    if (fieldAttr?.attr_type === 'organization' && fieldValue != null) {
-      fieldValue = Array.isArray(fieldValue) ? fieldValue : [fieldValue];
-    }
+    
+    const fieldValue = normalizeFieldValue(fieldKey, config.values[fieldKey], fieldAttr);
 
     const params: any = {};
-    if (fieldKey === 'cloud') {
-      params[fieldKey] = String(fieldValue);
-    } else if (fieldKey === 'cloud_id') {
-      params[fieldKey] = +fieldValue;
-    } else {
-      params[fieldKey] = fieldValue;
-    }
+    params[fieldKey] = fieldValue;
     await updateInstance(instId, params);
     message.success(t('successfullyModified'));
     const list = deepClone(attrList);
@@ -119,7 +116,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     fieldValue: any,
     fieldAttr?: any
   ) => {
-    let value = fieldValue;
+    let value = normalizeTimeValueForSubmit(fieldAttr, fieldValue);
     if (fieldAttr?.attr_type === 'organization' && value != null) {
       value = Array.isArray(value) ? value : [value];
     }
@@ -146,7 +143,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
         if (item.editable && item.attr_id !== 'cloud_id') {
           item.isEdit = nextState;
           if (nextState) {
-            values[item.attr_id] = getEditableFieldValue(item);
+            const rawValue = getEditableFieldValue(item);
+            values[item.attr_id] = normalizeTimeValueForForm(item, rawValue);
           }
         }
       });
@@ -164,7 +162,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     const resetValues: any = {};
     attrList.forEach((group: any) => {
       (group.attrs || []).forEach((item: any) => {
-        resetValues[item.attr_id] = getEditableFieldValue(item);
+        const rawValue = getEditableFieldValue(item);
+        resetValues[item.attr_id] = normalizeTimeValueForForm(item, rawValue);
       });
     });
     form.setFieldsValue(resetValues);
@@ -241,6 +240,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           </>
         );
         item.isEdit = item.isEdit || false;
+        const formInitialValue = normalizeTimeValueForForm(item, item._originalValue ?? item.value);
         item.children = (
           <Form
             key={item.attr_id}
@@ -255,13 +255,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                 {item.isEdit ? (
                   <Form.Item
                     name={item.key}
-                    rules={[
-                      {
-                        required: item.is_required,
-                        message: '',
-                      },
-                    ]}
-                    initialValue={item._originalValue || item.value}
+                    rules={getValidationRules(item, t)}
+                    initialValue={formInitialValue}
                     className="mb-0 w-full"
                   >
                     <>
@@ -373,7 +368,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       if (attr) {
         attr.isEdit = false;
         const obj: any = {};
-        obj[id] = attr.value;
+        obj[id] = normalizeTimeValueForForm(attr, attr._originalValue ?? attr.value);
         form.setFieldsValue(obj);
         break;
       }
