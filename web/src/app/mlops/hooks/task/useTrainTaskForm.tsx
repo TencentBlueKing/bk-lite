@@ -121,12 +121,4 @@ const useTaskForm = ({ datasetOptions, activeTag, onSuccess, formRef }: UseTaskF
   });
 };
 
-// 导出单独的表单 Hook 以保持向后兼容(未来删除)
-export { useAnomalyForm } from './forms/useAnomalyForm';
-export { useClassificationForm } from './forms/useClassificationForm';
-export { useTimeseriesPredictForm } from './forms/useTimeseriesPredictForm';
-export { useLogClusteringForm } from './forms/useLogClusteringForm';
-export { useImageClassificationForm } from './forms/useImageClassificationForm';
-export { useObjectDetectionForm } from './forms/useObjectDetectionForm';
-
 export { useTaskForm };

@@ -168,7 +168,7 @@ class WebhookClient:
         try:
             response = requests.post(url, json=payload, timeout=timeout)
 
-            logger.debug(
+            logger.info(
                 f"Webhookd 响应 - 状态码: {response.status_code}, 内容: {response.text[:500]}"
             )
 
