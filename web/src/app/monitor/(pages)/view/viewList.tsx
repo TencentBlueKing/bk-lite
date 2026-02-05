@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Input, Button, Progress, Select } from 'antd';
+import { Input, Button, Progress, Select, Tag } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
@@ -84,11 +84,15 @@ const ViewList: React.FC<ViewListProps> = ({
       dataIndex: 'status',
       key: 'status',
       onCell: () => ({ style: { minWidth: 100 } }),
-      render: (_, record) => (
-        <>
-          {record?.status ? t(`monitor.integrations.${record.status}`) : '--'}
-        </>
-      )
+      render: (_, record) => {
+        if (!record?.status) return <>--</>;
+        const isNormal = record.status === 'normal';
+        return (
+          <Tag color={isNormal ? 'success' : 'default'}>
+            {t(`monitor.integrations.${record.status}`)}
+          </Tag>
+        );
+      }
     },
     {
       title: t('common.action'),
