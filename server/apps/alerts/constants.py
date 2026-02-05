@@ -138,7 +138,7 @@ class AlertOperate:
 
 
 class SessionStatus:
-    """会话Alert状态"""
+    """会话Alert状态,observing是观察中的虚拟alert，实际并不是alert；recovered是虚拟alert还未转正就恢复了"""
 
     OBSERVING = "observing"
     CONFIRMED = "confirmed"

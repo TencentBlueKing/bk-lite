@@ -22,6 +22,7 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.utils import mlflow_service
+from apps.mlops.services import get_image_by_prefix
 
 
 class ClassificationDatasetViewSet(ModelViewSet):
@@ -212,13 +213,18 @@ class ClassificationServingViewSet(ModelViewSet):
             )
 
             try:
+                # 动态获取推理镜像
+                train_image = get_image_by_prefix(
+                    self.MLFLOW_PREFIX, serving.train_job.algorithm
+                )
+
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
                     container_id,
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="bklite/classify_text_classification_server:latest",
+                    train_image=train_image,
                 )
 
                 serving.container_info = result
@@ -313,13 +319,18 @@ class ClassificationServingViewSet(ModelViewSet):
             )
 
             try:
+                # 动态获取推理镜像
+                train_image = get_image_by_prefix(
+                    self.MLFLOW_PREFIX, serving.train_job.algorithm
+                )
+
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
                     serving_id,
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="bklite/classify_text_classification_server:latest",
+                    train_image=train_image,
                 )
 
                 # 正常启动成功，仅更新容器信息
@@ -785,6 +796,9 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             logger.info(f"  Config: {train_job.config_url.name}")
 
             # 调用 WebhookClient 启动训练
+            # 动态获取训练镜像
+            train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
+
             WebhookClient.train(
                 job_id=job_id,
                 bucket=bucket,
@@ -794,7 +808,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="bklite/classify_text_classification_server:latest",
+                train_image=train_image,
             )
 
             # 更新任务状态

@@ -1,5 +1,5 @@
 from rest_framework.decorators import action
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 import requests
 
 from apps.core.utils.open_base import OpenAPIViewSet
@@ -330,7 +330,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
     )
     def download_fusion_collector(self, request, pk=None):
         """
-        下载 FusionCollector 安装包（需要 token 验证）
+        下载 FusionCollector 安装包（需要 token 验证）- 流式下载优化版本
 
         API: GET /download/fusion_collector/{package_id}?token={download_token}
 
@@ -341,7 +341,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             token (str, required): 限时下载令牌
 
         Response (200 OK):
-            文件流（application/octet-stream 或 application/zip）
+            流式文件传输（application/octet-stream）
 
         Response (400 Bad Request):
             {
@@ -364,24 +364,27 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         """
         pk = int(pk)
 
-        # 获取并验证下载 token
         download_token = request.query_params.get("token")
         if not download_token:
             raise BaseAppException("Missing download token")
 
-        # 验证 token 并获取参数
         token_data = InstallTokenService.validate_and_get_download_token_data(
             download_token
         )
 
-        # 验证 package_id 是否匹配
         if token_data["package_id"] != pk:
             raise BaseAppException("Package ID does not match the token")
 
-        # 获取安装包并返回文件
         obj = PackageVersion.objects.get(pk=pk)
-        file, name = PackageService.download_file(obj)
-        return WebUtils.response_file(file, name)
+        file, name = PackageService.download_file_streaming(obj)
+
+        response = StreamingHttpResponse(
+            file,
+            content_type="application/octet-stream",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{name}"'
+        response["Transfer-Encoding"] = "chunked"
+        return response
 
     @action(detail=False, methods=["GET"], url_path="installer/render")
     def render_install_script(self, request):

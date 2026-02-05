@@ -20,6 +20,7 @@ import { useTranslation } from '@/utils/i18n';
 import { DatasetType } from '@/app/mlops/types';
 import type { ObjectDetectionMetadata, YOLOAnnotation } from '@/app/mlops/types';
 import { generateUniqueRandomColor } from '@/app/mlops/utils/common';
+import { DEFAULT_LABELS } from '@/app/mlops/constants';
 
 interface ObjectDetectionTrainData {
   width: number;
@@ -61,7 +62,7 @@ const ImageAnnotatorWrapper = forwardRef<AnnotatorRef, any>((props, ref) => {
 ImageAnnotatorWrapper.displayName = 'ImageAnnotatorWrapper';
 
 // 默认标签配置（用于初始化）
-const defaultRectLabels = ['human', 'bicycle', 'traffic_sign', 'reactant', 'catalyst', 'product'];
+const defaultRectLabels = DEFAULT_LABELS;
 
 const ObjectDetection = ({
   // isChange,

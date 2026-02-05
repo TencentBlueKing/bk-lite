@@ -1,10 +1,13 @@
 import re
+from typing import AsyncGenerator
+
 from django.core.files.base import ContentFile
 from apps.node_mgmt.utils.s3 import (
     upload_file_to_s3,
     download_file_by_s3,
     delete_s3_file,
     list_s3_files,
+    stream_download_file_by_s3,
 )
 from asgiref.sync import async_to_sync
 from apps.node_mgmt.models.package import PackageVersion
@@ -120,6 +123,57 @@ class PackageService:
             for file in files
         ]
         return files
+
+    @staticmethod
+    async def stream_download_file(
+        package_obj,
+    ) -> AsyncGenerator[tuple[bytes, str, int], None]:
+        s3_file_path = f"{package_obj.os}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
+        async for chunk, filename, total_size in stream_download_file_by_s3(
+            s3_file_path
+        ):
+            yield chunk, filename, total_size
+
+    @staticmethod
+    def download_file_streaming(package_obj) -> tuple:
+        """
+        流式下载文件，返回 (generator, filename)。
+        使用临时文件缓冲，避免大文件内存堆积。
+        """
+        import tempfile
+        from apps.rpc.jetstream import JetStreamService
+
+        s3_file_path = f"{package_obj.os}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
+
+        async def _download_to_tempfile():
+            jetstream = JetStreamService()
+            await jetstream.connect()
+            try:
+                info = await jetstream.object_store.get_info(s3_file_path)
+                filename = info.description or package_obj.name
+                tmp = tempfile.NamedTemporaryFile(mode="w+b", delete=False)
+                await jetstream.object_store.get(s3_file_path, writeinto=tmp)
+                tmp.seek(0)
+                return tmp, filename
+            finally:
+                await jetstream.close()
+
+        tmp_file, filename = async_to_sync(_download_to_tempfile)()
+
+        def file_chunk_generator(f, chunk_size=1024 * 1024):
+            try:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                f.close()
+                import os
+
+                os.unlink(f.name)
+
+        return file_chunk_generator(tmp_file), filename
 
 
 # from config.components.temp_upload import FILE_UPLOAD_TEMP_DIR

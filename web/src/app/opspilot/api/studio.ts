@@ -52,6 +52,14 @@ export const useStudioApi = () => {
   };
 
   /**
+   * Toggles the pin status of a bot.
+   * @param botId - The ID of the bot to toggle pin status.
+   */
+  const toggleBotPin = async (botId: number): Promise<void> => {
+    return post(`/opspilot/bot_mgmt/bot/${botId}/toggle_pin/`);
+  };
+
+  /**
    * Fetches initial data for the studio settings page.
    * @param botId - The ID of the bot.
    */
@@ -207,6 +215,7 @@ export const useStudioApi = () => {
     fetchBotDetail,
     updateChannel,
     deleteStudio,
+    toggleBotPin,
     fetchInitialData,
     saveBotConfig,
     toggleOnlineStatus,

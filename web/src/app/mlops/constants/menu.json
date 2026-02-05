@@ -33,11 +33,18 @@
           "name": "anomaly_detection_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "能力发布",
           "icon": "nenglifabuguanli",
           "url": "/mlops/anomaly_detection/serving",
           "name": "anomaly_detection_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "算法配置",
+          "icon": "guizepeizhi",
+          "url": "/mlops/anomaly_detection/algorithm-config",
+          "name": "anomaly_detection_algorithm_config",
           "withParentPermission": true
         }
       ]
@@ -75,11 +82,18 @@
           "name": "timeseries_predict_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "能力发布",
           "icon": "nenglifabuguanli",
           "url": "/mlops/timeseries_predict/serving",
           "name": "timeseries_predict_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "算法配置",
+          "icon": "guizepeizhi",
+          "url": "/mlops/timeseries_predict/algorithm-config",
+          "name": "timeseries_predict_algorithm_config",
           "withParentPermission": true
         }
       ]
@@ -117,11 +131,18 @@
           "name": "log_clustering_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "能力发布",
           "icon": "nenglifabuguanli",
           "url": "/mlops/log_clustering/serving",
           "name": "log_clustering_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "算法配置",
+          "icon": "guizepeizhi",
+          "url": "/mlops/log_clustering/algorithm-config",
+          "name": "log_clustering_algorithm_config",
           "withParentPermission": true
         }
       ]
@@ -159,11 +180,18 @@
           "name": "classification_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "能力发布",
           "icon": "nenglifabuguanli",
           "url": "/mlops/classification/serving",
           "name": "classification_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "算法配置",
+          "icon": "guizepeizhi",
+          "url": "/mlops/classification/algorithm-config",
+          "name": "classification_algorithm_config",
           "withParentPermission": true
         }
       ]
@@ -201,11 +229,18 @@
           "name": "image_classification_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "能力发布",
           "icon": "nenglifabuguanli",
           "url": "/mlops/image_classification/serving",
           "name": "image_classification_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "算法配置",
+          "icon": "guizepeizhi",
+          "url": "/mlops/image_classification/algorithm-config",
+          "name": "image_classification_algorithm_config",
           "withParentPermission": true
         }
       ]
@@ -243,11 +278,18 @@
           "name": "object_detection_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "能力发布",
           "icon": "nenglifabuguanli",
           "url": "/mlops/object_detection/serving",
           "name": "object_detection_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "算法配置",
+          "icon": "guizepeizhi",
+          "url": "/mlops/object_detection/algorithm-config",
+          "name": "object_detection_algorithm_config",
           "withParentPermission": true
         }
       ]
@@ -287,11 +329,18 @@
           "name": "anomaly_detection_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "Model Serving",
           "icon": "nenglifabuguanli",
           "url": "/mlops/anomaly_detection/serving",
           "name": "anomaly_detection_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "Algorithm Config",
+          "icon": "guizepeizhi",
+          "url": "/mlops/anomaly_detection/algorithm-config",
+          "name": "anomaly_detection_algorithm_config",
           "withParentPermission": true
         }
       ]
@@ -329,11 +378,18 @@
           "name": "timeseries_predict_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "Model Serving",
           "icon": "nenglifabuguanli",
           "url": "/mlops/timeseries_predict/serving",
           "name": "timeseries_predict_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "Algorithm Config",
+          "icon": "guizepeizhi",
+          "url": "/mlops/timeseries_predict/algorithm-config",
+          "name": "timeseries_predict_algorithm_config",
           "withParentPermission": true
         }
       ]
@@ -371,11 +427,18 @@
           "name": "log_clustering_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "Model Serving",
           "icon": "nenglifabuguanli",
           "url": "/mlops/log_clustering/serving",
           "name": "log_clustering_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "Algorithm Config",
+          "icon": "guizepeizhi",
+          "url": "/mlops/log_clustering/algorithm-config",
+          "name": "log_clustering_algorithm_config",
           "withParentPermission": true
         }
       ]
@@ -413,11 +476,18 @@
           "name": "classification_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "Model Serving",
           "icon": "nenglifabuguanli",
           "url": "/mlops/classification/serving",
           "name": "classification_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "Algorithm Config",
+          "icon": "guizepeizhi",
+          "url": "/mlops/classification/algorithm-config",
+          "name": "classification_algorithm_config",
           "withParentPermission": true
         }
       ]
@@ -455,11 +525,18 @@
           "name": "image_classification_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "Model Serving",
           "icon": "nenglifabuguanli",
           "url": "/mlops/image_classification/serving",
           "name": "image_classification_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "Algorithm Config",
+          "icon": "guizepeizhi",
+          "url": "/mlops/image_classification/algorithm-config",
+          "name": "image_classification_algorithm_config",
           "withParentPermission": true
         }
       ]
@@ -497,11 +574,18 @@
           "name": "object_detection_training",
           "withParentPermission": true
         },
-        {
+{
           "title": "Model Serving",
           "icon": "nenglifabuguanli",
           "url": "/mlops/object_detection/serving",
           "name": "object_detection_serving",
+          "withParentPermission": true
+        },
+        {
+          "title": "Algorithm Config",
+          "icon": "",
+          "url": "/mlops/object_detection/algorithm-config",
+          "name": "object_detection_algorithm_config",
           "withParentPermission": true
         }
       ]

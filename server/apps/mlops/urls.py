@@ -6,8 +6,16 @@ from apps.mlops.views.timeseries_predict import *
 from apps.mlops.views.log_clustering import *
 from apps.mlops.views.classification import *
 from apps.mlops.views.object_detection import *
+from apps.mlops.views.algorithm_config import AlgorithmConfigViewSet
 
 router = routers.DefaultRouter()
+
+# 算法配置
+router.register(
+    r"algorithm_configs",
+    AlgorithmConfigViewSet,
+    basename="algorithm_configs",
+)
 
 # 异常检测
 router.register(
