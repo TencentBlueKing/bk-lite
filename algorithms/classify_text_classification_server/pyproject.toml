@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "classify_classification_server"
+name = "classify_text_classification_server"
 version = "0.1.0"
 description = ""
 readme = "README.md"
@@ -39,9 +39,9 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["classify_classification_server*"]
+include = ["classify_text_classification_server*"]
 
 [project.scripts]
-classify_classification_server = "classify_classification_server.cli.bootstrap:main"
+classify_text_classification_server = "classify_text_classification_server.cli.bootstrap:main"
 
 
