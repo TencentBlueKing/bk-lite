@@ -141,7 +141,7 @@ class ClassificationServingViewSet(ModelViewSet):
                     **old_info,
                     "status": "error",
                     "_query_failed": True,
-                    "_error": str(e),
+                    "_error": "查询容器状态失败",
                 }
 
         return response
@@ -178,7 +178,7 @@ class ClassificationServingViewSet(ModelViewSet):
                 **old_info,
                 "status": "error",
                 "_query_failed": True,
-                "_error": str(e),
+                "_error": "查询容器状态失败",
             }
 
         return response
@@ -216,11 +216,11 @@ class ClassificationServingViewSet(ModelViewSet):
                 logger.error(f"解析 model URI 失败: {e}")
                 serving.container_info = {
                     "status": "error",
-                    "message": f"解析模型 URI 失败: {str(e)}",
+                    "message": "解析模型 URI 失败",
                 }
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
-                response.data["message"] = f"服务已创建但启动失败：{str(e)}"
+                response.data["message"] = "服务已创建但启动失败：模型 URI 解析错误"
                 return response
 
             # 构建 serving ID
@@ -256,8 +256,7 @@ class ClassificationServingViewSet(ModelViewSet):
                 response.data["message"] = "服务已创建并启动"
 
             except WebhookError as e:
-                error_msg = str(e)
-                logger.error(f"自动启动 serving 失败: {error_msg}")
+                logger.error(f"自动启动 serving 失败: {e}")
 
                 # 处理容器已存在的情况
                 if e.code == "CONTAINER_ALREADY_EXISTS":
@@ -284,20 +283,20 @@ class ClassificationServingViewSet(ModelViewSet):
                     except WebhookError:
                         serving.container_info = {
                             "status": "error",
-                            "message": f"容器已存在但同步状态失败: {error_msg}",
+                            "message": "容器已存在但同步状态失败",
                         }
                         serving.save(update_fields=["container_info"])
                         response.data["container_info"] = serving.container_info
                         response.data["message"] = "服务已创建但启动失败"
                 else:
-                    serving.container_info = {"status": "error", "message": error_msg}
+                    serving.container_info = {"status": "error", "message": "启动服务失败"}
                     serving.save(update_fields=["container_info"])
                     response.data["container_info"] = serving.container_info
-                    response.data["message"] = f"服务已创建但启动失败: {error_msg}"
+                    response.data["message"] = "服务已创建但启动失败"
 
         except Exception as e:
             logger.error(f"自动启动 serving 异常: {str(e)}", exc_info=True)
-            response.data["message"] = f"服务已创建但启动异常: {str(e)}"
+            response.data["message"] = "服务已创建但启动异常"
 
         return response
 
@@ -327,7 +326,8 @@ class ClassificationServingViewSet(ModelViewSet):
             try:
                 model_uri = self._resolve_model_uri(serving)
             except ValueError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                logger.error(f"解析 model URI 失败: {e}")
+                return Response({"error": "解析模型 URI 失败"}, status=status.HTTP_400_BAD_REQUEST)
 
             # 构建 serving ID
             serving_id = f"Classification_Serving_{serving.id}"
@@ -368,8 +368,6 @@ class ClassificationServingViewSet(ModelViewSet):
                 )
 
             except WebhookError as e:
-                error_msg = str(e)
-
                 # 处理容器已存在的情况
                 if e.code == "CONTAINER_ALREADY_EXISTS":
                     logger.warning(f"检测到容器已存在，同步容器信息: {serving_id}")
@@ -402,29 +400,33 @@ class ClassificationServingViewSet(ModelViewSet):
                     except WebhookError as sync_error:
                         logger.error(f"同步容器状态失败: {sync_error}")
                         return Response(
-                            {"error": f"容器已存在但同步状态失败: {sync_error}"},
+                            {"error": "容器已存在但同步状态失败"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
                 else:
                     # 其他错误直接返回
-                    logger.error(f"启动 serving 失败: {error_msg}")
+                    logger.error(f"启动 serving 失败: {e}")
                     return Response(
-                        {"error": error_msg},
+                        {"error": "启动服务失败，请稍后重试"},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
 
         except WebhookTimeoutError as e:
+            logger.error(f"启动 serving 服务超时: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "启动服务失败，Webhook 请求超时"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookConnectionError as e:
+            logger.error(f"启动 serving 服务连接失败: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "启动服务失败，无法连接到服务"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except Exception as e:
             logger.error(f"启动 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"启动服务失败: {str(e)}"},
+                {"error": "启动服务失败，服务内部错误"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -456,22 +458,27 @@ class ClassificationServingViewSet(ModelViewSet):
             )
 
         except WebhookTimeoutError as e:
+            logger.error(f"停止 serving 服务超时: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "停止服务失败，Webhook 请求超时"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookConnectionError as e:
+            logger.error(f"停止 serving 服务连接失败: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "停止服务失败，无法连接到服务"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookError as e:
-            logger.error(f"停止 serving 失败: {e}")
+            logger.error(f"停止 serving 失败: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "停止服务失败，请稍后重试"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except Exception as e:
             logger.error(f"停止 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"停止服务失败: {str(e)}"},
+                {"error": "停止服务失败，服务内部错误"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -512,22 +519,27 @@ class ClassificationServingViewSet(ModelViewSet):
             )
 
         except WebhookTimeoutError as e:
+            logger.error(f"删除容器超时: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "删除容器失败，Webhook 请求超时"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookConnectionError as e:
+            logger.error(f"删除容器连接失败: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "删除容器失败，无法连接到服务"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookError as e:
-            logger.error(f"删除容器失败: {e}")
+            logger.error(f"删除容器失败: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "删除容器失败，请稍后重试"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except Exception as e:
             logger.error(f"删除 serving 容器失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"删除容器失败: {str(e)}"},
+                {"error": "删除容器失败，服务内部错误"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -560,8 +572,8 @@ class ClassificationServingViewSet(ModelViewSet):
         """
         调用 serving 服务进行分类预测
         """
+        serving = self.get_object()
         try:
-            serving = self.get_object()
 
             # 获取参数
             url = request.data.get("url")
@@ -655,31 +667,31 @@ class ClassificationServingViewSet(ModelViewSet):
                 )
 
         except requests.exceptions.Timeout:
-            error_msg = f"预测请求超时（超过 60 秒）"
             logger.error(f"预测超时: serving_id={serving.id}")
             return Response(
-                {"error": error_msg}, status=status.HTTP_504_GATEWAY_TIMEOUT
+                {"error": "预测请求超时，请稍后重试"},
+                status=status.HTTP_504_GATEWAY_TIMEOUT,
             )
         except requests.exceptions.ConnectionError as e:
-            error_msg = f"无法连接预测服务: {str(e)}"
-            logger.error(f"预测连接失败: serving_id={serving.id}, error={e}")
+            logger.error(f"预测连接失败: serving_id={serving.id}, error={e}", exc_info=True)
             return Response(
-                {"error": error_msg}, status=status.HTTP_503_SERVICE_UNAVAILABLE
+                {"error": "无法连接预测服务"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except requests.exceptions.RequestException as e:
-            error_msg = f"预测请求异常: {str(e)}"
             logger.error(
                 f"预测请求异常: serving_id={serving.id}, error={e}", exc_info=True
             )
             return Response(
-                {"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "预测请求异常，请稍后重试"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except Exception as e:
             logger.error(
                 f"预测失败: serving_id={serving.id}, error={str(e)}", exc_info=True
             )
             return Response(
-                {"error": f"预测失败: {str(e)}"},
+                {"error": "预测失败，服务内部错误"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -844,22 +856,27 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             )
 
         except WebhookTimeoutError as e:
+            logger.error(f"启动训练任务超时: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "启动训练任务失败，Webhook 请求超时"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookConnectionError as e:
+            logger.error(f"启动训练任务连接失败: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "启动训练任务失败，无法连接到服务"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookError as e:
-            logger.error(f"启动训练任务失败: {e}")
+            logger.error(f"启动训练任务失败: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "启动训练任务失败，请稍后重试"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except Exception as e:
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"启动训练任务失败: {str(e)}"},
+                {"error": "启动训练任务失败，服务内部错误"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -906,22 +923,27 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             )
 
         except WebhookTimeoutError as e:
+            logger.error(f"停止训练任务超时: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "停止训练任务失败，Webhook 请求超时"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookConnectionError as e:
+            logger.error(f"停止训练任务连接失败: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "停止训练任务失败，无法连接到服务"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookError as e:
-            logger.error(f"停止训练任务失败: {e}")
+            logger.error(f"停止训练任务失败: {e}", exc_info=True)
             return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "停止训练任务失败，请稍后重试"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except Exception as e:
             logger.error(f"停止训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"停止训练任务失败: {str(e)}"},
+                {"error": "停止训练任务失败，服务内部错误"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1052,7 +1074,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"获取训练记录列表失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取训练记录失败: {str(e)}"},
+                {"error": "获取训练记录失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1068,8 +1090,9 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             return Response({"run_id": run_id, "metrics": model_metrics})
 
         except Exception as e:
+            logger.error(f"获取指标列表失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取指标列表失败: {str(e)}"},
+                {"error": "获取指标列表失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1111,7 +1134,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"获取指标历史数据失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取指标历史数据失败: {str(e)}"},
+                {"error": "获取指标历史数据失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1150,7 +1173,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"获取运行参数失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取运行参数失败: {str(e)}"},
+                {"error": "获取运行参数失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1192,7 +1215,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"获取模型版本列表失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取模型版本列表失败: {str(e)}"},
+                {"error": "获取模型版本列表失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1227,7 +1250,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"下载模型失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"下载模型失败: {str(e)}"},
+                {"error": "下载模型失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1290,6 +1313,6 @@ class ClassificationDatasetReleaseViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"下载数据集失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"下载失败: {str(e)}"},
+                {"error": "下载失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
