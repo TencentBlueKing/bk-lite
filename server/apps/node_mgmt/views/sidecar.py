@@ -328,7 +328,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
     @action(
         detail=False, methods=["get"], url_path="download/fusion_collector/(?P<pk>.+?)"
     )
-    async def download_fusion_collector(self, request, pk=None):
+    def download_fusion_collector(self, request, pk=None):
         """
         下载 FusionCollector 安装包（需要 token 验证）- 流式下载优化版本
 
@@ -362,8 +362,6 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         示例:
             GET /download/fusion_collector/pkg-123?token=550e8400-e29b-41d4-a716-446655440000
         """
-        from asgiref.sync import sync_to_async
-
         pk = int(pk)
 
         download_token = request.query_params.get("token")
@@ -377,17 +375,14 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         if token_data["package_id"] != pk:
             raise BaseAppException("Package ID does not match the token")
 
-        obj = await sync_to_async(PackageVersion.objects.get)(pk=pk)
-
-        async def file_stream_generator():
-            async for chunk, _, _ in PackageService.stream_download_file(obj):
-                yield chunk
+        obj = PackageVersion.objects.get(pk=pk)
+        file, name = PackageService.download_file_streaming(obj)
 
         response = StreamingHttpResponse(
-            file_stream_generator(),
+            file,
             content_type="application/octet-stream",
         )
-        response["Content-Disposition"] = f'attachment; filename="{obj.name}"'
+        response["Content-Disposition"] = f'attachment; filename="{name}"'
         response["Transfer-Encoding"] = "chunked"
         return response
 
