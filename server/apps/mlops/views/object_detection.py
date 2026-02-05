@@ -32,7 +32,7 @@ class ObjectDetectionDatasetViewSet(ModelViewSet):
     serializer_class = ObjectDetectionDatasetSerializer
     filterset_class = ObjectDetectionDatasetFilter
     pagination_class = CustomPageNumberPagination
-    ordering = "-id"
+    ordering = ("-id",)
     permission_key = "dataset.object_detection_dataset"
 
     @HasPermission("object_detection_datasets-View")

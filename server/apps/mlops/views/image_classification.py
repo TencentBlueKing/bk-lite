@@ -30,7 +30,7 @@ class ImageClassificationDatasetViewSet(ModelViewSet):
     serializer_class = ImageClassificationDatasetSerializer
     filterset_class = ImageClassificationDatasetFilter
     pagination_class = CustomPageNumberPagination
-    ordering = "-id"
+    ordering = ("-id",)
     permission_key = "dataset.image_classification_dataset"
 
     @HasPermission("image_classification_datasets-View")
