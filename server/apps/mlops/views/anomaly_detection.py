@@ -1070,9 +1070,10 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
 
         container_id = f"AnomalyDetection_Serving_{instance.id}"
 
-        # 获取容器实际状态（更新前）
-        container_state = instance.container_info.get("state")
-        container_port = instance.container_info.get("port")
+        # 获取容器实际状态（更新前），防御性处理 container_info 为空的情况
+        container_info = instance.container_info or {}
+        container_state = container_info.get("state")
+        container_port = container_info.get("port")
 
         # 更新数据库
         response = super().update(request, *args, **kwargs)
@@ -1429,8 +1430,8 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
                     {"error": "data 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 获取实际运行端口
-            port = serving.container_info.get("port")
+            # 获取实际运行端口，防御性处理 container_info 为空的情况
+            port = (serving.container_info or {}).get("port")
             if not port:
                 return Response(
                     {"error": "服务端口未配置，请确认服务已启动"},
