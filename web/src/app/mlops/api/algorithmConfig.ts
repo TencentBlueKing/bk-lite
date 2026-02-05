@@ -11,7 +11,7 @@ import type {
 } from "../types/algorithmConfig";
 
 const useAlgorithmConfigApi = () => {
-  const { get, post, put, del } = useApiClient();
+  const { get, post, patch, del } = useApiClient();
 
   // 获取算法配置列表
   const getAlgorithmConfigList = async (
@@ -57,12 +57,12 @@ const useAlgorithmConfigApi = () => {
     return await post('/mlops/algorithm_configs/', params);
   };
 
-  // 更新算法配置
+  // 更新算法配置（部分更新）
   const updateAlgorithmConfig = async (
     id: number,
     params: Partial<AlgorithmConfigParams>
   ): Promise<AlgorithmConfigEntity> => {
-    return await put(`/mlops/algorithm_configs/${id}/`, params);
+    return await patch(`/mlops/algorithm_configs/${id}/`, params);
   };
 
   // 删除算法配置

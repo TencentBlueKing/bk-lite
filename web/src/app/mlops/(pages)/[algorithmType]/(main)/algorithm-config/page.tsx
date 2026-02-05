@@ -190,9 +190,16 @@ const AlgorithmConfigPage = () => {
       await updateAlgorithmConfig(id, { is_active: isActive });
       message.success(t('common.updateSuccess'));
       getConfigs();
-    } catch (e) {
+    } catch (e: unknown) {
       console.error(e);
-      message.error(t('common.error'));
+      // 尝试从错误中提取后端返回的具体信息
+      const error = e as { response?: { data?: { error?: string } } };
+      const errorMessage = error.response?.data?.error;
+      if (errorMessage) {
+        message.error(errorMessage);
+      } else {
+        message.error(t('common.error'));
+      }
     }
   };
 

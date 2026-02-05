@@ -67,8 +67,7 @@ export const useGenericDatasetForm = ({
     algorithmConfigs,
     algorithmScenarios,
     algorithmOptions,
-    loading: configLoading,
-    isUsingFallback
+    loading: configLoading
   } = useAlgorithmConfigs(datasetType as AlgorithmType);
 
   const [modalState, setModalState] = useState<ModalState>({
@@ -427,7 +426,6 @@ export const useGenericDatasetForm = ({
     formRef,
     loadingState,
     configLoading,
-    isUsingFallback,
     showModal,
     handleSubmit,
     handleCancel,
