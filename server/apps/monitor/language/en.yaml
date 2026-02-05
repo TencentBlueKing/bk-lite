@@ -2398,64 +2398,64 @@ monitor_object_metric:
       name: Volume Used Space
       desc: Used space on storage volumes, combined with total space to calculate usage rate and monitor storage growth trends.
   Zookeeper:
-    version:
+    zookeeper_version:
       name: Version Info
       desc: Zookeeper service version identifier for software version recognition and compatibility.
-    num_alive_connections:
+    zookeeper_num_alive_connections:
       name: Alive Connections
       desc: Number of active client connections, a key metric for measuring real-time service load and concurrency pressure.
-    outstanding_requests:
+    zookeeper_outstanding_requests:
       name: Outstanding Requests
       desc: Number of requests queued for processing. Consistently high values indicate potential service processing bottlenecks.
-    avg_latency:
+    zookeeper_avg_latency:
       name: Average Latency
       desc: Average response time for client requests, the primary metric for evaluating Zookeeper core performance.
-    max_latency:
+    zookeeper_max_latency:
       name: Maximum Latency
       desc: Maximum recorded response time for a single request, reflecting performance bottlenecks under extreme conditions.
-    min_latency:
+    zookeeper_min_latency:
       name: Minimum Latency
       desc: Minimum response time for processing requests, representing the best performance under ideal conditions.
-    packets_received:
+    zookeeper_packets_received:
       name: Packets Received
       desc: Total number of network packets received by the server, measuring network input traffic.
-    packets_sent:
+    zookeeper_packets_sent:
       name: Packets Sent
       desc: Total number of network packets sent by the server, measuring network output traffic.
-    watch_count:
+    zookeeper_watch_count:
       name: Watch Count
       desc: Number of watchers currently registered on ZNodes, reflecting client interest in data changes.
-    ephemerals_count:
+    zookeeper_ephemerals_count:
       name: Ephemeral Nodes
       desc: Number of ephemeral nodes in the current data tree, typically associated with session lifecycle.
-    znode_count:
+    zookeeper_znode_count:
       name: ZNode Count
       desc: Total number of all nodes in the Zookeeper data tree, reflecting the scale and complexity of the data structure.
-    approximate_data_size:
+    zookeeper_approximate_data_size:
       name: Data Size
       desc: Approximate memory footprint of all stored ZNode data, used for capacity planning.
-    open_file_descriptor_count:
+    zookeeper_open_file_descriptor_count:
       name: Open File Descriptors
       desc: Number of file descriptors currently open by the process. Nearing the system limit may impact service.
-    max_file_descriptor_count:
+    zookeeper_max_file_descriptor_count:
       name: Max File Descriptors
       desc: Maximum number of file descriptors the operating system allows for this process, a configurable resource limit.
-    fsync_threshold_exceed_count:
+    zookeeper_fsync_threshold_exceed_count:
       name: Fsync Threshold Exceed
       desc: Number of times transaction log sync to disk exceeded the time threshold, indicating disk I/O performance issues.
-    packets_received_rate:
+    zookeeper_packets_received_rate:
       name: Packets Received Rate
       desc: Average packet reception rate over the past 5 minutes, reflecting real-time network input load.
-    packets_sent_rate:
+    zookeeper_packets_sent_rate:
       name: Packets Sent Rate
       desc: Average packet transmission rate over the past 5 minutes, reflecting real-time network output load.
-    fsync_threshold_exceed_rate:
+    zookeeper_fsync_threshold_exceed_rate:
       name: Fsync Exceed Rate
       desc: Frequency of Fsync operation threshold exceedances over the past 5 minutes, monitoring trends in disk performance degradation.
-    avg_latency_avg:
+    zookeeper_avg_latency_avg:
       name: Avg Latency Trend
       desc: Moving average of latency over the past 5 minutes, smoothing out instant fluctuations to observe stable trends.
-    max_latency_max:
+    zookeeper_max_latency_max:
       name: Max Latency Peak
       desc: Maximum latency value recorded in the past 5 minutes, identifying the most severe performance event within the timeframe.
   Kafka:
