@@ -119,6 +119,26 @@ class AlgorithmConfigViewSet(ModelViewSet):
 
     @HasPermission("algorithm_config-Delete")
     def destroy(self, request, *args, **kwargs):
+        """
+        删除算法配置
+
+        删除前校验是否有训练任务正在使用该算法
+        """
+        instance = self.get_object()
+
+        # 查询使用该算法的任务数量
+        task_count = self._count_tasks_using_algorithm(
+            instance.algorithm_type, instance.name
+        )
+        if task_count > 0:
+            return Response(
+                {
+                    "error": f"无法删除：有 {task_count} 个训练任务正在使用此算法",
+                    "task_count": task_count,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         return super().destroy(request, *args, **kwargs)
 
     @action(

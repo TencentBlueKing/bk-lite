@@ -208,9 +208,12 @@ const AlgorithmConfigPage = () => {
       await deleteAlgorithmConfig(id);
       message.success(t('common.delSuccess'));
       getConfigs();
-    } catch (e) {
-      console.error(e);
-      message.error(t('common.delFailed'));
+    } catch (error: unknown) {
+      console.error(error);
+      // 显示后端返回的具体错误信息（如：有训练任务正在使用此算法）
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      const errorMessage = axiosError.response?.data?.error || t('common.delFailed');
+      message.error(errorMessage);
     }
   };
 
