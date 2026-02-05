@@ -54,7 +54,7 @@ export const usePodConfig = () => {
       }
     ],
     tableDiaplay: [
-      { type: 'enum', key: 'prometheus_remote_write_kube_pod_status_phase' },
+      { type: 'enum', key: 'pod_status_phase' },
       { type: 'progress', key: 'pod_cpu_utilization' },
       { type: 'progress', key: 'pod_memory_utilization' }
     ],

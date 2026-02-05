@@ -286,7 +286,7 @@ const ViewList: React.FC<ViewListProps> = ({
               sorter: (a: any, b: any) =>
                 a[item.key]?.value - b[item.key]?.value,
               render: (_: unknown, record: TableDataItem) => {
-                const hasDimensions = target?.dimensions?.length > 1;
+                const hasDimensions = target?.dimensions?.length > 0;
                 const size: [number, number] = hasDimensions
                   ? [220, 20]
                   : [240, 20];
@@ -330,7 +330,7 @@ const ViewList: React.FC<ViewListProps> = ({
               : {}),
             render: (_: unknown, record: TableDataItem) => {
               const color = getEnumColor(target, record[item.key]?.value);
-              const hasDimensions = target?.dimensions?.length > 1;
+              const hasDimensions = target?.dimensions?.length > 0;
               const metricValue = record[item.key]?.value;
               const metricUnit = record[item.key]?.unit || target?.unit || '';
               const metricItem: any = {
