@@ -71,7 +71,8 @@ const Information: React.FC<InformationProps> = ({
   };
 
   const getUsers = (id: string) => {
-    return userList.find((item: UserItem) => item.id === id)?.username || '--';
+    const user = userList.find((item: UserItem) => item.id === id);
+    return user?.display_name || '--';
   };
 
   const showNotifiers = (row: TableDataItem) => {
