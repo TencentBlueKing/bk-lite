@@ -200,10 +200,6 @@ class AnomalyDetectionTrainJob(MaintainerInfo, TimeInfo, DataPointFeaturesInfo):
         max_length=50,
         verbose_name="算法模型",
         help_text="使用的异常检测算法模型",
-        choices=[
-            ("RandomForest", "RandomForest"),
-            ("ECOD", "ECOD"),
-        ],
     )
 
     dataset_version = models.ForeignKey(

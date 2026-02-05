@@ -199,13 +199,6 @@ class ClassificationTrainJob(MaintainerInfo, TimeInfo):
         max_length=50,
         verbose_name="算法模型",
         help_text="使用的分类算法模型",
-        choices=[
-            ("RandomForest", "Random Forest"),
-            ("XGBoost", "XGBoost"),
-            ("LogisticRegression", "Logistic Regression"),
-            ("SVM", "Support Vector Machine"),
-            ("NeuralNetwork", "Neural Network"),
-        ],
     )
 
     dataset_version = models.ForeignKey(
