@@ -326,10 +326,49 @@ def get_all_groups():
 
 
 @nats_client.register
-def search_channel_list(channel_type):
+def search_channel_list(channel_type, teams, include_children):
+    """
+    :param channel_type: str， 目前只有email、enterprise_wechat_bot
+    :param teams: list, [1,2,3]
+    :param include_children: bool , True、False
+    """
+    # 空 teams 直接返回空数据
+    if not teams:
+        return {"result": True, "data": []}
+
+    # 如果 include_children 为 True，递归获取所有子组织
+    if include_children:
+        # 一次性获取所有组织，避免递归查询数据库
+        all_groups = Group.objects.values_list("id", "parent_id")
+        # 构建 parent_id -> [child_ids] 的映射
+        children_map = {}
+        for gid, pid in all_groups:
+            if pid is not None:
+                children_map.setdefault(pid, []).append(gid)
+
+        # 在内存中递归获取所有子组织
+        def get_descendants(group_id, result_set):
+            result_set.add(group_id)
+            for child_id in children_map.get(group_id, []):
+                get_descendants(child_id, result_set)
+
+        all_teams = set()
+        for team_id in teams:
+            get_descendants(team_id, all_teams)
+        teams = list(all_teams)
+
+    # 构建 teams 筛选条件：team 字段与 teams 有交集
     channels = Channel.objects.all()
     if channel_type:
         channels = channels.filter(channel_type=channel_type)
+
+    # 使用 Q 对象构建 OR 条件
+    if teams:
+        team_filter = Q(team__contains=teams[0])
+        for team_id in teams[1:]:
+            team_filter |= Q(team__contains=team_id)
+        channels = channels.filter(team_filter)
+
     return {"result": True, "data": [i for i in channels.values("id", "name", "channel_type")]}
 
 

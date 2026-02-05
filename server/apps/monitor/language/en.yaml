@@ -1995,17 +1995,17 @@ monitor_object_metric:
       desc: The network transmit rate represents the amount of data sent out per second and is an important criterion for measuring network traffic
   Cluster:
     cluster_pod_count:
-      name: Pod Count
-      desc: It is used to count the total number of Pods currently present in the Kubernetes cluster. This metric returns the count of Pods running in the cluster, including those across all namespaces
+      name: Cluster Pod Count
+      desc: Total number of Pods in the current Kubernetes cluster. This metric is based on kube_pod_info and returns the count of existing Pods under the current filter conditions (e.g., cluster, namespace), covering all namespaces
     cluster_node_count:
-      name: Node Count
-      desc: It is used to count the total number of nodes currently available in the Kubernetes cluster. This metric returns the number of nodes in the cluster, helping users understand the scale and resources of the cluster
-    cluster_cpu_utilization:
-      name: CPU Utilization
-      desc: Represents the current CPU utilization of the cluster, typically expressed as a percentage
+      name: Cluster Node Count
+      desc: Total number of nodes in the current Kubernetes cluster. This metric reflects the count of registered nodes in the cluster and can be used to evaluate cluster scale and infrastructure capacity
     cluster_memory_utilization:
-      name: Memory Utilization
-      desc: Shows the current memory utilization of the cluster, expressed as a percentage
+      name: Cluster Memory Utilization
+      desc: The ratio of used memory to total memory across all nodes in the Kubernetes cluster, expressed as a percentage. Used to assess overall cluster memory usage and pressure level
+    cluster_disk_utilization:
+      name: Cluster Disk Utilization
+      desc: Overall disk utilization across all nodes in the Kubernetes cluster
   Apache:
     apache_ServerUptimeSeconds:
       name: Server Uptime
@@ -2086,67 +2086,91 @@ monitor_object_metric:
   Node:
     node_status_condition:
       name: Node Status
-      desc: Node Status indicates the current operational state of the node, such as "Running" or "Stopped." It helps administrators monitor and manage nodes within the Kubernetes cluster
+      desc: Indicates the current condition status of a Kubernetes node, including Ready, MemoryPressure, DiskPressure, etc. Used to determine whether the node can schedule Pods normally
     node_cpu_utilization:
       name: CPU Utilization
-      desc: CPU Utilization indicates the current usage level of the node's CPU relative to its total available CPU resources. Monitoring this metric helps identify CPU bottlenecks and optimize resource allocation
+      desc: Reflects the overall CPU resource usage of the node, calculated as (total - idle) / total. Used to identify CPU bottlenecks and optimize resource allocation
     node_cpu_idle_rate:
       name: CPU Idle Rate
-      desc: Displays the CPU idle rate, representing the amount of unused CPU resources in the system. It helps to know if the system is under high load. This metric is crucial for analyzing system performance and efficiency
+      desc: Represents the proportion of idle CPU resources on the node. Higher values indicate lower system load, useful for evaluating whether the system is overloaded
     node_cpu_iowait_rate:
-      name: Percentage of Time Waiting for IO
-      desc: Displays the percentage of CPU time spent waiting for IO operations, indicating the impact of disk or network performance on the system. Reducing wait time helps improve system performance
+      name: IO Wait Percentage
+      desc: Represents the percentage of CPU time spent idle while waiting for I/O operations to complete, typically reflecting disk or network subsystem bottlenecks
     node_cpu_system_rate:
       name: System Usage Rate
-      desc: Displays the system usage rate, showing the CPU resources consumed by kernel processes. Analyzing this value helps optimize system kernel performance and stability
+      desc: Represents the proportion of CPU occupied by kernel-mode processes, used to evaluate system call and kernel activity overhead
     node_cpu_user_rate:
       name: User Usage Rate
-      desc: Displays the percentage of CPU resources used by user processes, helping understand the performance of applications and services
-    node_memory_usage:
-      name: Application Memory Usage
-      desc: Application Memory Usage represents the total amount of memory utilized by applications running on the node. This metric helps understand the memory demands of applications and their impact on system performance
+      desc: Represents the proportion of CPU occupied by user-mode processes, primarily reflecting computation resource consumption by applications and services
     node_memory_utilization:
-      name: Application Memory Utilization Rate
-      desc: Application Memory Utilization Rate is the ratio of memory used by the application to its configured memory limits. By monitoring this metric, users can determine if adjustments to memory limits are needed
+      name: Memory Utilization
+      desc: Represents the overall memory resource usage of the node, calculated as (total - available) / total. Used to assess memory pressure and whether expansion is needed
+    node_memory_usage:
+      name: Memory Usage
+      desc: Represents the total amount of memory currently used on the node (in bytes), used to analyze actual memory consumption
+    node_memory_available:
+      name: Available Memory
+      desc: Represents the total amount of memory currently available for new processes or cache on the node (in bytes), a core metric for determining memory sufficiency
+    node_memory_swap_free:
+      name: Free Swap
+      desc: Represents the amount of free available swap space (in bytes). When swap approaches exhaustion, OOM risk increases
+    node_memory_cached:
+      name: Cached Memory
+      desc: Represents the amount of memory used by the operating system for filesystem cache (in bytes), which can be released under memory pressure
+    node_memory_shared:
+      name: Shared Memory
+      desc: Represents the amount of memory shared by multiple processes (in bytes), commonly seen in IPC (inter-process communication) scenarios
+    node_memory_buffered:
+      name: Buffered Memory
+      desc: Represents the amount of memory used for kernel buffers (in bytes), primarily used to accelerate block device I/O
     node_disk_usage_rate:
       name: Disk Usage Rate
-      desc: Displays the percentage of disk space used, helping understand the utilization of disk resources. This metric is important for preventing disk overflow
+      desc: Represents the proportion of disk space used on the node, calculated as used space / total space. Used for early warning of disk exhaustion
     node_disk_used:
-      name: Disk Used Size
-      desc: Displays the actual used disk space, used to determine disk capacity usage. This metric is helpful for monitoring disk space usage
-    node_diskio_writes_rate:
-      name: Disk I/O Write Rate
-      desc: Counts the rate of data write operations to the disk in the specified time interval
+      name: Disk Used
+      desc: Represents the actual disk space usage on the node (in bytes), used to analyze current storage resource consumption
+    node_disk_free:
+      name: Disk Free
+      desc: Represents the remaining available disk space on the node (in bytes), a key metric for evaluating whether storage capacity is sufficient
+    node_disk_inodes_used_percent:
+      name: Inode Usage Rate
+      desc: Represents the proportion of filesystem inodes used. Inode exhaustion prevents new file creation even with sufficient disk space
+    node_diskio_io_util:
+      name: Disk I/O Utilization
+      desc: Represents the proportion of time the disk spends processing I/O requests, reflecting disk busyness. Near 100% indicates the disk has reached performance bottleneck
     node_diskio_write_bytes_rate:
-      name: Disk I/O Write Bytes Rate
-      desc: Counts the rate of bytes written to the disk in the specified time interval
-    node_diskio_write_time_rate:
-      name: Disk I/O Write Time Rate
-      desc: Counts the rate of time taken to write data to the disk in the specified time interval
-    node_diskio_reads_rate:
-      name: Disk I/O Read Rate
-      desc: Counts the rate of data read operations from the disk in the specified time interval
+      name: Disk Write Rate
+      desc: Represents the amount of data written to disk per second (in bytes/sec), reflecting disk write load
     node_diskio_read_bytes_rate:
-      name: Disk I/O Read Bytes Rate
-      desc: Counts the rate of bytes read from the disk in the specified time interval
-    node_diskio_read_time_rate:
-      name: Disk I/O Read Time Rate
-      desc: Counts the rate of time taken to read data from the disk in the specified time interval
-    node_network_receive_rate:
-      name: Incoming Bytes on NIC Rate
-      desc: Network In refers to the rate of data traffic received through the network interface. Monitoring this metric helps analyze if network bandwidth is sufficient and the overall network performance
-    node_network_transmit_rate:
-      name: Outgoing Bytes on NIC Rate
-      desc: Network Out refers to the rate of data traffic sent through the network interface. This metric helps understand the node's network egress demands and potential bottlenecks
+      name: Disk Read Rate
+      desc: Represents the amount of data read from disk per second (in bytes/sec), reflecting disk read load
+    node_disk_write_latency:
+      name: Disk Write Latency
+      desc: Represents the average response time for disk write operations (in milliseconds). High latency may indicate storage performance bottleneck
+    node_disk_read_latency:
+      name: Disk Read Latency
+      desc: Represents the average response time for disk read operations (in milliseconds). High latency affects application data read performance
+    node_net_packets_recv_rate:
+      name: Network Packets Receive Rate
+      desc: Represents the number of packets received per second through the network interface, used for analyzing network traffic and detecting abnormal traffic
+    node_net_packets_sent_rate:
+      name: Network Packets Send Rate
+      desc: Represents the number of packets sent per second through the network interface, used to evaluate outbound network traffic
+    node_net_bytes_recv_rate:
+      name: Network Bytes Receive Rate
+      desc: Represents the amount of data received per second through the network interface (in bytes/sec), used to evaluate network bandwidth usage
+    node_net_bytes_sent_rate:
+      name: Network Bytes Send Rate
+      desc: Represents the amount of data sent per second through the network interface (in bytes/sec), used to analyze outbound bandwidth usage
     node_cpu_load1:
-      name: 1 Minute Average Load
-      desc: 1 Minute Average Load indicates the average load on the system over the last minute. This metric helps provide a real-time understanding of the system's load level
+      name: 1 Minute Load Average
+      desc: Represents the average system load over the past 1 minute, reflecting short-term CPU and I/O pressure
     node_cpu_load5:
-      name: 5 Minute Average Load
-      desc: 5 Minute Average Load indicates the average load on the system over the last 5 minutes. This metric helps identify load trends and their impact on system performance
+      name: 5 Minute Load Average
+      desc: Represents the average system load over the past 5 minutes, used to determine medium-term system load trends
     node_cpu_load15:
-      name: 15 Minute Average Load
-      desc: 15 Minute Average Load indicates the average load on the system over the last 15 minutes. Monitoring this metric helps administrators understand the long-term load state of the system
+      name: 15 Minute Load Average
+      desc: Represents the average system load over the past 15 minutes, reflecting system load stability over a longer period
   ElasticSearch:
     elasticsearch_cluster_health_status_code:
       name: Cluster Health Status
@@ -2250,30 +2274,30 @@ monitor_object_metric:
       name: Stopped Container Count
       desc: This metric represents the number of stopped containers on the Docker host
   Pod:
-    prometheus_remote_write_kube_pod_status_phase:
+    pod_status_phase:
       name: Pod Status
-      desc: Retrieves the current status of the Pod, such as Running, Stopped, etc.
-    prometheus_remote_write_kube_pod_container_status_restarts_total:
-      name: Restart Count
-      desc: Monitors the restart counts of containers in the Pod to assess stability and frequency of issues
+      desc: Indicates the current lifecycle phase of a Kubernetes Pod, including Pending, Running, Succeeded, Failed, Unknown, etc.
+    pod_container_restarts_total:
+      name: Container Restarts Total
+      desc: Total number of container restarts in the Pod. Frequent restarts may indicate application crashes, health check failures, or resource insufficiency
     pod_cpu_utilization:
       name: CPU Utilization
-      desc: Calculates the CPU utilization of a Pod, reflecting the difference between container CPU limits and requests
+      desc: The ratio of Pod's current CPU actual usage to its request amount, used to evaluate Pod's compute resource usage efficiency
     pod_memory_utilization:
       name: Memory Utilization
-      desc: Calculates the memory utilization of the Pod as a ratio of memory limits to requests
-    prometheus_remote_write_container_fs_writes_total:
+      desc: The ratio of Pod's current memory actual usage to its request amount, used to evaluate Pod's memory resource usage efficiency
+    pod_io_writes_rate:
       name: I/O Write Rate
-      desc: This metric represents the rate of I/O write operations performed by a specific Pod, helping analyze the write demands of the application on the storage system
+      desc: Bytes written to disk per second by containers in the Pod, reflecting application's write load on the storage subsystem
     pod_io_reads_rate:
       name: I/O Read Rate
-      desc: This metric represents the rate of I/O read operations performed by a specific Pod, helping analyze the read demands of the application on the storage system
+      desc: Bytes read from disk per second by containers in the Pod, reflecting application's read load on the storage subsystem
     pod_network_in_rate:
       name: Network In Rate
-      desc: Monitors the inbound network traffic rate of a Pod, calculated based on the number of containers and IPs
+      desc: Amount of data received per second by the Pod through network (in bytes/sec), used for analyzing inbound network traffic
     pod_network_out_rate:
       name: Network Out Rate
-      desc: Monitors the outbound network traffic rate of a Pod, calculated based on the number of containers and IPs
+      desc: Amount of data sent per second by the Pod through network (in bytes/sec), used for analyzing outbound network traffic
   vCenter:
     vmware_esxi_count:
       name: Number of ESXi
@@ -2374,64 +2398,64 @@ monitor_object_metric:
       name: Volume Used Space
       desc: Used space on storage volumes, combined with total space to calculate usage rate and monitor storage growth trends.
   Zookeeper:
-    version:
+    zookeeper_version:
       name: Version Info
       desc: Zookeeper service version identifier for software version recognition and compatibility.
-    num_alive_connections:
+    zookeeper_num_alive_connections:
       name: Alive Connections
       desc: Number of active client connections, a key metric for measuring real-time service load and concurrency pressure.
-    outstanding_requests:
+    zookeeper_outstanding_requests:
       name: Outstanding Requests
       desc: Number of requests queued for processing. Consistently high values indicate potential service processing bottlenecks.
-    avg_latency:
+    zookeeper_avg_latency:
       name: Average Latency
       desc: Average response time for client requests, the primary metric for evaluating Zookeeper core performance.
-    max_latency:
+    zookeeper_max_latency:
       name: Maximum Latency
       desc: Maximum recorded response time for a single request, reflecting performance bottlenecks under extreme conditions.
-    min_latency:
+    zookeeper_min_latency:
       name: Minimum Latency
       desc: Minimum response time for processing requests, representing the best performance under ideal conditions.
-    packets_received:
+    zookeeper_packets_received:
       name: Packets Received
       desc: Total number of network packets received by the server, measuring network input traffic.
-    packets_sent:
+    zookeeper_packets_sent:
       name: Packets Sent
       desc: Total number of network packets sent by the server, measuring network output traffic.
-    watch_count:
+    zookeeper_watch_count:
       name: Watch Count
       desc: Number of watchers currently registered on ZNodes, reflecting client interest in data changes.
-    ephemerals_count:
+    zookeeper_ephemerals_count:
       name: Ephemeral Nodes
       desc: Number of ephemeral nodes in the current data tree, typically associated with session lifecycle.
-    znode_count:
+    zookeeper_znode_count:
       name: ZNode Count
       desc: Total number of all nodes in the Zookeeper data tree, reflecting the scale and complexity of the data structure.
-    approximate_data_size:
+    zookeeper_approximate_data_size:
       name: Data Size
       desc: Approximate memory footprint of all stored ZNode data, used for capacity planning.
-    open_file_descriptor_count:
+    zookeeper_open_file_descriptor_count:
       name: Open File Descriptors
       desc: Number of file descriptors currently open by the process. Nearing the system limit may impact service.
-    max_file_descriptor_count:
+    zookeeper_max_file_descriptor_count:
       name: Max File Descriptors
       desc: Maximum number of file descriptors the operating system allows for this process, a configurable resource limit.
-    fsync_threshold_exceed_count:
+    zookeeper_fsync_threshold_exceed_count:
       name: Fsync Threshold Exceed
       desc: Number of times transaction log sync to disk exceeded the time threshold, indicating disk I/O performance issues.
-    packets_received_rate:
+    zookeeper_packets_received_rate:
       name: Packets Received Rate
       desc: Average packet reception rate over the past 5 minutes, reflecting real-time network input load.
-    packets_sent_rate:
+    zookeeper_packets_sent_rate:
       name: Packets Sent Rate
       desc: Average packet transmission rate over the past 5 minutes, reflecting real-time network output load.
-    fsync_threshold_exceed_rate:
+    zookeeper_fsync_threshold_exceed_rate:
       name: Fsync Exceed Rate
       desc: Frequency of Fsync operation threshold exceedances over the past 5 minutes, monitoring trends in disk performance degradation.
-    avg_latency_avg:
+    zookeeper_avg_latency_avg:
       name: Avg Latency Trend
       desc: Moving average of latency over the past 5 minutes, smoothing out instant fluctuations to observe stable trends.
-    max_latency_max:
+    zookeeper_max_latency_max:
       name: Max Latency Peak
       desc: Maximum latency value recorded in the past 5 minutes, identifying the most severe performance event within the timeframe.
   Kafka:

@@ -81,7 +81,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
     try {
       setConfirmLoading(true);
       const values = await form.validateFields();
-      const { name, description, smtp_pwd, webhook_url, ...config } = values;
+      const { name, description, team, smtp_pwd, webhook_url, ...config } = values;
 
       // Exclude smtp_pwd and webhook_url if they haven't changed
       const finalConfig = {
@@ -94,6 +94,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         channel_type: channelType,
         name,
         description,
+        team,
         config: finalConfig,
       };
 
@@ -149,6 +150,13 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         placeholder: `${t('common.inputMsg')}${t('system.channel.settings.description')}`,
         rows: 4,
         rules: [{ required: true, message: `${t('common.inputMsg')}${t('system.channel.settings.description')}` }],
+      },
+      {
+        name: 'team',
+        type: 'groupTreeSelect',
+        label: t('system.channel.settings.team'),
+        placeholder: `${t('common.selectMsg')}${t('system.channel.settings.team')}`,
+        rules: [{ required: true, message: `${t('common.selectMsg')}${t('system.channel.settings.team')}` }],
       },
     ];
 

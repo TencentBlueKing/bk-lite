@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect, RefObject } from 'react';
-import { FormInstance, message, Form, Select, Input, InputNumber } from 'antd';
+import { FormInstance, message, Form, Select, Input, InputNumber, Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type { Option } from '@/types';
 import type { 
   TrainJob, 
   FieldConfig, 
-  AlgorithmConfig,
+  // AlgorithmConfig,
   TrainJobFormValues,
   CreateTrainJobParams,
   UpdateTrainJobParams,
@@ -19,6 +19,8 @@ import {
   reverseTransformGroupData,
   extractDefaultValues
 } from '@/app/mlops/utils/algorithmConfigUtils';
+import { useAlgorithmConfigs } from '@/app/mlops/hooks/useAlgorithmConfigs';
+import type { AlgorithmType } from '@/app/mlops/types/algorithmConfig';
 
 interface ModalState {
   isOpen: boolean;
@@ -34,9 +36,6 @@ interface ShowModalParams {
 
 interface UseGenericDatasetFormProps {
   datasetType: DatasetType;
-  algorithmConfigs: Record<string, AlgorithmConfig>;
-  algorithmScenarios: Record<string, string>;
-  algorithmOptions: Array<{ value: string; label: string }>;
   datasetOptions: Option[];
   formRef: RefObject<FormInstance>;
   onSuccess: () => void;
@@ -56,15 +55,21 @@ interface UseGenericDatasetFormProps {
 
 export const useGenericDatasetForm = ({
   datasetType,
-  algorithmConfigs,
-  algorithmScenarios,
-  algorithmOptions,
   datasetOptions,
   formRef,
   onSuccess,
   apiMethods
 }: UseGenericDatasetFormProps) => {
   const { t } = useTranslation();
+
+  // 动态获取算法配置
+  const {
+    algorithmConfigs,
+    algorithmScenarios,
+    algorithmOptions,
+    loading: configLoading,
+    isUsingFallback
+  } = useAlgorithmConfigs(datasetType as AlgorithmType);
 
   const [modalState, setModalState] = useState<ModalState>({
     isOpen: false,
@@ -345,6 +350,15 @@ export const useGenericDatasetForm = ({
 
   // 渲染表单内容
   const renderFormContent = useCallback(() => {
+    // 配置加载中
+    if (configLoading) {
+      return (
+        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+          <Spin tip={t('common.loading')} />
+        </div>
+      );
+    }
+
     const currentAlgorithm = formRef.current?.getFieldValue('algorithm');
     const algorithmConfig = currentAlgorithm ? algorithmConfigs[currentAlgorithm] : null;
 
@@ -406,12 +420,14 @@ export const useGenericDatasetForm = ({
         )}
       </>
     );
-  }, [t, datasetOptions, datasetVersions, loadingState.select, isShow, formValues, algorithmConfigs, algorithmScenarios, algorithmOptions, onAlgorithmChange, renderOptions]);
+  }, [t, configLoading, datasetOptions, datasetVersions, loadingState.select, isShow, formValues, algorithmConfigs, algorithmScenarios, algorithmOptions, onAlgorithmChange, renderOptions]);
 
   return {
     modalState,
     formRef,
     loadingState,
+    configLoading,
+    isUsingFallback,
     showModal,
     handleSubmit,
     handleCancel,
