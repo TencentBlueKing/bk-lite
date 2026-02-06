@@ -40,7 +40,7 @@ class Command(BaseCommand):
         logger.info("===开始初始化内置告警源===")
 
         try:
-            from apps.alerts.service.init_alert_sources import BUILTIN_ALERT_SOURCES
+            from apps.alerts.constants.init_data import BUILTIN_ALERT_SOURCES
             from apps.alerts.models.alert_source import AlertSource
             
             created_count = 0
