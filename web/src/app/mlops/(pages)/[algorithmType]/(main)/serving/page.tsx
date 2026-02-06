@@ -33,7 +33,6 @@ const ServingPage = () => {
   const { t } = useTranslation();
   const params = useParams();
   const algorithmType = params.algorithmType as DatasetType;
-  
   const modalRef = useRef<ModalRef>(null);
   const { getTrainJobList } = useMlopsTaskApi();
   const {
