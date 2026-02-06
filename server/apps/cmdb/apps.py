@@ -7,8 +7,6 @@ class CmdbConfig(AppConfig):
     name = "apps.cmdb"
 
     def ready(self):
-        import apps.cmdb.nats.nats  # noqa
-        
         # 仅在 runserver 时初始化所有缓存（避免在 migrate 等命令时加载）
         if 'runserver' in sys.argv:
             import apps.cmdb.nats.nats  # noqa
