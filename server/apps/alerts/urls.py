@@ -2,14 +2,23 @@
 # @File: urls.py
 # @Time: 2025/5/9 14:57
 # @Author: windyzhao
-from django.urls import path, include
+from django.urls import path
 from rest_framework import routers
 
-from apps.alerts.views.assignment_shield import AlertAssignmentModelViewSet, AlertShieldModelViewSet
-from apps.alerts.views.view import request_test, AlertSourceModelViewSet, AlterModelViewSet, EventModelViewSet, \
-    LevelModelViewSet, IncidentModelViewSet, SystemSettingModelViewSet, SystemLogModelViewSet
-from apps.alerts.views.source import receiver_data
-from apps.alerts.views.strategy import AlarmStrategyModelViewSet
+from apps.alerts.views import (
+    AlertSourceModelViewSet,
+    AlterModelViewSet,
+    EventModelViewSet,
+    LevelModelViewSet,
+    IncidentModelViewSet,
+    SystemSettingModelViewSet,
+    SystemLogModelViewSet,
+    AlertAssignmentModelViewSet,
+    AlertShieldModelViewSet,
+    AlarmStrategyModelViewSet,
+    receiver_data,
+    request_test,
+)
 
 router = routers.DefaultRouter()
 router.register(r"api/alert_source", AlertSourceModelViewSet, basename="alert_source")
@@ -29,3 +38,4 @@ urlpatterns = [
 ]
 
 urlpatterns += router.urls
+

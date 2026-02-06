@@ -1,6 +1,6 @@
 from django.utils import timezone
-from apps.alerts.models import Alert
-from apps.alerts.constants import AlertStatus, SessionStatus
+from apps.alerts.models.models import Alert
+from apps.alerts.constants.constants import AlertStatus, SessionStatus
 from apps.core.logger import alert_logger as logger
 
 

@@ -6,8 +6,10 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from apps.alerts.constants import AlertStatus, LogAction, LogTargetType, AlertOperate
-from apps.alerts.models import Alert, AlarmStrategy, OperatorLog
+from apps.alerts.constants.constants import AlertStatus, LogAction, LogTargetType, AlertOperate
+from apps.alerts.models.alert_operator import  AlarmStrategy
+from apps.alerts.models.models import Alert
+from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.utils.util import split_list
 from apps.core.logger import alert_logger as logger
 

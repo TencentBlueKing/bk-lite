@@ -2,8 +2,8 @@
 # @File: base.py
 # @Time: 2025/6/11 14:06
 # @Author: windyzhao
-from apps.alerts.constants import LevelType
-from apps.alerts.models import Level
+from apps.alerts.constants.constants import LevelType
+from apps.alerts.models.models import Level
 
 
 class NotifyParamsFormat(object):
