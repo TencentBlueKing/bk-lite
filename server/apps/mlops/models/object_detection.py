@@ -4,6 +4,7 @@ from django_minio_backend import MinioBackend, iso_date_prefix
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.mlops.constants import DatasetReleaseStatus, TrainJobStatus
+from apps.mlops.models.mixins import TrainDataFileCleanupMixin
 
 
 class ObjectDetectionDataset(MaintainerInfo, TimeInfo):
@@ -20,7 +21,7 @@ class ObjectDetectionDataset(MaintainerInfo, TimeInfo):
         return self.name
 
 
-class ObjectDetectionTrainData(MaintainerInfo, TimeInfo):
+class ObjectDetectionTrainData(TrainDataFileCleanupMixin, MaintainerInfo, TimeInfo):
     """目标检测训练数据（重构为 ZIP 上传）"""
 
     name = models.CharField(max_length=100, verbose_name="训练数据名称")
@@ -97,44 +98,6 @@ class ObjectDetectionTrainData(MaintainerInfo, TimeInfo):
 
     def __str__(self):
         return f"{self.name} - {self.dataset.name}"
-
-    def save(self, *args, **kwargs):
-        """保存时自动清理旧的训练数据文件"""
-        from django.db import transaction
-        from apps.core.logger import mlops_logger as logger
-
-        if self.pk:
-            with transaction.atomic():
-                try:
-                    old_instance = (
-                        ObjectDetectionTrainData.objects.select_for_update().get(
-                            pk=self.pk
-                        )
-                    )
-                    old_file = old_instance.train_data
-                    new_file = self.train_data
-
-                    old_path = old_file.name if old_file else None
-                    new_path = new_file.name if new_file else None
-
-                    if old_path and old_path != new_path:
-                        try:
-                            old_file.delete(save=False)
-                            logger.info(
-                                f"Deleted old train_data file for ObjectDetectionTrainData {self.pk}: "
-                                f"old={old_path}, new={new_path or 'None'}"
-                            )
-                        except Exception as delete_err:
-                            logger.warning(
-                                f"Failed to delete old file '{old_path}': {delete_err}"
-                            )
-
-                except ObjectDetectionTrainData.DoesNotExist:
-                    pass
-                except Exception as e:
-                    logger.warning(f"Failed to check old train_data file: {e}")
-
-        super().save(*args, **kwargs)
 
 
 class ObjectDetectionDatasetRelease(MaintainerInfo, TimeInfo):
