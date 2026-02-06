@@ -138,7 +138,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   };
 
   const handleChange: UploadProps['onChange'] = ({ fileList }) => {
-setFileList(fileList);
+    setFileList(fileList);
   };
 
   const config = FILE_CONFIG[algorithmType];
@@ -390,7 +390,7 @@ setFileList(fileList);
           </Form.Item>
         </Form>
       }
-<Dragger {...props}>
+      <Dragger {...props}>
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
         </p>
