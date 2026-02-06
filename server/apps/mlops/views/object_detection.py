@@ -1,5 +1,6 @@
 from config.drf.viewsets import ModelViewSet
 
+from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRunStatus
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.models.object_detection import *
 from apps.mlops.serializers.object_detection import *
@@ -209,13 +210,13 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
         try:
             instance = self.get_object()
 
-            if instance.status == "archived":
+            if instance.status == DatasetReleaseStatus.ARCHIVED:
                 return Response(
                     {"error": "数据集版本已经是归档状态"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            instance.status = "archived"
+            instance.status = DatasetReleaseStatus.ARCHIVED
             instance.save(update_fields=["status"])
 
             logger.info(
@@ -239,13 +240,13 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
         try:
             instance = self.get_object()
 
-            if instance.status != "archived":
+            if instance.status != DatasetReleaseStatus.ARCHIVED:
                 return Response(
                     {"error": "只能恢复归档状态的数据集版本"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            instance.status = "published"
+            instance.status = DatasetReleaseStatus.PUBLISHED
             instance.save(update_fields=["status"])
 
             logger.info(
@@ -308,7 +309,7 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             train_job = self.get_object()
 
             # 检查任务状态
-            if train_job.status == "running":
+            if train_job.status == TrainJobStatus.RUNNING:
                 return Response(
                     {"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
@@ -393,7 +394,7 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             )
 
             # 更新任务状态
-            train_job.status = "running"
+            train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
 
             logger.info(f"目标检测训练任务已启动: {job_id}")
@@ -437,7 +438,7 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             train_job = self.get_object()
 
             # 检查任务状态
-            if train_job.status != "running":
+            if train_job.status != TrainJobStatus.RUNNING:
                 return Response(
                     {"error": "训练任务未在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
@@ -455,7 +456,7 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             result = WebhookClient.stop(job_id)
 
             # 更新任务状态
-            train_job.status = "pending"
+            train_job.status = TrainJobStatus.PENDING
             train_job.save(update_fields=["status"])
 
             logger.info(f"目标检测训练任务已停止: {job_id}")
@@ -671,13 +672,8 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                     continue
 
             # 同步最新运行状态到 TrainJob
-            if latest_run_status and train_job.status == "running":
-                status_map = {
-                    "FINISHED": "completed",
-                    "FAILED": "failed",
-                    "KILLED": "failed",
-                }
-                new_status = status_map.get(latest_run_status)
+            if latest_run_status and train_job.status == TrainJobStatus.RUNNING:
+                new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(latest_run_status)
 
                 if new_status:
                     train_job.status = new_status
