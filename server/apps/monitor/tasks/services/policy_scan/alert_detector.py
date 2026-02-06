@@ -43,6 +43,7 @@ class AlertDetector:
             "metric_name": self._get_metric_display_name(),
             "instances_map": self.instances_map,
             "instance_id_keys": group_by_keys,
+            "display_unit": self.metric_query_service.get_display_unit(),
         }
 
         alert_events, info_events = calculate_alerts(
