@@ -1,5 +1,6 @@
 from config.drf.viewsets import ModelViewSet
 from apps.mlops.filters.log_clustering import *
+from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRunStatus
 from rest_framework.decorators import action
 from rest_framework import status
 from rest_framework.response import Response
@@ -96,7 +97,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             train_job = self.get_object()
 
             # 检查任务状态
-            if train_job.status == "running":
+            if train_job.status == TrainJobStatus.RUNNING:
                 return Response(
                     {"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
@@ -172,7 +173,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             )
 
             # 更新任务状态
-            train_job.status = "running"
+            train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
 
             logger.info(f"训练任务已启动: {job_id}")
@@ -215,7 +216,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             train_job = self.get_object()
 
             # 检查任务状态
-            if train_job.status != "running":
+            if train_job.status != TrainJobStatus.RUNNING:
                 return Response(
                     {"error": "训练任务未在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
@@ -233,7 +234,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             result = WebhookClient.stop(job_id)
 
             # 更新任务状态
-            train_job.status = "pending"
+            train_job.status = TrainJobStatus.PENDING
             train_job.save(update_fields=["status"])
 
             logger.info(f"训练任务已停止: {job_id}")
@@ -335,7 +336,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                         run_name = ""
 
                     # 获取状态
-                    run_status = row.get("status", "UNKNOWN")
+                    run_status = row.get("status", MLflowRunStatus.UNKNOWN)
 
                     # 记录第一条（最新）的运行状态
                     if idx == 0:
@@ -362,13 +363,8 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                     continue
 
             # 同步最新运行状态到 TrainJob（避免状态不一致）
-            if latest_run_status and train_job.status == "running":
-                status_map = {
-                    "FINISHED": "completed",
-                    "FAILED": "failed",
-                    "KILLED": "failed",
-                }
-                new_status = status_map.get(latest_run_status)
+            if latest_run_status and train_job.status == TrainJobStatus.RUNNING:
+                new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(latest_run_status)
 
                 if new_status:
                     train_job.status = new_status
@@ -652,13 +648,13 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
         try:
             release = self.get_object()
 
-            if release.status == "archived":
+            if release.status == DatasetReleaseStatus.ARCHIVED:
                 return Response(
                     {"error": "数据集版本已处于归档状态"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            release.status = "archived"
+            release.status = DatasetReleaseStatus.ARCHIVED
             release.description = f"[已归档] {release.description or ''}"
             release.save(update_fields=["status", "description"])
 
@@ -682,7 +678,7 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
         try:
             release = self.get_object()
 
-            if release.status != "archived":
+            if release.status != DatasetReleaseStatus.ARCHIVED:
                 return Response(
                     {"error": "只能恢复已归档的数据集版本"},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -693,7 +689,7 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
             if original_description.startswith("[已归档] "):
                 release.description = original_description.replace("[已归档] ", "", 1)
 
-            release.status = "published"
+            release.status = DatasetReleaseStatus.PUBLISHED
             release.save(update_fields=["status", "description"])
 
             logger.info(
