@@ -44,6 +44,7 @@ export default function AlgorithmLayout({ children }: AlgorithmLayoutProps) {
     <>
       <SubLayout
         topSection={topSection}
+        showBackButton={false}
       >
         {rightSection}
       </SubLayout>

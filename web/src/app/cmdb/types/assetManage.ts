@@ -288,6 +288,7 @@ export interface FullInfoAttrItem {
   is_required: boolean;
   is_pre: boolean;
   user_prompt?: string;
+  [key: string]: unknown;
 }
 
 export interface FullInfoGroupItem {

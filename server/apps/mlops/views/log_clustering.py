@@ -1006,9 +1006,10 @@ class LogClusteringServingViewSet(ModelViewSet):
 
         container_id = f"LogClustering_Serving_{instance.id}"
 
-        # 获取容器实际状态
-        container_state = instance.container_info.get("state")
-        container_port = instance.container_info.get("port")
+        # 获取容器实际状态，防御性处理 container_info 为空的情况
+        container_info = instance.container_info or {}
+        container_state = container_info.get("state")
+        container_port = container_info.get("port")
 
         # 更新数据库
         response = super().update(request, *args, **kwargs)
@@ -1309,7 +1310,8 @@ class LogClusteringServingViewSet(ModelViewSet):
                     {"error": "data 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            port = serving.container_info.get("port")
+            # 防御性处理 container_info 为空的情况
+            port = (serving.container_info or {}).get("port")
             if not port:
                 return Response(
                     {"error": "服务端口未配置，请确认服务已启动"},

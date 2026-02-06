@@ -1,6 +1,7 @@
 import React from 'react';
 import { Form, Input, Select, InputNumber, Switch, FormInstance } from 'antd';
 import EditablePasswordField from './editPasswordField'; // Import EditablePasswordField
+import GroupTreeSelect from '@/components/group-tree-select';
 
 interface Field {
   name: string;
@@ -35,6 +36,7 @@ const componentMap: { [key: string]: React.FC<any> } = {
     </Select>
   ),
   inputNumber: (props) => <InputNumber {...props} />,
+  groupTreeSelect: (props) => <GroupTreeSelect {...props} />,
 };
 
 const DynamicForm: React.FC<DynamicFormProps> = ({ form, fields, initialValues }) => {

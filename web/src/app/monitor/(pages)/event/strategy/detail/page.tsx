@@ -62,8 +62,7 @@ const StrategyOperation = () => {
   const [form] = Form.useForm();
   const router = useRouter();
   const { getCollectType, getGroupIds } = useObjectConfigInfo();
-  const users = useRef(commonContext?.userList || []);
-  const userList: UserItem[] = users.current;
+  const userList: UserItem[] = commonContext?.userList || [];
   const instRef = useRef<ModalRef>(null);
   const formContainerRef = useRef<HTMLDivElement>(null);
   const basicInfoRef = useRef<HTMLDivElement>(null);

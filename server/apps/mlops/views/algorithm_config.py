@@ -1,16 +1,34 @@
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework import status
 
 from config.drf.viewsets import ModelViewSet
 from config.drf.pagination import CustomPageNumberPagination
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.models import AlgorithmConfig
+from apps.mlops.models.anomaly_detection import AnomalyDetectionTrainJob
+from apps.mlops.models.timeseries_predict import TimeSeriesPredictTrainJob
+from apps.mlops.models.log_clustering import LogClusteringTrainJob
+from apps.mlops.models.classification import ClassificationTrainJob
+from apps.mlops.models.image_classification import ImageClassificationTrainJob
+from apps.mlops.models.object_detection import ObjectDetectionTrainJob
 from apps.mlops.serializers.algorithm_config import (
     AlgorithmConfigSerializer,
     AlgorithmConfigListSerializer,
 )
 from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+
+
+# 算法类型到训练任务模型的映射
+ALGORITHM_TYPE_TO_TRAIN_JOB_MODEL = {
+    "anomaly_detection": AnomalyDetectionTrainJob,
+    "timeseries_predict": TimeSeriesPredictTrainJob,
+    "log_clustering": LogClusteringTrainJob,
+    "classification": ClassificationTrainJob,
+    "image_classification": ImageClassificationTrainJob,
+    "object_detection": ObjectDetectionTrainJob,
+}
 
 
 class AlgorithmConfigViewSet(ModelViewSet):
@@ -51,8 +69,76 @@ class AlgorithmConfigViewSet(ModelViewSet):
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
+    @HasPermission("algorithm_config-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        """
+        部分更新算法配置
+
+        当禁用算法（is_active 从 True 变为 False）时，
+        校验是否有训练任务正在使用该算法
+        """
+        instance = self.get_object()
+        is_active_new = request.data.get("is_active")
+
+        # 如果是禁用操作（从 True 变为 False）
+        if instance.is_active and is_active_new is False:
+            # 查询使用该算法的任务数量
+            task_count = self._count_tasks_using_algorithm(
+                instance.algorithm_type, instance.name
+            )
+            if task_count > 0:
+                return Response(
+                    {
+                        "error": f"无法禁用：有 {task_count} 个训练任务正在使用此算法",
+                        "task_count": task_count,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        return super().partial_update(request, *args, **kwargs)
+
+    def _count_tasks_using_algorithm(
+        self, algorithm_type: str, algorithm_name: str
+    ) -> int:
+        """
+        统计使用指定算法的训练任务数量
+
+        Args:
+            algorithm_type: 算法类型（如 anomaly_detection）
+            algorithm_name: 算法名称（如 RandomForest）
+
+        Returns:
+            使用该算法的任务数量
+        """
+        train_job_model = ALGORITHM_TYPE_TO_TRAIN_JOB_MODEL.get(algorithm_type)
+        if not train_job_model:
+            logger.warning(f"未知的算法类型: {algorithm_type}")
+            return 0
+
+        return train_job_model.objects.filter(algorithm=algorithm_name).count()
+
     @HasPermission("algorithm_config-Delete")
     def destroy(self, request, *args, **kwargs):
+        """
+        删除算法配置
+
+        删除前校验是否有训练任务正在使用该算法
+        """
+        instance = self.get_object()
+
+        # 查询使用该算法的任务数量
+        task_count = self._count_tasks_using_algorithm(
+            instance.algorithm_type, instance.name
+        )
+        if task_count > 0:
+            return Response(
+                {
+                    "error": f"无法删除：有 {task_count} 个训练任务正在使用此算法",
+                    "task_count": task_count,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         return super().destroy(request, *args, **kwargs)
 
     @action(
