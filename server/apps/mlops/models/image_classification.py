@@ -3,6 +3,7 @@ from django_minio_backend import MinioBackend, iso_date_prefix
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.mlops.constants import DatasetReleaseStatus, TrainJobStatus
 
 
 class ImageClassificationDataset(MaintainerInfo, TimeInfo):
@@ -144,14 +145,8 @@ class ImageClassificationDatasetRelease(MaintainerInfo, TimeInfo):
 
     status = models.CharField(
         max_length=20,
-        choices=[
-            ("pending", "待发布"),
-            ("processing", "发布中"),
-            ("published", "已发布"),
-            ("failed", "发布失败"),
-            ("archived", "归档"),
-        ],
-        default="pending",
+        choices=DatasetReleaseStatus.CHOICES,
+        default=DatasetReleaseStatus.PENDING,
         verbose_name="发布状态",
         help_text="数据集发布状态",
     )
@@ -193,13 +188,8 @@ class ImageClassificationTrainJob(MaintainerInfo, TimeInfo):
 
     status = models.CharField(
         max_length=20,
-        choices=[
-            ("pending", "待训练"),
-            ("running", "训练中"),
-            ("completed", "已完成"),
-            ("failed", "训练失败"),
-        ],
-        default="pending",
+        choices=TrainJobStatus.CHOICES,
+        default=TrainJobStatus.PENDING,
         verbose_name="任务状态",
         help_text="训练任务的当前状态",
     )
