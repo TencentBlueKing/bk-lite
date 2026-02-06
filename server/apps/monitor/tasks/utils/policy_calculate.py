@@ -53,9 +53,15 @@ def _build_metric_template_vars(dimensions: dict) -> dict:
     return {f"metric__{k}": v for k, v in dimensions.items()}
 
 
-def _format_value_with_unit(value: float, unit: str) -> str:
+def _format_value_with_unit(
+    value: float, unit: str, enum_value_map: dict = None
+) -> str:
     if value is None:
         return "N/A"
+    if enum_value_map:
+        int_value = int(value)
+        if int_value in enum_value_map:
+            return enum_value_map[int_value]
     formatted = f"{value:.2f}"
     if unit:
         return f"{formatted}{unit}"
@@ -68,6 +74,7 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
     instances_map = template_context.get("instances_map", {})
     instance_id_keys = template_context.get("instance_id_keys", [])
     display_unit = template_context.get("display_unit", "")
+    enum_value_map = template_context.get("enum_value_map", {})
 
     for _, row in df.iterrows():
         instance_id_tuple = row["instance_id"]
@@ -98,7 +105,9 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
 
             if all(method(float(v[1]), threshold_info["value"]) for v in values):
                 alert_value = float(values[-1][1])
-                formatted_value = _format_value_with_unit(alert_value, display_unit)
+                formatted_value = _format_value_with_unit(
+                    alert_value, display_unit, enum_value_map
+                )
                 context = {
                     **raw_data,
                     "monitor_object": template_context.get("monitor_object", ""),
