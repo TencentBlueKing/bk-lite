@@ -33,11 +33,13 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
     )
     def monitor_instance_list(self, request, monitor_object_id):
         """非特殊对象的通用列表接口"""
+        include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
             request.COOKIES.get("current_team"),
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+            include_children=include_children,
         )
         qs = permission_filter(
             MonitorInstance,
@@ -83,11 +85,13 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
         if not monitor_obj:
             raise BaseAppException("Monitor object does not exist")
 
+        include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
             request.COOKIES.get("current_team"),
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+            include_children=include_children,
         )
         qs = permission_filter(
             MonitorInstance,
@@ -136,11 +140,13 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
                 "Only primary monitor objects support instance search"
             )
 
+        include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
             request.COOKIES.get("current_team"),
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+            include_children=include_children,
         )
         qs = permission_filter(
             MonitorInstance,

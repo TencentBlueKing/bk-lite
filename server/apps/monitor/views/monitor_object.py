@@ -2,7 +2,10 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.permission_utils import get_permissions_rules, check_instance_permission
+from apps.core.utils.permission_utils import (
+    get_permissions_rules,
+    check_instance_permission,
+)
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.permission import PermissionConstants
@@ -25,7 +28,9 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
 
-        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+        lan = LanguageLoader(
+            app=LanguageConstants.APP, default_lang=request.user.locale
+        )
 
         for result in results:
             _type_key = f"{LanguageConstants.MONITOR_OBJECT_TYPE}.{result['type']}"
@@ -34,23 +39,38 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
             result["display_name"] = lan.get(_name_key) or result["name"]
 
         if request.GET.get("add_instance_count") in ["true", "True"]:
-
+            include_children = request.COOKIES.get("include_children", "0") == "1"
             inst_res = get_permissions_rules(
                 request.user,
                 request.COOKIES.get("current_team"),
                 "monitor",
                 f"{PermissionConstants.INSTANCE_MODULE}",
+                include_children=include_children,
             )
 
-            instance_permissions, cur_team = inst_res.get("data", {}), inst_res.get("team", [])
+            instance_permissions, cur_team = (
+                inst_res.get("data", {}),
+                inst_res.get("team", []),
+            )
 
-            inst_objs = MonitorInstance.objects.filter(is_deleted=False).prefetch_related("monitorinstanceorganization_set")
+            inst_objs = MonitorInstance.objects.filter(
+                is_deleted=False
+            ).prefetch_related("monitorinstanceorganization_set")
             inst_map = {}
             for inst_obj in inst_objs:
                 monitor_object_id = inst_obj.monitor_object_id
                 instance_id = inst_obj.id
-                teams = {i.organization for i in inst_obj.monitorinstanceorganization_set.all()}
-                _check = check_instance_permission(monitor_object_id, instance_id, teams, instance_permissions, cur_team)
+                teams = {
+                    i.organization
+                    for i in inst_obj.monitorinstanceorganization_set.all()
+                }
+                _check = check_instance_permission(
+                    monitor_object_id,
+                    instance_id,
+                    teams,
+                    instance_permissions,
+                    cur_team,
+                )
                 if not _check:
                     continue
                 if monitor_object_id not in inst_map:
@@ -61,22 +81,33 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
                 result["instance_count"] = inst_map.get(result["id"], 0)
 
         if request.GET.get("add_policy_count") in ["true", "True"]:
+            include_children = request.COOKIES.get("include_children", "0") == "1"
             policy_res = get_permissions_rules(
                 request.user,
                 request.COOKIES.get("current_team"),
                 "monitor",
                 f"{PermissionConstants.POLICY_MODULE}",
+                include_children=include_children,
             )
 
-            policy_permissions, cur_team = policy_res.get("data", {}), policy_res.get("team", [])
+            policy_permissions, cur_team = (
+                policy_res.get("data", {}),
+                policy_res.get("team", []),
+            )
 
-            policy_objs = MonitorPolicy.objects.all().prefetch_related("policyorganization_set")
+            policy_objs = MonitorPolicy.objects.all().prefetch_related(
+                "policyorganization_set"
+            )
             policy_map = {}
             for policy_obj in policy_objs:
                 monitor_object_id = policy_obj.monitor_object_id
                 instance_id = policy_obj.id
-                teams = {i.organization for i in policy_obj.policyorganization_set.all()}
-                _check = check_instance_permission(monitor_object_id, instance_id, teams, policy_permissions, cur_team)
+                teams = {
+                    i.organization for i in policy_obj.policyorganization_set.all()
+                }
+                _check = check_instance_permission(
+                    monitor_object_id, instance_id, teams, policy_permissions, cur_team
+                )
                 if not _check:
                     continue
                 if monitor_object_id not in policy_map:
@@ -104,7 +135,7 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @action(methods=['post'], detail=False, url_path='order')
+    @action(methods=["post"], detail=False, url_path="order")
     def order(self, request):
         MonitorObjectService.set_object_order(request.data)
         return WebUtils.response_success()
