@@ -23,6 +23,7 @@ from apps.mlops.utils.webhook_client import (
 )
 from apps.mlops.utils import mlflow_service
 from apps.mlops.services import get_image_by_prefix
+from apps.mlops.constants import TrainJobStatus, MLflowRunStatus
 
 
 class ClassificationDatasetViewSet(ModelViewSet):
@@ -737,7 +738,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             train_job = self.get_object()
 
             # 检查任务状态
-            if train_job.status == "running":
+            if train_job.status == TrainJobStatus.RUNNING:
                 return Response(
                     {"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
@@ -812,7 +813,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             )
 
             # 更新任务状态
-            train_job.status = "running"
+            train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
 
             logger.info(f"训练任务已启动: {job_id}")
@@ -944,13 +945,8 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                     continue
 
             # 同步最新运行状态到 TrainJob
-            if latest_run_status and train_job.status == "running":
-                status_map = {
-                    "FINISHED": "completed",
-                    "FAILED": "failed",
-                    "KILLED": "failed",
-                }
-                new_status = status_map.get(latest_run_status)
+            if latest_run_status and train_job.status == TrainJobStatus.RUNNING:
+                new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(latest_run_status)
 
                 if new_status:
                     train_job.status = new_status
