@@ -8,12 +8,10 @@ import {
 } from 'react';
 import {
   Input,
-  InputNumber,
   Button,
   Form,
   message,
   Select,
-  DatePicker,
   Col,
   Row,
   Checkbox,
@@ -22,12 +20,10 @@ import {
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
-import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
-import { AttrFieldType, UserItem, FullInfoGroupItem, FullInfoAttrItem, FieldConfig, TimeAttrOption, StrAttrOption } from '@/app/cmdb/types/assetManage';
-import { deepClone, getStringValidationRule, getNumberRangeRule, normalizeTimeValueForForm, normalizeTimeValueForSubmit } from '@/app/cmdb/utils/common';
+import { AttrFieldType, UserItem, FullInfoGroupItem, FullInfoAttrItem, FieldConfig } from '@/app/cmdb/types/assetManage';
+import { deepClone, getStringValidationRule, getNumberRangeRule, normalizeTimeValueForForm, normalizeTimeValueForSubmit, getFieldItem } from '@/app/cmdb/utils/common';
 import { useInstanceApi } from '@/app/cmdb/api';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import styles from './filterBar.module.scss';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
@@ -205,152 +201,46 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
 
       const hostDisabled = modelId === 'host' && item.attr_id === 'inst_name';
 
-      const formField = (() => {
-        // 特殊处理-主机的云区域为下拉选项（弹窗中）
-        if (item.attr_id === 'cloud') {
-          return (
-            <Select
-              disabled={fieldDisabled}
-              placeholder={t('common.selectTip')}
-            >
-              {proxyOptions.map((opt) => {
-                // 确保proxy_id是字符串格式
-                return (
-                  <Select.Option
-                    key={String(opt.proxy_id)}
-                    value={String(opt.proxy_id)}
-                  >
-                    {opt.proxy_name}
-                  </Select.Option>
-                );
-              })}
-            </Select>
-          );
-        }
-
-        // 特殊处理-主机的云区域ID显示,但是不允许修改（弹窗中）
-        if (item.attr_id === 'cloud_id' && modelId === 'host') {
-          return <Input disabled={true} placeholder={t('common.inputTip')} />;
-        }
-
-        // 新增+编辑弹窗中，用户字段为多选
-        switch (item.attr_type) {
-          case 'user':
-            return (
-              <Select
-                mode="multiple"
-                showSearch
-                disabled={fieldDisabled}
-                placeholder={t('common.selectTip')}
-                filterOption={(input, opt: any) => {
-                  if (typeof opt?.children?.props?.text === 'string') {
-                    return opt?.children?.props?.text
-                      ?.toLowerCase()
-                      .includes(input.toLowerCase());
-                  }
-                  return true;
-                }}
+      // 特殊处理-主机的云区域为下拉选项（弹窗中）
+      if (item.attr_id === 'cloud') {
+        return (
+          <Select
+            disabled={fieldDisabled}
+            placeholder={t('common.selectTip')}
+          >
+            {proxyOptions.map((opt) => (
+              <Select.Option
+                key={String(opt.proxy_id)}
+                value={String(opt.proxy_id)}
               >
-                {userList.map((opt: UserItem) => (
-                  <Select.Option key={opt.id} value={opt.id}>
-                    <EllipsisWithTooltip
-                      text={`${opt.display_name}(${opt.username})`}
-                      className="whitespace-nowrap overflow-hidden text-ellipsis break-all"
-                    />
-                  </Select.Option>
-                ))}
-              </Select>
-            );
-          case 'enum':
-            return (
-              <Select
-                showSearch
-                disabled={fieldDisabled}
-                placeholder={t('common.selectTip')}
-                filterOption={(input, opt: any) => {
-                  if (typeof opt?.children === 'string') {
-                    return opt?.children
-                      ?.toLowerCase()
-                      .includes(input.toLowerCase());
-                  }
-                  return true;
-                }}
-              >
-                {(Array.isArray(item.option) ? item.option : []).map((opt: any) => (
-                  <Select.Option key={opt.id} value={opt.id}>
-                    {opt.name}
-                  </Select.Option>
-                ))}
-              </Select>
-            );
-          case 'bool':
-            return (
-              <Select
-                disabled={fieldDisabled}
-                placeholder={t('common.selectTip')}
-              >
-                {[
-                  { id: true, name: 'Yes' },
-                  { id: false, name: 'No' },
-                ].map((opt) => (
-                  <Select.Option key={opt.id.toString()} value={opt.id}>
-                    {opt.name}
-                  </Select.Option>
-                ))}
-              </Select>
-            );
-          case 'time':
-            const timeOption = item.option as TimeAttrOption;
-            const displayFormat = timeOption?.display_format || 'datetime';
-            const showTime = displayFormat === 'datetime';
-            const format =
-              displayFormat === 'datetime'
-                ? 'YYYY-MM-DD HH:mm:ss'
-                : 'YYYY-MM-DD';
-            return (
-              <DatePicker
-                placeholder={t('common.selectTip')}
-                showTime={showTime}
-                disabled={fieldDisabled}
-                format={format}
-                style={{ width: '100%' }}
-              />
-            );
-          case 'organization':
-            return (
-              <GroupTreeSelector multiple={true} disabled={fieldDisabled} />
-            );
-          case 'int':
-            return (
-              <InputNumber
-                disabled={fieldDisabled}
-                style={{ width: '100%' }}
-                placeholder={t('common.inputTip')}
-              />
-            );
-          default:
-            if (item.attr_type === 'str') {
-              const strOption = item.option as StrAttrOption;
-              if (strOption?.widget_type === 'multi_line') {
-                return (
-                  <Input.TextArea
-                    rows={4}
-                    placeholder={t('common.inputTip')}
-                    disabled={fieldDisabled || hostDisabled}
-                  />
-                );
-              }
-            }
-            return (
-              <Input
-                placeholder={t('common.inputTip')}
-                disabled={fieldDisabled || hostDisabled}
-              />
-            );
-        }
-      })();
+                {opt.proxy_name}
+              </Select.Option>
+            ))}
+          </Select>
+        );
+      }
 
-      return formField;
+      // 特殊处理-主机的云区域ID显示,但是不允许修改（弹窗中）
+      if (item.attr_id === 'cloud_id' && modelId === 'host') {
+        return <Input disabled={true} placeholder={t('common.inputTip')} />;
+      }
+
+      // 特殊处理-主机的实例名称（inst_name）不允许修改
+      if (hostDisabled) {
+        return <Input disabled={true} placeholder={t('common.inputTip')} />;
+      }
+
+      const placeholder = ['user', 'enum', 'bool', 'time', 'organization'].includes(item.attr_type)
+        ? t('common.selectTip')
+        : t('common.inputTip');
+
+      return getFieldItem({
+        fieldItem: item,
+        userList,
+        isEdit: true,
+        disabled: fieldDisabled,
+        placeholder,
+      });
     };
 
     const handleSubmit = (confirmType?: string) => {

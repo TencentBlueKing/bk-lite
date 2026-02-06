@@ -1,4 +1,6 @@
 import type { Option } from "@/types"
+// 复用 algorithmConfig 中的类型定义
+export type { FieldType, FieldConfig, GroupConfig, FormConfig as AlgorithmConfig } from './algorithmConfig';
 
 interface TrainJob {
   id: string | number,
@@ -55,46 +57,6 @@ interface TrainTaskHistory {
   }
 }
 
-// 算法配置相关类型
-export type FieldType =
-  | 'input'
-  | 'inputNumber'
-  | 'select'
-  | 'multiSelect'
-  | 'switch'
-  | 'stringArray'; // 逗号分隔的字符串，内部转为数组
-
-export interface FieldConfig {
-  name: string | string[]; // 支持嵌套路径，如 ['search_space', 'n_estimators']
-  label: string;
-  type: FieldType;
-  required?: boolean;
-  tooltip?: string;
-  placeholder?: string;
-  defaultValue?: string | number | boolean | string[];
-  options?: Option[]; // 用于 select/multiSelect
-  min?: number; // 用于 inputNumber
-  max?: number; // 用于 inputNumber
-  step?: number; // 用于 inputNumber
-  dependencies?: string[][]; // 依赖字段路径数组（支持多个依赖），如 [['hyperparams', 'use_feature_engineering'], ['feature_engineering', 'use_diff_features']]
-  layout?: 'vertical' | 'horizontal'; // vertical: label在上, horizontal: label和input水平排列
-}
-
-export interface GroupConfig {
-  title: string;
-  subtitle?: string; // 子标题，如 "树结构参数"
-  fields: FieldConfig[];
-}
-
-export interface AlgorithmConfig {
-  algorithm: string;
-  groups: {
-    hyperparams: GroupConfig[];
-    feature_engineering?: GroupConfig[];
-    preprocessing?: GroupConfig[];
-  };
-}
-
 // ========== API 参数类型 ==========
 export interface CreateTrainJobParams {
   name: string;
@@ -116,7 +78,7 @@ export interface TrainJobFormValues {
   name: string;
   algorithm: string;
   dataset: number;
-  dataset_version: number;
+  dataset_version: number | string;  // 表单中使用字符串（Select 组件），提交时转为数字
   max_evals: number;
   // 动态算法参数（根据 AlgorithmConfig 生成）
   [key: string]: unknown;

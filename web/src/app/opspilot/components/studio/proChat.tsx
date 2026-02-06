@@ -4,7 +4,7 @@ import throttle from 'lodash/throttle';
 import styles from './index.module.scss';
 import { CustomChatMessage } from '@/app/opspilot/types/global';
 import useApiClient from '@/utils/request';
-import CustomChat from '@/app/opspilot/components/custom-chat';
+import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import { fetchLogDetails, createConversation } from '@/app/opspilot/utils/logUtils';
 
 interface ChatComponentProps {
@@ -83,10 +83,12 @@ const ProChatComponentWrapper: React.FC<ChatComponentProps> = ({ initialChats, c
 
   return (
     <div className={`rounded-lg h-full ${styles.proChatDetail}`} ref={proChatContainerRef}>
-      <CustomChat 
-        initialMessages={messages} 
-        showMarkOnly={true} 
-        mode='preview' 
+      <CustomChatSSE
+        initialMessages={messages}
+        mode="display"
+        showMarkOnly={true}
+        useAGUIProtocol={false}
+        showHeader={false}
       />
       {loading && <div className='flex justify-center items-center'><Spin /></div>}
     </div>

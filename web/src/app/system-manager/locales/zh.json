@@ -291,6 +291,7 @@
         "smtp_usessl": "是否使用 SSL",
         "smtp_server": "Smtp 服务器地址",
         "description": "描述",
+        "team": "分组",
         "webhook_url": "Webhook地址",
         "mail_sender": "邮件发送者",
         "port": "端口",

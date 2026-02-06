@@ -107,11 +107,13 @@ class SystemMgmt(object):
         return_data = self.client.run("get_all_groups")
         return return_data
 
-    def search_channel_list(self, channel_type):
+    def search_channel_list(self, channel_type, teams, include_children):
         """
         :param channel_type: str， 目前只有email、enterprise_wechat
+        :param teams: list, [1,2,3]
+        :param include_children: bool , True、False
         """
-        return_data = self.client.run("search_channel_list", channel_type=channel_type)
+        return_data = self.client.run("search_channel_list", channel_type=channel_type, teams=teams, include_children=include_children)
         return return_data
 
     def send_msg_with_channel(self, channel_id, title, content, receivers, attachments=None):

@@ -200,12 +200,6 @@ class TimeSeriesPredictTrainJob(MaintainerInfo, TimeInfo):
         max_length=50,
         verbose_name="算法模型",
         help_text="使用的时间序列预测算法模型",
-        choices=[
-            ("Prophet", "Prophet"),
-            ("GradientBoosting", "GradientBoosting"),
-            ("RandomForest", "RandomForest"),
-            ("Sktime", "Sktime"),
-        ],
     )
 
     dataset_version = models.ForeignKey(

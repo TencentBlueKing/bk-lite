@@ -200,14 +200,6 @@ class LogClusteringTrainJob(MaintainerInfo, TimeInfo):
         max_length=50,
         verbose_name="算法模型",
         help_text="使用的日志聚类算法模型",
-        choices=[
-            ("KMeans", "K-Means"),
-            ("DBSCAN", "DBSCAN"),
-            ("AgglomerativeClustering", "层次聚类"),
-            ("Drain", "Drain"),
-            ("LogCluster", "LogCluster"),
-            ("Spell", "Spell"),
-        ],
     )
 
     dataset_version = models.ForeignKey(

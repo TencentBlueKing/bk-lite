@@ -94,15 +94,32 @@ class GenericViewSetFun(object):
             message = self.loader.get("error.user_not_found") if self.loader else "User not found in request"
             return self.value_error(message)
 
+        current_team, include_children, org_field, query = self.filter_by_group(queryset, request, user)
+        permission_key = permission_key or getattr(self, "permission_key", None)
+        if permission_key:
+            app_name = self._get_app_name()
+            permission_data = get_permission_rules(user, current_team, app_name, permission_key, include_children)
+            instance_ids = [i["id"] for i in permission_data.get("instance", [])]
+            team = permission_data.get("team", [])
+            if instance_ids:
+                query |= Q(id__in=instance_ids)
+            for i in team:
+                query |= Q(**{f"{org_field}__contains": int(i)})
+            if not instance_ids and not team:
+                return queryset.filter(id=0)
+        return queryset.filter(query)
+
+    @classmethod
+    def filter_by_group(cls, queryset, request, user):
         current_team = request.COOKIES.get("current_team", "0")
         include_children = request.COOKIES.get("include_children", "0") == "1"
         fields = [i.name for i in queryset.model._meta.fields]
-        org_field = getattr(self, "ORGANIZATION_FIELD", "team")
+        org_field = getattr(cls, "ORGANIZATION_FIELD", "team")
         if "created_by" in fields:
             if include_children:
                 # 提取当前组及其所有子组的 ID
                 group_tree = getattr(user, "group_tree", [])
-                team_ids = self.extract_child_group_ids(group_tree, int(current_team))
+                team_ids = cls.extract_child_group_ids(group_tree, int(current_team))
 
                 if team_ids:
                     # 查询组织 ID 在子组列表中，且创建者和域名是当前用户的数据
@@ -118,19 +135,7 @@ class GenericViewSetFun(object):
                 query = Q(**{f"{org_field}__contains": int(current_team)}, created_by=request.user.username, domain=request.user.domain)
         else:
             query = Q()
-        permission_key = permission_key or getattr(self, "permission_key", None)
-        if permission_key:
-            app_name = self._get_app_name()
-            permission_data = get_permission_rules(user, current_team, app_name, permission_key, include_children)
-            instance_ids = [i["id"] for i in permission_data.get("instance", [])]
-            team = permission_data.get("team", [])
-            if instance_ids:
-                query |= Q(id__in=instance_ids)
-            for i in team:
-                query |= Q(**{f"{org_field}__contains": int(i)})
-            if not instance_ids and not team:
-                return queryset.filter(id=0)
-        return queryset.filter(query)
+        return current_team, include_children, org_field, query
 
     @staticmethod
     def value_error(msg):

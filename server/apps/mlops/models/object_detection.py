@@ -237,9 +237,6 @@ class ObjectDetectionTrainJob(MaintainerInfo, TimeInfo):
         max_length=50,
         verbose_name="算法模型",
         help_text="使用的 YOLOv11 目标检测算法模型",
-        choices=[
-            ("YOLODetection", "YOLODetection"),
-        ],
         default="YOLODetection",
     )
 

@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect, RefObject } from 'react';
-import { FormInstance, message, Form, Select, Input, InputNumber } from 'antd';
+import { FormInstance, message, Form, Select, Input, InputNumber, Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type { Option } from '@/types';
 import type { 
   TrainJob, 
   FieldConfig, 
-  AlgorithmConfig,
+  // AlgorithmConfig,
   TrainJobFormValues,
   CreateTrainJobParams,
   UpdateTrainJobParams,
@@ -19,6 +19,8 @@ import {
   reverseTransformGroupData,
   extractDefaultValues
 } from '@/app/mlops/utils/algorithmConfigUtils';
+import { useAlgorithmConfigs } from '@/app/mlops/hooks/useAlgorithmConfigs';
+import type { AlgorithmType } from '@/app/mlops/types/algorithmConfig';
 
 interface ModalState {
   isOpen: boolean;
@@ -34,9 +36,6 @@ interface ShowModalParams {
 
 interface UseGenericDatasetFormProps {
   datasetType: DatasetType;
-  algorithmConfigs: Record<string, AlgorithmConfig>;
-  algorithmScenarios: Record<string, string>;
-  algorithmOptions: Array<{ value: string; label: string }>;
   datasetOptions: Option[];
   formRef: RefObject<FormInstance>;
   onSuccess: () => void;
@@ -56,15 +55,20 @@ interface UseGenericDatasetFormProps {
 
 export const useGenericDatasetForm = ({
   datasetType,
-  algorithmConfigs,
-  algorithmScenarios,
-  algorithmOptions,
   datasetOptions,
   formRef,
   onSuccess,
   apiMethods
 }: UseGenericDatasetFormProps) => {
   const { t } = useTranslation();
+
+  // 动态获取算法配置
+  const {
+    algorithmConfigs,
+    algorithmScenarios,
+    algorithmOptions,
+    loading: configLoading
+  } = useAlgorithmConfigs(datasetType as AlgorithmType);
 
   const [modalState, setModalState] = useState<ModalState>({
     isOpen: false,
@@ -87,7 +91,7 @@ export const useGenericDatasetForm = ({
     name: '',
     algorithm: '',
     dataset: 0,
-    dataset_version: 0,
+    dataset_version: '',
     max_evals: 50
   });
 
@@ -104,24 +108,20 @@ export const useGenericDatasetForm = ({
     const algorithm = data.algorithm;
     const algorithmConfig = algorithm ? algorithmConfigs[algorithm] : null;
 
-    if (!algorithmConfig) {
-      console.error(`Unknown algorithm: ${algorithm}`);
-      return {
-        name: '',
-        algorithm: '',
-        dataset: 0,
-        dataset_version: 0,
-        max_evals: 50
-      };
-    }
-
+    // 基础字段始终从 data 获取，与算法配置无关
     const result: TrainJobFormValues = {
-      name: data.name,
+      name: data.name || '',
       algorithm: data.algorithm || '',
       dataset: Number(data.dataset) || 0,
-      dataset_version: Number(data.dataset_version) || 0,
+      dataset_version: data.dataset_version ? String(data.dataset_version) : '',
       max_evals: data.max_evals || 50,
     };
+
+    // 如果没有算法配置，只返回基础字段
+    if (!algorithmConfig) {
+      console.warn(`Algorithm config not found for: ${algorithm}`);
+      return result;
+    }
 
     // 转换 hyperparams
     if (algorithmConfig.groups.hyperparams) {
@@ -159,7 +159,7 @@ export const useGenericDatasetForm = ({
         name: formValues.name,
         algorithm: formValues.algorithm,
         dataset: formValues.dataset,
-        dataset_version: formValues.dataset_version,
+        dataset_version: Number(formValues.dataset_version),
         max_evals: formValues.max_evals,
         status: 'pending',
         description: formValues.name || '',
@@ -189,7 +189,7 @@ export const useGenericDatasetForm = ({
       name: formValues.name,
       algorithm: formValues.algorithm,
       dataset: formValues.dataset,
-      dataset_version: formValues.dataset_version,
+      dataset_version: Number(formValues.dataset_version),
       max_evals: formValues.max_evals,
       status: 'pending',
       description: formValues.name || '',
@@ -260,7 +260,7 @@ export const useGenericDatasetForm = ({
       setDatasetVersions(_versionOptions);
       if (formData?.dataset_version) {
         formRef.current.setFieldsValue({
-          dataset_version: formData.dataset_version
+          dataset_version: String(formData.dataset_version)
         });
       }
     } catch (e) {
@@ -337,7 +337,7 @@ export const useGenericDatasetForm = ({
       name: '',
       algorithm: '',
       dataset: 0,
-      dataset_version: 0,
+      dataset_version: '',
       max_evals: 50
     });
     setIsShow(false);
@@ -345,6 +345,15 @@ export const useGenericDatasetForm = ({
 
   // 渲染表单内容
   const renderFormContent = useCallback(() => {
+    // 配置加载中
+    if (configLoading) {
+      return (
+        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+          <Spin tip={t('common.loading')} />
+        </div>
+      );
+    }
+
     const currentAlgorithm = formRef.current?.getFieldValue('algorithm');
     const algorithmConfig = currentAlgorithm ? algorithmConfigs[currentAlgorithm] : null;
 
@@ -406,12 +415,13 @@ export const useGenericDatasetForm = ({
         )}
       </>
     );
-  }, [t, datasetOptions, datasetVersions, loadingState.select, isShow, formValues, algorithmConfigs, algorithmScenarios, algorithmOptions, onAlgorithmChange, renderOptions]);
+  }, [t, configLoading, datasetOptions, datasetVersions, loadingState.select, isShow, formValues, algorithmConfigs, algorithmScenarios, algorithmOptions, onAlgorithmChange, renderOptions]);
 
   return {
     modalState,
     formRef,
     loadingState,
+    configLoading,
     showModal,
     handleSubmit,
     handleCancel,
