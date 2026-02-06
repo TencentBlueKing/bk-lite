@@ -140,7 +140,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       const { nodes: layoutedNodes } = await getLayoutedElements(nodes, edges, { direction });
       console.log('Layout complete, new positions:', layoutedNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y })));
       setNodes(layoutedNodes);
-      
+
       // 布局完成后自动适应视图
       if (reactFlowInstance) {
         setTimeout(() => {
@@ -159,10 +159,25 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
     }
   }, [nodes]);
 
+  const deleteNodeRef = useRef(handleDeleteNode);
+  const configNodeRef = useRef(handleConfigNode);
+
+  useEffect(() => {
+    deleteNodeRef.current = handleDeleteNode;
+  }, [handleDeleteNode]);
+
+  useEffect(() => {
+    configNodeRef.current = handleConfigNode;
+  }, [handleConfigNode]);
+
   const nodeTypes: NodeTypes = useMemo(() => {
     const createNodeComponent = (Component: React.ComponentType<any>) => {
       const NodeComponentWithProps = (props: any) => (
-        <Component {...props} onDelete={handleDeleteNode} onConfig={handleConfigNode} />
+        <Component
+          {...props}
+          onDelete={(...args: unknown[]) => deleteNodeRef.current?.apply(null, args as any)}
+          onConfig={(...args: unknown[]) => configNodeRef.current?.apply(null, args as any)}
+        />
       );
       NodeComponentWithProps.displayName = `NodeComponent(${Component.displayName || Component.name})`;
       return NodeComponentWithProps;
@@ -185,12 +200,12 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       dingtalk: createNodeComponent(DingtalkNode),
       wechat_official: createNodeComponent(WechatOfficialNode),
     };
-  }, [handleDeleteNode, handleConfigNode]);
+  }, []);
 
   const onInit = useCallback((instance: any) => {
     setReactFlowInstance(instance);
     setViewport(instance.getViewport());
-    
+
     // 如果有初始节点数据，自动适应视图
     if (initialData?.nodes && initialData.nodes.length > 0) {
       setTimeout(() => {
