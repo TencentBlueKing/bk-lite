@@ -664,6 +664,9 @@
     "deleteConfirm": "你确定要删除选中的智能体吗？"
   },
   "chatflow": {
+    "lock": "锁定画布",
+    "unlock": "解锁画布",
+    "autoLayout": "自动布局",
     "nodeConfig": {
       "paramName": "参数名",
       "webAccessAddress": "访问地址",
