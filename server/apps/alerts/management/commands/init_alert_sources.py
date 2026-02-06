@@ -41,7 +41,7 @@ class Command(BaseCommand):
 
         try:
             from apps.alerts.service.init_alert_sources import BUILTIN_ALERT_SOURCES
-            from apps.alerts.models import AlertSource
+            from apps.alerts.models.alert_source import AlertSource
             
             created_count = 0
             updated_count = 0

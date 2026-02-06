@@ -1,12 +1,12 @@
-from apps.alerts.models import Alert
-from apps.alerts.constants import AlertStatus
+from apps.alerts.models.models import Alert
+from apps.alerts.constants.constants import AlertStatus
 from apps.core.logger import alert_logger as logger
 
 
 class AutoCloser:
     @staticmethod
     def handle_closed_events(events_queryset):
-        from apps.alerts.constants import EventAction
+        from apps.alerts.constants.constants import EventAction
 
         closed_events = events_queryset.filter(action=EventAction.CLOSED)
 

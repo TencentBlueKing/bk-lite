@@ -3,7 +3,7 @@
 # @Time: 2025/5/14 16:39
 # @Author: windyzhao
 from apps.alerts.common.source_adapter.constants import DEFAULT_SOURCE_CONFIG
-from apps.alerts.constants import AlertsSourceTypes, AlertAccessType
+from apps.alerts.constants.constants import AlertsSourceTypes, AlertAccessType
 
 # 内置告警源配置
 BUILTIN_ALERT_SOURCES = [

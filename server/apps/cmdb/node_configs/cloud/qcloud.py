@@ -31,3 +31,12 @@ class QCloudNodeParams(BaseNodeParams):
             f"PASSWORD_secret_key_{self._instance_id}": self.credential.get("secretSecret", ""),
         }
         return env_config
+
+    @property
+    def password(self):
+        # 返回腾讯云的密码数据
+        password_data = {
+            "secret_id": self.credential.get("accessKey", ""),
+            "secret_key": self.credential.get("secretSecret", ""),
+        }
+        return password_data

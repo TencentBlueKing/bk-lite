@@ -479,6 +479,7 @@ class ModelManage(object):
                     is_required=attr_info["is_required"],
                     editable=attr_info["editable"],
                     option=attr_info["option"],
+                    user_prompt=attr_info["user_prompt"],
                 )
 
             result = ag.set_entity_properties(MODEL, [model_info["_id"]], dict(attrs=json.dumps(attrs)), {}, [], False)

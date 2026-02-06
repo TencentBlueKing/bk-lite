@@ -583,7 +583,7 @@ const ViewList: React.FC<ViewListProps> = ({
         fieldSetting={{
           showSetting: false,
           displayFieldKeys: [
-            'elasticsearch_cluster_health_status_code',
+            'elasticsearch_process_cpu_percent',
             'instance_name'
           ],
           choosableFields: tableColumn.slice(0, tableColumn.length - 1),

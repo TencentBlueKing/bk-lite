@@ -94,30 +94,7 @@ class GenericViewSetFun(object):
             message = self.loader.get("error.user_not_found") if self.loader else "User not found in request"
             return self.value_error(message)
 
-        current_team = request.COOKIES.get("current_team", "0")
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        fields = [i.name for i in queryset.model._meta.fields]
-        org_field = getattr(self, "ORGANIZATION_FIELD", "team")
-        if "created_by" in fields:
-            if include_children:
-                # 提取当前组及其所有子组的 ID
-                group_tree = getattr(user, "group_tree", [])
-                team_ids = self.extract_child_group_ids(group_tree, int(current_team))
-
-                if team_ids:
-                    # 查询组织 ID 在子组列表中，且创建者和域名是当前用户的数据
-                    team_query = Q()
-                    for team_id in team_ids:
-                        team_query |= Q(**{f"{org_field}__contains": team_id})
-                    query = Q(team_query, created_by=request.user.username, domain=request.user.domain)
-                else:
-                    # 没有找到子组，使用当前组
-                    query = Q(**{f"{org_field}__contains": int(current_team)}, created_by=request.user.username, domain=request.user.domain)
-            else:
-                # 不包含子组，使用原逻辑
-                query = Q(**{f"{org_field}__contains": int(current_team)}, created_by=request.user.username, domain=request.user.domain)
-        else:
-            query = Q()
+        current_team, include_children, org_field, query = self.filter_by_group(queryset, request, user)
         permission_key = permission_key or getattr(self, "permission_key", None)
         if permission_key:
             app_name = self._get_app_name()
@@ -131,6 +108,35 @@ class GenericViewSetFun(object):
             if not instance_ids and not team:
                 return queryset.filter(id=0)
         return queryset.filter(query)
+
+    @classmethod
+    def filter_by_group(cls, queryset, request, user):
+        current_team = request.COOKIES.get("current_team", "0")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        fields = [i.name for i in queryset.model._meta.fields]
+        org_field = getattr(cls, "ORGANIZATION_FIELD", "team")
+        if "created_by" in fields:
+            creator_query = Q(created_by=request.user.username, domain=request.user.domain)
+            if include_children:
+                # 提取当前组及其所有子组的 ID
+                group_tree = getattr(user, "group_tree", [])
+                team_ids = cls.extract_child_group_ids(group_tree, int(current_team))
+
+                if team_ids:
+                    # 查询组织 ID 在子组列表中，或者是当前用户创建的数据
+                    team_query = Q()
+                    for team_id in team_ids:
+                        team_query |= Q(**{f"{org_field}__contains": team_id})
+                    query = team_query | creator_query
+                else:
+                    # 没有找到子组，使用当前组
+                    query = Q(**{f"{org_field}__contains": int(current_team)}) | creator_query
+            else:
+                # 不包含子组，team包含当前组 或者 是当前用户创建的
+                query = Q(**{f"{org_field}__contains": int(current_team)}) | creator_query
+        else:
+            query = Q()
+        return current_team, include_children, org_field, query
 
     @staticmethod
     def value_error(msg):

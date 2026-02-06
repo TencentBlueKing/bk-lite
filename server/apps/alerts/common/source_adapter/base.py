@@ -12,9 +12,11 @@ from django.utils import timezone
 
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.shield import execute_shield_check_for_events
-from apps.alerts.constants import LevelType, EventAction
-from apps.alerts.init_constants import INIT_ALERT_ENRICH
-from apps.alerts.models import AlertSource, Event, Level, SystemSetting
+from apps.alerts.constants.constants import LevelType, EventAction
+from apps.alerts.constants.init_data import INIT_ALERT_ENRICH
+from apps.alerts.models.sys_setting import SystemSetting
+from apps.alerts.models.models import  Event, Level
+from apps.alerts.models.alert_source import  AlertSource
 from apps.alerts.common.source_adapter import logger
 from apps.alerts.utils.util import split_list
 from apps.rpc.cmdb import CMDB

@@ -45,6 +45,7 @@
       "nodeIndex": "Node Index",
       "triggerLogs": "Trigger Logs",
       "outputData": "Output Data",
+      "executionProcess": "Execution process ({{count}} steps)",
       "title": "Conversation Logs",
       "workflowDetail": "Workflow Detail",
       "description": "You can view the log records of the conversation between the user and the robot, and restore the conversation scene."
@@ -664,6 +665,9 @@
     "deleteConfirm": "Are you sure you want to delete this skill?"
   },
   "chatflow": {
+    "lock": "Lock canvas",
+    "unlock": "Unlock canvas",
+    "autoLayout": "Auto layout",
     "nodeConfig": {
       "paramName": "Parameter Name",
       "webAccessAddress": "Access URL",

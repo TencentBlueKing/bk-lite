@@ -13,7 +13,7 @@ from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncHo
 from django.utils import timezone
 
 import nats_client
-from apps.alerts.models import Alert
+from apps.alerts.models.models import Alert
 from apps.core.logger import alert_logger as logger
 
 

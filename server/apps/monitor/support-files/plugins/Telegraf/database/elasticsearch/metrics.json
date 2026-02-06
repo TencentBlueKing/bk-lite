@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='elasticsearch'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["elasticsearch_cluster_health_status_code", "elasticsearch_cluster_health_unassigned_shards", "elasticsearch_jvm_mem_heap_used_percent"],
+  "supplementary_indicators": ["elasticsearch_jvm_mem_heap_used_percent", "elasticsearch_fs_data_0_available_in_bytes", "elasticsearch_process_cpu_percent"],
   "metrics": [
     {
       "metric_group": "Base",
@@ -144,14 +144,14 @@
     },
     {
       "metric_group": "ThreadPool",
-      "name": "elasticsearch_thread_pool_index_queue",
-      "display_name": "Index Thread Pool Queue Length",
+      "name": "elasticsearch_thread_pool_write_queue",
+      "display_name": "Write Thread Pool Queue Length",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [{"name": "node_name", "description": "节点"}],
-      "description": "Write performance warning metric, reflects the length of the write request queue; growing queue length indicates insufficient write capacity, causing latency spikes",
-      "query": "elasticsearch_thread_pool_index_queue{__$labels__}"
+      "description": "Bulk write performance warning metric, reflects the queue length for bulk write requests; growing queue length indicates insufficient bulk data processing capacity, affecting data ingestion throughput and causing data synchronization delays",
+      "query": "elasticsearch_thread_pool_write_queue{__$labels__}"
     },
     {
       "metric_group": "ThreadPool",

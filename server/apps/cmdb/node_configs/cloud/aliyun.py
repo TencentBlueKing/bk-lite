@@ -31,3 +31,12 @@ class AliyunNodeParams(BaseNodeParams):
             f"PASSWORD_access_secret_{self._instance_id}": self.credential.get("accessSecret", ""),
         }
         return env_config
+
+    @property
+    def password(self):
+        # 返回阿里云的密码数据
+        password_data = {
+            "access_key": self.credential.get("accessKey", ""),
+            "access_secret": self.credential.get("accessSecret", ""),
+        }
+        return password_data
