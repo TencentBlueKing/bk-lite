@@ -6,12 +6,21 @@ from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
 
 
 class SystemMgmtView(ViewSet):
-    @action(methods=['get'], detail=False, url_path='user_all')
+    @action(methods=["get"], detail=False, url_path="user_all")
     def get_user_all(self, request):
-        data = SystemMgmtUtils.get_user_all()
+        current_team = request.COOKIES.get("current_team")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        data = SystemMgmtUtils.get_user_all(
+            group=current_team, include_children=include_children
+        )
         return WebUtils.response_success(data)
 
-    @action(methods=['get'], detail=False, url_path='search_channel_list')
+    @action(methods=["get"], detail=False, url_path="search_channel_list")
     def search_channel_list(self, request):
-        data = SystemMgmtUtils.search_channel_list()
+        current_team = request.COOKIES.get("current_team")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        teams = [current_team] if current_team else []
+        data = SystemMgmtUtils.search_channel_list(
+            teams=teams, include_children=include_children
+        )
         return WebUtils.response_success(data)

@@ -45,6 +45,7 @@ class MonitorAlertVieSet(
         获取当前用户所有有权限的策略ID
         """
         current_team = request.COOKIES.get("current_team")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
 
         # 获取所有采集类型下policy模块的权限规则
         permissions_result = get_permissions_rules(
@@ -52,6 +53,7 @@ class MonitorAlertVieSet(
             current_team,
             "monitor",
             PermissionConstants.POLICY_MODULE,
+            include_children=include_children,
         )
 
         policy_permissions = permissions_result.get("data", {})
@@ -91,11 +93,13 @@ class MonitorAlertVieSet(
         monitor_object_id = request.query_params.get("monitor_object_id", None)
 
         if monitor_object_id:
+            include_children = request.COOKIES.get("include_children", "0") == "1"
             permission = get_permission_rules(
                 request.user,
                 request.COOKIES.get("current_team"),
                 "monitor",
                 f"{PermissionConstants.POLICY_MODULE}.{monitor_object_id}",
+                include_children=include_children,
             )
             qs = permission_filter(
                 MonitorPolicy,
