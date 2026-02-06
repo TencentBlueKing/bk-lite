@@ -11,7 +11,7 @@ class SystemMgmtView(ViewSet):
         current_team = request.COOKIES.get("current_team")
         include_children = request.COOKIES.get("include_children", "0") == "1"
         data = SystemMgmtUtils.get_user_all(
-            group=current_team, include_children=include_children
+            group=int(current_team), include_children=include_children
         )
         return WebUtils.response_success(data)
 
@@ -19,8 +19,7 @@ class SystemMgmtView(ViewSet):
     def search_channel_list(self, request):
         current_team = request.COOKIES.get("current_team")
         include_children = request.COOKIES.get("include_children", "0") == "1"
-        teams = [current_team] if current_team else []
         data = SystemMgmtUtils.search_channel_list(
-            teams=teams, include_children=include_children
+            teams=[int(current_team)], include_children=include_children
         )
         return WebUtils.response_success(data)

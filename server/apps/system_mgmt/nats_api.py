@@ -407,7 +407,7 @@ def get_all_groups():
 
 
 @nats_client.register
-def search_channel_list(channel_type, teams, include_children):
+def search_channel_list(channel_type="", teams=None, include_children=False):
     """
     :param channel_type: str， 目前只有email、enterprise_wechat_bot
     :param teams: list, [1,2,3]
