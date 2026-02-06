@@ -45,6 +45,7 @@
       "nodeIndex": "Node Index",
       "triggerLogs": "Trigger Logs",
       "outputData": "Output Data",
+      "executionProcess": "Execution process ({{count}} steps)",
       "title": "Conversation Logs",
       "workflowDetail": "Workflow Detail",
       "description": "You can view the log records of the conversation between the user and the robot, and restore the conversation scene."
