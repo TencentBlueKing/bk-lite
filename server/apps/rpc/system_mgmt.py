@@ -78,11 +78,11 @@ class SystemMgmt(object):
         return_data = self.client.run("verify_token", token=token)
         return return_data
 
-    def get_group_users(self, group):
+    def get_group_users(self, group, include_children=False):
         """
         :param group: 当前组的ID
         """
-        return_data = self.client.run("get_group_users", group=group)
+        return_data = self.client.run("get_group_users", group=group, include_children=include_children)
         return return_data
 
     def get_all_users(self):

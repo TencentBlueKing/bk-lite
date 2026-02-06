@@ -4,6 +4,33 @@ from apps.system_mgmt.models import Group
 
 class GroupUtils(object):
     @staticmethod
+    def get_group_with_descendants(group_ids):
+        """
+        获取指定组织及其所有子孙组织的ID列表（内存递归，单次数据库查询）
+        :param group_ids: 组织ID或组织ID列表
+        :return: 包含自身及所有子孙组织的ID列表
+        """
+        if isinstance(group_ids, (int, str)):
+            group_ids = [int(group_ids)]
+        else:
+            group_ids = [int(gid) for gid in group_ids]
+        all_groups = Group.objects.values_list("id", "parent_id")
+        children_map = {}
+        for gid, pid in all_groups:
+            if pid is not None:
+                children_map.setdefault(pid, []).append(gid)
+
+        def collect_descendants(gid, result_set):
+            result_set.add(gid)
+            for child_id in children_map.get(gid, []):
+                collect_descendants(child_id, result_set)
+
+        result = set()
+        for gid in group_ids:
+            collect_descendants(gid, result)
+        return list(result)
+
+    @staticmethod
     def get_all_child_groups(group_id, include_self=True, group_list=None):
         """
         递归获取指定组织的所有子组织ID（仅限用户有权限的组织）
