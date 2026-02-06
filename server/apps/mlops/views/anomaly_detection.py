@@ -19,7 +19,12 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.utils import mlflow_service
-from apps.mlops.services import get_image_by_prefix
+from apps.mlops.services import (
+    get_image_by_prefix,
+    get_mlflow_train_config,
+    get_mlflow_tracking_uri,
+    ConfigurationError,
+)
 import os
 import requests
 import json
@@ -81,29 +86,11 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                     {"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 获取环境变量
-            bucket = os.getenv("MINIO_PUBLIC_BUCKETS", "munchkin-public")
-            minio_endpoint = os.getenv("MLFLOW_S3_ENDPOINT_URL", "")
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
-            minio_access_key = os.getenv("MINIO_ACCESS_KEY", "")
-            minio_secret_key = os.getenv("MINIO_SECRET_KEY", "")
-
-            if not minio_endpoint:
-                logger.error("MinIO endpoint not configured")
-                return Response(
-                    {"error": "系统配置错误，请联系管理员"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-
-            if not mlflow_tracking_uri:
-                logger.error("MLflow tracking URI not configured")
-                return Response(
-                    {"error": "系统配置错误，请联系管理员"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-
-            if not minio_access_key or not minio_secret_key:
-                logger.error("MinIO credentials not configured")
+            # 获取环境变量配置
+            try:
+                config = get_mlflow_train_config()
+            except ConfigurationError as e:
+                logger.error(str(e))
                 return Response(
                     {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -141,13 +128,13 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
-                bucket=bucket,
+                bucket=config.bucket,
                 dataset=train_job.dataset_version.dataset_file.name,
                 config=train_job.config_url.name,
-                minio_endpoint=minio_endpoint,
-                mlflow_tracking_uri=mlflow_tracking_uri,
-                minio_access_key=minio_access_key,
-                minio_secret_key=minio_secret_key,
+                minio_endpoint=config.minio_endpoint,
+                mlflow_tracking_uri=config.mlflow_tracking_uri,
+                minio_access_key=config.minio_access_key,
+                minio_secret_key=config.minio_secret_key,
                 train_image=train_image,
             )
 
@@ -929,9 +916,10 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             serving = AnomalyDetectionServing.objects.get(id=serving_id)
 
             # 获取环境变量
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
-            if not mlflow_tracking_uri:
-                logger.error("环境变量 MLFLOW_TRACKER_URL 未配置")
+            try:
+                mlflow_tracking_uri = get_mlflow_tracking_uri()
+            except ConfigurationError as e:
+                logger.error(str(e))
                 serving.container_info = {
                     "status": "error",
                     "message": "环境变量 MLFLOW_TRACKER_URL 未配置",
@@ -1112,9 +1100,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
 
             try:
                 # 获取环境变量
-                mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
-                if not mlflow_tracking_uri:
-                    raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
+                mlflow_tracking_uri = get_mlflow_tracking_uri()
 
                 # 解析新的 model_uri
                 model_uri = self._resolve_model_uri(instance)
@@ -1173,8 +1159,9 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             serving = self.get_object()
 
             # 获取环境变量
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
-            if not mlflow_tracking_uri:
+            try:
+                mlflow_tracking_uri = get_mlflow_tracking_uri()
+            except ConfigurationError:
                 return Response(
                     {"error": "环境变量 MLFLOW_TRACKER_URL 未配置"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
