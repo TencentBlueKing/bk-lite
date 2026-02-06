@@ -1,5 +1,7 @@
 """指标查询服务 - 负责指标数据的查询和格式化"""
 
+import json
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import Metric
 from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
@@ -239,6 +241,36 @@ class MetricQueryService:
             return UnitConverter.get_display_unit(self.policy.metric_unit)
         else:
             return ""
+
+    def get_enum_value_map(self) -> dict:
+        """获取枚举类型指标的值到名称的映射
+
+        Returns:
+            dict: {枚举值(int): 枚举名称(str)} 的映射，非枚举类型返回空字典
+        """
+        if not self.metric:
+            return {}
+
+        if self.metric.data_type != "Enum":
+            return {}
+
+        try:
+            enum_list = json.loads(self.metric.unit)
+            return {
+                item["id"]: item["name"]
+                for item in enum_list
+                if "id" in item and "name" in item
+            }
+        except (json.JSONDecodeError, TypeError, KeyError):
+            return {}
+
+    def is_enum_metric(self) -> bool:
+        """判断当前指标是否为枚举类型
+
+        Returns:
+            bool: 是否为枚举类型
+        """
+        return self.metric is not None and self.metric.data_type == "Enum"
 
     def format_aggregation_metrics(self, metrics):
         """格式化聚合指标数据
