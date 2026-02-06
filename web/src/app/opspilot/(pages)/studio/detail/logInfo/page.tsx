@@ -229,7 +229,7 @@ const StudioLogsPage: React.FC = () => {
   const renderJsonData = (data: any) => {
     if (!data) return '-';
     if (typeof data === 'object') {
-      return <pre className="bg-gray-50 p-2 rounded text-xs overflow-auto max-h-60">{JSON.stringify(data, null, 2)}</pre>;
+      return <pre className="bg-[var(--color-fill-1)] p-2 rounded text-xs overflow-auto max-h-60">{JSON.stringify(data, null, 2)}</pre>;
     }
     return String(data);
   };
@@ -298,27 +298,25 @@ const StudioLogsPage: React.FC = () => {
                   </div>
                   {browserSteps.length > 0 && (
                     <div>
-                      <div className="text-gray-500 text-sm mb-2 flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center w-5 h-5 bg-blue-500 text-white text-xs rounded-full">▶</span>
+                      <div className="flex items-center gap-2 mb-3 text-sm">
+                        <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                        </svg>
                         {executionLabel.replace('{{count}}', String(browserSteps.length))}
                       </div>
                       <div className="space-y-2">
-                        {browserSteps.map((step, stepIndex) => {
-                          const colors = [
-                            { bg: 'bg-blue-50', border: 'border-blue-400' },
-                            { bg: 'bg-green-50', border: 'border-green-400' },
-                            { bg: 'bg-purple-50', border: 'border-purple-400' },
-                          ];
-                          const color = colors[stepIndex % colors.length];
-                          return (
-                            <div
-                              key={`${node.id}-step-${stepIndex}`}
-                              className={`${color.bg} p-3 rounded-lg border-l-3 ${color.border} text-sm text-gray-700`}
-                            >
-                              {step}
-                            </div>
-                          );
-                        })}
+                        {browserSteps.map((step, stepIndex) => (
+                          <div
+                            key={`${node.id}-step-${stepIndex}`}
+                            className={`rounded px-3 py-2 text-sm ${
+                              stepIndex % 2 === 0
+                                ? 'bg-[var(--color-fill-2)]'
+                                : 'bg-[var(--color-fill-1)]'
+                            }`}
+                          >
+                            {step}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
