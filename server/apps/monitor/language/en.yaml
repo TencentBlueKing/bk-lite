@@ -2208,9 +2208,9 @@ monitor_object_metric:
     elasticsearch_http_total_opened_rate:
       name: HTTP New Connections Per Second
       desc: HTTP service traffic metric, reflects recent business request traffic changes; aids in troubleshooting traffic peak issues
-    elasticsearch_thread_pool_index_queue:
-      name: Index Thread Pool Queue Length
-      desc: Write performance warning metric, reflects the length of the write request queue; growing queue length indicates insufficient write capacity, causing latency spikes
+    elasticsearch_thread_pool_write_queue:
+      name: Write Thread Pool Queue Length
+      desc: Bulk write performance warning metric, reflects the queue length for bulk write requests; growing queue length indicates insufficient bulk data processing capacity, affecting data ingestion throughput and causing data synchronization delays
     elasticsearch_thread_pool_search_queue:
       name: Search Thread Pool Queue Length
       desc: Query performance warning metric, reflects the length of the query request queue; growing queue length indicates insufficient query capacity, affecting business experience
