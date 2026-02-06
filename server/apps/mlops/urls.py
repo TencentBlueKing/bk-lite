@@ -1,12 +1,48 @@
 from rest_framework import routers
 
-from apps.mlops.views.anomaly_detection import *
-from apps.mlops.views.image_classification import *
-from apps.mlops.views.timeseries_predict import *
-from apps.mlops.views.log_clustering import *
-from apps.mlops.views.classification import *
-from apps.mlops.views.object_detection import *
 from apps.mlops.views.algorithm_config import AlgorithmConfigViewSet
+from apps.mlops.views.anomaly_detection import (
+    AnomalyDetectionDatasetReleaseViewSet,
+    AnomalyDetectionDatasetViewSet,
+    AnomalyDetectionServingViewSet,
+    AnomalyDetectionTrainDataViewSet,
+    AnomalyDetectionTrainJobViewSet,
+)
+from apps.mlops.views.classification import (
+    ClassificationDatasetReleaseViewSet,
+    ClassificationDatasetViewSet,
+    ClassificationServingViewSet,
+    ClassificationTrainDataViewSet,
+    ClassificationTrainJobViewSet,
+)
+from apps.mlops.views.image_classification import (
+    ImageClassificationDatasetReleaseViewSet,
+    ImageClassificationDatasetViewSet,
+    ImageClassificationServingViewSet,
+    ImageClassificationTrainDataViewSet,
+    ImageClassificationTrainJobViewSet,
+)
+from apps.mlops.views.log_clustering import (
+    LogClusteringDatasetReleaseViewSet,
+    LogClusteringDatasetViewSet,
+    LogClusteringServingViewSet,
+    LogClusteringTrainDataViewSet,
+    LogClusteringTrainJobViewSet,
+)
+from apps.mlops.views.object_detection import (
+    ObjectDetectionDatasetReleaseViewSet,
+    ObjectDetectionDatasetViewSet,
+    ObjectDetectionServingViewSet,
+    ObjectDetectionTrainDataViewSet,
+    ObjectDetectionTrainJobViewSet,
+)
+from apps.mlops.views.timeseries_predict import (
+    TimeSeriesPredictDatasetReleaseViewSet,
+    TimeSeriesPredictDatasetViewSet,
+    TimeSeriesPredictServingViewSet,
+    TimeSeriesPredictTrainDataViewSet,
+    TimeSeriesPredictTrainJobViewSet,
+)
 
 router = routers.DefaultRouter()
 
