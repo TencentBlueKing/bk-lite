@@ -292,7 +292,7 @@ const ImageContent = () => {
     const hasUsed = trainData.some(item => item.label === labelItem?.name);
 
     if (hasUsed) {
-      message.warning('该标签已被使用');
+      message.warning(t('datasets.labelInUse'));
       return;
     }
 
@@ -330,7 +330,7 @@ const ImageContent = () => {
       message.success(t('datasets.uploadSuccess'));
     } catch (e) {
       console.error(e);
-      message.error('添加图片失败');
+      message.error(t('datasets.addImageFailed'));
     }
   };
 
@@ -529,9 +529,9 @@ const ImageContent = () => {
                 onChange={(e) => setSearchValue(e.target.value)}
               />
               <div>
-                <a className="ml-1 text-blue-600 text-xs" onClick={() => { setLoadingState((prev) => ({ ...prev, showAddLabel: true })) }}>添加标签</a>
+                <a className="ml-1 text-blue-600 text-xs" onClick={() => { setLoadingState((prev) => ({ ...prev, showAddLabel: true })) }}>{t('datasets.addLabel')}</a>
                 {loadingState.showAddLabel &&
-                  <Input className="text-xs" placeholder="按下回车添加" onPressEnter={(event) => handleAddLabel(event)} />
+                  <Input className="text-xs" placeholder={t('datasets.pressEnterToAdd')} onPressEnter={(event) => handleAddLabel(event)} />
                 }
               </div>
             </div>

@@ -21,12 +21,12 @@ const CONTAINER_STATE_MAP: Record<string, string> = {
   'error': 'red'
 };
 
-const CONTAINER_TEXT_MAP: Record<string, string> = {
-  'running': '运行中',
-  'completed': '已完成',
-  'not_found': '已停止',
-  'unknown': '状态异常',
-  'error': '错误'
+const CONTAINER_TEXT_KEYS: Record<string, string> = {
+  'running': 'mlops-common.containerRunning',
+  'completed': 'mlops-common.containerCompleted',
+  'not_found': 'mlops-common.containerStopped',
+  'unknown': 'mlops-common.containerUnknown',
+  'error': 'mlops-common.containerError'
 };
 
 const ServingPage = () => {
@@ -99,7 +99,7 @@ const ServingPage = () => {
         const text = isSuccess ? state : 'error';
         return (
           <Tooltip title={detail || ''}>
-            <Tag color={CONTAINER_STATE_MAP[_status]}>{CONTAINER_TEXT_MAP[text]}</Tag>
+            <Tag color={CONTAINER_STATE_MAP[_status]}>{t(CONTAINER_TEXT_KEYS[text])}</Tag>
           </Tooltip>
         )
       }
