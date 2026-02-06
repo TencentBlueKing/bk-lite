@@ -208,9 +208,6 @@ class ImageClassificationTrainJob(MaintainerInfo, TimeInfo):
         max_length=50,
         verbose_name="算法模型",
         help_text="使用的YOLO分类算法模型",
-        choices=[
-            ("YOLOClassification", "YOLOClassification"),
-        ],
         default="YOLOClassification",
     )
 

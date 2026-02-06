@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Input, Button, Progress, Select } from 'antd';
+import { Input, Button, Progress, Select, Tag } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
@@ -84,11 +84,17 @@ const ViewList: React.FC<ViewListProps> = ({
       dataIndex: 'status',
       key: 'status',
       onCell: () => ({ style: { minWidth: 100 } }),
-      render: (_, record) => (
-        <>
-          {record?.status ? t(`monitor.integrations.${record.status}`) : '--'}
-        </>
-      )
+      render: (_, record) => {
+        if (!record?.status) return <>--</>;
+        const isNormal = record.status === 'normal';
+        return (
+          <Tag color={isNormal ? 'success' : 'default'}>
+            {isNormal
+              ? t('monitor.integrations.normal')
+              : t('monitor.integrations.unavailable')}
+          </Tag>
+        );
+      }
     },
     {
       title: t('common.action'),
@@ -286,7 +292,7 @@ const ViewList: React.FC<ViewListProps> = ({
               sorter: (a: any, b: any) =>
                 a[item.key]?.value - b[item.key]?.value,
               render: (_: unknown, record: TableDataItem) => {
-                const hasDimensions = target?.dimensions?.length > 1;
+                const hasDimensions = target?.dimensions?.length > 0;
                 const size: [number, number] = hasDimensions
                   ? [220, 20]
                   : [240, 20];
@@ -330,7 +336,7 @@ const ViewList: React.FC<ViewListProps> = ({
               : {}),
             render: (_: unknown, record: TableDataItem) => {
               const color = getEnumColor(target, record[item.key]?.value);
-              const hasDimensions = target?.dimensions?.length > 1;
+              const hasDimensions = target?.dimensions?.length > 0;
               const metricValue = record[item.key]?.value;
               const metricUnit = record[item.key]?.unit || target?.unit || '';
               const metricItem: any = {
@@ -577,7 +583,7 @@ const ViewList: React.FC<ViewListProps> = ({
         fieldSetting={{
           showSetting: false,
           displayFieldKeys: [
-            'elasticsearch_cluster_health_status_code',
+            'elasticsearch_process_cpu_percent',
             'instance_name'
           ],
           choosableFields: tableColumn.slice(0, tableColumn.length - 1),

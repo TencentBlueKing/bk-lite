@@ -1673,16 +1673,16 @@ monitor_object_metric:
   Cluster:
     cluster_pod_count:
       name: 集群Pod总数
-      desc: 用于统计当前Kubernetes集群中Pods的总数。该指标会返回集群中运行的Pod的数量，包括所有命名空间中的Pod
+      desc: 统计当前 Kubernetes 集群中的 Pod 总数。该指标基于 kube_pod_info 进行统计，返回在当前筛选条件下（如集群、命名空间等）存在的 Pod 数量，覆盖所有命名空间
     cluster_node_count:
       name: 集群节点数
-      desc: 用于统计当前Kubernetes集群中节点的总数。该指标返回集群中可用节点的数量，帮助用户了解集群的规模和资源
-    cluster_cpu_utilization:
-      name: 集群总CPU使用率
-      desc: 表示集群中CPU的当前利用率，通常以百分比形式表示
+      desc: 统计当前 Kubernetes 集群中的节点（Node）总数。该指标反映集群中已注册的节点数量，可用于评估集群规模及基础资源容量
     cluster_memory_utilization:
       name: 集群总内存使用率
-      desc: 显示集群内存的当前利用率，以百分比形式展示
+      desc: 表示当前 Kubernetes 集群中所有节点已使用内存与内存总量之间的比例，以百分比形式展示。该指标用于整体评估集群内存资源的使用情况和压力水平
+    cluster_disk_utilization:
+      name: 集群总磁盘使用率
+      desc: 表示 Kubernetes 集群中所有节点磁盘的整体使用率
   Apache:
     apache_ServerUptimeSeconds:
       name: 服务运行时间
@@ -1744,67 +1744,91 @@ monitor_object_metric:
   Node:
     node_status_condition:
       name: Node状态
-      desc: Node状态用于指示节点的当前运行状态，比如"运行中"或"已停止"。它有助于管理员监控和管理Kubernetes集群中的节点
+      desc: 表示 Kubernetes 节点的当前状态条件，包括 Ready（就绪）、MemoryPressure（内存压力）、DiskPressure（磁盘压力）等，用于判断节点是否可正常调度 Pod
     node_cpu_utilization:
       name: CPU使用率
-      desc: CPU使用率表示当前节点CPU的实际使用水平，相对于其总可用CPU资源。监控此指标有助于识别CPU瓶颈和优化资源分配
+      desc: 反映节点总体 CPU 资源的使用程度，计算方式为 (总量 - 空闲) / 总量。可用于识别 CPU 瓶颈及优化资源分配
     node_cpu_idle_rate:
       name: CPU空闲率
-      desc: 展示CPU空闲率，代表系统内未使用的CPU资源情况，可以借助该指标来判断系统是否处于较高负载状态。该指标对分析系统的性能和效率非常关键
+      desc: 表示节点 CPU 的空闲资源比例，数值越高说明系统负载越低，可用于评估系统是否处于过载状态
     node_cpu_iowait_rate:
       name: 等待IO百分比
-      desc: 展示CPU用于等待IO的时间百分比，反映磁盘或网络性能对系统的影响。降低该等待时间有助于提升系统性能
+      desc: 表示 CPU 因等待 I/O 操作完成而处于空闲状态的时间占比，通常反映磁盘或网络子系统的瓶颈程度
     node_cpu_system_rate:
       name: 系统使用率
-      desc: 展示系统使用率，表示内核进程使用的CPU资源。分析该值有助于优化系统内核的性能与稳定性
+      desc: 表示内核态进程占用 CPU 的比例，用于评估系统调用和内核活动的开销
     node_cpu_user_rate:
       name: 用户使用率
-      desc: 展示用户进程使用的CPU资源百分比，有助于了解应用程序和服务的性能表现
-    node_memory_usage:
-      name: 应用内存使用量
-      desc: 应用内存使用量表示在节点中运行的应用程序占用的内存总量。此指标有助于了解应用程序的内存需求及其对系统性能的影响
+      desc: 表示用户态进程占用 CPU 的比例，主要反映应用程序和服务的计算资源消耗
     node_memory_utilization:
-      name: 应用内存使用率
-      desc: 应用内存使用率是指应用程序已使用的内存量与其配置的内存限制之比。通过监控此指标，用户可以判断是否需要调整内存限制
+      name: 内存使用率
+      desc: 表示节点内存资源的整体使用程度，计算方式为 (总量 - 可用) / 总量。用于评估内存压力及是否需要扩容
+    node_memory_usage:
+      name: 内存使用量
+      desc: 表示节点当前已使用的内存总量（单位：字节），用于分析实际内存占用情况
+    node_memory_available:
+      name: 可用内存
+      desc: 表示节点当前可供新进程或缓存使用的内存总量（单位：字节），是判断内存是否充足的核心指标
+    node_memory_swap_free:
+      name: 空闲Swap
+      desc: 表示交换空间（Swap）中空闲可用的大小（单位：字节）。当 Swap 接近耗尽时，可能导致 OOM 风险增加
+    node_memory_cached:
+      name: 缓存内存
+      desc: 表示被操作系统用于文件系统缓存的内存大小（单位：字节），可在内存紧张时被释放
+    node_memory_shared:
+      name: 共享内存
+      desc: 表示被多个进程共享使用的内存大小（单位：字节），常见于 IPC（进程间通信）场景
+    node_memory_buffered:
+      name: 缓冲区内存
+      desc: 表示用于内核缓冲区（Buffer）的内存大小（单位：字节），主要用于加速块设备 I/O
     node_disk_usage_rate:
       name: 磁盘使用率
-      desc: 展示磁盘使用空间占比，帮助了解磁盘资源的利用情况。该指标对于预防磁盘溢出至关重要
+      desc: 表示节点磁盘空间的使用比例，计算方式为已用空间 / 总空间。用于预警磁盘即将耗尽的情况
     node_disk_used:
       name: 磁盘使用量
-      desc: 展示实际使用的磁盘空间大小，用于判断磁盘容量使用情况。该指标有助于监控磁盘空间使用情况
-    node_diskio_writes_rate:
-      name: 磁盘I/O写入速率
-      desc: 统计在指定时间间隔内磁盘写入操作的速率
+      desc: 表示节点磁盘空间的实际使用量（单位：字节），用于分析当前存储资源消耗
+    node_disk_free:
+      name: 磁盘剩余量
+      desc: 表示节点磁盘空间的剩余可用量（单位：字节），是评估存储容量是否充足的关键指标
+    node_disk_inodes_used_percent:
+      name: Inode使用率
+      desc: 表示文件系统 inode 的使用比例。inode 耗尽会导致无法创建新文件，即使磁盘空间充足
+    node_diskio_io_util:
+      name: 磁盘I/O使用率
+      desc: 表示磁盘处理 I/O 请求所占用的时间比例，反映磁盘的繁忙程度。接近 100% 表示磁盘已达性能瓶颈
     node_diskio_write_bytes_rate:
-      name: 磁盘I/O写入字节速率
-      desc: 统计在指定时间间隔内写入磁盘的字节速率
-    node_diskio_write_time_rate:
-      name: 磁盘I/O写入时间速率
-      desc: 统计在指定时间间隔内磁盘写入操作所花费时间的速率
-    node_diskio_reads_rate:
-      name: 磁盘I/O读取速率
-      desc: 统计在指定时间间隔内磁盘读取操作的速率
+      name: 磁盘写入速率
+      desc: 表示每秒写入磁盘的数据量（单位：字节/秒），反映磁盘写入负载情况
     node_diskio_read_bytes_rate:
-      name: 磁盘I/O读取字节速率
-      desc: 统计在指定时间间隔内从磁盘读取的字节速率
-    node_diskio_read_time_rate:
-      name: 磁盘I/O读取时间速率
-      desc: 统计在指定时间间隔内磁盘读取操作所花费时间的速率
-    node_network_receive_rate:
-      name: 网卡入字节速率
-      desc: 网卡入流量是指通过网络接口接收到的数据流量速率。监控此指标可帮助分析网络带宽是否足够以及网络性能情况
-    node_network_transmit_rate:
-      name: 网卡出字节速率
-      desc: 网卡出流量是指通过网络接口发送的数据流量速率。此指标有助于了解节点的网络出口需求和潜在的瓶颈
+      name: 磁盘读取速率
+      desc: 表示每秒从磁盘读取的数据量（单位：字节/秒），反映磁盘读取负载情况
+    node_disk_write_latency:
+      name: 磁盘写入延迟
+      desc: 表示磁盘写操作的平均响应时间（单位：毫秒），高延迟可能表明存储性能瓶颈
+    node_disk_read_latency:
+      name: 磁盘读取延迟
+      desc: 表示磁盘读操作的平均响应时间（单位：毫秒），高延迟会影响应用读取数据的性能
+    node_net_packets_recv_rate:
+      name: 网卡接收包速率
+      desc: 表示每秒通过网络接口接收的数据包数量，用于分析网络流量和检测异常流量
+    node_net_packets_sent_rate:
+      name: 网卡发送包速率
+      desc: 表示每秒通过网络接口发送的数据包数量，用于评估网络出口流量情况
+    node_net_bytes_recv_rate:
+      name: 网卡入流量速率
+      desc: 表示每秒通过网络接口接收的数据量（单位：字节/秒），用于评估网络带宽使用情况
+    node_net_bytes_sent_rate:
+      name: 网卡出流量速率
+      desc: 表示每秒通过网络接口发送的数据量（单位：字节/秒），用于分析出口带宽占用情况
     node_cpu_load1:
       name: 1分钟平均负载
-      desc: 1分钟平均负载表示过去1分钟内系统的平均负载情况。该指标有助于即时了解系统的负载水平
+      desc: 表示过去 1 分钟内系统的平均负载值，反映短期内的 CPU 及 I/O 压力情况
     node_cpu_load5:
       name: 5分钟平均负载
-      desc: 5分钟平均负载表示过去5分钟内系统的平均负载情况。此指标有助于识别负载趋势及其对系统性能的影响
+      desc: 表示过去 5 分钟内系统的平均负载值，用于判断中期系统负载趋势
     node_cpu_load15:
       name: 15分钟平均负载
-      desc: 15分钟平均负载表示过去15分钟内系统的平均负载情况。监控该指标可帮助管理员理解系统的长期负载状态
+      desc: 表示过去 15 分钟内系统的平均负载值，反映较长时间段内的系统负载稳定性
   ElasticSearch:
     elasticsearch_cluster_health_status_code:
       name: 集群健康状态
@@ -1842,9 +1866,9 @@ monitor_object_metric:
     elasticsearch_http_total_opened_rate:
       name: HTTP 每秒新建连接数
       desc: HTTP 服务流量指标，反映近期业务请求的流量变化情况，可辅助排查流量峰值相关问题
-    elasticsearch_thread_pool_index_queue:
-      name: 索引线程池队列长度
-      desc: 写入性能预警指标，反映写入请求队列的长度情况；队列长度持续增长表示写入处理能力不足，会导致请求延迟升高
+    elasticsearch_thread_pool_write_queue:
+      name: 写入线程池队列长度
+      desc: 批量写入性能预警指标，反映批量(bulk)写入请求队列的长度情况；队列长度持续增长表示批量数据处理能力不足，会影响数据摄入吞吐量，导致数据同步延迟
     elasticsearch_thread_pool_search_queue:
       name: 搜索线程池队列长度
       desc: 查询性能预警指标，反映查询请求队列的长度情况；队列长度持续增长表示查询处理能力不足，会影响业务使用体验
@@ -1908,30 +1932,30 @@ monitor_object_metric:
       name: 停止的容器数
       desc: 该指标表示 Docker 主机上停止的容器数量
   Pod:
-    prometheus_remote_write_kube_pod_status_phase:
+    pod_status_phase:
       name: Pod状态
-      desc: 获取Pod当前的状态信息，例如已运行、已停止等
-    prometheus_remote_write_kube_pod_container_status_restarts_total:
-      name: 重启次数
-      desc: 监控Pod内各个容器的重启次数，以评估稳定性与问题频发程度
+      desc: 表示 Kubernetes Pod 当前的生命周期阶段，包括 Pending、Running、Succeeded、Failed、Unknown 等状态
+    pod_container_restarts_total:
+      name: 容器重启总次数
+      desc: 表示 Pod 中所有容器的累计重启次数，频繁重启可能表明存在应用崩溃、健康检查失败或资源不足等问题
     pod_cpu_utilization:
       name: CPU使用率
-      desc: 计算Pod CPU使用率，即容器CPU限制与请求的差值，反映CPU资源的入住情况
+      desc: 表示 Pod 当前 CPU 实际使用量与请求量（request）之间的比例，用于评估 Pod 的计算资源使用效率
     pod_memory_utilization:
       name: 内存使用率
-      desc: 计算Pod的内存利用率，即内存限制与请求的比例
-    prometheus_remote_write_container_fs_writes_total:
+      desc: 表示 Pod 当前内存实际使用量与请求量（request）之间的比例，用于评估 Pod 的内存资源使用效率
+    pod_io_writes_rate:
       name: I/O写速率
-      desc: 此指标表示特定Pod在指定时间段内的I/O写入操作速率，帮助分析应用程序对存储系统的写入需求
+      desc: 表示 Pod 中容器每秒的磁盘写入字节数，反映应用对存储子系统的写入负载情况
     pod_io_reads_rate:
       name: I/O读速率
-      desc: 此指标表示特定Pod在指定时间段内的I/O读取操作速率，帮助分析应用程序对存储系统的读取需求
+      desc: 表示 Pod 中容器每秒的磁盘读取字节数，反映应用对存储子系统的读取负载情况
     pod_network_in_rate:
       name: 网络入流量速率
-      desc: 监控Pod的网络流入流量速率，通过Pod的容器数量与IP数量计算而得
+      desc: 表示 Pod 每秒通过网络接收的数据量（单位：字节/秒），用于分析入站网络流量
     pod_network_out_rate:
       name: 网络出流量速率
-      desc: 监控Pod的网络流出流量速率，通过Pod的容器数量与IP数量计算而得
+      desc: 表示 Pod 每秒通过网络发送的数据量（单位：字节/秒），用于分析出站网络流量
   vCenter:
     vmware_esxi_count:
       name: ESXI数量
@@ -2032,64 +2056,64 @@ monitor_object_metric:
       name: 卷已用空间
       desc: 存储卷的已用空间大小，结合总空间可计算使用率，监控存储增长趋势。
   Zookeeper:
-    version:
+    zookeeper_version:
       name: 版本信息
       desc: Zookeeper服务的运行版本标识，用于识别软件版本与兼容性。
-    num_alive_connections:
+    zookeeper_num_alive_connections:
       name: 活跃连接数
       desc: 当前活跃的客户端连接数量，是衡量服务实时负载和并发压力的关键指标。
-    outstanding_requests:
+    zookeeper_outstanding_requests:
       name: 待处理请求数
       desc: 当前排队等待处理的请求数量，值持续偏高表明服务处理能力可能出现瓶颈。
-    avg_latency:
+    zookeeper_avg_latency:
       name: 平均延迟
       desc: 处理客户端请求的平均响应时间，是评估Zookeeper核心性能的主要指标。
-    max_latency:
+    zookeeper_max_latency:
       name: 最大延迟
       desc: 处理单个请求所记录的最大响应时间，反映极端情况下的性能瓶颈。
-    min_latency:
+    zookeeper_min_latency:
       name: 最小延迟
       desc: 处理请求的最小响应时间，代表服务在理想条件下的最佳性能表现。
-    packets_received:
+    zookeeper_packets_received:
       name: 接收数据包数
       desc: 服务器累计接收的网络数据包总数，用于衡量网络输入流量。
-    packets_sent:
+    zookeeper_packets_sent:
       name: 发送数据包数
       desc: 服务器累计发送的网络数据包总数，用于衡量网络输出流量。
-    watch_count:
+    zookeeper_watch_count:
       name: Watch监控数
       desc: 当前在ZNode上注册的监听器数量，反映客户端对数据变更的关注度。
-    ephemerals_count:
+    zookeeper_ephemerals_count:
       name: 临时节点数
       desc: 当前数据树中临时节点的数量，通常与会话生命周期关联。
-    znode_count:
+    zookeeper_znode_count:
       name: ZNode总数
       desc: Zookeeper数据树中所有节点的总数，反映数据结构的规模和复杂度。
-    approximate_data_size:
+    zookeeper_approximate_data_size:
       name: 数据大小
       desc: 存储的所有ZNode数据的近似内存占用大小，用于容量规划。
-    open_file_descriptor_count:
+    zookeeper_open_file_descriptor_count:
       name: 打开文件描述符
       desc: 当前进程打开的文件描述符数量，接近系统上限时可能影响服务。
-    max_file_descriptor_count:
+    zookeeper_max_file_descriptor_count:
       name: 最大文件描述符
       desc: 操作系统允许该进程打开的最大文件描述符数量，是资源限制的配置项。
-    fsync_threshold_exceed_count:
+    zookeeper_fsync_threshold_exceed_count:
       name: Fsync超限计数
       desc: 事务日志同步到磁盘的耗时超过阈值的次数，反映磁盘I/O性能问题。
-    packets_received_rate:
+    zookeeper_packets_received_rate:
       name: 数据包接收速率
       desc: 过去5分钟内的平均数据包接收速率，反映实时的网络输入负载。
-    packets_sent_rate:
+    zookeeper_packets_sent_rate:
       name: 数据包发送速率
       desc: 过去5分钟内的平均数据包发送速率，反映实时的网络输出负载。
-    fsync_threshold_exceed_rate:
+    zookeeper_fsync_threshold_exceed_rate:
       name: Fsync超限速率
       desc: 过去5分钟内Fsync操作超限的频率，用于监控磁盘性能的恶化趋势。
-    avg_latency_avg:
+    zookeeper_avg_latency_avg:
       name: 平均延迟趋势
       desc: 过去5分钟内平均延迟的滑动平均值，平滑瞬时波动以观察稳定趋势。
-    max_latency_max:
+    zookeeper_max_latency_max:
       name: 最大延迟峰值
       desc: 过去5分钟内记录的最大延迟值，用于识别时间段内的最严重性能事件。
   Kafka:

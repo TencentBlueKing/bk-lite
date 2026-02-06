@@ -24,7 +24,7 @@ class CLI:
             run_name: MLflow run名称（可选）
             
         示例:
-            classify_classification_server train \\
+            classify_text_classification_server train \\
                 --dataset_path=./support-files/scripts/data/train.csv \\
                 --config=./support-files/scripts/train.json \\
                 --run_name="text_classification_experiment"
@@ -39,8 +39,8 @@ class CLI:
         
         try:
             # 导入训练器和配置
-            from classify_classification_server.training.trainer import UniversalTrainer
-            from classify_classification_server.training.config.loader import TrainingConfig
+            from classify_text_classification_server.training.trainer import UniversalTrainer
+            from classify_text_classification_server.training.config.loader import TrainingConfig
             
             # 加载配置
             training_config = TrainingConfig(config)

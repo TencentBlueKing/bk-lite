@@ -5,11 +5,14 @@
 from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
-
-from apps.alerts.constants.constants import AlertStatus, LogAction, LogTargetType, AlertOperate
-from apps.alerts.models.alert_operator import  AlarmStrategy
-from apps.alerts.models.models import Alert
-from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.constants import (
+    AlertStatus,
+    LogAction,
+    LogTargetType,
+    AlertOperate,
+    SessionStatus,
+)
+from apps.alerts.models import Alert, AlarmStrategy, OperatorLog
 from apps.alerts.utils.util import split_list
 from apps.core.logger import alert_logger as logger
 
@@ -102,6 +105,14 @@ class AlertAutoClose:
             if not strategy.auto_close or strategy.close_minutes <= 0:
                 logger.debug(
                     f"告警 {alert.id} 的策略 {strategy.id} 配置为不自动关闭 (auto_close={strategy.auto_close}, close_minutes={strategy.close_minutes})")
+                return False
+
+            # 会话窗口在未确认前不参与自动关闭倒计时
+            if alert.is_session_alert and alert.session_status in SessionStatus.NO_CONFIRMED:
+                logger.debug(
+                    "告警 %s 为会话窗口且尚未确认，跳过自动关闭计算",
+                    alert.alert_id,
+                )
                 return False
 
             # 获取告警的事件时间

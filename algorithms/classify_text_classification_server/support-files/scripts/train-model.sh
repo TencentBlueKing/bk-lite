@@ -152,7 +152,7 @@ log_info "MLflow Tracking URI: ${MLFLOW_TRACKING_URI}"
 export MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}"
 
 # 构建训练命令（使用已注册的 CLI 入口点）
-TRAIN_CMD="classify_classification_server train \
+TRAIN_CMD="classify_text_classification_server train \
     --dataset-path \"${EXTRACT_DIR}\" \
     --config \"${CONFIG_FILE}\""
 

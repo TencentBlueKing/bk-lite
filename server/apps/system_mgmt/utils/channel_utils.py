@@ -105,7 +105,7 @@ def send_email_to_user(channel_config, content, receivers, title, attachments=No
 
 def send_by_bot(channel_obj: Channel, content, receivers):
     if receivers:
-        to_user_mentions = " ".join(f"@{name}" for name in receivers)
+        to_user_mentions = " ".join(f"@{name} " for name in receivers)
         content = f"{content}\nTo: {to_user_mentions}"
     channel_config = channel_obj.config
     payload = {"msgtype": "markdown", "markdown": {"content": content}}

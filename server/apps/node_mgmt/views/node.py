@@ -197,11 +197,13 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
     @action(methods=["post"], detail=False, url_path=r"search")
     def search(self, request, *args, **kwargs):
         # 获取权限规则
+        include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
             request.COOKIES.get("current_team"),
             "node_mgmt",
             NodeConstants.MODULE,
+            include_children=include_children,
         )
 
         # 应用权限过滤

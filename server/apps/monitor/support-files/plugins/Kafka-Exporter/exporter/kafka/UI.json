@@ -20,13 +20,28 @@
       }
     },
     {
+      "name": "ENV_SASL_ENABLED",
+      "label": "启用认证",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "是否启用 SASL 认证（用户名和密码）",
+      "transform_on_edit": {
+        "origin_path": "child.env_config.SASL_ENABLED__{{config_id}}"
+      }
+    },
+    {
       "name": "ENV_SASL_USERNAME",
       "label": "用户名",
       "type": "input",
-      "required": false,
+      "required": true,
       "description": "用于访问接口的用户名",
       "widget_props": {
         "placeholder": "用户名"
+      },
+      "dependency": {
+        "field": "ENV_SASL_ENABLED",
+        "value": true
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.SASL_USERNAME__{{config_id}}"
@@ -36,10 +51,14 @@
       "name": "ENV_SASL_PASSWORD",
       "label": "密码",
       "type": "password",
-      "required": false,
+      "required": true,
       "description": "对应的登录密码",
       "widget_props": {
         "placeholder": "密码"
+      },
+      "dependency": {
+        "field": "ENV_SASL_ENABLED",
+        "value": true
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.SASL_PASSWORD__{{config_id}}"

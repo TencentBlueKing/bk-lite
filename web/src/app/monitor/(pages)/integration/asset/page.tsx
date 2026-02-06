@@ -161,24 +161,32 @@ const Asset = () => {
                 )}：${timeText}`;
 
                 return (
-                  <Tooltip
-                    key={`${plugin.name}-${index}`}
-                    title={tooltipTitle}
-                    color="#000"
-                  >
-                    <Tag
-                      color={statusInfo.color}
-                      className="cursor-pointer"
-                      onClick={() =>
-                        openTemplateDrawer(record, {
-                          selectedConfigId: isAuto ? plugin.name : undefined,
-                          showTemplateList: false
-                        })
+                  <>
+                    <style>{`
+                      .asset-tooltip.ant-tooltip {
+                        max-width: none;
                       }
+                    `}</style>
+                    <Tooltip
+                      key={`${plugin.name}-${index}`}
+                      title={tooltipTitle}
+                      color="#000"
+                      overlayClassName="asset-tooltip"
                     >
-                      {plugin.display_name || '--'}
-                    </Tag>
-                  </Tooltip>
+                      <Tag
+                        color={statusInfo.color}
+                        className="cursor-pointer"
+                        onClick={() =>
+                          openTemplateDrawer(record, {
+                            selectedConfigId: isAuto ? plugin.name : undefined,
+                            showTemplateList: false
+                          })
+                        }
+                      >
+                        {plugin.display_name || '--'}
+                      </Tag>
+                    </Tooltip>
+                  </>
                 );
               })}
             </div>

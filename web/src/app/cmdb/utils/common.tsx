@@ -381,7 +381,10 @@ export const getFieldItem = (config: {
   isEdit: boolean;
   value?: any;
   hideUserAvatar?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
 }) => {
+  const { disabled, placeholder } = config;
   if (config.isEdit) {
     switch (config.fieldItem.attr_type) {
       case 'user':
@@ -390,6 +393,8 @@ export const getFieldItem = (config: {
           <Select
             mode="multiple"
             showSearch
+            disabled={disabled}
+            placeholder={placeholder}
             filterOption={(input, opt: any) => {
               if (typeof opt?.children?.props?.text === 'string') {
                 return opt?.children?.props?.text
@@ -414,6 +419,8 @@ export const getFieldItem = (config: {
         return (
           <Select
             showSearch
+            disabled={disabled}
+            placeholder={placeholder}
             filterOption={(input, opt: any) => {
               if (typeof opt?.children === 'string') {
                 return opt?.children
@@ -432,7 +439,7 @@ export const getFieldItem = (config: {
         );
       case 'bool':
         return (
-          <Select>
+          <Select disabled={disabled} placeholder={placeholder}>
             {[
               { id: true, name: 'Yes' },
               { id: false, name: 'No' },
@@ -444,24 +451,33 @@ export const getFieldItem = (config: {
           </Select>
         );
       case 'organization':
-        return <GroupTreeSelector multiple={true} />;
+        return <GroupTreeSelector multiple={true} disabled={disabled} />;
       case 'time':
         const timeOption = config.fieldItem.option as TimeAttrOption;
         const displayFormat = timeOption?.display_format || 'datetime';
         const showTime = displayFormat === 'datetime';
         const format =
           displayFormat === 'datetime' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD';
-        return <DatePicker showTime={showTime} format={format} />;
+        return <DatePicker showTime={showTime} format={format} disabled={disabled} placeholder={placeholder} style={{ width: '100%' }} />;
       case 'int':
-        return <InputNumber style={{ width: '100%' }} />;
+        const intOption = config.fieldItem.option as IntAttrOption;
+        return (
+          <InputNumber
+            style={{ width: '100%' }}
+            disabled={disabled}
+            placeholder={placeholder}
+            min={intOption?.min_value !== '' ? Number(intOption?.min_value) : undefined}
+            max={intOption?.max_value !== '' ? Number(intOption?.max_value) : undefined}
+          />
+        );
       default:
         if (config.fieldItem.attr_type === 'str') {
           const strOption = config.fieldItem.option as StrAttrOption;
           if (strOption?.widget_type === 'multi_line') {
-            return <Input.TextArea rows={4} />;
+            return <Input.TextArea rows={3} disabled={disabled} placeholder={placeholder} />;
           }
         }
-        return <Input />;
+        return <Input disabled={disabled} placeholder={placeholder} />;
     }
   }
   switch (config.fieldItem.attr_type) {

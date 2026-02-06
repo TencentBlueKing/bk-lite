@@ -11,8 +11,8 @@ from datetime import timedelta
 from typing import Dict, Any, Optional
 
 from apps.alerts.common.notify.base import NotifyParamsFormat
-from apps.alerts.models.models import Alert, Level
-from apps.alerts.models.alert_operator import AlertReminderTask, AlertAssignment
+from apps.alerts.models import Alert, AlertReminderTask, AlertAssignment, Level
+from apps.alerts.constants import SessionStatus
 from apps.core.logger import alert_logger as logger
 
 
@@ -172,6 +172,14 @@ class ReminderService:
     def _send_reminder_notification(cls, assignment: AlertAssignment, alert: Alert) -> bool:
         """发送提醒通知"""
         try:
+            if alert.is_session_alert and alert.session_status != SessionStatus.CONFIRMED:
+                logger.info(
+                    "提醒任务跳过会话观察期告警: alert_id=%s, session_status=%s",
+                    alert.alert_id,
+                    alert.session_status,
+                )
+                return False
+
             username_list = assignment.personnel
             if not username_list:
                 logger.warning(f"提醒任务 {assignment.id} 没有配置接收人员，无法发送通知")

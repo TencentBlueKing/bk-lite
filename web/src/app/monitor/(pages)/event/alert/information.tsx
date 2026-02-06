@@ -71,7 +71,8 @@ const Information: React.FC<InformationProps> = ({
   };
 
   const getUsers = (id: string) => {
-    return userList.find((item: UserItem) => item.id === id)?.username || '--';
+    const user = userList.find((item: UserItem) => item.id === id);
+    return user?.display_name || '--';
   };
 
   const showNotifiers = (row: TableDataItem) => {
@@ -219,7 +220,11 @@ const Information: React.FC<InformationProps> = ({
                 allowSelect={false}
                 eventData={eventData}
                 data={chartData}
-                threshold={formData.policy?.threshold}
+                threshold={
+                  formData.alert_type === 'no_data'
+                    ? []
+                    : formData.policy?.threshold
+                }
                 unit={formData.metric?.unit}
                 metric={formData.metric}
               />

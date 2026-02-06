@@ -11,6 +11,7 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.utils import mlflow_service
+from apps.mlops.services import get_image_by_prefix
 import requests
 import os
 import pandas as pd
@@ -153,6 +154,10 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             logger.info(f"  Dataset: {train_job.dataset_version.dataset_file.name}")
             logger.info(f"  Config: {train_job.config_url.name}")
 
+            # 动态获取训练镜像
+            train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
+            logger.info(f"  Train Image: {train_image}")
+
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
@@ -163,7 +168,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="bklite/classify_timeseries_server:latest",
+                train_image=train_image,
             )
 
             # 更新任务状态
@@ -605,11 +610,6 @@ class TimeSeriesPredictTrainDataViewSet(ModelViewSet):
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    @action(detail=True, methods=["post"], url_path="release")
-    @HasPermission("timeseries_predict_train_data-Release")
-    def release_file(self, request, *args, **kwargs):
-        pass
-
 
 class TimeSeriesPredictServingViewSet(ModelViewSet):
     queryset = TimeSeriesPredictServing.objects.select_related(
@@ -789,7 +789,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="bklite/classify_timeseries_server:latest",
+                    train_image=get_image_by_prefix(
+                        self.MLFLOW_PREFIX, serving.train_job.algorithm
+                    ),
                 )
 
                 # 启动成功，仅更新容器信息
@@ -881,9 +883,10 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
         container_id = f"TimeseriesPredict_Serving_{instance.id}"
 
-        # 获取容器实际状态（更新前）
-        container_state = instance.container_info.get("state")
-        container_port = instance.container_info.get("port")
+        # 获取容器实际状态（更新前），防御性处理 container_info 为空的情况
+        container_info = instance.container_info or {}
+        container_state = container_info.get("state")
+        container_port = container_info.get("port")
 
         # 更新数据库
         response = super().update(request, *args, **kwargs)
@@ -943,7 +946,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=instance.port,
-                    train_image="bklite/classify_timeseries_server:latest",
+                    train_image=get_image_by_prefix(
+                        self.MLFLOW_PREFIX, instance.train_job.algorithm
+                    ),
                 )
 
                 # 更新容器信息（status 由用户控制，不修改）
@@ -1010,7 +1015,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="bklite/classify_timeseries_server:latest",
+                    train_image=get_image_by_prefix(
+                        self.MLFLOW_PREFIX, serving.train_job.algorithm
+                    ),
                 )
 
                 # 正常启动成功，仅更新容器信息
@@ -1233,8 +1240,8 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     {"error": "data 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 获取实际运行端口
-            port = serving.container_info.get("port")
+            # 获取实际运行端口，防御性处理 container_info 为空的情况
+            port = (serving.container_info or {}).get("port")
             if not port:
                 return Response(
                     {"error": "服务端口未配置，请确认服务已启动"},

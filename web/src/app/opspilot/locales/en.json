@@ -664,6 +664,9 @@
     "deleteConfirm": "Are you sure you want to delete this skill?"
   },
   "chatflow": {
+    "lock": "Lock canvas",
+    "unlock": "Unlock canvas",
+    "autoLayout": "Auto layout",
     "nodeConfig": {
       "paramName": "Parameter Name",
       "webAccessAddress": "Access URL",

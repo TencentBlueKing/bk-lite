@@ -106,7 +106,13 @@ class Metrics:
         # 替换查询语句中的占位符
         query = metric_query.replace("__$labels__", labels_str)
 
-        dimension_names = [d["name"] for d in dimensions] if dimensions else []
+        # 兼容两种 dimensions 格式: [{"name": "xxx"}] 或 ["xxx"]
+        if dimensions:
+            dimension_names = [
+                d["name"] if isinstance(d, dict) else d for d in dimensions
+            ]
+        else:
+            dimension_names = []
         group_by = ", ".join(dimension_names) if dimension_names else ""
 
         # 使用 any() 聚合函数进行即时查询

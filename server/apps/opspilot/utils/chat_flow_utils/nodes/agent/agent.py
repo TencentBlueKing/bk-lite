@@ -245,7 +245,10 @@ class AgentNode(BaseNodeExecutor):
         # 使用同步版本的 invoke_chat,避免异步上下文冲突
         data, _, _ = ChatService.invoke_chat(llm_params)
 
-        return {output_key: data["message"]}
+        result = {output_key: data["message"]}
+        if data.get("browser_steps"):
+            result["browser_steps"] = data["browser_steps"]
+        return result
 
 
 # 向后兼容的别名

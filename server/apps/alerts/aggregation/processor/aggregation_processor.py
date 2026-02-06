@@ -4,9 +4,14 @@ import re
 from django.utils import timezone
 from django.db import transaction
 from apps.alerts.aggregation.recovery.recovery_checker import AlertRecoveryChecker
-from apps.alerts.models.models import Event, Alert, Level
-from apps.alerts.models.alert_operator import AlarmStrategy
-from apps.alerts.constants.constants import EventAction, AlarmStrategyType, AlertStatus
+from apps.alerts.models.models import  Level
+from apps.alerts.models import AlarmStrategy, Event, Alert
+from apps.alerts.constants import (
+    EventAction,
+    AlarmStrategyType,
+    AlertStatus,
+    SessionStatus,
+)
 from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
 from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.alerts.aggregation.query.builder import SQLBuilder
@@ -242,7 +247,19 @@ class AggregationProcessor:
 
                     # 如果是新创建的告警，记录ID用于后续自动分配
                     if is_new_alert:
-                        new_alert_ids.append(alert.alert_id)
+                        should_delay_assignment = (
+                            alert.is_session_alert
+                            and alert.session_status == SessionStatus.OBSERVING
+                        )
+
+                        if should_delay_assignment:
+                            logger.info(
+                                "策略 %s: 新建会话窗口告警 %s 仍在观察期，等待超时确认后再自动分派",
+                                strategy.name,
+                                alert.alert_id,
+                            )
+                        else:
+                            new_alert_ids.append(alert.alert_id)
 
                     # 检查是否应该自动恢复
                     if AlertRecoveryChecker.check_and_recover_alert(alert):

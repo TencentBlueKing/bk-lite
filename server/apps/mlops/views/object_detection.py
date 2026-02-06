@@ -18,6 +18,7 @@ from apps.mlops.utils.webhook_client import (
     WebhookConnectionError,
     WebhookTimeoutError,
 )
+from apps.mlops.services import get_image_by_prefix
 import os
 import pandas as pd
 import numpy as np
@@ -31,7 +32,7 @@ class ObjectDetectionDatasetViewSet(ModelViewSet):
     serializer_class = ObjectDetectionDatasetSerializer
     filterset_class = ObjectDetectionDatasetFilter
     pagination_class = CustomPageNumberPagination
-    ordering = "-id"
+    ordering = ("-id",)
     permission_key = "dataset.object_detection_dataset"
 
     @HasPermission("object_detection_datasets-View")
@@ -373,6 +374,10 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                 if device:
                     logger.info(f"  Device: {device}")
 
+            # 动态获取训练镜像
+            train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
+            logger.info(f"  Train Image: {train_image}")
+
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
@@ -383,7 +388,7 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="bklite/classify_object_detection_server:latest",  # YOLO 目标检测训练镜像
+                train_image=train_image,
                 device=device,
             )
 
@@ -932,13 +937,19 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             )
 
             try:
+                # 动态获取服务镜像
+                train_image = get_image_by_prefix(
+                    self.MLFLOW_PREFIX, serving.train_job.algorithm
+                )
+                logger.info(f"  Service Image: {train_image}")
+
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
                     container_id,
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="bklite/classify_object_detection_server:latest",
+                    train_image=train_image,
                     device=device,
                 )
 
@@ -1040,13 +1051,19 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             )
 
             try:
+                # 动态获取服务镜像
+                train_image = get_image_by_prefix(
+                    self.MLFLOW_PREFIX, serving.train_job.algorithm
+                )
+                logger.info(f"  Service Image: {train_image}")
+
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
                     serving_id,
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="bklite/classify_object_detection_server:latest",  # YOLO 目标检测推理镜像
+                    train_image=train_image,
                     device=device,
                 )
 
