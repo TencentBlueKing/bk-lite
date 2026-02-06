@@ -116,23 +116,24 @@ class GenericViewSetFun(object):
         fields = [i.name for i in queryset.model._meta.fields]
         org_field = getattr(cls, "ORGANIZATION_FIELD", "team")
         if "created_by" in fields:
+            creator_query = Q(created_by=request.user.username, domain=request.user.domain)
             if include_children:
                 # 提取当前组及其所有子组的 ID
                 group_tree = getattr(user, "group_tree", [])
                 team_ids = cls.extract_child_group_ids(group_tree, int(current_team))
 
                 if team_ids:
-                    # 查询组织 ID 在子组列表中，且创建者和域名是当前用户的数据
+                    # 查询组织 ID 在子组列表中，或者是当前用户创建的数据
                     team_query = Q()
                     for team_id in team_ids:
                         team_query |= Q(**{f"{org_field}__contains": team_id})
-                    query = Q(team_query, created_by=request.user.username, domain=request.user.domain)
+                    query = team_query | creator_query
                 else:
                     # 没有找到子组，使用当前组
-                    query = Q(**{f"{org_field}__contains": int(current_team)}, created_by=request.user.username, domain=request.user.domain)
+                    query = Q(**{f"{org_field}__contains": int(current_team)}) | creator_query
             else:
-                # 不包含子组，使用原逻辑
-                query = Q(**{f"{org_field}__contains": int(current_team)}, created_by=request.user.username, domain=request.user.domain)
+                # 不包含子组，team包含当前组 或者 是当前用户创建的
+                query = Q(**{f"{org_field}__contains": int(current_team)}) | creator_query
         else:
             query = Q()
         return current_team, include_children, org_field, query
