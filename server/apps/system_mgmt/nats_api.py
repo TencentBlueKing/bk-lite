@@ -219,8 +219,18 @@ def get_client_detail(client_id):
 
 
 @nats_client.register
-def get_group_users(group):
-    users = User.objects.filter(group_list__contains=int(group)).values("id", "username", "display_name")
+def get_group_users(group, include_children=False):
+    """
+    获取组织下的用户列表
+    :param group: 组织ID
+    :param include_children: 是否包含子组织的用户
+    :return: 用户列表
+    """
+    if include_children:
+        group_ids = GroupUtils.get_group_with_descendants(group)
+        users = User.objects.filter(group_list__overlap=group_ids).values("id", "username", "display_name")
+    else:
+        users = User.objects.filter(group_list__contains=int(group)).values("id", "username", "display_name")
     return {"result": True, "data": list(users)}
 
 
