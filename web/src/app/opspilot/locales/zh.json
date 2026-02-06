@@ -45,6 +45,7 @@
       "nodeIndex": "节点顺序",
       "triggerLogs": "触发日志",
       "outputData": "输出信息",
+      "executionProcess": "执行过程（{{count}} 个步骤）",
       "title": "会话日志",
       "workflowDetail": "工作流详情",
       "description": "你可以查看用户与机器人之间的对话记录，并还原对话场景。"
