@@ -15,14 +15,14 @@ import type { AlgorithmConfigListItem, AlgorithmType } from '@/app/mlops/types/a
 
 const { Search } = Input;
 
-// 算法类型显示名称映射
-const ALGORITHM_TYPE_LABELS: Record<string, { zh: string; en: string }> = {
-  anomaly_detection: { zh: '异常检测', en: 'Anomaly Detection' },
-  timeseries_predict: { zh: '时序预测', en: 'Timeseries Predict' },
-  log_clustering: { zh: '日志聚类', en: 'Log Clustering' },
-  classification: { zh: '文本分类', en: 'Text Classification' },
-  image_classification: { zh: '图片分类', en: 'Image Classification' },
-  object_detection: { zh: '目标检测', en: 'Object Detection' },
+// i18n key mapping for algorithm types
+const ALGORITHM_TYPE_I18N_KEYS: Record<string, string> = {
+  anomaly_detection: 'algorithmType.anomaly_detection',
+  timeseries_predict: 'algorithmType.timeseries_predict',
+  log_clustering: 'algorithmType.log_clustering',
+  classification: 'algorithmType.classification',
+  image_classification: 'algorithmType.image_classification',
+  object_detection: 'algorithmType.object_detection',
 };
 
 export interface ModalRef {
@@ -235,7 +235,7 @@ const AlgorithmConfigPage = () => {
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
           <Tag color="blue">
-            {ALGORITHM_TYPE_LABELS[algorithmType]?.zh || algorithmType}
+            {t(ALGORITHM_TYPE_I18N_KEYS[algorithmType] || algorithmType)}
           </Tag>
           <span className="text-gray-500 text-sm">
             {t('algorithmConfig.pageDescription')}
