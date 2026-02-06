@@ -1866,9 +1866,9 @@ monitor_object_metric:
     elasticsearch_http_total_opened_rate:
       name: HTTP 每秒新建连接数
       desc: HTTP 服务流量指标，反映近期业务请求的流量变化情况，可辅助排查流量峰值相关问题
-    elasticsearch_thread_pool_index_queue:
-      name: 索引线程池队列长度
-      desc: 写入性能预警指标，反映写入请求队列的长度情况；队列长度持续增长表示写入处理能力不足，会导致请求延迟升高
+    elasticsearch_thread_pool_write_queue:
+      name: 写入线程池队列长度
+      desc: 批量写入性能预警指标，反映批量(bulk)写入请求队列的长度情况；队列长度持续增长表示批量数据处理能力不足，会影响数据摄入吞吐量，导致数据同步延迟
     elasticsearch_thread_pool_search_queue:
       name: 搜索线程池队列长度
       desc: 查询性能预警指标，反映查询请求队列的长度情况；队列长度持续增长表示查询处理能力不足，会影响业务使用体验
