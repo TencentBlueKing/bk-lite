@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.tasks.base import mark_release_as_failed
 
 
 @shared_task(
@@ -188,22 +189,14 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
 
     except SoftTimeLimitExceeded:
         logger.error(f"数据集发布超时 - Release ID: {release_id}")
-        _mark_as_failed(release_id)
+        from apps.mlops.models.log_clustering import LogClusteringDatasetRelease
+
+        mark_release_as_failed(LogClusteringDatasetRelease, release_id)
         raise
 
     except Exception as exc:
         logger.error(f"数据集发布失败 - Release ID: {release_id}", exc_info=True)
-        _mark_as_failed(release_id)
-        raise
-
-
-def _mark_as_failed(release_id):
-    """标记发布记录为失败状态"""
-    try:
         from apps.mlops.models.log_clustering import LogClusteringDatasetRelease
 
-        release = LogClusteringDatasetRelease.objects.get(id=release_id)
-        release.status = "failed"
-        release.save(update_fields=["status"])
-    except Exception as e:
-        logger.error(f"更新失败状态失败 - Release ID: {release_id} - {str(e)}")
+        mark_release_as_failed(LogClusteringDatasetRelease, release_id)
+        raise
