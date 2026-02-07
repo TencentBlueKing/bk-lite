@@ -6,7 +6,7 @@ from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.mlops.constants import DatasetReleaseStatus, TrainJobStatus
 from apps.mlops.models.data_points_features_info import DataPointFeaturesInfo
-from apps.mlops.models.mixins import TrainDataFileCleanupMixin
+from apps.mlops.models.mixins import TrainDataFileCleanupMixin, TrainJobConfigSyncMixin
 
 
 class AnomalyDetectionDataset(MaintainerInfo, TimeInfo):
@@ -132,8 +132,10 @@ class AnomalyDetectionDatasetRelease(MaintainerInfo, TimeInfo):
         return f"{self.dataset.name} - {self.version}"
 
 
-class AnomalyDetectionTrainJob(MaintainerInfo, TimeInfo, DataPointFeaturesInfo):
+class AnomalyDetectionTrainJob(TrainJobConfigSyncMixin, MaintainerInfo, TimeInfo, DataPointFeaturesInfo):
     """异常检测训练任务"""
+
+    _model_prefix = "AnomalyDetection"
 
     name = models.CharField(max_length=100, verbose_name="任务名称")
     description = models.TextField(blank=True, null=True, verbose_name="任务描述")
@@ -187,106 +189,6 @@ class AnomalyDetectionTrainJob(MaintainerInfo, TimeInfo, DataPointFeaturesInfo):
     class Meta:
         verbose_name = "异常检测训练任务"
         verbose_name_plural = "异常检测训练任务"
-
-    def save(self, *args, **kwargs):
-        """保存时自动同步配置到 MinIO（先保存获得 pk，再同步文件）"""
-        from apps.core.logger import mlops_logger as logger
-
-        # 如果仅更新指定字段且不包含配置相关字段，跳过文件同步
-        update_fields = kwargs.get("update_fields")
-        config_related_fields = {
-            "hyperopt_config",
-            "config_url",
-            "algorithm",
-            "dataset_version",
-        }
-
-        if update_fields and not any(
-            field in config_related_fields for field in update_fields
-        ):
-            # 仅更新状态等非配置字段，直接保存
-            super().save(*args, **kwargs)
-            return
-
-        # 1. 先保存到数据库，获得 pk
-        super().save(*args, **kwargs)
-
-        # 2. 基于真实 pk 同步文件到 MinIO
-        config_updated = False
-
-        if self.hyperopt_config:
-            # 有配置内容 → 补全并上传到 MinIO
-            self._sync_config_to_minio()
-            config_updated = True
-        elif self.config_url:
-            # 配置为空 → 删除 MinIO 文件
-            try:
-                self.config_url.delete(save=False)
-                logger.info(
-                    f"Deleted config file (empty config) for TrainJob {self.pk}"
-                )
-                self.config_url = None
-                config_updated = True
-            except Exception as e:
-                logger.warning(f"Failed to delete config file: {e}")
-
-        # 3. 如果 config_url 有变化，更新数据库（使用 queryset.update 避免递归 save）
-        if config_updated:
-            self.__class__.objects.filter(pk=self.pk).update(config_url=self.config_url)
-
-    def _sync_config_to_minio(self):
-        """将 hyperopt_config 同步上传到 MinIO（自动补全 model 和 mlflow 配置）"""
-        from django.core.files.base import ContentFile
-        import json
-        import uuid
-        from apps.core.logger import mlops_logger as logger
-
-        # 删除旧文件
-        if self.config_url:
-            try:
-                self.config_url.delete(save=False)
-                logger.info(f"Deleted old config file for TrainJob {self.pk}")
-            except Exception as e:
-                logger.warning(f"Failed to delete old config file: {e}")
-
-        # 补全配置文件
-        try:
-            complete_config = self._build_complete_config()
-
-            # 上传新文件
-            content = json.dumps(complete_config, ensure_ascii=False, indent=2)
-            filename = f"config_{self.pk or 'new'}_{uuid.uuid4().hex[:8]}.json"
-            self.config_url.save(
-                filename,
-                ContentFile(content.encode("utf-8")),
-                save=False,  # 重要：避免递归调用 save()
-            )
-            logger.info(f"Synced config to MinIO for TrainJob {self.pk}: {filename}")
-        except Exception as e:
-            logger.error(f"Failed to sync config to MinIO: {e}", exc_info=True)
-
-    def _build_complete_config(self):
-        """构建完整的配置文件（补全 model、mlflow 和 max_evals 部分）"""
-        # 基础配置（来自前端）
-        config = dict(self.hyperopt_config) if self.hyperopt_config else {}
-
-        # 生成模型标识：AnomalyDetection_algorithm_id（此时 pk 已存在）
-        model_identifier = f"AnomalyDetection_{self.algorithm}_{self.pk}"
-
-        # 确保 hyperparams 存在
-        if "hyperparams" not in config:
-            config["hyperparams"] = {}
-
-        # 强制同步 max_evals（以独立字段为准）
-        config["hyperparams"]["max_evals"] = self.max_evals
-
-        # 补充 model 配置
-        config["model"] = {"type": self.algorithm, "name": model_identifier}
-
-        # 补充 mlflow 配置
-        config["mlflow"] = {"experiment_name": model_identifier}
-
-        return config
 
 
 class AnomalyDetectionServing(MaintainerInfo, TimeInfo):
