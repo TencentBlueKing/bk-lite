@@ -15,6 +15,7 @@ from pathlib import Path
 from collections import defaultdict
 
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.tasks.base import mark_release_as_failed
 
 
 @shared_task(
@@ -211,12 +212,22 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
 
     except SoftTimeLimitExceeded:
         logger.error(f"任务超时 - Release ID: {release_id}")
-        _mark_as_failed(release_id, "任务超时")
+        from apps.mlops.models.image_classification import (
+            ImageClassificationDatasetRelease,
+        )
+
+        mark_release_as_failed(
+            ImageClassificationDatasetRelease, release_id, "任务超时"
+        )
         return {"result": False, "reason": "Task timeout"}
 
     except Exception as e:
         logger.error(f"数据集发布失败: {str(e)}", exc_info=True)
-        _mark_as_failed(release_id, str(e))
+        from apps.mlops.models.image_classification import (
+            ImageClassificationDatasetRelease,
+        )
+
+        mark_release_as_failed(ImageClassificationDatasetRelease, release_id, str(e))
         return {"result": False, "error": str(e)}
 
 
@@ -299,25 +310,3 @@ def _reorganize_images(extract_dir: Path, split_root: Path, metadata: dict) -> d
                 )
 
     return {"total": total, "classes": dict(class_counts)}
-
-
-def _mark_as_failed(release_id, error_message="Unknown error"):
-    """标记发布任务为失败状态"""
-    try:
-        from apps.mlops.models.image_classification import (
-            ImageClassificationDatasetRelease,
-        )
-
-        release = ImageClassificationDatasetRelease.objects.get(id=release_id)
-        release.status = "failed"
-        release.metadata = {
-            "error": error_message,
-            "failed_at": timezone.now().isoformat(),
-        }
-        release.save(update_fields=["status", "metadata"])
-
-        logger.error(
-            f"标记发布任务为失败 - Release ID: {release_id}, 原因: {error_message}"
-        )
-    except Exception as e:
-        logger.error(f"更新失败状态失败: {str(e)}", exc_info=True)
