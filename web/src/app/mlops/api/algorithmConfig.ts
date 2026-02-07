@@ -17,17 +17,7 @@ const useAlgorithmConfigApi = () => {
   const getAlgorithmConfigList = async (
     params?: AlgorithmConfigQueryParams
   ): Promise<{ items: AlgorithmConfigListItem[]; count: number }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.algorithm_type) queryParams.append('algorithm_type', params.algorithm_type);
-    if (params?.name) queryParams.append('name', params.name);
-    if (params?.display_name) queryParams.append('display_name', params.display_name);
-    if (params?.is_active !== undefined) queryParams.append('is_active', String(params.is_active));
-    if (params?.page) queryParams.append('page', String(params.page));
-    if (params?.page_size) queryParams.append('page_size', String(params.page_size));
-
-    const queryString = queryParams.toString();
-    const url = `/mlops/algorithm_configs/${queryString ? `?${queryString}` : ''}`;
-    return await get(url);
+    return await get('/mlops/algorithm_configs/', { params });
   };
 
   // 获取单个算法配置详情

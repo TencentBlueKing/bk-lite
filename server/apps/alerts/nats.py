@@ -13,8 +13,10 @@ from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncHo
 from django.utils import timezone
 
 import nats_client
-from apps.alerts.models import Alert
+from apps.alerts.models.models import Alert
 from apps.core.logger import alert_logger as logger
+from apps.alerts.models.alert_source import AlertSource
+from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
 
 
 def group_dy_date_format(group_by):
@@ -148,6 +150,129 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
         result.append([period_str, period_counts.get(period_str, 0)])
 
     return {"result": True, "data": result, "message": ""}
+
+
+@nats_client.register
+def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
+    """
+    通过 NATS 接收告警事件数据
+    
+    内部 NATS 传递数据，无需认证。记录推送来源以便追踪。
+    
+    Args:
+        kwargs: 包含以下字段
+            - source_id: 告警源ID（可选 默认nats）
+            - events: 事件列表（必填）
+            - pusher: 推送者标识，如系统名称或服务名（必填）如 lite-monitor
+    
+    Returns:
+        {
+            "result": bool,
+            "data": dict,
+            "message": str
+        }
+    
+    Example NATS 调用:
+        subject: "default.receive_alert_events"
+        payload: {
+            "args": [],
+            "kwargs": {
+                "source_id": "nats",
+                "pusher": "monitoring-service",
+                "events": [
+                    {
+                        "title": "CPU使用率过高",
+                        "level": "2",
+                        "message": "主机CPU使用率超过90%",
+                        ...
+                    }
+                ]
+            }
+        }
+    """
+    logger.info(f"=== receive_alert_events via NATS ===, kwargs={kwargs}")
+
+    try:
+        # 提取参数
+        source_id = kwargs.pop("source_id", "nats")
+        events = kwargs.pop("events", [])
+        pusher = kwargs.pop("pusher", None)
+
+        # 参数校验
+        if not source_id:
+            logger.warning("Missing source_id in NATS alert event")
+            return {
+                "result": False,
+                "data": {},
+                "message": "Missing source_id."
+            }
+
+        if not events:
+            logger.warning(f"Missing events from source_id: {source_id}, pusher: {pusher}")
+            return {
+                "result": False,
+                "data": {},
+                "message": "Missing events."
+            }
+
+        if not pusher:
+            logger.warning(f"Missing pusher identifier from source_id: {source_id}")
+            return {
+                "result": False,
+                "data": {},
+                "message": "Missing pusher identifier."
+            }
+
+        event_source = AlertSource.objects.filter(source_id=source_id).first()
+        if not event_source:
+            logger.error(f"Invalid source_id: {source_id}, pusher: {pusher}")
+            return {
+                "result": False,
+                "data": {},
+                "message": f"Invalid source_id: {source_id}"
+            }
+
+        # 创建适配器（内部调用无需密钥验证）
+        adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)
+        # 传递空密钥，因为不需要认证
+        adapter = adapter_class(alert_source=event_source, secret="", events=events)
+
+        # 记录推送来源信息
+        logger.info(
+            f"Processing {len(events)} events from source_id: {source_id}, "
+            f"pusher: {pusher}"
+        )
+
+        # 处理告警事件
+        adapter.main()
+
+        logger.info(
+            f"Successfully processed {len(events)} events from {pusher} "
+            f"(source_id: {source_id})"
+        )
+
+        return {
+            "result": True,
+            "data": {
+                "processed_events": len(events),
+                "source_id": source_id,
+                "pusher": pusher,
+                "timestamp": timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+            },
+            "message": "Events received and processed successfully."
+        }
+
+    except Exception as e:
+        logger.error(
+            f"Error processing alert events via NATS from pusher: {kwargs.get('pusher', 'unknown')}, "
+            f"source_id: {kwargs.get('source_id', 'unknown')}, error: {e}",
+            exc_info=True
+        )
+        return {
+            "result": False,
+            "data": {},
+            "message": f"Error: {str(e)}"
+        }
 
 
 @nats_client.register

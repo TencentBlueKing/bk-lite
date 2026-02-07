@@ -13,8 +13,9 @@ from django.utils import timezone
 from django.db import transaction
 
 from apps.alerts.error import ShieldNotFoundError, EventNotFoundError
-from apps.alerts.models import AlertShield, Event
-from apps.alerts.constants import AlertShieldMatchType, EventStatus
+from apps.alerts.models.models import Event
+from apps.alerts.models.alert_operator import AlertShield
+from apps.alerts.constants.constants import AlertShieldMatchType, EventStatus
 from apps.core.logger import alert_logger as logger
 
 

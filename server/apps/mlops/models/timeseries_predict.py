@@ -4,7 +4,9 @@ from django_minio_backend import MinioBackend, iso_date_prefix
 from apps.core.fields import S3JSONField
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.mlops.constants import DatasetReleaseStatus, TrainJobStatus
 from apps.mlops.models.data_points_features_info import DataPointFeaturesInfo
+from apps.mlops.models.mixins import TrainDataFileCleanupMixin
 
 
 class TimeSeriesPredictDataset(MaintainerInfo, TimeInfo):
@@ -21,7 +23,7 @@ class TimeSeriesPredictDataset(MaintainerInfo, TimeInfo):
         return self.name
 
 
-class TimeSeriesPredictTrainData(MaintainerInfo, TimeInfo):
+class TimeSeriesPredictTrainData(TrainDataFileCleanupMixin, MaintainerInfo, TimeInfo):
     """时间序列预测训练数据模型"""
 
     name = models.CharField(max_length=100, verbose_name="训练数据名称")
@@ -70,47 +72,6 @@ class TimeSeriesPredictTrainData(MaintainerInfo, TimeInfo):
     def __str__(self):
         return f"{self.name} - {self.dataset.name}"
 
-    def save(self, *args, **kwargs):
-        """保存时自动清理旧的训练数据文件"""
-        from django.db import transaction
-        from apps.core.logger import mlops_logger as logger
-
-        # 如果是更新操作,检查文件是否变化
-        if self.pk:
-            with transaction.atomic():
-                try:
-                    old_instance = (
-                        TimeSeriesPredictTrainData.objects.select_for_update().get(
-                            pk=self.pk
-                        )
-                    )
-                    old_file = old_instance.train_data
-                    new_file = self.train_data
-
-                    # 提取文件路径(处理 FieldFile 对象和 None 的情况)
-                    old_path = old_file.name if old_file else None
-                    new_path = new_file.name if new_file else None
-
-                    # 如果旧文件存在且路径发生变化(包括被清空的情况),删除旧文件
-                    if old_path and old_path != new_path:
-                        try:
-                            old_file.delete(save=False)
-                            logger.info(
-                                f"Deleted old train_data file for TimeSeriesPredictTrainData {self.pk}: "
-                                f"old={old_path}, new={new_path or 'None'}"
-                            )
-                        except Exception as delete_err:
-                            logger.warning(
-                                f"Failed to delete old file '{old_path}': {delete_err}"
-                            )
-
-                except TimeSeriesPredictTrainData.DoesNotExist:
-                    pass
-                except Exception as e:
-                    logger.warning(f"Failed to check old train_data file: {e}")
-
-        super().save(*args, **kwargs)
-
 
 class TimeSeriesPredictDatasetRelease(MaintainerInfo, TimeInfo):
     """时间序列预测数据集发布版本"""
@@ -148,14 +109,8 @@ class TimeSeriesPredictDatasetRelease(MaintainerInfo, TimeInfo):
 
     status = models.CharField(
         max_length=20,
-        choices=[
-            ("pending", "待发布"),
-            ("processing", "发布中"),
-            ("published", "已发布"),
-            ("failed", "发布失败"),
-            ("archived", "归档"),
-        ],
-        default="pending",
+        choices=DatasetReleaseStatus.CHOICES,
+        default=DatasetReleaseStatus.PENDING,
         verbose_name="发布状态",
         help_text="数据集发布状态",
     )
@@ -185,13 +140,8 @@ class TimeSeriesPredictTrainJob(MaintainerInfo, TimeInfo):
 
     status = models.CharField(
         max_length=20,
-        choices=[
-            ("pending", "待训练"),
-            ("running", "训练中"),
-            ("completed", "已完成"),
-            ("failed", "训练失败"),
-        ],
-        default="pending",
+        choices=TrainJobStatus.CHOICES,
+        default=TrainJobStatus.PENDING,
         verbose_name="任务状态",
         help_text="训练任务的当前状态",
     )

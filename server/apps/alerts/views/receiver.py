@@ -1,42 +1,29 @@
 # -- coding: utf-8 --
-# @File: source.py
-# @Time: 2025/5/14 11:37
-# @Author: windyzhao
+"""
+告警接收器
+
+处理外部告警源发送过来的告警数据
+"""
 import json
 
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
-from apps.alerts.models import AlertSource
+from apps.alerts.models.alert_source import AlertSource
 from apps.core.utils.exempt import api_exempt
+from apps.core.utils.web_utils import WebUtils
 
 
 @csrf_exempt
 @api_exempt
 def receiver_data(request):
     """
-    {
-    source_type: "monitor",
-    source_id: "monitor_id",
-    secret: "your_secret",
-    events: [
-        {
-            "title": "CPU Usage High",
-            "description": "CPU usage exceeded 80%",
-            "level": "critical",
-            "start_time": "2025-05-14T10:00:00Z",
-            "end_time": "2025-05-14T10:05:00Z",
-            "labels": {"instance": "server1"},
-            "annotations": {"alertname": "HighCPUUsage"},
-            "event_id": "12345",
-            "external_id": "67890",
-            "status": "firing"
-        }
-    ]
-
-    }
-
+    接收告警数据的函数视图
+    
+    :param request: 请求对象
+    :return: JSON响应
     """
     if request.method != "POST":
         return JsonResponse({"status": "error", "message": "Invalid request method."}, status=400)
@@ -66,6 +53,20 @@ def receiver_data(request):
 
         # TODO 若数据量大无法处理，及优化为异步处理 推送到队列
         # send_to_queue(events)
-        return JsonResponse({"status": "success", "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"), "message": "Data received successfully."})
+        return JsonResponse({"status": "success", "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+                             "message": "Data received successfully."})
     except Exception as e:
-        return JsonResponse({"status": "error", "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"), "message": str(e)}, status=500)
+        return JsonResponse({"status": "error", "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+                             "message": str(e)}, status=500)
+
+
+def request_test(requests):
+    """
+    Test function to handle requests.
+
+    :param requests: The request data.
+    :return: A response indicating success or failure.
+    """
+    print("Processing request:", requests)
+    return WebUtils.response_success([])
+

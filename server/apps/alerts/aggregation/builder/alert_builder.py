@@ -1,9 +1,9 @@
 from typing import Dict, List, Any, Optional
 import uuid
 from django.utils import timezone
-from django.db import transaction
-from apps.alerts.models import Alert, Event, AlarmStrategy, Level
-from apps.alerts.constants import AlertStatus, SessionStatus, LevelType
+from apps.alerts.models.models import Alert, Event, Level
+from apps.alerts.models.alert_operator import AlarmStrategy
+from apps.alerts.constants.constants import AlertStatus, SessionStatus, LevelType
 from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.core.logger import alert_logger as logger
 

@@ -2,7 +2,6 @@
 import OperateModal from '@/components/operate-modal';
 import { useState, useImperativeHandle, forwardRef, useRef } from 'react';
 import { useTranslation } from '@/utils/i18n';
-import { exportToCSV } from '@/app/mlops/utils/common';
 import useMlopsManageApi from '@/app/mlops/api/manage';
 import { Upload, Button, message, Checkbox, type UploadFile, type UploadProps, Input, Form, FormInstance } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
@@ -25,6 +24,15 @@ const SUPPORTED_UPLOAD_TYPES = [
 ] as const;
 
 const IMAGE_TYPES = [DatasetType.IMAGE_CLASSIFICATION, DatasetType.OBJECT_DETECTION];
+
+const UPLOAD_HINT_KEYS: Record<string, string> = {
+  [DatasetType.ANOMALY_DETECTION]: 'datasets.uploadHintAnomaly',
+  [DatasetType.TIMESERIES_PREDICT]: 'datasets.uploadHintTimeseries',
+  [DatasetType.CLASSIFICATION]: 'datasets.uploadHintClassification',
+  [DatasetType.IMAGE_CLASSIFICATION]: 'datasets.uploadHintImageClassification',
+  [DatasetType.OBJECT_DETECTION]: 'datasets.uploadHintObjectDetection',
+  [DatasetType.LOG_CLUSTERING]: 'datasets.uploadHintLogClustering',
+};
 
 const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) => {
   const { t } = useTranslation();
@@ -135,9 +143,12 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
 
   const config = FILE_CONFIG[algorithmType];
 
+  const isImageType = IMAGE_TYPES.includes(algorithmType as DatasetType);
+
   const props: UploadProps = {
     name: 'file',
-    multiple: config?.fileType === 'image',
+    multiple: isImageType,
+    directory: isImageType,
     maxCount: config?.maxCount || 1,
     fileList: fileList,
     onChange: handleChange,
@@ -340,41 +351,6 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     resetFormState();
   };
 
-  const downloadTemplate = async () => {
-    const data = [
-      {
-        "value": 27.43789942218143,
-        "timestamp": 1704038400
-      },
-      {
-        "value": 26.033612999373652,
-        "timestamp": 1704038460
-      },
-      {
-        "value": 36.30777324191053,
-        "timestamp": 1704038520
-      },
-      {
-        "value": 33.70226097527219,
-        "timestamp": 1704038580
-      }
-    ];
-    const columns = ['timestamp', 'value']
-    const blob = exportToCSV(data, columns);
-    if (blob) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'template.csv';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } else {
-      message.error(t('datasets.uploadError'));
-    }
-  };
-
   const CheckedType = () => (
     <div className='text-left flex justify-between items-center'>
       <div className='flex-1'>
@@ -418,16 +394,18 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
         </p>
-        <p className="ant-upload-text">{t('datasets.uploadText')}</p>
-        {config?.fileType === 'image' && (
+        <p className="ant-upload-text">
+          {isImageType ? t('datasets.uploadText') : t('datasets.uploadFileText')}
+        </p>
+        <p className="ant-upload-hint" style={{ fontSize: 12, color: '#999', margin: '4px 0 0' }}>
+          {t(UPLOAD_HINT_KEYS[algorithmType])}
+        </p>
+        {isImageType && (
           <p className="ant-upload-hint" style={{ fontSize: 12, color: '#999', margin: '4px 0 0' }}>
             {t(`datasets.fileNameVaild`)}
           </p>
         )}
       </Dragger>
-      {config?.fileType !== 'image' && (
-        <p>{t(`datasets.downloadCSV`)}<Button type='link' onClick={downloadTemplate}>{t('datasets.template')}</Button></p>
-      )}
     </OperateModal>
   )
 });

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useParams  } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { notFound } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import TopSection from '@/components/top-section';
@@ -25,11 +25,12 @@ export default function AlgorithmLayout({ children }: AlgorithmLayoutProps) {
   // Get algorithm display name
   const algorithmConfig = ALGORITHM_TYPE_CONFIG[algorithmType as DatasetType];
   const algorithmTitle = t(algorithmConfig.labelKey);
+  const algorithmDescription = t(`algorithmDesc.${algorithmType}`);
 
   const topSection = (
     <TopSection
       title={algorithmTitle}
-      content={t('traintask.description')}
+      content={algorithmDescription}
     />
   );
 
