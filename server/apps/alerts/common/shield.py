@@ -6,9 +6,7 @@
 # Shield class for handling event shielding operations.
 """
 
-import datetime
 from typing import List, Dict, Any
-from django.db.models import Q
 from django.utils import timezone
 from django.db import transaction
 
@@ -16,6 +14,8 @@ from apps.alerts.error import ShieldNotFoundError, EventNotFoundError
 from apps.alerts.models.models import Event
 from apps.alerts.models.alert_operator import AlertShield
 from apps.alerts.constants.constants import AlertShieldMatchType, EventStatus
+from apps.alerts.utils.time_range_checker import TimeRangeChecker
+from apps.alerts.utils.rule_matcher import RuleMatcher
 from apps.core.logger import alert_logger as logger
 
 
@@ -24,6 +24,17 @@ class EventShieldOperator(object):
     事件屏蔽
     符合条件的事件和在规定时间内产生的事件将被屏蔽，屏蔽后不会触发通知或其他处理流程。
     """
+
+    # 字段映射到模型字段
+    FIELD_MAPPING = {
+        "source_id": "source__source_id",
+        "level_id": "level",
+        "resource_type": "resource_type",
+        "resource_id": "resource_id",
+        "content": "description",
+        "title": "title",
+        "event_id": "event_id",
+    }
 
     def __init__(self, event_id_list: List[str], active_shields=None):
         """
@@ -47,16 +58,8 @@ class EventShieldOperator(object):
         self.events = self.get_event_map()
         if not self.events:
             raise EventNotFoundError()
-        # 字段映射到模型字段
-        self.field_mapping = {
-            "source_id": "source__source_id",
-            "level_id": "level",
-            "resource_type": "resource_type",
-            "resource_id": "resource_id",
-            "content": "description",
-            "title": "title",
-            "event_id": "event_id",
-        }
+        # 初始化规则匹配器
+        self.rule_matcher = RuleMatcher(self.FIELD_MAPPING)
 
     def get_event_map(self) -> Dict[int, Event]:
         """获取事件实例映射"""
@@ -143,7 +146,8 @@ class EventShieldOperator(object):
 
         time_matched_shields = []
         for shield in self.active_shields:
-            if self._check_time_range(shield.suppression_time):
+            checker = TimeRangeChecker(shield.suppression_time, self.event_received_at)
+            if checker.is_in_range():
                 time_matched_shields.append(shield)
             else:
                 logger.debug(f"Shield {shield.id} time range not matched, skipping")
@@ -178,104 +182,10 @@ class EventShieldOperator(object):
             return list(base_queryset.values_list("id", flat=True))
 
         elif shield.match_type == AlertShieldMatchType.FILTER:
-            # 过滤匹配，使用ORM查询
-            return self._orm_filter_events(base_queryset, shield.match_rules or [])
+            # 过滤匹配，使用规则匹配器
+            return self.rule_matcher.filter_queryset(base_queryset, shield.match_rules or [])
 
         return []
-
-    def _orm_filter_events(
-        self, queryset, match_rules: List[List[Dict[str, Any]]]
-    ) -> List[int]:
-        """
-        使用ORM查询过滤匹配规则的事件
-
-        Args:
-            queryset: 基础查询集
-            match_rules: 匹配规则 [[{},{}],[{},{}]]
-
-        Returns:
-            匹配的事件ID列表
-        """
-        if not match_rules:
-            return list(queryset.values_list("id", flat=True))
-
-        # 最外层是或关系
-        final_q = Q()
-
-        for rule_group in match_rules:
-            if not rule_group:
-                continue
-
-            # 里层是且关系
-            group_q = Q()
-            group_has_valid_rules = False
-
-            for rule in rule_group:
-                rule_q = self._build_single_rule_q(rule)
-                if rule_q:
-                    group_has_valid_rules = True
-                    if not group_q:
-                        group_q = rule_q
-                    else:
-                        group_q &= rule_q
-
-            # 只有当组内有有效规则时才添加到最终查询
-            if group_has_valid_rules and group_q:
-                if not final_q:
-                    final_q = group_q
-                else:
-                    final_q |= group_q
-
-        if final_q:
-            queryset = queryset.filter(final_q)
-        else:
-            # 如果没有有效的规则，返回空结果集
-            queryset = queryset.none()
-
-        return list(queryset.values_list("id", flat=True))
-
-    def _build_single_rule_q(self, rule: Dict[str, Any]) -> Q | None:
-        """
-        构建单个规则的Q对象
-        Args:
-            rule: 单个匹配规则
-        Returns:
-            Q对象或None
-        """
-        key = rule.get("key", "")
-        operator = rule.get("operator", "eq")
-        value = rule.get("value", "")
-        model_field = self.field_mapping.get(key)
-
-        if not model_field:
-            logger.warning(f"Unknown field key: {key}")
-            return None
-
-        try:
-            if operator == "eq":
-                return Q(**{model_field: value})
-            elif operator == "ne":
-                return ~Q(**{model_field: value})
-            elif operator == "contains":
-                return Q(**{f"{model_field}__icontains": value})
-            elif operator == "not_contains":
-                return ~Q(**{f"{model_field}__icontains": value})
-            elif operator == "re":
-                try:
-                    import re as regex_module
-
-                    regex_module.compile(value)
-                except regex_module.error as e:
-                    logger.error(f"Invalid regex pattern '{value}': {e}")
-                    return None
-                return Q(**{f"{model_field}__iregex": value})
-            else:
-                logger.warning(f"Unknown operator: {operator}")
-                return None
-
-        except Exception as e:
-            logger.error(f"Error building Q object for rule: {str(e)}")
-            return None
 
     def _batch_execute_shield(
         self, event_ids: List[int], shield: AlertShield
@@ -337,139 +247,6 @@ class EventShieldOperator(object):
                 )
 
         return results
-
-    def _check_time_range(self, suppression_time: Dict[str, Any]) -> bool:
-        """
-        检查当前时间是否在配置的屏蔽时间范围内
-
-        Args:
-            suppression_time: 屏蔽时间配置
-
-        Returns:
-            bool: 是否在屏蔽时间范围内
-        """
-        if not suppression_time:
-            return True
-
-        time_type = suppression_time.get("type", "one")
-        # current_time = timezone.now()
-        current_time = self.event_received_at  # 使用事件接收时间作为当前时间
-
-        try:
-            if time_type == "one":
-                # 一次性时间范围
-                start_time_str = suppression_time.get("start_time")
-                end_time_str = suppression_time.get("end_time")
-
-                # 如果没有配置时间范围，则不符合条件
-                if not start_time_str or not end_time_str:
-                    logger.warning(
-                        "One-time shield range missing start_time or end_time"
-                    )
-                    return False
-
-                start_time = datetime.datetime.strptime(
-                    start_time_str, "%Y-%m-%d %H:%M:%S"
-                )
-                end_time = datetime.datetime.strptime(end_time_str, "%Y-%m-%d %H:%M:%S")
-
-                # 转换为带时区的时间
-                start_time = timezone.make_aware(start_time)
-                end_time = timezone.make_aware(end_time)
-
-                return start_time <= current_time <= end_time
-
-            elif time_type == "day":
-                # 每日时间范围
-                start_time_str = suppression_time.get("start_time")
-                end_time_str = suppression_time.get("end_time")
-
-                # 如果没有配置时间范围，则不符合条件
-                if not start_time_str or not end_time_str:
-                    logger.warning(
-                        "Day-time shield range missing start_time or end_time"
-                    )
-                    return False
-
-                current_time_str = current_time.strftime("%H:%M:%S")
-                return start_time_str <= current_time_str <= end_time_str
-
-            elif time_type == "week":
-                # 每周时间范围：先检查是否是指定的周几，再检查时间范围
-                week_day = suppression_time.get("week_month")
-                current_weekday = str(current_time.weekday() + 1)  # Monday is 1
-
-                # 如果不是指定的周几，直接返回False
-                if int(current_weekday) not in week_day:
-                    return False
-
-                # 检查时间范围
-                start_time_str = suppression_time.get("start_time")
-                end_time_str = suppression_time.get("end_time")
-
-                # 如果没有配置时间范围，则只要周几匹配就符合条件
-                if not start_time_str or not end_time_str:
-                    return True
-
-                # 只比较时间部分（HH:MM:SS）
-                if len(start_time_str) > 8:  # 包含日期的格式
-                    start_time_str = (
-                        start_time_str.split(" ")[1]
-                        if " " in start_time_str
-                        else start_time_str[-8:]
-                    )
-                if len(end_time_str) > 8:  # 包含日期的格式
-                    end_time_str = (
-                        end_time_str.split(" ")[1]
-                        if " " in end_time_str
-                        else end_time_str[-8:]
-                    )
-
-                current_time_str = current_time.strftime("%H:%M:%S")
-                return start_time_str <= current_time_str <= end_time_str
-
-            elif time_type == "month":
-                # 每月时间范围：先检查是否是指定的日期，再检查时间范围
-                month_day = suppression_time.get("week_month")
-                current_day = str(current_time.day)
-
-                # 如果不是指定的日期，直接返回False
-                if int(current_day) not in month_day:
-                    return False
-
-                # 检查时间范围
-                start_time_str = suppression_time.get("start_time")
-                end_time_str = suppression_time.get("end_time")
-
-                # 如果没有配置时间范围，则只要日期匹配就符合条件
-                if not start_time_str or not end_time_str:
-                    return True
-
-                # 只比较时间部分（HH:MM:SS）
-                if len(start_time_str) > 8:  # 包含日期的格式
-                    start_time_str = (
-                        start_time_str.split(" ")[1]
-                        if " " in start_time_str
-                        else start_time_str[-8:]
-                    )
-                if len(end_time_str) > 8:  # 包含日期的格式
-                    end_time_str = (
-                        end_time_str.split(" ")[1]
-                        if " " in end_time_str
-                        else end_time_str[-8:]
-                    )
-
-                current_time_str = current_time.strftime("%H:%M:%S")
-                return start_time_str <= current_time_str <= end_time_str
-
-        except ValueError as e:
-            logger.error(f"Error parsing time format: {str(e)}")
-            return False
-        except Exception as e:
-            logger.error(f"Error checking shield time range: {str(e)}")
-            return False
-
-        return True
 
     def shield(self):
         """
