@@ -7,7 +7,6 @@ import { Node } from '@xyflow/react';
 import type { UploadFile as AntdUploadFile } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
-import dayjs from 'dayjs';
 import { useNodeConfigData } from './hooks/useNodeConfigData';
 import { useKeyValueRows } from './hooks/useKeyValueRows';
 import { NodeConfigForm } from './NodeConfigForm';
@@ -75,24 +74,25 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
       const config = node.data.config || {};
       const formValues: any = { name: node.data.label, ...config };
 
-      // 处理时间字段
-      if (node.data.type === 'celery' && config.time) {
-        try {
-          if (typeof config.time === 'string') {
-            const timeStr = config.time.includes(':') ? config.time : `${config.time}:00`;
-            const today = new Date().toISOString().split('T')[0];
-            formValues.time = dayjs(`${today} ${timeStr}`, 'YYYY-MM-DD HH:mm');
-          } else {
-            formValues.time = dayjs(config.time);
-          }
-        } catch (error) {
-          console.warn('时间格式转换失败:', error);
-          formValues.time = undefined;
+      if (node.data.type === 'celery') {
+        const freq = config.frequency === 'crontab' ? 'cron' : (config.frequency || 'daily');
+        formValues.frequency = freq;
+        
+        formValues.times = Array.isArray(config.time) ? config.time : (config.time ? [config.time] : ['09:00']);
+        formValues.weekdays = Array.isArray(config.weekdays) ? config.weekdays : [];
+        
+        if (config.days && Array.isArray(config.days) && config.days.length > 0) {
+          formValues.monthDay = config.days[0];
+        } else if (freq === 'monthly') {
+          formValues.monthDay = 1;
         }
+        
+        formValues.cron = config.crontab_expression || (freq === 'cron' ? '* * * * *' : '');
       }
 
       form.setFieldsValue(formValues);
-      setFrequency(config.frequency || 'daily');
+      const freq = config.frequency === 'crontab' ? 'cron' : (config.frequency || 'daily');
+      setFrequency(freq);
 
       // 初始化参数和头部
       const needsParamsAndHeaders = ['http', 'restful', 'openai'];
@@ -141,7 +141,7 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
     if (!node) return;
 
     form.validateFields().then((values) => {
-      const configData = {
+      const configData: any = {
         ...values,
         params: paramRows.rows.filter(row => row.key && row.value),
         headers: headerRows.rows.filter(row => row.key && row.value)
@@ -158,8 +158,20 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
         configData.notificationChannels = notificationChannels;
       }
 
-      if (node.data.type === 'celery' && configData.time?.format) {
-        configData.time = configData.time.format('HH:mm');
+      if (node.data.type === 'celery') {
+        configData.time = values.times || [];
+        delete configData.times;
+
+        if (values.frequency === 'monthly') {
+          configData.days = values.monthDay ? [values.monthDay] : [];
+          delete configData.monthDay;
+        }
+
+        if (values.frequency === 'cron') {
+          configData.frequency = 'crontab';
+          configData.crontab_expression = values.cron || '';
+          delete configData.cron;
+        }
       }
 
       onSave(node.id, configData);
@@ -177,7 +189,12 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
 
   const handleFrequencyChange = (value: string) => {
     setFrequency(value);
-    form.setFieldsValue({ time: undefined, weekday: undefined, day: undefined });
+    form.setFieldsValue({ 
+      times: ['09:00'], 
+      weekdays: [], 
+      monthDay: value === 'monthly' ? 1 : undefined, 
+      cron: value === 'cron' ? '* * * * *' : '' 
+    });
   };
 
   return (

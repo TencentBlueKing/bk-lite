@@ -1,5 +1,6 @@
 import base64
 import io
+import json
 import os
 import time
 from datetime import timedelta
@@ -34,11 +35,7 @@ from apps.system_mgmt.models import (
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.bk_user_utils import get_bk_user_info
-from apps.system_mgmt.utils.channel_utils import (
-    send_by_bot,
-    send_email,
-    send_email_to_user,
-)
+from apps.system_mgmt.utils.channel_utils import send_by_bot, send_email, send_email_to_user, send_nats_message
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 
@@ -71,9 +68,7 @@ def _verify_token(token):
     algorithm = os.getenv("JWT_ALGORITHM", "HS256")
     user_info = jwt.decode(token, key=secret_key, algorithms=algorithm)
     time_now = int(time.time())
-    login_expired_time_set = SystemSettings.objects.filter(
-        key="login_expired_time"
-    ).first()
+    login_expired_time_set = SystemSettings.objects.filter(key="login_expired_time").first()
     login_expired_time = 3600 * 24
     if login_expired_time_set:
         login_expired_time = int(login_expired_time_set.value) * 3600
@@ -96,9 +91,7 @@ def get_pilot_permission_by_token(token, bot_id, group_list):
     # 获取用户所有角色（个人角色 + 组角色）
     all_role_ids = get_user_all_roles(user)
     role_list = Role.objects.filter(id__in=all_role_ids)
-    role_names = {
-        f"{role.app}--{role.name}" if role.app else role.name for role in role_list
-    }
+    role_names = {f"{role.app}--{role.name}" if role.app else role.name for role in role_list}
     if {"admin", "system-manager--admin", "opspilot--admin"}.intersection(role_names):
         return {"result": True, "data": {"username": user.username}}
     real_groups = set(group_list).intersection(user.group_list)
@@ -134,9 +127,7 @@ def verify_token(token):
     # 获取用户所有角色（个人角色 + 组角色）
     all_role_ids = get_user_all_roles(user)
     role_list = Role.objects.filter(id__in=all_role_ids)
-    role_names = [
-        f"{role.app}--{role.name}" if role.app else role.name for role in role_list
-    ]
+    role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
     is_superuser = "admin" in role_names or "system-manager--admin" in role_names
     group_list = Group.objects.all().order_by("id")
     if not is_superuser:
@@ -146,9 +137,7 @@ def verify_token(token):
     queryset = Group.objects.prefetch_related("roles").all()
 
     # 构建嵌套组结构
-    groups_data = GroupUtils.build_group_tree(
-        queryset, is_superuser, [i["id"] for i in groups]
-    )
+    groups_data = GroupUtils.build_group_tree(queryset, is_superuser, [i["id"] for i in groups])
     menus = cache.get(f"menus-user:{user.id}")
     if not menus:
         menus = {}
@@ -157,9 +146,7 @@ def verify_token(token):
             menu_ids = []
             for i in menu_list:
                 menu_ids.extend(i)
-            menu_data = Menu.objects.filter(id__in=list(set(menu_ids))).values_list(
-                "app", "name"
-            )
+            menu_data = Menu.objects.filter(id__in=list(set(menu_ids))).values_list("app", "name")
             for app, name in menu_data:
                 menus.setdefault(app, []).append(name)
         cache.set(f"menus-user:{user.id}", menus, 60)
@@ -189,19 +176,11 @@ def get_user_menus(client_id, roles, username, is_superuser):
     menus = []
     if not is_superuser:
         menu_ids = []
-        role_menus = Role.objects.filter(app=client_id, id__in=roles).values_list(
-            "menu_list", flat=True
-        )
+        role_menus = Role.objects.filter(app=client_id, id__in=roles).values_list("menu_list", flat=True)
         for i in role_menus:
             menu_ids.extend(i)
-        menus = list(
-            Menu.objects.filter(app=client_id, id__in=list(set(menu_ids))).values_list(
-                "name", flat=True
-            )
-        )
-    user_menus = client.get_all_menus(
-        client_id, user_menus=menus, username=username, is_superuser=is_superuser
-    )
+        menus = list(Menu.objects.filter(app=client_id, id__in=list(set(menu_ids))).values_list("name", flat=True))
+    user_menus = client.get_all_menus(client_id, user_menus=menus, username=username, is_superuser=is_superuser)
     return {"result": True, "data": user_menus}
 
 
@@ -217,11 +196,7 @@ def get_client(client_id="", username="", domain="domain.com"):
 
         # 获取用户所有角色（个人角色 + 组角色）
         all_role_ids = get_user_all_roles(user)
-        app_name_list = list(
-            Role.objects.filter(id__in=all_role_ids)
-            .values_list("app", flat=True)
-            .distinct()
-        )
+        app_name_list = list(Role.objects.filter(id__in=all_role_ids).values_list("app", flat=True).distinct())
         if "" not in app_name_list:
             app_list = app_list.filter(name__in=app_name_list)
     return_data = list(app_list.order_by("id").values())
@@ -257,13 +232,9 @@ def get_group_users(group=None, include_children=False):
         users = User.objects.all().values("id", "username", "display_name")
     elif include_children:
         group_ids = GroupUtils.get_group_with_descendants(group)
-        users = User.objects.filter(group_list__overlap=group_ids).values(
-            "id", "username", "display_name"
-        )
+        users = User.objects.filter(group_list__overlap=group_ids).values("id", "username", "display_name")
     else:
-        users = User.objects.filter(group_list__contains=int(group)).values(
-            "id", "username", "display_name"
-        )
+        users = User.objects.filter(group_list__contains=int(group)).values("id", "username", "display_name")
     return {"result": True, "data": list(users)}
 
 
@@ -284,11 +255,7 @@ def search_users(query_params):
     page = int(query_params.get("page", 1))
     page_size = int(query_params.get("page_size", 10))
     search = query_params.get("search", "")
-    queryset = User.objects.filter(
-        Q(username__icontains=search)
-        | Q(display_name__icontains=search)
-        | Q(email__icontains=search)
-    )
+    queryset = User.objects.filter(Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search))
     start = (page - 1) * page_size
     end = page * page_size
     total = queryset.count()
@@ -300,11 +267,7 @@ def search_users(query_params):
 @nats_client.register
 def init_user_default_attributes(user_id, group_name, default_group_id):
     try:
-        role_ids = list(
-            Role.objects.filter(
-                name="guest", app__in=["opspilot", "cmdb", "monitor", "alarm", "node"]
-            ).values_list("id", flat=True)
-        )
+        role_ids = list(Role.objects.filter(name="guest", app__in=["opspilot", "cmdb", "monitor", "alarm", "node"]).values_list("id", flat=True))
         normal_role = Role.objects.get(name="normal", app="opspilot")
         user = User.objects.get(id=user_id)
         top_group, _ = Group.objects.get_or_create(
@@ -342,16 +305,12 @@ def create_guest_role():
         "cmdb": CMDB_MENUS[:],
         "monitor": MONITOR_MENUS[:],
     }
-    guest_group, _ = Group.objects.get_or_create(
-        name="Guest", parent_id=0, defaults={"description": "Guest group"}
-    )
+    guest_group, _ = Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
     app_guest_group, _ = Group.objects.get_or_create(name="OpsPilotGuest", parent_id=0)
     for app, app_menus in app_map.items():
         menus = dict(Menu.objects.filter(app=app).values_list("id", "name"))
         menu_list = [k for k, v in menus.items() if v in app_menus]
-        Role.objects.update_or_create(
-            name="guest", app=app, defaults={"menu_list": menu_list}
-        )
+        Role.objects.update_or_create(name="guest", app=app, defaults={"menu_list": menu_list})
     return {"result": True, "data": {"group_id": app_guest_group.id}}
 
 
@@ -376,14 +335,8 @@ def create_default_rule(llm_model, ocr_model, embed_model, rerank_model):
                             "permission": ["View"],
                         }
                     ],
-                    "ocr_model": [
-                        {"id": i["id"], "name": i["name"], "permission": ["View"]}
-                        for i in ocr_model
-                    ],
-                    "embed_model": [
-                        {"id": i["id"], "name": i["name"], "permission": ["View"]}
-                        for i in embed_model
-                    ],
+                    "ocr_model": [{"id": i["id"], "name": i["name"], "permission": ["View"]} for i in ocr_model],
+                    "embed_model": [{"id": i["id"], "name": i["name"], "permission": ["View"]} for i in embed_model],
                     "rerank_model": [
                         {
                             "id": rerank_model["id"],
@@ -407,7 +360,7 @@ def get_all_groups():
 
 
 @nats_client.register
-def search_channel_list(channel_type, teams, include_children):
+def search_channel_list(channel_type="", teams=None, include_children=False):
     """
     :param channel_type: str， 目前只有email、enterprise_wechat_bot
     :param teams: list, [1,2,3]
@@ -452,7 +405,7 @@ def search_channel_list(channel_type, teams, include_children):
 
     return {
         "result": True,
-        "data": [i for i in channels.values("id", "name", "channel_type")],
+        "data": [i for i in channels.values("id", "name", "channel_type", "description")],
     }
 
 
@@ -473,9 +426,7 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         return {"result": False, "message": "Channel not found"}
     # 兼容用户ID列表和用户名列表两种情况
     user_list = None
-    if receivers and all(
-        isinstance(r, int) or (isinstance(r, str) and r.isdigit()) for r in receivers
-    ):
+    if receivers and all(isinstance(r, int) or (isinstance(r, str) and r.isdigit()) for r in receivers):
         # receivers 是用户ID列表
         user_list = User.objects.filter(id__in=[int(r) for r in receivers])
     if channel_obj.channel_type == ChannelChoices.EMAIL:
@@ -489,6 +440,11 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         else:
             display_names = receivers if isinstance(receivers, list) else [receivers]
         return send_by_bot(channel_obj, content, display_names)
+    elif channel_obj.channel_type == ChannelChoices.NATS:
+        # NATS 通道：content 作为 kwargs 传递给目标服务
+        if isinstance(content, str):
+            content = json.loads(content)
+        return send_nats_message(channel_obj, content)
     return {"result": False, "message": "Unsupported channel type"}
     # return send_wechat(channel_obj, content, user_list)
 
@@ -503,9 +459,7 @@ def send_email_to_receiver(title, content, receiver):
 
 @nats_client.register
 def get_user_rules(group_id, username):
-    rules = UserRule.objects.filter(username=username).filter(
-        Q(group_rule__group_id=group_id) | Q(group_rule__group_name="OpsPilotGuest")
-    )
+    rules = UserRule.objects.filter(username=username).filter(Q(group_rule__group_id=group_id) | Q(group_rule__group_name="OpsPilotGuest"))
     if not rules:
         return {}
     return_data = {}
@@ -533,11 +487,7 @@ def _prepare_user_rules_query(group_id, username, domain, app, include_children=
         return None, None, None, None, None
 
     # 获取管理员角色列表
-    admin_list = list(
-        Role.objects.filter(name="admin")
-        .filter(Q(app="") | Q(app=app))
-        .values_list("id", flat=True)
-    )
+    admin_list = list(Role.objects.filter(name="admin").filter(Q(app="") | Q(app=app)).values_list("id", flat=True))
 
     # 获取用户所有角色（个人角色 + 组角色）
     all_role_ids = get_user_all_roles(user_obj)
@@ -546,9 +496,7 @@ def _prepare_user_rules_query(group_id, username, domain, app, include_children=
     # 获取查询的组ID列表（包含子组）
     if include_children:
         # 提取用户的组织ID列表
-        query_group_ids = GroupUtils.get_all_child_groups(
-            int(group_id), include_self=True, group_list=user_obj.group_list
-        )
+        query_group_ids = GroupUtils.get_all_child_groups(int(group_id), include_self=True, group_list=user_obj.group_list)
     else:
         query_group_ids = [int(group_id)]
 
@@ -566,9 +514,7 @@ def _prepare_user_rules_query(group_id, username, domain, app, include_children=
 
 
 @nats_client.register
-def get_user_rules_by_module(
-    group_id, username, domain, app, module, include_children=False
-):
+def get_user_rules_by_module(group_id, username, domain, app, module, include_children=False):
     """
     获取用户在指定模块下的所有权限规则，按子模块分组返回
     :param group_id: 组ID
@@ -579,9 +525,7 @@ def get_user_rules_by_module(
     :param include_children: 是否包含子组（递归查询所有子孙组）
     """
     # 使用通用查询准备函数
-    user_obj, query_group_ids, admin_teams, has_guest_group, is_admin = (
-        _prepare_user_rules_query(group_id, username, domain, app, include_children)
-    )
+    user_obj, query_group_ids, admin_teams, has_guest_group, is_admin = _prepare_user_rules_query(group_id, username, domain, app, include_children)
 
     if not user_obj:
         return {"result": False, "message": "User not found"}
@@ -594,16 +538,12 @@ def get_user_rules_by_module(
 
     # 构建查询过滤条件
     if has_guest_group:
-        base_filter = Q(group_rule__group_id__in=query_group_ids) | Q(
-            group_rule__group_name="OpsPilotGuest"
-        )
+        base_filter = Q(group_rule__group_id__in=query_group_ids) | Q(group_rule__group_name="OpsPilotGuest")
     else:
         base_filter = Q(group_rule__group_id__in=query_group_ids)
     module_filter = Q(group_rule__rules__has_key=module)
 
-    rules = UserRule.objects.filter(
-        username=username, domain=domain, group_rule__app=app
-    ).filter(base_filter & module_filter)
+    rules = UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(base_filter & module_filter)
     if not rules:
         return {"result": True, "data": all_permission, "team": admin_teams}
 
@@ -641,9 +581,7 @@ def get_user_rules_by_module(
 
 
 @nats_client.register
-def get_user_rules_by_app(
-    group_id, username, domain, app, module, child_module="", include_children=False
-):
+def get_user_rules_by_app(group_id, username, domain, app, module, child_module="", include_children=False):
     """
     获取用户在指定应用模块下的权限规则
     :param group_id: 组ID
@@ -655,9 +593,7 @@ def get_user_rules_by_app(
     :param include_children: 是否包含子组（递归查询所有子孙组）
     """
     # 使用通用查询准备函数
-    user_obj, query_group_ids, admin_teams, has_guest_group, is_admin = (
-        _prepare_user_rules_query(group_id, username, domain, app, include_children)
-    )
+    user_obj, query_group_ids, admin_teams, has_guest_group, is_admin = _prepare_user_rules_query(group_id, username, domain, app, include_children)
 
     if not user_obj:
         return {"instance": [], "team": []}
@@ -668,18 +604,14 @@ def get_user_rules_by_app(
 
     # 构建查询过滤条件
     if has_guest_group:
-        base_filter = Q(group_rule__group_id__in=query_group_ids) | Q(
-            group_rule__group_name="OpsPilotGuest"
-        )
+        base_filter = Q(group_rule__group_id__in=query_group_ids) | Q(group_rule__group_name="OpsPilotGuest")
     else:
         base_filter = Q(group_rule__group_id__in=query_group_ids)
     # 添加模块过滤条件
     module_filter = Q(group_rule__rules__has_key=module)
 
     # 如果指定了子模块，不在数据库层面过滤，在Python层面处理复杂嵌套
-    rules = UserRule.objects.filter(
-        username=username, domain=domain, group_rule__app=app
-    ).filter(base_filter & module_filter)
+    rules = UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(base_filter & module_filter)
 
     if not rules:
         return {"instance": [], "team": admin_teams}
@@ -731,11 +663,7 @@ def process_rule_data(rule_data):
     if not rule_data:
         return True, []
     if isinstance(rule_data, list):
-        rule_data = [
-            item
-            for item in rule_data
-            if isinstance(item, dict) and item.get("id") not in ["-1", -1]
-        ]
+        rule_data = [item for item in rule_data if isinstance(item, dict) and item.get("id") not in ["-1", -1]]
         ids = [item.get("id") for item in rule_data]
         has_all_permission = 0 in ids or "0" in ids
         return has_all_permission, rule_data if not has_all_permission else []
@@ -789,9 +717,7 @@ def login(username, password):
     now = timezone.now()
     if user.account_locked_until and user.account_locked_until > now:
         # 计算剩余锁定时间（分钟）
-        remaining_minutes = (
-            int((user.account_locked_until - now).total_seconds() / 60) + 1
-        )
+        remaining_minutes = int((user.account_locked_until - now).total_seconds() / 60) + 1
         msg = loader.get(
             "login.account_locked",
             "Account is locked. Please try again after {minutes} minutes.",
@@ -804,17 +730,11 @@ def login(username, password):
         user.password_error_count += 1
 
         # 获取系统设置的最大重试次数和锁定时长
-        max_retry_setting = SystemSettings.objects.filter(
-            key="pwd_set_max_retry_count"
-        ).first()
+        max_retry_setting = SystemSettings.objects.filter(key="pwd_set_max_retry_count").first()
         max_retry_count = int(max_retry_setting.value) if max_retry_setting else 5
 
-        lock_duration_setting = SystemSettings.objects.filter(
-            key="pwd_set_lock_duration"
-        ).first()
-        lock_duration_seconds = (
-            int(lock_duration_setting.value) if lock_duration_setting else 180
-        )  # 默认180秒(3分钟)
+        lock_duration_setting = SystemSettings.objects.filter(key="pwd_set_lock_duration").first()
+        lock_duration_seconds = int(lock_duration_setting.value) if lock_duration_setting else 180  # 默认180秒(3分钟)
 
         # 如果错误次数达到或超过最大重试次数，锁定账号
         if user.password_error_count >= max_retry_count:
@@ -848,21 +768,13 @@ def login(username, password):
     password_expiry_reminder = ""
     if user.password_last_modified:
         # 获取密码有效期和提醒提前天数
-        validity_period_setting = SystemSettings.objects.filter(
-            key="pwd_set_validity_period"
-        ).first()
-        validity_period_days = (
-            int(validity_period_setting.value) if validity_period_setting else 90
-        )
+        validity_period_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
+        validity_period_days = int(validity_period_setting.value) if validity_period_setting else 90
 
-        reminder_days_setting = SystemSettings.objects.filter(
-            key="pwd_set_expiry_reminder_days"
-        ).first()
+        reminder_days_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
         reminder_days = int(reminder_days_setting.value) if reminder_days_setting else 7
 
-        password_expire_date = user.password_last_modified + timedelta(
-            days=validity_period_days
-        )
+        password_expire_date = user.password_last_modified + timedelta(days=validity_period_days)
         days_until_expire = (password_expire_date - now).days
 
         # 如果在提醒期内且未过期，生成提醒消息
@@ -907,9 +819,7 @@ def reset_pwd(username, domain, password):
 
 @nats_client.register
 def wechat_user_register(user_id, nick_name):
-    user, is_first_login = User.objects.get_or_create(
-        username=user_id, defaults={"display_name": nick_name}
-    )
+    user, is_first_login = User.objects.get_or_create(username=user_id, defaults={"display_name": nick_name})
     default_group = Group.objects.filter(name="OpsPilotGuest", parent_id=0).first()
     if not user.group_list and default_group:
         user.group_list = [default_group.id]
@@ -949,37 +859,21 @@ def wechat_user_register(user_id, nick_name):
 
 
 def set_opspilot_guest_group_default_rule(default_group, user):
-    default_rule = GroupDataRule.objects.get(
-        name="OpsPilot内置规则", app="opspilot", group_id=default_group.id
-    )
-    monitor_rule = GroupDataRule.objects.get(
-        name="OpsPilotGuest数据权限", app="monitor", group_id=default_group.id
-    )
-    cmdb_rule = GroupDataRule.objects.get(
-        name="游客数据权限", app="cmdb", group_id=default_group.id
-    )
-    log_rule = GroupDataRule.objects.get(
-        name="log内置规则", app="log", group_id=default_group.id
-    )
-    node_rule = GroupDataRule.objects.get(
-        name="节点管理内置数据权限", app="node", group_id=default_group.id
-    )
+    default_rule = GroupDataRule.objects.get(name="OpsPilot内置规则", app="opspilot", group_id=default_group.id)
+    monitor_rule = GroupDataRule.objects.get(name="OpsPilotGuest数据权限", app="monitor", group_id=default_group.id)
+    cmdb_rule = GroupDataRule.objects.get(name="游客数据权限", app="cmdb", group_id=default_group.id)
+    log_rule = GroupDataRule.objects.get(name="log内置规则", app="log", group_id=default_group.id)
+    node_rule = GroupDataRule.objects.get(name="节点管理内置数据权限", app="node", group_id=default_group.id)
     UserRule.objects.get_or_create(username=user.username, group_rule_id=cmdb_rule.id)
-    UserRule.objects.get_or_create(
-        username=user.username, group_rule_id=default_rule.id
-    )
-    UserRule.objects.get_or_create(
-        username=user.username, group_rule_id=monitor_rule.id
-    )
+    UserRule.objects.get_or_create(username=user.username, group_rule_id=default_rule.id)
+    UserRule.objects.get_or_create(username=user.username, group_rule_id=monitor_rule.id)
     UserRule.objects.get_or_create(username=user.username, group_rule_id=log_rule.id)
     UserRule.objects.get_or_create(username=user.username, group_rule_id=node_rule.id)
 
 
 @nats_client.register
 def get_wechat_settings():
-    login_module = LoginModule.objects.filter(
-        source_type="wechat", enabled=True
-    ).first()
+    login_module = LoginModule.objects.filter(source_type="wechat", enabled=True).first()
     if not login_module:
         return {"result": True, "data": {"enabled": False}}
 
@@ -1037,9 +931,7 @@ def verify_otp_code(username, otp_code):
 
 @nats_client.register
 def get_namespace_by_domain(domain):
-    login_module = LoginModule.objects.filter(
-        source_type="bk_lite", other_config__contains={"domain": domain}
-    ).first()
+    login_module = LoginModule.objects.filter(source_type="bk_lite", other_config__contains={"domain": domain}).first()
     if not login_module:
         return {"result": False, "message": "Login module not found"}
     namespace = login_module.other_config.get("namespace", "")
@@ -1086,11 +978,7 @@ def get_user_login_token(user, username):
 
 @nats_client.register
 def get_login_module_domain_list():
-    login_module_list = list(
-        LoginModule.objects.filter(source_type="bk_lite").values_list(
-            "other_config__domain", flat=True
-        )
-    )
+    login_module_list = list(LoginModule.objects.filter(source_type="bk_lite").values_list("other_config__domain", flat=True))
     login_module_list.insert(0, "domain.com")
     return {"result": True, "data": login_module_list}
 
@@ -1126,22 +1014,12 @@ def delete_rules(group_ids, instance_id, app, module, child_module):
             # 删除指定 ID 的权限项
             original_length = len(target_list)
             if child_module:
-                rules_data[module][child_module] = [
-                    item
-                    for item in target_list
-                    if str(item.get("id")) != str(instance_id)
-                ]
+                rules_data[module][child_module] = [item for item in target_list if str(item.get("id")) != str(instance_id)]
             else:
-                rules_data[module] = [
-                    item
-                    for item in target_list
-                    if str(item.get("id")) != str(instance_id)
-                ]
+                rules_data[module] = [item for item in target_list if str(item.get("id")) != str(instance_id)]
 
             # 如果有删除操作，更新数据库
-            new_length = len(
-                rules_data[module][child_module] if child_module else rules_data[module]
-            )
+            new_length = len(rules_data[module][child_module] if child_module else rules_data[module])
             if new_length < original_length:
                 rule_obj.rules = rules_data
                 rule_obj.save()
@@ -1150,11 +1028,7 @@ def delete_rules(group_ids, instance_id, app, module, child_module):
 
         # 清除受影响用户的权限缓存
         if affected_rule_ids:
-            affected_users = list(
-                UserRule.objects.filter(group_rule_id__in=affected_rule_ids).values(
-                    "username", "domain"
-                )
-            )
+            affected_users = list(UserRule.objects.filter(group_rule_id__in=affected_rule_ids).values("username", "domain"))
             if affected_users:
                 clear_users_permission_cache(affected_users)
 
@@ -1170,9 +1044,7 @@ def delete_rules(group_ids, instance_id, app, module, child_module):
 
 @nats_client.register
 def verify_bk_token(bk_token):
-    login_module = LoginModule.objects.filter(
-        source_type="bk_login", enabled=True
-    ).first()
+    login_module = LoginModule.objects.filter(source_type="bk_login", enabled=True).first()
     if not login_module:
         return {"result": True, "data": {"bk_login_open": False}}
     bk_config = login_module.other_config
@@ -1192,9 +1064,7 @@ def verify_bk_token(bk_token):
             "result": True,
             "data": {"bk_login_open": True, "user": {}, "url": bk_config.get("bk_url")},
         }
-    group_obj = Group.objects.get(
-        name=login_module.other_config.get("root_group", "蓝鲸"), parent_id=0
-    )
+    group_obj = Group.objects.get(name=login_module.other_config.get("root_group", "蓝鲸"), parent_id=0)
     user, _ = User.objects.get_or_create(
         username=bk_user["username"],
         domain=bk_user.get("domain"),
@@ -1257,9 +1127,7 @@ def save_error_log(username, app, module, error_message, domain="domain.com"):
 
 
 @nats_client.register
-def save_operation_log(
-    username, source_ip, app, action_type, summary="", domain="domain.com"
-):
+def save_operation_log(username, source_ip, app, action_type, summary="", domain="domain.com"):
     """
     保存操作日志
     :param username: 用户名

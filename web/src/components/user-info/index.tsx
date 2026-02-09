@@ -1,9 +1,9 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Dropdown, Avatar, MenuProps, message, Checkbox, Tree, Input } from 'antd';
 import type { DataNode } from 'antd/lib/tree';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
-import { DownOutlined } from '@ant-design/icons';
+import { DownOutlined, RightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import VersionModal from './versionModal';
 import ThemeSwitcher from '@/components/theme';
@@ -35,6 +35,7 @@ const UserInfo: React.FC = () => {
   const [versionVisible, setVersionVisible] = useState<boolean>(false);
   const [userInfoVisible, setUserInfoVisible] = useState<boolean>(false);
   const [dropdownVisible, setDropdownVisible] = useState<boolean>(false);
+  const [groupPanelVisible, setGroupPanelVisible] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [includeChildren, setIncludeChildren] = useState<boolean>(false);
   const [searchValue, setSearchValue] = useState<string>('');
@@ -68,8 +69,12 @@ const UserInfo: React.FC = () => {
     }
   }, [groupTree]);
 
+  // 组面板引用，用于检测点击外部关闭
+  const groupPanelRef = useRef<HTMLDivElement>(null);
+  const groupMenuItemRef = useRef<HTMLDivElement>(null);
+
   // 搜索时自动展开所有节点（仅在从无搜索变为有搜索时触发）
-  const prevSearchValueRef = React.useRef<string>('');
+  const prevSearchValueRef = useRef<string>('');
   useEffect(() => {
     // 只在从无搜索变为有搜索时展开
     if (searchValue && !prevSearchValueRef.current && groupTree.length > 0) {
@@ -166,10 +171,12 @@ const UserInfo: React.FC = () => {
 
     setSelectedGroup(nextGroup);
     setDropdownVisible(false);
+    setGroupPanelVisible(false);
     refreshPage();
   }, [groupTree, pathname, router, setSelectedGroup, refreshPage]);
 
-  const dropdownItems: MenuProps['items'] = useMemo(() => {
+  // 组选择面板内容
+  const groupPanelContent = useMemo(() => {
     const filterGroups = (groups: Group[]): Group[] => {
       return groups
         .filter(group => isSuperUser || (session?.user as any)?.username === 'kayla' || group.name !== 'OpsPilotGuest')
@@ -206,6 +213,44 @@ const UserInfo: React.FC = () => {
     const searchFiltered = searchFilterGroups(filteredGroupTree, searchValue);
     const treeData = convertGroupsToTreeData(searchFiltered, selectedGroup?.id);
 
+    return (
+      <>
+        <div className="py-2 px-3 border-b border-[var(--color-border-2)]">
+          <Checkbox
+            checked={includeChildren}
+            onChange={(e) => handleIncludeChildrenChange(e.target.checked)}
+          >
+            <span className="text-sm">{t('common.includeSubgroups')}</span>
+          </Checkbox>
+        </div>
+        <div className="px-3 pt-2 pb-3 border-b border-[var(--color-border-2)]">
+          <Input
+            placeholder={t('common.search')}
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            allowClear
+            size="small"
+          />
+        </div>
+        <div
+          className="w-full px-2 py-2"
+          style={{ flex: 1, overflow: 'auto', maxHeight: '300px' }}
+        >
+          <Tree
+            treeData={treeData}
+            selectedKeys={selectedGroup ? [selectedGroup.id] : []}
+            expandedKeys={userExpandedKeys}
+            onExpand={(keys) => setUserExpandedKeys(keys as string[])}
+            onSelect={handleChangeGroup}
+            showLine
+            blockNode
+          />
+        </div>
+      </>
+    );
+  }, [selectedGroup, groupTree, includeChildren, isSuperUser, session, searchValue, userExpandedKeys, handleChangeGroup, handleIncludeChildrenChange, t]);
+
+  const dropdownItems: MenuProps['items'] = useMemo(() => {
     const items: MenuProps['items'] = [
       {
         key: 'themeSwitch',
@@ -225,61 +270,21 @@ const UserInfo: React.FC = () => {
       {
         key: 'groups',
         label: (
-          <div className="w-full flex justify-between items-center">
+          <div
+            ref={groupMenuItemRef}
+            className="w-full flex justify-between items-center"
+            onClick={(e) => {
+              e.stopPropagation();
+              setGroupPanelVisible(!groupPanelVisible);
+            }}
+          >
             <span>{t('common.group')}</span>
-            <span className="text-xs text-[var(--color-text-4)]">{selectedGroup?.name}</span>
+            <span className="flex items-center gap-1 text-xs text-[var(--color-text-4)]">
+              {selectedGroup?.name}
+              <RightOutlined className="text-[10px]" />
+            </span>
           </div>
         ),
-        children: [
-          {
-            key: 'group-tree-container',
-            label: (
-              <div
-                className="w-full"
-                style={{ width: '320px', maxHeight: '500px', display: 'flex', flexDirection: 'column' }}
-              >
-                <div
-                  className="w-full bg-[var(--color-bg-1)]"
-                  style={{ position: 'sticky', top: 0, zIndex: 10 }}
-                >
-                  <div className="py-2 px-3 border-b border-[var(--color-border-2)]">
-                    <Checkbox
-                      checked={includeChildren}
-                      onChange={(e) => handleIncludeChildrenChange(e.target.checked)}
-                    >
-                      <span className="text-sm">{t('common.includeSubgroups')}</span>
-                    </Checkbox>
-                  </div>
-                  <div className="px-3 pt-2 pb-3">
-                    <Input
-                      placeholder={t('common.search')}
-                      value={searchValue}
-                      onChange={(e) => setSearchValue(e.target.value)}
-                      allowClear
-                      size="small"
-                    />
-                  </div>
-                </div>
-                <div
-                  className="w-full px-2 py-2"
-                  style={{ flex: 1, overflow: 'auto' }}
-                >
-                  <Tree
-                    treeData={treeData}
-                    selectedKeys={selectedGroup ? [selectedGroup.id] : []}
-                    expandedKeys={userExpandedKeys}
-                    onExpand={(keys) => setUserExpandedKeys(keys as string[])}
-                    onSelect={handleChangeGroup}
-                    showLine
-                    blockNode
-                  />
-                </div>
-              </div>
-            ),
-            disabled: true,
-            style: { padding: 0, cursor: 'default' },
-          },
-        ],
       },
       { type: 'divider' },
       {
@@ -295,11 +300,11 @@ const UserInfo: React.FC = () => {
     ];
 
     return items;
-  }, [selectedGroup, groupTree, isLoading, includeChildren, isSuperUser, session, searchValue, userExpandedKeys]);
+  }, [selectedGroup, groupTree, isLoading, isSuperUser, session, groupPanelContent, groupPanelVisible, t]);
 
   const handleMenuClick = ({ key }: any) => {
-    // 如果点击的是 Tree 相关区域，不关闭菜单
-    if (key === 'group-tree-container') {
+    // 点击组选项时不关闭菜单（由 Popover 控制）
+    if (key === 'groups') {
       return;
     }
 
@@ -308,9 +313,14 @@ const UserInfo: React.FC = () => {
     if (key === 'logout') federatedLogout();
 
     setDropdownVisible(false);
+    setGroupPanelVisible(false);
   };
 
   const handleOpenChange = (open: boolean) => {
+    // 如果组面板打开着，保持下拉菜单打开
+    if (groupPanelVisible && !open) {
+      return;
+    }
     setDropdownVisible(open);
   };
 
@@ -337,6 +347,36 @@ const UserInfo: React.FC = () => {
             <DownOutlined className="text-[10px]" />
           </a>
         </Dropdown>
+      )}
+      {/* 组选择面板 */}
+      {groupPanelVisible && (
+        <>
+          {/* 透明遮罩层 - 点击关闭面板 */}
+          <div
+            className="fixed inset-0 z-[1059]"
+            onClick={(e) => {
+              e.stopPropagation();
+              setGroupPanelVisible(false);
+              setDropdownVisible(false);
+            }}
+          />
+          {/* 面板内容 */}
+          <div
+            ref={groupPanelRef}
+            className="fixed bg-[var(--color-bg-1)] border border-[var(--color-border-1)] rounded-lg shadow-lg z-[1060]"
+            style={{
+              top: '50px',
+              right: '200px',
+              width: '300px',
+              maxHeight: '450px',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {groupPanelContent}
+          </div>
+        </>
       )}
       <VersionModal visible={versionVisible} onClose={() => setVersionVisible(false)} />
       <UserInformation visible={userInfoVisible} onClose={() => setUserInfoVisible(false)} />

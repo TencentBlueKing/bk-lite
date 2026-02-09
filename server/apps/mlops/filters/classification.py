@@ -6,7 +6,13 @@ from django_filters import (
     BooleanFilter,
 )
 
-from apps.mlops.models.classification import *
+from apps.mlops.models.classification import (
+    ClassificationDataset,
+    ClassificationTrainJob,
+    ClassificationTrainData,
+    ClassificationDatasetRelease,
+    ClassificationServing,
+)
 
 
 class ClassificationDatasetFilter(FilterSet):

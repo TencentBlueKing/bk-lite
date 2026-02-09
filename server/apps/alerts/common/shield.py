@@ -5,10 +5,8 @@
 """
 # Shield class for handling event shielding operations.
 """
-
 import datetime
 from typing import List, Dict, Any
-from django.db.models import Q
 from django.utils import timezone
 from django.db import transaction
 
@@ -16,6 +14,8 @@ from apps.alerts.error import ShieldNotFoundError, EventNotFoundError
 from apps.alerts.models.models import Event
 from apps.alerts.models.alert_operator import AlertShield
 from apps.alerts.constants.constants import AlertShieldMatchType, EventStatus
+from apps.alerts.utils.time_range_checker import TimeRangeChecker
+from apps.alerts.utils.rule_matcher import RuleMatcher
 from apps.core.logger import alert_logger as logger
 
 
@@ -24,6 +24,17 @@ class EventShieldOperator(object):
     事件屏蔽
     符合条件的事件和在规定时间内产生的事件将被屏蔽，屏蔽后不会触发通知或其他处理流程。
     """
+
+    # 字段映射到模型字段
+    FIELD_MAPPING = {
+        "source_id": "source__source_id",
+        "level_id": "level",
+        "resource_type": "resource_type",
+        "resource_id": "resource_id",
+        "content": "description",
+        "title": "title",
+        "event_id": "event_id",
+    }
 
     def __init__(self, event_id_list: List[str], active_shields=None):
         """
@@ -46,16 +57,8 @@ class EventShieldOperator(object):
         self.events = self.get_event_map()
         if not self.events:
             raise EventNotFoundError()
-        # 字段映射到模型字段
-        self.field_mapping = {
-            "source_id": "source__source_id",
-            "level_id": "level",
-            "resource_type": "resource_type",
-            "resource_id": "resource_id",
-            "content": "description",
-            "title": "title",
-            "event_id": "event_id",
-        }
+        # 初始化规则匹配器
+        self.rule_matcher = RuleMatcher(self.FIELD_MAPPING)
 
     def get_event_map(self) -> Dict[int, Event]:
         """获取事件实例映射"""
@@ -141,7 +144,8 @@ class EventShieldOperator(object):
 
         time_matched_shields = []
         for shield in self.active_shields:
-            if self._check_time_range(shield.suppression_time):
+            checker = TimeRangeChecker(shield.suppression_time, self.event_received_at)
+            if checker.is_in_range():
                 time_matched_shields.append(shield)
             else:
                 logger.debug(f"Shield {shield.id} time range not matched, skipping")
@@ -177,104 +181,10 @@ class EventShieldOperator(object):
             return list(base_queryset.values_list("id", flat=True))
 
         elif shield.match_type == AlertShieldMatchType.FILTER:
-            # 过滤匹配，使用ORM查询
-            return self._orm_filter_events(base_queryset, shield.match_rules or [])
+            # 过滤匹配，使用规则匹配器
+            return self.rule_matcher.filter_queryset(base_queryset, shield.match_rules or [])
 
         return []
-
-    def _orm_filter_events(
-        self, queryset, match_rules: List[List[Dict[str, Any]]]
-    ) -> List[int]:
-        """
-        使用ORM查询过滤匹配规则的事件
-
-        Args:
-            queryset: 基础查询集
-            match_rules: 匹配规则 [[{},{}],[{},{}]]
-
-        Returns:
-            匹配的事件ID列表
-        """
-        if not match_rules:
-            return list(queryset.values_list("id", flat=True))
-
-        # 最外层是或关系
-        final_q = Q()
-
-        for rule_group in match_rules:
-            if not rule_group:
-                continue
-
-            # 里层是且关系
-            group_q = Q()
-            group_has_valid_rules = False
-
-            for rule in rule_group:
-                rule_q = self._build_single_rule_q(rule)
-                if rule_q:
-                    group_has_valid_rules = True
-                    if not group_q:
-                        group_q = rule_q
-                    else:
-                        group_q &= rule_q
-
-            # 只有当组内有有效规则时才添加到最终查询
-            if group_has_valid_rules and group_q:
-                if not final_q:
-                    final_q = group_q
-                else:
-                    final_q |= group_q
-
-        if final_q:
-            queryset = queryset.filter(final_q)
-        else:
-            # 如果没有有效的规则，返回空结果集
-            queryset = queryset.none()
-
-        return list(queryset.values_list("id", flat=True))
-
-    def _build_single_rule_q(self, rule: Dict[str, Any]) -> Q | None:
-        """
-        构建单个规则的Q对象
-        Args:
-            rule: 单个匹配规则
-        Returns:
-            Q对象或None
-        """
-        key = rule.get("key", "")
-        operator = rule.get("operator", "eq")
-        value = rule.get("value", "")
-        model_field = self.field_mapping.get(key)
-
-        if not model_field:
-            logger.warning(f"Unknown field key: {key}")
-            return None
-
-        try:
-            if operator == "eq":
-                return Q(**{model_field: value})
-            elif operator == "ne":
-                return ~Q(**{model_field: value})
-            elif operator == "contains":
-                return Q(**{f"{model_field}__icontains": value})
-            elif operator == "not_contains":
-                return ~Q(**{f"{model_field}__icontains": value})
-            elif operator == "re":
-                try:
-                    import re as regex_module
-
-                    regex_module.compile(value)
-                except regex_module.error as e:
-                    logger.error(f"Invalid regex pattern '{value}': {e}")
-                    return None
-                return Q(**{f"{model_field}__iregex": value})
-            else:
-                logger.warning(f"Unknown operator: {operator}")
-                return None
-
-        except Exception as e:
-            logger.error(f"Error building Q object for rule: {str(e)}")
-            return None
 
     def _batch_execute_shield(
         self, event_ids: List[int], shield: AlertShield

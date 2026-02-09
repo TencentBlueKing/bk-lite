@@ -6,6 +6,7 @@ from apps.cmdb.constants.constants import PERMISSION_INSTANCES, OPERATE, VIEW
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.utils.base import format_group_params, get_organization_and_children_ids
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
+from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.web_utils import WebUtils
@@ -13,7 +14,7 @@ from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
-class InstanceViewSet(viewsets.ViewSet):
+class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @staticmethod
     def _normalize_query_list(query_list):
         """
@@ -81,50 +82,18 @@ class InstanceViewSet(viewsets.ViewSet):
         walk(query_list)
         return normalized
 
-    @staticmethod
-    def check_creator_and_organizations(request, instance):
-        organizations = instance["organization"]
-        current_team = int(request.COOKIES.get("current_team"))
-        include_children = request.COOKIES.get("include_children") == "1"
-        if include_children:
-            user_teams = get_organization_and_children_ids(
-                tree_data=request.user.group_tree, target_id=current_team
-            )
-            if not set(organizations) & set(user_teams):
-                return False
-        else:
-            if current_team not in organizations:
-                return False
+    # -------------------------------------------------------------------------
+    # Permission methods - delegated to CmdbPermissionMixin
+    # These wrappers maintain backward compatibility with existing code.
+    # -------------------------------------------------------------------------
 
-        return instance.get("_creator") == request.user.username
+    def check_creator_and_organizations(self, request, instance):
+        """Check if user is creator with org access. Delegates to mixin."""
+        return self.is_creator_with_org_access(request, instance)
 
-    @staticmethod
-    def organizations(request, instance):
-        user_groups = {i["id"] for i in request.user.group_list}
-        organizations = list(set(instance["organization"]) & user_groups)
-        return organizations
-
-    @staticmethod
-    def check_instance_permission(request, instance, operator=VIEW):
-        # 再次确认用户所在的组织
-        user_groups = {i["id"] for i in request.user.group_list}
-        organizations = list(set(instance["organization"]) & user_groups)
-        if not organizations:
-            return False
-
-        model_id = instance["model_id"]
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=model_id
-        )
-
-        has_permission = CmdbRulesFormatUtil.has_object_permission(
-            obj_type=PERMISSION_INSTANCES,
-            operator=operator,
-            model_id=model_id,
-            permission_instances_map=permissions_map,
-            instance=instance,
-        )
-        return has_permission
+    def organizations(self, request, instance):
+        """Get user's organizations for instance. Delegates to mixin."""
+        return self.get_user_organizations(request, instance, "organization")
 
     @staticmethod
     def add_instance_permission(instances, permission_instances_map, creator):

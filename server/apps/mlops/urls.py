@@ -1,23 +1,62 @@
 from rest_framework import routers
 
-from apps.mlops.views.anomaly_detection import *
-from apps.mlops.views.image_classification import *
-from apps.mlops.views.timeseries_predict import *
-from apps.mlops.views.log_clustering import *
-from apps.mlops.views.classification import *
-from apps.mlops.views.object_detection import *
-from apps.mlops.views.algorithm_config import AlgorithmConfigViewSet
+from apps.mlops.views.anomaly_detection import (
+    AnomalyDetectionAlgorithmConfigViewSet,
+    AnomalyDetectionDatasetReleaseViewSet,
+    AnomalyDetectionDatasetViewSet,
+    AnomalyDetectionServingViewSet,
+    AnomalyDetectionTrainDataViewSet,
+    AnomalyDetectionTrainJobViewSet,
+)
+from apps.mlops.views.classification import (
+    ClassificationAlgorithmConfigViewSet,
+    ClassificationDatasetReleaseViewSet,
+    ClassificationDatasetViewSet,
+    ClassificationServingViewSet,
+    ClassificationTrainDataViewSet,
+    ClassificationTrainJobViewSet,
+)
+from apps.mlops.views.image_classification import (
+    ImageClassificationAlgorithmConfigViewSet,
+    ImageClassificationDatasetReleaseViewSet,
+    ImageClassificationDatasetViewSet,
+    ImageClassificationServingViewSet,
+    ImageClassificationTrainDataViewSet,
+    ImageClassificationTrainJobViewSet,
+)
+from apps.mlops.views.log_clustering import (
+    LogClusteringAlgorithmConfigViewSet,
+    LogClusteringDatasetReleaseViewSet,
+    LogClusteringDatasetViewSet,
+    LogClusteringServingViewSet,
+    LogClusteringTrainDataViewSet,
+    LogClusteringTrainJobViewSet,
+)
+from apps.mlops.views.object_detection import (
+    ObjectDetectionAlgorithmConfigViewSet,
+    ObjectDetectionDatasetReleaseViewSet,
+    ObjectDetectionDatasetViewSet,
+    ObjectDetectionServingViewSet,
+    ObjectDetectionTrainDataViewSet,
+    ObjectDetectionTrainJobViewSet,
+)
+from apps.mlops.views.timeseries_predict import (
+    TimeSeriesPredictAlgorithmConfigViewSet,
+    TimeSeriesPredictDatasetReleaseViewSet,
+    TimeSeriesPredictDatasetViewSet,
+    TimeSeriesPredictServingViewSet,
+    TimeSeriesPredictTrainDataViewSet,
+    TimeSeriesPredictTrainJobViewSet,
+)
 
 router = routers.DefaultRouter()
 
-# 算法配置
-router.register(
-    r"algorithm_configs",
-    AlgorithmConfigViewSet,
-    basename="algorithm_configs",
-)
-
 # 异常检测
+router.register(
+    r"anomaly_detection_algorithm_configs",
+    AnomalyDetectionAlgorithmConfigViewSet,
+    basename="anomaly_detection_algorithm_configs",
+)
 router.register(
     r"anomaly_detection_datasets",
     AnomalyDetectionDatasetViewSet,
@@ -46,6 +85,11 @@ router.register(
 
 # 时间序列预测
 router.register(
+    r"timeseries_predict_algorithm_configs",
+    TimeSeriesPredictAlgorithmConfigViewSet,
+    basename="timeseries_predict_algorithm_configs",
+)
+router.register(
     r"timeseries_predict_datasets",
     TimeSeriesPredictDatasetViewSet,
     basename="timeseries_predict_datasets",
@@ -72,6 +116,11 @@ router.register(
 )
 
 # 分类任务
+router.register(
+    r"classification_algorithm_configs",
+    ClassificationAlgorithmConfigViewSet,
+    basename="classification_algorithm_configs",
+)
 router.register(
     r"classification_datasets",
     ClassificationDatasetViewSet,
@@ -100,6 +149,11 @@ router.register(
 
 # 图片分类任务
 router.register(
+    r"image_classification_algorithm_configs",
+    ImageClassificationAlgorithmConfigViewSet,
+    basename="image_classification_algorithm_configs",
+)
+router.register(
     r"image_classification_datasets",
     ImageClassificationDatasetViewSet,
     basename="image_classification_datasets",
@@ -127,6 +181,11 @@ router.register(
 
 # 目标检测
 router.register(
+    r"object_detection_algorithm_configs",
+    ObjectDetectionAlgorithmConfigViewSet,
+    basename="object_detection_algorithm_configs",
+)
+router.register(
     r"object_detection_datasets",
     ObjectDetectionDatasetViewSet,
     basename="object_detection_datasets",
@@ -153,6 +212,11 @@ router.register(
 )
 
 # 日志聚类
+router.register(
+    r"log_clustering_algorithm_configs",
+    LogClusteringAlgorithmConfigViewSet,
+    basename="log_clustering_algorithm_configs",
+)
 router.register(
     r"log_clustering_datasets",
     LogClusteringDatasetViewSet,

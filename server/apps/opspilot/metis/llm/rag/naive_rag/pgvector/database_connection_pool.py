@@ -1,7 +1,8 @@
 from contextlib import contextmanager
 from threading import Lock
 import psycopg
-from loguru import logger
+
+from apps.core.logger import opspilot_logger as logger
 
 
 class DatabaseConnectionPool:
@@ -39,8 +40,8 @@ class DatabaseConnectionPool:
                     # 连接已失效，关闭并继续寻找
                     try:
                         conn.close()
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"关闭失效连接时出错: {e}")
                     self._created_count -= 1
 
             # 池中无可用连接，创建新连接
@@ -66,7 +67,7 @@ class DatabaseConnectionPool:
         # 池已满或连接已关闭，直接关闭连接
         try:
             conn.close()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"关闭连接时出错: {e}")
         with self._lock:
             self._created_count -= 1

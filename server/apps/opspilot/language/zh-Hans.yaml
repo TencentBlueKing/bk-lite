@@ -130,6 +130,7 @@ error:
   no_bot_start_permission: 你没有权限启动此机器人。
   no_chat_flow_configured: 此机器人未配置聊天流程。
   missing_bot_id: 缺少 bot_id
+  missing_bot_or_node_id: 缺少 bot_id 或 node_id
   graph_search_failed: 搜索图失败。请检查服务器日志。
   invalid_file_format: 无效的文件格式。仅允许 .json 和 .csv 文件。
   url_request_failed: URL 请求失败
@@ -181,6 +182,9 @@ error:
   knowledge_base_training: 知识库正在训练，无法修改。
   knowledge_base_used_by_skills: 该知识库正在被以下技能使用，无法删除：{skill_names}
   knowledge_base_delete_related_data_failed: 删除关联数据失败，请重试
+  crontab_expression_required: crontab 表达式为必填项
+  invalid_crontab_expression: '无效的 crontab 表达式：{expression}'
+  crontab_preview_failed: '计算下次执行时间失败：{detail}'
 tools:
   kubernetes:
     name: Kubernetes工具

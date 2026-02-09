@@ -3,6 +3,8 @@ from django_minio_backend import MinioBackend, iso_date_prefix
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.mlops.constants import DatasetReleaseStatus, TrainJobStatus
+from apps.mlops.models.mixins import TrainDataFileCleanupMixin, TrainJobConfigSyncMixin
 
 
 class ObjectDetectionDataset(MaintainerInfo, TimeInfo):
@@ -19,7 +21,7 @@ class ObjectDetectionDataset(MaintainerInfo, TimeInfo):
         return self.name
 
 
-class ObjectDetectionTrainData(MaintainerInfo, TimeInfo):
+class ObjectDetectionTrainData(TrainDataFileCleanupMixin, MaintainerInfo, TimeInfo):
     """目标检测训练数据（重构为 ZIP 上传）"""
 
     name = models.CharField(max_length=100, verbose_name="训练数据名称")
@@ -97,44 +99,6 @@ class ObjectDetectionTrainData(MaintainerInfo, TimeInfo):
     def __str__(self):
         return f"{self.name} - {self.dataset.name}"
 
-    def save(self, *args, **kwargs):
-        """保存时自动清理旧的训练数据文件"""
-        from django.db import transaction
-        from apps.core.logger import mlops_logger as logger
-
-        if self.pk:
-            with transaction.atomic():
-                try:
-                    old_instance = (
-                        ObjectDetectionTrainData.objects.select_for_update().get(
-                            pk=self.pk
-                        )
-                    )
-                    old_file = old_instance.train_data
-                    new_file = self.train_data
-
-                    old_path = old_file.name if old_file else None
-                    new_path = new_file.name if new_file else None
-
-                    if old_path and old_path != new_path:
-                        try:
-                            old_file.delete(save=False)
-                            logger.info(
-                                f"Deleted old train_data file for ObjectDetectionTrainData {self.pk}: "
-                                f"old={old_path}, new={new_path or 'None'}"
-                            )
-                        except Exception as delete_err:
-                            logger.warning(
-                                f"Failed to delete old file '{old_path}': {delete_err}"
-                            )
-
-                except ObjectDetectionTrainData.DoesNotExist:
-                    pass
-                except Exception as e:
-                    logger.warning(f"Failed to check old train_data file: {e}")
-
-        super().save(*args, **kwargs)
-
 
 class ObjectDetectionDatasetRelease(MaintainerInfo, TimeInfo):
     """目标检测数据集发布版本"""
@@ -172,14 +136,8 @@ class ObjectDetectionDatasetRelease(MaintainerInfo, TimeInfo):
 
     status = models.CharField(
         max_length=20,
-        choices=[
-            ("pending", "待发布"),
-            ("processing", "发布中"),
-            ("published", "已发布"),
-            ("failed", "发布失败"),
-            ("archived", "归档"),
-        ],
-        default="pending",
+        choices=DatasetReleaseStatus.CHOICES,
+        default=DatasetReleaseStatus.PENDING,
         verbose_name="发布状态",
         help_text="数据集发布状态",
     )
@@ -214,21 +172,18 @@ class ObjectDetectionDatasetRelease(MaintainerInfo, TimeInfo):
         return f"{self.dataset.name} - {self.version}"
 
 
-class ObjectDetectionTrainJob(MaintainerInfo, TimeInfo):
+class ObjectDetectionTrainJob(TrainJobConfigSyncMixin, MaintainerInfo, TimeInfo):
     """目标检测训练任务"""
+
+    _model_prefix = "ObjectDetection"
 
     name = models.CharField(max_length=100, verbose_name="任务名称")
     description = models.TextField(blank=True, null=True, verbose_name="任务描述")
 
     status = models.CharField(
         max_length=20,
-        choices=[
-            ("pending", "待训练"),
-            ("running", "训练中"),
-            ("completed", "已完成"),
-            ("failed", "训练失败"),
-        ],
-        default="pending",
+        choices=TrainJobStatus.CHOICES,
+        default=TrainJobStatus.PENDING,
         verbose_name="任务状态",
         help_text="训练任务的当前状态",
     )
@@ -290,93 +245,6 @@ class ObjectDetectionTrainJob(MaintainerInfo, TimeInfo):
     class Meta:
         verbose_name = "目标检测训练任务"
         verbose_name_plural = "目标检测训练任务"
-
-    def save(self, *args, **kwargs):
-        """保存时自动同步配置到 MinIO"""
-        from apps.core.logger import mlops_logger as logger
-
-        update_fields = kwargs.get("update_fields")
-        config_related_fields = {
-            "hyperopt_config",
-            "config_url",
-            "algorithm",
-            "dataset_version",
-        }
-
-        if update_fields and not any(
-            field in config_related_fields for field in update_fields
-        ):
-            super().save(*args, **kwargs)
-            return
-
-        super().save(*args, **kwargs)
-
-        config_updated = False
-
-        if self.hyperopt_config:
-            self._sync_config_to_minio()
-            config_updated = True
-        elif self.config_url:
-            try:
-                self.config_url.delete(save=False)
-                logger.info(
-                    f"Deleted config file (empty config) for TrainJob {self.pk}"
-                )
-                self.config_url = None
-                config_updated = True
-            except Exception as e:
-                logger.warning(f"Failed to delete config file: {e}")
-
-        if config_updated:
-            self.__class__.objects.filter(pk=self.pk).update(config_url=self.config_url)
-
-    def _sync_config_to_minio(self):
-        """将 hyperopt_config 同步上传到 MinIO（自动补全 model 和 mlflow 配置）"""
-        from django.core.files.base import ContentFile
-        import json
-        import uuid
-        from apps.core.logger import mlops_logger as logger
-
-        if self.config_url:
-            try:
-                self.config_url.delete(save=False)
-                logger.info(f"Deleted old config file for TrainJob {self.pk}")
-            except Exception as e:
-                logger.warning(f"Failed to delete old config file: {e}")
-
-        try:
-            complete_config = self._build_complete_config()
-
-            content = json.dumps(complete_config, ensure_ascii=False, indent=2)
-            filename = f"config_{self.pk or 'new'}_{uuid.uuid4().hex[:8]}.json"
-            self.config_url.save(
-                filename, ContentFile(content.encode("utf-8")), save=False
-            )
-            logger.info(f"Synced config to MinIO for TrainJob {self.pk}: {filename}")
-        except Exception as e:
-            logger.error(f"Failed to sync config to MinIO: {e}", exc_info=True)
-
-    def _build_complete_config(self):
-        """构建完整的配置文件（补全 model、mlflow 和 max_evals 部分）"""
-        config = dict(self.hyperopt_config) if self.hyperopt_config else {}
-
-        model_identifier = f"ObjectDetection_{self.algorithm}_{self.pk}"
-
-        if "hyperparams" not in config:
-            config["hyperparams"] = {}
-
-        config["hyperparams"]["max_evals"] = self.max_evals
-
-        config["model"] = {
-            "type": self.algorithm,
-            "name": model_identifier,
-        }
-
-        config["mlflow"] = {
-            "experiment_name": model_identifier,
-        }
-
-        return config
 
     def __str__(self):
         return self.name

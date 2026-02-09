@@ -5,6 +5,8 @@
     password = "${PASSWORD__{{ config_id }}}"
     interval = "{{ interval }}s"
     insecure_skip_verify = true
+    cluster_health = true
+    node_stats = ["jvm", "fs", "process","breaker", "http", "thread_pool"]
     [inputs.elasticsearch.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"

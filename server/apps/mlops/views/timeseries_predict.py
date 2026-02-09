@@ -1,5 +1,6 @@
 from config.drf.viewsets import ModelViewSet
 from apps.mlops.filters.timeseries_predict import *
+from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRunStatus
 from rest_framework.decorators import action
 from rest_framework import status
 from rest_framework.response import Response
@@ -11,7 +12,12 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.utils import mlflow_service
-from apps.mlops.services import get_image_by_prefix
+from apps.mlops.services import (
+    get_image_by_prefix,
+    get_mlflow_train_config,
+    get_mlflow_tracking_uri,
+    ConfigurationError,
+)
 import requests
 import os
 import pandas as pd
@@ -23,6 +29,12 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.mlops.models.timeseries_predict import *
 from apps.mlops.serializers.timeseries_predict import *
 from config.drf.pagination import CustomPageNumberPagination
+from apps.mlops.models import AlgorithmConfig
+from apps.mlops.serializers.algorithm_config import (
+    AlgorithmConfigSerializer,
+    AlgorithmConfigListSerializer,
+)
+from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
 
 
 class TimeSeriesPredictDatasetViewSet(ModelViewSet):
@@ -33,23 +45,23 @@ class TimeSeriesPredictDatasetViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.timeseries_predict_dataset"
 
-    @HasPermission("timeseries_predict_datasets-View")
+    @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_datasets-View")
+    @HasPermission("timeseries_predict-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_datasets-Delete")
+    @HasPermission("timeseries_predict-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_datasets-Add")
+    @HasPermission("timeseries_predict-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_datasets-Edit")
+    @HasPermission("timeseries_predict-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
@@ -66,28 +78,28 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
 
     MLFLOW_PREFIX = "TimeseriesPredict"  # MLflow 命名前缀
 
-    @HasPermission("timeseries_predict_train_jobs-View")
+    @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_train_jobs-View")
+    @HasPermission("timeseries_predict-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_train_jobs-Delete")
+    @HasPermission("timeseries_predict-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_train_jobs-Add")
+    @HasPermission("timeseries_predict-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_train_jobs-Edit")
+    @HasPermission("timeseries_predict-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], url_path="train")
-    @HasPermission("timeseries_predict_train_jobs-Train")
+    @HasPermission("timeseries_predict-Train")
     def train(self, request, *args, **kwargs):
         """
         启动训练任务
@@ -96,34 +108,16 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             train_job = self.get_object()
 
             # 检查任务状态
-            if train_job.status == "running":
+            if train_job.status == TrainJobStatus.RUNNING:
                 return Response(
                     {"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 获取环境变量
-            bucket = os.getenv("MINIO_PUBLIC_BUCKETS", "munchkin-public")
-            minio_endpoint = os.getenv("MLFLOW_S3_ENDPOINT_URL", "")
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
-            minio_access_key = os.getenv("MINIO_ACCESS_KEY", "")
-            minio_secret_key = os.getenv("MINIO_SECRET_KEY", "")
-
-            if not minio_endpoint:
-                logger.error("MinIO endpoint not configured")
-                return Response(
-                    {"error": "系统配置错误，请联系管理员"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-
-            if not mlflow_tracking_uri:
-                logger.error("MLflow tracking URI not configured")
-                return Response(
-                    {"error": "系统配置错误，请联系管理员"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-
-            if not minio_access_key or not minio_secret_key:
-                logger.error("MinIO credentials not configured")
+            # 获取环境变量配置
+            try:
+                config = get_mlflow_train_config()
+            except ConfigurationError as e:
+                logger.error(str(e))
                 return Response(
                     {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -161,18 +155,18 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
-                bucket=bucket,
+                bucket=config.bucket,
                 dataset=train_job.dataset_version.dataset_file.name,
                 config=train_job.config_url.name,
-                minio_endpoint=minio_endpoint,
-                mlflow_tracking_uri=mlflow_tracking_uri,
-                minio_access_key=minio_access_key,
-                minio_secret_key=minio_secret_key,
+                minio_endpoint=config.minio_endpoint,
+                mlflow_tracking_uri=config.mlflow_tracking_uri,
+                minio_access_key=config.minio_access_key,
+                minio_secret_key=config.minio_secret_key,
                 train_image=train_image,
             )
 
             # 更新任务状态
-            train_job.status = "running"
+            train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
 
             logger.info(f"训练任务已启动: {job_id}")
@@ -206,7 +200,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="stop")
-    @HasPermission("timeseries_predict_train_jobs-Stop")
+    @HasPermission("timeseries_predict-Stop")
     def stop(self, request, *args, **kwargs):
         """
         停止训练任务
@@ -215,7 +209,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             train_job = self.get_object()
 
             # 检查任务状态
-            if train_job.status != "running":
+            if train_job.status != TrainJobStatus.RUNNING:
                 return Response(
                     {"error": "训练任务未在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
@@ -233,7 +227,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             result = WebhookClient.stop(job_id)
 
             # 更新任务状态
-            train_job.status = "pending"
+            train_job.status = TrainJobStatus.PENDING
             train_job.save(update_fields=["status"])
 
             logger.info(f"训练任务已停止: {job_id}")
@@ -268,7 +262,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["get"], url_path="runs_data_list")
-    @HasPermission("timeseries_predict_train_jobs-View")
+    @HasPermission("timeseries_predict-View")
     def get_run_data_list(self, request, pk=None):
         """
         获取训练任务的所有 MLflow 运行记录
@@ -341,7 +335,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                         run_name = ""
 
                     # 获取状态
-                    run_status = row.get("status", "UNKNOWN")
+                    run_status = row.get("status", MLflowRunStatus.UNKNOWN)
 
                     # 记录第一条（最新）的运行状态
                     if idx == 0:
@@ -368,13 +362,8 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                     continue
 
             # 同步最新运行状态到 TrainJob（避免状态不一致）
-            if latest_run_status and train_job.status == "running":
-                status_map = {
-                    "FINISHED": "completed",
-                    "FAILED": "failed",
-                    "KILLED": "failed",
-                }
-                new_status = status_map.get(latest_run_status)
+            if latest_run_status and train_job.status == TrainJobStatus.RUNNING:
+                new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(latest_run_status)
 
                 if new_status:
                     train_job.status = new_status
@@ -402,7 +391,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="runs_metrics_list/(?P<run_id>.+?)")
-    @HasPermission("timeseries_predict_train_jobs-View")
+    @HasPermission("timeseries_predict-View")
     def get_runs_metrics_list(self, request, run_id: str):
         """
         获取指定 run 的 Model 指标列表（过滤掉 System 指标）
@@ -427,7 +416,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
         methods=["get"],
         url_path="runs_metrics_history/(?P<run_id>.+?)/(?P<metric_name>.+?)",
     )
-    @HasPermission("timeseries_predict_train_jobs-View")
+    @HasPermission("timeseries_predict-View")
     def get_metric_data(self, request, run_id: str, metric_name: str):
         """
         获取指定 run 的指定指标的历史数据
@@ -466,7 +455,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="run_params/(?P<run_id>.+?)")
-    @HasPermission("timeseries_predict_train_jobs-View")
+    @HasPermission("timeseries_predict-View")
     def get_run_params(self, request, run_id: str):
         """
         获取指定 run 的配置参数（用于查看历史训练的配置）
@@ -505,7 +494,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["get"], url_path="model_versions")
-    @HasPermission("timeseries_predict_train_jobs-View")
+    @HasPermission("timeseries_predict-View")
     def get_model_versions(self, request, pk=None):
         """
         获取训练任务对应模型的所有版本列表
@@ -542,7 +531,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="download_model/(?P<run_id>[^/]+)")
-    @HasPermission("timeseries_predict_train_jobs-View")
+    @HasPermission("timeseries_predict-View")
     def download_model(self, request, run_id: str):
         """
         从 MLflow 下载模型并直接返回 ZIP 文件
@@ -590,23 +579,23 @@ class TimeSeriesPredictTrainDataViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.timeseries_predict_train_data"
 
-    @HasPermission("timeseries_predict_train_data-View")
+    @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_train_data-View")
+    @HasPermission("timeseries_predict-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_train_data-Delete")
+    @HasPermission("timeseries_predict-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_train_data-Add")
+    @HasPermission("timeseries_predict-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_train_data-Edit")
+    @HasPermission("timeseries_predict-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
@@ -623,7 +612,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
     MLFLOW_PREFIX = "TimeseriesPredict"  # MLflow 命名前缀
 
-    @HasPermission("timeseries_predict_servings-View")
+    @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
         """列表查询，实时同步容器状态"""
         response = super().list(request, *args, **kwargs)
@@ -691,7 +680,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
         return response
 
-    @HasPermission("timeseries_predict_servings-View")
+    @HasPermission("timeseries_predict-View")
     def retrieve(self, request, *args, **kwargs):
         """详情查询，实时同步容器状态"""
         response = super().retrieve(request, *args, **kwargs)
@@ -731,11 +720,11 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
         return response
 
-    @HasPermission("timeseries_predict_servings-Delete")
+    @HasPermission("timeseries_predict-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_servings-Add")
+    @HasPermission("timeseries_predict-Add")
     def create(self, request, *args, **kwargs):
         """
         创建 serving 服务并自动启动容器
@@ -748,8 +737,8 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 获取创建的 serving 对象
             serving = TimeSeriesPredictServing.objects.get(id=serving_id)
 
-            # 获取环境变量
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
+            # 获取 MLflow tracking URI
+            mlflow_tracking_uri = get_mlflow_tracking_uri()
             if not mlflow_tracking_uri:
                 logger.error("环境变量 MLFLOW_TRACKER_URL 未配置")
                 serving.container_info = {
@@ -855,7 +844,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
         return response
 
-    @HasPermission("timeseries_predict_servings-Edit")
+    @HasPermission("timeseries_predict-Edit")
     def update(self, request, *args, **kwargs):
         """
         更新 serving 配置，自动检测并重启容器
@@ -928,8 +917,8 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 # 继续执行，尝试启动新容器
 
             try:
-                # 获取环境变量
-                mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
+                # 获取 MLflow tracking URI
+                mlflow_tracking_uri = get_mlflow_tracking_uri()
                 if not mlflow_tracking_uri:
                     raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
 
@@ -978,7 +967,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         return response
 
     @action(detail=True, methods=["post"], url_path="start")
-    @HasPermission("timeseries_predict_servings-Start")
+    @HasPermission("timeseries_predict-Start")
     def start(self, request, *args, **kwargs):
         """
         启动 serving 服务
@@ -986,8 +975,8 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         try:
             serving = self.get_object()
 
-            # 获取环境变量
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
+            # 获取 MLflow tracking URI
+            mlflow_tracking_uri = get_mlflow_tracking_uri()
             if not mlflow_tracking_uri:
                 logger.error("MLflow tracking URI not configured")
                 return Response(
@@ -1098,7 +1087,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="stop")
-    @HasPermission("timeseries_predict_servings-Stop")
+    @HasPermission("timeseries_predict-Stop")
     def stop(self, request, *args, **kwargs):
         """
         停止 serving 服务（停止并删除容器）
@@ -1145,7 +1134,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="remove")
-    @HasPermission("timeseries_predict_servings-Remove")
+    @HasPermission("timeseries_predict-Remove")
     def remove(self, request, *args, **kwargs):
         """
         删除 serving 容器（可处理运行中的容器）
@@ -1201,7 +1190,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("timeseries_predict_servings-Predict")
+    @HasPermission("timeseries_predict-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行时间序列预测
@@ -1375,28 +1364,28 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.timeseries_predict_dataset_release"
 
-    @HasPermission("timeseries_predict_dataset_releases-View")
+    @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_dataset_releases-View")
+    @HasPermission("timeseries_predict-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_dataset_releases-Delete")
+    @HasPermission("timeseries_predict-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_dataset_releases-Add")
+    @HasPermission("timeseries_predict-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("timeseries_predict_dataset_releases-Edit")
+    @HasPermission("timeseries_predict-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"], url_path="download")
-    @HasPermission("timeseries_predict_dataset_releases-View")
+    @HasPermission("timeseries_predict-View")
     def download(self, request, *args, **kwargs):
         """
         下载数据集版本的 ZIP 文件
@@ -1430,7 +1419,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="archive")
-    @HasPermission("timeseries_predict_dataset_releases-Edit")
+    @HasPermission("timeseries_predict-Edit")
     def archive(self, request, *args, **kwargs):
         """
         归档数据集版本(将状态改为 archived)
@@ -1438,13 +1427,13 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
         try:
             release = self.get_object()
 
-            if release.status == "archived":
+            if release.status == DatasetReleaseStatus.ARCHIVED:
                 return Response(
                     {"error": "数据集版本已处于归档状态"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            release.status = "archived"
+            release.status = DatasetReleaseStatus.ARCHIVED
             release.description = f"[已归档] {release.description or ''}"
             release.save(update_fields=["status", "description"])
 
@@ -1460,7 +1449,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="unarchive")
-    @HasPermission("timeseries_predict_dataset_releases-Edit")
+    @HasPermission("timeseries_predict-Edit")
     def unarchive(self, request, *args, **kwargs):
         """
         恢复已归档的数据集版本(将状态改为 published)
@@ -1468,7 +1457,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
         try:
             release = self.get_object()
 
-            if release.status != "archived":
+            if release.status != DatasetReleaseStatus.ARCHIVED:
                 return Response(
                     {"error": "只能恢复已归档的数据集版本"},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -1479,7 +1468,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
             if original_description.startswith("[已归档] "):
                 release.description = original_description.replace("[已归档] ", "", 1)
 
-            release.status = "published"
+            release.status = DatasetReleaseStatus.PUBLISHED
             release.save(update_fields=["status", "description"])
 
             logger.info(
@@ -1495,8 +1484,90 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
             )
 
         except Exception as e:
-            logger.error(f"恢复失败: {str(e)}", exc_info=True)
+             logger.error(f"恢复失败: {str(e)}", exc_info=True)
+             return Response(
+                 {"error": f"恢复失败: {str(e)}"},
+                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+             )
+
+
+class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
+    """时序预测算法配置视图集"""
+
+    queryset = AlgorithmConfig.objects.filter(algorithm_type="timeseries_predict")
+    serializer_class = AlgorithmConfigSerializer
+    filterset_class = AlgorithmConfigFilter
+    pagination_class = CustomPageNumberPagination
+    ordering = ("id",)
+    permission_key = "algorithm.timeseries_predict_algorithm_config"
+
+    def get_serializer_class(self):
+        if (
+            self.action == "list"
+            and not self.request.query_params.get("include_form_config", "false").lower() == "true"
+        ):
+            return AlgorithmConfigListSerializer
+        return AlgorithmConfigSerializer
+
+    @HasPermission("timeseries_predict-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("timeseries_predict-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("timeseries_predict-Add")
+    def create(self, request, *args, **kwargs):
+        request.data["algorithm_type"] = "timeseries_predict"
+        return super().create(request, *args, **kwargs)
+
+    @HasPermission("timeseries_predict-Edit")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @HasPermission("timeseries_predict-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        is_active_new = request.data.get("is_active")
+        if instance.is_active and is_active_new is False:
+            task_count = TimeSeriesPredictTrainJob.objects.filter(algorithm=instance.name).count()
+            if task_count > 0:
+                return Response(
+                    {"error": f"无法禁用：有 {task_count} 个训练任务正在使用此算法", "task_count": task_count},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        return super().partial_update(request, *args, **kwargs)
+
+    @HasPermission("timeseries_predict-Delete")
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        task_count = TimeSeriesPredictTrainJob.objects.filter(algorithm=instance.name).count()
+        if task_count > 0:
             return Response(
-                {"error": f"恢复失败: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {"error": f"无法删除：有 {task_count} 个训练任务正在使用此算法", "task_count": task_count},
+                status=status.HTTP_400_BAD_REQUEST,
             )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"], url_path="by_type")
+    @HasPermission("timeseries_predict-View")
+    def by_type(self, request):
+        queryset = self.get_queryset().filter(is_active=True)
+        serializer = AlgorithmConfigSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="get_image")
+    @HasPermission("timeseries_predict-View")
+    def get_image(self, request):
+        name = request.query_params.get("name")
+        if not name:
+            return Response({"error": "name 参数必填"}, status=400)
+        try:
+            config = AlgorithmConfig.objects.get(
+                algorithm_type="timeseries_predict", name=name, is_active=True
+            )
+            return Response({"image": config.image})
+        except AlgorithmConfig.DoesNotExist:
+            return Response({"error": f"未找到算法配置: timeseries_predict/{name}"}, status=404)
+

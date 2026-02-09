@@ -21,19 +21,18 @@ const CONTAINER_STATE_MAP: Record<string, string> = {
   'error': 'red'
 };
 
-const CONTAINER_TEXT_MAP: Record<string, string> = {
-  'running': '运行中',
-  'completed': '已完成',
-  'not_found': '已停止',
-  'unknown': '状态异常',
-  'error': '错误'
+const CONTAINER_TEXT_KEYS: Record<string, string> = {
+  'running': 'mlops-common.containerRunning',
+  'completed': 'mlops-common.containerCompleted',
+  'not_found': 'mlops-common.containerStopped',
+  'unknown': 'mlops-common.containerUnknown',
+  'error': 'mlops-common.containerError'
 };
 
 const ServingPage = () => {
   const { t } = useTranslation();
   const params = useParams();
   const algorithmType = params.algorithmType as DatasetType;
-  
   const modalRef = useRef<ModalRef>(null);
   const { getTrainJobList } = useMlopsTaskApi();
   const {
@@ -99,7 +98,7 @@ const ServingPage = () => {
         const text = isSuccess ? state : 'error';
         return (
           <Tooltip title={detail || ''}>
-            <Tag color={CONTAINER_STATE_MAP[_status]}>{CONTAINER_TEXT_MAP[text]}</Tag>
+            <Tag color={CONTAINER_STATE_MAP[_status]}>{t(CONTAINER_TEXT_KEYS[text])}</Tag>
           </Tooltip>
         )
       }
@@ -127,10 +126,10 @@ const ServingPage = () => {
               </PermissionWrapper>
             }
             {state !== 'running' && state !== 'unknown' ?
-              <PermissionWrapper requiredPermissions={['Edit']}>
+              <PermissionWrapper requiredPermissions={['Start']}>
                 <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)}>{t(`mlops-common.start`)}</Button>
               </PermissionWrapper> :
-              <PermissionWrapper requiredPermissions={['Edit']}>
+              <PermissionWrapper requiredPermissions={['Stop']}>
                 <Button type="link" className="mr-2" danger onClick={() => handleStopContainer(record.id)}>{t(`mlops-common.stop`)}</Button>
               </PermissionWrapper>
             }

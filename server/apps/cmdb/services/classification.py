@@ -6,6 +6,7 @@ from apps.cmdb.constants.constants import (
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.language.service import SettingLanguage
+from apps.core.exceptions.base_app_exception import BaseAppException
 
 
 class ClassificationManage(object):
@@ -46,7 +47,7 @@ class ClassificationManage(object):
             }
             _, model_count = ag.query_entity(MODEL, [model_query], page={"skip": 0, "limit": 1})
             if model_count > 0:
-                raise Exception("classification is used")
+                raise BaseAppException("classification is used")
 
     @staticmethod
     def delete_model_classification(id: int):

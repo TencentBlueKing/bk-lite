@@ -79,7 +79,7 @@ const ClassificationDetail = () => {
       fixed: 'right',
       render: (_: unknown, record) => (
         <>
-          <PermissionWrapper requiredPermissions={['File Edit']}>
+          <PermissionWrapper requiredPermissions={['View']}>
             <Button
               type="link"
               className="mr-2.5"
@@ -88,7 +88,7 @@ const ClassificationDetail = () => {
               {t('common.detail')}
             </Button>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['File Edit']}>
+          <PermissionWrapper requiredPermissions={['Edit']}>
             <Button
               type="link"
               className="mr-2.5"
@@ -97,7 +97,7 @@ const ClassificationDetail = () => {
               {t('common.edit')}
             </Button>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['File Delete']}>
+          <PermissionWrapper requiredPermissions={['Delete']}>
             <Popconfirm
               title={t('datasets.deleteTitle')}
               description={t('datasets.deleteContent')}
@@ -254,12 +254,12 @@ const ClassificationDetail = () => {
             onSearch={onSearch}
             style={{ fontSize: 15 }}
           />
-          <PermissionWrapper requiredPermissions={['File Upload']}>
+          <PermissionWrapper requiredPermissions={['Add']}>
             <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['File View']}>
+          <PermissionWrapper requiredPermissions={['View']}>
             <DatasetReleaseList datasetType={DatasetType.CLASSIFICATION} />
           </PermissionWrapper>
         </div>

@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.model import ModelManage
+from apps.core.exceptions.base_app_exception import BaseAppException
 
 load_dotenv()
 
@@ -174,7 +175,7 @@ class Management:
                         ],
                     )
                     if not dst_entity:
-                        raise Exception(f"target instance {dst_info['model_id']}:{dst_info['inst_name']} not found")
+                        raise BaseAppException(f"target instance {dst_info['model_id']}:{dst_info['inst_name']} not found")
 
                     dst_id = dst_entity[0]["_id"]
                     asso_info = self.set_asso_info(dst_id, src_info, dst_info)

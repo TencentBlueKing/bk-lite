@@ -8,6 +8,7 @@ class ChannelChoices(models.TextChoices):
     EMAIL = "email", "Email"
     ENTERPRISE_WECHAT = "enterprise_wechat", "Enterprise Wechat"
     ENTERPRISE_WECHAT_BOT = "enterprise_wechat_bot", "Enterprise Wechat Bot"
+    NATS = "nats", "NATS"
 
 
 class Channel(MaintainerInfo, EncryptMixin):

@@ -16,6 +16,7 @@ from pathlib import Path
 from collections import defaultdict
 
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.tasks.base import mark_release_as_failed
 
 
 def prepare_class_mappings(
@@ -427,12 +428,16 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
 
     except SoftTimeLimitExceeded:
         logger.error(f"任务超时 - Release ID: {release_id}")
-        _mark_as_failed(release_id, "任务超时")
+        from apps.mlops.models.object_detection import ObjectDetectionDatasetRelease
+
+        mark_release_as_failed(ObjectDetectionDatasetRelease, release_id, "任务超时")
         return {"result": False, "reason": "Task timeout"}
 
     except Exception as e:
         logger.error(f"数据集发布失败: {str(e)}", exc_info=True)
-        _mark_as_failed(release_id, str(e))
+        from apps.mlops.models.object_detection import ObjectDetectionDatasetRelease
+
+        mark_release_as_failed(ObjectDetectionDatasetRelease, release_id, str(e))
         return {"result": False, "error": str(e)}
 
 
@@ -682,23 +687,3 @@ def _reorganize_yolo_data(
         raise ValueError(error_msg)
 
     return {"total": total, "classes": classes_found}
-
-
-def _mark_as_failed(release_id, error_message="Unknown error"):
-    """标记发布任务为失败状态"""
-    try:
-        from apps.mlops.models.object_detection import ObjectDetectionDatasetRelease
-
-        release = ObjectDetectionDatasetRelease.objects.get(id=release_id)
-        release.status = "failed"
-        release.metadata = {
-            "error": error_message,
-            "failed_at": timezone.now().isoformat(),
-        }
-        release.save(update_fields=["status", "metadata"])
-
-        logger.error(
-            f"标记发布任务为失败 - Release ID: {release_id}, 原因: {error_message}"
-        )
-    except Exception as e:
-        logger.error(f"更新失败状态失败: {str(e)}", exc_info=True)

@@ -133,6 +133,7 @@ error:
   no_bot_start_permission: You do not have permission to start this bot.
   no_chat_flow_configured: No chat flow configured for this bot.
   missing_bot_id: Missing bot_id
+  missing_bot_or_node_id: Missing bot_id or node_id
   graph_search_failed: Failed to search graph. Please check the server logs.
   invalid_file_format: Invalid file format. Only .json and .csv files are allowed.
   url_request_failed: URL request failed
@@ -186,6 +187,9 @@ error:
   knowledge_base_training: The knowledge base is training and cannot be modified.
   knowledge_base_used_by_skills: ''
   knowledge_base_delete_related_data_failed: ''
+  crontab_expression_required: crontab_expression is required
+  invalid_crontab_expression: 'Invalid crontab expression: {expression}'
+  crontab_preview_failed: 'Failed to calculate next runs: {detail}'
 tools:
   kubernetes:
     name: Kubernetes Tools
