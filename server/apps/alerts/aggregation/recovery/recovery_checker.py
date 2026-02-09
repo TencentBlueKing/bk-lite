@@ -2,8 +2,8 @@
 from typing import List
 from collections import defaultdict
 
-from apps.alerts.models import Alert, Event
-from apps.alerts.constants import AlertStatus, EventAction, SessionStatus
+from apps.alerts.models.models import Alert, Event
+from apps.alerts.constants.constants import AlertStatus, EventAction, SessionStatus
 from apps.core.logger import alert_logger as logger
 
 

@@ -9,6 +9,7 @@ import {
   Divider,
   Empty,
 } from 'antd';
+import { useTranslation } from '@/utils/i18n';
 import type { FormConfig, GroupConfig, FieldConfig } from '@/app/mlops/types/algorithmConfig';
 
 interface FormPreviewProps {
@@ -20,6 +21,8 @@ interface FormPreviewProps {
  * 根据 formConfig 渲染表单预览，风格与训练任务表单保持一致
  */
 const FormPreview = ({ formConfig }: FormPreviewProps) => {
+  const { t } = useTranslation();
+
   /**
    * 渲染单个字段
    */
@@ -30,7 +33,7 @@ const FormPreview = ({ formConfig }: FormPreviewProps) => {
     const commonProps = {
       name: field.name,
       label: field.label,
-      rules: field.required ? [{ required: true, message: `请输入${field.label}` }] : undefined,
+      rules: field.required ? [{ required: true, message: `${t('algorithmConfig.pleaseInput')}${field.label}` }] : undefined,
       tooltip: field.tooltip,
       initialValue: field.defaultValue,
     };
@@ -137,7 +140,7 @@ const FormPreview = ({ formConfig }: FormPreviewProps) => {
   if (!hasContent) {
     return (
       <Empty
-        description="请在表单配置标签页中编辑 JSON 配置"
+        description={t('algorithmConfig.editJsonConfigHint')}
         className="py-12"
       />
     );

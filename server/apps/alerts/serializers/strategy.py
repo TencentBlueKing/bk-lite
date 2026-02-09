@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.alerts.models import AlarmStrategy
+from apps.alerts.models.alert_operator import AlarmStrategy
 
 
 class AlarmStrategySerializer(serializers.ModelSerializer):

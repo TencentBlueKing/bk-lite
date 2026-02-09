@@ -10,7 +10,7 @@ from django.http import HttpRequest
 
 from apps.alerts.common.source_adapter.base import AlertSourceAdapter
 
-from apps.alerts.models import Event
+from apps.alerts.models.models import Event
 from apps.alerts.common.source_adapter import logger
 
 

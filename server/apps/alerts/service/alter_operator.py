@@ -8,8 +8,10 @@ from django.utils import timezone
 from django.db import transaction
 
 from apps.alerts.common.notify.base import NotifyParamsFormat
-from apps.alerts.models import Alert, AlertAssignment, OperatorLog
-from apps.alerts.constants import AlertStatus, AlertOperate, LogTargetType, LogAction
+from apps.alerts.models.alert_operator import AlertAssignment
+from apps.alerts.models.models import Alert
+from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.constants.constants import AlertStatus, AlertOperate, LogTargetType, LogAction
 from apps.alerts.service.base import get_default_notify_params
 from apps.core.logger import alert_logger as logger
 

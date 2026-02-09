@@ -13,7 +13,11 @@ def migrate_policy():
 
     优化：使用统一的文件查找函数
     """
+    # 社区版策略
     path_list = find_files_by_pattern(PluginConstants.DIRECTORY, filename_pattern="policy.json")
+    # 商业版策略
+    enterprise_path_list = find_files_by_pattern(PluginConstants.ENTERPRISE_DIRECTORY, filename_pattern="policy.json")
+    path_list.extend(enterprise_path_list)
     logger.info(f'找到 {len(path_list)} 个策略配置文件')
 
     success_count = 0

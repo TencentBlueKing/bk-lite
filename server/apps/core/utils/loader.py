@@ -49,19 +49,43 @@ class LanguageLoader:
             return translations
 
     def _load_language_file(self, lang: str) -> dict:
-        """加载指定语言的 yaml 文件"""
+        """加载指定语言的 yaml 文件，包括 enterprise 目录下的翻译"""
+        result = {}
+
+        # 加载主语言文件
         file_path = os.path.join(self.base_dir, f"{lang}.yaml")
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    result = yaml.safe_load(f) or {}
+            except Exception as e:
+                logger.error(f"Failed to load language file: {file_path}, error: {e}")
 
-        if not os.path.exists(file_path):
+        # 加载 enterprise 目录下的翻译文件并合并
+        enterprise_file_path = os.path.join(f"apps/{self.app}/enterprise/language", f"{lang}.yaml")
+        if os.path.exists(enterprise_file_path):
+            try:
+                with open(enterprise_file_path, "r", encoding="utf-8") as f:
+                    enterprise_translations = yaml.safe_load(f) or {}
+                    result = self._deep_merge(result, enterprise_translations)
+                    logger.debug(f"Merged enterprise language file: {enterprise_file_path}")
+            except Exception as e:
+                logger.error(f"Failed to load enterprise language file: {enterprise_file_path}, error: {e}")
+
+        if not result:
             logger.warning(f"Language file not found: {file_path}, using empty translations")
-            return {}
 
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                return yaml.safe_load(f) or {}
-        except Exception as e:
-            logger.error(f"Failed to load language file: {file_path}, error: {e}")
-            return {}
+        return result
+
+    def _deep_merge(self, base: dict, override: dict) -> dict:
+        """深度合并两个字典，override 中的值会覆盖 base 中的值"""
+        result = base.copy()
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
 
     def load_language(self, lang: str):
         """加载指定语言的yaml文件 (兼容旧接口)"""

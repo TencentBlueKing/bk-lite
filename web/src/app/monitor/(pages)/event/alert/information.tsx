@@ -220,7 +220,11 @@ const Information: React.FC<InformationProps> = ({
                 allowSelect={false}
                 eventData={eventData}
                 data={chartData}
-                threshold={formData.policy?.threshold}
+                threshold={
+                  formData.alert_type === 'no_data'
+                    ? []
+                    : formData.policy?.threshold
+                }
                 unit={formData.metric?.unit}
                 metric={formData.metric}
               />

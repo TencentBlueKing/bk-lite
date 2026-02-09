@@ -34,6 +34,50 @@ from apps.core.logger import cmdb_logger as logger
 
 
 class InstanceManage(object):
+    @staticmethod
+    def _build_format_permission_dict(permission_map: dict, creator: str = "") -> dict:
+        format_permission_dict = {}
+        for organization_id, organization_permission_data in permission_map.items():
+            _query_list = []
+            inst_names = organization_permission_data["inst_names"]
+            if inst_names:
+                _query_list.append(
+                    {"field": "inst_name", "type": "str[]", "value": inst_names}
+                )
+                if creator:
+                    _query_list.append(
+                        {"field": "_creator", "type": "str=", "value": creator}
+                    )
+            format_permission_dict[organization_id] = _query_list
+        return format_permission_dict
+
+    @staticmethod
+    def _apply_display_fields_to_update(attrs: list, update_attr: dict) -> None:
+        from apps.cmdb.display_field import DisplayFieldConverter
+
+        for attr in attrs:
+            attr_id = attr.get("attr_id")
+            attr_type = attr.get("attr_type")
+
+            if attr_type not in DISPLAY_FIELD_TYPES or attr_id not in update_attr:
+                continue
+
+            display_field_id = f"{attr_id}{DISPLAY_SUFFIX}"
+            original_value = update_attr[attr_id]
+
+            if attr_type == FIELD_TYPE_ORGANIZATION:
+                display_value = DisplayFieldConverter.convert_organization(original_value)
+            elif attr_type == FIELD_TYPE_USER:
+                display_value = DisplayFieldConverter.convert_user(original_value)
+            elif attr_type == FIELD_TYPE_ENUM:
+                display_value = DisplayFieldConverter.convert_enum(
+                    original_value, attr.get("option", [])
+                )
+            else:
+                continue
+
+            update_attr[display_field_id] = display_value
+
     @classmethod
     def search_inst(cls, model_id: str, inst_name: str = None, _id: int = None):
         """查询实例"""
@@ -89,22 +133,7 @@ class InstanceManage(object):
 
         params.append({"field": "model_id", "type": "str=", "value": model_id})
 
-        format_permission_dict = {}
-
-        for organization_id, organization_permission_data in permission_map.items():
-            _query_list = []
-            inst_names = organization_permission_data["inst_names"]
-            if inst_names:
-                _query_list.append(
-                    {"field": "inst_name", "type": "str[]", "value": inst_names}
-                )
-                if creator:
-                    # 只有创建人条件
-                    _query_list.append(
-                        {"field": "_creator", "type": "str=", "value": creator}
-                    )
-
-            format_permission_dict[organization_id] = _query_list
+        format_permission_dict = InstanceManage._build_format_permission_dict(permission_map, creator)
 
         _page = dict(skip=(page - 1) * page_size, limit=page_size)
         if order and order.startswith("-"):
@@ -185,34 +214,7 @@ class InstanceManage(object):
             if attr["editable"]:
                 check_attr_map["editable"][attr["attr_id"]] = attr["attr_name"]
 
-        # 只有当对应的原始字段更新时,才更新 _display 字段
-        from apps.cmdb.display_field import DisplayFieldHandler, DisplayFieldConverter
-
-        for attr in attrs:
-            attr_id = attr.get("attr_id")
-            attr_type = attr.get("attr_type")
-
-            # 检查是否更新了目标类型的字段
-            if attr_type in DISPLAY_FIELD_TYPES and attr_id in update_attr:
-                display_field_id = f"{attr_id}{DISPLAY_SUFFIX}"
-                original_value = update_attr[attr_id]
-
-                # 使用统一的转换器进行转换
-                if attr_type == FIELD_TYPE_ORGANIZATION:
-                    display_value = DisplayFieldConverter.convert_organization(
-                        original_value
-                    )
-                elif attr_type == FIELD_TYPE_USER:
-                    display_value = DisplayFieldConverter.convert_user(original_value)
-                elif attr_type == FIELD_TYPE_ENUM:
-                    display_value = DisplayFieldConverter.convert_enum(
-                        original_value, attr.get("option", [])
-                    )
-                else:
-                    continue
-
-                # 将生成的 _display 值添加到更新数据中
-                update_attr[display_field_id] = display_value
+        InstanceManage._apply_display_fields_to_update(attrs, update_attr)
 
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(
@@ -261,34 +263,7 @@ class InstanceManage(object):
             if attr["editable"] or attr.get("is_display_field"):
                 check_attr_map["editable"][attr["attr_id"]] = attr["attr_name"]
 
-        # 只有当对应的原始字段更新时,才更新 _display 字段
-        from apps.cmdb.display_field import DisplayFieldHandler, DisplayFieldConverter
-
-        for attr in attrs:
-            attr_id = attr.get("attr_id")
-            attr_type = attr.get("attr_type")
-
-            # 检查是否更新了目标类型的字段
-            if attr_type in DISPLAY_FIELD_TYPES and attr_id in update_attr:
-                display_field_id = f"{attr_id}{DISPLAY_SUFFIX}"
-                original_value = update_attr[attr_id]
-
-                # 使用统一的转换器进行转换
-                if attr_type == FIELD_TYPE_ORGANIZATION:
-                    display_value = DisplayFieldConverter.convert_organization(
-                        original_value
-                    )
-                elif attr_type == FIELD_TYPE_USER:
-                    display_value = DisplayFieldConverter.convert_user(original_value)
-                elif attr_type == FIELD_TYPE_ENUM:
-                    display_value = DisplayFieldConverter.convert_enum(
-                        original_value, attr.get("option", [])
-                    )
-                else:
-                    continue
-
-                # 将生成的 _display 值添加到更新数据中
-                update_attr[display_field_id] = display_value
+        InstanceManage._apply_display_fields_to_update(attrs, update_attr)
 
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(
@@ -746,22 +721,9 @@ class InstanceManage(object):
         """实例导出"""
         attrs = ModelManage.search_model_attr_v2(model_id)
         association = ModelManage.model_association_search(model_id)
-        format_permission_dict = {}
-
-        for organization_id, organization_permission_data in permissions_map.items():
-            _query_list = []
-            inst_names = organization_permission_data["inst_names"]
-            if inst_names:
-                _query_list.append(
-                    {"field": "inst_name", "type": "str[]", "value": inst_names}
-                )
-                if creator:
-                    # 只有创建人条件
-                    _query_list.append(
-                        {"field": "_creator", "type": "str=", "value": creator}
-                    )
-
-            format_permission_dict[organization_id] = _query_list
+        format_permission_dict = InstanceManage._build_format_permission_dict(
+            permissions_map, creator
+        )
         # 添加调试日志
         logger.info(
             f"导出参数 - model_id: {model_id}, ids: {ids}, association_list: {association_list}"
@@ -869,21 +831,7 @@ class InstanceManage(object):
 
     @classmethod
     def model_inst_count(cls, permissions_map: dict, creator: str = ""):
-        format_permission_dict = {}
-        for organization_id, organization_permission_data in permissions_map.items():
-            _query_list = []
-            inst_names = organization_permission_data["inst_names"]
-            if inst_names:
-                _query_list.append(
-                    {"field": "inst_name", "type": "str[]", "value": inst_names}
-                )
-                if creator:
-                    # 只有创建人条件
-                    _query_list.append(
-                        {"field": "_creator", "type": "str=", "value": creator}
-                    )
-
-            format_permission_dict[organization_id] = _query_list
+        format_permission_dict = cls._build_format_permission_dict(permissions_map, creator)
 
         with GraphClient() as ag:
             data = ag.entity_count(
