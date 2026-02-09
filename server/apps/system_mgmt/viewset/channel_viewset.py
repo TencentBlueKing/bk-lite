@@ -79,6 +79,9 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         elif obj.channel_type == "enterprise_wechat_bot":
             obj.encrypt_field("webhook_url", config)
             config.setdefault("webhook_url", obj.config["webhook_url"])
+        elif obj.channel_type == "nats":
+            # NATS 配置无需加密处理
+            pass
         obj.config = config
         obj.save()
 
