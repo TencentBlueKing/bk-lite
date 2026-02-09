@@ -1,10 +1,7 @@
 """维度处理工具函数 - 用于处理监控指标的维度数据"""
 
 import ast
-import logging
 from typing import Union
-
-logger = logging.getLogger("apps.monitor")
 
 
 def build_dimensions(
@@ -25,11 +22,7 @@ def build_dimensions(
     if isinstance(instance_id, str):
         try:
             instance_id = ast.literal_eval(instance_id)
-        except (ValueError, SyntaxError) as e:
-            logger.debug(
-                f"无法解析 instance_id='{instance_id}' 的维度信息，"
-                f"返回空字典。错误: {e}"
-            )
+        except Exception:
             return {}
 
     if not isinstance(instance_id, tuple):
@@ -53,10 +46,7 @@ def extract_monitor_instance_id(instance_id: Union[tuple, str]) -> str:
     if isinstance(instance_id, str):
         try:
             instance_id = ast.literal_eval(instance_id)
-        except (ValueError, SyntaxError) as e:
-            logger.debug(
-                f"无法解析 instance_id='{instance_id}' 为元组，返回原始值。错误: {e}"
-            )
+        except Exception:
             return instance_id
 
     if isinstance(instance_id, tuple) and len(instance_id) > 0:

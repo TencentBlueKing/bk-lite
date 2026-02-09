@@ -70,6 +70,10 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
           smtp_usessl: false,
           smtp_usetls: false,
           mail_sender: '',
+        } : channelType === 'nats' ? {
+          namespace: '',
+          method_name: '',
+          timeout: 60,
         } : {
           webhook_url: '',
         },
@@ -128,6 +132,9 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
     }
     if (['smtp_pwd', 'webhook_url'].includes(key)) {
       return 'editablePwd';
+    }
+    if (key === 'timeout') {
+      return 'number';
     }
     return 'input';
   };
