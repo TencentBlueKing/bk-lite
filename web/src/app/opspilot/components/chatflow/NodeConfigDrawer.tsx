@@ -82,11 +82,12 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
         formValues.weekdays = Array.isArray(config.weekdays) ? config.weekdays : [];
         
         if (config.days && Array.isArray(config.days) && config.days.length > 0) {
-          formValues.monthDay = config.days[0] === -1 ? 'last' : config.days[0];
+          formValues.monthDay = config.days[0];
+        } else if (freq === 'monthly') {
+          formValues.monthDay = 1;
         }
-        formValues.monthInterval = config.month_interval || 1;
         
-        formValues.cron = config.crontab_expression || '';
+        formValues.cron = config.crontab_expression || (freq === 'cron' ? '* * * * *' : '');
       }
 
       form.setFieldsValue(formValues);
@@ -162,10 +163,8 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
         delete configData.times;
 
         if (values.frequency === 'monthly') {
-          configData.days = values.monthDay ? [values.monthDay === 'last' ? -1 : values.monthDay] : [];
-          configData.month_interval = values.monthInterval || 1;
+          configData.days = values.monthDay ? [values.monthDay] : [];
           delete configData.monthDay;
-          delete configData.monthInterval;
         }
 
         if (values.frequency === 'cron') {
@@ -193,9 +192,8 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
     form.setFieldsValue({ 
       times: ['09:00'], 
       weekdays: [], 
-      monthInterval: 1, 
-      monthDay: undefined, 
-      cron: '' 
+      monthDay: value === 'monthly' ? 1 : undefined, 
+      cron: value === 'cron' ? '* * * * *' : '' 
     });
   };
 
