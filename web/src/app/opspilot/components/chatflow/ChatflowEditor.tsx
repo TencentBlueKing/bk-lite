@@ -125,7 +125,6 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       if (currentData !== lastSaveData.current) {
         lastSaveData.current = currentData;
         const timeoutId = setTimeout(() => {
-          console.log('ChatflowEditor: Saving data changes');
           onSave(nodes, edges);
         }, 100);
         return () => clearTimeout(timeoutId);
@@ -147,9 +146,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
   const handleAutoLayout = useCallback(
     async (direction: 'LR' | 'TB') => {
-      console.log('Auto layout triggered, nodes:', nodes.length, 'edges:', edges.length);
       const { nodes: layoutedNodes } = await getLayoutedElements(nodes, edges, { direction });
-      console.log('Layout complete, new positions:', layoutedNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y })));
       setNodes(layoutedNodes);
 
       if (reactFlowInstance) {
