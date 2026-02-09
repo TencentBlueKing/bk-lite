@@ -28,11 +28,13 @@ class MonitorPolicyVieSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         monitor_object_id = request.query_params.get("monitor_object_id", None)
 
+        include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
             request.COOKIES.get("current_team"),
             "monitor",
             f"{PermissionConstants.POLICY_MODULE}.{monitor_object_id}",
+            include_children=include_children,
         )
         qs = permission_filter(
             MonitorPolicy,

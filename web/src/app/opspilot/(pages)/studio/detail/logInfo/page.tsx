@@ -229,9 +229,37 @@ const StudioLogsPage: React.FC = () => {
   const renderJsonData = (data: any) => {
     if (!data) return '-';
     if (typeof data === 'object') {
-      return <pre className="bg-gray-50 p-2 rounded text-xs overflow-auto max-h-60">{JSON.stringify(data, null, 2)}</pre>;
+      return <pre className="bg-[var(--color-fill-1)] p-2 rounded text-xs overflow-auto max-h-60">{JSON.stringify(data, null, 2)}</pre>;
     }
     return String(data);
+  };
+
+  const parseJsonIfString = (value: any) => {
+    if (typeof value !== 'string') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  };
+
+  const getBrowserSteps = (value: any): string[] => {
+    const parsed = parseJsonIfString(value);
+    if (parsed && typeof parsed === 'object') {
+      const steps = (parsed as any).browser_steps || (parsed as any).browserSteps;
+      if (Array.isArray(steps)) return steps.map(step => String(step));
+    }
+    return [];
+  };
+
+  const stripBrowserSteps = (value: any) => {
+    const parsed = parseJsonIfString(value);
+    if (parsed && typeof parsed === 'object') {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { browser_steps, browserSteps, ...rest } = parsed as any;
+      return rest;
+    }
+    return value;
   };
 
   const renderWorkflowTimeline = () => {
@@ -251,27 +279,56 @@ const StudioLogsPage: React.FC = () => {
 
     return (
       <Timeline
-        items={nodes.map((node, idx) => ({
-          color: idx === nodes.length - 1 ? 'green' : 'blue',
-          children: (
-            <div className="pb-4">
-              <div className="font-medium text-base mb-2">
-                {node.name}
-                <Tag className="ml-2" color="blue">{node.type}</Tag>
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <div className="text-gray-500 text-sm mb-1">{t('studio.logs.inputData')}:</div>
-                  {renderJsonData(node.input_data)}
+        items={nodes.map((node, idx) => {
+          const browserSteps = getBrowserSteps(node.output);
+          const executionLabel = t('studio.logs.executionProcess');
+
+          return {
+            color: idx === nodes.length - 1 ? 'green' : 'blue',
+            children: (
+              <div className="pb-4">
+                <div className="font-medium text-base mb-2">
+                  {node.name}
+                  <Tag className="ml-2" color="blue">{node.type}</Tag>
                 </div>
-                <div>
-                  <div className="text-gray-500 text-sm mb-1">{t('studio.logs.outputData')}:</div>
-                  {renderJsonData(node.output)}
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-gray-500 text-sm mb-1">{t('studio.logs.inputData')}:</div>
+                    {renderJsonData(node.input_data)}
+                  </div>
+                  {browserSteps.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3 text-sm">
+                        <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                        </svg>
+                        {executionLabel.replace('{{count}}', String(browserSteps.length))}
+                      </div>
+                      <div className="space-y-2">
+                        {browserSteps.map((step, stepIndex) => (
+                          <div
+                            key={`${node.id}-step-${stepIndex}`}
+                            className={`rounded px-3 py-2 text-sm ${
+                              stepIndex % 2 === 0
+                                ? 'bg-[var(--color-fill-2)]'
+                                : 'bg-[var(--color-fill-1)]'
+                            }`}
+                          >
+                            {step}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-gray-500 text-sm mb-1">{t('studio.logs.outputData')}:</div>
+                    {renderJsonData(stripBrowserSteps(node.output))}
+                  </div>
                 </div>
               </div>
-            </div>
-          ),
-        }))}
+            )
+          };
+        })}
       />
     );
   };
@@ -460,7 +517,7 @@ const StudioLogsPage: React.FC = () => {
 
   return (
     <div className='h-full flex flex-col'>
-      <div className='mb-[20px]'>
+      <div className='mb-5'>
         <div className='flex justify-between items-center'>
           {botType === 3 && (
             <Segmented
@@ -481,7 +538,7 @@ const StudioLogsPage: React.FC = () => {
               enterButton
               className='w-60'
             />
-            <Tooltip className='mr-[8px]' title={t('common.refresh')}>
+            <Tooltip className='mr-2' title={t('common.refresh')}>
               <Button icon={<SyncOutlined />} onClick={handleRefresh} />
             </Tooltip>
             <TimeSelector
@@ -495,7 +552,7 @@ const StudioLogsPage: React.FC = () => {
           </div>
         </div>
       </div>
-      <div className='flex-grow'>
+      <div className='grow'>
         {initialLoading || loading ? (
           <div className='w-full flex items-center justify-center min-h-72'>
             <Spin size="large" />

@@ -24,11 +24,57 @@ def vm_to_dataframe(vm_data, instance_id_keys=None):
     return df
 
 
+def _build_dimensions(instance_id_tuple, instance_id_keys: list) -> dict:
+    if not instance_id_keys or not isinstance(instance_id_tuple, tuple):
+        return {}
+    return {
+        instance_id_keys[i]: instance_id_tuple[i]
+        for i in range(min(len(instance_id_keys), len(instance_id_tuple)))
+    }
+
+
+def _extract_monitor_instance_id(instance_id_tuple) -> str:
+    if isinstance(instance_id_tuple, tuple) and len(instance_id_tuple) > 0:
+        return str((instance_id_tuple[0],))
+    return str(instance_id_tuple)
+
+
+def _format_dimension_str(dimensions: dict, instance_id_keys: list) -> str:
+    if not dimensions or not instance_id_keys:
+        return ""
+    first_key = instance_id_keys[0] if instance_id_keys else None
+    sub_dimensions = {k: v for k, v in dimensions.items() if k != first_key}
+    if not sub_dimensions:
+        return ""
+    return ", ".join(f"{k}:{v}" for k, v in sub_dimensions.items())
+
+
+def _build_metric_template_vars(dimensions: dict) -> dict:
+    return {f"metric__{k}": v for k, v in dimensions.items()}
+
+
+def _format_value_with_unit(
+    value: float, unit: str, enum_value_map: dict = None
+) -> str:
+    if value is None:
+        return "N/A"
+    if enum_value_map:
+        int_value = int(value)
+        if int_value in enum_value_map:
+            return enum_value_map[int_value]
+    formatted = f"{value:.2f}"
+    if unit:
+        return f"{formatted}{unit}"
+    return formatted
+
+
 def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
     alert_events, info_events = [], []
     template_context = template_context or {}
     instances_map = template_context.get("instances_map", {})
     instance_id_keys = template_context.get("instance_id_keys", [])
+    display_unit = template_context.get("display_unit", "")
+    enum_value_map = template_context.get("enum_value_map", {})
 
     for _, row in df.iterrows():
         instance_id_tuple = row["instance_id"]
@@ -58,14 +104,17 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
                 )
 
             if all(method(float(v[1]), threshold_info["value"]) for v in values):
-                alert_value = values[-1][1]
+                alert_value = float(values[-1][1])
+                formatted_value = _format_value_with_unit(
+                    alert_value, display_unit, enum_value_map
+                )
                 context = {
                     **raw_data,
                     "monitor_object": template_context.get("monitor_object", ""),
                     "instance_name": display_name,
                     "metric_name": template_context.get("metric_name", ""),
                     "level": threshold_info["level"],
-                    "value": alert_value,
+                    "value": formatted_value,
                 }
                 context.update(_build_metric_template_vars(dimensions))
 
@@ -101,32 +150,3 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
             )
 
     return alert_events, info_events
-
-
-def _build_dimensions(instance_id_tuple, instance_id_keys: list) -> dict:
-    if not instance_id_keys or not isinstance(instance_id_tuple, tuple):
-        return {}
-    return {
-        instance_id_keys[i]: instance_id_tuple[i]
-        for i in range(min(len(instance_id_keys), len(instance_id_tuple)))
-    }
-
-
-def _extract_monitor_instance_id(instance_id_tuple) -> str:
-    if isinstance(instance_id_tuple, tuple) and len(instance_id_tuple) > 0:
-        return str((instance_id_tuple[0],))
-    return str(instance_id_tuple)
-
-
-def _format_dimension_str(dimensions: dict, instance_id_keys: list) -> str:
-    if not dimensions or not instance_id_keys:
-        return ""
-    first_key = instance_id_keys[0] if instance_id_keys else None
-    sub_dimensions = {k: v for k, v in dimensions.items() if k != first_key}
-    if not sub_dimensions:
-        return ""
-    return ", ".join(f"{k}:{v}" for k, v in sub_dimensions.items())
-
-
-def _build_metric_template_vars(dimensions: dict) -> dict:
-    return {f"metric__{k}": v for k, v in dimensions.items()}

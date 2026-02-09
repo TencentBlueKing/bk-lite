@@ -51,7 +51,7 @@ export const usePluginFromJson = () => {
           instance_type: '',
           object_name: '',
           form_fields: [],
-          table_columns: [],
+          table_columns: []
         };
         setConfig(defaultConfig);
         const pluginId =
@@ -89,7 +89,7 @@ export const usePluginFromJson = () => {
           initTableItems: {},
           defaultForm: {},
           getParams: () => ({}),
-          getDefaultForm: () => ({}),
+          getDefaultForm: () => ({})
         };
       }
 
@@ -104,7 +104,7 @@ export const usePluginFromJson = () => {
             if (mode === 'edit' && field.editable === false) {
               fieldCopy.widget_props = {
                 ...field.widget_props,
-                disabled: true,
+                disabled: true
               };
             }
             return fieldCopy;
@@ -163,10 +163,10 @@ export const usePluginFromJson = () => {
                 instance_id: config.instance_id,
                 config_type_field: config.config_type_field,
                 formFields: formFields,
-                tableColumns: config.table_columns,
+                tableColumns: config.table_columns
               }
             );
-          },
+          }
         };
       }
 
@@ -209,16 +209,16 @@ export const usePluginFromJson = () => {
                 content: {
                   ...configForm.child.content,
                   config: {
-                    ...configForm.child.content.config,
-                  },
-                },
-              },
+                    ...configForm.child.content.config
+                  }
+                }
+              }
             };
             // 如果有 base，也复制 base（保持结构）
             if (configForm.base) {
               result.base = {
                 ...configForm.base,
-                env_config: { ...configForm.base.env_config },
+                env_config: { ...configForm.base.env_config }
               };
             }
             formFields?.forEach((field: any) => {
@@ -306,7 +306,7 @@ export const usePluginFromJson = () => {
               );
             }
             return result;
-          },
+          }
         };
       }
 
@@ -321,7 +321,7 @@ export const usePluginFromJson = () => {
         initTableItems: {},
         defaultForm: {},
         getParams: () => ({}),
-        getDefaultForm: () => ({}),
+        getDefaultForm: () => ({})
       };
     },
     [config, currentPluginId, renderFormField, renderTableColumn]
@@ -329,6 +329,6 @@ export const usePluginFromJson = () => {
 
   return {
     buildPluginUI,
-    getPluginConfig,
+    getPluginConfig
   };
 };

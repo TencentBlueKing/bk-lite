@@ -6,35 +6,298 @@
 import { BrowserStepProgressData, BrowserStepsHistory } from '@/app/opspilot/types/global';
 import { renderToolCallCard, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 
+const escapeNewlinesInStrings = (raw: string) => {
+  let result = '';
+  let inSingle = false;
+  let inDouble = false;
+  let escaped = false;
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+
+    if (escaped) {
+      result += ch;
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      result += ch;
+      escaped = true;
+      continue;
+    }
+
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      result += ch;
+      continue;
+    }
+
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      result += ch;
+      continue;
+    }
+
+    if ((ch === '\n' || ch === '\r') && (inSingle || inDouble)) {
+      result += ch === '\n' ? '\\n' : '\\r';
+      continue;
+    }
+
+    result += ch;
+  }
+
+  return result;
+};
+
 const normalizePythonJson = (raw: string) => {
-  const replacedLiterals = raw
-    .replace(/\bNone\b/g, 'null')
-    .replace(/\bTrue\b/g, 'true')
-    .replace(/\bFalse\b/g, 'false');
-  return replacedLiterals.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, (_, value) => {
-    const unescaped = value.replace(/\\'/g, "'");
-    const escaped = unescaped.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    return `"${escaped}"`;
-  });
+  const escapedRaw = escapeNewlinesInStrings(raw);
+  let result = '';
+  let inSingle = false;
+  let inDouble = false;
+  let escaped = false;
+  let token = '';
+
+  const flushToken = () => {
+    if (!token) return;
+    if (!inSingle && !inDouble) {
+      if (token === 'None') result += 'null';
+      else if (token === 'True') result += 'true';
+      else if (token === 'False') result += 'false';
+      else result += token;
+    } else {
+      result += token;
+    }
+    token = '';
+  };
+
+  for (let i = 0; i < escapedRaw.length; i += 1) {
+    const ch = escapedRaw[i];
+
+    if (inSingle || inDouble) {
+      if (escaped) {
+        result += ch;
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        result += ch;
+        escaped = true;
+        continue;
+      }
+      if (inSingle && ch === "'") {
+        result += '"';
+        inSingle = false;
+        continue;
+      }
+      if (inDouble && ch === '"') {
+        result += '"';
+        inDouble = false;
+        continue;
+      }
+      if (ch === '\n') {
+        result += '\\n';
+        continue;
+      }
+      if (ch === '\r') {
+        result += '\\r';
+        continue;
+      }
+      if (inSingle && ch === '"') {
+        result += '\\"';
+        continue;
+      }
+      result += ch;
+      continue;
+    }
+
+    if (ch === "'") {
+      flushToken();
+      inSingle = true;
+      result += '"';
+      continue;
+    }
+    if (ch === '"') {
+      flushToken();
+      inDouble = true;
+      result += '"';
+      continue;
+    }
+    if (/[A-Za-z_]/.test(ch)) {
+      token += ch;
+      continue;
+    }
+    flushToken();
+    result += ch;
+  }
+
+  flushToken();
+  return result;
+};
+
+const removeTrailingCommas = (raw: string) => {
+  let result = '';
+  let inSingle = false;
+  let inDouble = false;
+  let escaped = false;
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+
+    if (escaped) {
+      result += ch;
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      result += ch;
+      escaped = true;
+      continue;
+    }
+
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      result += ch;
+      continue;
+    }
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      result += ch;
+      continue;
+    }
+
+    if (!inSingle && !inDouble && ch === ',') {
+      let j = i + 1;
+      while (j < raw.length && /\s/.test(raw[j])) j += 1;
+      if (raw[j] === ']' || raw[j] === '}') {
+        continue;
+      }
+    }
+
+    result += ch;
+  }
+
+  return result;
 };
 
 const parseJsonArray = (raw: string): any[] | null => {
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    // ignore
-  }
-  try {
-    const normalized = normalizePythonJson(raw);
-    const parsed = JSON.parse(normalized);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+  const splitTopLevelObjects = (value: string) => {
+    const objects: string[] = [];
+    let inSingle = false;
+    let inDouble = false;
+    let escaped = false;
+    let depth = 0;
+    let startIndex = -1;
+
+    for (let i = 0; i < value.length; i += 1) {
+      const ch = value[i];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (ch === "'" && !inDouble) {
+        inSingle = !inSingle;
+        continue;
+      }
+
+      if (ch === '"' && !inSingle) {
+        inDouble = !inDouble;
+        continue;
+      }
+
+      if (inSingle || inDouble) continue;
+
+      if (ch === '{') {
+        if (depth === 0) startIndex = i;
+        depth += 1;
+        continue;
+      }
+
+      if (ch === '}') {
+        depth -= 1;
+        if (depth === 0 && startIndex >= 0) {
+          objects.push(value.slice(startIndex, i + 1));
+          startIndex = -1;
+        }
+      }
+    }
+
+    return objects;
+  };
+
+  const parseObjectsLenient = (value: string) => {
+    const objectSlices = splitTopLevelObjects(value);
+    if (!objectSlices.length) return null;
+    const parsed = objectSlices
+      .map(slice => {
+        const normalized = normalizePythonJson(slice);
+        const cleaned = removeTrailingCommas(normalized);
+        try {
+          return JSON.parse(cleaned);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    return parsed.length ? (parsed as any[]) : null;
+  };
+
+  const unwrapQuoted = (value: string) => {
+    let trimmed = value.trim();
+    if ((trimmed.startsWith('b"') && trimmed.endsWith('"')) || (trimmed.startsWith("b'") && trimmed.endsWith("'"))) {
+      trimmed = trimmed.slice(2);
+    }
+    if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      try {
+        const unwrapped = JSON.parse(trimmed);
+        return typeof unwrapped === 'string' ? unwrapped : trimmed;
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
+  };
+
+  const extractArraySlice = (value: string) => {
+    const start = value.indexOf('[');
+    const end = value.lastIndexOf(']');
+    if (start >= 0 && end > start) {
+      return value.slice(start, end + 1);
+    }
+    return value;
+  };
+
+  const tryParseArray = (value: string) => {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const unwrapped = extractArraySlice(unwrapQuoted(raw));
+  const cleanedRaw = removeTrailingCommas(escapeNewlinesInStrings(unwrapped));
+  const directParsed = tryParseArray(cleanedRaw);
+  if (directParsed) return directParsed;
+
+  const normalized = normalizePythonJson(unwrapped);
+  const cleanedNormalized = removeTrailingCommas(normalized);
+  const normalizedParsed = tryParseArray(cleanedNormalized);
+  if (normalizedParsed) return normalizedParsed;
+
+  return parseObjectsLenient(unwrapped) || parseObjectsLenient(normalized) || null;
 };
 
-const buildFromEvents = (events: any[]) => {
+const buildFromEvents = (events: any[], finalize = true) => {
   const parts: string[] = [];
   const toolCalls = new Map<string, ToolCallInfo>();
   let currentText = '';
@@ -158,7 +421,7 @@ const buildFromEvents = (events: any[]) => {
 
   const contentText = parts.join('');
   const browserStepsHistory: BrowserStepsHistory | null = steps.length
-    ? { steps: [...steps], isRunning }
+    ? { steps: [...steps], isRunning: finalize ? false : isRunning }
     : null;
 
   return {
@@ -180,7 +443,7 @@ export const processHistoryMessageContent = (content: string, role: string): str
   if (role !== 'bot') return typeof content === 'string' ? content : String(content ?? '');
 
   if (Array.isArray(content)) {
-    return buildFromEvents(content).content;
+    return buildFromEvents(content, true).content;
   }
 
   if (typeof content !== 'string') {
@@ -198,7 +461,7 @@ export const processHistoryMessageContent = (content: string, role: string): str
   const parsedContent = parseJsonArray(content);
   if (!parsedContent) return content;
 
-  return buildFromEvents(parsedContent).content;
+  return buildFromEvents(parsedContent, true).content;
 };
 
 export const processHistoryMessageWithExtras = (
@@ -218,7 +481,7 @@ export const processHistoryMessageWithExtras = (
   }
 
   if (Array.isArray(content)) {
-    return buildFromEvents(content);
+    return buildFromEvents(content, true);
   }
 
   if (typeof content !== 'string') {
@@ -238,7 +501,7 @@ export const processHistoryMessageWithExtras = (
     };
   }
 
-  return buildFromEvents(parsedContent);
+  return buildFromEvents(parsedContent, true);
 };
 
 /**

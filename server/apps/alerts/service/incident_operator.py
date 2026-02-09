@@ -6,9 +6,10 @@
 from django.db import transaction
 from django.utils import timezone
 
-from apps.alerts.models import Incident, OperatorLog
+from apps.alerts.models.operator_log import  OperatorLog
+from apps.alerts.models.models import  Incident
 from apps.core.logger import alert_logger as logger
-from apps.alerts.constants import IncidentStatus, IncidentOperate, LogAction, LogTargetType
+from apps.alerts.constants.constants import IncidentStatus, IncidentOperate, LogAction, LogTargetType
 
 
 class IncidentOperator:

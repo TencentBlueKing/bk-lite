@@ -4,7 +4,13 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import ModelViewSet, ViewSet
 
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.permission_utils import get_permissions_rules, check_instance_permission, get_permission_rules, permission_filter, filter_instances_with_permissions
+from apps.core.utils.permission_utils import (
+    get_permissions_rules,
+    check_instance_permission,
+    get_permission_rules,
+    permission_filter,
+    filter_instances_with_permissions,
+)
 from apps.core.utils.web_utils import WebUtils
 from apps.log.constants.language import LanguageConstants
 from apps.log.constants.permission import PermissionConstants
@@ -37,42 +43,61 @@ class CollectTypeViewSet(ModelViewSet):
         results = serializer.data
 
         # 加载语言包
-        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+        lan = LanguageLoader(
+            app=LanguageConstants.APP, default_lang=request.user.locale
+        )
 
         # 为每个采集类型添加翻译后的名称和描述
         for result in results:
-            collector = result.get('collector')
-            name = result.get('name')
+            collector = result.get("collector")
+            name = result.get("name")
             if collector and name:
                 # 组装语言配置Key: collect_type.{collector}.{name}
                 lan_key = f"{LanguageConstants.COLLECT_TYPE}.{collector}.{name}"
                 # 获取翻译后的名称和描述
-                result["display_name"] = lan.get(f"{lan_key}.name") or result.get("name", "")
-                result["display_description"] = lan.get(f"{lan_key}.description") or result.get("description", "")
+                result["display_name"] = lan.get(f"{lan_key}.name") or result.get(
+                    "name", ""
+                )
+                result["display_description"] = lan.get(
+                    f"{lan_key}.description"
+                ) or result.get("description", "")
 
         # 检查是否需要添加策略数量统计（带权限控制）
         if request.GET.get("add_policy_count") in ["true", "True"]:
             # 获取策略权限
+            include_children = request.COOKIES.get("include_children", "0") == "1"
             policy_res = get_permissions_rules(
                 request.user,
                 request.COOKIES.get("current_team"),
                 "log",
                 PermissionConstants.POLICY_MODULE,
+                include_children=include_children,
             )
 
-            policy_permissions, cur_team = policy_res.get("data", {}), policy_res.get("team", [])
+            policy_permissions, cur_team = (
+                policy_res.get("data", {}),
+                policy_res.get("team", []),
+            )
 
             # 获取所有策略并进行权限检查
-            policy_objs = Policy.objects.select_related('collect_type').prefetch_related('policyorganization_set').all()
+            policy_objs = (
+                Policy.objects.select_related("collect_type")
+                .prefetch_related("policyorganization_set")
+                .all()
+            )
             policy_map = {}
 
             for policy_obj in policy_objs:
                 collect_type_id = str(policy_obj.collect_type_id)
                 policy_id = policy_obj.id
-                teams = {org.organization for org in policy_obj.policyorganization_set.all()}
+                teams = {
+                    org.organization for org in policy_obj.policyorganization_set.all()
+                }
 
                 # 使用通用权限检查函数
-                _check = check_instance_permission(collect_type_id, policy_id, teams, policy_permissions, cur_team)
+                _check = check_instance_permission(
+                    collect_type_id, policy_id, teams, policy_permissions, cur_team
+                )
                 if not _check:
                     continue
 
@@ -87,26 +112,40 @@ class CollectTypeViewSet(ModelViewSet):
         # 检查是否需要添加实例数量统计（带权限控制，参考监控模块实现）
         if request.GET.get("add_instance_count") in ["true", "True"]:
             # 获取采集实例权限
+            include_children = request.COOKIES.get("include_children", "0") == "1"
             instance_res = get_permissions_rules(
                 request.user,
                 request.COOKIES.get("current_team"),
                 "log",
                 PermissionConstants.INSTANCE_MODULE,
+                include_children=include_children,
             )
 
-            instance_permissions, cur_team = instance_res.get("data", {}), instance_res.get("team", [])
+            instance_permissions, cur_team = (
+                instance_res.get("data", {}),
+                instance_res.get("team", []),
+            )
 
             # 获取所有采集实例并进行权限检查
-            instance_objs = CollectInstance.objects.select_related('collect_type').prefetch_related('collectinstanceorganization_set').all()
+            instance_objs = (
+                CollectInstance.objects.select_related("collect_type")
+                .prefetch_related("collectinstanceorganization_set")
+                .all()
+            )
             instance_map = {}
 
             for instance_obj in instance_objs:
                 collect_type_id = str(instance_obj.collect_type_id)
                 instance_id = instance_obj.id
-                teams = {org.organization for org in instance_obj.collectinstanceorganization_set.all()}
+                teams = {
+                    org.organization
+                    for org in instance_obj.collectinstanceorganization_set.all()
+                }
 
                 # 使用通用权限检查函数
-                _check = check_instance_permission(collect_type_id, instance_id, teams, instance_permissions, cur_team)
+                _check = check_instance_permission(
+                    collect_type_id, instance_id, teams, instance_permissions, cur_team
+                )
                 if not _check:
                     continue
 
@@ -120,7 +159,7 @@ class CollectTypeViewSet(ModelViewSet):
 
         return WebUtils.response_success(results)
 
-    @action(methods=['get'], detail=False, url_path='all_attrs')
+    @action(methods=["get"], detail=False, url_path="all_attrs")
     def get_all_attrs(self, request):
         """
         获取所有采集类型的属性，并进行去重
@@ -141,8 +180,7 @@ class CollectTypeViewSet(ModelViewSet):
 
 
 class CollectInstanceViewSet(ViewSet):
-
-    @action(methods=['post'], detail=False, url_path='search')
+    @action(methods=["post"], detail=False, url_path="search")
     def search(self, request):
         """
         查询采集实例列表，支持权限过滤
@@ -159,18 +197,20 @@ class CollectInstanceViewSet(ViewSet):
 
         if collect_type_id:
             # 单采集类型查询 - 使用与监控模块完全一致的权限检查方式
+            include_children = request.COOKIES.get("include_children", "0") == "1"
             permission = get_permission_rules(
                 request.user,
                 current_team,
                 "log",
                 f"{PermissionConstants.INSTANCE_MODULE}.{collect_type_id}",
+                include_children=include_children,
             )
             # 应用权限过滤（与监控模块保持一致）
             qs = permission_filter(
                 CollectInstance,
                 permission,
                 team_key="collectinstanceorganization__organization__in",
-                id_key="id__in"
+                id_key="id__in",
             )
             # 使用统一的服务层方法
             data = CollectTypeService.search_instance_with_permission(
@@ -178,39 +218,54 @@ class CollectInstanceViewSet(ViewSet):
                 name=name,
                 page=page,
                 page_size=page_size,
-                queryset=qs
+                queryset=qs,
             )
             # 添加实例级别权限信息（与监控模块保持一致）
-            inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
+            inst_permission_map = {
+                i["id"]: i["permission"] for i in permission.get("instance", [])
+            }
         else:
+            include_children = request.COOKIES.get("include_children", "0") == "1"
             instance_res = get_permissions_rules(
                 request.user,
                 request.COOKIES.get("current_team"),
                 "log",
                 PermissionConstants.INSTANCE_MODULE,
+                include_children=include_children,
             )
             # 超管权限检查
             admin_cur_team = instance_res.get("all", {}).get("team")
             if admin_cur_team:
-                qs = CollectInstance.objects.filter(collectinstanceorganization__organization_in=admin_cur_team)
+                qs = CollectInstance.objects.filter(
+                    collectinstanceorganization__organization_in=admin_cur_team
+                )
                 inst_permission_map = {}
             else:
-                objs = CollectInstance.objects.prefetch_related("collectinstanceorganization_set").all()
+                objs = CollectInstance.objects.prefetch_related(
+                    "collectinstanceorganization_set"
+                ).all()
                 result = []
                 for instance in objs:
                     organizations = {
                         org.organization
                         for org in instance.collectinstanceorganization_set.all()
                     }
-                    result.append({
-                        'instance_id': instance.id,
-                        'organizations': organizations,
-                        'collect_type_id': instance.collect_type_id
-                    })
+                    result.append(
+                        {
+                            "instance_id": instance.id,
+                            "organizations": organizations,
+                            "collect_type_id": instance.collect_type_id,
+                        }
+                    )
 
-                permissions, cur_team = instance_res.get("data", {}), instance_res.get("team", [])
+                permissions, cur_team = (
+                    instance_res.get("data", {}),
+                    instance_res.get("team", []),
+                )
                 # 使用新的优雅权限过滤方法
-                inst_permission_map = filter_instances_with_permissions(result, permissions, cur_team)
+                inst_permission_map = filter_instances_with_permissions(
+                    result, permissions, cur_team
+                )
                 # 获取有权限的实例ID列表
                 authorized_instance_ids = list(inst_permission_map.keys())
                 if not authorized_instance_ids:
@@ -224,7 +279,7 @@ class CollectInstanceViewSet(ViewSet):
                 name=name,
                 page=page,
                 page_size=page_size,
-                queryset=qs
+                queryset=qs,
             )
 
         for instance_info in data["items"]:
@@ -235,12 +290,12 @@ class CollectInstanceViewSet(ViewSet):
 
         return WebUtils.response_success(data)
 
-    @action(methods=['post'], detail=False, url_path='batch_create')
+    @action(methods=["post"], detail=False, url_path="batch_create")
     def batch_create(self, request):
         CollectTypeService.batch_create_collect_configs(request.data)
         return WebUtils.response_success()
 
-    @action(methods=['post'], detail=False, url_path='remove_collect_instance')
+    @action(methods=["post"], detail=False, url_path="remove_collect_instance")
     def remove_collect_instance(self, request):
         instance_ids = request.data.get("instance_ids", [])
         config_objs = CollectConfig.objects.filter(collect_instance_id__in=instance_ids)
@@ -259,8 +314,7 @@ class CollectInstanceViewSet(ViewSet):
         CollectInstance.objects.filter(id__in=instance_ids).delete()
         return WebUtils.response_success()
 
-
-    @action(methods=['post'], detail=False, url_path='instance_update')
+    @action(methods=["post"], detail=False, url_path="instance_update")
     def instance_update(self, request):
         CollectTypeService.update_instance(
             request.data.get("instance_id"),
@@ -269,7 +323,7 @@ class CollectInstanceViewSet(ViewSet):
         )
         return WebUtils.response_success()
 
-    @action(methods=['post'], detail=False, url_path='set_organizations')
+    @action(methods=["post"], detail=False, url_path="set_organizations")
     def set_organizations(self, request):
         """设置监控对象实例组织"""
         instance_ids = request.data.get("instance_ids", [])
@@ -279,8 +333,7 @@ class CollectInstanceViewSet(ViewSet):
 
 
 class CollectConfigViewSet(ViewSet):
-
-    @action(methods=['post'], detail=False, url_path='get_config_content')
+    @action(methods=["post"], detail=False, url_path="get_config_content")
     def get_config_content(self, request):
         config_objs = CollectConfig.objects.filter(id__in=request.data["ids"])
         if not config_objs:
@@ -307,7 +360,7 @@ class CollectConfigViewSet(ViewSet):
 
         return WebUtils.response_success(result)
 
-    @action(methods=['post'], detail=False, url_path='update_instance_collect_config')
+    @action(methods=["post"], detail=False, url_path="update_instance_collect_config")
     def update_instance_collect_config(self, request):
         CollectTypeService.update_instance_config_v2(
             request.data.get("child"),

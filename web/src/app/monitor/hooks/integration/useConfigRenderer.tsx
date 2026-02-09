@@ -1,5 +1,13 @@
 import React from 'react';
-import { Form, Input, InputNumber, Select, Checkbox, Tooltip } from 'antd';
+import {
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Checkbox,
+  Tooltip,
+  Switch
+} from 'antd';
 import { ExclamationCircleFilled } from '@ant-design/icons';
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
@@ -22,12 +30,12 @@ export const useConfigRenderer = () => {
       dependency,
       rules = [],
       description,
-      editable,
+      editable
     } = fieldConfig;
 
     const formRules = [
       ...(required ? [{ required: true, message: t('common.required') }] : []),
-      ...rules,
+      ...rules
     ];
     const watchField = dependency?.field;
 
@@ -101,7 +109,7 @@ export const useConfigRenderer = () => {
               className="mr-[10px]"
               style={{
                 width: `${FORM_WIDGET_WIDTH}px`,
-                verticalAlign: 'middle',
+                verticalAlign: 'middle'
               }}
               min={widget_props.min || 1}
               precision={
@@ -145,6 +153,9 @@ export const useConfigRenderer = () => {
             <Checkbox {...widget_props}>{widget_props.label || ''}</Checkbox>
           );
 
+        case 'switch':
+          return <Switch {...widget_props} className="mr-[10px]" />;
+
         case 'checkbox_group':
           return (
             <Checkbox.Group {...widget_props} style={{ width: '100%' }}>
@@ -152,7 +163,7 @@ export const useConfigRenderer = () => {
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '12px',
+                  gap: '12px'
                 }}
               >
                 {options.map((option: any) => (
@@ -212,6 +223,7 @@ export const useConfigRenderer = () => {
                   name={name}
                   rules={formRules}
                   initialValue={default_value}
+                  valuePropName={type === 'switch' ? 'checked' : 'value'}
                 >
                   {renderWidget()}
                 </Form.Item>
@@ -237,6 +249,7 @@ export const useConfigRenderer = () => {
           name={name}
           rules={formRules}
           initialValue={default_value}
+          valuePropName={type === 'switch' ? 'checked' : 'value'}
         >
           {renderWidget()}
         </Form.Item>
@@ -294,7 +307,7 @@ export const useConfigRenderer = () => {
       options_key,
       enable_row_filter = false,
       rules = [],
-      required = false,
+      required = false
     } = columnConfig;
 
     let options = columnConfig.options || [];
@@ -312,7 +325,7 @@ export const useConfigRenderer = () => {
       title: label,
       dataIndex: name,
       key: name,
-      width: widget_props.width || 200,
+      width: widget_props.width || 200
     };
 
     // 验证函数
@@ -356,7 +369,7 @@ export const useConfigRenderer = () => {
           type,
           target_field,
           source_fields = [],
-          separator = ':',
+          separator = ':'
         } = change_handler;
         if (type === 'simple') {
           const sourceValue = source_fields[0]
@@ -532,6 +545,6 @@ export const useConfigRenderer = () => {
 
   return {
     renderFormField,
-    renderTableColumn,
+    renderTableColumn
   };
 };

@@ -51,7 +51,7 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
             df = pd.read_csv(value)
 
             # 检查必需列
-            required_columns = ["timestamp", "value", "label"]
+            required_columns = ["timestamp", "value"]
             missing = set(required_columns) - set(df.columns)
             if missing:
                 raise serializers.ValidationError(f"缺少必需列: {', '.join(missing)}")
@@ -59,9 +59,6 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
             # 检查数据类型
             if df["value"].isnull().any():
                 raise serializers.ValidationError("'value'列包含空值")
-
-            if df["label"].isnull().any():
-                raise serializers.ValidationError("'label'列包含空值")
 
             # 重置文件指针到开头，以便后续保存时能读取完整内容
             value.seek(0)

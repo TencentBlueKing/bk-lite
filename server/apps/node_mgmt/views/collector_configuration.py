@@ -40,11 +40,13 @@ class CollectorConfigurationViewSet(ModelViewSet):
     @action(detail=False, methods=["post"], url_path="config_node_asso")
     def get_config_node_asso(self, request):
         # 获取用户节点权限列表
+        include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
             request.COOKIES.get("current_team"),
             "node_mgmt",
             NodeConstants.MODULE,
+            include_children=include_children,
         )
         queryset = permission_filter(
             Node,

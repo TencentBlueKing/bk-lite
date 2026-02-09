@@ -1,5 +1,5 @@
 import hashlib
-from typing import Dict, List
+from typing import Dict
 
 
 def generate_fingerprint(dimensions: Dict[str, str]) -> str:

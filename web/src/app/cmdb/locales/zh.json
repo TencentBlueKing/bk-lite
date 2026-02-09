@@ -105,6 +105,7 @@
         "editAttrGroup": "编辑属性分组",
         "deleteAttrGroup": "删除属性分组",
         "attrGroupName": "分组名称",
+        "attrGroup": "属性分组",
         "enterAttrGroupName": "请输入分组名称",
         "continueAdd": "继续新增",
         "deleteGroupConfirm": "这个分组下存在属性，如果强制删除会将属性转移到第一个分组下",
@@ -159,6 +160,7 @@
         "date": "日期(YYYY-MM-DD)",
         "min": "最小值",
         "max": "最大值",
+        "emptyMeansNoLimit": "空代表不限制",
         "unrestricted": "无限制",
         "ipv4": "IP地址 (IPv4)",
         "ipv6": "IP地址 (IPv6)",
@@ -168,9 +170,12 @@
         "json": "JSON",
         "customRegex": "自定义正则", 
         "customRegexRequired": "请输入正确格式",
+        "validationRuleMessage": "请输入符合校验规则的内容",
         "widgetType": "组件类型",
         "singleLine": "单行",
-        "multiLine": "多行"
+        "multiLine": "多行",
+        "display": "显示",
+        "attrIdPattern": "属性ID必须以字母开头，且仅包含字母、数字或下划线"
     },
     "Collection": {
         "cycleDeprecated": "定时执行和一次性执行功能已下线，请调整配置为周期执行",

@@ -7,7 +7,7 @@ import time
 from celery import shared_task
 
 from apps.alerts.common.notify.notify import Notify
-from apps.alerts.models import SystemSetting
+from apps.alerts.models.sys_setting import SystemSetting
 from apps.alerts.service.notify_service import NotifyResultService
 from apps.alerts.service.un_dispatch import UnDispatchService
 from apps.core.logger import alert_logger as logger

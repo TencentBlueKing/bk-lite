@@ -28,7 +28,7 @@ const ProChatComponentWrapper: React.FC<ChatComponentProps> = ({ initialChats, c
     try {
       const nextPage = page + 1;
       const data = await fetchLogDetails(post, conversationId, nextPage);
-      
+
       if (data.length === 0) {
         setHasMore(false);
       } else {

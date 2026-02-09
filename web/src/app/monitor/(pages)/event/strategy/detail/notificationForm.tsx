@@ -107,10 +107,26 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                         mode="multiple"
                         maxTagCount="responsive"
                         placeholder={t('monitor.events.notifier')}
+                        virtual
+                        filterOption={(input, option) => {
+                          const user = userList.find(
+                            (u) => u.id === option?.value
+                          );
+                          if (!user) return false;
+                          const searchText = input.toLowerCase();
+                          return (
+                            user.display_name?.toLowerCase() || ''
+                          ).includes(searchText);
+                        }}
+                        optionLabelProp="label"
                       >
                         {userList.map((item) => (
-                          <Option value={item.id} key={item.id}>
-                            {item.username}
+                          <Option
+                            value={item.id}
+                            key={item.id}
+                            label={item.display_name}
+                          >
+                            {item.display_name}
                           </Option>
                         ))}
                       </Select>

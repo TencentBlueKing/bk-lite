@@ -219,7 +219,7 @@ class ReminderService:
 
             return True
 
-        except Exception as e: # noqa
+        except Exception as e:  # noqa
             import traceback
             logger.error(f"发送提醒通知失败: reminder_id={assignment.id}, error={traceback.format_exc()}")
             return False
