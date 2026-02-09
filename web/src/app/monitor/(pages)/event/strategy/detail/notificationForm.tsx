@@ -27,6 +27,12 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
   onLinkToSystemManage
 }) => {
   const { t } = useTranslation();
+  const form = Form.useFormInstance<StrategyFields>();
+
+  // 通知渠道变更时清空通知者
+  const handleChannelChange = () => {
+    form.setFieldValue('notice_users', []);
+  };
 
   // 将 channelList 转换为 SelectCard 需要的数据格式
   const channelCardData: CardItem[] = useMemo(() => {
@@ -79,7 +85,13 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                 ]}
               >
                 {channelList.length ? (
-                  <SelectCard data={channelCardData} />
+                  <SelectCard
+                    data={channelCardData}
+                    onChange={(val) => {
+                      form.setFieldValue('notice_type_id', val);
+                      handleChannelChange();
+                    }}
+                  />
                 ) : (
                   <span>
                     {t('monitor.events.noticeWay')}
