@@ -1,12 +1,17 @@
 """告警检测服务 - 负责告警事件的检测和恢复"""
 
-import ast
 from string import Template
 
 from django.db.models import F
 
 from apps.monitor.models import MonitorAlert
 from apps.monitor.tasks.utils.policy_calculate import vm_to_dataframe, calculate_alerts
+from apps.monitor.utils.dimension import (
+    build_dimensions,
+    extract_monitor_instance_id,
+    format_dimension_str,
+    build_metric_template_vars,
+)
 from apps.core.logger import celery_logger as logger
 
 
@@ -94,24 +99,7 @@ class AlertDetector:
         ]
 
     def _extract_monitor_instance_id(self, metric_instance_id: str) -> str:
-        """从 metric_instance_id 中提取 monitor_instance_id。
-
-        Args:
-            metric_instance_id: 格式为元组字符串，如 "('host-01', 'cpu')"
-
-        Returns:
-            提取的 monitor_instance_id，解析失败时返回原始值
-        """
-        try:
-            tuple_val = ast.literal_eval(metric_instance_id)
-            if isinstance(tuple_val, tuple) and len(tuple_val) > 0:
-                return str((tuple_val[0],))
-        except (ValueError, SyntaxError) as e:
-            logger.debug(
-                f"无法解析 metric_instance_id='{metric_instance_id}' 为元组，"
-                f"返回原始值。错误: {e}"
-            )
-        return metric_instance_id
+        return extract_monitor_instance_id(metric_instance_id)
 
     def _build_no_data_events(self, aggregation_result):
         events = []
@@ -169,39 +157,14 @@ class AlertDetector:
         return events
 
     def _parse_dimensions(self, metric_instance_id: str) -> dict:
-        """从 metric_instance_id 解析维度信息。
-
-        Args:
-            metric_instance_id: 格式为元组字符串，如 "('host-01', 'cpu', 'core0')"
-
-        Returns:
-            维度字典，解析失败时返回空字典
-        """
-        try:
-            tuple_val = ast.literal_eval(metric_instance_id)
-            if isinstance(tuple_val, tuple):
-                keys = self.policy.group_by or []
-                return {
-                    keys[i]: tuple_val[i] for i in range(min(len(keys), len(tuple_val)))
-                }
-        except (ValueError, SyntaxError) as e:
-            logger.debug(
-                f"无法解析 metric_instance_id='{metric_instance_id}' 的维度信息，"
-                f"返回空字典。错误: {e}"
-            )
-        return {}
+        keys = self.policy.group_by or []
+        return build_dimensions(metric_instance_id, keys)
 
     def _format_dimension_str(self, dimensions: dict) -> str:
-        if not dimensions:
-            return ""
-        first_key = list(dimensions.keys())[0] if dimensions else None
-        sub_dimensions = {k: v for k, v in dimensions.items() if k != first_key}
-        if not sub_dimensions:
-            return ""
-        return ", ".join(f"{k}:{v}" for k, v in sub_dimensions.items())
+        return format_dimension_str(dimensions)
 
     def _build_metric_template_vars(self, dimensions: dict) -> dict:
-        return {f"metric__{k}": v for k, v in dimensions.items()}
+        return build_metric_template_vars(dimensions)
 
     def _log_alert_events(self, alert_events, vm_data):
         logger.info(f"=======alert events: {alert_events}")
