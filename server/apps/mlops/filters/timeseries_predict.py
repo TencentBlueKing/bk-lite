@@ -5,7 +5,14 @@ from django_filters import (
     ChoiceFilter,
     BooleanFilter,
 )
-from apps.mlops.models.timeseries_predict import *
+
+from apps.mlops.models.timeseries_predict import (
+    TimeSeriesPredictDataset,
+    TimeSeriesPredictTrainJob,
+    TimeSeriesPredictTrainData,
+    TimeSeriesPredictDatasetRelease,
+    TimeSeriesPredictServing,
+)
 
 
 class TimeSeriesPredictDatasetFilter(FilterSet):

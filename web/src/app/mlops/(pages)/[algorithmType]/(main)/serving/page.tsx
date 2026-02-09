@@ -126,10 +126,10 @@ const ServingPage = () => {
               </PermissionWrapper>
             }
             {state !== 'running' && state !== 'unknown' ?
-              <PermissionWrapper requiredPermissions={['Edit']}>
+              <PermissionWrapper requiredPermissions={['Start']}>
                 <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)}>{t(`mlops-common.start`)}</Button>
               </PermissionWrapper> :
-              <PermissionWrapper requiredPermissions={['Edit']}>
+              <PermissionWrapper requiredPermissions={['Stop']}>
                 <Button type="link" className="mr-2" danger onClick={() => handleStopContainer(record.id)}>{t(`mlops-common.stop`)}</Button>
               </PermissionWrapper>
             }

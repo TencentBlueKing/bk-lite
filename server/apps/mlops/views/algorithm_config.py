@@ -30,7 +30,7 @@ ALGORITHM_TYPE_TO_TRAIN_JOB_MODEL = {
     "object_detection": ObjectDetectionTrainJob,
 }
 
-
+# 统一的算法配置管理，algorithm_type区分不同类型
 class AlgorithmConfigViewSet(ModelViewSet):
     """算法配置视图集"""
 

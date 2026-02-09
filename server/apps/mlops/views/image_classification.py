@@ -3,8 +3,14 @@ from config.drf.viewsets import ModelViewSet
 from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRunStatus
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.models.image_classification import *
+from apps.mlops.models import AlgorithmConfig
 from apps.mlops.serializers.image_classification import *
+from apps.mlops.serializers.algorithm_config import (
+    AlgorithmConfigSerializer,
+    AlgorithmConfigListSerializer,
+)
 from apps.mlops.filters.image_classification import *
+from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
 from config.drf.pagination import CustomPageNumberPagination
 from apps.core.decorators.api_permission import HasPermission
 from rest_framework import status
@@ -39,23 +45,23 @@ class ImageClassificationDatasetViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.image_classification_dataset"
 
-    @HasPermission("image_classification_datasets-View")
+    @HasPermission("image_classification-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("image_classification_datasets-View")
+    @HasPermission("image_classification-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("image_classification_datasets-Delete")
+    @HasPermission("image_classification-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("image_classification_datasets-Add")
+    @HasPermission("image_classification-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("image_classification_datasets-Edit")
+    @HasPermission("image_classification-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
@@ -70,15 +76,15 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.image_classification_train_data"
 
-    @HasPermission("image_classification_train_data-View")
+    @HasPermission("image_classification-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("image_classification_train_data-View")
+    @HasPermission("image_classification-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("image_classification_train_data-Delete")
+    @HasPermission("image_classification-Delete")
     def destroy(self, request, *args, **kwargs):
         """
         删除训练数据实例，自动删除关联的 MinIO ZIP 文件
@@ -104,14 +110,14 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @HasPermission("image_classification_train_data-Add")
+    @HasPermission("image_classification-Add")
     def create(self, request, *args, **kwargs):
         """
         创建训练数据：上传 ZIP 压缩包 + metadata
         """
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("image_classification_train_data-Edit")
+    @HasPermission("image_classification-Edit")
     def update(self, request, *args, **kwargs):
         """
         更新训练数据：可替换 ZIP 文件或更新 metadata
@@ -119,7 +125,7 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
         return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"], url_path="download")
-    @HasPermission("image_classification_train_data-View")
+    @HasPermission("image_classification-View")
     def download(self, request, pk=None):
         """下载训练数据 ZIP 文件"""
         try:
@@ -148,7 +154,7 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["get"], url_path="download_metadata")
-    @HasPermission("image_classification_train_data-View")
+    @HasPermission("image_classification-View")
     def download_metadata(self, request, pk=None):
         """下载训练数据 metadata JSON 文件"""
         try:
@@ -180,28 +186,28 @@ class ImageClassificationDatasetReleaseViewSet(ModelViewSet):
     ordering = ("-created_at",)
     permission_key = "dataset.image_classification_dataset_release"
 
-    @HasPermission("image_classification_dataset_releases-View")
+    @HasPermission("image_classification-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("image_classification_dataset_releases-View")
+    @HasPermission("image_classification-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("image_classification_dataset_releases-Delete")
+    @HasPermission("image_classification-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("image_classification_dataset_releases-Add")
+    @HasPermission("image_classification-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("image_classification_dataset_releases-Edit")
+    @HasPermission("image_classification-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"], url_path="download")
-    @HasPermission("image_classification_dataset_releases-View")
+    @HasPermission("image_classification-View")
     def download(self, request, *args, **kwargs):
         """下载数据集发布版本的压缩包"""
         try:
@@ -229,7 +235,7 @@ class ImageClassificationDatasetReleaseViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="archive")
-    @HasPermission("image_classification_dataset_releases-Edit")
+    @HasPermission("image_classification-Edit")
     def archive(self, request, pk=None):
         """归档数据集版本"""
         try:
@@ -259,7 +265,7 @@ class ImageClassificationDatasetReleaseViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="unarchive")
-    @HasPermission("image_classification_dataset_releases-Edit")
+    @HasPermission("image_classification-Edit")
     def unarchive(self, request, pk=None):
         """恢复归档的数据集版本"""
         try:
@@ -304,28 +310,28 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
     # MLflow 前缀
     MLFLOW_PREFIX = "ImageClassification"
 
-    @HasPermission("image_classification_train_jobs-View")
+    @HasPermission("image_classification-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("image_classification_train_jobs-View")
+    @HasPermission("image_classification-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("image_classification_train_jobs-Delete")
+    @HasPermission("image_classification-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("image_classification_train_jobs-Add")
+    @HasPermission("image_classification-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("image_classification_train_jobs-Edit")
+    @HasPermission("image_classification-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], url_path="train")
-    @HasPermission("image_classification_train_jobs-Train")
+    @HasPermission("image_classification-Train")
     def train(self, request, pk=None):
         """
         启动图片分类训练任务
@@ -434,7 +440,7 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="stop")
-    @HasPermission("image_classification_train_jobs-Stop")
+    @HasPermission("image_classification-Stop")
     def stop(self, request, *args, **kwargs):
         """
         停止图片分类训练任务
@@ -496,7 +502,7 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["get"], url_path="model_versions")
-    @HasPermission("image_classification_train_jobs-View")
+    @HasPermission("image_classification-View")
     def get_model_versions(self, request, pk=None):
         """
         获取训练任务对应模型的所有版本列表（从MLflow）
@@ -538,7 +544,7 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="download_model/(?P<run_id>[^/]+)")
-    @HasPermission("image_classification_train_jobs-View")
+    @HasPermission("image_classification-View")
     def download_model(self, request, run_id: str):
         """
         从 MLflow 下载模型并直接返回 ZIP 文件
@@ -579,7 +585,7 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["get"], url_path="runs_data_list")
-    @HasPermission("train_tasks-View")
+    @HasPermission("image_classification-View")
     def get_run_data_list(self, request, pk=None):
         try:
             # 获取训练任务
@@ -705,7 +711,7 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="runs_metrics_list/(?P<run_id>.+?)")
-    @HasPermission("train_tasks-View")
+    @HasPermission("image_classification-View")
     def get_runs_metrics_list(self, request, run_id: str):
         try:
             # 获取运行的指标列表（过滤系统指标）
@@ -726,7 +732,7 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
         methods=["get"],
         url_path="runs_metrics_history/(?P<run_id>.+?)/(?P<metric_name>.+?)",
     )
-    @HasPermission("train_tasks-View")
+    @HasPermission("image_classification-View")
     def get_metric_data(self, request, run_id: str, metric_name: str):
         """
         获取指定 run 的指定指标的历史数据
@@ -764,7 +770,7 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="run_params/(?P<run_id>.+?)")
-    @HasPermission("train_tasks-View")
+    @HasPermission("image_classification-View")
     def get_run_params(self, request, run_id: str):
         """
         获取指定 run 的配置参数（用于查看历史训练的配置）
@@ -818,7 +824,7 @@ class ImageClassificationServingViewSet(ModelViewSet):
     # MLflow 前缀
     MLFLOW_PREFIX = "ImageClassification"
 
-    @HasPermission("image_classification_servings-View")
+    @HasPermission("image_classification-View")
     def list(self, request, *args, **kwargs):
         """列表查询，实时同步容器状态"""
         response = super().list(request, *args, **kwargs)
@@ -884,15 +890,15 @@ class ImageClassificationServingViewSet(ModelViewSet):
 
         return response
 
-    @HasPermission("image_classification_servings-View")
+    @HasPermission("image_classification-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("image_classification_servings-Delete")
+    @HasPermission("image_classification-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("image_classification_servings-Add")
+    @HasPermission("image_classification-Add")
     def create(self, request, *args, **kwargs):
         """创建 serving 服务并自动启动容器"""
         response = super().create(request, *args, **kwargs)
@@ -1014,12 +1020,12 @@ class ImageClassificationServingViewSet(ModelViewSet):
 
         return response
 
-    @HasPermission("image_classification_servings-Edit")
+    @HasPermission("image_classification-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], url_path="start")
-    @HasPermission("image_classification_servings-Start")
+    @HasPermission("image_classification-Start")
     def start(self, request, *args, **kwargs):
         """
         启动图片分类 serving 服务
@@ -1131,7 +1137,7 @@ class ImageClassificationServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="stop")
-    @HasPermission("image_classification_servings-Stop")
+    @HasPermission("image_classification-Stop")
     def stop(self, request, *args, **kwargs):
         """
         停止图片分类 serving 服务（停止并删除容器）
@@ -1178,7 +1184,7 @@ class ImageClassificationServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="remove")
-    @HasPermission("image_classification_servings-Remove")
+    @HasPermission("image_classification-Remove")
     def remove(self, request, *args, **kwargs):
         """
         删除图片分类 serving 容器（可处理运行中的容器）
@@ -1234,7 +1240,7 @@ class ImageClassificationServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("image_classification_servings-Predict")
+    @HasPermission("image_classification-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行图片分类预测
@@ -1339,3 +1345,99 @@ class ImageClassificationServingViewSet(ModelViewSet):
         )
 
         return mlflow_service.resolve_model_uri(model_name, serving.model_version)
+
+
+class ImageClassificationAlgorithmConfigViewSet(ModelViewSet):
+    """图片分类算法配置视图集"""
+
+    queryset = AlgorithmConfig.objects.filter(algorithm_type="image_classification")
+    serializer_class = AlgorithmConfigSerializer
+    filterset_class = AlgorithmConfigFilter
+    pagination_class = CustomPageNumberPagination
+    ordering = ("id",)
+    permission_key = "algorithm.image_classification_algorithm_config"
+
+    def get_serializer_class(self):
+        if (
+            self.action == "list"
+            and not self.request.query_params.get(
+                "include_form_config", "false"
+            ).lower()
+            == "true"
+        ):
+            return AlgorithmConfigListSerializer
+        return AlgorithmConfigSerializer
+
+    @HasPermission("image_classification-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("image_classification-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("image_classification-Add")
+    def create(self, request, *args, **kwargs):
+        request.data["algorithm_type"] = "image_classification"
+        return super().create(request, *args, **kwargs)
+
+    @HasPermission("image_classification-Edit")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @HasPermission("image_classification-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        is_active_new = request.data.get("is_active")
+        if instance.is_active and is_active_new is False:
+            task_count = ImageClassificationTrainJob.objects.filter(
+                algorithm=instance.name
+            ).count()
+            if task_count > 0:
+                return Response(
+                    {
+                        "error": f"无法禁用：有 {task_count} 个训练任务正在使用此算法",
+                        "task_count": task_count,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        return super().partial_update(request, *args, **kwargs)
+
+    @HasPermission("image_classification-Delete")
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        task_count = ImageClassificationTrainJob.objects.filter(
+            algorithm=instance.name
+        ).count()
+        if task_count > 0:
+            return Response(
+                {
+                    "error": f"无法删除：有 {task_count} 个训练任务正在使用此算法",
+                    "task_count": task_count,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"], url_path="by_type")
+    @HasPermission("image_classification-View")
+    def by_type(self, request):
+        queryset = self.get_queryset().filter(is_active=True)
+        serializer = AlgorithmConfigSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="get_image")
+    @HasPermission("image_classification-View")
+    def get_image(self, request):
+        name = request.query_params.get("name")
+        if not name:
+            return Response({"error": "name 参数必填"}, status=400)
+        try:
+            config = AlgorithmConfig.objects.get(
+                algorithm_type="image_classification", name=name, is_active=True
+            )
+            return Response({"image": config.image})
+        except AlgorithmConfig.DoesNotExist:
+            return Response(
+                {"error": f"未找到算法配置: image_classification/{name}"}, status=404
+            )

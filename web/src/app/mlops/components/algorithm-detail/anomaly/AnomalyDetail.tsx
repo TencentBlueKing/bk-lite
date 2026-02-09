@@ -91,7 +91,7 @@ const AnomalyDetail = () => {
           >
             {t('datasets.annotate')}
           </Button>
-          <PermissionWrapper requiredPermissions={['File Edit']}>
+          <PermissionWrapper requiredPermissions={['Edit']}>
             <Button
               type="link"
               className="mr-2.5"
@@ -100,7 +100,7 @@ const AnomalyDetail = () => {
               {t('common.edit')}
             </Button>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['File Delete']}>
+          <PermissionWrapper requiredPermissions={['Delete']}>
             <Popconfirm
               title={t('datasets.deleteTitle')}
               description={t('datasets.deleteContent')}
@@ -258,12 +258,12 @@ const AnomalyDetail = () => {
             onSearch={onSearch}
             style={{ fontSize: 15 }}
           />
-          <PermissionWrapper requiredPermissions={['File Upload']}>
+          <PermissionWrapper requiredPermissions={['Add']}>
             <Button type="primary" className="rounded-md shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['File View']}>
+          <PermissionWrapper requiredPermissions={['View']}>
             <DatasetReleaseList datasetType={DatasetType.ANOMALY_DETECTION} />
           </PermissionWrapper>
         </div>

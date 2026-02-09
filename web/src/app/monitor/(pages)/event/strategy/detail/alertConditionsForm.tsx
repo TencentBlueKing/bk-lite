@@ -5,6 +5,7 @@ import { ThresholdField } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
+import { isStringArray } from '@/app/monitor/utils/common';
 import ThresholdList from './thresholdList';
 
 const { Option } = Select;
@@ -17,10 +18,16 @@ const NO_DATA_ALERT_OPTIONS = [
   { value: 'warning', labelKey: 'triggerWarningAlert' }
 ];
 
+interface EnumOption {
+  id: number;
+  name: string;
+  color?: string;
+}
+
 interface AlertConditionsFormProps {
   enableAlerts: string[];
   threshold: ThresholdField[];
-  calculationUnit: string;
+  calculationUnit: string | null;
   noDataAlert: number | null;
   nodataUnit: string;
   noDataRecovery: number | null;
@@ -59,26 +66,37 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
 
+  // 判断是否为枚举类型指标
+  const isEnumMetric = useMemo(() => {
+    return metricUnit ? isStringArray(metricUnit) : false;
+  }, [metricUnit]);
+
+  // 枚举类型的选项列表
+  const enumOptions = useMemo((): EnumOption[] => {
+    if (!isEnumMetric || !metricUnit) return [];
+    try {
+      return JSON.parse(metricUnit);
+    } catch {
+      return [];
+    }
+  }, [isEnumMetric, metricUnit]);
+
   // 根据指标单位过滤单位列表，只显示相同 system 的单位
   const filteredUnitOptions = useMemo(() => {
+    // 枚举类型不需要单位选项
+    if (isEnumMetric) return [];
     // 排除 none 和 short 单位
     const baseFilteredList = unitList.filter(
       (item) => !['none', 'short'].includes(item.unit_id)
     );
-    // 如果没有指定指标单位，返回所有基础过滤后的单位
-    if (!metricUnit) {
-      return baseFilteredList;
-    }
-    // 找到指标单位对应的 system
     const metricUnitItem = unitList.find((item) => item.unit_id === metricUnit);
-    if (!metricUnitItem) {
-      // 如果找不到对应的单位项，返回所有基础过滤后的单位
-      return baseFilteredList;
+    if (!metricUnitItem || !metricUnit) {
+      return [];
     }
     const targetSystem = metricUnitItem.system;
     // 过滤出相同 system 的单位
     return baseFilteredList.filter((item) => item.system === targetSystem);
-  }, [unitList, metricUnit]);
+  }, [unitList, metricUnit, isEnumMetric]);
 
   // 验证阈值
   const validateThreshold = async () => {
@@ -87,7 +105,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       (threshold.some((item) => {
         return !item.method;
       }) ||
-        !calculationUnit)
+        (!isEnumMetric && !calculationUnit))
     ) {
       return Promise.reject(new Error(t('monitor.events.thresholdValidate')));
     }
@@ -124,6 +142,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   calculationUnit={calculationUnit}
                   onUnitChange={onCalculationUnitChange}
                   unitOptions={filteredUnitOptions}
+                  isEnumMetric={isEnumMetric}
+                  enumOptions={enumOptions}
                 />
               </Form.Item>
 

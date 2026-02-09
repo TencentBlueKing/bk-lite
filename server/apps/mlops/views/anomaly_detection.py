@@ -28,6 +28,12 @@ from apps.mlops.services import (
 import os
 import requests
 import json
+from apps.mlops.models import AlgorithmConfig
+from apps.mlops.serializers.algorithm_config import (
+    AlgorithmConfigSerializer,
+    AlgorithmConfigListSerializer,
+)
+from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
 
 
 class AnomalyDetectionDatasetViewSet(ModelViewSet):
@@ -38,23 +44,23 @@ class AnomalyDetectionDatasetViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.anomaly_detection_dataset"
 
-    @HasPermission("anomaly_detection_datasets-View")
+    @HasPermission("anomaly_detection-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_datasets-View")
+    @HasPermission("anomaly_detection-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_datasets-Delete")
+    @HasPermission("anomaly_detection-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_datasets-Add")
+    @HasPermission("anomaly_detection-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_datasets-Edit")
+    @HasPermission("anomaly_detection-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
@@ -72,7 +78,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
     MLFLOW_PREFIX = "AnomalyDetection"  # MLflow 命名前缀
 
     @action(detail=True, methods=["post"], url_path="train")
-    @HasPermission("train_tasks-Train")
+    @HasPermission("anomaly_detection-Train")
     def train(self, request, pk=None):
         """
         启动训练任务
@@ -173,7 +179,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="stop")
-    @HasPermission("train_tasks-Stop")
+    @HasPermission("anomaly_detection-Stop")
     def stop(self, request, *args, **kwargs):
         """
         停止训练任务
@@ -235,7 +241,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["get"], url_path="runs_data_list")
-    @HasPermission("train_tasks-View")
+    @HasPermission("anomaly_detection-View")
     def get_run_data_list(self, request, pk=None):
         try:
             # 获取训练任务
@@ -363,7 +369,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="runs_metrics_list/(?P<run_id>.+?)")
-    @HasPermission("train_tasks-View")
+    @HasPermission("anomaly_detection-View")
     def get_runs_metrics_list(self, request, run_id: str):
         try:
             # 获取运行的指标列表（过滤系统指标）
@@ -384,7 +390,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
         methods=["get"],
         url_path="runs_metrics_history/(?P<run_id>.+?)/(?P<metric_name>.+?)",
     )
-    @HasPermission("train_tasks-View")
+    @HasPermission("anomaly_detection-View")
     def get_metric_data(self, request, run_id: str, metric_name: str):
         """
         获取指定 run 的指定指标的历史数据
@@ -422,7 +428,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="run_params/(?P<run_id>.+?)")
-    @HasPermission("train_tasks-View")
+    @HasPermission("anomaly_detection-View")
     def get_run_params(self, request, run_id: str):
         """
         获取指定 run 的配置参数（用于查看历史训练的配置）
@@ -461,7 +467,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["get"], url_path="model_versions")
-    @HasPermission("train_tasks-View")
+    @HasPermission("anomaly_detection-View")
     def get_model_versions(self, request, pk=None):
         """
         获取训练任务对应模型的所有版本列表
@@ -503,7 +509,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="download_model/(?P<run_id>[^/]+)")
-    @HasPermission("train_tasks-View")
+    @HasPermission("anomaly_detection-View")
     def download_model(self, request, run_id: str):
         """
         从 MLflow 下载模型并直接返回 ZIP 文件
@@ -541,20 +547,16 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @HasPermission("train_tasks-View")
+    @HasPermission("anomaly_detection-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission(
-        "train_tasks-Add,anomaly_detection_datasets_detail-File View,anomaly_detection_datasets-View"
-    )
+    @HasPermission("anomaly_detection-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"], url_path="get_file")
-    @HasPermission(
-        "train_tasks-View,anomaly_detection_datasets_detail-File View,anomaly_detection_datasets-View"
-    )
+    @HasPermission("anomaly_detection-View")
     def get_file(self, request, *args, **kwargs):
         try:
             train_job = self.get_object()
@@ -604,15 +606,15 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @HasPermission("train_tasks-Delete")
+    @HasPermission("anomaly_detection-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("train_tasks-Edit")
+    @HasPermission("anomaly_detection-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    @HasPermission("train_tasks-View")
+    @HasPermission("anomaly_detection-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
@@ -626,23 +628,23 @@ class AnomalyDetectionTrainDataViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     permission_key = "dataset.anomaly_detection_train_data"
 
-    @HasPermission("anomaly_detection_datasets_detail-File View")
+    @HasPermission("anomaly_detection-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_datasets_detail-File Upload")
+    @HasPermission("anomaly_detection-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_datasets_detail-File Delete")
+    @HasPermission("anomaly_detection-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_datasets_detail-File Edit")
+    @HasPermission("anomaly_detection-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_datasets_detail-File View")
+    @HasPermission("anomaly_detection-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
@@ -656,28 +658,28 @@ class AnomalyDetectionDatasetReleaseViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     permission_key = "dataset.anomaly_detection_dataset_release"
 
-    @HasPermission("anomaly_detection_dataset_releases-View")
+    @HasPermission("anomaly_detection-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_dataset_releases-View")
+    @HasPermission("anomaly_detection-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_dataset_releases-Delete")
+    @HasPermission("anomaly_detection-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_dataset_releases-Add")
+    @HasPermission("anomaly_detection-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection_dataset_releases-Edit")
+    @HasPermission("anomaly_detection-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"], url_path="download")
-    @HasPermission("anomaly_detection_dataset_releases-View")
+    @HasPermission("anomaly_detection-View")
     def download(self, request, *args, **kwargs):
         """
         下载数据集版本的 ZIP 文件
@@ -709,7 +711,7 @@ class AnomalyDetectionDatasetReleaseViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="archive")
-    @HasPermission("anomaly_detection_datasets-Edit")
+    @HasPermission("anomaly_detection-Edit")
     def archive(self, request, *args, **kwargs):
         """
         归档数据集版本(将状态改为 archived)
@@ -739,7 +741,7 @@ class AnomalyDetectionDatasetReleaseViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="unarchive")
-    @HasPermission("anomaly_detection_datasets-Edit")
+    @HasPermission("anomaly_detection-Edit")
     def unarchive(self, request, *args, **kwargs):
         """
         恢复已归档的数据集版本(将状态改为 published)
@@ -792,7 +794,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
 
     MLFLOW_PREFIX = "AnomalyDetection"  # MLflow 命名前缀
 
-    @HasPermission("model_release-View")
+    @HasPermission("anomaly_detection-View")
     def list(self, request, *args, **kwargs):
         """列表查询，实时同步容器状态"""
         response = super().list(request, *args, **kwargs)
@@ -858,7 +860,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
 
         return response
 
-    @HasPermission("model_release-View")
+    @HasPermission("anomaly_detection-View")
     def retrieve(self, request, *args, **kwargs):
         """详情查询，实时同步容器状态"""
         response = super().retrieve(request, *args, **kwargs)
@@ -898,11 +900,11 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
 
         return response
 
-    @HasPermission("model_release-Delete")
+    @HasPermission("anomaly_detection-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("model_release-Add,train_tasks-View")
+    @HasPermission("anomaly_detection-Add")
     def create(self, request, *args, **kwargs):
         """
         创建 serving 服务并自动启动容器
@@ -1026,7 +1028,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
 
         return response
 
-    @HasPermission("model_release-Update")
+    @HasPermission("anomaly_detection-Edit")
     def update(self, request, *args, **kwargs):
         """
         更新 serving 配置，自动检测并重启容器
@@ -1150,7 +1152,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
         return response
 
     @action(detail=True, methods=["post"], url_path="start")
-    @HasPermission("model_release-Start")
+    @HasPermission("anomaly_detection-Start")
     def start(self, request, *args, **kwargs):
         """
         启动 serving 服务
@@ -1273,7 +1275,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="stop")
-    @HasPermission("model_release-Stop")
+    @HasPermission("anomaly_detection-Stop")
     def stop(self, request, *args, **kwargs):
         """
         停止 serving 服务（停止并删除容器）
@@ -1320,7 +1322,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="remove")
-    @HasPermission("model_release-Remove")
+    @HasPermission("anomaly_detection-Remove")
     def remove(self, request, *args, **kwargs):
         """
         删除 serving 容器（可处理运行中的容器）
@@ -1376,7 +1378,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("model_release-Predict")
+    @HasPermission("anomaly_detection-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行异常检测
@@ -1538,3 +1540,99 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
         )
 
         return mlflow_service.resolve_model_uri(model_name, serving.model_version)
+
+
+class AnomalyDetectionAlgorithmConfigViewSet(ModelViewSet):
+    """异常检测算法配置视图集"""
+
+    queryset = AlgorithmConfig.objects.filter(algorithm_type="anomaly_detection")
+    serializer_class = AlgorithmConfigSerializer
+    filterset_class = AlgorithmConfigFilter
+    pagination_class = CustomPageNumberPagination
+    ordering = ("id",)
+    permission_key = "algorithm.anomaly_detection_algorithm_config"
+
+    def get_serializer_class(self):
+        if (
+            self.action == "list"
+            and not self.request.query_params.get(
+                "include_form_config", "false"
+            ).lower()
+            == "true"
+        ):
+            return AlgorithmConfigListSerializer
+        return AlgorithmConfigSerializer
+
+    @HasPermission("anomaly_detection-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("anomaly_detection-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("anomaly_detection-Add")
+    def create(self, request, *args, **kwargs):
+        request.data["algorithm_type"] = "anomaly_detection"
+        return super().create(request, *args, **kwargs)
+
+    @HasPermission("anomaly_detection-Edit")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @HasPermission("anomaly_detection-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        is_active_new = request.data.get("is_active")
+        if instance.is_active and is_active_new is False:
+            task_count = AnomalyDetectionTrainJob.objects.filter(
+                algorithm=instance.name
+            ).count()
+            if task_count > 0:
+                return Response(
+                    {
+                        "error": f"无法禁用：有 {task_count} 个训练任务正在使用此算法",
+                        "task_count": task_count,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        return super().partial_update(request, *args, **kwargs)
+
+    @HasPermission("anomaly_detection-Delete")
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        task_count = AnomalyDetectionTrainJob.objects.filter(
+            algorithm=instance.name
+        ).count()
+        if task_count > 0:
+            return Response(
+                {
+                    "error": f"无法删除：有 {task_count} 个训练任务正在使用此算法",
+                    "task_count": task_count,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"], url_path="by_type")
+    @HasPermission("anomaly_detection-View")
+    def by_type(self, request):
+        queryset = self.get_queryset().filter(is_active=True)
+        serializer = AlgorithmConfigSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="get_image")
+    @HasPermission("anomaly_detection-View")
+    def get_image(self, request):
+        name = request.query_params.get("name")
+        if not name:
+            return Response({"error": "name 参数必填"}, status=400)
+        try:
+            config = AlgorithmConfig.objects.get(
+                algorithm_type="anomaly_detection", name=name, is_active=True
+            )
+            return Response({"image": config.image})
+        except AlgorithmConfig.DoesNotExist:
+            return Response(
+                {"error": f"未找到算法配置: anomaly_detection/{name}"}, status=404
+            )
