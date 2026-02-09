@@ -22,6 +22,7 @@ from apps.cmdb.constants.field_constraints import (
     TimeDisplayFormat,
     WidgetType,
 )
+from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.utils.base import get_default_group_id
 from apps.core.logger import cmdb_logger as logger
@@ -192,10 +193,15 @@ class ModelMigrate:
         """初始化模型"""
         models = []
         for model in self.model_config.get("models", []):
+            model_id = model.get("model_id", "")
+            if not IdentifierValidator.is_valid(model_id):
+                logger.warning(f"跳过无效模型ID: {model_id}")
+                continue
+
             model.update(is_pre=True)
             self.model_add_organization(model)
             _attrs = []
-            attr_key = f"attr-{model['model_id']}"
+            attr_key = f"attr-{model_id}"
             attrs = self.model_config.get(attr_key, [])
             for attr in attrs:
                 attr.update(is_pre=True)

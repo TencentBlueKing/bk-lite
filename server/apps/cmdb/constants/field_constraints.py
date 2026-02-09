@@ -15,20 +15,22 @@ CMDB 字段约束常量定义
         StringValidationType,
         DEFAULT_STRING_CONSTRAINT
     )
-    
+
     constraint = {
         "validation_type": StringValidationType.IPV4
     }
 """
+
 import re
 
 
 class StringValidationType:
     """
     字符串校验类型枚举
-    
+
     定义字符串字段支持的所有校验类型及其对应的正则表达式
     """
+
     UNRESTRICTED = "unrestricted"
     IPV4 = "ipv4"
     IPV6 = "ipv6"
@@ -56,11 +58,11 @@ class StringValidationType:
     # 手机号: 支持中国大陆11位手机号(1开头,第二位3-9)
     # URL: 支持http/https/ftp协议
     REGEX_MAP = {
-        IPV4: r'^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$',
-        IPV6: r'^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|(([0-9a-fA-F]{1,4}:){1,6}|:):((:[0-9a-fA-F]{1,4}){1,6}|:)|::([fF]{4}(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$',
-        EMAIL: r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
-        MOBILE_PHONE: r'^1[3-9]\d{9}$',
-        URL: r'^(https?|ftp)://[^\s/$.?#].[^\s]*$',
+        IPV4: r"^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$",
+        IPV6: r"^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|(([0-9a-fA-F]{1,4}:){1,6}|:):((:[0-9a-fA-F]{1,4}){1,6}|:)|::([fF]{4}(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$",
+        EMAIL: r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$",
+        MOBILE_PHONE: r"^1[3-9]\d{9}$",
+        URL: r"^(https?|ftp)://[^\s/$.?#].[^\s]*$",
     }
 
     @classmethod
@@ -84,6 +86,7 @@ class WidgetType:
 
     注意: 此配置仅影响前端UI展示,不影响后端存储和校验逻辑
     """
+
     SINGLE_LINE = "single_line"
     MULTI_LINE = "multi_line"
 
@@ -101,13 +104,14 @@ class WidgetType:
 class TimeDisplayFormat:
     """
     时间显示格式枚举
-    
+
     定义时间字段在前端的展示格式:
     - DATETIME: 完整日期时间(如: 2026-02-02 14:30:00)
     - DATE: 仅日期(如: 2026-02-02 00:00:00)
-    
+
     注意: 后端统一使用时间戳存储,此配置仅影响前端展示和录入组件
     """
+
     DATETIME = "datetime"
     DATE = "date"
 
@@ -128,14 +132,11 @@ class TimeDisplayFormat:
 DEFAULT_STRING_CONSTRAINT = {
     "validation_type": StringValidationType.UNRESTRICTED,
     "widget_type": WidgetType.SINGLE_LINE,
-    "custom_regex": ""
+    "custom_regex": "",
 }
 
 # 数字类型默认约束: 无最小最大值限制 + 允许负数
-DEFAULT_NUMBER_CONSTRAINT = {
-    "min_value": None,
-    "max_value": None
-}
+DEFAULT_NUMBER_CONSTRAINT = {"min_value": None, "max_value": None}
 
 # 时间类型默认约束: 完整日期时间 + 东八区
 DEFAULT_TIME_CONSTRAINT = {
@@ -145,11 +146,16 @@ DEFAULT_TIME_CONSTRAINT = {
 
 # 用户提示默认值: 空字符串
 USER_PROMPT = "user_prompt"
-DEFAULT_USER_PROMPT = {
-    USER_PROMPT: ""
-}
+DEFAULT_USER_PROMPT = {USER_PROMPT: ""}
 
 # ========== 校验配置限制 ==========
 
 # 自定义正则表达式最大长度(防止ReDoS攻击)
 MAX_CUSTOM_REGEX_LENGTH = 200
+
+
+# ========== 标识符校验常量 ==========
+
+# 模型ID、属性ID等标识符的校验正则: 必须以字母开头，且仅包含字母、数字或下划线
+IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+IDENTIFIER_ERROR_MESSAGE = "必须以字母开头，且仅包含字母、数字或下划线"
