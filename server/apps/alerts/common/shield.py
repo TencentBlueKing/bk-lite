@@ -28,7 +28,7 @@ class EventShieldOperator(object):
     def __init__(self, event_id_list: List[str], active_shields=None):
         """
         初始化事件屏蔽操作器（性能优化版）
-        
+
         Args:
             event_id_list: 事件ID列表
             active_shields: 预加载的活跃屏蔽策略（可选，避免重复查询）
@@ -38,11 +38,10 @@ class EventShieldOperator(object):
             self.active_shields = active_shields
         else:
             self.active_shields = self.get_shields()
-        
+
         if not self.active_shields:
             raise ShieldNotFoundError()
-        
-        self.event_received_at = None
+
         self.event_id_list = event_id_list
         self.events = self.get_event_map()
         if not self.events:
@@ -62,7 +61,6 @@ class EventShieldOperator(object):
         """获取事件实例映射"""
         result = {}
         events = Event.objects.filter(event_id__in=self.event_id_list)
-        self.event_received_at = events[0].received_at if events else timezone.now()
         for event in events:
             result[event.id] = event
         return result
@@ -164,9 +162,10 @@ class EventShieldOperator(object):
             匹配的事件ID列表
         """
         # 先过滤活跃状态的事件（未关闭且未屏蔽的事件才需要屏蔽）
+        # 支持 RECEIVED（新事件）和 PENDING（待响应）两种状态
         base_queryset = Event.objects.filter(
             event_id__in=self.event_id_list,
-            status=EventStatus.PENDING,  # 只屏蔽开放和已确认的事件
+            status__in=[EventStatus.RECEIVED, EventStatus.PENDING],
         )
 
         # 排除已屏蔽的事件
@@ -292,16 +291,15 @@ class EventShieldOperator(object):
         """
         results = []
 
+        shieldable_statuses = [EventStatus.RECEIVED, EventStatus.PENDING]
         try:
             with transaction.atomic():
-                # 先获取要屏蔽的事件信息，用于记录结果
                 events_to_shield = Event.objects.filter(
-                    id__in=event_ids, status=EventStatus.PENDING
+                    id__in=event_ids, status__in=shieldable_statuses
                 ).values("id", "event_id")
 
-                # 批量更新事件状态
                 updated_count = Event.objects.filter(
-                    id__in=event_ids, status=EventStatus.PENDING
+                    id__in=event_ids, status__in=shieldable_statuses
                 ).update(status=EventStatus.SHIELD)
 
                 # 为每个成功屏蔽的事件记录结果
@@ -352,8 +350,7 @@ class EventShieldOperator(object):
             return True
 
         time_type = suppression_time.get("type", "one")
-        # current_time = timezone.now()
-        current_time = self.event_received_at  # 使用事件接收时间作为当前时间
+        current_time = timezone.now()
 
         try:
             if time_type == "one":
@@ -480,7 +477,9 @@ class EventShieldOperator(object):
         return self.execute_shield_check()
 
 
-def execute_shield_check_for_events(event_ids: List[str], active_shields=None) -> Dict[str, Any]:
+def execute_shield_check_for_events(
+    event_ids: List[str], active_shields=None
+) -> Dict[str, Any]:
     """
     为指定事件列表执行屏蔽检查（性能优化版）
 
@@ -499,7 +498,7 @@ def execute_shield_check_for_events(event_ids: List[str], active_shields=None) -
             "unshielded_events": 0,
             "shield_results": [],
         }
-    
+
     # 优化：如果没有传入 active_shields，检查是否有活跃策略
     if active_shields is None:
         # 未传入，需要查询
@@ -541,7 +540,7 @@ def execute_shield_check_for_events(event_ids: List[str], active_shields=None) -
                 "unshielded_events": 0,
                 "shield_results": [],
             }
-    
+
     result = operator.execute_shield_check()
     logger.info(f"=== Shield check completed: {result} ===")
     return result
