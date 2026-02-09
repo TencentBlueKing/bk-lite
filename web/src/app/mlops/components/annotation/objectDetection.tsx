@@ -8,7 +8,6 @@ import {
   Spin,
   Tabs,
   Input,
-  // Tag
 } from 'antd';
 import { useCallback, useEffect, useMemo, useState, useRef, forwardRef, Dispatch, SetStateAction } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -21,6 +20,7 @@ import { DatasetType } from '@/app/mlops/types';
 import type { ObjectDetectionMetadata, YOLOAnnotation } from '@/app/mlops/types';
 import { generateUniqueRandomColor } from '@/app/mlops/utils/common';
 import { DEFAULT_LABELS } from '@/app/mlops/constants';
+import PermissionWrapper from '@/components/permission';
 
 interface ObjectDetectionTrainData {
   width: number;
@@ -544,7 +544,9 @@ const ObjectDetection = ({
     return (
       <div className='flex items-center gap-2'>
         <Button type='primary' onClick={() => setLabelModalOpen(true)}>{t(`datasets.labelManagement`)}</Button>
-        <Button type='primary' onClick={saveResult}>{t(`datasets.saveChanges`)}</Button>
+        <PermissionWrapper requiredPermissions={['Edit']}>
+          <Button type='primary' onClick={saveResult}>{t(`datasets.saveChanges`)}</Button>
+        </PermissionWrapper>
         <ReloadOutlined onClick={() => getObjectTrainDataInfo()} />
       </div>
     )

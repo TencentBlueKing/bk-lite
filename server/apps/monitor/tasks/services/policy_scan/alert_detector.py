@@ -1,5 +1,6 @@
 """告警检测服务 - 负责告警事件的检测和恢复"""
 
+import ast
 from string import Template
 
 from django.db.models import F
@@ -93,12 +94,23 @@ class AlertDetector:
         ]
 
     def _extract_monitor_instance_id(self, metric_instance_id: str) -> str:
+        """从 metric_instance_id 中提取 monitor_instance_id。
+
+        Args:
+            metric_instance_id: 格式为元组字符串，如 "('host-01', 'cpu')"
+
+        Returns:
+            提取的 monitor_instance_id，解析失败时返回原始值
+        """
         try:
-            tuple_val = eval(metric_instance_id)
+            tuple_val = ast.literal_eval(metric_instance_id)
             if isinstance(tuple_val, tuple) and len(tuple_val) > 0:
                 return str((tuple_val[0],))
-        except Exception:
-            pass
+        except (ValueError, SyntaxError) as e:
+            logger.debug(
+                f"无法解析 metric_instance_id='{metric_instance_id}' 为元组，"
+                f"返回原始值。错误: {e}"
+            )
         return metric_instance_id
 
     def _build_no_data_events(self, aggregation_result):
@@ -157,15 +169,26 @@ class AlertDetector:
         return events
 
     def _parse_dimensions(self, metric_instance_id: str) -> dict:
+        """从 metric_instance_id 解析维度信息。
+
+        Args:
+            metric_instance_id: 格式为元组字符串，如 "('host-01', 'cpu', 'core0')"
+
+        Returns:
+            维度字典，解析失败时返回空字典
+        """
         try:
-            tuple_val = eval(metric_instance_id)
+            tuple_val = ast.literal_eval(metric_instance_id)
             if isinstance(tuple_val, tuple):
                 keys = self.policy.group_by or []
                 return {
                     keys[i]: tuple_val[i] for i in range(min(len(keys), len(tuple_val)))
                 }
-        except Exception:
-            pass
+        except (ValueError, SyntaxError) as e:
+            logger.debug(
+                f"无法解析 metric_instance_id='{metric_instance_id}' 的维度信息，"
+                f"返回空字典。错误: {e}"
+            )
         return {}
 
     def _format_dimension_str(self, dimensions: dict) -> str:

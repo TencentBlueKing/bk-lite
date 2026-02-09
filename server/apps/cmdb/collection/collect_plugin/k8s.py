@@ -179,7 +179,7 @@ class CollectK8sMetrics:
         annotation = metrics[metric_key]
         try:
             annotation = json.loads(annotation.replace(r"\n", ""))
-        except:  # noqa
+        except (json.JSONDecodeError, TypeError, ValueError):
             return labels
 
         try:
@@ -189,7 +189,7 @@ class CollectK8sMetrics:
                     labels_list.append(f"{k}={v}")
 
                 labels = ','.join(labels_list)
-        except:  # noqa
+        except (KeyError, TypeError):
             pass
         return labels
 

@@ -1,14 +1,13 @@
-import json
 import secrets
 import uuid
 
 from django.db import models
-from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from django_minio_backend import MinioBackend
 from django_yaml_field import YAMLField
 
+from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.opspilot.enum import BotTypeChoice, ChannelChoices, WorkFlowExecuteType
@@ -267,64 +266,10 @@ class BotWorkFlow(models.Model):
 
         # 自动同步聊天应用
         try:
-            from apps.core.logger import opspilot_logger as logger
-
             created, updated, deleted = ChatApplication.sync_applications_from_workflow(self)
-            logger.info(f"BotWorkFlow {self.id} 保存完成，应用同步结果: " f"创建={created}, 更新={updated}, 删除={deleted}")
+            logger.info(f"BotWorkFlow {self.id} 保存完成，应用同步结果: 创建={created}, 更新={updated}, 删除={deleted}")
         except Exception as e:
-            from apps.core.logger import opspilot_logger as logger
-
             logger.error(f"BotWorkFlow {self.id} 同步聊天应用失败: {str(e)}", exc_info=True)
-
-    @classmethod
-    def create_celery_task(cls, bot_id, work_data):
-        from django_celery_beat.models import CrontabSchedule, PeriodicTask
-
-        cls.delete_celery_task(bot_id)
-        celery_nodes = [i for i in work_data["nodes"] if i.get("type") == "celery"]
-        for i in celery_nodes:
-            node_id = i["id"]
-            data_config = i["data"]["config"]
-            hour, minute = data_config.get("time", "00:00").split(":")
-            if data_config["frequency"] == "daily":
-                crontab_config = {}
-            elif data_config["frequency"] == "weekly":
-                crontab_config = {"day_of_week": str(data_config.get("weekday", 0))}
-            else:
-                crontab_config = {
-                    "day_of_month": str(data_config.get("day", 1)),
-                }
-            # 创建或获取 Crontab 调度配置
-            crontab_schedule, created = CrontabSchedule.objects.get_or_create(
-                minute=minute,
-                hour=hour,
-                day_of_week=crontab_config.get("day_of_week", "*"),
-                day_of_month=crontab_config.get("day_of_month", "*"),
-                month_of_year="*",
-                timezone=timezone.get_current_timezone(),
-            )
-            # 准备任务参数
-            task_kwargs = {"bot_id": bot_id, "node_id": node_id, "message": data_config["message"]}
-
-            task_name = f"chat_flow_celery_task_{bot_id}_{node_id}"
-            # 创建或更新周期性任务
-            PeriodicTask.objects.update_or_create(
-                name=task_name,
-                defaults={
-                    "task": "apps.opspilot.tasks.chat_flow_celery_task",
-                    "enabled": True,
-                    "crontab": crontab_schedule,
-                    "kwargs": json.dumps(task_kwargs),  # 使用kwargs而不是args
-                    "args": "[]",  # 清空args
-                },
-            )
-
-    @staticmethod
-    def delete_celery_task(bot_id):
-        from django_celery_beat.models import PeriodicTask
-
-        task_name = f"chat_flow_celery_task_{bot_id}_"
-        PeriodicTask.objects.filter(name__startswith=task_name).delete()
 
 
 class WorkFlowTaskResult(models.Model):
@@ -457,8 +402,6 @@ class ChatApplication(models.Model):
         Returns:
             tuple: (创建数量, 更新数量, 删除数量)
         """
-        from apps.core.logger import opspilot_logger as logger
-
         bot = bot_work_flow.bot
 
         # 只有当 Bot 上线时才同步应用

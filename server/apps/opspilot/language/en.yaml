@@ -187,6 +187,9 @@ error:
   knowledge_base_training: The knowledge base is training and cannot be modified.
   knowledge_base_used_by_skills: ''
   knowledge_base_delete_related_data_failed: ''
+  crontab_expression_required: crontab_expression is required
+  invalid_crontab_expression: 'Invalid crontab expression: {expression}'
+  crontab_preview_failed: 'Failed to calculate next runs: {detail}'
 tools:
   kubernetes:
     name: Kubernetes Tools

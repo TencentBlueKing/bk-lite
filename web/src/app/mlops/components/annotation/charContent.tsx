@@ -113,7 +113,7 @@ const ChartContent = ({
           width: 30,
           render: (_, record) => {
             return (
-              <PermissionWrapper requiredPermissions={['File Edit']}>
+              <PermissionWrapper requiredPermissions={['Edit']}>
                 <Button color="danger" variant="link" className="justify-start items-center p-0!" onClick={() => handleDelete(record)}>
                   {t('common.delete')}
                 </Button>
@@ -633,7 +633,7 @@ const ChartContent = ({
                     algorithmType === DatasetType.ANOMALY_DETECTION && (
                       <>
                         <Button className="mr-4" onClick={handleCancel}>{t('common.cancel')}</Button>
-                        <PermissionWrapper requiredPermissions={['File Edit']}>
+                        <PermissionWrapper requiredPermissions={['Edit']}>
                           <Button type="primary" loading={loadingState.saveLoading} onClick={handleSave}>{t('common.save')}</Button>
                         </PermissionWrapper>
                       </>

@@ -182,6 +182,9 @@ error:
   knowledge_base_training: 知识库正在训练，无法修改。
   knowledge_base_used_by_skills: 该知识库正在被以下技能使用，无法删除：{skill_names}
   knowledge_base_delete_related_data_failed: 删除关联数据失败，请重试
+  crontab_expression_required: crontab 表达式为必填项
+  invalid_crontab_expression: '无效的 crontab 表达式：{expression}'
+  crontab_preview_failed: '计算下次执行时间失败：{detail}'
 tools:
   kubernetes:
     name: Kubernetes工具

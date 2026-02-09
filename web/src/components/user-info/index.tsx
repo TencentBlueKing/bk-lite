@@ -270,7 +270,7 @@ const UserInfo: React.FC = () => {
       {
         key: 'groups',
         label: (
-          <div 
+          <div
             ref={groupMenuItemRef}
             className="w-full flex justify-between items-center"
             onClick={(e) => {
@@ -352,8 +352,8 @@ const UserInfo: React.FC = () => {
       {groupPanelVisible && (
         <>
           {/* 透明遮罩层 - 点击关闭面板 */}
-          <div 
-            className="fixed inset-0 z-[1059]" 
+          <div
+            className="fixed inset-0 z-[1059]"
             onClick={(e) => {
               e.stopPropagation();
               setGroupPanelVisible(false);
@@ -364,8 +364,8 @@ const UserInfo: React.FC = () => {
           <div
             ref={groupPanelRef}
             className="fixed bg-[var(--color-bg-1)] border border-[var(--color-border-1)] rounded-lg shadow-lg z-[1060]"
-            style={{ 
-              top: '50px', 
+            style={{
+              top: '50px',
               right: '200px',
               width: '300px',
               maxHeight: '450px',

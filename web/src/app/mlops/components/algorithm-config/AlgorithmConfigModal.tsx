@@ -257,7 +257,7 @@ const AlgorithmConfigModal = forwardRef<{ showModal: (params: ShowModalParams) =
   const loadConfigDetail = async (id: number) => {
     setLoading(true);
     try {
-      const data: AlgorithmConfigEntity = await getAlgorithmConfigById(id);
+      const data: AlgorithmConfigEntity = await getAlgorithmConfigById(algorithmType, id);
       form.setFieldsValue({
         name: data.name,
         display_name: data.display_name,
@@ -305,10 +305,10 @@ const AlgorithmConfigModal = forwardRef<{ showModal: (params: ShowModalParams) =
       };
 
       if (modalState.type === 'add') {
-        await createAlgorithmConfig(params);
+        await createAlgorithmConfig(algorithmType, params);
         message.success(t('common.addSuccess'));
       } else {
-        await updateAlgorithmConfig(formData!.id, params);
+        await updateAlgorithmConfig(algorithmType, formData!.id, params);
         message.success(t('common.updateSuccess'));
       }
 

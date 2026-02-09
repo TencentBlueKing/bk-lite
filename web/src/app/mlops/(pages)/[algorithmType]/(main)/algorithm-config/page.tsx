@@ -83,11 +83,13 @@ const AlgorithmConfigPage = () => {
       width: 100,
       align: 'center',
       render: (_, record: AlgorithmConfigListItem) => (
-        <Switch
+        <PermissionWrapper requiredPermissions={['Edit']}>
+          <Switch
           checked={record.is_active}
           onChange={(checked) => handleToggleActive(record.id, checked)}
           size="small"
         />
+        </PermissionWrapper>
       ),
     },
     {
@@ -187,7 +189,7 @@ const AlgorithmConfigPage = () => {
 
   const handleToggleActive = async (id: number, isActive: boolean) => {
     try {
-      await updateAlgorithmConfig(id, { is_active: isActive });
+      await updateAlgorithmConfig(algorithmType, id, { is_active: isActive });
       message.success(t('common.updateSuccess'));
       getConfigs();
     } catch (e: unknown) {
@@ -205,7 +207,7 @@ const AlgorithmConfigPage = () => {
 
   const onDelete = async (id: number) => {
     try {
-      await deleteAlgorithmConfig(id);
+      await deleteAlgorithmConfig(algorithmType, id);
       message.success(t('common.delSuccess'));
       getConfigs();
     } catch (error: unknown) {
