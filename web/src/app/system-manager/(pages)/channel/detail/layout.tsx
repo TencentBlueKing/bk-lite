@@ -40,6 +40,11 @@ const ChannelDetailLayout = ({ children }: { children: React.ReactNode }) => {
       title: t('system.channel.weCom'),
       desc: t('system.channel.weComDesc'),
       icon: 'qiwei2'
+    },
+    nats: {
+      title: t('system.channel.nats'),
+      desc: t('system.channel.natsDesc'),
+      icon: 'tongdao'
     }
   }
 
