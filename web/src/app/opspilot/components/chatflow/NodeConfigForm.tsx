@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Form, Input, Select, InputNumber, Button, Upload, Radio } from 'antd';
-import { InboxOutlined, CopyOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { InboxOutlined, ExportOutlined, CopyOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Link from 'next/link';
 import { message } from 'antd';
@@ -386,31 +386,11 @@ export const NodeConfigForm: React.FC<any> = ({
               <Button
                 type="text"
                 size="small"
-                icon={<CopyOutlined />}
+                icon={<ExportOutlined />}
                 className="text-gray-400 hover:text-gray-600"
                 onClick={() => {
-                  try {
-                    const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/opspilot/studio/chat`;
-                    const textArea = document.createElement('textarea');
-                    textArea.value = url;
-                    textArea.style.position = 'fixed';
-                    textArea.style.left = '-999999px';
-                    textArea.style.top = '-999999px';
-                    document.body.appendChild(textArea);
-                    textArea.focus();
-                    textArea.select();
-                    const successful = document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                    
-                    if (successful) {
-                      message.success(t('copySuccess'));
-                    } else {
-                      message.error(t('copyFailed'));
-                    }
-                  } catch (error) {
-                    console.error('Copy failed:', error);
-                    message.error(t('copyFailed'));
-                  }
+                  const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/opspilot/studio/chat`;
+                  window.open(url, '_blank');
                 }}
               />
             </div>
