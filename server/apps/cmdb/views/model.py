@@ -10,11 +10,12 @@ from apps.cmdb.services.model import ModelManage
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.change_record import create_change_record
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
+from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 
 
-class ModelViewSet(viewsets.ViewSet):
+class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
     @property
     def default_group_id(self):
@@ -45,11 +46,9 @@ class ModelViewSet(viewsets.ViewSet):
 
         return permission_instances_map
 
-    @staticmethod
-    def organizations(request, instance):
-        user_groups = {i["id"] for i in request.user.group_list}
-        organizations = list(set(instance["group"]) & user_groups)
-        return organizations
+    def organizations(self, request, instance):
+        """Get user's organizations for model. Delegates to mixin."""
+        return self.get_user_organizations(request, instance, "group")
 
     @HasPermission("model_management-View")
     @action(detail=False, methods=["get"], url_path="get_model_info/(?P<model_id>.+?)")
