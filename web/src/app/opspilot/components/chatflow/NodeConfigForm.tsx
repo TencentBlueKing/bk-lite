@@ -199,18 +199,9 @@ export const NodeConfigForm: React.FC<any> = ({
             </>
           )}
 
-          {/* 每月模式 - 间隔月数 + 日期选择 + 多时间选择 */}
+          {/* 每月模式 - 日期选择 + 多时间选择 */}
           {frequency === 'monthly' && (
             <>
-              <Form.Item label={t('chatflow.nodeConfig.monthInterval')}>
-                <div className="flex items-center gap-2">
-                  <span>{t('chatflow.nodeConfig.every')}</span>
-                  <Form.Item name="monthInterval" noStyle initialValue={1}>
-                    <InputNumber min={1} max={12} className="w-20" />
-                  </Form.Item>
-                  <span>{t('chatflow.nodeConfig.monthsTriggerOnce')}</span>
-                </div>
-              </Form.Item>
               <Form.Item name="monthDay" label={t('chatflow.nodeConfig.triggerDate')} rules={[{ required: true }]}>
                 <MonthDayPicker />
               </Form.Item>
@@ -263,8 +254,8 @@ export const NodeConfigForm: React.FC<any> = ({
       {nodeType === 'agents' && (
         <>
           <div className="relative">
-            <Form.Item 
-              name="agent" 
+            <Form.Item
+              name="agent"
               label={t('chatflow.nodeConfig.selectAgent')}
               rules={[{ required: true }]}
             >
@@ -322,22 +313,22 @@ export const NodeConfigForm: React.FC<any> = ({
 
       {nodeType === 'web_chat' && (
         <>
-          <Form.Item 
-            name="appName" 
-            label={t('chatflow.nodeConfig.appName')} 
-            rules={[{ 
-              required: true, 
+          <Form.Item
+            name="appName"
+            label={t('chatflow.nodeConfig.appName')}
+            rules={[{
+              required: true,
               message: t('chatflow.nodeConfig.pleaseEnterAppName'),
               whitespace: true
             }]}
           >
             <Input placeholder={t('chatflow.nodeConfig.enterAppName')} />
           </Form.Item>
-          <Form.Item 
-            name="appIcon" 
-            label={t('chatflow.nodeConfig.appIcon')} 
-            rules={[{ 
-              required: true, 
+          <Form.Item
+            name="appIcon"
+            label={t('chatflow.nodeConfig.appIcon')}
+            rules={[{
+              required: true,
               message: t('chatflow.nodeConfig.pleaseSelectAppIcon')
             }]}
           >
@@ -352,8 +343,8 @@ export const NodeConfigForm: React.FC<any> = ({
                         form.validateFields(['appIcon']);
                       }}
                       className={`w-10 h-10 flex items-center justify-center rounded cursor-pointer transition-all ${
-                        form.getFieldValue('appIcon') === iconType 
-                          ? 'border-2 border-blue-500 bg-blue-50/50' 
+                        form.getFieldValue('appIcon') === iconType
+                          ? 'border-2 border-blue-500 bg-blue-50/50'
                           : 'border border-gray-200 hover:border-gray-300'
                       }`}
                     >
@@ -364,18 +355,18 @@ export const NodeConfigForm: React.FC<any> = ({
               )}
             </Form.Item>
           </Form.Item>
-          <Form.Item 
-            name="appDescription" 
-            label={t('chatflow.nodeConfig.appDescription')} 
-            rules={[{ 
-              required: true, 
+          <Form.Item
+            name="appDescription"
+            label={t('chatflow.nodeConfig.appDescription')}
+            rules={[{
+              required: true,
               message: t('chatflow.nodeConfig.pleaseEnterAppDescription'),
               whitespace: true
             }]}
           >
-            <TextArea 
-              rows={4} 
-              placeholder={t('chatflow.nodeConfig.enterAppDescription')} 
+            <TextArea
+              rows={4}
+              placeholder={t('chatflow.nodeConfig.enterAppDescription')}
             />
           </Form.Item>
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-xs">
@@ -403,29 +394,29 @@ export const NodeConfigForm: React.FC<any> = ({
 
       {nodeType === 'mobile' && (
         <>
-          <Form.Item 
-            name="appName" 
-            label={t('chatflow.nodeConfig.appName')} 
-            rules={[{ 
-              required: true, 
+          <Form.Item
+            name="appName"
+            label={t('chatflow.nodeConfig.appName')}
+            rules={[{
+              required: true,
               message: t('chatflow.nodeConfig.pleaseEnterAppName'),
               whitespace: true
             }]}
           >
             <Input placeholder={t('chatflow.nodeConfig.enterAppName')} />
           </Form.Item>
-          <Form.Item 
-            name="appTags" 
-            label={t('chatflow.nodeConfig.appTags')} 
-            rules={[{ 
-              required: true, 
+          <Form.Item
+            name="appTags"
+            label={t('chatflow.nodeConfig.appTags')}
+            rules={[{
+              required: true,
               message: t('chatflow.nodeConfig.pleaseSelectAppTags'),
               type: 'array',
               min: 1
             }]}
           >
-            <Select 
-              mode="multiple" 
+            <Select
+              mode="multiple"
               placeholder={t('chatflow.nodeConfig.selectAppTags')}
               options={[
                 { label: t('chatflow.nodeConfig.appTagRoutineOps'), value: 'routine_ops' },
@@ -437,18 +428,18 @@ export const NodeConfigForm: React.FC<any> = ({
               ]}
             />
           </Form.Item>
-          <Form.Item 
-            name="appDescription" 
-            label={t('chatflow.nodeConfig.appDescription')} 
-            rules={[{ 
-              required: true, 
+          <Form.Item
+            name="appDescription"
+            label={t('chatflow.nodeConfig.appDescription')}
+            rules={[{
+              required: true,
               message: t('chatflow.nodeConfig.pleaseEnterAppDescription'),
               whitespace: true
             }]}
           >
-            <TextArea 
-              rows={4} 
-              placeholder={t('chatflow.nodeConfig.enterAppDescription')} 
+            <TextArea
+              rows={4}
+              placeholder={t('chatflow.nodeConfig.enterAppDescription')}
             />
           </Form.Item>
         </>
@@ -482,13 +473,13 @@ export const NodeConfigForm: React.FC<any> = ({
 
       {nodeType === 'intent_classification' && (
         <div className="mb-4">
-          <Form.Item 
-            name="agent" 
-            label={t('chatflow.nodeConfig.selectAgent')} 
+          <Form.Item
+            name="agent"
+            label={t('chatflow.nodeConfig.selectAgent')}
             rules={[{ required: true, message: t('chatflow.nodeConfig.pleaseSelectAgent') }]}
           >
-            <Select 
-              placeholder={t('chatflow.nodeConfig.pleaseSelectAgent')} 
+            <Select
+              placeholder={t('chatflow.nodeConfig.pleaseSelectAgent')}
               loading={loadingSkills}
               showSearch
               filterOption={(input, option) => option?.label?.toString().toLowerCase().includes(input.toLowerCase()) ?? false}
@@ -504,9 +495,9 @@ export const NodeConfigForm: React.FC<any> = ({
               <>
                 <div className="mb-3 flex items-center justify-between pb-2">
                   <label className="text-sm font-medium text-[var(--color-text-2)]">{t('chatflow.nodeConfig.intentClassification')}</label>
-                  <Button 
-                    type="dashed" 
-                    onClick={() => add({ name: '' })} 
+                  <Button
+                    type="dashed"
+                    onClick={() => add({ name: '' })}
                     size="small"
                     icon={<PlusOutlined />}
                   >
@@ -529,9 +520,9 @@ export const NodeConfigForm: React.FC<any> = ({
                         rules={[{ required: true, message: t('chatflow.nodeConfig.intentNameRequired') }]}
                         className="mb-0"
                       >
-                        <TextArea 
-                          rows={3} 
-                          placeholder={t('chatflow.nodeConfig.intentTopicPlaceholder')} 
+                        <TextArea
+                          rows={3}
+                          placeholder={t('chatflow.nodeConfig.intentTopicPlaceholder')}
                         />
                       </Form.Item>
                       <Button
@@ -555,9 +546,9 @@ export const NodeConfigForm: React.FC<any> = ({
       {nodeType === 'notification' && (
         <>
           <Form.Item name="notificationType" label={t('chatflow.notificationCategory')} initialValue="email" rules={[{ required: true }]}>
-            <Radio.Group onChange={(e) => { 
-              setNotificationType(e.target.value); 
-              loadChannels(e.target.value); 
+            <Radio.Group onChange={(e) => {
+              setNotificationType(e.target.value);
+              loadChannels(e.target.value);
               form.setFieldsValue({ notificationMethod: undefined });
             }}>
               <Radio value="email">{t('chatflow.email')}</Radio>
@@ -580,10 +571,10 @@ export const NodeConfigForm: React.FC<any> = ({
           {notificationType === 'email' && (
             <>
               <Form.Item name="notificationRecipients" label={t('chatflow.notificationRecipients')} rules={[{ required: true }]}>
-                <Select 
-                  mode="multiple" 
-                  placeholder={t('chatflow.selectNotificationRecipients')} 
-                  loading={loadingUsers} 
+                <Select
+                  mode="multiple"
+                  placeholder={t('chatflow.selectNotificationRecipients')}
+                  loading={loadingUsers}
                   showSearch
                   filterOption={(input, option) => {
                     const label = option?.label as string || '';
@@ -610,19 +601,19 @@ export const NodeConfigForm: React.FC<any> = ({
           <h4 className="text-sm font-medium mb-3">{t('chatflow.nodeConfig.enterpriseWechatParams')}</h4>
           <div className="space-y-3">
             {['token', 'secret', 'aes_key', 'corp_id', 'agent_id'].map((field, idx) => (
-              <Form.Item 
-                key={field} 
-                name={field} 
-                label={field.toUpperCase().replace('_', ' ')} 
-                rules={[{ 
-                  required: true, 
+              <Form.Item
+                key={field}
+                name={field}
+                label={field.toUpperCase().replace('_', ' ')}
+                rules={[{
+                  required: true,
                   message: `请输入${field.toUpperCase().replace('_', ' ')}`,
                   whitespace: true
-                }]} 
+                }]}
                 className={idx === 4 ? 'mb-0' : 'mb-3'}
               >
-                {field.includes('secret') || field === 'aes_key' ? 
-                  <Input.Password placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} /> : 
+                {field.includes('secret') || field === 'aes_key' ?
+                  <Input.Password placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} /> :
                   <Input placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} />
                 }
               </Form.Item>
@@ -635,22 +626,22 @@ export const NodeConfigForm: React.FC<any> = ({
         <div className="p-4 bg-[var(--color-fill-1)] border border-[var(--color-border-2)] rounded-md">
           <h4 className="text-sm font-medium mb-3">{t('chatflow.nodeConfig.dingtalkParams')}</h4>
           <div className="space-y-3">
-            <Form.Item 
-              name="client_id" 
-              label="Client ID" 
-              rules={[{ 
-                required: true, 
+            <Form.Item
+              name="client_id"
+              label="Client ID"
+              rules={[{
+                required: true,
                 message: t('chatflow.nodeConfig.pleaseEnterClientId'),
                 whitespace: true
               }]}
             >
               <Input placeholder={t('chatflow.nodeConfig.enterClientId')} />
             </Form.Item>
-            <Form.Item 
-              name="client_secret" 
-              label="Client Secret" 
-              rules={[{ 
-                required: true, 
+            <Form.Item
+              name="client_secret"
+              label="Client Secret"
+              rules={[{
+                required: true,
                 message: t('chatflow.nodeConfig.pleaseEnterClientSecret'),
                 whitespace: true
               }]}
@@ -667,19 +658,19 @@ export const NodeConfigForm: React.FC<any> = ({
           <h4 className="text-sm font-medium mb-3">{t('chatflow.nodeConfig.wechatOfficialParams')}</h4>
           <div className="space-y-3">
             {['token', 'appid', 'secret', 'aes_key'].map((field, idx) => (
-              <Form.Item 
-                key={field} 
-                name={field} 
-                label={field.toUpperCase().replace('_', ' ')} 
-                rules={[{ 
-                  required: true, 
+              <Form.Item
+                key={field}
+                name={field}
+                label={field.toUpperCase().replace('_', ' ')}
+                rules={[{
+                  required: true,
                   message: `请输入${field.toUpperCase().replace('_', ' ')}`,
                   whitespace: true
-                }]} 
+                }]}
                 className={idx === 3 ? 'mb-0' : 'mb-3'}
               >
-                {field.includes('secret') || field === 'aes_key' ? 
-                  <Input.Password placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} /> : 
+                {field.includes('secret') || field === 'aes_key' ?
+                  <Input.Password placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} /> :
                   <Input placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} />
                 }
               </Form.Item>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Input, Button, message } from 'antd';
+import { Input, Button } from 'antd';
 import { EyeOutlined, UpOutlined, DownOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
@@ -31,8 +31,8 @@ const CronEditor: React.FC<CronEditorProps> = ({
   const [nextRuns, setNextRuns] = useState<string[]>([]);
   const [hasPreview, setHasPreview] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // 解析 cron 表达式
   const parseCronParts = (cronValue: string): CronParts => {
     const parts = cronValue.split(' ');
     return {
@@ -46,19 +46,18 @@ const CronEditor: React.FC<CronEditorProps> = ({
 
   const cronParts = parseCronParts(value);
 
-  // 更新 cron 部分
   const updatePart = (part: keyof CronParts, newValue: string) => {
     const newParts = { ...cronParts, [part]: newValue || '*' };
     const newCron = `${newParts.minute} ${newParts.hour} ${newParts.day} ${newParts.month} ${newParts.weekday}`;
     onChange?.(newCron);
-    // 清除预览结果，需要重新预览
     setHasPreview(false);
     setNextRuns([]);
+    setError(null);
   };
 
-  // 预览按钮点击 - 调用后端接口
   const handlePreview = async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await post('/opspilot/bot_mgmt/bot/preview_crontab/', {
         crontab_expression: value,
@@ -69,10 +68,12 @@ const CronEditor: React.FC<CronEditorProps> = ({
         setNextRuns([]);
       }
       setHasPreview(true);
-    } catch (error) {
-      console.error('Preview cron failed:', error);
-      message.error(t('common.fetchFailed'));
+    } catch (err: unknown) {
+      console.error('Preview cron failed:', err);
+      const errorMessage = err instanceof Error ? err.message : t('common.fetchFailed');
+      setError(errorMessage);
       setNextRuns([]);
+      setHasPreview(true);
     } finally {
       setLoading(false);
     }
@@ -88,7 +89,6 @@ const CronEditor: React.FC<CronEditorProps> = ({
 
   return (
     <div className="border border-gray-200 rounded-lg">
-      {/* Cron 表达式标题栏 */}
       <div className="flex items-center justify-between px-4 py-3 bg-[var(--color-fill-1)]">
         <span className="font-medium text-sm">{t('chatflow.nodeConfig.cronExpression')}</span>
         <Button
@@ -105,7 +105,6 @@ const CronEditor: React.FC<CronEditorProps> = ({
       </div>
 
       <div className="p-4">
-        {/* 5字段输入 */}
         <div className="flex items-center gap-2">
           {fields.map((field, index) => (
             <React.Fragment key={field.key}>
@@ -125,12 +124,12 @@ const CronEditor: React.FC<CronEditorProps> = ({
           ))}
         </div>
 
-        {/* 预览结果面板 */}
         {hasPreview && (
-          <div className="mt-4 bg-gray-50 rounded-lg p-4">
-            {nextRuns.length > 0 ? (
+          <div className={`mt-4 rounded-lg p-4 ${error ? 'bg-red-50' : 'bg-gray-50'}`}>
+            {error ? (
+              <div className="text-center text-sm text-red-500">{error}</div>
+            ) : nextRuns.length > 0 ? (
               <>
-                {/* 下次执行时间 */}
                 <div className="text-center mb-2">
                   <div className="text-sm text-gray-600">
                     {t('chatflow.nodeConfig.nextRun')}: <span className="font-medium text-gray-800">{nextRuns[0]}</span>
@@ -145,7 +144,6 @@ const CronEditor: React.FC<CronEditorProps> = ({
                   </div>
                 </div>
 
-                {/* 展开显示更多执行时间 */}
                 {expanded && nextRuns.length > 1 && (
                   <div className="border-t border-gray-200 pt-3 mt-3">
                     <div className="text-center text-sm text-gray-500 mb-2">
