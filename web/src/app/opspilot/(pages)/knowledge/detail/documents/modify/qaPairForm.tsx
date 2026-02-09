@@ -9,6 +9,7 @@ import CustomTable from '@/components/custom-table';
 import ChunkPreviewModal from './chunkPreviewModal';
 import Icon from '@/components/icon';
 import type { DocumentItem, QAPairFormProps } from '@/app/opspilot/types/knowledge';
+import { getDocumentTypeLabel } from '@/app/opspilot/utils/knowledgeBaseUtils';
 
 const { TabPane } = Tabs;
 const { TextArea } = Input;
@@ -301,18 +302,9 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
     }).filter(Boolean);
   }, [tempSelectedDocuments, getSelectedDocumentInfo, t]);
 
-  const getDocumentTypeLabel = useCallback((type: string) => {
-    switch (type) {
-      case 'file':
-        return t('knowledge.localFile');
-      case 'web_page':
-        return t('knowledge.webLink');
-      case 'manual':
-        return t('knowledge.cusText');
-      default:
-        return type;
-    }
-  }, []);
+  const getDocumentTypeLabelCallback = useCallback((type: string) => {
+    return getDocumentTypeLabel(type, t);
+  }, [t]);
 
   const handleFormValuesChange = useCallback((_: any, allValues: any) => {
     const newValues = {
@@ -736,7 +728,7 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
         onClose={() => setPreviewModalVisible(false)}
         selectedDocuments={selectedDocuments}
         getSelectedDocumentInfo={getSelectedDocumentInfo}
-        getDocumentTypeLabel={getDocumentTypeLabel}
+        getDocumentTypeLabel={getDocumentTypeLabelCallback}
         onConfirm={handleConfirmChunks}
         initialSelectedChunks={selectedChunks}
       />
@@ -844,7 +836,7 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
                               color="blue"
                               className="text-xs"
                             >
-                              {getDocumentTypeLabel(doc.type)}
+                              {getDocumentTypeLabelCallback(doc.type)}
                             </Tag>
                           </div>
                           <div 
