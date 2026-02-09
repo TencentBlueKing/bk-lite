@@ -37,11 +37,16 @@ import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
 import MetricPreview from './metricPreview';
 import VariablesTable from './variablesTable';
+import { isStringArray } from '@/app/monitor/utils/common';
+import {
+  COMPARISON_METHOD,
+  ENUM_COMPARISON_METHOD
+} from '@/app/monitor/constants/event';
 const defaultGroup = ['instance_id'];
 
-// 过滤无效的单位值（none 和 short 已从单位列表中移除，不能作为单位值）
+// 过滤无效的单位值（none 、 short 和 JSON 字符串格式 已从单位列表中移除，不能作为单位值）
 const filterInvalidUnit = (unit: string | null | undefined): string | null => {
-  if (!unit || unit === 'none' || unit === 'short') {
+  if (!unit || unit === 'none' || unit === 'short' || isStringArray(unit)) {
     return null;
   }
   return unit;
@@ -107,17 +112,17 @@ const StrategyOperation = () => {
   const [threshold, setThreshold] = useState<ThresholdField[]>([
     {
       level: 'critical',
-      method: '>',
+      method: '=',
       value: null
     },
     {
       level: 'error',
-      method: '>',
+      method: '=',
       value: null
     },
     {
       level: 'warning',
-      method: '>',
+      method: '=',
       value: null
     }
   ]);
@@ -378,6 +383,26 @@ const StrategyOperation = () => {
       getGroupIds(monitorName as string)?.default || defaultGroup;
     setGroupBy(defaultGroupBy);
     setConditions([]);
+
+    // 判断新指标是否为枚举类型，并处理阈值的操作符和值
+    const newIsEnumMetric = isStringArray(target?.unit || '');
+    const newComparisonMethods = newIsEnumMetric
+      ? ENUM_COMPARISON_METHOD
+      : COMPARISON_METHOD;
+
+    // 重置阈值：如果操作符不在新列表中则取第一个，并清空值（因为不同指标的枚举选项/单位不同）
+    const newThreshold = threshold.map((item) => {
+      const methodExists = newComparisonMethods.some(
+        (m) => m.value === item.method
+      );
+      return {
+        ...item,
+        method: methodExists ? item.method : newComparisonMethods[0].value,
+        value: null // 切换指标时清空值
+      };
+    });
+    setThreshold(newThreshold as any);
+
     // 选择指标后触发验证，清除错误信息（包括指标、条件维度和告警阈值）
     form.validateFields(['metric', '_conditions_validator', 'threshold']);
     // 自动设置告警阈值单位为指标的默认单位（过滤掉 none 和 short）
@@ -550,12 +575,14 @@ const StrategyOperation = () => {
           filter: conditions
         };
         params.source = source;
-        params.metric_unit = mertricTarget?.unit;
+        params.metric_unit = isStringArray(mertricTarget?.unit)
+          ? ''
+          : mertricTarget?.unit;
       }
       params.threshold = threshold.filter(
         (item) => !!item.value || item.value === 0
       );
-      params.calculation_unit = calculationUnit;
+      params.calculation_unit = calculationUnit || '';
       params.monitor_object = monitorObjId;
       params.schedule = {
         type: unit,

@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Select, InputNumber } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ListItem } from '@/app/monitor/types';
 import { LEVEL_MAP } from '@/app/monitor/constants';
-import { COMPARISON_METHOD } from '@/app/monitor/constants/event';
+import {
+  COMPARISON_METHOD,
+  ENUM_COMPARISON_METHOD
+} from '@/app/monitor/constants/event';
 import { cloneDeep } from 'lodash';
 
 const { Option } = Select;
@@ -14,12 +17,20 @@ export interface ThresholdItem {
   value: number | null;
 }
 
+interface EnumOption {
+  id: number;
+  name: string;
+  color?: string;
+}
+
 interface ThresholdListProps {
   data: ThresholdItem[];
   onChange?: (data: ThresholdItem[]) => void;
-  calculationUnit: string;
+  calculationUnit: string | null;
   onUnitChange: (unit: string) => void;
   unitOptions?: any[];
+  isEnumMetric?: boolean;
+  enumOptions?: EnumOption[];
 }
 
 const ThresholdList: React.FC<ThresholdListProps> = ({
@@ -28,8 +39,15 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
   calculationUnit,
   onUnitChange,
   unitOptions = [],
+  isEnumMetric = false,
+  enumOptions = []
 }) => {
   const { t } = useTranslation();
+
+  // 根据是否为枚举类型选择操作符列表
+  const comparisonMethods = useMemo(() => {
+    return isEnumMetric ? ENUM_COMPARISON_METHOD : COMPARISON_METHOD;
+  }, [isEnumMetric]);
 
   const handleMethodChange = (value: string, index: number) => {
     const newData = cloneDeep(data);
@@ -57,23 +75,25 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
 
   return (
     <div className="w-full border border-[var(--color-border-2)] rounded-md p-4 bg-[var(--color-bg-1)] shadow-md">
-      {/* 单位选择器在右上角 */}
-      <div className="flex justify-end mb-[10px]">
-        <span className="mr-[10px] leading-[32px]">{t('common.unit')}:</span>
-        <Select
-          value={calculationUnit}
-          style={{ width: 180 }}
-          showSearch
-          filterOption={(input, option) =>
-            option.label.toLowerCase().includes(input.toLowerCase())
-          }
-          options={unitOptions.map((option) => ({
-            label: option.display_unit || option.unit_name,
-            value: option.unit_id,
-          }))}
-          onChange={handleUnitChange}
-        />
-      </div>
+      {/* 单位选择器在右上角 - 枚举类型不显示 */}
+      {!isEnumMetric && (
+        <div className="flex justify-end mb-[10px]">
+          <span className="mr-[10px] leading-[32px]">{t('common.unit')}:</span>
+          <Select
+            value={calculationUnit}
+            style={{ width: 180 }}
+            showSearch
+            filterOption={(input, option) =>
+              option.label.toLowerCase().includes(input.toLowerCase())
+            }
+            options={unitOptions.map((option) => ({
+              label: option.display_unit || option.unit_name,
+              value: option.unit_id
+            }))}
+            onChange={handleUnitChange}
+          />
+        </div>
+      )}
       {/* 阈值级别列表 */}
       {data.map((item, index) => (
         <div
@@ -100,19 +120,36 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
                 placeholder={t('monitor.events.method')}
                 onChange={(val) => handleMethodChange(val, index)}
               >
-                {COMPARISON_METHOD.map((method: ListItem) => (
+                {comparisonMethods.map((method: ListItem) => (
                   <Option value={method.value} key={method.value}>
                     {method.label}
                   </Option>
                 ))}
               </Select>
-              <InputNumber
-                style={{ flex: 1 }}
-                min={0}
-                value={item.value}
-                addonAfter={getUnitLabel()}
-                onChange={(val) => handleValueChange(val, index)}
-              />
+              {/* 枚举类型用下拉选择，非枚举类型用数字输入 */}
+              {isEnumMetric ? (
+                <Select
+                  style={{ flex: 1 }}
+                  value={item.value}
+                  placeholder={t('common.select')}
+                  onChange={(val) => handleValueChange(val, index)}
+                  allowClear
+                >
+                  {enumOptions.map((option) => (
+                    <Option value={option.id} key={option.id}>
+                      {option.name}
+                    </Option>
+                  ))}
+                </Select>
+              ) : (
+                <InputNumber
+                  style={{ flex: 1 }}
+                  min={0}
+                  value={item.value}
+                  addonAfter={getUnitLabel()}
+                  onChange={(val) => handleValueChange(val, index)}
+                />
+              )}
             </div>
           </div>
         </div>
