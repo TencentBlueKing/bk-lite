@@ -1,13 +1,14 @@
 'use client';
 
 import React from 'react';
-import { Form, Input, Select, InputNumber, Button, TimePicker, Upload, Radio } from 'antd';
-import { InboxOutlined, CopyOutlined, PlusOutlined } from '@ant-design/icons';
+import { Form, Input, Select, InputNumber, Button, Upload, Radio } from 'antd';
+import { InboxOutlined, CopyOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Link from 'next/link';
 import { message } from 'antd';
 import type { UploadProps } from 'antd';
 import Icon from '@/components/icon';
+import { TimeListField, MonthDayPicker, CronEditor } from './components';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -155,42 +156,76 @@ export const NodeConfigForm: React.FC<any> = ({
               <Option value="daily">{t('chatflow.daily')}</Option>
               <Option value="weekly">{t('chatflow.weekly')}</Option>
               <Option value="monthly">{t('chatflow.monthly')}</Option>
+              <Option value="cron">{t('chatflow.cron')}</Option>
             </Select>
           </Form.Item>
+
+          {/* 每天模式 - 提示信息 + 多时间选择 */}
           {frequency === 'daily' && (
-            <Form.Item name="time" label={t('chatflow.nodeConfig.triggerTime')} rules={[{ required: true }]}>
-              <TimePicker format="HH:mm" placeholder={t('chatflow.nodeConfig.selectTime')} className="w-full" />
-            </Form.Item>
+            <>
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md flex items-start gap-2">
+                <InfoCircleOutlined className="text-blue-500 mt-0.5" />
+                <span className="text-sm text-blue-600">
+                  {t('chatflow.nodeConfig.dailyTip')}
+                </span>
+              </div>
+              <Form.Item name="times" label={t('chatflow.nodeConfig.triggerTime')} rules={[{ required: true }]}>
+                <TimeListField />
+              </Form.Item>
+            </>
           )}
+
+          {/* 每周模式 - 多选星期 + 多时间选择 */}
           {frequency === 'weekly' && (
             <>
-              <Form.Item name="weekday" label={t('chatflow.weekday')} rules={[{ required: true }]}>
-                <Select placeholder={t('chatflow.nodeConfig.selectWeekday')}>
-                  {[1, 2, 3, 4, 5, 6, 0].map(day => (
-                    <Option key={day} value={day}>{t(`chatflow.nodeConfig.${['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][day]}`)}</Option>
-                  ))}
-                </Select>
+              <Form.Item name="weekdays" label={t('chatflow.nodeConfig.selectWeekdays')} rules={[{ required: true }]}>
+                <Select
+                  mode="multiple"
+                  placeholder={t('chatflow.nodeConfig.pleaseSelectWeekdays')}
+                  options={[
+                    { label: t('chatflow.nodeConfig.monday'), value: 1 },
+                    { label: t('chatflow.nodeConfig.tuesday'), value: 2 },
+                    { label: t('chatflow.nodeConfig.wednesday'), value: 3 },
+                    { label: t('chatflow.nodeConfig.thursday'), value: 4 },
+                    { label: t('chatflow.nodeConfig.friday'), value: 5 },
+                    { label: t('chatflow.nodeConfig.saturday'), value: 6 },
+                    { label: t('chatflow.nodeConfig.sunday'), value: 0 },
+                  ]}
+                />
               </Form.Item>
-              <Form.Item name="time" label={t('chatflow.nodeConfig.triggerTime')} rules={[{ required: true }]}>
-                <TimePicker format="HH:mm" placeholder={t('chatflow.nodeConfig.selectTime')} className="w-full" />
+              <Form.Item name="times" label={t('chatflow.nodeConfig.triggerTime')} rules={[{ required: true }]}>
+                <TimeListField />
               </Form.Item>
             </>
           )}
+
+          {/* 每月模式 - 间隔月数 + 日期选择 + 多时间选择 */}
           {frequency === 'monthly' && (
             <>
-              <Form.Item name="day" label={t('chatflow.day')} rules={[{ required: true }]}>
-                <Select placeholder={t('chatflow.nodeConfig.selectDay')}>
-                  {Array.from({ length: 31 }, (_, i) => <Option key={i + 1} value={i + 1}>{i + 1}</Option>)}
-                </Select>
+              <Form.Item label={t('chatflow.nodeConfig.monthInterval')}>
+                <div className="flex items-center gap-2">
+                  <span>{t('chatflow.nodeConfig.every')}</span>
+                  <Form.Item name="monthInterval" noStyle initialValue={1}>
+                    <InputNumber min={1} max={12} className="w-20" />
+                  </Form.Item>
+                  <span>{t('chatflow.nodeConfig.monthsTriggerOnce')}</span>
+                </div>
               </Form.Item>
-              <Form.Item name="time" label={t('chatflow.nodeConfig.triggerTime')} rules={[{ required: true }]}>
-                <TimePicker format="HH:mm" placeholder={t('chatflow.nodeConfig.selectTime')} className="w-full" />
+              <Form.Item name="monthDay" label={t('chatflow.nodeConfig.triggerDate')} rules={[{ required: true }]}>
+                <MonthDayPicker />
+              </Form.Item>
+              <Form.Item name="times" label={t('chatflow.nodeConfig.triggerTime')} rules={[{ required: true }]}>
+                <TimeListField />
               </Form.Item>
             </>
           )}
-          <Form.Item name="message" label={t('chatflow.nodeConfig.triggerMessage')}>
-            <TextArea rows={3} placeholder={t('chatflow.nodeConfig.triggerMessagePlaceholder')} />
-          </Form.Item>
+
+          {/* Cron表达式模式 */}
+          {frequency === 'cron' && (
+            <Form.Item name="cron" rules={[{ required: true }]}>
+              <CronEditor />
+            </Form.Item>
+          )}
         </>
       )}
 
