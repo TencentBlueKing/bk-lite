@@ -260,8 +260,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     
     // 使用现代 API 或降级方案
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(plainText).then(
-        () => console.log(t('chat.copied')),
+      navigator.clipboard.writeText(plainText).catch(
         err => console.error(`${t('chat.copyFailed')}:`, err)
       );
     } else {
@@ -276,7 +275,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       textArea.select();
       try {
         document.execCommand('copy');
-        console.log(t('chat.copied'));
       } catch (err) {
         console.error(`${t('chat.copyFailed')}:`, err);
       }

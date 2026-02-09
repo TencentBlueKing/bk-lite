@@ -98,9 +98,7 @@ const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, showMarkOnly
   }, [loading, handleSendMessage, messages, handleSendComplete]);
 
   const handleCopyMessage = (content: string) => {
-    navigator.clipboard.writeText(content).then(() => {
-      console.log(t('chat.copied'));
-    }).catch(err => {
+    navigator.clipboard.writeText(content).catch(err => {
       console.error(`${t('chat.copyFailed')}:`, err);
     });
   };

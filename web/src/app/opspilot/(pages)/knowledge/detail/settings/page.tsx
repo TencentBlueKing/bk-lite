@@ -86,9 +86,7 @@ const SettingsPage: React.FC = () => {
           setConfirmLoading(false);
         }
       })
-      .catch(errorInfo => {
-        console.log(`${t('common.valFailed')}: ${errorInfo}`);
-      });
+      .catch(() => {});
   };
 
   const handleCancel = () => {
