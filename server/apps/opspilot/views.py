@@ -174,19 +174,13 @@ def get_skill_and_params(kwargs, team, bot_id=None):
         skill_obj = LLMSkill.objects.filter(name=skill_id, team__contains=int(team)).first()
         # 如果未找到，尝试按 instance_id 查询
         if not skill_obj:
-            try:
-                skill_obj = LLMSkill.objects.filter(instance_id=skill_id, team__contains=int(team)).first()
-            except Exception:
-                pass
+            skill_obj = LLMSkill.objects.filter(instance_id=skill_id, team__contains=int(team)).first()
     else:
         # 先尝试按 name 查询
         skill_obj = LLMSkill.objects.filter(name=skill_id, bot=bot_id).first()
         # 如果未找到，尝试按 instance_id 查询
         if not skill_obj:
-            try:
-                skill_obj = LLMSkill.objects.filter(instance_id=skill_id, bot=bot_id).first()
-            except Exception:
-                pass
+            skill_obj = LLMSkill.objects.filter(instance_id=skill_id, bot=bot_id).first()
 
     if not skill_obj:
         return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.skill_not_found", "No skill")}}]})
