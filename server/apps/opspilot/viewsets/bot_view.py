@@ -13,6 +13,8 @@ from apps.opspilot.enum import BotTypeChoice, WorkFlowExecuteType
 from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, WorkFlowConversationHistory
 from apps.opspilot.serializers import BotSerializer
 from apps.opspilot.utils.bot_utils import set_time_range
+from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
+from apps.opspilot.utils.schedule_utils import get_crontab_next_runs
 
 
 class BotFilter(FilterSet):
@@ -114,7 +116,7 @@ class BotViewSet(AuthViewSet):
         obj.save()
         if is_publish:
             # 只有 CHAT_FLOW 类型,创建 Celery 任务
-            BotWorkFlow.create_celery_task(obj.id, workflow_data)
+            create_celery_task(obj.id, workflow_data)
             obj.online = is_publish
             obj.save()
 
@@ -128,13 +130,7 @@ class BotViewSet(AuthViewSet):
         return_data = []
         for i in channels:
             return_data.append(
-                {
-                    "id": i.id,
-                    "name": i.name,
-                    "channel_type": i.channel_type,
-                    "channel_config": i.format_channel_config(),
-                    "enabled": i.enabled,
-                }
+                {"id": i.id, "name": i.name, "channel_type": i.channel_type, "channel_config": i.format_channel_config(), "enabled": i.enabled}
             )
         return JsonResponse({"result": True, "data": return_data})
 
@@ -151,12 +147,7 @@ class BotViewSet(AuthViewSet):
             has_permission = self.get_has_permission(request.user, channel.bot, current_team, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": message,
-                    }
-                )
+                return JsonResponse({"result": False, "message": message})
 
         channel.enabled = enabled
         if channel_config is not None:
@@ -168,7 +159,7 @@ class BotViewSet(AuthViewSet):
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
         # 只有 CHAT_FLOW 类型,删除 Celery 任务
-        BotWorkFlow.delete_celery_task(obj.id)
+        delete_celery_task(obj.id)
         return super().destroy(request, *args, **kwargs)
 
     @action(methods=["POST"], detail=False)
@@ -190,7 +181,7 @@ class BotViewSet(AuthViewSet):
             bot.save()
             workflow_data = BotWorkFlow.objects.filter(bot_id=bot.id).first()
             if workflow_data:
-                BotWorkFlow.create_celery_task(bot.id, workflow_data.web_json)
+                create_celery_task(bot.id, workflow_data.web_json)
             bot.online = True
             bot.save()
         return JsonResponse({"result": True})
@@ -210,7 +201,7 @@ class BotViewSet(AuthViewSet):
 
         # 只有 CHAT_FLOW 类型
         for bot in bots:
-            BotWorkFlow.delete_celery_task(bot.id)
+            delete_celery_task(bot.id)
             bot.api_token = ""
             bot.online = False
             bot.save()
@@ -353,3 +344,31 @@ class BotViewSet(AuthViewSet):
                 }
             )
         return paginator, result
+
+    @action(methods=["POST"], detail=False)
+    def preview_crontab(self, request):
+        """
+        Preview next execution times for a crontab expression.
+
+        Request body:
+            crontab_expression: str - 5-field crontab expression (minute hour day month weekday)
+            count: int - Number of next executions to return (default: 6, max: 20)
+
+        Returns:
+            result: bool - Success flag
+            data: list - List of next execution times in "YYYY-MM-DD HH:MM:SS" format
+            message: str - Error message if failed
+        """
+        crontab_expression = request.data.get("crontab_expression", "")
+        count = min(int(request.data.get("count", 6)), 20)  # Max 20
+
+        if not crontab_expression:
+            message = self.loader.get("error.crontab_expression_required") if self.loader else "crontab_expression is required"
+            return JsonResponse({"result": False, "message": message})
+        try:
+            next_runs = get_crontab_next_runs(crontab_expression, count=count)
+            return JsonResponse({"result": True, "data": next_runs})
+        except ValueError:
+            template = self.loader.get("error.invalid_crontab_expression") if self.loader else "Invalid crontab expression: {expression}"
+            message = template.format(expression=crontab_expression)
+            return JsonResponse({"result": False, "message": message})
