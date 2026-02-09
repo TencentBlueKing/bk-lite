@@ -1,5 +1,6 @@
 """告警检测服务 - 负责告警事件的检测和恢复"""
 
+import ast
 from string import Template
 
 from django.db.models import F
@@ -94,7 +95,7 @@ class AlertDetector:
 
     def _extract_monitor_instance_id(self, metric_instance_id: str) -> str:
         try:
-            tuple_val = eval(metric_instance_id)
+            tuple_val = ast.literal_eval(metric_instance_id)
             if isinstance(tuple_val, tuple) and len(tuple_val) > 0:
                 return str((tuple_val[0],))
         except Exception:
@@ -158,7 +159,7 @@ class AlertDetector:
 
     def _parse_dimensions(self, metric_instance_id: str) -> dict:
         try:
-            tuple_val = eval(metric_instance_id)
+            tuple_val = ast.literal_eval(metric_instance_id)
             if isinstance(tuple_val, tuple):
                 keys = self.policy.group_by or []
                 return {
