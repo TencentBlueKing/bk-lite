@@ -403,9 +403,9 @@ def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sen
         return {"content": loader.get("error.bot_not_found", "No bot found")}
     try:
         result = SkillExecuteService.execute_skill(bot, skill_id, user_message, chat_history, sender_id, channel)
-    except Exception as e:
-        logger.exception(e)
-        result = {"content": str(e)}
+    except Exception:
+        logger.exception("Skill execution failed: bot_id=%s, skill_id=%s", bot_id, skill_id)
+        result = {"content": "Skill execution error"}
     if getattr(request, "api_pass", False):
         current_ip, _ = get_client_ip(request)
         insert_skill_log(
@@ -588,8 +588,7 @@ def execute_chat_flow(request, bot_id, node_id):
         return JsonResponse({"result": True, "data": {"content": result, "execution_time": time.time()}})
 
     except Exception as e:
-        logger.error(f"ChatFlow流程执行失败，bot_id: {bot_id}, node_id: {node_id}, 错误: {str(e)}")
-        logger.exception(e)
+        logger.exception("ChatFlow execution failed: bot_id=%s, node_id=%s", bot_id, node_id)
         # 流式错误响应，参考 llm_view.py
         return LLMViewSet.create_error_stream_response(str(e))
 

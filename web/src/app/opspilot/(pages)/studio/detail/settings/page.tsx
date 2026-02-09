@@ -78,22 +78,17 @@ const StudioSettingsPage: React.FC = () => {
 
         // Handle workflow data for workflow bot type
         if (currentBotType === 3 && botData.workflow_data) {
-          console.log('Detected workflow bot type, workflow_data:', botData.workflow_data);
-          
           // Ensure workflow_data is in correct format
           if (botData.workflow_data && typeof botData.workflow_data === 'object') {
             const { nodes = [], edges = [] } = botData.workflow_data;
             
             // Validate nodes and edges data are arrays
             if (Array.isArray(nodes) && Array.isArray(edges)) {
-              console.log('Setting workflow data - nodes:', nodes.length, 'edges:', edges.length);
               setWorkflowData({ nodes, edges });
             } else {
-              console.warn('Workflow data format incorrect, nodes or edges are not arrays:', { nodes, edges });
               setWorkflowData({ nodes: [], edges: [] });
             }
           } else {
-            console.log('Workflow bot type but no valid data, setting to empty');
             setWorkflowData({ nodes: [], edges: [] });
           }
         } else {
@@ -312,7 +307,6 @@ const StudioSettingsPage: React.FC = () => {
 
   // Move chatflow related functions to top level
   const handleClearCanvas = () => {
-    console.log('Clear canvas operation started');
     const emptyWorkflowData = { nodes: [], edges: [] };
     setWorkflowData(emptyWorkflowData);
     
@@ -322,13 +316,10 @@ const StudioSettingsPage: React.FC = () => {
     const isChanged = originalDataStr !== emptyDataStr;
     setHasUnsavedChanges(isChanged);
     
-    console.log('Clear canvas operation completed, unsaved:', isChanged);
     message.success('Canvas cleared');
   };
 
   const handleSaveWorkflow = useCallback((newWorkflowData: { nodes: any[], edges: any[] }) => {
-    console.log('StudioSettingsPage: Workflow data updated', newWorkflowData);
-    
     // Update workflow data
     setWorkflowData(prev => {
       const prevDataStr = JSON.stringify(prev);
@@ -340,7 +331,6 @@ const StudioSettingsPage: React.FC = () => {
         const isChanged = newDataStr !== originalDataStr;
         setHasUnsavedChanges(isChanged);
         
-        console.log('StudioSettingsPage: Workflow data changed, unsaved:', isChanged);
         return { nodes: [...newWorkflowData.nodes], edges: [...newWorkflowData.edges] };
       }
       

@@ -297,7 +297,10 @@
         "port": "Port",
         "type": "Type",
         "smtp_user": "Smtp User",
-        "deleteConfirm": "Are you sure you want to delete this channel?"
+        "deleteConfirm": "Are you sure you want to delete this channel?",
+        "namespace": "Namespace",
+        "method_name": "Method Name",
+        "timeout": "Timeout (seconds)"
       },
       "table": {
         "description": "DESCRIPTION",
@@ -312,7 +315,9 @@
       },
       "email": "Email",
       "weComDesc": "The Chat Group Helper channel supports the integration of various notification methods and the flexible configuration of different notification templates.",
-      "weCom": "Chat Group Helper"
+      "weCom": "Chat Group Helper",
+      "nats": "NATS Channel",
+      "natsDesc": "The NATS channel supports notification push through NATS message queue."
     },
     "modules": {
       "llm_model": "LLM Model",

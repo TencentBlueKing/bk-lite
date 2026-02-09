@@ -72,4 +72,5 @@ export interface ChannelItem {
   channel_type: string;
   id: number;
   name: string;
+  description?: string;
 }

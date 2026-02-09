@@ -165,7 +165,6 @@ class AlertDetector:
 
     def _build_metric_template_vars(self, dimensions: dict) -> dict:
         return build_metric_template_vars(dimensions)
-        return {f"metric__{k}": v for k, v in dimensions.items()}
 
     def _log_alert_events(self, alert_events, vm_data):
         logger.info(f"=======alert events: {alert_events}")

@@ -5,7 +5,7 @@
 """
 # Shield class for handling event shielding operations.
 """
-
+import datetime
 from typing import List, Dict, Any
 from django.utils import timezone
 from django.db import transaction
@@ -39,7 +39,7 @@ class EventShieldOperator(object):
     def __init__(self, event_id_list: List[str], active_shields=None):
         """
         初始化事件屏蔽操作器（性能优化版）
-        
+
         Args:
             event_id_list: 事件ID列表
             active_shields: 预加载的活跃屏蔽策略（可选，避免重复查询）
@@ -49,11 +49,10 @@ class EventShieldOperator(object):
             self.active_shields = active_shields
         else:
             self.active_shields = self.get_shields()
-        
+
         if not self.active_shields:
             raise ShieldNotFoundError()
-        
-        self.event_received_at = None
+
         self.event_id_list = event_id_list
         self.events = self.get_event_map()
         if not self.events:
@@ -65,7 +64,6 @@ class EventShieldOperator(object):
         """获取事件实例映射"""
         result = {}
         events = Event.objects.filter(event_id__in=self.event_id_list)
-        self.event_received_at = events[0].received_at if events else timezone.now()
         for event in events:
             result[event.id] = event
         return result
@@ -168,9 +166,10 @@ class EventShieldOperator(object):
             匹配的事件ID列表
         """
         # 先过滤活跃状态的事件（未关闭且未屏蔽的事件才需要屏蔽）
+        # 支持 RECEIVED（新事件）和 PENDING（待响应）两种状态
         base_queryset = Event.objects.filter(
             event_id__in=self.event_id_list,
-            status=EventStatus.PENDING,  # 只屏蔽开放和已确认的事件
+            status__in=[EventStatus.RECEIVED, EventStatus.PENDING],
         )
 
         # 排除已屏蔽的事件
@@ -202,16 +201,15 @@ class EventShieldOperator(object):
         """
         results = []
 
+        shieldable_statuses = [EventStatus.RECEIVED, EventStatus.PENDING]
         try:
             with transaction.atomic():
-                # 先获取要屏蔽的事件信息，用于记录结果
                 events_to_shield = Event.objects.filter(
-                    id__in=event_ids, status=EventStatus.PENDING
+                    id__in=event_ids, status__in=shieldable_statuses
                 ).values("id", "event_id")
 
-                # 批量更新事件状态
                 updated_count = Event.objects.filter(
-                    id__in=event_ids, status=EventStatus.PENDING
+                    id__in=event_ids, status__in=shieldable_statuses
                 ).update(status=EventStatus.SHIELD)
 
                 # 为每个成功屏蔽的事件记录结果
@@ -248,6 +246,138 @@ class EventShieldOperator(object):
 
         return results
 
+    def _check_time_range(self, suppression_time: Dict[str, Any]) -> bool:
+        """
+        检查当前时间是否在配置的屏蔽时间范围内
+
+        Args:
+            suppression_time: 屏蔽时间配置
+
+        Returns:
+            bool: 是否在屏蔽时间范围内
+        """
+        if not suppression_time:
+            return True
+
+        time_type = suppression_time.get("type", "one")
+        current_time = timezone.now()
+
+        try:
+            if time_type == "one":
+                # 一次性时间范围
+                start_time_str = suppression_time.get("start_time")
+                end_time_str = suppression_time.get("end_time")
+
+                # 如果没有配置时间范围，则不符合条件
+                if not start_time_str or not end_time_str:
+                    logger.warning(
+                        "One-time shield range missing start_time or end_time"
+                    )
+                    return False
+
+                start_time = datetime.datetime.strptime(
+                    start_time_str, "%Y-%m-%d %H:%M:%S"
+                )
+                end_time = datetime.datetime.strptime(end_time_str, "%Y-%m-%d %H:%M:%S")
+
+                # 转换为带时区的时间
+                start_time = timezone.make_aware(start_time)
+                end_time = timezone.make_aware(end_time)
+
+                return start_time <= current_time <= end_time
+
+            elif time_type == "day":
+                # 每日时间范围
+                start_time_str = suppression_time.get("start_time")
+                end_time_str = suppression_time.get("end_time")
+
+                # 如果没有配置时间范围，则不符合条件
+                if not start_time_str or not end_time_str:
+                    logger.warning(
+                        "Day-time shield range missing start_time or end_time"
+                    )
+                    return False
+
+                current_time_str = current_time.strftime("%H:%M:%S")
+                return start_time_str <= current_time_str <= end_time_str
+
+            elif time_type == "week":
+                # 每周时间范围：先检查是否是指定的周几，再检查时间范围
+                week_day = suppression_time.get("week_month")
+                current_weekday = str(current_time.weekday() + 1)  # Monday is 1
+
+                # 如果不是指定的周几，直接返回False
+                if int(current_weekday) not in week_day:
+                    return False
+
+                # 检查时间范围
+                start_time_str = suppression_time.get("start_time")
+                end_time_str = suppression_time.get("end_time")
+
+                # 如果没有配置时间范围，则只要周几匹配就符合条件
+                if not start_time_str or not end_time_str:
+                    return True
+
+                # 只比较时间部分（HH:MM:SS）
+                if len(start_time_str) > 8:  # 包含日期的格式
+                    start_time_str = (
+                        start_time_str.split(" ")[1]
+                        if " " in start_time_str
+                        else start_time_str[-8:]
+                    )
+                if len(end_time_str) > 8:  # 包含日期的格式
+                    end_time_str = (
+                        end_time_str.split(" ")[1]
+                        if " " in end_time_str
+                        else end_time_str[-8:]
+                    )
+
+                current_time_str = current_time.strftime("%H:%M:%S")
+                return start_time_str <= current_time_str <= end_time_str
+
+            elif time_type == "month":
+                # 每月时间范围：先检查是否是指定的日期，再检查时间范围
+                month_day = suppression_time.get("week_month")
+                current_day = str(current_time.day)
+
+                # 如果不是指定的日期，直接返回False
+                if int(current_day) not in month_day:
+                    return False
+
+                # 检查时间范围
+                start_time_str = suppression_time.get("start_time")
+                end_time_str = suppression_time.get("end_time")
+
+                # 如果没有配置时间范围，则只要日期匹配就符合条件
+                if not start_time_str or not end_time_str:
+                    return True
+
+                # 只比较时间部分（HH:MM:SS）
+                if len(start_time_str) > 8:  # 包含日期的格式
+                    start_time_str = (
+                        start_time_str.split(" ")[1]
+                        if " " in start_time_str
+                        else start_time_str[-8:]
+                    )
+                if len(end_time_str) > 8:  # 包含日期的格式
+                    end_time_str = (
+                        end_time_str.split(" ")[1]
+                        if " " in end_time_str
+                        else end_time_str[-8:]
+                    )
+
+                current_time_str = current_time.strftime("%H:%M:%S")
+                return start_time_str <= current_time_str <= end_time_str
+
+        except ValueError as e:
+            logger.error(f"Error parsing time format: {str(e)}")
+            return False
+        except Exception as e:
+            logger.error(f"Error checking shield time range: {str(e)}")
+            return False
+
+        return True
+
     def shield(self):
         """
         事件屏蔽主入口
@@ -257,7 +387,9 @@ class EventShieldOperator(object):
         return self.execute_shield_check()
 
 
-def execute_shield_check_for_events(event_ids: List[str], active_shields=None) -> Dict[str, Any]:
+def execute_shield_check_for_events(
+    event_ids: List[str], active_shields=None
+) -> Dict[str, Any]:
     """
     为指定事件列表执行屏蔽检查（性能优化版）
 
@@ -276,7 +408,7 @@ def execute_shield_check_for_events(event_ids: List[str], active_shields=None) -
             "unshielded_events": 0,
             "shield_results": [],
         }
-    
+
     # 优化：如果没有传入 active_shields，检查是否有活跃策略
     if active_shields is None:
         # 未传入，需要查询
@@ -318,7 +450,7 @@ def execute_shield_check_for_events(event_ids: List[str], active_shields=None) -
                 "unshielded_events": 0,
                 "shield_results": [],
             }
-    
+
     result = operator.execute_shield_check()
     logger.info(f"=== Shield check completed: {result} ===")
     return result
