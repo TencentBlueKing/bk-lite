@@ -31,3 +31,5 @@ agents/fusion-collector/agent/misc
 agents/fusion-collector/agent/collector-sidecar
 
 code-reviews/
+
+**/enterprise/
