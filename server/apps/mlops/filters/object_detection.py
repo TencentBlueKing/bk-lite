@@ -8,7 +8,13 @@ from django_filters import (
 )
 from django_filters.filters import DateFromToRangeFilter
 
-from apps.mlops.models.object_detection import *
+from apps.mlops.models.object_detection import (
+    ObjectDetectionDataset,
+    ObjectDetectionTrainJob,
+    ObjectDetectionTrainData,
+    ObjectDetectionDatasetRelease,
+    ObjectDetectionServing,
+)
 
 
 class ObjectDetectionDatasetFilter(FilterSet):
