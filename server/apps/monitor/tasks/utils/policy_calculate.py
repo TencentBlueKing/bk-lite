@@ -3,6 +3,12 @@ from string import Template
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.constants.alert_policy import AlertConstants
+from apps.monitor.utils.dimension import (
+    build_dimensions,
+    extract_monitor_instance_id,
+    format_dimension_str,
+    build_metric_template_vars,
+)
 
 
 def vm_to_dataframe(vm_data, instance_id_keys=None):
@@ -22,35 +28,6 @@ def vm_to_dataframe(vm_data, instance_id_keys=None):
     df["instance_id"] = df[selected_cols].apply(lambda row: tuple(row), axis=1)
 
     return df
-
-
-def _build_dimensions(instance_id_tuple, instance_id_keys: list) -> dict:
-    if not instance_id_keys or not isinstance(instance_id_tuple, tuple):
-        return {}
-    return {
-        instance_id_keys[i]: instance_id_tuple[i]
-        for i in range(min(len(instance_id_keys), len(instance_id_tuple)))
-    }
-
-
-def _extract_monitor_instance_id(instance_id_tuple) -> str:
-    if isinstance(instance_id_tuple, tuple) and len(instance_id_tuple) > 0:
-        return str((instance_id_tuple[0],))
-    return str(instance_id_tuple)
-
-
-def _format_dimension_str(dimensions: dict, instance_id_keys: list) -> str:
-    if not dimensions or not instance_id_keys:
-        return ""
-    first_key = instance_id_keys[0] if instance_id_keys else None
-    sub_dimensions = {k: v for k, v in dimensions.items() if k != first_key}
-    if not sub_dimensions:
-        return ""
-    return ", ".join(f"{k}:{v}" for k, v in sub_dimensions.items())
-
-
-def _build_metric_template_vars(dimensions: dict) -> dict:
-    return {f"metric__{k}": v for k, v in dimensions.items()}
 
 
 def _format_value_with_unit(
@@ -80,10 +57,10 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
         instance_id_tuple = row["instance_id"]
         metric_instance_id = str(instance_id_tuple)
 
-        dimensions = _build_dimensions(instance_id_tuple, instance_id_keys)
-        monitor_instance_id = _extract_monitor_instance_id(instance_id_tuple)
+        dimensions = build_dimensions(instance_id_tuple, instance_id_keys)
+        monitor_instance_id = extract_monitor_instance_id(instance_id_tuple)
         instance_name = instances_map.get(monitor_instance_id, monitor_instance_id)
-        dimension_str = _format_dimension_str(dimensions, instance_id_keys)
+        dimension_str = format_dimension_str(dimensions, instance_id_keys)
         display_name = (
             f"{instance_name} - {dimension_str}" if dimension_str else instance_name
         )
@@ -116,7 +93,7 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
                     "level": threshold_info["level"],
                     "value": formatted_value,
                 }
-                context.update(_build_metric_template_vars(dimensions))
+                context.update(build_metric_template_vars(dimensions))
 
                 template = Template(alert_name)
                 content = template.safe_substitute(context)

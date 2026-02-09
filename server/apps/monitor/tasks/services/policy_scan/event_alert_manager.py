@@ -6,6 +6,7 @@ from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorEventRawData
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
+from apps.monitor.utils.dimension import format_dimension_str
 from apps.core.logger import celery_logger as logger
 
 
@@ -171,7 +172,7 @@ class EventAlertManager:
             instance_name = self.instances_map.get(
                 monitor_instance_id, monitor_instance_id
             )
-            dimension_str = self._format_dimension_str(dimensions)
+            dimension_str = format_dimension_str(dimensions)
             display_name = (
                 f"{instance_name} - {dimension_str}" if dimension_str else instance_name
             )
@@ -223,18 +224,6 @@ class EventAlertManager:
 
         logger.info(f"Created {len(new_alerts)} new alerts for policy {self.policy.id}")
         return new_alerts
-
-    def _format_dimension_str(self, dimensions: dict) -> str:
-        if not dimensions:
-            return ""
-        keys = list(dimensions.keys())
-        if not keys:
-            return ""
-        first_key = keys[0]
-        sub_dimensions = {k: v for k, v in dimensions.items() if k != first_key}
-        if not sub_dimensions:
-            return ""
-        return ", ".join(f"{k}:{v}" for k, v in sub_dimensions.items())
 
     def _update_existing_alerts_from_events(self, event_data_list):
         if not event_data_list:
