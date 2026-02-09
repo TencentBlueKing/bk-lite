@@ -3,6 +3,7 @@ import { ColumnItem } from "@/types";
 import { useTranslation } from "@/utils/i18n";
 import { useLocalizedTime } from "@/hooks/useLocalizedTime";
 import { Button, Tag } from "antd";
+import PermissionWrapper from '@/components/permission';
 
 interface TrainTaskHistoryProps {
   data: any[],
@@ -79,8 +80,12 @@ const TrainTaskHistory = ({
       key: 'action',
       render: (_, record) => (
         <>
-          <Button type="link" onClick={() => openDetail(record)} className="mr-2">{t(`common.detail`)}</Button>
-          <Button type="link" onClick={() => downloadModel(record)}>{t(`common.download`)}</Button>
+          <PermissionWrapper requiredPermissions={['View']}>
+            <Button type="link" onClick={() => openDetail(record)} className="mr-2">{t(`common.detail`)}</Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['View']}>
+            <Button type="link" onClick={() => downloadModel(record)}>{t(`common.download`)}</Button>
+          </PermissionWrapper>
         </>
       )
     }

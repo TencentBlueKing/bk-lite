@@ -554,7 +554,7 @@ const ImageContent = () => {
 
             <div className="flex justify-end gap-2 mt-4">
               <Button className="mr-2" onClick={handleCancel}>{t('common.cancel')}</Button>
-              <PermissionWrapper requiredPermissions={['File Edit']}>
+              <PermissionWrapper requiredPermissions={['Edit']}>
                 <Button type="primary" loading={loadingState.saveLoading} onClick={handleSave}>{t('common.save')}</Button>
               </PermissionWrapper>
             </div>
