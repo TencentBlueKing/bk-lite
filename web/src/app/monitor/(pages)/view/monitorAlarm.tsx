@@ -11,7 +11,7 @@ import {
   TableDataItem,
   UserItem,
   TimeSelectorDefaultValue,
-  TimeValuesProps,
+  TimeValuesProps
 } from '@/app/monitor/types';
 import { getRecentTimeRange } from '@/app/monitor/utils/common';
 import { ViewModalProps } from '@/app/monitor/types/view';
@@ -30,7 +30,7 @@ const Alert: React.FC<ViewModalProps> = ({
   monitorObject,
   metrics,
   objects,
-  form = INIT_VIEW_MODAL_FORM,
+  form = INIT_VIEW_MODAL_FORM
 }) => {
   const { isLoading } = useApiClient();
   const { getMonitorAlert, patchMonitorAlert } = useMonitorApi();
@@ -40,8 +40,7 @@ const Alert: React.FC<ViewModalProps> = ({
   const { convertToLocalizedTime } = useLocalizedTime();
   const commonContext = useCommon();
   const detailRef = useRef<ModalRef>(null);
-  const users = useRef(commonContext?.userList || []);
-  const userList: UserItem[] = users.current;
+  const userList: UserItem[] = commonContext?.userList || [];
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [searchText, setSearchText] = useState<string>('');
   const [tableLoading, setTableLoading] = useState<boolean>(false);
@@ -49,15 +48,15 @@ const Alert: React.FC<ViewModalProps> = ({
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
     timeRange: [],
-    originValue: 10080,
+    originValue: 10080
   });
   const timeDefaultValue = (useRef<TimeSelectorDefaultValue>({
     selectValue: 10080,
-    rangePickerVaule: null,
+    rangePickerVaule: null
   })?.current || {}) as any;
   const abortControllerRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef<number>(0);
@@ -75,7 +74,7 @@ const Alert: React.FC<ViewModalProps> = ({
         <Tag color={LEVEL_MAP[level] as string}>
           {LEVEL_LIST.find((item) => item.value === level)?.label || '--'}
         </Tag>
-      ),
+      )
     },
     {
       title: t('common.time'),
@@ -85,13 +84,13 @@ const Alert: React.FC<ViewModalProps> = ({
       sorter: (a: any, b: any) => a.id - b.id,
       render: (_, { updated_at }) => (
         <>{updated_at ? convertToLocalizedTime(updated_at) : '--'}</>
-      ),
+      )
     },
     {
       title: t('monitor.events.alertName'),
       dataIndex: 'content',
       key: 'content',
-      width: 120,
+      width: 120
     },
     {
       title: t('monitor.events.state'),
@@ -102,7 +101,7 @@ const Alert: React.FC<ViewModalProps> = ({
         <Tag color={status === 'new' ? 'blue' : 'var(--color-text-4)'}>
           {STATE_MAP[status]}
         </Tag>
-      ),
+      )
     },
     {
       title: t('common.action'),
@@ -137,8 +136,8 @@ const Alert: React.FC<ViewModalProps> = ({
             </Popconfirm>
           </Permission>
         </>
-      ),
-    },
+      )
+    }
   ];
 
   useEffect(() => {
@@ -158,7 +157,7 @@ const Alert: React.FC<ViewModalProps> = ({
     activeTab,
     searchText,
     pagination.current,
-    pagination.pageSize,
+    pagination.pageSize
   ]);
 
   useEffect(() => {
@@ -169,7 +168,7 @@ const Alert: React.FC<ViewModalProps> = ({
     timeValues,
     activeTab,
     pagination.current,
-    pagination.pageSize,
+    pagination.pageSize
   ]);
 
   useEffect(() => {
@@ -193,7 +192,7 @@ const Alert: React.FC<ViewModalProps> = ({
     setConfirmLoading(true);
     try {
       await patchMonitorAlert(row.id as string, {
-        status: 'closed',
+        status: 'closed'
       });
       message.success(t('monitor.events.successfullyClosed'));
       onRefresh();
@@ -211,7 +210,7 @@ const Alert: React.FC<ViewModalProps> = ({
       page_size: pagination.pageSize,
       monitor_object_id: monitorObject,
       created_at_after: dayjs(recentTimeRange[0]).toISOString(),
-      created_at_before: dayjs(recentTimeRange[1]).toISOString(),
+      created_at_before: dayjs(recentTimeRange[1]).toISOString()
     };
   };
 
@@ -238,13 +237,13 @@ const Alert: React.FC<ViewModalProps> = ({
     try {
       setTableLoading(type !== 'timer');
       const data = await getMonitorAlert(params, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       if (currentRequestId !== requestIdRef.current) return;
       setTableData(data.results);
       setPagination((pre) => ({
         ...pre,
-        total: data.count,
+        total: data.count
       }));
     } finally {
       if (currentRequestId === requestIdRef.current) {
@@ -256,7 +255,7 @@ const Alert: React.FC<ViewModalProps> = ({
   const onTimeChange = (val: number[], originValue: number | null) => {
     setTimeValues({
       timeRange: val,
-      originValue,
+      originValue
     });
   };
 
@@ -274,8 +273,8 @@ const Alert: React.FC<ViewModalProps> = ({
       type: 'add',
       form: {
         ...row,
-        metric: metricInfo,
-      },
+        metric: metricInfo
+      }
     });
   };
 
@@ -300,12 +299,12 @@ const Alert: React.FC<ViewModalProps> = ({
         options={[
           {
             label: t('monitor.events.activeAlarms'),
-            value: 'activeAlarms',
+            value: 'activeAlarms'
           },
           {
             label: t('monitor.events.historicalAlarms'),
-            value: 'historicalAlarms',
-          },
+            value: 'historicalAlarms'
+          }
         ]}
         onChange={changeTab}
       />

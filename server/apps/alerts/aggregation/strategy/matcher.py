@@ -1,5 +1,4 @@
 import re
-import logging
 from typing import List, Dict, Any
 from django.db.models import Q
 from apps.core.logger import alert_logger as logger

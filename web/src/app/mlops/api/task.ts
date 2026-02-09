@@ -144,11 +144,7 @@ const useMlopsTaskApi = () => {
     key: DatasetType,
     params?: { dataset?: number; page?: number; page_size?: number }
   ) => {
-    const queryParams = new URLSearchParams();
-    if (params?.dataset) queryParams.append('dataset', params.dataset.toString());
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
-    return await get(`/mlops/${key}_dataset_releases/?${queryParams.toString()}`);
+    return await get(`/mlops/${key}_dataset_releases/`, { params });
   };
 
   // 获取指定数据集版本信息

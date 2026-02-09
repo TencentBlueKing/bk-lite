@@ -1,7 +1,7 @@
 from rest_framework import routers
 
 from apps.cmdb.views.change_record import ChangeRecordViewSet
-from apps.cmdb.views.classfication import ClassificationViewSet
+from apps.cmdb.views.classification import ClassificationViewSet
 from apps.cmdb.views.instance import InstanceViewSet
 from apps.cmdb.views.model import ModelViewSet
 from apps.cmdb.views.collect import CollectModelViewSet, OidModelViewSet

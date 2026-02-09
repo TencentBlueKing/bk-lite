@@ -116,7 +116,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ns",
-      "dimensions": ["database_name"],
+      "dimensions": [],
       "description": "Average latency time for command operations, indicating database response performance",
       "query": "mongodb_latency_commands{__$labels__}/mongodb_latency_commands_count{__$labels__}"
     },
@@ -127,7 +127,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ns",
-      "dimensions": ["database_name", "collection_name"],
+      "dimensions": [],
       "description": "Average latency time for read operations, indicating database read performance",
       "query": "mongodb_latency_reads{__$labels__}/mongodb_latency_reads_count{__$labels__}"
     },
@@ -237,7 +237,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["cursor_type"],
+      "dimensions": [],
       "description": "Cumulative number of cursors that have timed out, indicating long query execution time or resource management issues",
       "query": "mongodb_cursor_timed_out_count{__$labels__}"
     },

@@ -11,23 +11,13 @@ import type {
 } from "../types/algorithmConfig";
 
 const useAlgorithmConfigApi = () => {
-  const { get, post, put, del } = useApiClient();
+  const { get, post, patch, del } = useApiClient();
 
   // 获取算法配置列表
   const getAlgorithmConfigList = async (
     params?: AlgorithmConfigQueryParams
   ): Promise<{ items: AlgorithmConfigListItem[]; count: number }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.algorithm_type) queryParams.append('algorithm_type', params.algorithm_type);
-    if (params?.name) queryParams.append('name', params.name);
-    if (params?.display_name) queryParams.append('display_name', params.display_name);
-    if (params?.is_active !== undefined) queryParams.append('is_active', String(params.is_active));
-    if (params?.page) queryParams.append('page', String(params.page));
-    if (params?.page_size) queryParams.append('page_size', String(params.page_size));
-
-    const queryString = queryParams.toString();
-    const url = `/mlops/algorithm_configs/${queryString ? `?${queryString}` : ''}`;
-    return await get(url);
+    return await get('/mlops/algorithm_configs/', { params });
   };
 
   // 获取单个算法配置详情
@@ -57,12 +47,12 @@ const useAlgorithmConfigApi = () => {
     return await post('/mlops/algorithm_configs/', params);
   };
 
-  // 更新算法配置
+  // 更新算法配置（部分更新）
   const updateAlgorithmConfig = async (
     id: number,
     params: Partial<AlgorithmConfigParams>
   ): Promise<AlgorithmConfigEntity> => {
-    return await put(`/mlops/algorithm_configs/${id}/`, params);
+    return await patch(`/mlops/algorithm_configs/${id}/`, params);
   };
 
   // 删除算法配置

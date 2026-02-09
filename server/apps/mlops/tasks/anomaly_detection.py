@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.tasks.base import mark_release_as_failed
 
 
 @shared_task(
@@ -228,18 +229,7 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
 
     except Exception as e:
         logger.error(f"数据集发布失败: {str(e)}", exc_info=True)
-        _mark_as_failed(release_id)
-        return {"result": False, "release_id": release_id, "error": str(e)}
-
-
-def _mark_as_failed(release_id):
-    """标记发布记录为失败状态"""
-    try:
         from apps.mlops.models.anomaly_detection import AnomalyDetectionDatasetRelease
 
-        release = AnomalyDetectionDatasetRelease.objects.get(id=release_id)
-        release.status = "failed"
-        release.save(update_fields=["status"])
-        logger.info(f"标记发布记录为失败 - Release ID: {release_id}")
-    except Exception as e:
-        logger.error(f"标记失败状态时出错: {str(e)}", exc_info=True)
+        mark_release_as_failed(AnomalyDetectionDatasetRelease, release_id)
+        return {"result": False, "release_id": release_id, "error": str(e)}

@@ -1,5 +1,6 @@
 from config.drf.viewsets import ModelViewSet
 from apps.mlops.filters.log_clustering import *
+from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRunStatus
 from rest_framework.decorators import action
 from rest_framework import status
 from rest_framework.response import Response
@@ -10,7 +11,12 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.utils import mlflow_service
-from apps.mlops.services import get_image_by_prefix
+from apps.mlops.services import (
+    get_image_by_prefix,
+    get_mlflow_train_config,
+    get_mlflow_tracking_uri,
+    ConfigurationError,
+)
 import os
 import pandas as pd
 import numpy as np
@@ -96,34 +102,16 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             train_job = self.get_object()
 
             # 检查任务状态
-            if train_job.status == "running":
+            if train_job.status == TrainJobStatus.RUNNING:
                 return Response(
                     {"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 获取环境变量
-            bucket = os.getenv("MINIO_PUBLIC_BUCKETS", "munchkin-public")
-            minio_endpoint = os.getenv("MLFLOW_S3_ENDPOINT_URL", "")
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
-            minio_access_key = os.getenv("MINIO_ACCESS_KEY", "")
-            minio_secret_key = os.getenv("MINIO_SECRET_KEY", "")
-
-            if not minio_endpoint:
-                logger.error("MinIO endpoint not configured")
-                return Response(
-                    {"error": "系统配置错误，请联系管理员"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-
-            if not mlflow_tracking_uri:
-                logger.error("MLflow tracking URI not configured")
-                return Response(
-                    {"error": "系统配置错误，请联系管理员"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-
-            if not minio_access_key or not minio_secret_key:
-                logger.error("MinIO credentials not configured")
+            # 获取训练配置
+            try:
+                config = get_mlflow_train_config()
+            except ConfigurationError as e:
+                logger.error(str(e))
                 return Response(
                     {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -161,18 +149,18 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
-                bucket=bucket,
+                bucket=config.bucket,
                 dataset=train_job.dataset_version.dataset_file.name,
                 config=train_job.config_url.name,
-                minio_endpoint=minio_endpoint,
-                mlflow_tracking_uri=mlflow_tracking_uri,
-                minio_access_key=minio_access_key,
-                minio_secret_key=minio_secret_key,
+                minio_endpoint=config.minio_endpoint,
+                mlflow_tracking_uri=config.mlflow_tracking_uri,
+                minio_access_key=config.minio_access_key,
+                minio_secret_key=config.minio_secret_key,
                 train_image=train_image,
             )
 
             # 更新任务状态
-            train_job.status = "running"
+            train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
 
             logger.info(f"训练任务已启动: {job_id}")
@@ -215,7 +203,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             train_job = self.get_object()
 
             # 检查任务状态
-            if train_job.status != "running":
+            if train_job.status != TrainJobStatus.RUNNING:
                 return Response(
                     {"error": "训练任务未在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
@@ -233,7 +221,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             result = WebhookClient.stop(job_id)
 
             # 更新任务状态
-            train_job.status = "pending"
+            train_job.status = TrainJobStatus.PENDING
             train_job.save(update_fields=["status"])
 
             logger.info(f"训练任务已停止: {job_id}")
@@ -335,7 +323,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                         run_name = ""
 
                     # 获取状态
-                    run_status = row.get("status", "UNKNOWN")
+                    run_status = row.get("status", MLflowRunStatus.UNKNOWN)
 
                     # 记录第一条（最新）的运行状态
                     if idx == 0:
@@ -362,13 +350,8 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                     continue
 
             # 同步最新运行状态到 TrainJob（避免状态不一致）
-            if latest_run_status and train_job.status == "running":
-                status_map = {
-                    "FINISHED": "completed",
-                    "FAILED": "failed",
-                    "KILLED": "failed",
-                }
-                new_status = status_map.get(latest_run_status)
+            if latest_run_status and train_job.status == TrainJobStatus.RUNNING:
+                new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(latest_run_status)
 
                 if new_status:
                     train_job.status = new_status
@@ -652,13 +635,13 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
         try:
             release = self.get_object()
 
-            if release.status == "archived":
+            if release.status == DatasetReleaseStatus.ARCHIVED:
                 return Response(
                     {"error": "数据集版本已处于归档状态"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            release.status = "archived"
+            release.status = DatasetReleaseStatus.ARCHIVED
             release.description = f"[已归档] {release.description or ''}"
             release.save(update_fields=["status", "description"])
 
@@ -682,7 +665,7 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
         try:
             release = self.get_object()
 
-            if release.status != "archived":
+            if release.status != DatasetReleaseStatus.ARCHIVED:
                 return Response(
                     {"error": "只能恢复已归档的数据集版本"},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -693,7 +676,7 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
             if original_description.startswith("[已归档] "):
                 release.description = original_description.replace("[已归档] ", "", 1)
 
-            release.status = "published"
+            release.status = DatasetReleaseStatus.PUBLISHED
             release.save(update_fields=["status", "description"])
 
             logger.info(
@@ -878,8 +861,8 @@ class LogClusteringServingViewSet(ModelViewSet):
             # 获取创建的 serving 对象
             serving = LogClusteringServing.objects.get(id=serving_id)
 
-            # 获取环境变量
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
+            # 获取 MLflow tracking URI
+            mlflow_tracking_uri = get_mlflow_tracking_uri()
             if not mlflow_tracking_uri:
                 logger.error("MLflow tracking URI not configured")
                 return Response(
@@ -1006,9 +989,10 @@ class LogClusteringServingViewSet(ModelViewSet):
 
         container_id = f"LogClustering_Serving_{instance.id}"
 
-        # 获取容器实际状态
-        container_state = instance.container_info.get("state")
-        container_port = instance.container_info.get("port")
+        # 获取容器实际状态，防御性处理 container_info 为空的情况
+        container_info = instance.container_info or {}
+        container_state = container_info.get("state")
+        container_port = container_info.get("port")
 
         # 更新数据库
         response = super().update(request, *args, **kwargs)
@@ -1043,7 +1027,7 @@ class LogClusteringServingViewSet(ModelViewSet):
                 logger.warning(f"删除旧容器失败（可能已不存在）: {e}")
 
             try:
-                mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
+                mlflow_tracking_uri = get_mlflow_tracking_uri()
                 if not mlflow_tracking_uri:
                     raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
 
@@ -1099,7 +1083,7 @@ class LogClusteringServingViewSet(ModelViewSet):
         try:
             serving = self.get_object()
 
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
+            mlflow_tracking_uri = get_mlflow_tracking_uri()
             if not mlflow_tracking_uri:
                 return Response(
                     {"error": "环境变量 MLFLOW_TRACKER_URL 未配置"},
@@ -1309,7 +1293,8 @@ class LogClusteringServingViewSet(ModelViewSet):
                     {"error": "data 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            port = serving.container_info.get("port")
+            # 防御性处理 container_info 为空的情况
+            port = (serving.container_info or {}).get("port")
             if not port:
                 return Response(
                     {"error": "服务端口未配置，请确认服务已启动"},

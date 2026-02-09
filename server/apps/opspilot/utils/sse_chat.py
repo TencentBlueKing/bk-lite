@@ -4,7 +4,6 @@ import threading
 import time
 
 from django.http import StreamingHttpResponse
-from langchain_core.messages import AIMessageChunk
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMModel
@@ -126,46 +125,56 @@ def _generate_agent_stream(graph, request, skill_name, show_think):
     in_think_block = False
     is_first_content = True
     has_think_tags = True
+    collected_custom_events = []
 
     async def run_stream():
         """异步运行流式处理"""
         nonlocal accumulated_content, think_buffer, in_think_block, is_first_content, has_think_tags
 
         try:
-            # 获取消息流
-            message_stream = await graph.stream(request)
-
-            # 处理流式消息
-            async for chunk in message_stream:
-                if not chunk:
+            # 使用 agui_stream 获取所有事件类型（包括 CUSTOM 事件）
+            async for sse_line in graph.agui_stream(request):
+                # 解析 SSE 事件
+                if not sse_line.startswith("data: "):
+                    continue
+                try:
+                    event_data = json.loads(sse_line[6:].strip())
+                except (json.JSONDecodeError, ValueError):
                     continue
 
-                message = chunk[0] if isinstance(chunk, (list, tuple)) else chunk
+                event_type = event_data.get("type", "")
 
-                # 只处理 AIMessageChunk
-                if isinstance(message, AIMessageChunk):
-                    content_chunk = message.content
-                    if content_chunk:
-                        accumulated_content += content_chunk
+                # 收集 CUSTOM 事件（如 browser_step_progress）
+                if event_type == "CUSTOM":
+                    collected_custom_events.append(event_data)
+                    continue
 
-                        (
-                            output_content,
-                            think_buffer,
-                            in_think_block,
-                            is_first_content,
-                            has_think_tags,
-                        ) = _process_think_content(
-                            content_chunk,
-                            think_buffer,
-                            in_think_block,
-                            is_first_content,
-                            show_think,
-                            has_think_tags,
-                        )
+                # 只处理 TEXT_MESSAGE_CONTENT 事件
+                if event_type != "TEXT_MESSAGE_CONTENT":
+                    continue
 
-                        if output_content:
-                            stream_chunk = _create_stream_chunk(output_content, skill_name)
-                            yield f"data: {json.dumps(stream_chunk)}\n\n"
+                content_chunk = event_data.get("delta", "")
+                if content_chunk:
+                    accumulated_content += content_chunk
+
+                    (
+                        output_content,
+                        think_buffer,
+                        in_think_block,
+                        is_first_content,
+                        has_think_tags,
+                    ) = _process_think_content(
+                        content_chunk,
+                        think_buffer,
+                        in_think_block,
+                        is_first_content,
+                        show_think,
+                        has_think_tags,
+                    )
+
+                    if output_content:
+                        stream_chunk = _create_stream_chunk(output_content, skill_name)
+                        yield f"data: {json.dumps(stream_chunk)}\n\n"
 
             # 处理剩余缓冲区内容
             if not show_think and not in_think_block and think_buffer:
@@ -175,6 +184,10 @@ def _generate_agent_stream(graph, request, skill_name, show_think):
             # 发送完成标志
             final_chunk = _create_stream_chunk("", skill_name, "stop")
             yield f"data: {json.dumps(final_chunk)}\n\n"
+
+            # 输出收集的 CUSTOM 事件（供 engine.py 的 _extract_browser_steps 使用）
+            for custom_event in collected_custom_events:
+                yield f"data: {json.dumps(custom_event)}\n\n"
 
             # 返回统计信息
             yield ("STATS", accumulated_content)

@@ -10,8 +10,8 @@ class Command(BaseCommand):
         logger.info("===开始初始化告警级别===")
         
         try:
-            from apps.alerts.constants import DEFAULT_LEVEL
-            from apps.alerts.models import Level
+            from apps.alerts.constants.init_data import DEFAULT_LEVEL
+            from apps.alerts.models.models import Level
             
             created_count = 0
             for level_data in DEFAULT_LEVEL:

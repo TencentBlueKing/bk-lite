@@ -78,7 +78,7 @@ export interface TrainJobFormValues {
   name: string;
   algorithm: string;
   dataset: number;
-  dataset_version: number;
+  dataset_version: number | string;  // 表单中使用字符串（Select 组件），提交时转为数字
   max_evals: number;
   // 动态算法参数（根据 AlgorithmConfig 生成）
   [key: string]: unknown;

@@ -1,5 +1,6 @@
 from config.drf.viewsets import ModelViewSet
 
+from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRunStatus
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.models.object_detection import *
 from apps.mlops.serializers.object_detection import *
@@ -18,7 +19,12 @@ from apps.mlops.utils.webhook_client import (
     WebhookConnectionError,
     WebhookTimeoutError,
 )
-from apps.mlops.services import get_image_by_prefix
+from apps.mlops.services import (
+    get_image_by_prefix,
+    get_mlflow_train_config,
+    get_mlflow_tracking_uri,
+    ConfigurationError,
+)
 import os
 import pandas as pd
 import numpy as np
@@ -32,7 +38,7 @@ class ObjectDetectionDatasetViewSet(ModelViewSet):
     serializer_class = ObjectDetectionDatasetSerializer
     filterset_class = ObjectDetectionDatasetFilter
     pagination_class = CustomPageNumberPagination
-    ordering = "-id"
+    ordering = ("-id",)
     permission_key = "dataset.object_detection_dataset"
 
     @HasPermission("object_detection_datasets-View")
@@ -209,13 +215,13 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
         try:
             instance = self.get_object()
 
-            if instance.status == "archived":
+            if instance.status == DatasetReleaseStatus.ARCHIVED:
                 return Response(
                     {"error": "数据集版本已经是归档状态"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            instance.status = "archived"
+            instance.status = DatasetReleaseStatus.ARCHIVED
             instance.save(update_fields=["status"])
 
             logger.info(
@@ -239,13 +245,13 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
         try:
             instance = self.get_object()
 
-            if instance.status != "archived":
+            if instance.status != DatasetReleaseStatus.ARCHIVED:
                 return Response(
                     {"error": "只能恢复归档状态的数据集版本"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            instance.status = "published"
+            instance.status = DatasetReleaseStatus.PUBLISHED
             instance.save(update_fields=["status"])
 
             logger.info(
@@ -308,34 +314,16 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             train_job = self.get_object()
 
             # 检查任务状态
-            if train_job.status == "running":
+            if train_job.status == TrainJobStatus.RUNNING:
                 return Response(
                     {"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 获取环境变量
-            bucket = os.getenv("MINIO_PUBLIC_BUCKETS", "munchkin-public")
-            minio_endpoint = os.getenv("MLFLOW_S3_ENDPOINT_URL", "")
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
-            minio_access_key = os.getenv("MINIO_ACCESS_KEY", "")
-            minio_secret_key = os.getenv("MINIO_SECRET_KEY", "")
-
-            if not minio_endpoint:
-                logger.error("MinIO endpoint not configured")
-                return Response(
-                    {"error": "系统配置错误，请联系管理员"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-
-            if not mlflow_tracking_uri:
-                logger.error("MLflow tracking URI not configured")
-                return Response(
-                    {"error": "系统配置错误，请联系管理员"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-
-            if not minio_access_key or not minio_secret_key:
-                logger.error("MinIO credentials not configured")
+            # 获取训练配置
+            try:
+                config = get_mlflow_train_config()
+            except ConfigurationError as e:
+                logger.error(str(e))
                 return Response(
                     {"error": "系统配置错误，请联系管理员"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -381,19 +369,19 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
-                bucket=bucket,
+                bucket=config.bucket,
                 dataset=train_job.dataset_version.dataset_file.name,
                 config=train_job.config_url.name,
-                minio_endpoint=minio_endpoint,
-                mlflow_tracking_uri=mlflow_tracking_uri,
-                minio_access_key=minio_access_key,
-                minio_secret_key=minio_secret_key,
+                minio_endpoint=config.minio_endpoint,
+                mlflow_tracking_uri=config.mlflow_tracking_uri,
+                minio_access_key=config.minio_access_key,
+                minio_secret_key=config.minio_secret_key,
                 train_image=train_image,
                 device=device,
             )
 
             # 更新任务状态
-            train_job.status = "running"
+            train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
 
             logger.info(f"目标检测训练任务已启动: {job_id}")
@@ -437,7 +425,7 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             train_job = self.get_object()
 
             # 检查任务状态
-            if train_job.status != "running":
+            if train_job.status != TrainJobStatus.RUNNING:
                 return Response(
                     {"error": "训练任务未在运行中"}, status=status.HTTP_400_BAD_REQUEST
                 )
@@ -455,7 +443,7 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             result = WebhookClient.stop(job_id)
 
             # 更新任务状态
-            train_job.status = "pending"
+            train_job.status = TrainJobStatus.PENDING
             train_job.save(update_fields=["status"])
 
             logger.info(f"目标检测训练任务已停止: {job_id}")
@@ -671,13 +659,8 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                     continue
 
             # 同步最新运行状态到 TrainJob
-            if latest_run_status and train_job.status == "running":
-                status_map = {
-                    "FINISHED": "completed",
-                    "FAILED": "failed",
-                    "KILLED": "failed",
-                }
-                new_status = status_map.get(latest_run_status)
+            if latest_run_status and train_job.status == TrainJobStatus.RUNNING:
+                new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(latest_run_status)
 
                 if new_status:
                     train_job.status = new_status
@@ -896,8 +879,8 @@ class ObjectDetectionServingViewSet(ModelViewSet):
         try:
             serving = ObjectDetectionServing.objects.get(id=serving_id)
 
-            # 获取环境变量
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
+            # 获取 MLflow tracking URI
+            mlflow_tracking_uri = get_mlflow_tracking_uri()
             if not mlflow_tracking_uri:
                 logger.error("环境变量 MLFLOW_TRACKER_URL 未配置")
                 serving.container_info = {
@@ -1022,8 +1005,8 @@ class ObjectDetectionServingViewSet(ModelViewSet):
         try:
             serving = self.get_object()
 
-            # 获取环境变量
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
+            # 获取 MLflow tracking URI
+            mlflow_tracking_uri = get_mlflow_tracking_uri()
             if not mlflow_tracking_uri:
                 logger.error("MLflow tracking URI not configured")
                 return Response(

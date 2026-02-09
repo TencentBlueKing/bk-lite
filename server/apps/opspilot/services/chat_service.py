@@ -77,6 +77,7 @@ class ChatService:
                 "total_tokens": response.total_tokens,
                 "prompt_tokens": response.prompt_tokens,
                 "completion_tokens": response.completion_tokens,
+                "browser_steps": response.browser_steps,
             }
 
             # 处理内容（可选隐藏思考过程）

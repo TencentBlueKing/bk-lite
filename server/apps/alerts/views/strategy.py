@@ -2,10 +2,11 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.db import transaction
 
-from apps.alerts.constants import LogAction, LogTargetType
+from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import AlarmStrategyModelFilter
-from apps.alerts.models import AlarmStrategy, OperatorLog
-from apps.alerts.serializers.strategy_serializers import AlarmStrategySerializer
+from apps.alerts.models.alert_operator import AlarmStrategy
+from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.serializers import AlarmStrategySerializer
 from apps.core.decorators.api_permission import HasPermission
 from config.drf.pagination import CustomPageNumberPagination
 from apps.core.logger import alert_logger as logger

@@ -10,8 +10,10 @@ from django.utils import timezone
 from django.db import transaction
 
 from apps.alerts.error import AlertNotFoundError
-from apps.alerts.models import Alert, AlertAssignment, OperatorLog
-from apps.alerts.constants import (
+from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.models.models import Alert
+from apps.alerts.models.alert_operator import AlertAssignment
+from apps.alerts.constants.constants import (
     AlertStatus,
     AlertAssignmentMatchType,
     LogAction,
@@ -180,7 +182,7 @@ class AlertAssignmentOperator:
         OperatorLog.objects.bulk_create(bulk_data)
 
     def _batch_find_matching_alerts(
-        self, assignment: AlertAssignment, excluded_ids: set = None
+            self, assignment: AlertAssignment, excluded_ids: set = None
     ) -> List[int]:
         """
         批量查找匹配指定分派策略的告警ID列表
@@ -231,7 +233,7 @@ class AlertAssignmentOperator:
         return []
 
     def _orm_filter_alerts(
-        self, queryset, match_rules: List[List[Dict[str, Any]]]
+            self, queryset, match_rules: List[List[Dict[str, Any]]]
     ) -> List[int]:
         """
         使用ORM查询过滤匹配规则的告警
@@ -324,7 +326,7 @@ class AlertAssignmentOperator:
             return None
 
     def _batch_execute_assignment(
-        self, alert_ids: List[int], assignment: AlertAssignment
+            self, alert_ids: List[int], assignment: AlertAssignment
     ) -> List[Dict[str, Any]]:
         """
         批量执行告警分派操作
@@ -458,7 +460,7 @@ class AlertAssignmentOperator:
         return results
 
     def _check_time_range(
-        self, config: Dict[str, Any], alert_created_at: datetime = None
+            self, config: Dict[str, Any], alert_created_at: datetime = None
     ) -> bool:
         """
         检查指定时间（默认当前时间或Alert的created_at）是否在配置的时间范围内

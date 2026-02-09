@@ -61,12 +61,11 @@ const Alert: React.FC = () => {
   const commonContext = useCommon();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const detailRef = useRef<ModalRef>(null);
-  const users = useRef(commonContext?.userList || []);
   const alertAbortControllerRef = useRef<AbortController | null>(null);
   const alertRequestIdRef = useRef<number>(0);
   const chartAbortControllerRef = useRef<AbortController | null>(null);
   const chartRequestIdRef = useRef<number>(0);
-  const userList: UserItem[] = users.current;
+  const userList: UserItem[] = commonContext?.userList || [];
   const [searchText, setSearchText] = useState<string>('');
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [chartLoading, setChartLoading] = useState<boolean>(false);
