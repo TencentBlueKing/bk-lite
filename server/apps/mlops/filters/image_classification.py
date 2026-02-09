@@ -8,7 +8,13 @@ from django_filters import (
 )
 from django_filters.filters import DateFromToRangeFilter
 
-from apps.mlops.models.image_classification import *
+from apps.mlops.models.image_classification import (
+    ImageClassificationDataset,
+    ImageClassificationTrainJob,
+    ImageClassificationTrainData,
+    ImageClassificationDatasetRelease,
+    ImageClassificationServing,
+)
 
 
 class ImageClassificationDatasetFilter(FilterSet):

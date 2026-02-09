@@ -106,6 +106,7 @@
         "editAttrGroup": "Edit Attribute Group",
         "deleteAttrGroup": "Delete Attribute Group",
         "attrGroupName": "Group Name",
+        "attrGroup": "Attribute Group",
         "enterAttrGroupName": "Please enter group name",
         "continueAdd": "Continue Add",
         "deleteGroupConfirm": "There are attributes in this group. If you force delete it, the attributes will be moved to the first group",
@@ -159,6 +160,7 @@
         "date": "Date(YYYY-MM-DD)",
         "min": "Min",
         "max": "Max",
+        "emptyMeansNoLimit": "Empty means no limit",
         "unrestricted": "Unrestricted",
         "ipv4": "IPv4",
         "ipv6": "IPv6",
@@ -168,9 +170,12 @@
         "json": "JSON",
         "customRegex": "Custom Regex",
         "customRegexRequired": "Please enter a valid custom regex",
+        "validationRuleMessage": "Please enter content that meets the validation rules",
         "widgetType": "Widget Type",
         "singleLine": "Single Line",
-        "multiLine": "Multi-Line"
+        "multiLine": "Multi-Line",
+        "display": "Display",
+        "attrIdPattern": "Attribute ID must start with a letter and contain only letters, numbers, or underscores"
     },
     "Collection": {
         "cycleDeprecated": "The functions of scheduled execution and one-time execution have been taken offline. Please adjust the configuration to periodic execution.",

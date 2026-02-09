@@ -10,6 +10,7 @@ import requests
 from wechatpy import WeChatClientException
 from wechatpy.enterprise import WeChatClient
 
+import nats_client
 from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import Channel
 
@@ -123,3 +124,26 @@ def send_by_bot(channel_obj: Channel, content, receivers):
     except Exception as e:
         logger.exception(e)
         return {"result": False, "message": "failed to send bot message"}
+
+
+def send_nats_message(channel_obj: Channel, content: dict):
+    """
+    发送 NATS 消息（Request 模式）
+    :param channel_obj: NATS Channel 对象
+    :param content: 消息内容，dict 类型，将作为 kwargs 传递给目标方法
+    :return: 目标服务的响应
+    """
+    config = channel_obj.config
+    namespace = config.get("namespace")
+    method_name = config.get("method_name")
+    timeout = config.get("timeout", 60)
+
+    if not namespace or not method_name:
+        return {"result": False, "message": "NATS channel config missing namespace or method_name"}
+
+    try:
+        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, _raw=True, **content)
+        return result
+    except Exception as e:
+        logger.exception(e)
+        return {"result": False, "message": f"NATS request failed: {str(e)}"}

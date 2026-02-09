@@ -1,6 +1,18 @@
-from django_filters import FilterSet, CharFilter, DateTimeFilter
-from django_filters import FilterSet, CharFilter, BooleanFilter, NumberFilter
-from apps.mlops.models.anomaly_detection import *
+from django_filters import (
+    FilterSet,
+    CharFilter,
+    DateTimeFilter,
+    BooleanFilter,
+    NumberFilter,
+)
+
+from apps.mlops.models.anomaly_detection import (
+    AnomalyDetectionDataset,
+    AnomalyDetectionTrainJob,
+    AnomalyDetectionTrainData,
+    AnomalyDetectionDatasetRelease,
+    AnomalyDetectionServing,
+)
 
 
 class AnomalyDetectionDatasetFilter(FilterSet):
