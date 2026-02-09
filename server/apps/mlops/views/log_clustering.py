@@ -29,6 +29,12 @@ from apps.mlops.models.log_clustering import *
 from apps.mlops.serializers.log_clustering import *
 from config.drf.pagination import CustomPageNumberPagination
 from django.http import FileResponse
+from apps.mlops.models import AlgorithmConfig
+from apps.mlops.serializers.algorithm_config import (
+    AlgorithmConfigSerializer,
+    AlgorithmConfigListSerializer,
+)
+from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
 
 
 class LogClusteringDatasetViewSet(ModelViewSet):
@@ -39,23 +45,23 @@ class LogClusteringDatasetViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.log_clustering_dataset"
 
-    @HasPermission("log_clustering_datasets-View")
+    @HasPermission("log_clustering-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_datasets-View")
+    @HasPermission("log_clustering-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_datasets-Delete")
+    @HasPermission("log_clustering-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_datasets-Add")
+    @HasPermission("log_clustering-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_datasets-Edit")
+    @HasPermission("log_clustering-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
@@ -72,28 +78,28 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
 
     MLFLOW_PREFIX = "LogClustering"  # MLflow 命名前缀
 
-    @HasPermission("log_clustering_train_jobs-View")
+    @HasPermission("log_clustering-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_train_jobs-View")
+    @HasPermission("log_clustering-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_train_jobs-Delete")
+    @HasPermission("log_clustering-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_train_jobs-Add")
+    @HasPermission("log_clustering-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_train_jobs-Edit")
+    @HasPermission("log_clustering-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], url_path="train")
-    @HasPermission("log_clustering_train_jobs-Train")
+    @HasPermission("log_clustering-Train")
     def train(self, request, pk=None):
         """
         启动训练任务
@@ -194,7 +200,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="stop")
-    @HasPermission("log_clustering_train_jobs-Stop")
+    @HasPermission("log_clustering-Stop")
     def stop(self, request, *args, **kwargs):
         """
         停止训练任务
@@ -247,7 +253,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["get"], url_path="runs_data_list")
-    @HasPermission("log_clustering_train_jobs-View")
+    @HasPermission("log_clustering-View")
     def get_run_data_list(self, request, pk=None):
         """
         获取训练任务的所有 MLflow 运行记录
@@ -378,7 +384,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="runs_metrics_list/(?P<run_id>.+?)")
-    @HasPermission("log_clustering_train_jobs-View")
+    @HasPermission("log_clustering-View")
     def get_runs_metrics_list(self, request, run_id: str):
         """
         获取指定 run 的 Model 指标列表（过滤掉 System 指标）
@@ -403,7 +409,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
         methods=["get"],
         url_path="runs_metrics_history/(?P<run_id>.+?)/(?P<metric_name>.+?)",
     )
-    @HasPermission("log_clustering_train_jobs-View")
+    @HasPermission("log_clustering-View")
     def get_metric_data(self, request, run_id: str, metric_name: str):
         """
         获取指定 run 的指定指标的历史数据
@@ -442,7 +448,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="run_params/(?P<run_id>.+?)")
-    @HasPermission("log_clustering_train_jobs-View")
+    @HasPermission("log_clustering-View")
     def get_run_params(self, request, run_id: str):
         """
         获取指定 run 的配置参数（用于查看历史训练的配置）
@@ -481,7 +487,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["get"], url_path="model_versions")
-    @HasPermission("log_clustering_train_jobs-View")
+    @HasPermission("log_clustering-View")
     def get_model_versions(self, request, pk=None):
         """
         获取训练任务对应模型的所有版本列表
@@ -526,7 +532,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=["get"], url_path="download_model/(?P<run_id>[^/]+)")
-    @HasPermission("log_clustering_train_jobs-View")
+    @HasPermission("log_clustering-View")
     def download_model(self, request, run_id: str):
         """
         从 MLflow 下载模型并直接返回 ZIP 文件
@@ -574,28 +580,28 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.log_clustering_dataset_release"
 
-    @HasPermission("log_clustering_dataset_releases-View")
+    @HasPermission("log_clustering-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_dataset_releases-View")
+    @HasPermission("log_clustering-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_dataset_releases-Delete")
+    @HasPermission("log_clustering-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_dataset_releases-Add")
+    @HasPermission("log_clustering-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_dataset_releases-Edit")
+    @HasPermission("log_clustering-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"], url_path="download")
-    @HasPermission("log_clustering_dataset_releases-View")
+    @HasPermission("log_clustering-View")
     def download(self, request, *args, **kwargs):
         """
         下载数据集版本的 ZIP 文件
@@ -627,7 +633,7 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="archive")
-    @HasPermission("log_clustering_dataset_releases-Edit")
+    @HasPermission("log_clustering-Edit")
     def archive(self, request, *args, **kwargs):
         """
         归档数据集版本(将状态改为 archived)
@@ -657,7 +663,7 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="unarchive")
-    @HasPermission("log_clustering_dataset_releases-Edit")
+    @HasPermission("log_clustering-Edit")
     def unarchive(self, request, *args, **kwargs):
         """
         恢复已归档的数据集版本(将状态改为 published)
@@ -707,23 +713,23 @@ class LogClusteringTrainDataViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.log_clustering_train_data"
 
-    @HasPermission("log_clustering_train_data-View")
+    @HasPermission("log_clustering-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_train_data-View")
+    @HasPermission("log_clustering-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_train_data-Delete")
+    @HasPermission("log_clustering-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_train_data-Add")
+    @HasPermission("log_clustering-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_train_data-Edit")
+    @HasPermission("log_clustering-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
@@ -740,7 +746,7 @@ class LogClusteringServingViewSet(ModelViewSet):
 
     MLFLOW_PREFIX = "LogClustering"  # MLflow 命名前缀
 
-    @HasPermission("log_clustering_servings-View")
+    @HasPermission("log_clustering-View")
     def list(self, request, *args, **kwargs):
         """列表查询，实时同步容器状态"""
         response = super().list(request, *args, **kwargs)
@@ -804,7 +810,7 @@ class LogClusteringServingViewSet(ModelViewSet):
 
         return response
 
-    @HasPermission("log_clustering_servings-View")
+    @HasPermission("log_clustering-View")
     def retrieve(self, request, *args, **kwargs):
         """详情查询，实时同步容器状态"""
         response = super().retrieve(request, *args, **kwargs)
@@ -844,11 +850,11 @@ class LogClusteringServingViewSet(ModelViewSet):
 
         return response
 
-    @HasPermission("log_clustering_servings-Delete")
+    @HasPermission("log_clustering-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @HasPermission("log_clustering_servings-Add")
+    @HasPermission("log_clustering-Add")
     def create(self, request, *args, **kwargs):
         """
         创建 serving 服务并自动启动容器
@@ -965,7 +971,7 @@ class LogClusteringServingViewSet(ModelViewSet):
 
         return response
 
-    @HasPermission("log_clustering_servings-Edit")
+    @HasPermission("log_clustering-Edit")
     def update(self, request, *args, **kwargs):
         """
         更新 serving 配置，自动检测并重启容器
@@ -1075,7 +1081,7 @@ class LogClusteringServingViewSet(ModelViewSet):
         return response
 
     @action(detail=True, methods=["post"], url_path="start")
-    @HasPermission("log_clustering_servings-Start")
+    @HasPermission("log_clustering-Start")
     def start(self, request, *args, **kwargs):
         """
         启动 serving 服务
@@ -1181,7 +1187,7 @@ class LogClusteringServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="stop")
-    @HasPermission("log_clustering_servings-Stop")
+    @HasPermission("log_clustering-Stop")
     def stop(self, request, *args, **kwargs):
         """
         停止 serving 服务（停止并删除容器）
@@ -1218,7 +1224,7 @@ class LogClusteringServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="remove")
-    @HasPermission("log_clustering_servings-Remove")
+    @HasPermission("log_clustering-Remove")
     def remove(self, request, *args, **kwargs):
         """
         删除 serving 容器（可处理运行中的容器）
@@ -1263,7 +1269,7 @@ class LogClusteringServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("log_clustering_servings-Predict")
+    @HasPermission("log_clustering-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行日志聚类
@@ -1401,3 +1407,99 @@ class LogClusteringServingViewSet(ModelViewSet):
         )
 
         return mlflow_service.resolve_model_uri(model_name, serving.model_version)
+
+
+class LogClusteringAlgorithmConfigViewSet(ModelViewSet):
+    """日志聚类算法配置视图集"""
+
+    queryset = AlgorithmConfig.objects.filter(algorithm_type="log_clustering")
+    serializer_class = AlgorithmConfigSerializer
+    filterset_class = AlgorithmConfigFilter
+    pagination_class = CustomPageNumberPagination
+    ordering = ("id",)
+    permission_key = "algorithm.log_clustering_algorithm_config"
+
+    def get_serializer_class(self):
+        if (
+            self.action == "list"
+            and not self.request.query_params.get(
+                "include_form_config", "false"
+            ).lower()
+            == "true"
+        ):
+            return AlgorithmConfigListSerializer
+        return AlgorithmConfigSerializer
+
+    @HasPermission("log_clustering-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("log_clustering-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("log_clustering-Add")
+    def create(self, request, *args, **kwargs):
+        request.data["algorithm_type"] = "log_clustering"
+        return super().create(request, *args, **kwargs)
+
+    @HasPermission("log_clustering-Edit")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @HasPermission("log_clustering-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        is_active_new = request.data.get("is_active")
+        if instance.is_active and is_active_new is False:
+            task_count = LogClusteringTrainJob.objects.filter(
+                algorithm=instance.name
+            ).count()
+            if task_count > 0:
+                return Response(
+                    {
+                        "error": f"无法禁用：有 {task_count} 个训练任务正在使用此算法",
+                        "task_count": task_count,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        return super().partial_update(request, *args, **kwargs)
+
+    @HasPermission("log_clustering-Delete")
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        task_count = LogClusteringTrainJob.objects.filter(
+            algorithm=instance.name
+        ).count()
+        if task_count > 0:
+            return Response(
+                {
+                    "error": f"无法删除：有 {task_count} 个训练任务正在使用此算法",
+                    "task_count": task_count,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"], url_path="by_type")
+    @HasPermission("log_clustering-View")
+    def by_type(self, request):
+        queryset = self.get_queryset().filter(is_active=True)
+        serializer = AlgorithmConfigSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="get_image")
+    @HasPermission("log_clustering-View")
+    def get_image(self, request):
+        name = request.query_params.get("name")
+        if not name:
+            return Response({"error": "name 参数必填"}, status=400)
+        try:
+            config = AlgorithmConfig.objects.get(
+                algorithm_type="log_clustering", name=name, is_active=True
+            )
+            return Response({"image": config.image})
+        except AlgorithmConfig.DoesNotExist:
+            return Response(
+                {"error": f"未找到算法配置: log_clustering/{name}"}, status=404
+            )

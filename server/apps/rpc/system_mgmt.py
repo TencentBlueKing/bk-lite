@@ -81,6 +81,7 @@ class SystemMgmt(object):
     def get_group_users(self, group, include_children=False):
         """
         :param group: 当前组的ID
+        :param include_children: 是否递归查子组
         """
         return_data = self.client.run("get_group_users", group=group, include_children=include_children)
         return return_data
@@ -121,7 +122,7 @@ class SystemMgmt(object):
         通过指定通道发送消息
         :param channel_id: 1 通道id
         :param title: 邮件主题  企微传空字符串即可
-        :param content: 正文
+        :param content: 正文，如果是nats类型的，传入json即可，会原样调用nats接口
         :param receivers: [1,2,3,4] 用户的ID列表
         :param attachments: 附件列表（仅email通道支持），格式为:
             [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]

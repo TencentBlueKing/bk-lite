@@ -37,4 +37,7 @@ class ChannelSerializer(UsernameSerializer):
         elif validated_data["channel_type"] == ChannelChoices.ENTERPRISE_WECHAT_BOT:
             Channel.encrypt_field("webhook_url", config)
             config.setdefault("webhook_url", old_config.get("webhook_url", ""))
+        elif validated_data["channel_type"] == ChannelChoices.NATS:
+            # NATS 配置无需加密，直接保存
+            pass
         validated_data["config"] = config

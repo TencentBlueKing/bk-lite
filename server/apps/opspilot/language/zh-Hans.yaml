@@ -130,6 +130,7 @@ error:
   no_bot_start_permission: 你没有权限启动此机器人。
   no_chat_flow_configured: 此机器人未配置聊天流程。
   missing_bot_id: 缺少 bot_id
+  missing_bot_or_node_id: 缺少 bot_id 或 node_id
   graph_search_failed: 搜索图失败。请检查服务器日志。
   invalid_file_format: 无效的文件格式。仅允许 .json 和 .csv 文件。
   url_request_failed: URL 请求失败

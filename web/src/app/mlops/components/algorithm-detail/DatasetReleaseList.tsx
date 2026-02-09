@@ -8,6 +8,7 @@ import useMlopsTaskApi from '@/app/mlops/api/task';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ModalRef, ColumnItem, DatasetType } from '@/app/mlops/types';
 import { DATASET_RELEASE_MAP } from '@/app/mlops/constants';
+import PermissionWrapper from '@/components/permission';
 import DatasetReleaseModal from './DatasetReleaseModal';
 import { useAuth } from "@/context/auth";
 
@@ -273,48 +274,56 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       render: (_: any, record: DatasetRelease) => (
         <Space size="small">
           {(record.status === 'archived')
-            ? <Button
-              type='link'
-              size='small'
-              onClick={() => handleUnarchive(record)}
-            >
-              {t(`common.publish`)}
-            </Button>
-            : <Button
-              type="link"
-              size="small"
-              disabled={['pending', 'processing', 'failed'].includes(record.status)}
-              onClick={() => downloadReleaseZip(record)}
-            >
-              {t(`common.download`)}
-            </Button>
+            ? <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button
+                type='link'
+                size='small'
+                onClick={() => handleUnarchive(record)}
+              >
+                {t(`common.publish`)}
+              </Button>
+            </PermissionWrapper>
+            : <PermissionWrapper requiredPermissions={['View']}>
+              <Button
+                type="link"
+                size="small"
+                disabled={['pending', 'processing', 'failed'].includes(record.status)}
+                onClick={() => downloadReleaseZip(record)}
+              >
+                {t(`common.download`)}
+              </Button>
+            </PermissionWrapper>
           }
           {record.status === 'published' && (
-            <Popconfirm
-              title={t(`mlops-common.archiveConfirm`)}
-              description={t(`mlops-common.archivingMsg`)}
-              onConfirm={() => handleArchive(record)}
-              okText={t(`common.confirm`)}
-              cancelText={t(`common.cancel`)}
-            >
-              <Button type="link" size="small" danger>
-                {t(`mlops-common.archived`)}
-              </Button>
-            </Popconfirm>
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Popconfirm
+                title={t(`mlops-common.archiveConfirm`)}
+                description={t(`mlops-common.archivingMsg`)}
+                onConfirm={() => handleArchive(record)}
+                okText={t(`common.confirm`)}
+                cancelText={t(`common.cancel`)}
+              >
+                <Button type="link" size="small" danger>
+                  {t(`mlops-common.archived`)}
+                </Button>
+              </Popconfirm>
+            </PermissionWrapper>
           )}
           {['archived', 'failed', 'pending', 'processing'].includes(record.status) && (
-            <Popconfirm
-              placement='left'
-              title={t(`mlops-common.deleteConfirm`)}
-              description={t(`mlops-common.fileDelDes`)}
-              onConfirm={() => handleDeleteRelease(record)}
-              okText={t(`common.confirm`)}
-              cancelText={t(`common.cancel`)}
-            >
-              <Button type="link" size="small" danger>
-                {t(`common.delete`)}
-              </Button>
-            </Popconfirm>
+            <PermissionWrapper requiredPermissions={['Delete']}>
+              <Popconfirm
+                placement='left'
+                title={t(`mlops-common.deleteConfirm`)}
+                description={t(`mlops-common.fileDelDes`)}
+                onConfirm={() => handleDeleteRelease(record)}
+                okText={t(`common.confirm`)}
+                cancelText={t(`common.cancel`)}
+              >
+                <Button type="link" size="small" danger>
+                  {t(`common.delete`)}
+                </Button>
+              </Popconfirm>
+            </PermissionWrapper>
           )}
         </Space>
       ),
@@ -331,9 +340,11 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
         title={t(`datasets.datasetsRelease`)}
         footer={
           <div className='flex justify-end'>
-            <Button type="primary" onClick={handleRelease}>
-              {t(`common.publish`)}
-            </Button>
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button type="primary" onClick={handleRelease}>
+                {t(`common.publish`)}
+              </Button>
+            </PermissionWrapper>
           </div>
         }
         placement="right"

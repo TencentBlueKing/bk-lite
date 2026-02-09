@@ -6,7 +6,14 @@ from django_filters import (
     NumberFilter,
     BooleanFilter,
 )
-from apps.mlops.models.log_clustering import *
+
+from apps.mlops.models.log_clustering import (
+    LogClusteringDataset,
+    LogClusteringTrainJob,
+    LogClusteringTrainData,
+    LogClusteringDatasetRelease,
+    LogClusteringServing,
+)
 
 
 class LogClusteringDatasetFilter(FilterSet):

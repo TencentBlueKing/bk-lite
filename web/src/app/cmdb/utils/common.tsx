@@ -639,7 +639,7 @@ export const getStringValidationRule = (item: AttrLike, t: (key: string) => stri
     try {
       return {
         pattern: new RegExp(strOption.custom_regex),
-        message: t('Model.customRegexRequired'),
+        message: t('Model.validationRuleMessage'),
       };
     } catch {
       return null;
@@ -648,7 +648,7 @@ export const getStringValidationRule = (item: AttrLike, t: (key: string) => stri
   if (VALIDATION_PATTERNS[strOption.validation_type]) {
     return {
       pattern: VALIDATION_PATTERNS[strOption.validation_type],
-      message: `${t('common.inputMsg')}${t(`Model.${strOption.validation_type}`)}`,
+      message: t('Model.validationRuleMessage'),
     };
   }
   return null;
@@ -666,10 +666,10 @@ export const getNumberRangeRule = (item: AttrLike, t: (key: string) => string) =
       }
       const numValue = Number(value);
       if (hasMin && numValue < Number(intOption.min_value)) {
-        return Promise.reject(new Error(`${t('Model.min')}: ${intOption.min_value}`));
+        return Promise.reject(new Error(t('Model.validationRuleMessage')));
       }
       if (hasMax && numValue > Number(intOption.max_value)) {
-        return Promise.reject(new Error(`${t('Model.max')}: ${intOption.max_value}`));
+        return Promise.reject(new Error(t('Model.validationRuleMessage')));
       }
       return Promise.resolve();
     },
