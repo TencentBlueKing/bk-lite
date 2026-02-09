@@ -367,9 +367,15 @@ def migrate_plugin():
     3. 清理已移除的内置插件
     4. 清理孤立的监控对象
     """
+    # 社区版插件
     path_list = find_files_by_pattern(
         PluginConstants.DIRECTORY, filename_pattern="metrics.json"
     )
+    # 商业版插件
+    enterprise_path_list = find_files_by_pattern(
+        PluginConstants.ENTERPRISE_DIRECTORY, filename_pattern="metrics.json"
+    )
+    path_list.extend(enterprise_path_list)
     logger.info(f"找到 {len(path_list)} 个插件配置文件，开始同步插件及模板")
 
     # 第一阶段：导入插件基础信息
