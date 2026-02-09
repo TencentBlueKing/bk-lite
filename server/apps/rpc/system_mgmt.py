@@ -81,6 +81,7 @@ class SystemMgmt(object):
     def get_group_users(self, group, include_children=False):
         """
         :param group: 当前组的ID
+        :param include_children: 是否递归查子组
         """
         return_data = self.client.run("get_group_users", group=group, include_children=include_children)
         return return_data

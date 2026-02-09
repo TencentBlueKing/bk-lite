@@ -1,5 +1,6 @@
 import base64
 import io
+import json
 import os
 import time
 from datetime import timedelta
@@ -34,7 +35,7 @@ from apps.system_mgmt.models import (
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.bk_user_utils import get_bk_user_info
-from apps.system_mgmt.utils.channel_utils import send_by_bot, send_email, send_email_to_user
+from apps.system_mgmt.utils.channel_utils import send_by_bot, send_email, send_email_to_user, send_nats_message
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 
@@ -413,6 +414,11 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         else:
             display_names = receivers if isinstance(receivers, list) else [receivers]
         return send_by_bot(channel_obj, content, display_names)
+    elif channel_obj.channel_type == ChannelChoices.NATS:
+        # NATS 通道：content 作为 kwargs 传递给目标服务
+        if isinstance(content, str):
+            content = json.loads(content)
+        return send_nats_message(channel_obj, content)
     return {"result": False, "message": "Unsupported channel type"}
     # return send_wechat(channel_obj, content, user_list)
 
