@@ -558,7 +558,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               }
             >
               {({ getFieldValue }) => (
-                <Form.Item label=" " colon={false}>
+                <Form.Item label=" " colon={false} className="ml-[-80px]">
                   <div className="flex items-center gap-8">
                     {getFieldValue('attr_type') !== 'enum' && (
                       <Form.Item<AttrFieldType>
