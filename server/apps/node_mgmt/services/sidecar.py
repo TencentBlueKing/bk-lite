@@ -49,8 +49,9 @@ class Sidecar:
             try:
                 encrypted_content = encrypt_response_data(data, encryption_key)
                 return hashlib.md5(encrypted_content.encode("utf-8")).hexdigest()
-            except Exception:
-                # 加密失败，回退到明文内容，使用 Django JSON 编码器处理 datetime
+            except Exception as e:
+                # 加密失败，记录警告日志并回退到明文内容，使用 Django JSON 编码器处理 datetime
+                logger.warning(f"Failed to encrypt response data for ETag generation: {e}")
                 json_content = json.dumps(
                     data, ensure_ascii=False, cls=DjangoJSONEncoder
                 )
