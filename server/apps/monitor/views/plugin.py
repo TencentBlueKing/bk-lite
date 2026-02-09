@@ -11,7 +11,7 @@ from apps.monitor.services.plugin import MonitorPluginService
 from config.drf.pagination import CustomPageNumberPagination
 
 
-class MonitorPluginVieSet(viewsets.ModelViewSet):
+class MonitorPluginViewSet(viewsets.ModelViewSet):
     queryset = MonitorPlugin.objects.all()
     serializer_class = MonitorPluginSerializer
     filterset_class = MonitorPluginFilter
@@ -29,21 +29,6 @@ class MonitorPluginVieSet(viewsets.ModelViewSet):
             result["display_description"] = lan.get(f"{plugin_key}.desc") or result["description"]
 
         return WebUtils.response_success(results)
-
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
-
-    def partial_update(self, request, *args, **kwargs):
-        return super().partial_update(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
 
     @action(methods=['post'], detail=False, url_path='import')
     def import_monitor_object(self, request):
