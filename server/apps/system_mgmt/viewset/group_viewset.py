@@ -1,6 +1,7 @@
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
+from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.viewset_utils import LanguageViewSet
@@ -166,11 +167,16 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         # 更新组的角色
         if isinstance(role_ids, list):
             obj.roles.set(role_ids)
-            # 清除该组织中所有用户的权限缓存
+            # 清除该组织中所有用户的权限缓存和菜单缓存
             group_id = request.data.get("group_id")
-            affected_users = User.objects.filter(group_list__contains=int(group_id)).values("username", "domain")
-            if affected_users:
-                clear_users_permission_cache(list(affected_users))
+            affected_users = User.objects.filter(group_list__contains=int(group_id)).values("id", "username", "domain")
+            affected_users_list = list(affected_users)
+            if affected_users_list:
+                # 清除权限规则缓存（default 缓存）
+                clear_users_permission_cache(affected_users_list)
+                # 清除用户菜单缓存（db 缓存）
+                menu_cache_keys = [f"menus-user:{user['id']}" for user in affected_users_list]
+                cache.delete_many(menu_cache_keys)
 
         # 同步组织数据到CMDB
         CMDB().sync_display_fields(

@@ -31,9 +31,59 @@ class GroupUtils(object):
         return list(result)
 
     @staticmethod
+    def get_group_with_descendants_filtered(group_ids, group_list=None):
+        """
+        获取指定组织及其所有子孙组织的ID列表，支持权限过滤（单次数据库查询）
+
+        此方法是 get_group_with_descendants() 的增强版本，支持 group_list 权限过滤。
+        用于替代存在 N+1 查询问题的 get_all_child_groups() 方法。
+
+        :param group_ids: 组织ID或组织ID列表
+        :param group_list: 用户有权限的组织ID列表，如果为None则不过滤
+        :return: 包含自身及所有子孙组织的ID列表（已过滤权限）
+        """
+        if isinstance(group_ids, (int, str)):
+            group_ids = [int(group_ids)]
+        else:
+            group_ids = [int(gid) for gid in group_ids]
+
+        # 单次查询获取所有组织的父子关系
+        all_groups = Group.objects.values_list("id", "parent_id")
+        children_map = {}
+        for gid, pid in all_groups:
+            if pid is not None:
+                children_map.setdefault(pid, []).append(gid)
+
+        # 将 group_list 转换为 set 以提高查找效率
+        allowed_set = None
+        if group_list is not None:
+            # group_list 可能是 [{"id": 1}, {"id": 2}] 或 [1, 2] 格式
+            if group_list and isinstance(group_list[0], dict):
+                allowed_set = {item["id"] for item in group_list}
+            else:
+                allowed_set = set(group_list)
+
+        def collect_descendants(gid, result_set):
+            # 如果有权限过滤，只添加有权限的组织
+            if allowed_set is None or gid in allowed_set:
+                result_set.add(gid)
+            # 继续递归子组织（即使当前组织无权限，子组织可能有权限）
+            for child_id in children_map.get(gid, []):
+                collect_descendants(child_id, result_set)
+
+        result = set()
+        for gid in group_ids:
+            collect_descendants(gid, result)
+        return list(result)
+
+    @staticmethod
     def get_all_child_groups(group_id, include_self=True, group_list=None):
         """
         递归获取指定组织的所有子组织ID（仅限用户有权限的组织）
+
+        TODO: 此方法存在 N+1 查询问题，每层递归都会查询数据库。
+              请使用 get_group_with_descendants() 或 get_group_with_descendants_filtered() 替代。
+
         :param group_id: 父组织ID
         :param include_self: 是否包含自身
         :param group_list: 用户有权限的组织ID列表，如果为None则不过滤
@@ -74,12 +124,8 @@ class GroupUtils(object):
             return [target_group_id]
 
         # 包含子组织：获取所有子组织（仅限用户有权限的）
-        all_child_groups = GroupUtils.get_all_child_groups(target_group_id, include_self=True, group_list=user_group_list)
-
-        # 返回用户有权限的子组织
-        authorized_groups = all_child_groups
-
-        logger.info(f"用户组织列表: {user_group_list}, 目标组织: {target_group_id}, " f"包含子组织: {include_children}, 最终查询组织: {authorized_groups}")
+        # 使用优化后的单次查询方法替代 N+1 的 get_all_child_groups
+        authorized_groups = GroupUtils.get_group_with_descendants_filtered(target_group_id, group_list=user_group_list)
 
         return authorized_groups
 
