@@ -235,24 +235,42 @@ class AlertDetector:
 
     def recover_no_data_alerts(self):
         if not self.policy.no_data_recovery_period:
+            logger.debug(
+                f"Policy {self.policy.id}: no_data_recovery_period not configured, skip recovery"
+            )
             return
 
         aggregation_metrics = self.metric_query_service.query_aggregation_metrics(
             self.policy.no_data_recovery_period
         )
+        logger.debug(
+            f"Policy {self.policy.id}: no_data recovery query returned "
+            f"{len(aggregation_metrics.get('data', {}).get('result', []))} results"
+        )
+
         aggregation_result = self.metric_query_service.format_aggregation_metrics(
             aggregation_metrics
         )
 
         metric_instance_ids_with_data = set(aggregation_result.keys())
+        logger.debug(
+            f"Policy {self.policy.id}: metric_instance_ids_with_data = {metric_instance_ids_with_data}"
+        )
 
         no_data_alerts = [
             alert for alert in self.active_alerts if alert.alert_type == "no_data"
         ]
+        logger.debug(
+            f"Policy {self.policy.id}: found {len(no_data_alerts)} active no_data alerts"
+        )
 
         alerts_to_recover = []
         for alert in no_data_alerts:
             alert_metric_id = self._get_alert_metric_instance_id(alert)
+            logger.debug(
+                f"Policy {self.policy.id}: alert {alert.id} metric_id={alert_metric_id}, "
+                f"in_data_set={alert_metric_id in metric_instance_ids_with_data}"
+            )
             if alert_metric_id in metric_instance_ids_with_data:
                 alerts_to_recover.append(alert.id)
 
@@ -262,3 +280,8 @@ class AlertDetector:
                 end_event_time=self.policy.last_run_time,
                 operator="system",
             )
+            logger.info(
+                f"Policy {self.policy.id}: recovered {len(alerts_to_recover)} no_data alerts"
+            )
+        else:
+            logger.debug(f"Policy {self.policy.id}: no no_data alerts to recover")
