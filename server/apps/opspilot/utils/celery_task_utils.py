@@ -56,14 +56,14 @@ def create_celery_task(bot_id, work_data):
         try:
             ScheduleConfigValidator.validate(config)
         except ValueError as e:
-            logger.error(f"Invalid schedule config for node {node_id}: {e}. bot_id={bot_id}, config={config}")
+            logger.error("Invalid schedule config for node %s: %r. bot_id=%s", node_id, e, bot_id)
             continue
 
         # Generate crontab entries
         try:
             crontab_entries = CrontabGenerator.generate(config)
         except ValueError as e:
-            logger.error(f"Failed to generate crontab for node {node_id}: {e}. bot_id={bot_id}, config={config}")
+            logger.error("Failed to generate crontab for node %s: %r. bot_id=%s", node_id, e, bot_id)
             continue
 
         # Collect task data

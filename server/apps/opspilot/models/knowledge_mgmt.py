@@ -151,7 +151,7 @@ class WebPageKnowledge(models.Model, PeriodicTaskUtils):
     knowledge_document = models.ForeignKey("KnowledgeDocument", verbose_name=_("Knowledge Document"), blank=True, null=True, on_delete=models.CASCADE)
     max_depth = models.IntegerField(verbose_name=_("max depth"), default=1)
     sync_enabled = models.BooleanField(verbose_name=_("Sync Enabled"), default=False)
-    sync_time = models.CharField(verbose_name=_("Sync Time"), null=True, blank=True)
+    sync_time = models.CharField(max_length=20, verbose_name=_("Sync Time"), null=True, blank=True)
     last_run_time = models.DateTimeField(null=True, blank=True)
 
     class Meta:

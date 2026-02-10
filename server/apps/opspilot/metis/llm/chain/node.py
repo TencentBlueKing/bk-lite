@@ -208,7 +208,7 @@ class BasicNode:
             return self._process_graph_results(graph_result, rag_search_request.graph_rag_request.group_ids)
 
         except Exception as e:
-            logger.error(f"GraphRAG检索处理异常: {str(e)}")
+            logger.error("GraphRAG检索处理异常: %r", e)
             return []
 
     async def _perform_graph_search(self, rag_search_request, config: RunnableConfig) -> list:
@@ -217,7 +217,7 @@ class BasicNode:
         rag_search_request.graph_rag_request.search_query = rag_search_request.search_query
         graph_result = await graphiti.search(req=rag_search_request.graph_rag_request)
 
-        logger.debug(f"GraphRAG模式检索知识库: {rag_search_request.graph_rag_request.group_ids}, " f"结果数量: {len(graph_result)}")
+        logger.debug(f"GraphRAG模式检索知识库: {rag_search_request.graph_rag_request.group_ids}, 结果数量: {len(graph_result)}")
         return graph_result
 
     def _process_graph_results(self, graph_result: list, group_ids: list) -> list:
@@ -468,7 +468,7 @@ class BasicNode:
             return rewritten_query
 
         except Exception as e:
-            logger.error(f"问题改写过程中发生异常: {str(e)}")
+            logger.error("问题改写过程中发生异常: %r", e)
             raise
 
     def user_message_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
@@ -483,7 +483,7 @@ class BasicNode:
                     user_message = rewritten_message
                     self.log(config, f"问题改写完成: {request.user_message} -> {user_message}")
             except Exception as e:
-                logger.warning(f"问题改写失败，使用原始问题: {str(e)}")
+                logger.warning("问题改写失败，使用原始问题: %r", e)
                 user_message = request.user_message
 
         state["messages"].append(HumanMessage(content=user_message))
@@ -571,7 +571,7 @@ class ToolsNodes(BasicNode):
                 logger.debug("未找到可用工具，返回空工具节点")
                 return ToolNode([])
         except Exception as e:
-            logger.error(f"构建工具节点失败: {e}")
+            logger.error("构建工具节点失败: %r", e)
             return ToolNode([])
 
     # ========== 使用 LangGraph 标准 ReAct Agent 实现 ==========
@@ -740,7 +740,7 @@ class ToolsNodes(BasicNode):
             return AIMessage(content=f"正在分析问题: {user_message}")
 
         except Exception as e:
-            logger.warning(f"ReAct 调用失败: {e}，使用降级方案")
+            logger.warning("ReAct 调用失败: %r，使用降级方案", e)
             return AIMessage(content=f"正在重新分析这个问题: {user_message}，寻找更好的解决方案...", tool_calls=[])
 
     def _get_current_tools(self, tools_node: Optional[ToolNode]) -> list:
