@@ -407,7 +407,7 @@ class ModelManage(object):
             # 如果复制过程中出错，删除已创建的模型
             try:
                 ModelManage.delete_model(new_model["_id"])
-            except Exception:
+            except Exception:  # noqa: BLE001 - 清理失败不应掩盖原始错误
                 pass
             raise e
 
