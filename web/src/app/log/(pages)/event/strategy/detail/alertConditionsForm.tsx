@@ -11,7 +11,7 @@ import { SCHEDULE_UNIT_MAP } from '@/app/log/constants';
 import {
   useAlgorithmList,
   useScheduleList,
-  useLevelList,
+  useLevelList
 } from '@/app/log/hooks/event';
 
 const { Option } = Select;
@@ -39,7 +39,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   onUnitChange,
   onPeriodUnitChange,
   onConditionsChange,
-  onTermChange,
+  onTermChange
 }) => {
   const { t } = useTranslation();
   const LEVEL_LIST = useLevelList();
@@ -70,7 +70,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         label={<span className="w-[100px]">{t('log.event.algorithm')}</span>}
         rules={[{ required: true, message: t('common.required') }]}
       >
-        <SelectCard data={ALGORITHM_LIST} />
+        <SelectCard data={ALGORITHM_LIST} cardWidth={220} />
       </Form.Item>
       <Form.Item<StrategyFields>
         required
@@ -87,8 +87,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               rules={[
                 {
                   required: true,
-                  message: t('common.required'),
-                },
+                  message: t('common.required')
+                }
               ]}
             >
               <Input
@@ -123,7 +123,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
             placeholder={t('log.integration.logGroup')}
             options={streamList.map((item: ListItem) => ({
               value: item.id,
-              label: item.name,
+              label: item.name
             }))}
           ></Select>
         </Form.Item>
@@ -175,8 +175,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   rules={[
                     {
                       required: true,
-                      message: t('common.required'),
-                    },
+                      message: t('common.required')
+                    }
                   ]}
                 >
                   <Select
@@ -209,8 +209,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   rules={[
                     {
                       validator: validateConidtion,
-                      required: true,
-                    },
+                      required: true
+                    }
                   ]}
                 >
                   <div className="flex items-center mb-[20px] w-[800px]">
@@ -252,8 +252,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 rules={[
                   {
                     required: true,
-                    message: t('common.required'),
-                  },
+                    message: t('common.required')
+                  }
                 ]}
               >
                 <Select
@@ -270,7 +270,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                     )
                     .map((item) => ({
                       value: item,
-                      label: item,
+                      label: item
                     }))}
                 />
               </Form.Item>
@@ -291,8 +291,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           rules={[
             {
               required: true,
-              message: t('common.required'),
-            },
+              message: t('common.required')
+            }
           ]}
         >
           <InputNumber
@@ -328,8 +328,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           rules={[
             {
               required: true,
-              message: t('common.required'),
-            },
+              message: t('common.required')
+            }
           ]}
         >
           <InputNumber
@@ -361,8 +361,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         rules={[
           {
             required: true,
-            message: t('common.required'),
-          },
+            message: t('common.required')
+          }
         ]}
       >
         <Radio.Group>

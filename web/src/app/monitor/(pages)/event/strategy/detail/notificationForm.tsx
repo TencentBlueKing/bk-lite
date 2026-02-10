@@ -1,9 +1,13 @@
 import React, { useMemo } from 'react';
 import { Form, Switch, Button, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { StrategyFields, ChannelItem } from '@/app/monitor/types/event';
+import {
+  StrategyFields,
+  ChannelItem,
+  CardItem
+} from '@/app/monitor/types/event';
 import { UserItem } from '@/app/monitor/types';
-import SelectCard, { CardItem } from './selectCard';
+import SelectCard from './selectCard';
 
 const { Option } = Select;
 
@@ -39,7 +43,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
     return channelList.map((item) => ({
       icon: getChannelIcon(item.channel_type),
       title: item.name,
-      subtitle: item.channel_type,
+      tag: item.channel_type,
       description: item.description,
       value: item.id
     }));
