@@ -249,33 +249,7 @@ const ImageContent = () => {
       label: labelName
     };
     setTrainData(updatedData);
-    // message.success(`已标注为: ${labelName}`);
-
-    // 自动跳转到下一张未标注的图片
-    // const nextUnlabeledIndex = updatedData.findIndex((item, idx) => idx > currentIndex && !item.label);
-    // if (nextUnlabeledIndex !== -1) {
-    //   goToSlide(nextUnlabeledIndex);
-    // }
   };
-
-
-
-  // 过滤后的数据（预留用于后续Tab切换功能）
-  // const filteredData = useMemo(() => {
-  //   if (activeTab === 'labeled') {
-  //     return trainData.filter(item => item.label);
-  //   } else if (activeTab === 'unlabeled') {
-  //     return trainData.filter(item => !item.label);
-  //   }
-  //   return trainData;
-  // }, [trainData, activeTab]);
-
-  // 统计信息
-  // const stats = useMemo(() => {
-  //   const unlabeled = trainData.filter(item => !item.label).length;
-  //   const labeled = trainData.filter(item => item.label).length;
-  //   return { unlabeled, labeled, total: trainData.length };
-  // }, [trainData]);
 
   // 过滤标签
   const filteredLabels = useMemo(() => {
