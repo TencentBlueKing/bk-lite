@@ -8,7 +8,7 @@ import JSZip from 'jszip';
 import { LeftOutlined, RightOutlined, PlusOutlined, SearchOutlined, MinusCircleOutlined } from "@ant-design/icons";
 import PermissionWrapper from '@/components/permission';
 import styles from './index.module.scss';
-import { generateUniqueRandomColor } from "@/app/mlops/utils/common";
+import { hashColor } from "@/app/mlops/utils/common";
 import { DatasetType } from '@/app/mlops/types';
 
 interface TrainDataItem {
@@ -49,13 +49,6 @@ const ImageContent = () => {
   const fileId = useMemo(() => {
     return searchParams.get('file_id') || '';
   }, [searchParams]);
-
-  // 渲染识别结果
-  const rendenrLabelResult = useMemo(() => {
-    return trainData[currentIndex]?.label || (
-      <div className="mb-2">&lt;{t('datasets.selectLab')}&gt;</div>
-    );
-  }, [trainData, currentIndex]);
 
   const props: UploadProps = {
     name: 'file',
@@ -412,7 +405,7 @@ const ImageContent = () => {
                       />
                       <div className="absolute top-6 right-8">
                         {trainData[currentIndex]?.label &&
-                          <Tag color={generateUniqueRandomColor()}>{trainData[currentIndex]?.label}</Tag>
+                          <Tag color={hashColor(trainData[currentIndex]?.label || '')}>{trainData[currentIndex]?.label}</Tag>
                         }
                       </div>
                     </div>
@@ -427,14 +420,6 @@ const ImageContent = () => {
                 ) : (
                   <div className="text-gray-400 flex items-center justify-center h-full">{t('common.noData')}</div>
                 )}
-              </div>
-
-              {/* 识别结果 */}
-              <div className="w-[15%] bg-white p-2 border border-gray-200 rounded shrink-0">
-                <div className="font-medium mb-2">{t('datasets.labelResult')}</div>
-                <div className="text-sm text-gray-500">
-                  {rendenrLabelResult}
-                </div>
               </div>
             </div>
 
@@ -453,7 +438,7 @@ const ImageContent = () => {
                       `relative shrink-0 w-30 h-20 cursor-pointer border-2 rounded overflow-hidden transition-all ${currentIndex === index
                         ? 'border-blue-500 shadow-lg'
                         : 'border-gray-200 hover:border-blue-300'
-                      } ${!item.label ? 'opacity-70' : ''}`
+                      }`
                     }
                   >
                     <Image
@@ -465,11 +450,6 @@ const ImageContent = () => {
                     {item.label && (
                       <div className="absolute bottom-0 left-0 right-0 bg-blue-500 bg-opacity-80 text-white text-xs px-1 py-0.5 text-center truncate">
                         {item.label}
-                      </div>
-                    )}
-                    {!item.label && (
-                      <div className="absolute top-1 right-1 bg-orange-500 text-white text-xs px-1 rounded">
-                        {t('datasets.unlabeled')}
                       </div>
                     )}
                   </div>
@@ -491,6 +471,15 @@ const ImageContent = () => {
 
           {/* 右侧标签栏 */}
           <div className="w-[20%] bg-white border border-gray-200 rounded p-4 flex flex-col">
+            {/* 当前标注 */}
+            <div className="mb-3 pb-3 border-b border-gray-200">
+              <div className="text-xs text-gray-400 mb-1">{t('datasets.labelResult')}</div>
+              <div className="text-sm font-medium">
+                {trainData[currentIndex]?.label || (
+                  <span className="text-gray-400">&lt;{t('datasets.selectLab')}&gt;</span>
+                )}
+              </div>
+            </div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-medium text-sm">{t('datasets.tabBar')}</h3>
             </div>
@@ -517,10 +506,14 @@ const ImageContent = () => {
                   <div
                     key={label.id}
                     onClick={() => handleLabelImage(label.name)}
-                    className="flex justify-between items-center px-2 py-1 border text-xs content-center border-gray-200 rounded cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all"
+                    className={`group flex justify-between items-center px-2 py-1 border text-xs content-center rounded cursor-pointer transition-all ${
+                      trainData[currentIndex]?.label === label.name
+                        ? 'bg-blue-50 border-blue-400 font-medium'
+                        : 'border-gray-200 hover:bg-blue-50 hover:border-blue-400'
+                    }`}
                   >
                     {label.name}
-                    <MinusCircleOutlined className="text-red-600" onClick={(e) => deleteLabels(e, label.id)} />
+                    <MinusCircleOutlined className="text-red-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => deleteLabels(e, label.id)} />
                   </div>
                 ))}
               </div>
