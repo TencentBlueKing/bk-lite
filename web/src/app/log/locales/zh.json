@@ -364,7 +364,12 @@
       "selectFunction": "选择函数",
       "error": "错误",
       "period": "周期",
-      "alertNameTitle": "请为产生的告警填写对应的告警名称，可以引用聚合字段作为变量，比如(source)。"
+      "alertNameTitle": "请为产生的告警填写对应的告警名称，可以引用聚合字段作为变量，比如(source)。",
+      "channelTypeEmail": "邮件",
+      "channelTypeWechatBot": "企业微信机器人",
+      "notificationDesc": "选择告警触发时的通知方式和接收人。",
+      "notificationConfig": "通知配置",
+      "notificationChannel": "通知渠道"
     },
     "metric": "指标",
     "equalto": "等于",

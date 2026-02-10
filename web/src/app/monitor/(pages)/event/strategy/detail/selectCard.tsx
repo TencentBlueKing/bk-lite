@@ -2,20 +2,7 @@ import React from 'react';
 import { Tag } from 'antd';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
-
-export interface CardItem {
-  icon?: string;
-  title: string;
-  subtitle?: string;
-  description?: string;
-  value: string | number;
-}
-
-interface SelectCardProps {
-  data: CardItem[];
-  value?: string | number;
-  onChange?: (value: string | number) => void;
-}
+import { CardItem, SelectCardProps } from '@/app/monitor/types/event';
 
 // 根据 channel_type 返回对应的 Tag 显示文本的翻译键
 const getChannelTypeKey = (channelType: string): string => {
@@ -34,7 +21,8 @@ const getColorWithOpacity = (cssVar: string, opacity: number): string => {
 const SelectCard: React.FC<SelectCardProps> = ({
   data = [],
   value,
-  onChange
+  onChange,
+  cardWidth
 }) => {
   const { t } = useTranslation();
 
@@ -43,20 +31,29 @@ const SelectCard: React.FC<SelectCardProps> = ({
   };
 
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div
+      className={cardWidth ? 'grid gap-4' : 'grid grid-cols-3 gap-4'}
+      style={{
+        gridAutoRows: '1fr',
+        ...(cardWidth
+          ? { gridTemplateColumns: `repeat(auto-fill, ${cardWidth}px)` }
+          : {})
+      }}
+    >
       {data.map((item, index) => {
         const isSelected = value === item.value;
-        const tagKey = getChannelTypeKey(item.subtitle || '');
+        const tagKey = item.tag ? getChannelTypeKey(item.tag) : '';
         return (
           <div
             key={index}
             onClick={() => handleCardClick(item)}
             style={{
+              width: cardWidth ? `${cardWidth}px` : undefined,
               backgroundColor: isSelected
-                ? getColorWithOpacity('--color-primary', 0.01)
+                ? getColorWithOpacity('--color-primary', 0.04)
                 : undefined
             }}
-            className={`h-[120px] bg-[var(--color-bg-1)] border-2 ${
+            className={`bg-[var(--color-bg-1)] border-2 ${
               isSelected
                 ? 'border-[var(--color-primary)] shadow-[0_8px_24px_rgba(0,112,243,0.2)]'
                 : 'border-transparent'
@@ -65,7 +62,10 @@ const SelectCard: React.FC<SelectCardProps> = ({
             <div className="flex gap-3 h-full">
               {/* 左侧图标 */}
               {item.icon && (
-                <Icon type={item.icon} className="text-xl flex-shrink-0 mt-1" />
+                <Icon
+                  type={item.icon}
+                  className="text-2xl flex-shrink-0 mt-1"
+                />
               )}
               {/* 右侧内容 */}
               <div className="flex-1 min-w-0 flex flex-col">
@@ -75,10 +75,10 @@ const SelectCard: React.FC<SelectCardProps> = ({
                 >
                   {item.title}
                 </h2>
-                {item.subtitle && (
+                {item.tag && (
                   <div className="mt-1">
                     <Tag color="blue" className="text-[12px]">
-                      {tagKey ? t(tagKey) : item.subtitle}
+                      {tagKey ? t(tagKey) : item.tag}
                     </Tag>
                   </div>
                 )}
