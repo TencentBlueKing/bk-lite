@@ -175,20 +175,39 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
     Example NATS 调用:
         subject: "default.receive_alert_events"
         payload: {
-            "args": [],
-            "kwargs": {
+              "args": [],
+              "kwargs": {
                 "source_id": "nats",
-                "pusher": "monitoring-service",
+                "pusher": "lite-monitor",
                 "events": [
-                    {
-                        "title": "CPU使用率过高",
-                        "level": "2",
-                        "message": "主机CPU使用率超过90%",
-                        ...
+                  {
+                    "title": "服务响应超时",
+                    "description": "API网关响应时间超过5秒",
+                    "level": "1",
+                    "item": "response_time",
+                    "value": 5200,
+                    "start_time": "1751964596",
+                    "action": "created",
+                    "external_id": "alert-timeout-gateway-20250708",
+                    "service": "api-gateway",
+                    "location": "北京机房",
+                    "labels": {
+                      "resource_id": "gateway-01",
+                      "resource_type": "service",
+                      "resource_name": "API网关"
                     }
+                  },
+                  {
+                    "title": "服务响应超时",
+                    "description": "API网关响应恢复正常",
+                    "level": "3",
+                    "action": "recovery",
+                    "external_id": "alert-timeout-gateway-20250708",
+                    "start_time": "1751965000"
+                  }
                 ]
+              }
             }
-        }
     """
     logger.info(f"=== receive_alert_events via NATS ===, kwargs={kwargs}")
 

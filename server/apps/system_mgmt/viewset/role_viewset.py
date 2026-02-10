@@ -281,9 +281,8 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                 }
             )
 
-        # 使用ManyToMany关系批量分配角色
-        for group in groups:
-            group.roles.add(role)
+        # 使用ManyToMany关系批量分配角色（从角色侧批量添加，避免N+1）
+        role.group_set.add(*groups)
 
         # 清除受影响组织中用户的权限缓存
         affected_users = User.objects.filter(group_list__overlap=group_ids).values("username", "domain")
@@ -291,7 +290,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
             clear_users_permission_cache(list(affected_users))
 
         # 记录操作日志
-        group_names = [g.name for g in groups]
+        group_names = list(groups.values_list("name", flat=True))
         log_operation(
             request,
             "create",
@@ -339,9 +338,8 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                 }
             )
 
-        # 使用ManyToMany关系回收角色
-        for group in groups:
-            group.roles.remove(role)
+        # 使用ManyToMany关系批量回收角色（从角色侧批量移除，避免N+1）
+        role.group_set.remove(*groups)
 
         # 清除受影响组织中用户的权限缓存
         affected_users = User.objects.filter(group_list__overlap=group_ids).values("username", "domain")
@@ -349,7 +347,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
             clear_users_permission_cache(list(affected_users))
 
         # 记录操作日志
-        group_names = [g.name for g in groups]
+        group_names = list(groups.values_list("name", flat=True))
         log_operation(
             request,
             "delete",
