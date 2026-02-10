@@ -4,9 +4,10 @@ import { useTranslation } from "@/utils/i18n";
 import useMlopsManageApi from '@/app/mlops/api/manage';
 import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
-import UploadModal from "../uploadModal";
+import UploadModal from "./uploadModal";
 import OperateModal from "@/components/operate-modal";
-import DatasetReleaseList from '../DatasetReleaseList';
+import DatasetReleaseList from './DatasetReleaseList';
+import { DatasetType } from '@/app/mlops/types';
 import {
   Input,
   Button,
@@ -18,33 +19,44 @@ import {
   Breadcrumb
 } from "antd";
 import { TYPE_CONTENT, TYPE_COLOR } from "@/app/mlops/constants";
-import { ColumnItem, ModalRef, Pagination, TableData, DatasetType } from '@/app/mlops/types';
+import { ColumnItem, ModalRef, Pagination, TableData } from '@/app/mlops/types';
 const { Search } = Input;
 
-const ImageClassificationDetail = () => {
+const DETAIL_CONFIG: Record<DatasetType, { pageSize: number; actionLabel: string }> = {
+  [DatasetType.ANOMALY_DETECTION]: { pageSize: 10, actionLabel: 'datasets.annotate' },
+  [DatasetType.LOG_CLUSTERING]: { pageSize: 10, actionLabel: 'common.detail' },
+  [DatasetType.TIMESERIES_PREDICT]: { pageSize: 10, actionLabel: 'common.detail' },
+  [DatasetType.CLASSIFICATION]: { pageSize: 20, actionLabel: 'common.detail' },
+  [DatasetType.IMAGE_CLASSIFICATION]: { pageSize: 20, actionLabel: 'datasets.annotate' },
+  [DatasetType.OBJECT_DETECTION]: { pageSize: 20, actionLabel: 'datasets.annotate' },
+};
+
+interface AlgorithmDetailProps {
+  datasetType: DatasetType;
+}
+
+const AlgorithmDetail = ({ datasetType }: AlgorithmDetailProps) => {
   const { t } = useTranslation();
   const router = useRouter();
   const routeParams = useParams();
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
-  const {
-    getTrainDataByDataset,
-    deleteTrainDataFile,
-    updateImageClassificationTrainData,
-  } = useMlopsManageApi();
+  const { getTrainDataByDataset, deleteTrainDataFile, updateTrainData } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [currentData, setCurrentData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
+
+  const config = DETAIL_CONFIG[datasetType];
+
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: config.pageSize,
   });
 
-  // Get route params
   const algorithmType = routeParams.algorithmType as string;
 
   const {
@@ -71,7 +83,6 @@ const ImageClassificationDetail = () => {
         const activeTypes = Object.entries(record.type)
           .filter(([, value]) => value === true)
           .map(([key]) => <Tag key={key} color={TYPE_COLOR[key]}>{t(`datasets.${TYPE_CONTENT[key]}`)}</Tag>);
-
         return (<>{activeTypes.length ? activeTypes : '--'}</>)
       },
     },
@@ -89,7 +100,7 @@ const ImageClassificationDetail = () => {
               className="mr-2.5"
               onClick={() => toAnnotation(record)}
             >
-              {t('datasets.annotate')}
+              {t(config.actionLabel)}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Edit']}>
@@ -138,21 +149,16 @@ const ImageClassificationDetail = () => {
     getDataset(search);
   };
 
-  const toAnnotation = (data: any) => {
-    router.push(`/mlops/${algorithmType}/annotation?dataset_id=${datasetId}&file_id=${data.id}&folder_name=${folder_name}&description=${description}`);
-  };
-
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
       const { count, items } = await getTrainDataByDataset({
-        key: DatasetType.IMAGE_CLASSIFICATION,
+        key: datasetType,
         name: search,
         dataset: datasetId,
         page: pagination.current,
         page_size: pagination.pageSize
       });
-
       const _tableData = items?.map((item: any) => {
         return {
           id: item?.id,
@@ -174,7 +180,7 @@ const ImageClassificationDetail = () => {
       });
     }
     catch (e) { console.error(e) }
-    finally { setLoading(false); }
+    finally { setLoading(false) }
   }, [t, searchParams]);
 
   const onUpload = () => {
@@ -189,13 +195,17 @@ const ImageClassificationDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteTrainDataFile(data.id, DatasetType.IMAGE_CLASSIFICATION);
+      await deleteTrainDataFile(data.id, datasetType);
     } catch (e) {
       console.error(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
     }
+  };
+
+  const toAnnotation = (data: any) => {
+    router.push(`/mlops/${algorithmType}/annotation?dataset_id=${datasetId}&file_id=${data.id}&folder_name=${folder_name}&description=${description}`);
   };
 
   const handleChange = (value: any) => {
@@ -209,17 +219,15 @@ const ImageClassificationDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (algorithmType === DatasetType.IMAGE_CLASSIFICATION) {
-        const params = {
-          is_train_data: selectedTags.includes('is_train_data'),
-          is_val_data: selectedTags.includes('is_val_data'),
-          is_test_data: selectedTags.includes('is_test_data')
-        };
-        await updateImageClassificationTrainData(currentData?.id, params);
-        message.success(t(`common.updateSuccess`));
-        setModalOpen(false);
-        getDataset();
-      }
+      const params = {
+        is_train_data: selectedTags.includes('is_train_data'),
+        is_val_data: selectedTags.includes('is_val_data'),
+        is_test_data: selectedTags.includes('is_test_data')
+      };
+      await updateTrainData(currentData?.id, datasetType, params);
+      message.success(t(`common.updateSuccess`));
+      setModalOpen(false);
+      getDataset();
     } catch (e) {
       console.error(e);
     } finally {
@@ -239,31 +247,33 @@ const ImageClassificationDetail = () => {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4 gap-2">
-        <div>
-          <Breadcrumb
-            separator=">"
-            items={[
-              { title: <a href="#" onClick={() => router.push(`/mlops/${algorithmType}/datasets`)}>{t(`datasets.datasets`)}</a> },
-              { title: t(`datasets.datasetsDetail`) }
-            ]}
-          />
-        </div>
+      <div className="flex justify-between items-center mb-4 gap-2 h-8">
+        <Breadcrumb
+          separator=">"
+          items={[
+            {
+              title: <a onClick={() => router.push(`/mlops/${algorithmType}/datasets`)}>{t(`datasets.datasets`)}</a>
+            },
+            {
+              title: t(`datasets.datasetsDetail`)
+            }
+          ]}
+        />
         <div className='flex gap-2'>
           <Search
-            className="w-60 mr-1.5"
+            className="w-60"
             placeholder={t('common.search')}
             enterButton
             onSearch={onSearch}
             style={{ fontSize: 15 }}
           />
           <PermissionWrapper requiredPermissions={['Add']}>
-            <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
+            <Button type="primary" className="rounded-md shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['View']}>
-            <DatasetReleaseList datasetType={DatasetType.IMAGE_CLASSIFICATION} />
+            <DatasetReleaseList datasetType={datasetType} />
           </PermissionWrapper>
         </div>
       </div>
@@ -304,4 +314,4 @@ const ImageClassificationDetail = () => {
   )
 };
 
-export default ImageClassificationDetail;
+export default AlgorithmDetail;
