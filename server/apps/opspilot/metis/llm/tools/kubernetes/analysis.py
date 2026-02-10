@@ -48,7 +48,7 @@ def check_kubernetes_resource_quotas(namespace=None, config: RunnableConfig = No
                         if hard_value > 0:
                             quota_info["usage_percentage"][resource] = round(
                                 (used_value / hard_value) * 100, 2)
-                    except:
+                    except Exception:
                         # For non-numeric resources like count/integer
                         try:
                             hard_int = int(hard_limit)
@@ -56,7 +56,7 @@ def check_kubernetes_resource_quotas(namespace=None, config: RunnableConfig = No
                             if hard_int > 0:
                                 quota_info["usage_percentage"][resource] = round(
                                     (used_int / hard_int) * 100, 2)
-                        except:
+                        except Exception:
                             quota_info["usage_percentage"][resource] = "无法计算"
 
             result.append(quota_info)
@@ -546,7 +546,7 @@ def analyze_deployment_configurations(namespace=None, config: RunnableConfig = N
                 if not has_pdb:
                     analysis["recommendations"].append(
                         "考虑配置PodDisruptionBudget以控制自愿中断")
-            except:
+            except Exception:
                 pass  # PDB API可能不可用
 
             analysis_results.append(analysis)
