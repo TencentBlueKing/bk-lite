@@ -35,7 +35,7 @@ const componentMap: { [key: string]: React.FC<any> } = {
       ))}
     </Select>
   ),
-  inputNumber: (props) => <InputNumber {...props} />,
+  inputNumber: (props) => <InputNumber {...props} style={{ width: '100%' }} />,
   groupTreeSelect: (props) => <GroupTreeSelect {...props} />,
 };
 

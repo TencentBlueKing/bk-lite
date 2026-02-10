@@ -44,7 +44,7 @@ const ChannelDetailLayout = ({ children }: { children: React.ReactNode }) => {
     nats: {
       title: t('system.channel.nats'),
       desc: t('system.channel.natsDesc'),
-      icon: 'tongdao'
+      icon: 'dongzuo1'
     }
   }
 
