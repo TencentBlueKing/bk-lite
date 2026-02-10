@@ -67,8 +67,8 @@ def general_embed_by_document_list(document_list, is_show=False, username="", do
     for index, document in tqdm(enumerate(document_list)):
         try:
             invoke_document_to_es(document=document, delete_qa_pairs=delete_qa_pairs)
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
+            logger.exception("Failed to invoke document to ES: document_id=%s", document.id)
         task_progress = task_obj.train_progress + train_progress
         task_obj.train_progress = round(task_progress, 2)
         task_obj.completed_count += 1
@@ -290,8 +290,8 @@ def delete_and_update_old_data(web_page: WebPageKnowledge):
         )
         rag_client = PgvectorRag()
         rag_client.update_metadata(request)
-    except Exception as e:
-        logger.exception(e)
+    except Exception:
+        logger.exception("Failed to delete and update old data for web_page_id=%s", web_page.id)
 
 
 @shared_task
@@ -353,8 +353,8 @@ def create_qa_pairs(qa_pairs_id_list, only_question, delete_old_qa_pairs=False):
                 only_question,
                 task_obj,
             )
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
+            logger.exception("Failed to create QA pairs: qa_pairs_id=%s", qa_pairs_obj.id)
             qa_pairs_obj.status = "failed"
             qa_pairs_obj.save()
         else:
@@ -656,8 +656,8 @@ def create_qa_pairs_by_custom(qa_pairs_id, content_list):
         success_count = ChunkHelper.create_qa_pairs(content_list, chunk_obj, es_index, embed_config, qa_pairs_id, task_obj)
         qa_pairs.generate_count = success_count
         qa_pairs.status = "completed"
-    except Exception as e:
-        logger.exception(e)
+    except Exception:
+        logger.exception("Failed to create QA pairs by custom: qa_pairs_id=%s", qa_pairs_id)
         qa_pairs.status = "failed"
     task_obj.delete()
     qa_pairs.save()

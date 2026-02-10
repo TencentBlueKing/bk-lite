@@ -150,8 +150,8 @@ class KnowledgeSearchService:
         )
         try:
             rag_client.update_metadata(request)
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
+            logger.exception("Failed to update ES metadata: index_name=%s, doc_id=%s", index_name, doc_id)
 
     @staticmethod
     def delete_es_content(index_name, doc_id, doc_name="", is_chunk=False, keep_qa=False):
@@ -178,8 +178,8 @@ class KnowledgeSearchService:
             rag_client.delete_document(request)
             if doc_name:
                 logger.info("Document {} successfully deleted.".format(doc_name))
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
+            logger.exception("Failed to delete ES content: index_name=%s, doc_ids=%s", index_name, doc_ids)
             if doc_name:
                 logger.info("Document {} not found, skipping deletion.".format(doc_name))
 
@@ -195,5 +195,5 @@ class KnowledgeSearchService:
         try:
             rag_client.delete_index(request)
             logger.info("Index {} successfully deleted.".format(index_name))
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
+            logger.exception("Failed to delete ES index: index_name=%s", index_name)

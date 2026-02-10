@@ -246,7 +246,7 @@ class LLMViewSet(AuthViewSet):
             message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
             return self.create_error_stream_response(message)
         except Exception as e:
-            logger.exception(e)
+            logger.exception("Skill execute failed: skill_id=%s", params.get("skill_id"))
             return self.create_error_stream_response(str(e))
 
     @action(methods=["POST"], detail=False)
@@ -317,7 +317,7 @@ class LLMViewSet(AuthViewSet):
             message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
             return self.create_error_stream_response(message)
         except Exception as e:
-            logger.exception(e)
+            logger.exception("AGUI skill execute failed: skill_id=%s", params.get("skill_id"))
             return self.create_error_stream_response(str(e))
 
 
@@ -521,6 +521,6 @@ class SkillToolsViewSet(AuthViewSet):
                 set_cached_mcp_tools(server_url, tools, auth_token)
                 return JsonResponse({"result": True, "data": tools, "cached": False})
         except Exception as e:
-            logger.exception(e)
+            logger.exception("Failed to fetch MCP tools: server_url=%s", server_url)
             message = self.loader.get("error.mcp_server_error") if self.loader else "Error occurred while fetching MCP tools"
             return JsonResponse({"result": False, "message": f"{message}: {str(e)}"})
