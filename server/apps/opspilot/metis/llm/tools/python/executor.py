@@ -46,7 +46,7 @@ def python_execute_direct(code: str, config: RunnableConfig) -> str:
                         result = eval(last_line, exec_globals, exec_locals)
                         if result is not None:
                             print(result)
-                    except:
+                    except Exception:
                         # 如果不是表达式，作为语句执行
                         exec(last_line, exec_globals, exec_locals)
 
