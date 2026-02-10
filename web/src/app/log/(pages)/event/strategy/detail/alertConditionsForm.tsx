@@ -296,6 +296,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           ]}
         >
           <InputNumber
+            className="w-[800px]"
             min={SCHEDULE_UNIT_MAP[`${unit}Min`]}
             max={SCHEDULE_UNIT_MAP[`${unit}Max`]}
             precision={0}
@@ -333,6 +334,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           ]}
         >
           <InputNumber
+            className="w-[800px]"
             min={SCHEDULE_UNIT_MAP[`${periodUnit}Min`]}
             max={SCHEDULE_UNIT_MAP[`${periodUnit}Max`]}
             precision={0}
