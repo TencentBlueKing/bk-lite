@@ -5,6 +5,7 @@
 """
 # Shield class for handling event shielding operations.
 """
+
 import datetime
 from typing import List, Dict, Any
 from django.utils import timezone
@@ -141,10 +142,12 @@ class EventShieldOperator(object):
         Returns:
             时间范围内的屏蔽策略列表
         """
+        # 使用当前时间检查屏蔽策略的时间范围是否生效
+        check_time = timezone.now()
 
         time_matched_shields = []
         for shield in self.active_shields:
-            checker = TimeRangeChecker(shield.suppression_time, self.event_received_at)
+            checker = TimeRangeChecker(shield.suppression_time, check_time)
             if checker.is_in_range():
                 time_matched_shields.append(shield)
             else:
@@ -182,7 +185,9 @@ class EventShieldOperator(object):
 
         elif shield.match_type == AlertShieldMatchType.FILTER:
             # 过滤匹配，使用规则匹配器
-            return self.rule_matcher.filter_queryset(base_queryset, shield.match_rules or [])
+            return self.rule_matcher.filter_queryset(
+                base_queryset, shield.match_rules or []
+            )
 
         return []
 
