@@ -22,7 +22,7 @@ def build_dimensions(
     if isinstance(instance_id, str):
         try:
             instance_id = ast.literal_eval(instance_id)
-        except Exception:
+        except (ValueError, SyntaxError):
             return {}
 
     if not isinstance(instance_id, tuple):
@@ -46,7 +46,7 @@ def extract_monitor_instance_id(instance_id: Union[tuple, str]) -> str:
     if isinstance(instance_id, str):
         try:
             instance_id = ast.literal_eval(instance_id)
-        except Exception:
+        except (ValueError, SyntaxError):
             return instance_id
 
     if isinstance(instance_id, tuple) and len(instance_id) > 0:

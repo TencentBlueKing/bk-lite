@@ -11,7 +11,7 @@ from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.utils.unit_converter import UnitConverter
 
 
-class MetricsInstanceVieSet(viewsets.ViewSet):
+class MetricsInstanceViewSet(viewsets.ViewSet):
     @action(methods=["get"], detail=False, url_path="query")
     def get_metrics(self, request):
         """
