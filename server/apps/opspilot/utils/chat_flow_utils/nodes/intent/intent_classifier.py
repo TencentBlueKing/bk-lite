@@ -140,15 +140,15 @@ class IntentClassifierNode(AgentNode):
 
             # 获取LLM返回的意图文本（如："知识问答"、"工单问题"）
             intent_text = result.get(output_key, "").strip()
-            logger.info(f"意图分类节点 {node_id} LLM返回意图: {intent_text}")
+            logger.info("意图分类节点 %s LLM返回意图: %r", node_id, intent_text)
 
             # 验证意图是否在配置的intents列表中
             if intent_text not in intent_names:
-                logger.warning(f"意图分类节点 {node_id} 返回的意图 '{intent_text}' 不在配置列表中: {intent_names}")
+                logger.warning("意图分类节点 %s 返回的意图 %r 不在配置列表中: %r", node_id, intent_text, intent_names)
                 # 使用第一个意图作为默认值
                 if intent_names:
                     intent_text = intent_names[0]
-                    logger.info(f"意图分类节点 {node_id} 使用默认意图: {intent_text}")
+                    logger.info("意图分类节点 %s 使用默认意图: %r", node_id, intent_text)
 
             # 返回结果，intent_result将用于匹配edge的sourceHandle
             return {
@@ -158,7 +158,7 @@ class IntentClassifierNode(AgentNode):
             }
 
         except Exception as e:
-            logger.exception(f"意图分类节点 {node_id} 执行失败: {str(e)}")
+            logger.exception("意图分类节点 %s 执行失败: %r", node_id, e)
             # 失败时使用第一个意图作为默认值
             default_intent = intents[0].get("name", "") if intents else "error"
             return {output_key: str(e), "intent_result": default_intent, "previous_output": previous_node_output}
