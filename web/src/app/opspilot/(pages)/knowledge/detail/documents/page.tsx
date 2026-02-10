@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Input, Button, Modal, message, Tabs, Tooltip, Dropdown, Menu, Space, Radio, Upload } from 'antd';
 import { PlusOutlined, DeleteOutlined, TrademarkOutlined, SyncOutlined, DownOutlined, InboxOutlined } from '@ant-design/icons';
@@ -83,6 +83,8 @@ const DocumentsPage: React.FC = () => {
   const [isQAPairModalVisible, setIsQAPairModalVisible] = useState(false);
   const [exportLoadingMap, setExportLoadingMap] = useState<{ [key: number]: boolean }>({});
 
+  const uploadTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const [knowledgeBaseCounts, setKnowledgeBaseCounts] = useState({
     file_count: 0,
     web_page_count: 0,
@@ -130,6 +132,9 @@ const DocumentsPage: React.FC = () => {
 
   useEffect(() => {
     fetchKnowledgeBaseDetails();
+    return () => {
+      if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
+    };
   }, []);
 
   const fetchQAPairData = useCallback(async (text = '', skipLoading = false) => {
@@ -542,7 +547,8 @@ const DocumentsPage: React.FC = () => {
     
     setUploadingFiles(prev => new Set([...prev, fileId]));
     
-    setTimeout(() => {
+    if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
+    uploadTimerRef.current = setTimeout(() => {
       setUploadedFiles(prev => [...prev, file]);
       setUploadingFiles(prev => {
         const newSet = new Set(prev);

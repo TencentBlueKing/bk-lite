@@ -1,6 +1,6 @@
 [[inputs.sqlserver]]
     startup_error_behavior = "retry"
-    servers = ["Server={{ host }};Port={{ port }};User Id={{ username }};Password=${PASSWORD__{{ config_id }}};app name=telegraf;log=1;encrypt=disable;"]
+    servers = ["sqlserver://{{ username }}:${PASSWORD__{{ config_id }}}@{{ host }}:{{ port }}?database={{ database | default('master') }}&app+name=telegraf&encrypt=disable"]
     database_type = "SQLServer"
     exclude_query = ["SQLServerAvailabilityReplicaStates", "SQLServerDatabaseReplicaStates"]
     interval = "{{ interval }}s"

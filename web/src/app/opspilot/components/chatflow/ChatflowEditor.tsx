@@ -60,6 +60,17 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   const [isInitialized, setIsInitialized] = useState(false);
   const [isInteractive, setIsInteractive] = useState(true);
   const lastSaveData = useRef<string>('');
+  const fitViewTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const intentRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const intentRestoreTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (fitViewTimerRef.current) clearTimeout(fitViewTimerRef.current);
+      if (intentRefreshTimerRef.current) clearTimeout(intentRefreshTimerRef.current);
+      if (intentRestoreTimerRef.current) clearTimeout(intentRestoreTimerRef.current);
+    };
+  }, []);
 
   const [nodes, setNodes] = useNodesState(
     initialData?.nodes && Array.isArray(initialData.nodes) ? initialData.nodes : []
@@ -114,7 +125,6 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       if (currentData !== lastSaveData.current) {
         lastSaveData.current = currentData;
         const timeoutId = setTimeout(() => {
-          console.log('ChatflowEditor: Saving data changes');
           onSave(nodes, edges);
         }, 100);
         return () => clearTimeout(timeoutId);
@@ -136,14 +146,12 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
   const handleAutoLayout = useCallback(
     async (direction: 'LR' | 'TB') => {
-      console.log('Auto layout triggered, nodes:', nodes.length, 'edges:', edges.length);
       const { nodes: layoutedNodes } = await getLayoutedElements(nodes, edges, { direction });
-      console.log('Layout complete, new positions:', layoutedNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y })));
       setNodes(layoutedNodes);
 
-      // 布局完成后自动适应视图
       if (reactFlowInstance) {
-        setTimeout(() => {
+        if (fitViewTimerRef.current) clearTimeout(fitViewTimerRef.current);
+        fitViewTimerRef.current = setTimeout(() => {
           reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
         }, 50);
       }
@@ -206,9 +214,9 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
     setReactFlowInstance(instance);
     setViewport(instance.getViewport());
 
-    // 如果有初始节点数据，自动适应视图
     if (initialData?.nodes && initialData.nodes.length > 0) {
-      setTimeout(() => {
+      if (fitViewTimerRef.current) clearTimeout(fitViewTimerRef.current);
+      fitViewTimerRef.current = setTimeout(() => {
         instance.fitView({ padding: 0.2, duration: 400 });
       }, 50);
     }
@@ -318,18 +326,17 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
     // 如果是意图分类节点，强制重新挂载来刷新连接点
     if (isIntentClassification) {
-      setTimeout(() => {
+      if (intentRefreshTimerRef.current) clearTimeout(intentRefreshTimerRef.current);
+      intentRefreshTimerRef.current = setTimeout(() => {
         setNodes((nds) => {
           const targetNode = nds.find(n => n.id === nodeId);
           if (!targetNode) return nds;
 
-          // 先移除节点
           const filtered = nds.filter(n => n.id !== nodeId);
 
-          // 立即恢复节点（使用当前找到的 targetNode，而不是闭包中的旧数据）
-          setTimeout(() => {
+          if (intentRestoreTimerRef.current) clearTimeout(intentRestoreTimerRef.current);
+          intentRestoreTimerRef.current = setTimeout(() => {
             setNodes((current) => {
-              // 检查节点是否已经存在，避免重复添加
               if (current.find(n => n.id === nodeId)) {
                 return current;
               }

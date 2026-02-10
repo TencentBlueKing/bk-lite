@@ -64,13 +64,17 @@ class SnapshotRecorder:
             if not raw_data:
                 raw_data = self._query_fallback_raw_data(metric_id)
 
-            if related_events or raw_data or is_new_alert:
+            # 无数据告警即使没有 raw_data 也需要记录快照（记录"仍然无数据"状态）
+            is_no_data_alert = alert.alert_type == "no_data"
+
+            if related_events or raw_data or is_new_alert or is_no_data_alert:
                 self._update_alert_snapshot(
                     alert,
                     related_events,
                     raw_data,
                     self.policy.last_run_time,
                     is_new_alert,
+                    is_no_data_alert,
                 )
 
     def _build_instance_raw_data_map(self, event_objs, info_events):
@@ -114,7 +118,13 @@ class SnapshotRecorder:
         return {}
 
     def _update_alert_snapshot(
-        self, alert, event_objs, raw_data, snapshot_time, is_new_alert=False
+        self,
+        alert,
+        event_objs,
+        raw_data,
+        snapshot_time,
+        is_new_alert=False,
+        is_no_data_alert=False,
     ):
         """更新告警的快照数据"""
         snapshot_obj, created = MonitorAlertMetricSnapshot.objects.get_or_create(
@@ -181,6 +191,26 @@ class SnapshotRecorder:
                 has_new_snapshot = True
                 logger.debug(
                     f"Added info snapshot for alert {alert.id}, time {snapshot_time_str}"
+                )
+
+        elif is_no_data_alert:
+            snapshot_time_str = snapshot_time.isoformat()
+            existing_snapshot_times = [
+                s.get("snapshot_time")
+                for s in snapshot_obj.snapshots
+                if s.get("type") == "no_data"
+            ]
+            if snapshot_time_str not in existing_snapshot_times:
+                no_data_snapshot = {
+                    "type": "no_data",
+                    "event_time": snapshot_time_str,
+                    "snapshot_time": snapshot_time_str,
+                    "raw_data": {},
+                }
+                snapshot_obj.snapshots.append(no_data_snapshot)
+                has_new_snapshot = True
+                logger.debug(
+                    f"Added no_data snapshot for alert {alert.id}, time {snapshot_time_str}"
                 )
 
         if has_new_snapshot:

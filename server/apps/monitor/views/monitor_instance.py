@@ -18,7 +18,7 @@ from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.rpc.node_mgmt import NodeMgmt
 
 
-class MonitorInstanceVieSet(viewsets.ViewSet):
+class MonitorInstanceViewSet(viewsets.ViewSet):
     @action(
         methods=["get"], detail=False, url_path="query_params_enum/(?P<name>[^/.]+)"
     )

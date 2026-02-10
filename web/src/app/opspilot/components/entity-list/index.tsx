@@ -52,6 +52,13 @@ const EntityList = <T,>({
   const observer = useRef<IntersectionObserver>(null as any);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const isFetching = useRef(false);
+  const typeChangeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (typeChangeTimerRef.current) clearTimeout(typeChangeTimerRef.current);
+    };
+  }, []);
 
   const getTypeConfig = () => {
     if (itemTypeSingle === 'skill') {
@@ -84,7 +91,8 @@ const EntityList = <T,>({
     setCurrentPage(1);
     setItems([]);
     setHasMore(true);
-    setTimeout(() => {
+    if (typeChangeTimerRef.current) clearTimeout(typeChangeTimerRef.current);
+    typeChangeTimerRef.current = setTimeout(() => {
       fetchItems(true);
     }, 0);
   };

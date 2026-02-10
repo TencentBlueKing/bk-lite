@@ -19,7 +19,7 @@ from apps.monitor.services.policy_baseline import PolicyBaselineService
 from config.drf.pagination import CustomPageNumberPagination
 
 
-class MonitorPolicyVieSet(viewsets.ModelViewSet):
+class MonitorPolicyViewSet(viewsets.ModelViewSet):
     queryset = MonitorPolicy.objects.all()
     serializer_class = MonitorPolicySerializer
     filterset_class = MonitorPolicyFilter
