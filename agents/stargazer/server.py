@@ -1,5 +1,5 @@
 from sanic import Sanic
-from api import api
+from api import api, enterprise_api
 from core.config import YamlConfig
 from dotenv import load_dotenv
 from core.nats import initialize_nats
@@ -11,6 +11,8 @@ load_dotenv(".env")
 yml_config = YamlConfig(path="./config.yml")
 app = Sanic("Stargazer", config=yml_config)
 app.blueprint(api)
+if enterprise_api:
+    app.blueprint(enterprise_api)
 
 nats_instance_id = os.getenv("NATS_INSTANCE_ID", "default")
 service_name = f"{nats_instance_id}_stargazer"
