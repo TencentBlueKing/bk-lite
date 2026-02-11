@@ -26,6 +26,7 @@ import {
 } from '@ant-design/icons';
 import { useInstanceApi } from '@/app/cmdb/api';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
+import { useUserInfoContext } from '@/context/userInfo';
 
 const { Panel } = Collapse;
 const InfoList: React.FC<AssetDataFieldProps> = ({
@@ -40,6 +41,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const [isBatchEdit, setIsBatchEdit] = useState<boolean>(false);
   const [isBatchSaving, setIsBatchSaving] = useState<boolean>(false);
   const { t } = useTranslation();
+  const { flatGroups } = useUserInfoContext();
 
   const { updateInstance, getInstanceProxys } = useInstanceApi();
 
@@ -421,6 +423,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       userList,
       isEdit: false,
       value,
+      hideUserAvatar: true,
+      flatGroups,
     });
     navigator.clipboard.writeText(copyVal);
     message.success(t('successfulCopied'));
