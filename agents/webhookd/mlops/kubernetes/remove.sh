@@ -32,6 +32,9 @@ if [ -z "$ID" ]; then
     exit 1
 fi
 
+# K8s 资源名称（DNS-1123 合规）
+K8S_NAME=$(sanitize_k8s_name "$ID")
+
 # 使用默认命名空间（如果未指定）
 if [ -z "$NAMESPACE" ]; then
     NAMESPACE="$KUBERNETES_NAMESPACE"
@@ -39,15 +42,15 @@ fi
 
 # 检查资源类型
 set +e
-JOB_EXISTS=$(kubectl get job "$ID" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
-DEPLOYMENT_EXISTS=$(kubectl get deployment "$ID" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+JOB_EXISTS=$(kubectl get job "$K8S_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+DEPLOYMENT_EXISTS=$(kubectl get deployment "$K8S_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
 set -e
 
 DELETED_RESOURCES=""
 
 if [ -n "$JOB_EXISTS" ]; then
     # 删除 Job
-    DELETE_OUTPUT=$(kubectl delete job "$ID" -n "$NAMESPACE" 2>&1)
+    DELETE_OUTPUT=$(kubectl delete job "$K8S_NAME" -n "$NAMESPACE" 2>&1)
     DELETE_STATUS=$?
     
     if [ $DELETE_STATUS -ne 0 ]; then
@@ -58,13 +61,13 @@ if [ -n "$JOB_EXISTS" ]; then
     DELETED_RESOURCES="Job"
     
     # 删除关联的 Secret
-    SECRET_NAME=$(generate_secret_name "$ID")
+    SECRET_NAME=$(generate_secret_name "$K8S_NAME")
     delete_secret "$NAMESPACE" "$SECRET_NAME"
 fi
 
 if [ -n "$DEPLOYMENT_EXISTS" ]; then
     # 删除 Deployment
-    DELETE_OUTPUT=$(kubectl delete deployment "$ID" -n "$NAMESPACE" 2>&1)
+    DELETE_OUTPUT=$(kubectl delete deployment "$K8S_NAME" -n "$NAMESPACE" 2>&1)
     DELETE_STATUS=$?
     
     if [ $DELETE_STATUS -ne 0 ]; then
@@ -79,7 +82,7 @@ if [ -n "$DEPLOYMENT_EXISTS" ]; then
     fi
     
     # 删除 Service
-    SERVICE_NAME="${ID}-svc"
+    SERVICE_NAME="${K8S_NAME}-svc"
     set +e
     SERVICE_EXISTS=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
     set -e
