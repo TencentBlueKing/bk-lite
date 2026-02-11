@@ -296,6 +296,7 @@ const ViewList: React.FC<ViewListProps> = ({
                 const size: [number, number] = hasDimensions
                   ? [220, 20]
                   : [240, 20];
+                const metricUnit = record[item.key]?.unit || target?.unit || '';
                 return (
                   <div className="flex items-center justify-between">
                     <Progress
@@ -309,10 +310,12 @@ const ViewList: React.FC<ViewListProps> = ({
                     />
                     {hasDimensions && (
                       <MetricDimensionTooltip
-                        metricItem={target}
                         instanceId={record.instance_id}
-                        metricId={target.id}
                         monitorObjectId={objectId}
+                        metricInfo={{
+                          metricItem: target,
+                          metricUnit
+                        }}
                       />
                     )}
                   </div>
@@ -358,10 +361,12 @@ const ViewList: React.FC<ViewListProps> = ({
                   </span>
                   {hasDimensions && (
                     <MetricDimensionTooltip
-                      metricItem={target}
                       instanceId={record.instance_id}
-                      metricId={target.id}
                       monitorObjectId={objectId}
+                      metricInfo={{
+                        metricItem: target,
+                        metricUnit
+                      }}
                     />
                   )}
                 </div>
