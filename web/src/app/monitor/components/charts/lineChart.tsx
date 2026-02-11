@@ -37,6 +37,7 @@ import {
   ThresholdField
 } from '@/app/monitor/types';
 import { LEVEL_MAP } from '@/app/monitor/constants';
+import { useLevelList } from '@/app/monitor/hooks';
 
 interface LineChartProps {
   data: ChartData[];
@@ -81,6 +82,7 @@ const LineChart: React.FC<LineChartProps> = memo(
     onXRangeChange
   }) => {
     const { formatTime } = useFormatTime();
+    const levelList = useLevelList();
     const [startX, setStartX] = useState<number | null>(null);
     const [endX, setEndX] = useState<number | null>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -109,6 +111,18 @@ const LineChart: React.FC<LineChartProps> = memo(
     const chartAreaKeys = useMemo(() => getChartAreaKeys(data), [data]);
 
     const details = useMemo(() => getDetails(data), [data]);
+
+    const levelNameMap = useMemo(() => {
+      return levelList.reduce(
+        (acc, item) => {
+          if (item.value) {
+            acc[item.value as string] = item.label || '';
+          }
+          return acc;
+        },
+        {} as Record<string, string>
+      );
+    }, [levelList]);
 
     const { minTime, maxTime } = useMemo(() => {
       const times = data.map((d) => d.time);
@@ -152,6 +166,11 @@ const LineChart: React.FC<LineChartProps> = memo(
       }
       return [0, 'auto'];
     }, [data, threshold]);
+
+    const criticalThreshold = useMemo(() => {
+      const critical = threshold.find((item) => item.level === 'critical');
+      return critical?.value ?? null;
+    }, [threshold]);
 
     const hasDimension = useMemo(() => {
       return !Object.values(details || {}).every((item) => !item.length);
@@ -274,7 +293,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                 data={data}
                 margin={{
                   top: 10,
-                  right: eventData?.length ? 20 : 0,
+                  right: threshold?.length ? 70 : (eventData?.length ? 20 : 0),
                   left: 0,
                   bottom: 0
                 }}
@@ -322,6 +341,14 @@ const LineChart: React.FC<LineChartProps> = memo(
                     hide={!visibleAreas.includes(key)}
                   />
                 ))}
+                {criticalThreshold !== null && (
+                  <ReferenceArea
+                    y1={criticalThreshold}
+                    y2={yAxisDomain[1] === 'auto' ? undefined : yAxisDomain[1]}
+                    fill="rgba(244, 59, 44, 0.1)"
+                    fillOpacity={1}
+                  />
+                )}
                 {/* 阈值线的鼠标触发区域（透明，较粗） */}
                 {threshold.map((item, index) => (
                   <ReferenceLine
@@ -344,16 +371,22 @@ const LineChart: React.FC<LineChartProps> = memo(
                   />
                 ))}
 
-                {/* 阈值线的可视部分（较细） */}
+                {/* 阈值线的可视部分（实线） */}
                 {threshold.map((item, index) => (
                   <ReferenceLine
                     key={`visual-${index}`}
                     y={`${item.value}`}
                     isFront={true}
                     stroke={`${LEVEL_MAP[item.level]}`}
-                    strokeDasharray="12 3 3 3 3 3"
-                    strokeWidth={2}
+                    strokeWidth={1}
                     style={{ pointerEvents: 'none' }}
+                    label={{
+                      value: `${levelNameMap[item.level] || item.level} ${item.value}`,
+                      position: 'right',
+                      fill: `${LEVEL_MAP[item.level]}`,
+                      fontSize: 12,
+                      fontWeight: 500
+                    }}
                   />
                 ))}
 
