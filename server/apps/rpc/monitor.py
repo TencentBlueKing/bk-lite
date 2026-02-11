@@ -1,9 +1,14 @@
-from apps.rpc.base import RpcClient, BaseOperationAnaRpc
+import os
+
+from apps.rpc.base import RpcClient, AppClient, BaseOperationAnaRpc
 
 
 class Monitor(object):
-    def __init__(self):
-        self.client = RpcClient()
+    def __init__(self, is_local_client=False):
+        is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
+        self.client = (
+            AppClient("apps.monitor.nats.monitor") if is_local_client else RpcClient()
+        )
 
     def get_module_data(self, **kwargs):
         """
@@ -30,62 +35,61 @@ class Monitor(object):
 
 
 class MonitorOperationAnaRpc(BaseOperationAnaRpc):
-
     def monitor_objects(self, **kwargs):
         """查询监控对象列表"""
         return self.client.run("monitor_objects", **kwargs)
 
     def monitor_metrics(self, monitor_obj_id: str, **kwargs):
         """查询指标信息"""
-        return self.client.run("monitor_metrics", monitor_obj_id=monitor_obj_id, **kwargs)
+        return self.client.run(
+            "monitor_metrics", monitor_obj_id=monitor_obj_id, **kwargs
+        )
 
     def monitor_object_instances(self, monitor_obj_id: str, **kwargs):
         """查询监控对象实例列表
-            monitor_obj_id: 监控对象ID
-            permission_data: {
-                team: 当前组织ID
-                user: 用户对象或用户名
-            }
+        monitor_obj_id: 监控对象ID
+        permission_data: {
+            team: 当前组织ID
+            user: 用户对象或用户名
+        }
         """
         return self.client.run(
-            "monitor_object_instances",
-            monitor_obj_id=monitor_obj_id,
-            **kwargs
+            "monitor_object_instances", monitor_obj_id=monitor_obj_id, **kwargs
         )
 
     def query_monitor_data_by_metric(self, query_data: dict, **kwargs):
         """查询监控数据
-            query_data: {
-                "monitor_object_id": str,
-                "metric": str,
-                "start_time": int,
-                "end_time": int,
-                "step": int
-            }
-            permission_data: {
-                team: 当前组织ID
-                user: 用户对象或用户名
-            }
+        query_data: {
+            "monitor_object_id": str,
+            "metric": str,
+            "start_time": int,
+            "end_time": int,
+            "step": int
+        }
+        permission_data: {
+            team: 当前组织ID
+            user: 用户对象或用户名
+        }
         """
         return self.client.run(
-            "query_monitor_data_by_metric",
-            query_data=query_data,
-            **kwargs
+            "query_monitor_data_by_metric", query_data=query_data, **kwargs
         )
 
-    def query_range(self, query: str, time_range:str, step="5m", **kwargs):
+    def query_range(self, query: str, time_range: str, step="5m", **kwargs):
         """查询时间范围内的指标数据
-            query: 指标查询语句
-            start: 开始时间（UTC时间戳）
-            end: 结束时间（UTC时间戳）
-            step: 数据采集间隔，默认为5分钟
+        query: 指标查询语句
+        start: 开始时间（UTC时间戳）
+        end: 结束时间（UTC时间戳）
+        step: 数据采集间隔，默认为5分钟
         """
-        return self.client.run("mm_query_range", query=query, time_range=time_range, step=step, **kwargs)
+        return self.client.run(
+            "mm_query_range", query=query, time_range=time_range, step=step, **kwargs
+        )
 
     def query(self, query: str, step="5m", **kwargs):
         """查询单点指标数据
-            query: 指标查询语句
-            step: 数据采集间隔，默认为5分钟
-            time: 查询时间点（UTC时间戳），默认为当前时间
+        query: 指标查询语句
+        step: 数据采集间隔，默认为5分钟
+        time: 查询时间点（UTC时间戳），默认为当前时间
         """
         return self.client.run("mm_query", query=query, step=step, **kwargs)
