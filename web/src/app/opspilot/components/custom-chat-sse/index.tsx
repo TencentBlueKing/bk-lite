@@ -25,7 +25,7 @@ import { useSendMessage } from './hooks/useSendMessage';
 import { useReferenceHandler } from './hooks/useReferenceHandler';
 
 const md = new MarkdownIt({
-  html: false, // Disable raw HTML for security
+  html: true, // Enable raw HTML (sanitized by DOMPurify)
   highlight: function (str: string, lang: string) {
     if (lang && hljs.getLanguage(lang)) {
       try {
@@ -39,7 +39,7 @@ const md = new MarkdownIt({
 // Sanitize HTML to prevent XSS
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button'],
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button', 'style'],
     ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'src', 'alt', 'width', 'height', 'aria-hidden'],
     ALLOW_DATA_ATTR: true,
   });
