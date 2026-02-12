@@ -103,7 +103,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
                 if not values:
                     continue
 
-                extracted_values = MetricsInstanceVieSet._extract_values_from_item(
+                extracted_values = MetricsInstanceViewSet._extract_values_from_item(
                     values
                 )
                 all_numeric_values.extend(extracted_values)
@@ -137,11 +137,11 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
                 )
 
                 if is_single_value:
-                    MetricsInstanceVieSet._convert_single_value(
+                    MetricsInstanceViewSet._convert_single_value(
                         item, values, source_unit, final_target_unit
                     )
                 else:
-                    MetricsInstanceVieSet._convert_range_values(
+                    MetricsInstanceViewSet._convert_range_values(
                         item, values, source_unit, final_target_unit
                     )
 

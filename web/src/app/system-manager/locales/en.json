@@ -306,7 +306,7 @@
         "description": "DESCRIPTION",
         "name": "NAME"
       },
-      "emailDesc": "The email channel supports the integration of various notification methods and the flexible configuration of different notification templates.",
+      "emailDesc": "The email channel supports sending email notifications via SMTP service.",
       "template": {
         "context": "CONTEXT",
         "detail": "Detail",
@@ -314,7 +314,7 @@
         "name": "NAME"
       },
       "email": "Email",
-      "weComDesc": "The Chat Group Helper channel supports the integration of various notification methods and the flexible configuration of different notification templates.",
+      "weComDesc": "The Chat Group Helper channel supports sending notifications to WeCom groups via Webhook.",
       "weCom": "Chat Group Helper",
       "nats": "NATS Channel",
       "natsDesc": "The NATS channel supports notification push through NATS message queue."

@@ -13,9 +13,8 @@ import {
 
 const MetricDimensionTooltip: React.FC<MetricDimensionTooltipProps> = ({
   instanceId,
-  metricId,
   monitorObjectId,
-  metricItem
+  metricInfo
 }) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState<boolean>(false);
@@ -25,20 +24,19 @@ const MetricDimensionTooltip: React.FC<MetricDimensionTooltipProps> = ({
   const { getMetricsInstanceQuery } = useViewApi();
   const { getEnumValueUnit } = useUnitTransform();
 
+  const { metricItem, metricUnit } = metricInfo;
+  const metricId = metricItem?.id;
   const dimensions = metricItem?.dimensions || [];
 
   const formatMetricData = useCallback(
-    (
-      metricsData: TooltipMetricDataItem[],
-      unit: string
-    ): TooltipDimensionDataItem[] => {
+    (metricsData: TooltipMetricDataItem[]): TooltipDimensionDataItem[] => {
       if (!metricsData?.length || !dimensions?.length) {
         return [];
       }
       return metricsData.map((item) => {
         const metric = item.metric;
         const rawValue = item.value[1];
-        const value = getEnumValueUnit({ ...metricItem, unit }, rawValue);
+        const value = getEnumValueUnit(metricItem, rawValue, metricUnit);
         const dimensionParts = dimensions
           .map((dim) => {
             const dimValue = metric[dim.name];
@@ -55,7 +53,7 @@ const MetricDimensionTooltip: React.FC<MetricDimensionTooltipProps> = ({
         };
       });
     },
-    [dimensions, metricItem, getEnumValueUnit]
+    [dimensions, metricItem, metricUnit, getEnumValueUnit]
   );
 
   const fetchDimensionData = useCallback(async () => {
@@ -68,7 +66,7 @@ const MetricDimensionTooltip: React.FC<MetricDimensionTooltipProps> = ({
         auto_convert: false
       });
       const data = responseData?.data || {};
-      const formattedData = formatMetricData(data.result || [], data.unit);
+      const formattedData = formatMetricData(data.result || []);
       setDimensionData(formattedData);
     } catch {
       setDimensionData([]);

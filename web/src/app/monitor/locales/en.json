@@ -142,6 +142,7 @@
       "noDataAlertNameDefault": "${monitor_object}${instance_name} triggered ${metric_name} no data alert",
       "channelTypeEmail": "Email",
       "channelTypeWechatBot": "WeChat Bot",
+      "channelTypeNats": "NATS Channel",
       "notificationDesc": "Select the notification method and recipients when an alert is triggered.",
       "notificationConfig": "Notify",
       "notificationChannel": "Channel"

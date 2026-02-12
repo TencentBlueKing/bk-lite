@@ -51,9 +51,10 @@ if [ -z "$TRAIN_IMAGE" ]; then
     exit 1
 fi
 
-# Deployment/Service 名称
-DEPLOYMENT_NAME="${ID}"
-SERVICE_NAME="${ID}-svc"
+# Deployment/Service 名称（Kubernetes 资源名称必须符合 DNS-1123 标准）
+K8S_NAME=$(sanitize_k8s_name "$ID")
+DEPLOYMENT_NAME="${K8S_NAME}"
+SERVICE_NAME="${K8S_NAME}-svc"
 
 # 确保命名空间存在
 ensure_namespace "$NAMESPACE" || {
