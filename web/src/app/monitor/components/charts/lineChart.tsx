@@ -197,12 +197,14 @@ const LineChart: React.FC<LineChartProps> = memo(
           ...item,
           numValue: item.value as number,
           formattedValue: formatThresholdValue(item.value as number),
-          labelText: `${levelNameMap[item.level] || item.level} ${formatThresholdValue(item.value as number)}`
+          labelText: `${levelNameMap[item.level] || item.level} ${formatThresholdValue(item.value as number)}`,
+          // 使用 level + value 作为唯一标识
+          uniqueKey: `${item.level}_${item.value}`
         }))
         .sort((a, b) => b.numValue - a.numValue); // 按值从大到小排序
 
-      // 计算 Y 轴像素高度（估算）
-      const chartHeight = containerHeight || 300;
+      // 计算 Y 轴像素高度（估算，减去上下边距）
+      const chartHeight = (containerHeight || 300) - 40;
       const yMin = 0;
       const yMax =
         typeof yAxisDomain[1] === 'number'
@@ -211,42 +213,74 @@ const LineChart: React.FC<LineChartProps> = memo(
       const yRange = yMax - yMin || 1;
 
       // 为每个标签计算 dy 偏移量，避免重叠
-      const MIN_LABEL_DISTANCE = 20; // 最小标签间距（像素）
-      const OFFSET_STEP = 14; // 每次偏移的像素值
-      const BOTTOM_SAFE_ZONE = 30; // 底部安全区域（像素），避免与 X 轴重叠
-      const labelOffsets: Record<string, number> = {};
-      let accumulatedOffset = 0;
+      const LABEL_HEIGHT = 16; // 标签高度
+      const MIN_LABEL_DISTANCE = LABEL_HEIGHT + 4; // 最小标签间距（像素）
+      const BOTTOM_LIMIT = chartHeight - 10; // 底部限制，避免与X轴重叠
+      const TOP_LIMIT = 5; // 顶部限制，避免被裁剪
 
+      // 使用 uniqueKey 作为键存储偏移量
+      const labelOffsets: Record<string, number> = {};
+      // 记录每个标签的最终渲染 Y 位置（从顶部算起的像素）
+      const finalPositions: number[] = [];
+      // 记录每个标签的原始 Y 位置
+      const originalPositions: number[] = [];
+
+      // 第一步：计算每个标签的原始位置
       for (let i = 0; i < validItems.length; i++) {
         const current = validItems[i];
-        // 计算当前阈值距离底部的像素距离
-        const distanceFromBottom = (current.numValue / yRange) * chartHeight;
+        const currentYPixel =
+          ((yMax - current.numValue) / yRange) * chartHeight;
+        originalPositions.push(currentYPixel);
+        finalPositions.push(currentYPixel); // 初始化为原始位置
+      }
 
-        if (i === 0) {
-          labelOffsets[current.level] = 0;
-        } else {
-          const prev = validItems[i - 1];
-          // 计算两个阈值在 Y 轴上的像素距离
-          const pixelDistance =
-            ((prev.numValue - current.numValue) / yRange) * chartHeight;
+      // 第二步：从下往上处理，检查是否压着X轴或重叠
+      for (let i = validItems.length - 1; i >= 0; i--) {
+        let currentY = finalPositions[i];
 
-          if (pixelDistance < MIN_LABEL_DISTANCE) {
-            // 距离太近，累加偏移
-            accumulatedOffset += OFFSET_STEP;
-            labelOffsets[current.level] = accumulatedOffset;
-          } else {
-            // 距离足够，重置偏移
-            accumulatedOffset = 0;
-            labelOffsets[current.level] = 0;
+        // 检查是否超出底部限制（压着X轴）
+        if (currentY > BOTTOM_LIMIT) {
+          currentY = BOTTOM_LIMIT;
+          finalPositions[i] = currentY;
+        }
+
+        // 检查是否与下一个标签重叠（下一个标签在下方，索引更大）
+        if (i < validItems.length - 1) {
+          const nextY = finalPositions[i + 1];
+          const distance = nextY - currentY;
+
+          if (distance < MIN_LABEL_DISTANCE) {
+            // 重叠了，当前标签需要往上移
+            currentY = nextY - MIN_LABEL_DISTANCE;
+            finalPositions[i] = currentY;
           }
         }
 
-        // 如果标签加上偏移后会超出底部安全区域，改为向上偏移
-        const totalOffset = labelOffsets[current.level];
-        if (distanceFromBottom < BOTTOM_SAFE_ZONE + totalOffset) {
-          // 改为向上偏移（负值）
-          labelOffsets[current.level] = -Math.abs(totalOffset) - 4;
+        // 检查是否超出顶部限制
+        if (currentY < TOP_LIMIT) {
+          currentY = TOP_LIMIT;
+          finalPositions[i] = currentY;
         }
+      }
+
+      // 第三步：从上往下再检查一次，确保顶部标签被限制后，下面的标签也正确排列
+      for (let i = 1; i < validItems.length; i++) {
+        const prevY = finalPositions[i - 1];
+        let currentY = finalPositions[i];
+
+        // 检查是否与上一个标签重叠
+        const distance = currentY - prevY;
+        if (distance < MIN_LABEL_DISTANCE) {
+          currentY = prevY + MIN_LABEL_DISTANCE;
+          finalPositions[i] = currentY;
+        }
+      }
+
+      // 第四步：计算偏移量
+      for (let i = 0; i < validItems.length; i++) {
+        const current = validItems[i];
+        labelOffsets[current.uniqueKey] =
+          finalPositions[i] - originalPositions[i];
       }
 
       return {
@@ -540,21 +574,21 @@ const LineChart: React.FC<LineChartProps> = memo(
                   />
                 ))}
 
-                {/* 阈值线的可视部分（实线） */}
-                {threshold.map((item, index) => {
-                  const formattedValue = formatThresholdValue(
-                    item.value as number
-                  );
-                  const originalValue = String(item.value);
+                {/* 阈值线的可视部分（实线），使用排序后的列表确保正确的偏移计算 */}
+                {thresholdLabelInfo.items.map((item) => {
+                  const formattedValue = item.formattedValue;
+                  const originalValue = String(item.numValue);
                   const levelColor =
                     (LEVEL_MAP[item.level] as string) || '#F43B2C';
                   const fullText = `${levelNameMap[item.level] || item.level} ${originalValue}`;
-                  const dy = thresholdLabelInfo.labelOffsets[item.level] || 0;
+                  // 使用 uniqueKey 获取偏移量
+                  const dy =
+                    thresholdLabelInfo.labelOffsets[item.uniqueKey] || 0;
 
                   return (
                     <ReferenceLine
-                      key={`visual-${index}`}
-                      y={`${item.value}`}
+                      key={`visual-${item.uniqueKey}`}
+                      y={`${item.numValue}`}
                       isFront={true}
                       stroke={levelColor}
                       strokeWidth={1}
