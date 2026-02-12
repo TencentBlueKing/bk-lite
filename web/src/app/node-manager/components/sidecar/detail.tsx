@@ -19,7 +19,7 @@ const Collectordetail = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
@@ -31,12 +31,12 @@ const Collectordetail = () => {
       name: searchParams.get('name') || '',
       introduction: searchParams.get('introduction') || '',
       system: searchParams.get('system') || 'linux',
-      icon: searchParams.get('icon') || 'caijiqizongshu',
+      icon: searchParams.get('icon') || 'caijiqizongshu'
     };
   };
 
   const columns = useDetailColumns({
-    handleDelete: (id) => handleDelete(id),
+    handleDelete: (id) => handleDelete(id)
   });
 
   useEffect(() => {
@@ -57,7 +57,7 @@ const Collectordetail = () => {
         object: urlParams.name,
         os: urlParams.system,
         page: pagination.current,
-        page_size: pagination.pageSize,
+        page_size: pagination.pageSize
       };
       const getPackage = getPackageList(param);
       const res = await Promise.all([getPackage]);
@@ -66,7 +66,7 @@ const Collectordetail = () => {
       setPagination((prev: Pagination) => ({
         ...prev,
         total: packageInfo?.count || 0,
-        current: 1,
+        current: 1
       }));
     } finally {
       setTableLoading(false);
@@ -99,7 +99,7 @@ const Collectordetail = () => {
       os: urlParams.system,
       icon: urlParams.icon,
       executable_path: '',
-      execute_parameters: '',
+      execute_parameters: ''
     };
     modalRef.current?.showModal({
       title: t('node-manager.packetManage.uploadPackage'),
@@ -107,7 +107,7 @@ const Collectordetail = () => {
       form: formData,
       key: window.location.pathname.includes('collector')
         ? 'collector'
-        : 'controller',
+        : 'controller'
     });
   };
 
@@ -126,7 +126,7 @@ const Collectordetail = () => {
       </div>
 
       <CustomTable
-        scroll={{ y: 'calc(100vh - 376px)', x: 'calc(100vw - 320px)' }}
+        scroll={{ y: 'calc(100vh - 376px)', x: 'max-content' }}
         columns={columns}
         dataSource={tableData}
         pagination={pagination}
