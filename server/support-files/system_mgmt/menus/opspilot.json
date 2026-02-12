@@ -194,29 +194,6 @@
           ]
         }
       ]
-    },
-    {
-      "name": "Setting",
-      "icon": "settings-fill",
-      "children": [
-        {
-          "id": "mange_quota",
-          "name": "Mange Quota",
-          "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
-          ]
-        },
-        {
-          "id": "my_quota",
-          "name": "My Quota",
-          "operation": [
-            "View"
-          ]
-        }
-      ]
     }
   ],
   "roles": [
@@ -238,7 +215,6 @@
         "knowledge_list-View",
         "knowledge_setting-View",
         "knowledge_testing-View",
-        "my_quota-View",
         "provide_list-View",
         "skill_api-View",
         "skill_list-View",
