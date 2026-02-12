@@ -263,7 +263,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     async (msg: string, images?: UploadFile[]) => {
       if ((msg.trim() || (images && images.length > 0)) && !loading && token) {
         currentBotMessageRef.current = null;
-        
+
         // Convert images to base64
         let imageData: any[] | undefined;
         if (images && images.length > 0) {
@@ -286,7 +286,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             })
           ).then(results => results.filter(Boolean));
         }
-        
+
         await sendMessage(msg, messages, imageData);
       }
     },
@@ -298,7 +298,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = content;
     const plainText = tempDiv.textContent || tempDiv.innerText || content;
-    
+
     // 使用现代 API 或降级方案
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(plainText).catch(
@@ -423,10 +423,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         {imageList.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2 p-2 bg-gray-50 rounded">
             {imageList.map((file) => {
-              const previewUrl = file.originFileObj && typeof window !== 'undefined' 
-                ? URL.createObjectURL(file.originFileObj) 
+              const previewUrl = file.originFileObj && typeof window !== 'undefined'
+                ? URL.createObjectURL(file.originFileObj)
                 : '';
-              
+
               return (
                 <div key={file.uid} className="relative group">
                   {previewUrl && (
@@ -693,9 +693,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <>
             {drawerContent.chunkType === 'Graph' ? (
               <div style={{ height: '100%', padding: '16px' }}>
-                <KnowledgeGraphView 
-                  data={drawerContent.graphData || { nodes: [], edges: [] }} 
-                  height="100%" 
+                <KnowledgeGraphView
+                  data={drawerContent.graphData || { nodes: [], edges: [] }}
+                  height="100%"
                 />
               </div>
             ) : (

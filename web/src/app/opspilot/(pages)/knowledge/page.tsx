@@ -31,15 +31,15 @@ const KnowledgePage = () => {
 
   const fetchCards = useCallback(async (reset = false) => {
     if (isFetching.current || (!reset && !hasMore)) return;
-    
+
     isFetching.current = true;
-    
+
     if (reset) {
       setLoading(true);
     } else {
       setLoadingMore(true);
     }
-    
+
     try {
       const pageToFetch = reset ? 1 : currentPage;
       const data = await fetchKnowledgeBase({
@@ -47,17 +47,20 @@ const KnowledgePage = () => {
         page_size: 20,
         search: searchTerm
       });
-      
+
+      const items = Array.isArray(data) ? data : (data.items || []);
+      const totalCount = Array.isArray(data) ? data.length : (data.count || 0);
+
       if (reset) {
-        setCards(Array.isArray(data.items) ? data.items : []);
+        setCards(items);
         setCurrentPage(1);
       } else {
-        setCards(prev => [...prev, ...(Array.isArray(data.items) ? data.items : [])]);
+        setCards(prev => [...prev, ...items]);
       }
-      
-      const hasMoreData = pageToFetch * 20 < (data.count || 0);
+
+      const hasMoreData = pageToFetch * 20 < totalCount;
       setHasMore(hasMoreData);
-      
+
       if (hasMoreData) {
         setCurrentPage(pageToFetch + 1);
       }
@@ -153,14 +156,14 @@ const KnowledgePage = () => {
   const menu = (card: Card) => (
     <Menu className={`${styles.menuContainer}`}>
       <Menu.Item key="edit">
-        <PermissionWrapper 
+        <PermissionWrapper
           requiredPermissions={['Edit']}
           instPermissions={card.permissions}>
           <span className='block' onClick={() => handleMenuClick('edit', card)}>{t('common.edit')}</span>
         </PermissionWrapper>
       </Menu.Item>
       <Menu.Item key="delete">
-        <PermissionWrapper 
+        <PermissionWrapper
           requiredPermissions={['Delete']}
           instPermissions={card.permissions}>
           <span className='block' onClick={() => handleMenuClick('delete', card)}>{t('common.delete')}</span>
