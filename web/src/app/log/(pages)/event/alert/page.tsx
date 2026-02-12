@@ -101,7 +101,6 @@ const Alert: React.FC = () => {
       title: t('log.event.level'),
       dataIndex: 'level',
       key: 'level',
-      width: 100,
       render: (_, { level }) => (
         <Tag icon={<AlertOutlined />} color={LEVEL_MAP[level] as string}>
           {LEVEL_LIST.find((item) => item.value === level)?.label || '--'}
@@ -112,7 +111,6 @@ const Alert: React.FC = () => {
       title: t('common.time'),
       dataIndex: 'updated_at',
       key: 'updated_at',
-      width: 160,
       sorter: (a: any, b: any) => a.id - b.id,
       render: (_, { updated_at }) => (
         <>{updated_at ? convertToLocalizedTime(updated_at) : '--'}</>
@@ -121,24 +119,17 @@ const Alert: React.FC = () => {
     {
       title: t('log.event.alertName'),
       dataIndex: 'alert_name',
-      key: 'alert_name',
-      onCell: () => ({
-        style: {
-          minWidth: 150
-        }
-      })
+      key: 'alert_name'
     },
     {
       title: t('log.integration.collectType'),
       dataIndex: 'collect_type_name',
-      key: 'collect_type_name',
-      width: 120
+      key: 'collect_type_name'
     },
     {
       title: t('log.event.alertType'),
       dataIndex: 'alert_type',
       key: 'alert_type',
-      width: 140,
       render: (_, { alert_type }) => (
         <EllipsisWithTooltip
           className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
@@ -154,7 +145,6 @@ const Alert: React.FC = () => {
       title: t('log.event.state'),
       dataIndex: 'status',
       key: 'status',
-      width: 80,
       render: (_, { status }) => (
         <Tag color={status === 'new' ? 'blue' : 'var(--color-text-4)'}>
           {STATE_MAP[status]}
@@ -165,7 +155,6 @@ const Alert: React.FC = () => {
       title: t('log.event.notify'),
       dataIndex: 'notify',
       key: 'notify',
-      width: 100,
       render: (_, record) => (
         <>{t(`log.event.${record.notice ? 'notified' : 'unnotified'}`)}</>
       )
@@ -174,7 +163,6 @@ const Alert: React.FC = () => {
       title: t('common.operator'),
       dataIndex: 'operator',
       key: 'operator',
-      width: 100,
       render: (_, { operator }) => {
         return operator ? (
           <div className="column-user" title={operator}>

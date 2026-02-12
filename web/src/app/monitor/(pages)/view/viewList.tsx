@@ -150,7 +150,7 @@ const ViewList: React.FC<ViewListProps> = ({
 
   // 动态处理进度条列宽度：有数据时固定300，无数据时自适应
   const displayColumns = useMemo(() => {
-    return tableColumn.map((col: ColumnItem & { isProgress?: boolean }) => {
+    return tableColumn.map((col: ColumnItem) => {
       if (col.type === 'progress') {
         return {
           ...col,
