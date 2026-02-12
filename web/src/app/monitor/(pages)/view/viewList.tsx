@@ -148,6 +148,19 @@ const ViewList: React.FC<ViewListProps> = ({
     return objectNames.includes(currentObjectName as string) || showTab;
   }, [objects, objectId]);
 
+  // 动态处理进度条列宽度：有数据时固定300，无数据时自适应
+  const displayColumns = useMemo(() => {
+    return tableColumn.map((col: ColumnItem & { isProgress?: boolean }) => {
+      if (col.type === 'progress') {
+        return {
+          ...col,
+          width: tableData.length > 0 ? 300 : undefined
+        };
+      }
+      return col;
+    });
+  }, [tableColumn, tableData.length]);
+
   useEffect(() => {
     if (isLoading) return;
     if (objectId && objects?.length) {
@@ -288,7 +301,6 @@ const ViewList: React.FC<ViewListProps> = ({
                 '--',
               dataIndex: item.key,
               key: item.key,
-              width: 300,
               sorter: (a: any, b: any) =>
                 a[item.key]?.value - b[item.key]?.value,
               render: (_: unknown, record: TableDataItem) => {
@@ -580,7 +592,7 @@ const ViewList: React.FC<ViewListProps> = ({
           y: `calc(100vh - ${showTab ? '330px' : '280px'})`,
           x: 'max-content'
         }}
-        columns={tableColumn}
+        columns={displayColumns}
         dataSource={tableData}
         pagination={pagination}
         loading={tableLoading}
