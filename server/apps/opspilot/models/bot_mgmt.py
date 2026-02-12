@@ -382,7 +382,6 @@ class ChatApplication(models.Model):
         ordering = ["id"]
         indexes = [
             models.Index(fields=["bot", "app_type"]),
-            models.Index(fields=["node_id"]),
         ]
 
     def __str__(self):
