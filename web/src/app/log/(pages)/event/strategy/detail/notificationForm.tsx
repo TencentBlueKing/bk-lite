@@ -99,6 +99,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                 {channelList.length ? (
                   <SelectCard
                     data={channelCardData}
+                    style={{ maxWidth: 800 }}
                     onChange={(val) => {
                       form.setFieldValue('notice_type_id', val);
                       handleChannelChange();
