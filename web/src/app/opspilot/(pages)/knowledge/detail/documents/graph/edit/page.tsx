@@ -22,8 +22,8 @@ interface GraphConfig {
 interface DocumentItem {
   key: string;
   title: string;
-  description: string;
-  status: string;
+  description?: string;
+  status?: string;
   type?: string;
 }
 
