@@ -13,7 +13,7 @@ const getChannelIcon = (channelType: string): string => {
     enterprise_wechat_bot: 'qiwei2',
     nats: 'dongzuo1'
   };
-  return iconMap[channelType] || 'youjian';
+  return iconMap[channelType] || 'jiqiren3';
 };
 
 // 根据 channel_type 返回对应的翻译键
