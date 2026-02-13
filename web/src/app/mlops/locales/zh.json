@@ -61,7 +61,9 @@
     "containerCompleted": "已完成",
     "containerStopped": "已停止",
     "containerUnknown": "状态异常",
-    "containerError": "错误"
+    "containerError": "错误",
+    "terminating": "删除中",
+    "pendingDeploy": "等待中"
   },
   "datasets": {
     "datasets": "数据集",
@@ -120,7 +122,7 @@
     "fileNameMustHaveExtension": "文件名必须包含扩展名",
     "fileNameTooLong": "文件名过长（最多64个字符）",
     "fileNameInvalidChars": "文件名只能包含英文字母、数字和下划线",
-    "uploadHintAnomaly": "CSV文件必须包含列: timestamp, value",
+    "uploadHintAnomaly": "CSV文件必须包含列: timestamp, value, label",
     "uploadHintTimeseries": "CSV文件必须包含列: timestamp, value",
     "uploadHintClassification": "CSV文件必须包含列: text, label",
     "uploadHintImageClassification": "支持常见图片格式，单张图片不超过2MB",

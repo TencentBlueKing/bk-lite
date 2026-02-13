@@ -7,7 +7,10 @@ set -e
 
 # 加载公共配置
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/common.sh" || {
+    echo '{"status":"error","code":"COMMON_SH_LOAD_FAILED","message":"Failed to load common.sh"}'
+    exit 1
+}
 
 # 解析传入的 JSON 数据（第一个参数）
 if [ -z "$1" ]; then
@@ -17,14 +20,23 @@ fi
 
 JSON_DATA="$1"
 
+# 检查 jq 是否可用
+if ! command -v jq >/dev/null 2>&1; then
+    json_error "JQ_NOT_FOUND" "" "jq command not found"
+    exit 1
+fi
+
 # 检查 kubectl 是否可用
 if ! command -v kubectl >/dev/null 2>&1; then
-    echo '{"status":"error","code":"KUBECTL_NOT_FOUND","message":"kubectl command not found"}' >&2
+    json_error "KUBECTL_NOT_FOUND" "" "kubectl command not found"
     exit 1
 fi
 
 # 提取必需参数
-ID=$(echo "$JSON_DATA" | jq -r '.id // empty')
+ID=$(echo "$JSON_DATA" | jq -r '.id // empty' 2>/dev/null) || {
+    json_error "JSON_PARSE_FAILED" "" "Failed to parse JSON data"
+    exit 1
+}
 MLFLOW_TRACKING_URI=$(echo "$JSON_DATA" | jq -r '.mlflow_tracking_uri // empty')
 MLFLOW_MODEL_URI=$(echo "$JSON_DATA" | jq -r '.mlflow_model_uri // empty')
 WORKERS=$(echo "$JSON_DATA" | jq -r '.workers // "2"')
@@ -51,6 +63,9 @@ if [ -z "$TRAIN_IMAGE" ]; then
     exit 1
 fi
 
+# 将服务短名称解析为 FQDN（跨 namespace 访问时必需）
+MLFLOW_TRACKING_URI=$(resolve_endpoint_fqdn "$MLFLOW_TRACKING_URI")
+
 # Deployment/Service 名称（Kubernetes 资源名称必须符合 DNS-1123 标准）
 K8S_NAME=$(sanitize_k8s_name "$ID")
 DEPLOYMENT_NAME="${K8S_NAME}"
@@ -74,6 +89,21 @@ if kubectl get deployment "$DEPLOYMENT_NAME" -n "$NAMESPACE" >/dev/null 2>&1; th
         json_error "DEPLOYMENT_ALREADY_EXISTS" "$ID" "Deployment already exists but not ready" "Ready: $READY_REPLICAS/$DESIRED_REPLICAS. Use remove.sh to delete it first."
     fi
     exit 1
+fi
+
+# 用户指定端口时检查 NodePort 范围和占用
+if [ -n "$PORT" ] && [ "$SERVICE_TYPE" = "NodePort" ]; then
+    # 校验 NodePort 范围（默认 30000-32767）
+    if [ "$PORT" -lt 30000 ] || [ "$PORT" -gt 32767 ]; then
+        json_error "INVALID_NODEPORT" "$ID" "NodePort $PORT is not in valid range (30000-32767)"
+        exit 1
+    fi
+    # 检查端口是否被占用
+    EXISTING_SVC=$(kubectl get svc --all-namespaces -o json 2>/dev/null | jq -r ".items[] | select(.spec.ports[]?.nodePort == $PORT) | .metadata.name" 2>/dev/null || echo "")
+    if [ -n "$EXISTING_SVC" ]; then
+        json_error "PORT_IN_USE" "$ID" "NodePort $PORT is already in use by service: $EXISTING_SVC. Please choose a different port or wait for the previous service to be fully deleted."
+        exit 1
+    fi
 fi
 
 # 容器内固定端口 3000
@@ -196,33 +226,34 @@ ${SERVICE_YAML}
 EOF
 )
 
+# 清理函数：删除已创建的资源
+cleanup_on_failure() {
+    kubectl delete deployment "$DEPLOYMENT_NAME" -n "$NAMESPACE" --ignore-not-found >/dev/null 2>&1 || true
+    kubectl delete service "$SERVICE_NAME" -n "$NAMESPACE" --ignore-not-found >/dev/null 2>&1 || true
+}
+
 # 应用资源
+set +e
 KUBECTL_OUTPUT=$(echo "$FULL_YAML" | kubectl apply -f - 2>&1)
 KUBECTL_STATUS=$?
+set -e
 
 if [ $KUBECTL_STATUS -ne 0 ]; then
+    cleanup_on_failure
     json_error "RESOURCE_APPLY_FAILED" "$ID" "Failed to apply resources" "$KUBECTL_OUTPUT"
     exit 1
 fi
 
-# 等待 Deployment 稳定（最多等待 30 秒）
-echo "[INFO] Waiting for deployment to be ready..." >&2
-if kubectl wait --for=condition=available --timeout=30s deployment/"$DEPLOYMENT_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
-    # 获取实际的服务端口
-    ACTUAL_PORT=""
-    if [ "$SERVICE_TYPE" = "NodePort" ]; then
-        ACTUAL_PORT=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
-    elif [ "$SERVICE_TYPE" = "LoadBalancer" ]; then
-        ACTUAL_PORT=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    else
-        ACTUAL_PORT="${CONTAINER_PORT}"
-    fi
-    
-    # 返回成功
-    echo "{\"status\":\"success\",\"id\":\"$ID\",\"state\":\"running\",\"port\":\"$ACTUAL_PORT\",\"detail\":\"Deployment ready with ${REPLICAS} replica(s)\"}"
-    exit 0
+# 获取 Service 端口（立即返回，不等待 Deployment ready）
+ACTUAL_PORT=""
+if [ "$SERVICE_TYPE" = "NodePort" ]; then
+    ACTUAL_PORT=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
+elif [ "$SERVICE_TYPE" = "LoadBalancer" ]; then
+    ACTUAL_PORT=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
 else
-    # Deployment 未能在 30 秒内就绪
-    json_error "DEPLOYMENT_NOT_READY" "$ID" "Deployment created but not ready within 30 seconds. Use status.sh to check progress."
-    exit 1
+    ACTUAL_PORT="${CONTAINER_PORT}"
 fi
+
+# 返回 pending 状态，前端通过 status 接口轮询最终状态
+echo "{\"status\":\"success\",\"id\":\"$ID\",\"state\":\"pending\",\"port\":\"$ACTUAL_PORT\",\"detail\":\"Deployment starting (0/${REPLICAS} replicas ready)\"}"
+exit 0

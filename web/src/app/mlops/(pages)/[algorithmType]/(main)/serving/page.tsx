@@ -18,7 +18,10 @@ const CONTAINER_STATE_MAP: Record<string, string> = {
   'completed': 'blue',
   'not_found': 'default',
   'unknown': 'orange',
-  'error': 'red'
+  'error': 'red',
+  "terminating": 'orange',
+  'pending': 'default',
+  'failed': 'red'
 };
 
 const CONTAINER_TEXT_KEYS: Record<string, string> = {
@@ -26,7 +29,10 @@ const CONTAINER_TEXT_KEYS: Record<string, string> = {
   'completed': 'mlops-common.containerCompleted',
   'not_found': 'mlops-common.containerStopped',
   'unknown': 'mlops-common.containerUnknown',
-  'error': 'mlops-common.containerError'
+  'error': 'mlops-common.containerError',
+  'terminating': "pendmlops-common.terminating",
+  "pending": "mlops-common.pendingDeploy",
+  "failed": "mlops-common.failed"
 };
 
 const ServingPage = () => {

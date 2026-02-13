@@ -61,7 +61,9 @@
     "containerCompleted": "Completed",
     "containerStopped": "Stopped",
     "containerUnknown": "Unknown",
-    "containerError": "Error"
+    "containerError": "error",
+    "terminating": "Deleting",
+    "pendingDeploy": "Waiting"
   },
   "datasets": {
     "datasets": "Datasets",
@@ -120,7 +122,7 @@
     "fileNameMustHaveExtension": "Filename must have an extension",
     "fileNameTooLong": "Filename is too long (maximum 64 characters)",
     "fileNameInvalidChars": "Filename can only contain English letters, numbers, and underscores",
-    "uploadHintAnomaly": "CSV file must contain columns: timestamp, value",
+    "uploadHintAnomaly": "CSV file must contain columns: timestamp, value, label",
     "uploadHintTimeseries": "CSV file must contain columns: timestamp, value",
     "uploadHintClassification": "CSV file must contain columns: text, label",
     "uploadHintImageClassification": "Supports common image formats, max 2MB per image",
