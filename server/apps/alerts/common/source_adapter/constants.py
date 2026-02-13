@@ -6,10 +6,7 @@
 DEFAULT_SOURCE_CONFIG = {
     "url": "/api/v1/alerts/api/receiver_data/",
     "headers": {"SECRET": "your_source_secret"},
-    "params": {
-        "source_id": "",
-        "events": []
-    },
+    "params": {"source_id": "", "events": []},
     "examples": {
         "CURL": """
         curl --location --request POST '{url}/api/v1/alerts/api/receiver_data/' \
@@ -25,8 +22,8 @@ DEFAULT_SOURCE_CONFIG = {
               "item": "jenkins_build_status",
               "level": "1",
               "start_time": "1751964596",
-              "service:"server_01",
-              "location":"shanghai",
+              "service": "server_01",
+              "location": "shanghai",
               "labels": {
                 "pipeline": "frontend-deploy",
                 "build_number": "7",
@@ -56,8 +53,8 @@ DEFAULT_SOURCE_CONFIG = {
                  "item": "jenkins_build_status",
                  "level": "1",
                  "start_time": "1751964596",
-                "service:"server_01",
-                "location":"shanghai",
+                 "service": "server_01",
+                 "location": "shanghai",
                  "labels": {
                     "pipeline": "frontend-deploy",
                     "build_number": "7",
@@ -89,7 +86,7 @@ DEFAULT_SOURCE_CONFIG = {
         "token": "your_token_here",
         "username": "user",
         "password": "pass",
-        "secret_key": "your_secret"
+        "secret_key": "your_secret",
     },
     "event_fields_mapping": {
         "title": "title",
@@ -108,25 +105,25 @@ DEFAULT_SOURCE_CONFIG = {
         "action": "action",
         "service": "service",
         "tags": "tags",
-        "location": "location"
+        "location": "location",
     },
     "event_fields_desc_mapping": {
-        "title": "事件标题, 类型字符串",
-        "item": "事件指标, 类型字符串",
-        "description": "事件描述，类型字符串",
-        "external_id": "事件ID，类型字符串",
-        "value": "事件值，float类型",
-        "action": "事件类型，类型字符串，可选值为：{'created':'创建', 'closed':'关闭'}",
-        "level": "事件级别，类型字符串，可选值为：{'3': '提醒', '2': '预警', '1': '严重', '0': '致命'}",
-        "start_time": "事件开始时间(时间戳，毫秒级)",
-        "end_time": "事件开始时间(时间戳，毫秒级)",
-        "labels": "标签，格式为字典，可选，可以包含其他的所有冗余字段，如关联的资产实例",
-        "rule_id": "事件规则ID，类型字符串，可选",
-        "resource_id": "资源ID，类型字符串，可选",
-        "resource_name": "资源实例名称，类型字符串，可选",
-        "resource_type": "资源类型，类型字符串，可选",
-        "service": "事件所属服务",
-        "tags": "事件标签",
-        "location": "事件发生地点"
-    }
+        "title": "事件标题 | 类型: string | 必填: 是",
+        "description": "事件描述 | 类型: string | 必填: 否",
+        "level": "事件级别 | 类型: string | 必填: 否(默认最低级别) | 可选值: 0-致命, 1-错误, 2-预警, 3-提醒",
+        "item": "事件指标 | 类型: string | 必填: 否",
+        "value": "事件值 | 类型: float | 必填: 否",
+        "start_time": "事件开始时间 | 类型: string(时间戳) | 必填: 否(默认当前时间) | 格式: 秒级(10位)或毫秒级(13位)",
+        "end_time": "事件结束时间 | 类型: string(时间戳) | 必填: 否 | 格式: 秒级(10位)或毫秒级(13位)",
+        "action": "事件动作 | 类型: string | 必填: 否(默认created) | 可选值: created-创建, closed-关闭, recovery-恢复",
+        "external_id": "外部事件ID(指纹) | 类型: string | 必填: 否(不传则自动生成) | 说明: 用于事件恢复关联",
+        "service": "所属服务 | 类型: string | 必填: 否",
+        "location": "事件发生位置 | 类型: string | 必填: 否",
+        "tags": "事件标签 | 类型: object | 必填: 否",
+        "labels": "事件元数据 | 类型: object | 必填: 否 | 说明: 可包含资源关联等扩展信息",
+        "rule_id": "触发规则ID | 类型: string | 必填: 否",
+        "resource_id": "资源ID | 类型: string | 必填: 否",
+        "resource_name": "资源名称 | 类型: string | 必填: 否",
+        "resource_type": "资源类型 | 类型: string | 必填: 否",
+    },
 }

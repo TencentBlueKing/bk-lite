@@ -52,6 +52,24 @@ class InstanceManage(object):
         return format_permission_dict
 
     @staticmethod
+    def _build_check_attr_map(attrs: list, for_update: bool = False) -> dict:
+        check_attr_map = {"is_only": {}, "is_required": {}}
+        if for_update:
+            check_attr_map["editable"] = {}
+
+        for attr in attrs:
+            attr_id = attr["attr_id"]
+            attr_name = attr["attr_name"]
+            if attr.get("is_only"):
+                check_attr_map["is_only"][attr_id] = attr_name
+            if attr.get("is_required"):
+                check_attr_map["is_required"][attr_id] = attr_name
+            if for_update and (attr.get("editable") or attr.get("is_display_field")):
+                check_attr_map["editable"][attr_id] = attr_name
+
+        return check_attr_map
+
+    @staticmethod
     def _apply_display_fields_to_update(attrs: list, update_attr: dict) -> None:
         from apps.cmdb.display_field import DisplayFieldConverter
 
@@ -156,12 +174,7 @@ class InstanceManage(object):
         """创建实例"""
         instance_info.update(model_id=model_id)
         attrs = ModelManage.search_model_attr(model_id)
-        check_attr_map = dict(is_only={}, is_required={})
-        for attr in attrs:
-            if attr["is_only"]:
-                check_attr_map["is_only"][attr["attr_id"]] = attr["attr_name"]
-            if attr["is_required"]:
-                check_attr_map["is_required"][attr["attr_id"]] = attr["attr_name"]
+        check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=False)
 
         # 为 organization/user/enum 字段生成 _display 冗余字段
         from apps.cmdb.display_field import DisplayFieldHandler
@@ -205,14 +218,7 @@ class InstanceManage(object):
         InstanceManage.check_instances_permission([inst_info], inst_info["model_id"])
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
-        check_attr_map = dict(is_only={}, is_required={}, editable={})
-        for attr in attrs:
-            if attr["is_only"]:
-                check_attr_map["is_only"][attr["attr_id"]] = attr["attr_name"]
-            if attr["is_required"]:
-                check_attr_map["is_required"][attr["attr_id"]] = attr["attr_name"]
-            if attr["editable"]:
-                check_attr_map["editable"][attr["attr_id"]] = attr["attr_name"]
+        check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=True)
 
         InstanceManage._apply_display_fields_to_update(attrs, update_attr)
 
@@ -254,14 +260,7 @@ class InstanceManage(object):
         InstanceManage.check_instances_permission(inst_list, model_info["model_id"])
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
-        check_attr_map = dict(is_only={}, is_required={}, editable={})
-        for attr in attrs:
-            if attr["is_only"]:
-                check_attr_map["is_only"][attr["attr_id"]] = attr["attr_name"]
-            if attr["is_required"]:
-                check_attr_map["is_required"][attr["attr_id"]] = attr["attr_name"]
-            if attr["editable"] or attr.get("is_display_field"):
-                check_attr_map["editable"][attr["attr_id"]] = attr["attr_name"]
+        check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=True)
 
         InstanceManage._apply_display_fields_to_update(attrs, update_attr)
 

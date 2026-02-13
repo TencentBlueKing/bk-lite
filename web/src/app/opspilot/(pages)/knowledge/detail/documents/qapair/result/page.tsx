@@ -13,7 +13,7 @@ interface QAPair {
   id: string;
   question: string;
   answer: string;
-  base_chunk_id: string;
+  base_chunk_id?: string;
 }
 
 interface CreateQAData {

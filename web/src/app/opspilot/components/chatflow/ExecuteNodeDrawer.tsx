@@ -6,6 +6,7 @@ import { useTranslation } from '@/utils/i18n';
 import { NodeExecutionResult } from './hooks/useNodeExecution';
 import { ToolCallInfo, initToolCallTooltips, renderToolCallCard } from '../custom-chat-sse/toolCallRenderer';
 import MarkdownIt from 'markdown-it';
+import DOMPurify from 'dompurify';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import styles from '../custom-chat/index.module.scss';
@@ -14,7 +15,7 @@ const { TextArea } = Input;
 const { Text } = Typography;
 
 const md = new MarkdownIt({
-  html: true,
+  html: false,
   highlight: function (str: string, lang: string) {
     if (lang && hljs.getLanguage(lang)) {
       try {
@@ -24,6 +25,23 @@ const md = new MarkdownIt({
     return '';
   },
 });
+
+// XSS sanitization config
+const sanitizeHtml = (html: string): string => {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img'],
+    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'src', 'alt', 'width', 'height'],
+    ALLOW_DATA_ATTR: false,
+  });
+};
+
+const sanitizeToolCallHtml = (html: string): string => {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['span', 'style'],
+    ALLOWED_ATTR: ['class', 'style', 'data-tool-id', 'data-result'],
+    ALLOW_DATA_ATTR: true,
+  });
+};
 
 interface ExecuteNodeDrawerProps {
   visible: boolean;
@@ -68,7 +86,7 @@ const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
     return (
       <div 
         className="mb-3"
-        dangerouslySetInnerHTML={{ __html: toolCallsHtml }}
+        dangerouslySetInnerHTML={{ __html: sanitizeToolCallHtml(toolCallsHtml) }}
       />
     );
   };
@@ -76,7 +94,7 @@ const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
   const renderedContent = useMemo(() => {
     const content = result?.content || streamingContent;
     if (!content) return '';
-    return md.render(content);
+    return sanitizeHtml(md.render(content));
   }, [result?.content, streamingContent]);
 
   const renderSSEResult = () => {

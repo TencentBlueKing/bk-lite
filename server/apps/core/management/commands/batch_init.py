@@ -66,6 +66,7 @@ class Command(BaseCommand):
         call_command("init_login_settings")
         call_command("create_user", "admin", "password", email="admin@bklite.net", is_superuser=True)
         call_command("init_custom_menu")
+        call_command("init_bk_login_settings")
         call_command("clean_group_data")
 
     def _init_cmdb(self):

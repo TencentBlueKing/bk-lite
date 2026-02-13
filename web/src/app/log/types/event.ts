@@ -1,6 +1,22 @@
 import { ListItem } from '@/app/log/types';
 import { FilterItem } from './integration';
 
+export interface CardItem {
+  icon?: string;
+  title: string;
+  tag?: string;
+  description?: string;
+  value: string | number;
+}
+
+export interface SelectCardProps {
+  data: CardItem[];
+  value?: string | number;
+  onChange?: (value: string | number) => void;
+  cardWidth?: number;
+  style?: React.CSSProperties;
+}
+
 export interface UnitMap {
   [key: string]: number;
 }
@@ -67,6 +83,7 @@ export interface ChannelItem {
   channel_type: string;
   id: number;
   name: string;
+  description?: string;
 }
 
 export interface SelectCardsProps {

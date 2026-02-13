@@ -91,7 +91,7 @@ const PreprocessStep: React.FC<{
   };
 
   const { previewChunk, fetchEmbeddingModels } = useKnowledgeApi();
-  const [embeddingModels, setEmbeddingModels] = useState<{ id: string; name: string }[]>([]);
+  const [embeddingModels, setEmbeddingModels] = useState<{ id: number; name: string }[]>([]);
   const [loadingModels, setLoadingModels] = useState<boolean>(true);
 
   useEffect(() => {

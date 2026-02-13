@@ -1,4 +1,3 @@
-import re
 import json
 
 from apps.cmdb.constants.constants import (
@@ -13,8 +12,9 @@ from apps.cmdb.constants.constants import (
     UPDATE_MODEL_CHECK_ATTR_MAP,
     USER,
     OPERATOR_MODEL,
-    DISPLAY_FIELD_CONFIG
+    DISPLAY_FIELD_CONFIG,
 )
+from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFIX
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.language.service import SettingLanguage
@@ -28,15 +28,20 @@ from apps.core.logger import cmdb_logger as logger
 
 
 class ModelManage(object):
-    ATTR_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
-
     @staticmethod
     def _validate_attr_id(attr_id: str):
-        if not isinstance(attr_id, str) or not ModelManage.ATTR_ID_PATTERN.match(attr_id):
-            raise BaseAppException("属性ID必须以字母开头，且仅包含字母、数字或下划线")
+        if not IdentifierValidator.is_valid(attr_id):
+            raise BaseAppException(IdentifierValidator.get_error_message("属性ID"))
 
     @staticmethod
-    def _add_display_field_to_attrs(attrs: list, attr_info: dict, model_id: str, is_pre: bool = False):
+    def _validate_model_id(model_id: str):
+        if not IdentifierValidator.is_valid(model_id):
+            raise BaseAppException(IdentifierValidator.get_error_message("模型ID"))
+
+    @staticmethod
+    def _add_display_field_to_attrs(
+        attrs: list, attr_info: dict, model_id: str, is_pre: bool = False
+    ):
         """
         为指定属性添加 _display 字段定义
         Args:
@@ -62,15 +67,15 @@ class ModelManage(object):
 
         # 创建 _display 字段定义
         display_field = {
-            'attr_id': display_field_id,
-            'attr_name': attr_info.get('attr_name'),
-            'attr_group': attr_info.get('attr_group', 'default'),
-            'group_id': attr_info.get('group_id'),
-            'model_id': model_id,
-            **DISPLAY_FIELD_CONFIG
+            "attr_id": display_field_id,
+            "attr_name": attr_info.get("attr_name"),
+            "attr_group": attr_info.get("attr_group", "default"),
+            "group_id": attr_info.get("group_id"),
+            "model_id": model_id,
+            **DISPLAY_FIELD_CONFIG,
         }
         if is_pre:
-            display_field['is_pre'] = True
+            display_field["is_pre"] = True
 
         attrs.append(display_field)
         return True
@@ -94,8 +99,15 @@ class ModelManage(object):
         return new_attrs, len(new_attrs) < original_count
 
     @staticmethod
-    def _handle_attr_type_change(attrs: list, attr_id: str, old_type: str, new_type: str,
-                                 attr_info: dict, model_id: str, graph_client):
+    def _handle_attr_type_change(
+        attrs: list,
+        attr_id: str,
+        old_type: str,
+        new_type: str,
+        attr_info: dict,
+        model_id: str,
+        graph_client,
+    ):
         """
         处理属性类型变更时的 _display 字段逻辑
         Args:
@@ -114,20 +126,24 @@ class ModelManage(object):
         display_field_id = f"{attr_id}{DISPLAY_SUFFIX}"
 
         # 情况1: 从非目标类型改为目标类型 -> 添加 _display 字段
-        if old_type not in DISPLAY_FIELD_TYPES and \
-                new_type in DISPLAY_FIELD_TYPES:
+        if old_type not in DISPLAY_FIELD_TYPES and new_type in DISPLAY_FIELD_TYPES:
             ModelManage._add_display_field_to_attrs(attrs, attr_info, model_id)
 
         # 情况2: 从目标类型改为非目标类型 -> 删除 _display 字段和实例数据
-        elif old_type in DISPLAY_FIELD_TYPES and \
-                new_type not in DISPLAY_FIELD_TYPES:
+        elif old_type in DISPLAY_FIELD_TYPES and new_type not in DISPLAY_FIELD_TYPES:
             # 从 attrs 中删除 _display 字段定义
-            attrs, removed = ModelManage._remove_display_field_from_attrs(attrs, attr_id)
+            attrs, removed = ModelManage._remove_display_field_from_attrs(
+                attrs, attr_id
+            )
 
             # 删除所有实例的 _display 字段数据
             if removed:
-                model_params = [{"field": "model_id", "type": "str=", "value": model_id}]
-                graph_client.remove_entitys_properties(INSTANCE, model_params, [display_field_id])
+                model_params = [
+                    {"field": "model_id", "type": "str=", "value": model_id}
+                ]
+                graph_client.remove_entitys_properties(
+                    INSTANCE, model_params, [display_field_id]
+                )
 
         return attrs
 
@@ -141,14 +157,18 @@ class ModelManage(object):
 
         # 为默认字段中的目标类型添加 _display 字段定义
         for attr in list(attrs):  # 使用 list() 避免迭代时修改列表
-            ModelManage._add_display_field_to_attrs(attrs, attr, data.get('model_id'), is_pre=True)
+            ModelManage._add_display_field_to_attrs(
+                attrs, attr, data.get("model_id"), is_pre=True
+            )
 
         data.update(attrs=json.dumps(attrs))
 
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(MODEL, [])
             result = ag.create_entity(MODEL, data, CREATE_MODEL_CHECK_ATTR, exist_items)
-            classification_info = ClassificationManage.search_model_classification_info(data["classification_id"])
+            classification_info = ClassificationManage.search_model_classification_info(
+                data["classification_id"]
+            )
             _ = ag.create_edge(
                 SUBORDINATE_MODEL,
                 classification_info["_id"],
@@ -164,6 +184,7 @@ class ModelManage(object):
 
         # 初始化排除字段缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
+
         ExcludeFieldsCache.update_on_model_change(data["model_id"])
 
         # 为新建模型创建默认字段分组
@@ -174,18 +195,36 @@ class ModelManage(object):
             is_collapsed=False,
             description="默认分组",
             created_by=username,
-            attr_orders=[attr.get("attr_id") for attr in attrs if not attr.get("is_display_field")],
+            attr_orders=[
+                attr.get("attr_id")
+                for attr in attrs
+                if not attr.get("is_display_field")
+            ],
         )
 
-        create_change_record(operator=username, model_id=data["model_id"], label="模型管理",
-                             _type=CREATE_INST, message=f"创建模型. 模型名称: {data['model_name']}",
-                             inst_id=result['_id'], model_object=OPERATOR_MODEL)
+        create_change_record(
+            operator=username,
+            model_id=data["model_id"],
+            label="模型管理",
+            _type=CREATE_INST,
+            message=f"创建模型. 模型名称: {data['model_name']}",
+            inst_id=result["_id"],
+            model_object=OPERATOR_MODEL,
+        )
         return result
 
     @staticmethod
-    def copy_model(src_model_id: str, new_model_id: str, new_model_name: str,
-                   classification_id: str = None, group: list = None, icn: str = None,
-                   copy_attributes: bool = False, copy_relationships: bool = False, username="admin"):
+    def copy_model(
+        src_model_id: str,
+        new_model_id: str,
+        new_model_name: str,
+        classification_id: str = None,
+        group: list = None,
+        icn: str = None,
+        copy_attributes: bool = False,
+        copy_relationships: bool = False,
+        username="admin",
+    ):
         """
         复制模型
         Args:
@@ -201,6 +240,9 @@ class ModelManage(object):
         Returns:
             新模型信息
         """
+        # 校验新模型ID格式
+        ModelManage._validate_model_id(new_model_id)
+
         # 校验复制方式
         if not copy_attributes and not copy_relationships:
             raise BaseAppException("至少选择一种复制方式（属性或关系）")
@@ -220,26 +262,32 @@ class ModelManage(object):
             attrs = list(INST_NAME_INFOS)
             # 为默认字段中的目标类型添加 _display 字段定义
             for attr in list(attrs):
-                ModelManage._add_display_field_to_attrs(attrs, attr, new_model_id, is_pre=True)
+                ModelManage._add_display_field_to_attrs(
+                    attrs, attr, new_model_id, is_pre=True
+                )
 
         # 构建新模型数据
         new_model_data = {
             "model_id": new_model_id,
             "model_name": new_model_name,
-            "classification_id": classification_id or src_model_info.get("classification_id"),
+            "classification_id": classification_id
+            or src_model_info.get("classification_id"),
             "group": group if group is not None else src_model_info.get("group", []),
             "icn": icn if icn is not None else src_model_info.get("icn", ""),
-            "attrs": json.dumps(attrs)
+            "attrs": json.dumps(attrs),
         }
 
         # 一次性创建模型（包含所有属性）
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(MODEL, [])
-            new_model = ag.create_entity(MODEL, new_model_data, CREATE_MODEL_CHECK_ATTR, exist_items)
+            new_model = ag.create_entity(
+                MODEL, new_model_data, CREATE_MODEL_CHECK_ATTR, exist_items
+            )
 
             # 创建模型与分类的关联
             classification_info = ClassificationManage.search_model_classification_info(
-                new_model_data["classification_id"])
+                new_model_data["classification_id"]
+            )
             ag.create_edge(
                 SUBORDINATE_MODEL,
                 classification_info["_id"],
@@ -247,25 +295,29 @@ class ModelManage(object):
                 new_model["_id"],
                 MODEL,
                 dict(
-                    classification_model_asst_id=f"{new_model['classification_id']}_{SUBORDINATE_MODEL}_{new_model['model_id']}"),
+                    classification_model_asst_id=f"{new_model['classification_id']}_{SUBORDINATE_MODEL}_{new_model['model_id']}"
+                ),
                 "classification_model_asst_id",
             )
 
         # 初始化排除字段缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
+
         ExcludeFieldsCache.update_on_model_change(new_model_id)
 
         try:
             # 处理字段分组复制
             if copy_attributes:
                 # 复制源模型的字段分组配置
-                src_field_groups = FieldGroup.objects.filter(model_id=src_model_id).order_by('order')
+                src_field_groups = FieldGroup.objects.filter(
+                    model_id=src_model_id
+                ).order_by("order")
                 for src_group in src_field_groups:
                     FieldGroup.objects.create(
                         model_id=new_model_id,
                         group_name=src_group.group_name,
                         attr_orders=src_group.attr_orders or [],
-                        order=src_group.order
+                        order=src_group.order,
                     )
             else:
                 # 不复制属性时，为新模型创建默认分组
@@ -276,7 +328,11 @@ class ModelManage(object):
                     is_collapsed=False,
                     description="默认分组",
                     created_by=username,
-                    attr_orders=[attr.get("attr_id") for attr in attrs if not attr.get("is_display_field")],
+                    attr_orders=[
+                        attr.get("attr_id")
+                        for attr in attrs
+                        if not attr.get("is_display_field")
+                    ],
                 )
 
             # 处理关系复制
@@ -285,11 +341,22 @@ class ModelManage(object):
 
                 for assoc in associations:
                     # 确定新的源模型ID和目标模型ID
-                    new_src_model_id = new_model_id if assoc["src_model_id"] == src_model_id else assoc["src_model_id"]
-                    new_dst_model_id = new_model_id if assoc["dst_model_id"] == src_model_id else assoc["dst_model_id"]
+                    new_src_model_id = (
+                        new_model_id
+                        if assoc["src_model_id"] == src_model_id
+                        else assoc["src_model_id"]
+                    )
+                    new_dst_model_id = (
+                        new_model_id
+                        if assoc["dst_model_id"] == src_model_id
+                        else assoc["dst_model_id"]
+                    )
 
                     # 如果关联的两端都是源模型（自关联），则两端都改为新模型
-                    if assoc["src_model_id"] == src_model_id and assoc["dst_model_id"] == src_model_id:
+                    if (
+                        assoc["src_model_id"] == src_model_id
+                        and assoc["dst_model_id"] == src_model_id
+                    ):
                         new_src_model_id = new_model_id
                         new_dst_model_id = new_model_id
 
@@ -301,7 +368,9 @@ class ModelManage(object):
                         continue
 
                     # 创建新的关联ID
-                    new_model_asst_id = f'{new_src_model_id}_{assoc["asst_id"]}_{new_dst_model_id}'
+                    new_model_asst_id = (
+                        f"{new_src_model_id}_{assoc['asst_id']}_{new_dst_model_id}"
+                    )
 
                     # 复制关联关系
                     try:
@@ -328,8 +397,8 @@ class ModelManage(object):
                 label="模型管理",
                 _type=CREATE_INST,
                 message=f"复制模型. 源模型: {src_model_info['model_name']}, 新模型: {new_model_name}",
-                inst_id=new_model['_id'],
-                model_object=OPERATOR_MODEL
+                inst_id=new_model["_id"],
+                model_object=OPERATOR_MODEL,
             )
 
             return new_model
@@ -338,7 +407,7 @@ class ModelManage(object):
             # 如果复制过程中出错，删除已创建的模型
             try:
                 ModelManage.delete_model(new_model["_id"])
-            except Exception:
+            except Exception:  # noqa: BLE001 - 清理失败不应掩盖原始错误
                 pass
             raise e
 
@@ -358,15 +427,25 @@ class ModelManage(object):
         """
         model_id = data.pop("model_id", "")  # 不能更新model_id
         with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(MODEL, [{"field": "model_id", "type": "str<>", "value": model_id}])
+            exist_items, _ = ag.query_entity(
+                MODEL, [{"field": "model_id", "type": "str<>", "value": model_id}]
+            )
             # 排除当前正在更新的模型，避免自己和自己比较
             exist_items = [i for i in exist_items if i["_id"] != id]
-            model = ag.set_entity_properties(MODEL, [id], data, UPDATE_MODEL_CHECK_ATTR_MAP, exist_items)
+            model = ag.set_entity_properties(
+                MODEL, [id], data, UPDATE_MODEL_CHECK_ATTR_MAP, exist_items
+            )
         return model[0]
 
     @staticmethod
-    def search_model(language: str = "en", order_type: str = "ASC", order: str = "id", permissions_map: dict = {},
-                     classification_ids: list = None, creator: str = ""):
+    def search_model(
+        language: str = "en",
+        order_type: str = "ASC",
+        order: str = "id",
+        permissions_map: dict = {},
+        classification_ids: list = None,
+        creator: str = "",
+    ):
         """
         查询模型
         Args:
@@ -383,26 +462,44 @@ class ModelManage(object):
         for organization_id, organization_permission_data in permissions_map.items():
             _query_list = []
             if classification_ids:
-                _query_list.append({"field": "classification_id", "type": "str[]", "value": classification_ids})
+                _query_list.append(
+                    {
+                        "field": "classification_id",
+                        "type": "str[]",
+                        "value": classification_ids,
+                    }
+                )
             model_ids = organization_permission_data["inst_names"]
             if model_ids:
-                _query_list.append({"field": "model_id", "type": "str[]", "value": model_ids})
+                _query_list.append(
+                    {"field": "model_id", "type": "str[]", "value": model_ids}
+                )
                 if creator:
                     # 只有创建人条件
-                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
+                    _query_list.append(
+                        {"field": "_creator", "type": "str=", "value": creator}
+                    )
 
             format_permission_dict[organization_id] = _query_list
 
         with GraphClient() as ag:
-            query = dict(label=MODEL, params=[], order=order, order_type=order_type,
-                         format_permission_dict=format_permission_dict,
-                         param_type="OR", organization_field="group")
+            query = dict(
+                label=MODEL,
+                params=[],
+                order=order,
+                order_type=order_type,
+                format_permission_dict=format_permission_dict,
+                param_type="OR",
+                organization_field="group",
+            )
             models, _ = ag.query_entity(**query)
 
         lan = SettingLanguage(language)
 
         for model in models:
-            model["model_name"] = lan.get_val("MODEL", model["model_id"]) or model["model_name"]
+            model["model_name"] = (
+                lan.get_val("MODEL", model["model_id"]) or model["model_name"]
+            )
             # 确保所有模型都有order_id
             if "order_id" not in model:
                 model["order_id"] = 0
@@ -434,10 +531,13 @@ class ModelManage(object):
             # 如果新增字段是 organization/user/enum 类型,自动添加 _display 字段定义
             ModelManage._add_display_field_to_attrs(attrs, attr_info, model_id)
 
-            result = ag.set_entity_properties(MODEL, [model_info["_id"]], dict(attrs=json.dumps(attrs)), {}, [], False)
+            result = ag.set_entity_properties(
+                MODEL, [model_info["_id"]], dict(attrs=json.dumps(attrs)), {}, [], False
+            )
 
         # 更新排除字段缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
+
         updated_attrs = ModelManage.parse_attrs(result[0].get("attrs", "[]"))
         ExcludeFieldsCache.update_on_model_change(model_id)
 
@@ -449,9 +549,15 @@ class ModelManage(object):
                 continue
             attr = attr
 
-        create_change_record(operator=username, model_id=model_id, label="模型管理",
-                             _type=CREATE_INST, message=f"创建模型属性. 模型名称: {model_info['model_name']}",
-                             inst_id=model_info['_id'], model_object=OPERATOR_MODEL)
+        create_change_record(
+            operator=username,
+            model_id=model_id,
+            label="模型管理",
+            _type=CREATE_INST,
+            message=f"创建模型属性. 模型名称: {model_info['model_name']}",
+            inst_id=model_info["_id"],
+            model_object=OPERATOR_MODEL,
+        )
 
         return attr
 
@@ -482,7 +588,9 @@ class ModelManage(object):
                     user_prompt=attr_info["user_prompt"],
                 )
 
-            result = ag.set_entity_properties(MODEL, [model_info["_id"]], dict(attrs=json.dumps(attrs)), {}, [], False)
+            result = ag.set_entity_properties(
+                MODEL, [model_info["_id"]], dict(attrs=json.dumps(attrs)), {}, [], False
+            )
 
         attrs = ModelManage.parse_attrs(result[0].get("attrs", "[]"))
 
@@ -492,9 +600,15 @@ class ModelManage(object):
                 attr = attr
                 break
 
-        create_change_record(operator=username, model_id=model_id, label="模型管理",
-                             _type=UPDATE_INST, message=f"修改模型属性. 模型名称: {model_info['model_name']}",
-                             inst_id=model_info['_id'], model_object=OPERATOR_MODEL)
+        create_change_record(
+            operator=username,
+            model_id=model_id,
+            label="模型管理",
+            _type=UPDATE_INST,
+            message=f"修改模型属性. 模型名称: {model_info['model_name']}",
+            inst_id=model_info["_id"],
+            model_object=OPERATOR_MODEL,
+        )
 
         return attr
 
@@ -518,8 +632,7 @@ class ModelManage(object):
             with GraphClient() as ag:
                 # 查询该模型的所有实例
                 instances, _ = ag.query_entity(
-                    INSTANCE,
-                    [{"field": "model_id", "type": "str=", "value": model_id}]
+                    INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}]
                 )
 
                 # 批量更新实例的 _display 字段
@@ -529,14 +642,14 @@ class ModelManage(object):
                         enum_value = instance[attr_id]
 
                         # 使用统一的转换器生成新的 _display 值
-                        new_display_value = DisplayFieldConverter.convert_enum(enum_value, new_options)
+                        new_display_value = DisplayFieldConverter.convert_enum(
+                            enum_value, new_options
+                        )
 
                         # 更新实例的 _display 字段
                         update_data = {display_field_id: new_display_value}
                         ag.batch_update_node_properties(
-                            INSTANCE,
-                            [instance["_id"]],
-                            update_data
+                            INSTANCE, [instance["_id"]], update_data
                         )
                         updated_count += 1
 
@@ -550,7 +663,7 @@ class ModelManage(object):
             logger.error(
                 f"[update_enum_instances_display] 更新实例枚举 _display 字段失败: "
                 f"模型={model_id}, 字段={attr_id}, 错误={e}",
-                exc_info=True
+                exc_info=True,
             )
             # 不抛出异常，避免中断主流程
 
@@ -571,16 +684,22 @@ class ModelManage(object):
 
             # 检查要删除的字段类型,如果是目标类型,也需要删除对应的 _display 字段
             from apps.cmdb.display_field import DisplayFieldHandler
+
             fields_to_remove = [attr_id]
 
             # 检查是否需要同时删除 _display 字段
             for attr in attrs:
-                if attr["attr_id"] == attr_id and attr.get("attr_type") in DISPLAY_FIELD_TYPES:
+                if (
+                    attr["attr_id"] == attr_id
+                    and attr.get("attr_type") in DISPLAY_FIELD_TYPES
+                ):
                     display_field_id = f"{attr_id}{DISPLAY_SUFFIX}"
                     fields_to_remove.append(display_field_id)
                     break
 
-            new_attrs = [attr for attr in attrs if attr["attr_id"] not in fields_to_remove]
+            new_attrs = [
+                attr for attr in attrs if attr["attr_id"] not in fields_to_remove
+            ]
             result = ag.set_entity_properties(
                 MODEL,
                 [model_info["_id"]],
@@ -596,12 +715,19 @@ class ModelManage(object):
 
         # 更新排除字段缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
+
         updated_attrs = ModelManage.parse_attrs(result[0].get("attrs", "[]"))
         ExcludeFieldsCache.update_on_model_change(model_id)
 
-        create_change_record(operator=username, model_id=model_id, label="模型管理",
-                             _type=DELETE_INST, message=f"删除模型属性. 模型名称: {model_info['model_name']}",
-                             inst_id=model_info['_id'], model_object=OPERATOR_MODEL)
+        create_change_record(
+            operator=username,
+            model_id=model_id,
+            label="模型管理",
+            _type=DELETE_INST,
+            message=f"删除模型属性. 模型名称: {model_info['model_name']}",
+            inst_id=model_info["_id"],
+            model_object=OPERATOR_MODEL,
+        )
 
         return updated_attrs
 
@@ -635,7 +761,7 @@ class ModelManage(object):
             if name_prefix:
                 name = f"{name_prefix}/{item['name']}"
             else:
-                name = item['name']
+                name = item["name"]
             result.append(
                 dict(
                     id=item["id"],
@@ -791,9 +917,19 @@ class ModelManage(object):
             classification_id: 分类ID
         """
         with GraphClient() as ag:
-            models, _ = ag.query_entity(MODEL,
-                                        [{"field": "classification_id", "type": "str=", "value": classification_id}],
-                                        order="order_id", order_type="desc", page={"skip": 0, "limit": 1})
+            models, _ = ag.query_entity(
+                MODEL,
+                [
+                    {
+                        "field": "classification_id",
+                        "type": "str=",
+                        "value": classification_id,
+                    }
+                ],
+                order="order_id",
+                order_type="desc",
+                page={"skip": 0, "limit": 1},
+            )
             if not models:
                 return 0
             return models[0].get("order_id", 0)
@@ -807,7 +943,11 @@ class ModelManage(object):
         """
         with GraphClient() as ag:
             for order_info in model_orders:
-                model_query = {"field": "model_id", "type": "str=", "value": order_info["model_id"]}
+                model_query = {
+                    "field": "model_id",
+                    "type": "str=",
+                    "value": order_info["model_id"],
+                }
                 models, model_count = ag.query_entity(MODEL, [model_query])
                 if model_count == 0:
                     continue
@@ -818,6 +958,6 @@ class ModelManage(object):
                     {"order_id": order_info["order_id"]},
                     {},
                     [],
-                    False
+                    False,
                 )
         return True

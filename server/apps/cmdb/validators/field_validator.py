@@ -17,20 +17,20 @@ CMDB 字段校验器
 
 使用示例:
     from apps.cmdb.validators.field_validator import FieldValidator
-    
+
     # 方式1: 直接校验字符串
     FieldValidator.validate_string(
         "192.168.1.1",
         {"validation_type": "ipv4", "widget_type": "single_line"}
     )
-    
+
     # 方式2: 直接校验数字
     FieldValidator.validate_number(
         512,
         {"min_value": 1, "max_value": 1024},
         "int"
     )
-    
+
     # 方式3: 根据属性定义自动校验(推荐)
     attr = {
         "attr_id": "server_ip",
@@ -39,11 +39,14 @@ CMDB 字段校验器
     }
     FieldValidator.validate_field_by_attr("192.168.1.1", attr)
 """
+
 import re
 import json
 from typing import Any, Dict
 
 from apps.cmdb.constants.field_constraints import (
+    IDENTIFIER_PATTERN,
+    IDENTIFIER_ERROR_MESSAGE,
     StringValidationType,
     DEFAULT_STRING_CONSTRAINT,
     DEFAULT_NUMBER_CONSTRAINT,
@@ -54,19 +57,31 @@ from apps.core.logger import cmdb_logger as logger
 
 
 class ValidationTimeoutError(Exception):
-    """校验超时异常"""
     pass
 
 
 def timeout_handler(signum, frame):
-    """超时信号处理器"""
     raise ValidationTimeoutError("字段校验超时")
+
+
+class IdentifierValidator:
+    """校验模型ID、属性ID等标识符的格式"""
+
+    @classmethod
+    def is_valid(cls, identifier: str) -> bool:
+        if not identifier or not isinstance(identifier, str):
+            return False
+        return bool(IDENTIFIER_PATTERN.match(identifier))
+
+    @classmethod
+    def get_error_message(cls, field_name: str = "ID") -> str:
+        return f"{field_name}{IDENTIFIER_ERROR_MESSAGE}"
 
 
 class FieldValidator:
     """
     字段校验器
-    
+
     提供字段级别的数据校验功能,支持字符串格式、数字范围等多种校验规则。
     """
 
@@ -74,7 +89,7 @@ class FieldValidator:
     def validate_string(value: Any, constraint: Dict) -> None:
         """
         字符串格式校验
-        
+
         支持的校验类型:
         - unrestricted: 无限制(默认)
         - ipv4: IPv4地址格式
@@ -84,7 +99,7 @@ class FieldValidator:
         - url: URL地址格式
         - json: 合法JSON格式
         - custom: 自定义正则表达式
-        
+
         Args:
             value: 待校验的值
             constraint: 约束配置字典
@@ -93,10 +108,10 @@ class FieldValidator:
                     "widget_type": "single_line",  # 组件类型(不影响校验)
                     "custom_regex": ""  # 自定义正则(validation_type=custom时使用)
                 }
-        
+
         Raises:
             BaseAppException: 校验失败时抛出,包含具体错误信息
-        
+
         Examples:
             >>> FieldValidator.validate_string("192.168.1.1", {"validation_type": "ipv4"})
             >>> FieldValidator.validate_string("test@example.com", {"validation_type": "email"})
@@ -111,7 +126,9 @@ class FieldValidator:
 
         # 合并默认约束
         constraint = {**DEFAULT_STRING_CONSTRAINT, **(constraint or {})}
-        validation_type = constraint.get("validation_type", StringValidationType.UNRESTRICTED)
+        validation_type = constraint.get(
+            "validation_type", StringValidationType.UNRESTRICTED
+        )
 
         # 无限制类型直接通过
         if validation_type == StringValidationType.UNRESTRICTED:
@@ -164,8 +181,7 @@ class FieldValidator:
             if not pattern.match(value):
                 # 获取类型的中文名称
                 type_name = dict(StringValidationType.CHOICES).get(
-                    validation_type,
-                    validation_type
+                    validation_type, validation_type
                 )
                 raise BaseAppException(f"值 '{value}' 不符合 {type_name} 格式要求")
         except re.error as e:
@@ -176,7 +192,7 @@ class FieldValidator:
     def validate_number(value: Any, constraint: Dict, attr_type: str = "int") -> None:
         """
         数字范围校验
-        
+
         支持的约束:
         - min_value: 最小值(None表示无限制)
         - max_value: 最大值(None表示无限制)
@@ -189,10 +205,10 @@ class FieldValidator:
                     "max_value": 1024,  # 最大值,None表示无限制
                 }
             attr_type: 字段类型,可选值: "int" 或 "float"
-        
+
         Raises:
             BaseAppException: 校验失败时抛出,包含具体错误信息
-        
+
         Examples:
             >>> FieldValidator.validate_number(512, {"min_value": 1, "max_value": 1024}, "int")
             >>> FieldValidator.validate_number(3.14, {"min_value": 0}, "float")
@@ -245,9 +261,9 @@ class FieldValidator:
     def validate_field_by_attr(value: Any, attr: Dict) -> None:
         """
         根据属性定义自动选择合适的校验方法
-        
+
         这是推荐的统一校验入口,会根据字段类型自动选择对应的校验逻辑。
-        
+
         Args:
             value: 字段值
             attr: 属性定义字典
@@ -257,10 +273,10 @@ class FieldValidator:
                     "option": {...}  # 对应类型的约束配置
 
                 }
-        
+
         Raises:
             BaseAppException: 校验失败时抛出
-        
+
         Examples:
             >>> attr = {
             ...     "attr_id": "server_ip",
@@ -304,11 +320,11 @@ class FieldValidator:
     def validate_instance_data(instance_data: Dict, attrs: list) -> list:
         """
         批量校验实例数据中的所有字段
-        
+
         Args:
             instance_data: 实例数据字典（属性键值对）
             attrs: 属性定义列表
-        
+
         Returns:
             list: 校验错误列表,格式:
                 [
@@ -334,19 +350,23 @@ class FieldValidator:
             try:
                 FieldValidator.validate_field_by_attr(value, attr)
             except BaseAppException as e:
-                validation_errors.append({
-                    "field": attr_id,
-                    "field_name": attr.get("attr_name", attr_id),
-                    "value": value,
-                    "error": getattr(e, 'message', str(e))
-                })
+                validation_errors.append(
+                    {
+                        "field": attr_id,
+                        "field_name": attr.get("attr_name", attr_id),
+                        "value": value,
+                        "error": getattr(e, "message", str(e)),
+                    }
+                )
             except Exception as e:
                 logger.error(f"字段 {attr_id} 校验异常: {e}", exc_info=True)
-                validation_errors.append({
-                    "field": attr_id,
-                    "field_name": attr.get("attr_name", attr_id),
-                    "value": value,
-                    "error": f"校验异常: {getattr(e, 'message', str(e))}"
-                })
+                validation_errors.append(
+                    {
+                        "field": attr_id,
+                        "field_name": attr.get("attr_name", attr_id),
+                        "value": value,
+                        "error": f"校验异常: {getattr(e, 'message', str(e))}",
+                    }
+                )
 
         return validation_errors

@@ -1,5 +1,20 @@
 import { ThresholdField, FilterItem } from '@/app/monitor/types';
 
+export interface CardItem {
+  icon?: string;
+  title: string;
+  tag?: string;
+  description?: string;
+  value: string | number;
+}
+
+export interface SelectCardProps {
+  data: CardItem[];
+  value?: string | number;
+  onChange?: (value: string | number) => void;
+  cardWidth?: number;
+}
+
 export interface PluginItem {
   id: number;
   name: string;
@@ -72,4 +87,5 @@ export interface ChannelItem {
   channel_type: string;
   id: number;
   name: string;
+  description?: string;
 }

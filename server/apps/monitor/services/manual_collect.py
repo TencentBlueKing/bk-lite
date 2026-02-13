@@ -18,7 +18,7 @@ class ManualCollectService:
         # 实例ID格式转换
         try:
             _instance_id = ast.literal_eval(instance_id)[0]
-        except Exception:
+        except (ValueError, SyntaxError, IndexError):
             _instance_id = instance_id
 
         monitor_object = MonitorObject.objects.filter(id=object_id).first()
@@ -92,7 +92,7 @@ class ManualCollectService:
 
         try:
             cluster_name = ast.literal_eval(instance_id)[0]
-        except Exception:
+        except (ValueError, SyntaxError, IndexError):
             cluster_name = instance_id
 
         # 通过 RPC 获取云区域环境变量

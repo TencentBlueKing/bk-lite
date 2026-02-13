@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
 import MarkdownIt from 'markdown-it';
+import DOMPurify from 'dompurify';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import styles from './index.module.scss';
@@ -27,6 +28,7 @@ interface CustomChatProps {
 type ActionRender = (_: any, info: { components: { SendButton: React.ComponentType<ButtonProps>; LoadingButton: React.ComponentType<ButtonProps>; }; }) => ReactNode;
 
 const md = new MarkdownIt({
+  html: false,
   highlight: function (str: string, lang: string) {
     if (lang && hljs.getLanguage(lang)) {
       try {
@@ -36,6 +38,14 @@ const md = new MarkdownIt({
     return '';
   },
 });
+
+const sanitizeHtml = (html: string): string => {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img'],
+    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'src', 'alt', 'width', 'height'],
+    ALLOW_DATA_ATTR: false,
+  });
+};
 
 const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, showMarkOnly = false, initialMessages = [], mode = 'chat' }) => {
   const { t } = useTranslation();
@@ -98,9 +108,7 @@ const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, showMarkOnly
   }, [loading, handleSendMessage, messages, handleSendComplete]);
 
   const handleCopyMessage = (content: string) => {
-    navigator.clipboard.writeText(content).then(() => {
-      console.log(t('chat.copied'));
-    }).catch(err => {
+    navigator.clipboard.writeText(content).catch(err => {
       console.error(`${t('chat.copyFailed')}:`, err);
     });
   };
@@ -143,7 +151,7 @@ const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, showMarkOnly
     return (
       <>
         <div
-          dangerouslySetInnerHTML={{ __html: md.render(content) }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(md.render(content)) }}
           className={styles.markdownBody}
         />
         {(Array.isArray(knowledgeBase) && knowledgeBase.length) ? <KnowledgeBase knowledgeList={knowledgeBase} /> : null}

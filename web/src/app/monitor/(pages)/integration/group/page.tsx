@@ -56,8 +56,7 @@ const GroupPage = () => {
       {
         title: t('monitor.integrations.ruleName'),
         dataIndex: 'name',
-        key: 'name',
-        width: 200
+        key: 'name'
       },
       {
         title: t('monitor.integrations.objectType'),
@@ -77,7 +76,6 @@ const GroupPage = () => {
         title: t('monitor.integrations.ruleDescription'),
         dataIndex: 'rule',
         key: 'rule',
-        width: 200,
         render: (_, record: any) => {
           const count = record.rule?.filter?.length || 0;
           return (
@@ -93,7 +91,6 @@ const GroupPage = () => {
         title: t('monitor.group'),
         dataIndex: 'organizations',
         key: 'organizations',
-        width: 200,
         render: (_, { organizations }) => (
           <EllipsisWithTooltip
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"

@@ -57,13 +57,11 @@ const Strategy: React.FC = () => {
       title: t('common.name'),
       dataIndex: 'name',
       key: 'name',
-      width: 100,
     },
     {
       title: t('log.event.policyType'),
       dataIndex: 'alert_type',
       key: 'alert_type',
-      width: 80,
       render: (val) => (
         <>
           {ALGORITHM_LIST.find((item: ListItem) => item.value === val)?.title ||
@@ -75,7 +73,6 @@ const Strategy: React.FC = () => {
       title: t('common.creator'),
       dataIndex: 'created_by',
       key: 'created_by',
-      width: 100,
       render: (_, { created_by }) => {
         return created_by ? (
           <div className="column-user" title={created_by}>
@@ -101,7 +98,6 @@ const Strategy: React.FC = () => {
       title: t('common.createTime'),
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 160,
       render: (_, { created_at }) => (
         <>{created_at ? convertToLocalizedTime(created_at) : '--'}</>
       ),
@@ -110,7 +106,6 @@ const Strategy: React.FC = () => {
       title: t('log.event.executionTime'),
       dataIndex: 'last_run_time',
       key: 'last_run_time',
-      width: 160,
       render: (_, { last_run_time }) => (
         <>{last_run_time ? convertToLocalizedTime(last_run_time) : '--'}</>
       ),
@@ -119,7 +114,6 @@ const Strategy: React.FC = () => {
       title: t('log.event.effective'),
       dataIndex: 'effective',
       key: 'effective',
-      width: 80,
       render: (_, record) => (
         <Permission
           requiredPermissions={['Edit']}
@@ -139,7 +133,6 @@ const Strategy: React.FC = () => {
       key: 'action',
       dataIndex: 'action',
       width: 120,
-      fixed: 'right',
       render: (_, record) => (
         <>
           <Permission

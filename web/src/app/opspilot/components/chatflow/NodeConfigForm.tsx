@@ -1,17 +1,24 @@
 'use client';
 
 import React from 'react';
-import { Form, Input, Select, InputNumber, Button, Upload, Radio } from 'antd';
-import { InboxOutlined, ExportOutlined, CopyOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import { useTranslation } from '@/utils/i18n';
-import Link from 'next/link';
-import { message } from 'antd';
+import { Form, Input } from 'antd';
 import type { UploadProps } from 'antd';
-import Icon from '@/components/icon';
-import { TimeListField, MonthDayPicker, CronEditor } from './components';
-
-const { Option } = Select;
-const { TextArea } = Input;
+import { useTranslation } from '@/utils/i18n';
+import { message } from 'antd';
+import {
+  CeleryNodeConfig,
+  HttpNodeConfig,
+  AgentsNodeConfig,
+  ApiInfoNodeConfig,
+  WebChatNodeConfig,
+  MobileNodeConfig,
+  ConditionNodeConfig,
+  IntentClassificationNodeConfig,
+  NotificationNodeConfig,
+  EnterpriseWechatNodeConfig,
+  DingtalkNodeConfig,
+  WechatOfficialNodeConfig,
+} from './components/nodeConfigs';
 
 export const NodeConfigForm: React.FC<any> = ({
   node,
@@ -99,45 +106,9 @@ export const NodeConfigForm: React.FC<any> = ({
     }
   };
 
-  const renderKeyValueEditor = (rows: any, label: string) => {
-    const { rows: items, addRow, removeRow, updateRow } = rows;
-    return (
-      <Form.Item label={label}>
-        <div className="space-y-2">
-          <div className="grid gap-2 text-sm text-gray-500 mb-1 grid-cols-[1fr_1fr_60px]">
-            <span>{t('chatflow.nodeConfig.paramName')}</span>
-            <span>{t('chatflow.nodeConfig.paramValue')}</span>
-            <span>{t('chatflow.nodeConfig.operation')}</span>
-          </div>
-          {items.map((row: any, index: number) => (
-            <div key={index} className="grid gap-2 items-center grid-cols-[1fr_1fr_60px]">
-              <Input
-                placeholder={t('chatflow.nodeConfig.enterParamName')}
-                value={row.key}
-                onChange={(e) => updateRow(index, 'key', e.target.value)}
-              />
-              <div className="flex items-center gap-1">
-                <span className="text-xs bg-[var(--color-fill-1)] px-1 rounded">str</span>
-                <Input
-                  placeholder={t('chatflow.nodeConfig.enterOrReferenceParamValue')}
-                  value={row.value}
-                  onChange={(e) => updateRow(index, 'value', e.target.value)}
-                />
-              </div>
-              <div className="flex gap-1">
-                <Button type="text" size="small" icon="+" onClick={addRow} />
-                <Button type="text" size="small" icon="-" onClick={() => removeRow(index)} disabled={items.length === 1} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </Form.Item>
-    );
-  };
-
   return (
     <>
-      {/* 通用字段 */}
+      {/* Common fields */}
       <Form.Item name="name" label={t('chatflow.nodeConfig.nodeName')} rules={[{ required: true }]}>
         <Input placeholder={t('chatflow.nodeConfig.pleaseEnterNodeName')} />
       </Form.Item>
@@ -148,545 +119,60 @@ export const NodeConfigForm: React.FC<any> = ({
         <Input placeholder={t('chatflow.nodeConfig.pleaseEnterOutputParams')} />
       </Form.Item>
 
-      {/* 根据节点类型渲染特定配置 */}
+      {/* Node type specific configs */}
       {nodeType === 'celery' && (
-        <>
-          <Form.Item name="frequency" label={t('chatflow.nodeConfig.triggerFrequency')} rules={[{ required: true }]}>
-            <Select placeholder={t('chatflow.nodeConfig.pleaseSelectTriggerFrequency')} onChange={onFrequencyChange}>
-              <Option value="daily">{t('chatflow.daily')}</Option>
-              <Option value="weekly">{t('chatflow.weekly')}</Option>
-              <Option value="monthly">{t('chatflow.monthly')}</Option>
-              <Option value="cron">{t('chatflow.cron')}</Option>
-            </Select>
-          </Form.Item>
-
-          {/* 每天模式 - 提示信息 + 多时间选择 */}
-          {frequency === 'daily' && (
-            <>
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md flex items-start gap-2">
-                <InfoCircleOutlined className="text-blue-500 mt-0.5" />
-                <span className="text-sm text-blue-600">
-                  {t('chatflow.nodeConfig.dailyTip')}
-                </span>
-              </div>
-              <Form.Item name="times" label={t('chatflow.nodeConfig.triggerTime')} rules={[{ required: true }]}>
-                <TimeListField />
-              </Form.Item>
-            </>
-          )}
-
-          {/* 每周模式 - 多选星期 + 多时间选择 */}
-          {frequency === 'weekly' && (
-            <>
-              <Form.Item name="weekdays" label={t('chatflow.nodeConfig.selectWeekdays')} rules={[{ required: true }]}>
-                <Select
-                  mode="multiple"
-                  placeholder={t('chatflow.nodeConfig.pleaseSelectWeekdays')}
-                  options={[
-                    { label: t('chatflow.nodeConfig.monday'), value: 1 },
-                    { label: t('chatflow.nodeConfig.tuesday'), value: 2 },
-                    { label: t('chatflow.nodeConfig.wednesday'), value: 3 },
-                    { label: t('chatflow.nodeConfig.thursday'), value: 4 },
-                    { label: t('chatflow.nodeConfig.friday'), value: 5 },
-                    { label: t('chatflow.nodeConfig.saturday'), value: 6 },
-                    { label: t('chatflow.nodeConfig.sunday'), value: 0 },
-                  ]}
-                />
-              </Form.Item>
-              <Form.Item name="times" label={t('chatflow.nodeConfig.triggerTime')} rules={[{ required: true }]}>
-                <TimeListField />
-              </Form.Item>
-            </>
-          )}
-
-          {/* 每月模式 - 间隔月数 + 日期选择 + 多时间选择 */}
-          {frequency === 'monthly' && (
-            <>
-              <Form.Item label={t('chatflow.nodeConfig.monthInterval')}>
-                <div className="flex items-center gap-2">
-                  <span>{t('chatflow.nodeConfig.every')}</span>
-                  <Form.Item name="monthInterval" noStyle initialValue={1}>
-                    <InputNumber min={1} max={12} className="w-20" />
-                  </Form.Item>
-                  <span>{t('chatflow.nodeConfig.monthsTriggerOnce')}</span>
-                </div>
-              </Form.Item>
-              <Form.Item name="monthDay" label={t('chatflow.nodeConfig.triggerDate')} rules={[{ required: true }]}>
-                <MonthDayPicker />
-              </Form.Item>
-              <Form.Item name="times" label={t('chatflow.nodeConfig.triggerTime')} rules={[{ required: true }]}>
-                <TimeListField />
-              </Form.Item>
-            </>
-          )}
-
-          {/* Cron表达式模式 */}
-          {frequency === 'cron' && (
-            <Form.Item name="cron" rules={[{ required: true }]}>
-              <CronEditor />
-            </Form.Item>
-          )}
-        </>
+        <CeleryNodeConfig t={t} frequency={frequency} onFrequencyChange={onFrequencyChange} />
       )}
 
       {nodeType === 'http' && (
-        <>
-          <Form.Item label="API" required>
-            <div className="flex gap-2">
-              <Form.Item name="method" noStyle rules={[{ required: true }]}>
-                <Select style={{ width: 100 }}>
-                  {['GET', 'POST', 'PUT', 'DELETE'].map(m => <Option key={m} value={m}>{m}</Option>)}
-                </Select>
-              </Form.Item>
-              <Form.Item name="url" noStyle rules={[{ required: true }]}>
-                <Input placeholder={t('chatflow.nodeConfig.enterUrl')} className="flex-1" />
-              </Form.Item>
-            </div>
-          </Form.Item>
-          {renderKeyValueEditor(paramRows, t('chatflow.nodeConfig.requestParams'))}
-          {renderKeyValueEditor(headerRows, t('chatflow.nodeConfig.requestHeaders'))}
-          <Form.Item name="requestBody" label={t('chatflow.nodeConfig.requestBody')}>
-            <TextArea rows={6} placeholder={t('chatflow.nodeConfig.requestBodyPlaceholder')} />
-          </Form.Item>
-          <Form.Item name="timeout" label={t('chatflow.nodeConfig.timeoutSettings')}>
-            <InputNumber min={1} max={300} className="w-full" />
-          </Form.Item>
-          <Form.Item name="outputMode" label={t('chatflow.nodeConfig.outputMode')}>
-            <Radio.Group>
-              <Radio value="stream">{t('chatflow.nodeConfig.streamMode')}</Radio>
-              <Radio value="once">{t('chatflow.nodeConfig.onceMode')}</Radio>
-            </Radio.Group>
-          </Form.Item>
-        </>
+        <HttpNodeConfig t={t} paramRows={paramRows} headerRows={headerRows} />
       )}
 
       {nodeType === 'agents' && (
-        <>
-          <div className="relative">
-            <Form.Item 
-              name="agent" 
-              label={t('chatflow.nodeConfig.selectAgent')}
-              rules={[{ required: true }]}
-            >
-              <Select
-                placeholder={t('chatflow.nodeConfig.pleaseSelectAgent')}
-                loading={loadingSkills}
-                showSearch
-                onChange={(agentId) => {
-                  const selectedAgent = skills.find((s: any) => s.id === agentId);
-                  if (selectedAgent) form.setFieldsValue({ agentName: selectedAgent.name });
-                }}
-                filterOption={(input, option) => option?.label?.toString().toLowerCase().includes(input.toLowerCase()) ?? false}
-              >
-                {skills.map((s: any) => <Option key={s.id} value={s.id} label={s.name}>{s.name}</Option>)}
-              </Select>
-            </Form.Item>
-            <Link href="/opspilot/skill" target="_blank" className="absolute right-0 top-0">
-              <Button type="link" size="small" icon={<PlusOutlined />} className="text-blue-500 hover:text-blue-600 text-xs">
-                {t('chatflow.nodeConfig.addAgent')}
-              </Button>
-            </Link>
-          </div>
-          <Form.Item name="agentName" className="hidden"><Input /></Form.Item>
-          <Form.Item name="prompt" label={t('chatflow.nodeConfig.promptAppend')} tooltip={t('chatflow.nodeConfig.promptAppendTooltip')}>
-            <TextArea rows={4} placeholder={t('chatflow.nodeConfig.promptPlaceholder')} />
-          </Form.Item>
-          <Form.Item label={t('chatflow.nodeConfig.uploadKnowledge')} tooltip={t('chatflow.nodeConfig.uploadKnowledgeTooltip')}>
-            <Upload.Dragger {...uploadProps}>
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">{t('chatflow.nodeConfig.uploadHint')}</p>
-              <p className="ant-upload-hint">{t('chatflow.nodeConfig.uploadDescription')}</p>
-            </Upload.Dragger>
-          </Form.Item>
-        </>
+        <AgentsNodeConfig
+          t={t}
+          skills={skills}
+          loadingSkills={loadingSkills}
+          uploadedFiles={uploadedFiles}
+          setUploadedFiles={setUploadedFiles}
+          uploadProps={uploadProps}
+          form={form}
+        />
       )}
 
       {['restful', 'openai', 'agui', 'embedded_chat'].includes(nodeType) && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-xs leading-5">
-          <p className="text-gray-500 mb-2">{t(`chatflow.nodeConfig.${nodeType === 'embedded_chat' ? 'agui' : nodeType}ApiInfo`)}</p>
-          <div className="mt-2 mb-2 relative">
-            <Input.TextArea
-              readOnly
-              value={`${typeof window !== 'undefined' ? window.location.origin : ''}/api/v1/opspilot/bot_mgmt/execute_chat_flow/${botId}/${node.id}`}
-              autoSize={{ minRows: 2, maxRows: 4 }}
-              className="font-mono text-xs text-gray-700 bg-white pr-10 border-none"
-            />
-            <Button type="text" icon={<CopyOutlined />} size="small" onClick={copyApiUrl} className="absolute top-2 right-2" />
-          </div>
-          <span className="text-gray-500">{t('chatflow.nodeConfig.moreDetails')}</span>
-          <Link href="/opspilot/studio/detail/api" target="_blank" className="text-blue-500 hover:underline">
-            {t('chatflow.nodeConfig.viewApiDocs')}
-          </Link>
-        </div>
+        <ApiInfoNodeConfig t={t} nodeType={nodeType} botId={botId} nodeId={node.id} copyApiUrl={copyApiUrl} />
       )}
 
-      {nodeType === 'web_chat' && (
-        <>
-          <Form.Item 
-            name="appName" 
-            label={t('chatflow.nodeConfig.appName')} 
-            rules={[{ 
-              required: true, 
-              message: t('chatflow.nodeConfig.pleaseEnterAppName'),
-              whitespace: true
-            }]}
-          >
-            <Input placeholder={t('chatflow.nodeConfig.enterAppName')} />
-          </Form.Item>
-          <Form.Item 
-            name="appIcon" 
-            label={t('chatflow.nodeConfig.appIcon')} 
-            rules={[{ 
-              required: true, 
-              message: t('chatflow.nodeConfig.pleaseSelectAppIcon')
-            }]}
-          >
-            <Form.Item noStyle shouldUpdate={(prev, curr) => prev.appIcon !== curr.appIcon}>
-              {() => (
-                <div className="flex gap-3">
-                  {['duihuazhinengti', 'a-zhinengti', 'zhinengtitubiao', 'zhinengti1', 'zhinengti2'].map(iconType => (
-                    <div
-                      key={iconType}
-                      onClick={() => {
-                        form.setFieldValue('appIcon', iconType);
-                        form.validateFields(['appIcon']);
-                      }}
-                      className={`w-10 h-10 flex items-center justify-center rounded cursor-pointer transition-all ${
-                        form.getFieldValue('appIcon') === iconType 
-                          ? 'border-2 border-blue-500 bg-blue-50/50' 
-                          : 'border border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <Icon type={iconType} className="text-2xl" />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Form.Item>
-          </Form.Item>
-          <Form.Item 
-            name="appDescription" 
-            label={t('chatflow.nodeConfig.appDescription')} 
-            rules={[{ 
-              required: true, 
-              message: t('chatflow.nodeConfig.pleaseEnterAppDescription'),
-              whitespace: true
-            }]}
-          >
-            <TextArea 
-              rows={4} 
-              placeholder={t('chatflow.nodeConfig.enterAppDescription')} 
-            />
-          </Form.Item>
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-xs">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-gray-600">
-                {t('chatflow.nodeConfig.webAccessAddress')}：
-              </p>
-              <Button
-                type="text"
-                size="small"
-                icon={<ExportOutlined />}
-                className="text-gray-400 hover:text-gray-600"
-                onClick={() => {
-                  const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/opspilot/studio/chat`;
-                  window.open(url, '_blank');
-                }}
-              />
-            </div>
-            <div className="font-mono text-blue-600 break-all">
-              {typeof window !== 'undefined' ? window.location.origin : ''}/opspilot/studio/chat
-            </div>
-          </div>
-        </>
-      )}
+      {nodeType === 'web_chat' && <WebChatNodeConfig t={t} form={form} />}
 
-      {nodeType === 'mobile' && (
-        <>
-          <Form.Item 
-            name="appName" 
-            label={t('chatflow.nodeConfig.appName')} 
-            rules={[{ 
-              required: true, 
-              message: t('chatflow.nodeConfig.pleaseEnterAppName'),
-              whitespace: true
-            }]}
-          >
-            <Input placeholder={t('chatflow.nodeConfig.enterAppName')} />
-          </Form.Item>
-          <Form.Item 
-            name="appTags" 
-            label={t('chatflow.nodeConfig.appTags')} 
-            rules={[{ 
-              required: true, 
-              message: t('chatflow.nodeConfig.pleaseSelectAppTags'),
-              type: 'array',
-              min: 1
-            }]}
-          >
-            <Select 
-              mode="multiple" 
-              placeholder={t('chatflow.nodeConfig.selectAppTags')}
-              options={[
-                { label: t('chatflow.nodeConfig.appTagRoutineOps'), value: 'routine_ops' },
-                { label: t('chatflow.nodeConfig.appTagMonitorAlarm'), value: 'monitor_alarm' },
-                { label: t('chatflow.nodeConfig.appTagAutomation'), value: 'automation' },
-                { label: t('chatflow.nodeConfig.appTagSecurityAudit'), value: 'security_audit' },
-                { label: t('chatflow.nodeConfig.appTagPerformanceAnalysis'), value: 'performance_analysis' },
-                { label: t('chatflow.nodeConfig.appTagOpsPlanning'), value: 'ops_planning' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item 
-            name="appDescription" 
-            label={t('chatflow.nodeConfig.appDescription')} 
-            rules={[{ 
-              required: true, 
-              message: t('chatflow.nodeConfig.pleaseEnterAppDescription'),
-              whitespace: true
-            }]}
-          >
-            <TextArea 
-              rows={4} 
-              placeholder={t('chatflow.nodeConfig.enterAppDescription')} 
-            />
-          </Form.Item>
-        </>
-      )}
+      {nodeType === 'mobile' && <MobileNodeConfig t={t} />}
 
-      {nodeType === 'condition' && (
-        <div className="mb-4">
-          <h4 className="text-sm font-medium mb-3">{t('chatflow.nodeConfig.branchCondition')}</h4>
-          <div className="grid grid-cols-3 gap-2">
-            <Form.Item name="conditionField" rules={[{ required: true }]}>
-              <Select placeholder={t('chatflow.nodeConfig.conditionField')}>
-                <Option value="triggerType">{t('chatflow.nodeConfig.triggerType')}</Option>
-              </Select>
-            </Form.Item>
-            <Form.Item name="conditionOperator" rules={[{ required: true }]}>
-              <Select placeholder={t('chatflow.nodeConfig.conditionOperator')}>
-                <Option value="equals">{t('chatflow.nodeConfig.equals')}</Option>
-                <Option value="notEquals">{t('chatflow.nodeConfig.notEquals')}</Option>
-              </Select>
-            </Form.Item>
-            <Form.Item name="conditionValue" rules={[{ required: true }]}>
-              <Select placeholder={t('chatflow.nodeConfig.selectValue')}>
-                {nodes.filter((n: any) => ['celery', 'restful', 'openai'].includes(n.data?.type)).map((n: any) => (
-                  <Option key={n.id} value={n.id}>{n.data.label}</Option>
-                ))}
-              </Select>
-            </Form.Item>
-          </div>
-        </div>
-      )}
+      {nodeType === 'condition' && <ConditionNodeConfig t={t} nodes={nodes} />}
 
       {nodeType === 'intent_classification' && (
-        <div className="mb-4">
-          <Form.Item 
-            name="agent" 
-            label={t('chatflow.nodeConfig.selectAgent')} 
-            rules={[{ required: true, message: t('chatflow.nodeConfig.pleaseSelectAgent') }]}
-          >
-            <Select 
-              placeholder={t('chatflow.nodeConfig.pleaseSelectAgent')} 
-              loading={loadingSkills}
-              showSearch
-              filterOption={(input, option) => option?.label?.toString().toLowerCase().includes(input.toLowerCase()) ?? false}
-            >
-              {skills.map((s: any) => (
-                <Option key={s.id} value={s.id} label={s.name}>{s.name}</Option>
-              ))}
-            </Select>
-          </Form.Item>
-
-          <Form.List name="intents">
-            {(fields, { add, remove }) => (
-              <>
-                <div className="mb-3 flex items-center justify-between pb-2">
-                  <label className="text-sm font-medium text-[var(--color-text-2)]">{t('chatflow.nodeConfig.intentClassification')}</label>
-                  <Button 
-                    type="dashed" 
-                    onClick={() => add({ name: '' })} 
-                    size="small"
-                    icon={<PlusOutlined />}
-                  >
-                    {t('chatflow.nodeConfig.addIntent')}
-                  </Button>
-                </div>
-                {fields.map((field, index) => (
-                  <div key={field.key} className="group mb-3 relative">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-semibold shadow-md">
-                        {index + 1}
-                      </div>
-                      <span className="text-xs text-[var(--color-text-3)] font-medium">
-                        {t('chatflow.nodeConfig.classification')} {index + 1}
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <Form.Item
-                        name={[field.name, 'name']}
-                        rules={[{ required: true, message: t('chatflow.nodeConfig.intentNameRequired') }]}
-                        className="mb-0"
-                      >
-                        <TextArea 
-                          rows={3} 
-                          placeholder={t('chatflow.nodeConfig.intentTopicPlaceholder')} 
-                        />
-                      </Form.Item>
-                      <Button
-                        type="text"
-                        danger
-                        size="small"
-                        icon={<Icon type="shanchu" className="text-base" />}
-                        onClick={() => remove(field.name)}
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                        title={t('chatflow.nodeConfig.removeIntent')}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-          </Form.List>
-        </div>
+        <IntentClassificationNodeConfig t={t} skills={skills} loadingSkills={loadingSkills} />
       )}
 
       {nodeType === 'notification' && (
-        <>
-          <Form.Item name="notificationType" label={t('chatflow.notificationCategory')} initialValue="email" rules={[{ required: true }]}>
-            <Radio.Group onChange={(e) => { 
-              setNotificationType(e.target.value); 
-              loadChannels(e.target.value); 
-              form.setFieldsValue({ notificationMethod: undefined });
-            }}>
-              <Radio value="email">{t('chatflow.email')}</Radio>
-              <Radio value="enterprise_wechat_bot">{t('chatflow.enterpriseWechatBot')}</Radio>
-            </Radio.Group>
-          </Form.Item>
-          <Form.Item name="notificationMethod" label={
-            <div className="flex items-center justify-between" style={{ width: '600px' }}>
-              <span>{t('chatflow.notificationMethod')}</span>
-              <Link href="/system-manager/channel" target="_blank" className="text-blue-500 hover:text-blue-600 text-xs flex items-center gap-1 whitespace-nowrap">
-                <PlusOutlined />
-                {t('chatflow.addNotificationChannel')}
-              </Link>
-            </div>
-          } rules={[{ required: true }]}>
-            <Select placeholder={t('chatflow.selectNotificationMethod')} loading={loadingChannels}>
-              {notificationChannels.map((c: any) => <Option key={c.id} value={c.id}>{c.name}</Option>)}
-            </Select>
-          </Form.Item>
-          {notificationType === 'email' && (
-            <>
-              <Form.Item name="notificationRecipients" label={t('chatflow.notificationRecipients')} rules={[{ required: true }]}>
-                <Select 
-                  mode="multiple" 
-                  placeholder={t('chatflow.selectNotificationRecipients')} 
-                  loading={loadingUsers} 
-                  showSearch
-                  filterOption={(input, option) => {
-                    const label = option?.label as string || '';
-                    return label.toLowerCase().includes(input.toLowerCase());
-                  }}
-                  optionFilterProp="label"
-                >
-                  {allUsers.map((u: any) => <Option key={u.id} value={u.id} label={`${u.display_name || u.name}(${u.username})`}>{u.display_name || u.name}({u.username})</Option>)}
-                </Select>
-              </Form.Item>
-              <Form.Item name="notificationTitle" label={t('chatflow.notificationTitle')} rules={[{ required: true }]}>
-                <Input placeholder={t('chatflow.enterNotificationTitle')} />
-              </Form.Item>
-            </>
-          )}
-          <Form.Item name="notificationContent" label={t('chatflow.notificationContent')} rules={[{ required: true }]} initialValue="{{last_message}}">
-            <TextArea rows={4} placeholder={t('chatflow.enterNotificationContent')} />
-          </Form.Item>
-        </>
+        <NotificationNodeConfig
+          t={t}
+          notificationType={notificationType}
+          setNotificationType={setNotificationType}
+          notificationChannels={notificationChannels}
+          loadingChannels={loadingChannels}
+          loadChannels={loadChannels}
+          allUsers={allUsers}
+          loadingUsers={loadingUsers}
+          form={form}
+        />
       )}
 
-      {nodeType === 'enterprise_wechat' && (
-        <div className="p-4 bg-[var(--color-fill-1)] border border-[var(--color-border-2)] rounded-md">
-          <h4 className="text-sm font-medium mb-3">{t('chatflow.nodeConfig.enterpriseWechatParams')}</h4>
-          <div className="space-y-3">
-            {['token', 'secret', 'aes_key', 'corp_id', 'agent_id'].map((field, idx) => (
-              <Form.Item 
-                key={field} 
-                name={field} 
-                label={field.toUpperCase().replace('_', ' ')} 
-                rules={[{ 
-                  required: true, 
-                  message: `请输入${field.toUpperCase().replace('_', ' ')}`,
-                  whitespace: true
-                }]} 
-                className={idx === 4 ? 'mb-0' : 'mb-3'}
-              >
-                {field.includes('secret') || field === 'aes_key' ? 
-                  <Input.Password placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} /> : 
-                  <Input placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} />
-                }
-              </Form.Item>
-            ))}
-          </div>
-        </div>
-      )}
+      {nodeType === 'enterprise_wechat' && <EnterpriseWechatNodeConfig t={t} />}
 
-      {nodeType === 'dingtalk' && (
-        <div className="p-4 bg-[var(--color-fill-1)] border border-[var(--color-border-2)] rounded-md">
-          <h4 className="text-sm font-medium mb-3">{t('chatflow.nodeConfig.dingtalkParams')}</h4>
-          <div className="space-y-3">
-            <Form.Item 
-              name="client_id" 
-              label="Client ID" 
-              rules={[{ 
-                required: true, 
-                message: t('chatflow.nodeConfig.pleaseEnterClientId'),
-                whitespace: true
-              }]}
-            >
-              <Input placeholder={t('chatflow.nodeConfig.enterClientId')} />
-            </Form.Item>
-            <Form.Item 
-              name="client_secret" 
-              label="Client Secret" 
-              rules={[{ 
-                required: true, 
-                message: t('chatflow.nodeConfig.pleaseEnterClientSecret'),
-                whitespace: true
-              }]}
-              className="mb-0"
-            >
-              <Input.Password placeholder={t('chatflow.nodeConfig.enterClientSecret')} />
-            </Form.Item>
-          </div>
-        </div>
-      )}
+      {nodeType === 'dingtalk' && <DingtalkNodeConfig t={t} />}
 
-      {nodeType === 'wechat_official' && (
-        <div className="p-4 bg-[var(--color-fill-1)] border border-[var(--color-border-2)] rounded-md">
-          <h4 className="text-sm font-medium mb-3">{t('chatflow.nodeConfig.wechatOfficialParams')}</h4>
-          <div className="space-y-3">
-            {['token', 'appid', 'secret', 'aes_key'].map((field, idx) => (
-              <Form.Item 
-                key={field} 
-                name={field} 
-                label={field.toUpperCase().replace('_', ' ')} 
-                rules={[{ 
-                  required: true, 
-                  message: `请输入${field.toUpperCase().replace('_', ' ')}`,
-                  whitespace: true
-                }]} 
-                className={idx === 3 ? 'mb-0' : 'mb-3'}
-              >
-                {field.includes('secret') || field === 'aes_key' ? 
-                  <Input.Password placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} /> : 
-                  <Input placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} />
-                }
-              </Form.Item>
-            ))}
-          </div>
-        </div>
-      )}
+      {nodeType === 'wechat_official' && <WechatOfficialNodeConfig t={t} />}
     </>
   );
 };

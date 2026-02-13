@@ -297,13 +297,16 @@
         "port": "Port",
         "type": "Type",
         "smtp_user": "Smtp User",
-        "deleteConfirm": "Are you sure you want to delete this channel?"
+        "deleteConfirm": "Are you sure you want to delete this channel?",
+        "namespace": "Namespace",
+        "method_name": "Method Name",
+        "timeout": "Timeout (seconds)"
       },
       "table": {
         "description": "DESCRIPTION",
         "name": "NAME"
       },
-      "emailDesc": "The email channel supports the integration of various notification methods and the flexible configuration of different notification templates.",
+      "emailDesc": "The email channel supports sending email notifications via SMTP service.",
       "template": {
         "context": "CONTEXT",
         "detail": "Detail",
@@ -311,8 +314,10 @@
         "name": "NAME"
       },
       "email": "Email",
-      "weComDesc": "The Chat Group Helper channel supports the integration of various notification methods and the flexible configuration of different notification templates.",
-      "weCom": "Chat Group Helper"
+      "weComDesc": "The Chat Group Helper channel supports sending notifications to WeCom groups via Webhook.",
+      "weCom": "Chat Group Helper",
+      "nats": "NATS Channel",
+      "natsDesc": "The NATS channel supports notification push through NATS message queue."
     },
     "modules": {
       "llm_model": "LLM Model",

@@ -1,3 +1,4 @@
+from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import RasaModel
 
@@ -20,4 +21,4 @@ class BotInitService:
                     rasa_model.model_file.save("core_model.tar.gz", f)
                 rasa_model.save()
         except Exception as e:
-            print(e)
+            logger.exception(f"Failed to initialize Rasa model: {e}")

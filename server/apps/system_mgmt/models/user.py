@@ -60,7 +60,7 @@ class User(models.Model):
 class Group(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(null=True, blank=True)
-    parent_id = models.IntegerField(default=0)
+    parent_id = models.IntegerField(default=0, db_index=True)
     external_id = models.CharField(max_length=100, null=True, blank=True)
     roles = models.ManyToManyField("Role", blank=True, verbose_name="角色列表")
     is_virtual = models.BooleanField(default=False, verbose_name="是否虚拟组")

@@ -1,15 +1,13 @@
 """策略实例基准服务 - 管理 PolicyInstanceBaseline 的创建、同步和清理"""
 
-import logging
 from datetime import datetime, timezone
 
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import (
     MonitorInstance,
     MonitorInstanceOrganization,
     PolicyInstanceBaseline,
 )
-
-logger = logging.getLogger("apps.monitor")
 
 
 class PolicyBaselineService:

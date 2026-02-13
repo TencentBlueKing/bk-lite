@@ -1,10 +1,34 @@
-import React from 'react';
-import { Form, Switch, Button, Radio, Select } from 'antd';
+import React, { useMemo } from 'react';
+import { Form, Switch, Button, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { StrategyFields, ChannelItem } from '@/app/monitor/types/event';
+import {
+  StrategyFields,
+  ChannelItem,
+  CardItem
+} from '@/app/monitor/types/event';
 import { UserItem } from '@/app/monitor/types';
+import SelectCard from './selectCard';
 
 const { Option } = Select;
+
+const getChannelIcon = (channelType: string): string => {
+  const iconMap: Record<string, string> = {
+    email: 'youjian',
+    enterprise_wechat_bot: 'qiwei2',
+    nats: 'dongzuo1'
+  };
+  return iconMap[channelType] || 'youjian';
+};
+
+// 根据 channel_type 返回对应的翻译键
+const getChannelTypeKey = (channelType: string): string => {
+  const keyMap: Record<string, string> = {
+    email: 'monitor.events.channelTypeEmail',
+    enterprise_wechat_bot: 'monitor.events.channelTypeWechatBot',
+    nats: 'monitor.events.channelTypeNats'
+  };
+  return keyMap[channelType] || '';
+};
 
 interface NotificationFormProps {
   channelList: ChannelItem[];
@@ -18,16 +42,42 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
   onLinkToSystemManage
 }) => {
   const { t } = useTranslation();
+  const form = Form.useFormInstance<StrategyFields>();
+
+  // 通知渠道变更时清空通知者
+  const handleChannelChange = () => {
+    form.setFieldValue('notice_users', []);
+  };
+
+  // 将 channelList 转换为 SelectCard 需要的数据格式
+  const channelCardData: CardItem[] = useMemo(() => {
+    return channelList.map((item) => {
+      const tagKey = getChannelTypeKey(item.channel_type);
+      return {
+        icon: getChannelIcon(item.channel_type),
+        title: item.name,
+        tag: tagKey ? t(tagKey) : item.channel_type,
+        description: item.description,
+        value: item.id
+      };
+    });
+  }, [channelList, t]);
 
   return (
     <>
       <Form.Item<StrategyFields>
         label={
-          <span className="w-[100px]">{t('monitor.events.notification')}</span>
+          <span className="w-[100px]">
+            {t('monitor.events.notificationConfig')}
+          </span>
         }
-        name="notice"
       >
-        <Switch />
+        <Form.Item name="notice" noStyle>
+          <Switch />
+        </Form.Item>
+        <div className="text-[var(--color-text-3)] mt-[10px]">
+          {t('monitor.events.notificationDesc')}
+        </div>
       </Form.Item>
       <Form.Item
         noStyle
@@ -41,7 +91,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
               <Form.Item<StrategyFields>
                 label={
                   <span className="w-[100px]">
-                    {t('monitor.events.method')}
+                    {t('monitor.events.notificationChannel')}
                   </span>
                 }
                 name="notice_type_id"
@@ -53,13 +103,13 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                 ]}
               >
                 {channelList.length ? (
-                  <Radio.Group>
-                    {channelList.map((item) => (
-                      <Radio key={item.id} value={item.id}>
-                        {`${item.name}（${item.channel_type}）`}
-                      </Radio>
-                    ))}
-                  </Radio.Group>
+                  <SelectCard
+                    data={channelCardData}
+                    onChange={(val) => {
+                      form.setFieldValue('notice_type_id', val);
+                      handleChannelChange();
+                    }}
+                  />
                 ) : (
                   <span>
                     {t('monitor.events.noticeWay')}

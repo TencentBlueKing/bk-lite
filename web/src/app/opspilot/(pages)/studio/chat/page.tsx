@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStudioApi } from '@/app/opspilot/api/studio';
 import { List, Button, Dropdown, Skeleton, Popconfirm } from 'antd';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
@@ -22,7 +22,15 @@ const StudioChatPage: React.FC = () => {
   const [functionLoading, setFunctionLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
 
+  const chatLoadingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const { fetchApplication, fetchWebChatSessions, fetchSessionMessages, fetchSkillGuide, deleteSessionHistory } = useStudioApi();
+
+  useEffect(() => {
+    return () => {
+      if (chatLoadingTimerRef.current) clearTimeout(chatLoadingTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     async function fetchAgents() {
@@ -140,7 +148,8 @@ const StudioChatPage: React.FC = () => {
     } catch {
       setInitialMessages([]);
     } finally {
-      setTimeout(() => {
+      if (chatLoadingTimerRef.current) clearTimeout(chatLoadingTimerRef.current);
+      chatLoadingTimerRef.current = setTimeout(() => {
         setChatLoading(false);
       }, 400);
     }
@@ -161,9 +170,10 @@ const StudioChatPage: React.FC = () => {
     setSessionId(newId);
     setSelectedItem(newId);
     setInitialMessages([]);
-    setTimeout(() => {
+    if (chatLoadingTimerRef.current) clearTimeout(chatLoadingTimerRef.current);
+    chatLoadingTimerRef.current = setTimeout(() => {
       setChatLoading(false);
-    }, 400); // 体验优化，防止闪烁，可根据实际调整
+    }, 400);
   };
 
   const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {

@@ -1,9 +1,12 @@
-from apps.rpc.base import RpcClient, BaseOperationAnaRpc
+import os
+
+from apps.rpc.base import RpcClient, AppClient, BaseOperationAnaRpc
 
 
 class Log(object):
-    def __init__(self):
-        self.client = RpcClient()
+    def __init__(self, is_local_client=False):
+        is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
+        self.client = AppClient("apps.log.nats.log") if is_local_client else RpcClient()
 
     def get_module_data(self, **kwargs):
         """
@@ -26,7 +29,6 @@ class Log(object):
 
 
 class LogOperationAnaRpc(BaseOperationAnaRpc):
-
     def search(self, query, time_range, limit=10, **kwargs):
         """
         日志搜索
@@ -35,7 +37,9 @@ class LogOperationAnaRpc(BaseOperationAnaRpc):
         end_time: 结束时间，eg:2025-08-16T11:52:13.106Z
         limit: 返回结果条数，默认10
         """
-        return self.client.run("log_search", query=query, time_range=time_range, limit=limit, **kwargs)
+        return self.client.run(
+            "log_search", query=query, time_range=time_range, limit=limit, **kwargs
+        )
 
     def hits(self, query, time_range, field, fields_limit=5, step="5m", **kwargs):
         """
@@ -47,4 +51,12 @@ class LogOperationAnaRpc(BaseOperationAnaRpc):
         fields_limit: 返回的字段值个数限制，默认5
         step: 统计粒度，默认5m
         """
-        return self.client.run("log_hits", query=query, time_range=time_range, field=field, fields_limit=fields_limit, step=step, **kwargs)
+        return self.client.run(
+            "log_hits",
+            query=query,
+            time_range=time_range,
+            field=field,
+            fields_limit=fields_limit,
+            step=step,
+            **kwargs,
+        )

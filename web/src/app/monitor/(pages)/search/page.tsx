@@ -474,7 +474,6 @@ const SearchView: React.FC = () => {
             title: item,
             dataIndex: item,
             key: item,
-            width: 200,
             ellipsis: {
               showTitle: true
             }
@@ -772,7 +771,7 @@ const SearchView: React.FC = () => {
                 </div>
               ) : (
                 <CustomTable
-                  scroll={{ y: 'calc(100vh - 440px)' }}
+                  scroll={{ x: 'max-content', y: 'calc(100vh - 440px)' }}
                   columns={columns}
                   dataSource={tableData}
                   pagination={false}

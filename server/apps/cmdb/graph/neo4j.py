@@ -879,9 +879,11 @@ class Neo4jClient:
 
         return {i[group_by_attr]: i["count"] for i in data}
 
-    def full_text(self, search: str, permission_params: str = "", instance_permission_params: list = {},
+    def full_text(self, search: str, permission_params: str = "", instance_permission_params: dict = None,
                   created: str = ""):
         """全文检索"""
+        if instance_permission_params is None:
+            instance_permission_params = {}
 
         # 构建基础权限条件（组织权限）
         base_condition = permission_params or ""

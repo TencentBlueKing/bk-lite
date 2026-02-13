@@ -308,33 +308,16 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
       // 鼠标移入节点时，高亮相关节点和边 - 参考 v4 逻辑用 v5 API 实现
       let currentHoverNodeId: string | null = null;
 
-      console.log('=== Registering hover events ===');
-      
-      // 先注册 afterrender 来确保图渲染完成后再绑定事件
-      graph.on('afterrender', () => {
-        console.log('Graph rendered, setting up hover handlers');
-      });
+      graph.on('afterrender', () => {});
 
       graph.on('node:pointerenter', (event: any) => {
-        console.log('🎯 node:pointerenter triggered!', event);
         try {
           // v5 中尝试多种方式获取节点ID
           const nodeId = event.itemId || event.target?.id || event.target?.cfg?.id || (event.item && event.item.id);
-          console.log('Trying to get nodeId:', {
-            itemId: event.itemId,
-            targetId: event.target?.id,
-            targetCfgId: event.target?.cfg?.id,
-            itemGetId: event.item?.id,
-            finalNodeId: nodeId
-          });
           
           if (!nodeId) {
-            console.warn('⚠️ No nodeId found in event. Available keys:', Object.keys(event));
-            console.warn('⚠️ Event.target:', event.target);
             return;
           }
-          
-          console.log('✅ Found Node ID:', nodeId);
 
           // 如果是同一个节点，不重复处理
           if (currentHoverNodeId === nodeId) return;
@@ -343,9 +326,6 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
           const allNodes = graph.getData().nodes || [];
           const allEdges = graph.getData().edges || [];
           
-          console.log('📊 Total nodes:', allNodes.length, 'Total edges:', allEdges.length);
-          
-          // 找到所有相关的边和节点
           const relatedNodeIds = new Set([nodeId]);
           const relatedEdgeIds = new Set<string>();
           
@@ -357,7 +337,6 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
             }
           });
           
-          console.log('✅ Related nodes:', relatedNodeIds.size, 'Related edges:', relatedEdgeIds.size);              // 批量更新所有节点的样式
           const nodeUpdates = allNodes.map((node: any) => {
             const isRelated = relatedNodeIds.has(node.id);
             const nodeData = graph.getNodeData(node.id);
@@ -368,8 +347,6 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
             const originalStyle = getNodeStyle(nodeType);
                 
             if (node.id === nodeId) {
-              // 当前悬停的节点：添加阴影效果，保持原色
-              console.log(`  🎯 Current node: ${node.id} - keeping original color`);
               return {
                 id: node.id,
                 data: {
@@ -383,8 +360,6 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
                 }
               };
             } else if (isRelated) {
-              // 相关节点：保持原色，增加边框
-              console.log(`  ✅ Related node: ${node.id} - keeping original color`);
               return {
                 id: node.id,
                 data: {
@@ -398,8 +373,6 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
                 }
               };
             } else {
-              // 无关节点：变成浅灰色半透明（像图2中框起来的效果）
-              console.log(`  ⚪ Unrelated node: ${node.id} - making it gray and transparent`);
               return {
                 id: node.id,
                 data: {
@@ -415,19 +388,15 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
             }
           });
               
-          console.log('🔄 Updating', nodeUpdates.length, 'nodes');
           graph.updateNodeData(nodeUpdates);
-          // 强制重新渲染以应用样式变化
           graph.draw();
               
-          // 批量更新所有边的样式
           const edgeUpdates = allEdges.map((edge: any) => {
             const isRelated = relatedEdgeIds.has(edge.id);
             const edgeData = graph.getEdgeData(edge.id);
             const data = edgeData?.data as any;
                 
             if (isRelated) {
-              // 相关边：保持原色，增加粗细
               const edgeType = (data?.relation_type as string) || 'relation';
               const originalStyle = getEdgeStyle(edgeType, false);
               return {
@@ -440,7 +409,6 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
                 }
               };
             } else {
-              // 无关边：变灰暗
               return {
                 id: edge.id,
                 data: {
@@ -453,24 +421,19 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
             }
           });
           
-          console.log('🔄 Updating', edgeUpdates.length, 'edges');
           graph.updateEdgeData(edgeUpdates);
-          // 强制重新渲染以应用样式变化
           graph.draw();
         } catch (error) {
           console.error('Error handling node pointerenter:', error);
         }
       });
 
-      // 鼠标移出节点时，重置所有样式为原始状态（所有节点都亮色）
       graph.on('node:pointerleave', () => {
-        console.log('🔙 node:pointerleave triggered - restoring all to original colors');
         try {
           currentHoverNodeId = null;
           const allNodes = graph.getData().nodes || [];
           const allEdges = graph.getData().edges || [];
           
-          // 批量重置所有节点样式 - 恢复原始颜色和样式
           const nodeUpdates = allNodes.map((node: any) => {
             const nodeData = graph.getNodeData(node.id);
             const data = nodeData?.data as any;
@@ -479,15 +442,14 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
               : 'default';
             const originalStyle = getNodeStyle(nodeType);
             
-            console.log(`  🔄 Restoring node ${node.id} to original: ${originalStyle.fill}`);
             return {
               id: node.id,
               data: {
                 ...data,
-                fill: originalStyle.fill,  // 恢复原始颜色（紫色/橙色/蓝色）
+                fill: originalStyle.fill,
                 stroke: originalStyle.stroke,
                 lineWidth: 2,
-                opacity: 1,  // 完全不透明
+                opacity: 1,
                 shadowColor: undefined,
                 shadowBlur: undefined,
               }
@@ -495,10 +457,8 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
           });
           
           graph.updateNodeData(nodeUpdates);
-          // 强制重新渲染
           graph.draw();
           
-          // 批量重置所有边样式
           const edgeUpdates = allEdges.map((edge: any) => {
             const edgeData = graph.getEdgeData(edge.id);
             const data = edgeData?.data as any;

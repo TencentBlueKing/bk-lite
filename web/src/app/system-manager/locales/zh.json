@@ -297,13 +297,16 @@
         "port": "端口",
         "type": "类型",
         "smtp_user": "Smtp 用户",
-        "deleteConfirm": "你确认要删除选中的渠道吗?"
+        "deleteConfirm": "你确认要删除选中的渠道吗?",
+        "namespace": "命名空间",
+        "method_name": "函数名",
+        "timeout": "超时时间(秒)"
       },
       "table": {
         "description": "描述",
         "name": "名称"
       },
-      "emailDesc": "电子邮件渠道支持集成各种通知方式，并灵活配置不同的通知模板。",
+      "emailDesc": "电子邮件渠道支持通过SMTP服务发送邮件通知。",
       "template": {
         "context": "通知内容",
         "detail": "详情",
@@ -311,8 +314,10 @@
         "name": "标题"
       },
       "email": "电子邮件",
-      "weComDesc": "群聊小助手渠道支持集成各种通知方式，并灵活配置不同的通知模板。",
-      "weCom": "群聊小助手"
+      "weComDesc": "群聊小助手渠道支持通过Webhook向企业微信群发送通知。",
+      "weCom": "群聊小助手",
+      "nats": "NATS通道",
+      "natsDesc": "NATS通道支持通过NATS消息队列进行通知推送。"
     },
     "modules": {
       "llm_model": "LLM 模型",

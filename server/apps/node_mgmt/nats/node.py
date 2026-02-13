@@ -1,8 +1,8 @@
 from django.core.cache import cache
 from django.db import transaction
-from prompt_toolkit.layout import is_container
 
 import nats_client
+from apps.core.logger import node_logger as logger
 from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
@@ -319,8 +319,9 @@ def get_cloud_region_envconfig(cloud_region_id: str):
             try:
                 value = aes_obj.decode(obj.value)
                 variables[obj.key] = value
-            except Exception:
-                # 解密失败，使用原值
+            except Exception as e:
+                # 解密失败，记录警告日志并使用原值
+                logger.warning(f"Failed to decrypt secret env variable {obj.key}: {e}")
                 variables[obj.key] = obj.value
         else:
             # 如果是普通变量，直接使用

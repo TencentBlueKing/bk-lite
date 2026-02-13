@@ -7,6 +7,7 @@ ARQ Worker 配置和任务处理
 2. Worker 配置（Redis、并发数、超时等）
 3. 任务完成后的清理工作（清除运行标记）
 """
+
 import os
 import time
 from typing import Dict, Any
@@ -16,8 +17,9 @@ from core.redis_config import REDIS_CONFIG
 from sanic.log import logger
 
 
-
-async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[str, Any]:
+async def collect_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str
+) -> Dict[str, Any]:
     """
     统一的任务入口函数
 
@@ -46,11 +48,29 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
         # 根据任务类型分发到对应的 handler
         if monitor_type == "vmware":
             from tasks.handlers.monitor_handler import collect_vmware_metrics_task
+
             result = await collect_vmware_metrics_task(ctx, params, task_id)
 
         elif monitor_type == "qcloud":
             from tasks.handlers.monitor_handler import collect_qcloud_metrics_task
+
             result = await collect_qcloud_metrics_task(ctx, params, task_id)
+
+        elif monitor_type == "sangforscp":
+            try:
+                from enterprise.tasks.handlers.sangforscp_handler import (
+                    collect_sangforscp_metrics_task,
+                )
+
+                result = await collect_sangforscp_metrics_task(ctx, params, task_id)
+            except ImportError:
+                logger.error(f"Enterprise module not available for task {task_id}")
+                result = {
+                    "task_id": task_id,
+                    "status": "failed",
+                    "error": "Enterprise module not available",
+                    "completed_at": int(time.time() * 1000),
+                }
 
         elif monitor_type == "test":
             # 测试任务 - 用于验证 Worker 是否正常工作
@@ -60,11 +80,12 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
                 "status": "success",
                 "message": "Test task executed successfully",
                 "params": params,
-                "completed_at": int(time.time() * 1000)
+                "completed_at": int(time.time() * 1000),
             }
 
         elif model_id:
             from tasks.handlers.plugin_handler import collect_plugin_task
+
             result = await collect_plugin_task(ctx, params, task_id)
 
         else:
@@ -73,7 +94,7 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
                 "task_id": task_id,
                 "status": "failed",
                 "error": "Unknown task type",
-                "completed_at": int(time.time() * 1000)
+                "completed_at": int(time.time() * 1000),
             }
 
         return result

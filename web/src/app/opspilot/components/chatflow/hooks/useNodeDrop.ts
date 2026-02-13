@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import { message } from 'antd';
 import type { Node, Edge } from '@xyflow/react';
 import type { ChatflowNodeData } from '../types';
@@ -19,6 +19,14 @@ export const useNodeDrop = ({
   onSave,
   t,
 }: UseNodeDropProps) => {
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
@@ -100,7 +108,8 @@ export const useNodeDrop = ({
         setNodes((nds) => {
           const updatedNodes = nds.concat(newNode);
 
-          setTimeout(() => {
+          if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = setTimeout(() => {
             if (onSave) {
               onSave(updatedNodes, edges);
             }
