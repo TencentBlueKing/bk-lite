@@ -12,7 +12,8 @@ const SelectCard: React.FC<SelectCardProps> = ({
   data = [],
   value,
   onChange,
-  cardWidth
+  cardWidth,
+  style
 }) => {
   const handleCardClick = (item: CardItem) => {
     onChange?.(item.value);
@@ -25,7 +26,8 @@ const SelectCard: React.FC<SelectCardProps> = ({
         gridAutoRows: '1fr',
         ...(cardWidth
           ? { gridTemplateColumns: `repeat(auto-fill, ${cardWidth}px)` }
-          : {})
+          : {}),
+        ...style
       }}
     >
       {data.map((item, index) => {
