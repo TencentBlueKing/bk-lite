@@ -16,6 +16,7 @@ class EventAlertManager:
         self.policy = policy
         self.instances_map = instances_map
         self.active_alerts = active_alerts
+        self._is_alert_center = self._check_alert_center_channel()
 
     def create_events(self, events):
         if not events:
@@ -306,7 +307,7 @@ class EventAlertManager:
         if not events_to_notify:
             return
 
-        if self._is_alert_center_channel():
+        if self._is_alert_center:
             self._push_to_alert_center(events_to_notify)
         else:
             for event in events_to_notify:
@@ -319,7 +320,8 @@ class EventAlertManager:
                 batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE,
             )
 
-    def _is_alert_center_channel(self):
+    def _check_alert_center_channel(self) -> bool:
+        """检查通知渠道是否为告警中心（初始化时调用一次）"""
         if not self.policy.notice_type_id:
             return False
         # todo 获取Channel详情的nats方法
