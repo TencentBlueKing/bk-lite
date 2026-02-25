@@ -3,7 +3,6 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Spin, Input, Button, Tag, Empty } from 'antd';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/log/api/integration';
-import integrationStyle from './index.module.scss';
 import { SettingOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
@@ -41,7 +40,7 @@ const Integration = () => {
   useEffect(() => {
     if (isLoading) return;
     getCollectTypeList({
-      type: 'init',
+      type: 'init'
     });
   }, [isLoading]);
 
@@ -64,33 +63,36 @@ const Integration = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.collector]) {
-        acc[item.collector] = {
-          title: item.collector || '--',
-          key: item.collector,
-          children: [],
-        };
-      }
-      acc[item.collector].children.push({
-        title: item.name || '--',
-        label: item.name || '--',
-        key: item.id,
-        children: [],
-      });
-      return acc;
-    }, {} as Record<string, TreeItem>);
+    const groupedData = data.reduce(
+      (acc, item) => {
+        if (!acc[item.collector]) {
+          acc[item.collector] = {
+            title: item.collector || '--',
+            key: item.collector,
+            children: []
+          };
+        }
+        acc[item.collector].children.push({
+          title: item.name || '--',
+          label: item.name || '--',
+          key: item.id,
+          children: []
+        });
+        return acc;
+      },
+      {} as Record<string, TreeItem>
+    );
     return [
       {
         title: `${t('common.all')}(${data.length})`,
         key: 'all',
-        children: [],
+        children: []
       },
       ...Object.values(groupedData).map((item) => {
         item.title = `${item.title}(${item.children.length})`;
         item.children = [];
         return item;
-      }),
+      })
     ];
   };
 
@@ -105,7 +107,7 @@ const Integration = () => {
       collector: app.collector,
       id: app.id,
       display_name: app.name,
-      description: app.description || '--',
+      description: app.description || '--'
     };
     const params = new URLSearchParams(row);
     const targetUrl = `/log/integration/list/detail/configure?${params.toString()}`;
@@ -117,7 +119,7 @@ const Integration = () => {
   };
 
   return (
-    <div className={integrationStyle.integration}>
+    <div className="flex">
       <TreeSelector
         showAllMenu
         data={treeData}
@@ -125,7 +127,7 @@ const Integration = () => {
         loading={treeLoading}
         onNodeSelect={handleObjectChange}
       />
-      <div className={integrationStyle.cards}>
+      <div className="w-full p-5 bg-[var(--color-bg-1)]">
         <div className="flex justify-end">
           <Search
             className="mb-[20px] w-60"
@@ -138,10 +140,10 @@ const Integration = () => {
         <Spin spinning={pageLoading}>
           {collectTypes.length ? (
             <div
-              className={`grid gap-4 w-full ${integrationStyle.integrationList}`}
+              className="grid gap-4 w-full h-[calc(100vh-236px)] overflow-y-auto"
               style={{
                 gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                alignContent: 'start',
+                alignContent: 'start'
               }}
             >
               {collectTypes.map((app) => (
@@ -154,7 +156,7 @@ const Integration = () => {
                       />
                       <div
                         style={{
-                          width: 'calc(100% - 60px)',
+                          width: 'calc(100% - 60px)'
                         }}
                       >
                         <h2
@@ -167,7 +169,7 @@ const Integration = () => {
                       </div>
                     </div>
                     <p
-                      className={`mb-[15px] text-[var(--color-text-3)] text-[13px] ${integrationStyle.lineClamp3}`}
+                      className="mb-[15px] text-[var(--color-text-3)] text-[13px] h-[54px] overflow-hidden line-clamp-3"
                       title={app.description || '--'}
                     >
                       {app.description || '--'}
