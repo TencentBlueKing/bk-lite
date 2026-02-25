@@ -218,10 +218,6 @@ Section "Install" SecInstall
     WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CollectorSidecar" "NoModify" 1
     WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CollectorSidecar" "NoRepair" 1
 
-    ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
-    IntFmt $0 "0x%08X" $0
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CollectorSidecar" "EstimatedSize" "$0"
-
     File "installer.ico"
 SectionEnd
 
