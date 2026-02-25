@@ -4,7 +4,6 @@ import { Spin, Input, Button, Tag, message, Empty } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
-import integrationStyle from './index.module.scss';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
@@ -15,7 +14,7 @@ import {
   TableDataItem,
   TreeItem,
   TreeSortData,
-  ObjectItem,
+  ObjectItem
 } from '@/app/monitor/types';
 import ImportModal from './importModal';
 import axios from 'axios';
@@ -98,7 +97,7 @@ const Integration = () => {
     setPageLoading(true);
     try {
       const data = await getMonitorPlugin(params, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       if (currentRequestId !== pluginRequestIdRef.current) return;
       // 根据objects的顺序对插件列表进行排序
@@ -135,31 +134,34 @@ const Integration = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.type]) {
-        acc[item.type] = {
-          title: item.display_type || '--',
-          key: item.type,
-          children: [],
-        };
-      }
-      if (!EXCLUDED_CHILD_OBJECTS.includes(item.name)) {
-        acc[item.type].children.push({
-          title: item.display_name || '--',
-          label: item.name || '--',
-          key: item.id,
-          children: [],
-        });
-      }
-      return acc;
-    }, {} as Record<string, TreeItem>);
+    const groupedData = data.reduce(
+      (acc, item) => {
+        if (!acc[item.type]) {
+          acc[item.type] = {
+            title: item.display_type || '--',
+            key: item.type,
+            children: []
+          };
+        }
+        if (!EXCLUDED_CHILD_OBJECTS.includes(item.name)) {
+          acc[item.type].children.push({
+            title: item.display_name || '--',
+            label: item.name || '--',
+            key: item.id,
+            children: []
+          });
+        }
+        return acc;
+      },
+      {} as Record<string, TreeItem>
+    );
     return [
       {
         title: t('common.all'),
         key: 'all',
-        children: [],
+        children: []
       },
-      ...Object.values(groupedData),
+      ...Object.values(groupedData)
     ];
   };
 
@@ -172,14 +174,14 @@ const Integration = () => {
         method: 'GET',
         responseType: 'blob', // 确保响应类型为blob
         headers: {
-          Authorization: `Bearer ${tokenRef.current}`,
-        },
+          Authorization: `Bearer ${tokenRef.current}`
+        }
       });
       const text = await response.data.text();
       const json = JSON.parse(text);
       // 将data对象转换为JSON字符串并创建Blob对象
       const blob = new Blob([JSON.stringify(json.data, null, 2)], {
-        type: 'application/json',
+        type: 'application/json'
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -203,7 +205,7 @@ const Integration = () => {
   const onTxtPressEnter = () => {
     const params = {
       monitor_object_id: objectId === 'all' ? '' : objectId,
-      name: searchText,
+      name: searchText
     };
     getPluginList(params);
   };
@@ -212,7 +214,7 @@ const Integration = () => {
     setSearchText('');
     getPluginList({
       monitor_object_id: objectId === 'all' ? '' : objectId,
-      name: '',
+      name: ''
     });
   };
 
@@ -220,7 +222,7 @@ const Integration = () => {
     importRef.current?.showModal({
       title: t('common.import'),
       type: 'add',
-      form: {},
+      form: {}
     });
   };
 
@@ -239,7 +241,7 @@ const Integration = () => {
       plugin_name: app?.name,
       plugin_id: app?.id,
       plugin_display_name: app?.display_name,
-      plugin_description: app?.display_description || '--',
+      plugin_description: app?.display_description || '--'
     };
     const params = new URLSearchParams(row);
     const targetUrl = `/monitor/integration/list/detail/configure?${params.toString()}`;
@@ -252,8 +254,8 @@ const Integration = () => {
   };
 
   return (
-    <div className={integrationStyle.integration}>
-      <div className={integrationStyle.tree}>
+    <div className="w-full flex overflow-hidden">
+      <div className="h-[calc(100vh-146px)] pt-5 px-2.5 pb-2.5 bg-[var(--color-bg-1)] w-[210px] min-w-[210px] mr-2.5 overflow-y-auto">
         <TreeSelector
           showAllMenu
           data={treeData}
@@ -268,7 +270,7 @@ const Integration = () => {
           onNodeDrag={handleNodeDrag}
         />
       </div>
-      <div className={integrationStyle.cards}>
+      <div className="w-full bg-[var(--color-bg-1)] p-5">
         <div className="flex">
           <Input
             className="mb-[20px] w-[400px]"
@@ -301,10 +303,10 @@ const Integration = () => {
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
           ) : (
             <div
-              className={`grid gap-4 w-full ${integrationStyle.integrationList}`}
+              className="grid gap-4 w-full h-[calc(100vh-236px)] overflow-y-auto"
               style={{
                 gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                alignContent: 'start',
+                alignContent: 'start'
               }}
             >
               {pluginList.map((app) => {
@@ -327,7 +329,7 @@ const Integration = () => {
                         />
                         <div
                           style={{
-                            width: 'calc(100% - 60px)',
+                            width: 'calc(100% - 60px)'
                           }}
                         >
                           <h2
@@ -342,7 +344,7 @@ const Integration = () => {
                         </div>
                       </div>
                       <p
-                        className={`mb-[15px] text-[var(--color-text-3)] text-[13px] ${integrationStyle.lineClamp3}`}
+                        className="mb-[15px] text-[var(--color-text-3)] text-[13px] h-[54px] overflow-hidden line-clamp-3"
                         title={app.display_description || '--'}
                       >
                         {app.display_description || '--'}
