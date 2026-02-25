@@ -16,6 +16,7 @@ from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.policy import PolicyService
 from apps.monitor.services.policy_baseline import PolicyBaselineService
+from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -48,8 +49,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         queryset = queryset.distinct()
 
         # 获取分页参数
-        page = int(request.GET.get("page", 1))  # 默认第1页
-        page_size = int(request.GET.get("page_size", 10))  # 默认每页10条数据
+        page, page_size = parse_page_params(request.GET, default_page=1, default_page_size=10)
 
         # 计算分页的起始位置
         start = (page - 1) * page_size
