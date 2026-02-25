@@ -26,8 +26,26 @@
       "required": false,
       "default_value": false,
       "description": "是否启用 SASL 认证（用户名和密码）",
+      "transform_on_create": {
+        "mapping": {
+          "true": "--sasl.enabled",
+          "false": ""
+        }
+      },
       "transform_on_edit": {
-        "origin_path": "child.env_config.SASL_ENABLED__{{config_id}}"
+        "origin_path": "child.env_config.SASL_ENABLED__{{config_id}}",
+        "to_form": {
+          "mapping": {
+            "true": ["--sasl.enabled"],
+            "false": ["", null]
+          }
+        },
+        "to_api": {
+          "mapping": {
+            "true": "--sasl.enabled",
+            "false": ""
+          }
+        }
       }
     },
     {
