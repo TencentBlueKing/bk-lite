@@ -7,6 +7,7 @@ from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorEventRawData
 from apps.monitor.utils.dimension import format_dimension_str
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
+from apps.system_mgmt.models import Channel
 from apps.core.logger import celery_logger as logger
 
 
@@ -15,6 +16,7 @@ class EventAlertManager:
         self.policy = policy
         self.instances_map = instances_map
         self.active_alerts = active_alerts
+        self._is_alert_center = self._check_alert_center_channel()
 
     def create_events(self, events):
         if not events:
@@ -302,13 +304,117 @@ class EventAlertManager:
                 continue
             events_to_notify.append(event)
 
-        for event in events_to_notify:
-            notice_results = self.send_notice(event)
-            event.notice_result = notice_results
+        if not events_to_notify:
+            return
 
-        if events_to_notify:
+        if self._is_alert_center:
+            self._push_to_alert_center(events_to_notify)
+        else:
+            for event in events_to_notify:
+                notice_results = self.send_notice(event)
+                event.notice_result = notice_results
+
             MonitorEvent.objects.bulk_update(
                 events_to_notify,
                 ["notice_result"],
                 batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE,
+            )
+
+    def _check_alert_center_channel(self) -> bool:
+        """检查通知渠道是否为告警中心（初始化时调用一次）"""
+        if not self.policy.notice_type_id:
+            return False
+        # todo 获取Channel详情的nats方法
+        channel = Channel.objects.filter(id=self.policy.notice_type_id).first()
+        if not channel:
+            return False
+        return (
+            channel.channel_type == "nats"
+            and channel.config.get("method_name") == "receive_alert_events"
+        )
+
+    def _push_to_alert_center(self, events_to_notify):
+        alert_events = []
+        for event in events_to_notify:
+            start_time = (
+                str(int(event.event_time.timestamp())) if event.event_time else None
+            )
+            alert_events.append(
+                {
+                    "external_id": event.id,
+                    "rule_id": str(event.policy_id),
+                    "title": event.content,
+                    "description": event.content,
+                    "level": self._map_level_to_alert_center(event.level),
+                    "value": float(event.value) if event.value is not None else None,
+                    "action": "created",
+                    "start_time": start_time,
+                    "resource_id": event.monitor_instance_id,
+                    "resource_name": self.instances_map.get(
+                        event.monitor_instance_id, ""
+                    ),
+                    "tags": event.dimensions,
+                    "labels": {
+                        "policy_name": self.policy.name,
+                        "metric_instance_id": event.metric_instance_id,
+                        "alert_id": event.alert_id,
+                    },
+                }
+            )
+
+        content = {
+            "source_id": "nats",
+            "pusher": "lite-monitor",
+            "events": alert_events,
+        }
+        try:
+            send_result = SystemMgmtUtils.send_msg_with_channel(
+                self.policy.notice_type_id, "", content, []
+            )
+            if send_result.get("result") is False:
+                logger.error(
+                    f"Push to alert center failed for policy {self.policy.name}: "
+                    f"{send_result.get('message', 'Unknown error')}"
+                )
+            else:
+                logger.info(
+                    f"Push to alert center success for policy {self.policy.name}: "
+                    f"{len(alert_events)} events"
+                )
+        except Exception as e:
+            logger.error(
+                f"Push to alert center exception for policy {self.policy.name}: {e}",
+                exc_info=True,
+            )
+
+    def _map_level_to_alert_center(self, level):
+        """映射告警级别到告警中心格式: 0-致命, 1-错误, 2-预警, 3-提醒"""
+        level_map = {
+            "critical": "0",
+            "error": "1",
+            "warning": "2",
+            "info": "3",
+            "no_data": "2",
+        }
+        return level_map.get(level, "3")
+
+        content = {"events": alert_events}
+        try:
+            send_result = SystemMgmtUtils.send_msg_with_channel(
+                self.policy.notice_type_id, "", content, []
+            )
+            if send_result.get("result") is False:
+                logger.error(
+                    f"Push to alert center failed for policy {self.policy.name}: "
+                    f"{send_result.get('message', 'Unknown error')}"
+                )
+            else:
+                logger.info(
+                    f"Push to alert center success for policy {self.policy.name}: "
+                    f"{len(alert_events)} events"
+                )
+        except Exception as e:
+            logger.error(
+                f"Push to alert center exception for policy {self.policy.name}: {e}",
+                exc_info=True,
             )
