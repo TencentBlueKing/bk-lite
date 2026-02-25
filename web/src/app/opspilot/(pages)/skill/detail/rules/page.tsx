@@ -14,9 +14,9 @@ const { Search } = Input;
 interface SkillRule {
   key: string;
   name: string;
-  created_at: string;
-  created_by: string;
-  is_enabled: boolean;
+  created_at?: string;
+  created_by?: string;
+  is_enabled?: boolean;
   [key: string]: any;
 }
 

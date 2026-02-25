@@ -1,190 +1,227 @@
 # AGENTS.md
 
-> BK-Lite 工程 Agent 执行手册（基于仓库现状反向生成）
+> BK-Lite 工程 Agent 执行手册（基于仓库事实，面向可执行流程）
 
 ## 概览
 
-### 技术栈（已确认）
-- 后端：Python 3.12 + Django 4.2 + Uvicorn + Celery（`server/pyproject.toml`、`server/Makefile`）
-- Web：Next.js 16 + React 19 + TypeScript + Ant Design（`web/package.json`）
-- Mobile：Next.js 15 + Tauri 2 + TypeScript（`mobile/package.json`、`mobile/README.md`）
-- WebChat：npm monorepo（core/ui/demo）+ Next.js 14 demo + Vite（`webchat/package.json`、`webchat/packages/*/package.json`）
-- Stargazer：Python 3.12 + Sanic（`agents/stargazer/pyproject.toml`、`agents/stargazer/Makefile`）
+### 技术栈（证据化）
+- 后端（`server/`）：Python 3.12 + Django 4.2 + Uvicorn + Celery（`server/pyproject.toml`、`server/Makefile`）
+- Web（`web/`）：Next.js 16 + React 19 + TypeScript + Ant Design（`web/package.json`）
+- Mobile（`mobile/`）：Next.js 15 + Tauri 2 + TypeScript（`mobile/package.json`、`mobile/src-tauri/tauri.conf.json`）
+- WebChat（`webchat/`）：npm monorepo（core/ui/demo），demo 为 Next.js 14（`webchat/package.json`、`webchat/packages/*/package.json`）
+- Stargazer（`agents/stargazer/`）：Python 3.12 + Sanic（`agents/stargazer/pyproject.toml`、`agents/stargazer/Makefile`）
 
-### 仓库目录（按开发优先级）
+### 仓库目录（默认优先级）
 - `server/`：Django 主后端
-- `web/`：主 Web 控制台
-- `mobile/`：移动端（Tauri）
-- `webchat/`：独立 WebChat 库与 demo
-- `agents/stargazer/`：采集代理服务
-- `deploy/dist/bk-lite-kubernetes-collector/`：K8s 采集器 YAML 与 secret 模板
+- `web/`：主控制台前端
+- `mobile/`：移动端（Next.js + Tauri）
+- `webchat/`：聊天组件库与 demo
+- `agents/stargazer/`：云资源采集代理
+- `deploy/dist/bk-lite-kubernetes-collector/`：K8s 采集器部署模板
 
 ### 默认工作目录与选择规则
-- 未特别说明时，默认在仓库根目录执行只读命令。
-- 改动某模块时先 `cd` 到该模块目录再执行命令，避免跨模块依赖污染。
-- 只修改目标模块，禁止“顺手”全仓格式化。
+- 默认在仓库根目录执行只读命令。
+- 进入目标模块目录再执行开发命令，避免跨模块污染。
+- 只改与任务相关文件，禁止顺手改动和全仓格式化。
 
 ## 快速开始
 
-### Server（`server/`）
-- 入口：`make install` → `make migrate` → `make dev`
-- 验证：访问 `http://localhost:8001`；进程命令应为 `uvicorn ... --port 8001`
-- 常见失败入口：数据库/NATS/Redis 未配置，见 `server/envs/.env.example`
-- 回滚：停止进程，回退本次变更并重新执行 `make migrate`
+### Server
+- 开发：`cd server && make install && make migrate && make dev`
+- 测试：`cd server && make test`
+- 构建：`docker build -t bklite/server -f server/support-files/release/Dockerfile server`
 
-### Web（`web/`）
-- 入口：`pnpm install` → `pnpm dev`
-- 验证：访问 `http://localhost:3000`
-- 常见失败入口：`pnpm` 被 `only-allow` 拦截（必须用 pnpm）、`.env.local` 未配置
-- 回滚：`git restore --source=HEAD -- web`（仅回滚 web 目录变更）并重新安装依赖
+### Web
+- 开发：`cd web && pnpm install && pnpm dev`
+- 测试：`cd web && pnpm lint && pnpm type-check`
+- 构建：`cd web && pnpm build`
 
-### Mobile（`mobile/`）
-- 入口：`pnpm install` → `pnpm dev`（Web 预览）或 `pnpm dev:tauri`（原生能力）
-- 验证：Web 端口 `3001`；Tauri 窗口可正常发请求
-- 常见失败入口：Tauri/Android 环境不完整、开发端口冲突
-- 回滚：停止 dev 进程，回退移动端改动后重启 `pnpm dev`
+### Mobile
+- 开发（浏览器）：`cd mobile && pnpm install && pnpm dev`
+- 开发（Tauri）：`cd mobile && pnpm dev:tauri`
+- 测试：`cd mobile && pnpm lint && pnpm type-check`
+- 构建：`cd mobile && pnpm build` 或 `pnpm build:android`
 
-### WebChat（`webchat/`）
-- 入口：`npm install` → `npm run build` → `npm run dev`
-- 验证：demo 可启动；core/ui 产物在各自 `dist/`
-- 常见失败入口：Node 版本不满足（`>=18`）或 npm 依赖冲突
-- 回滚：`npm run clean` 后回退变更并重新构建
+### WebChat
+- 开发：`cd webchat && npm install && npm run dev`
+- 测试：`cd webchat && npm run test`（当前仅输出 `No tests configured yet`）
+- 构建：`cd webchat && npm run build`
 
-### Stargazer（`agents/stargazer/`）
-- 入口：`make install` → `make run`
-- 验证：服务监听 `8083`
-- 常见失败入口：`.env` 中 Redis/NATS 配置不一致
-- 回滚：停止服务，回退改动后重启
+### Stargazer
+- 开发：`cd agents/stargazer && make install && make run`
+- 测试：`cd agents/stargazer && make lint`
+- 构建：`cd agents/stargazer && make build`
 
 ## 环境与配置
 
-### 版本与包管理
+### 版本与依赖管理
 - Python：`3.12`（`server/.python-version`、`agents/stargazer/.python-version`）
-- Node：`24`（`web/.nvmrc`）
-- 包管理器：
-- 后端/代理：`uv`
-- 主 Web/Mobile：`pnpm`
-- WebChat：`npm`（`webchat/.npmrc` 含 `legacy-peer-deps=true`）
+- Node：Web 为 `24`（`web/.nvmrc`），WebChat 要求 `>=18`（`webchat/package.json`）
+- Python 依赖：`uv`（`server/Makefile`、`agents/stargazer/Makefile`）
+- Web/Mobile 依赖：`pnpm`（`web/package.json` 的 `preinstall` 强制 only-allow pnpm）
+- WebChat 依赖：`npm`（`webchat/package.json`）
 
-### 环境变量分层
-- Server 基础：`server/envs/.env.example`
-- Server 模块：`server/support-files/env/.env.cmdb.example`、`.env.opspilot.example`、`.env.system_mgmt.example`
-- Web：`web/.env.example`
-- K8s 采集器：`deploy/dist/bk-lite-kubernetes-collector/secret.env.template`
+### 环境变量与模板
+- Server 基础模板：`server/envs/.env.example`
+- Server 模块模板：`server/support-files/env/.env.cmdb.example`、`.env.opspilot.example`、`.env.system_mgmt.example`
+- Web 模板：`web/.env.example`
+- Stargazer 模板：`agents/stargazer/.env.example`
+- K8s 采集器模板：`deploy/dist/bk-lite-kubernetes-collector/secret.env.template`、`secret.yaml.template`
 
-### Secrets 策略（强制）
-- 仅使用 `*.example` / `*.template` 作为模板，不提交真实密钥。
-- NATS、DB、JWT、第三方凭证必须通过部署环境注入。
-- 严禁把 token/password 写入代码、日志或提交记录。
+### Secrets 与配置策略（强制）
+- 仅使用 `*.example`/`*.template` 提供样例，不提交真实密钥。
+- `.env`、`*.keystore`、`keystore.properties` 属于敏感文件，不得入库（见根 `.gitignore` 与 `mobile/.gitignore`）。
+- 所有账号密钥（DB/NATS/JWT/NPM_TOKEN）通过部署环境注入，不写入代码和日志。
 
 ## 工作流（dev -> test -> build -> release）
 
-### Server 工作流
-- Dev 入口：`cd server && make dev`
-- Test 入口：`cd server && make test`（等价 `uv run pytest`）
-- Build 入口：`docker build -t bklite/server -f server/support-files/release/Dockerfile server`
-- Release 入口：容器启动执行 `server/support-files/release/startup.sh`
+### 1) Server（`server/`）
+- 入口：
+  - dev：`make dev`
+  - test：`make test`
+  - build：`docker build -t bklite/server -f support-files/release/Dockerfile .`（在 `server/` 目录）
+  - release：容器启动执行 `support-files/release/startup.sh`
 - 验证标准：
-- dev：`8001` 可访问
-- test：`pytest` 退出码 `0`
-- build：镜像构建成功
-- release：容器内 `migrate/createcachetable/collectstatic` 完成，`supervisord` 拉起
-- 常见失败入口：数据库迁移失败、依赖未安装、环境变量缺失
-- 回滚方式：回退代码到上一提交并重建镜像；数据库变更需执行反向迁移（若有）
+  - dev：`uvicorn ... --port 8001` 启动成功
+  - test：`pytest` 退出码为 0
+  - build：镜像构建完成
+  - release：启动脚本完成 `migrate/createcachetable/collectstatic` 并拉起 `supervisord`
+- 常见失败入口：
+  - `.env` 缺失 DB/NATS/Redis
+  - 迁移冲突（`manage.py makemigrations/migrate`）
+  - 镜像构建时 Python 依赖安装失败
+- 回滚方式：
+  - 代码回滚：`git revert <commit>`
+  - 数据库回滚：执行对应 Django 迁移回退（`python manage.py migrate <app> <target_migration>`）
+  - 运行回退：回滚到上一个可用镜像 tag 重新部署
 
-### Web 工作流
-- Dev 入口：`cd web && pnpm dev`
-- Test 入口：`cd web && pnpm lint && pnpm type-check`
-- Build 入口：`cd web && pnpm build`
-- Release 入口：`web/Dockerfile`（`pnpm run start`）
+### 2) Web（`web/`）
+- 入口：
+  - dev：`pnpm dev`
+  - test：`pnpm lint && pnpm type-check`
+  - build：`pnpm build`
+  - release：`Dockerfile` 使用 `pnpm run start`
 - 验证标准：
-- dev：`3000` 页面可访问
-- test：lint/type-check 通过
-- build：`.next` 构建完成
-- release：容器 `start` 正常
-- 常见失败入口：`NEXTAPI_URL` 配置错误、Node 版本不匹配、pnpm workspace 生成异常
-- 回滚方式：回退变更并删除 `.next` 后重建
+  - dev：`http://localhost:3000` 可访问
+  - test：lint/type-check 全通过
+  - build：`next build --turbo` 成功
+  - release：容器内 `pnpm run start` 正常启动
+- 常见失败入口：
+  - 非 pnpm 安装被 `only-allow` 拦截
+  - `.env.local` 或 `NEXTAPI_URL` 配置错误
+  - Node 版本与构建环境不一致
+- 回滚方式：
+  - 回退代码：`git revert <commit>`
+  - 清理产物后重建：`pnpm clean && pnpm install && pnpm build`
+  - 镜像回退到上一个可用 tag
 
-### Mobile 工作流
-- Dev 入口：`cd mobile && pnpm dev` 或 `pnpm dev:tauri`
-- Test 入口：`cd mobile && pnpm lint && pnpm type-check`
-- Build 入口：`cd mobile && pnpm build` / `pnpm build:android`
-- Release 入口：Android 产物由 `scripts/android-build.mjs` 生成
+### 3) Mobile（`mobile/`）
+- 入口：
+  - dev：`pnpm dev` / `pnpm dev:tauri`
+  - test：`pnpm lint && pnpm type-check`
+  - build：`pnpm build` / `pnpm build:android` / `pnpm build:aab`
+  - release：Android 产物由 `scripts/android-build.mjs` + `src-tauri/tauri.conf.json` 流程生成
 - 验证标准：
-- dev：`3001` 正常
-- test：lint/type-check 通过
-- build：Next/Tauri 构建成功
-- release：APK/AAB 生成到 README 指定路径
-- 常见失败入口：签名文件缺失、Android NDK/SDK 配置问题、端口占用
-- 回滚方式：停止构建，恢复上个可用 tag 并重新打包
+  - dev：`http://localhost:3001` 可访问
+  - dev:tauri：Tauri 窗口可启动并请求后端
+  - test：lint/type-check 通过
+  - build：APK/AAB 输出到 README 指定目录
+- 常见失败入口：
+  - 未配置 `keystore.properties` 或 keystore
+  - Android SDK/NDK/Java 环境异常
+  - 3001 端口冲突
+- 回滚方式：
+  - 回退代码：`git revert <commit>`
+  - 删除构建产物后重打包：`pnpm clean && pnpm build:android-debug`
+  - 继续发布时使用上一个可用 APK/AAB
 
-### WebChat 工作流
-- Dev 入口：`cd webchat && npm run dev`
-- Test 入口：`cd webchat && npm run test`（当前仅输出 "No tests configured yet"）
-- Build 入口：`cd webchat && npm run build`
-- Release 入口：`webchat/.github/workflows/build.yml`（main 分支发布 npm）
+### 4) WebChat（`webchat/`）
+- 入口：
+  - dev：`npm run dev`
+  - test：`npm run test`
+  - build：`npm run build`
+  - release：`webchat/.github/workflows/build.yml` 的 `publish` job（main 分支 push）
 - 验证标准：
-- dev：demo 启动成功
-- test：命令可执行（当前无真实测试）
-- build：core/ui/demo 全部构建成功
-- release：workflow 的 publish job 执行且 `NPM_TOKEN` 可用
-- 常见失败入口：npm 权限、`NPM_TOKEN` 缺失、包版本冲突
-- 回滚方式：撤回 npm 版本（按 npm 流程）并回退代码提交
+  - dev：demo 可访问
+  - test：命令执行成功（当前无真实测试）
+  - build：core/ui/demo 均构建成功
+  - release：workflow publish 步骤执行，`NODE_AUTH_TOKEN` 注入成功
+- 常见失败入口：
+  - `NPM_TOKEN` 缺失或 npm 权限不足
+  - Node 版本不满足（matrix 18/20）
+- 回滚方式：
+  - 回退代码：`git revert <commit>`
+  - npm 包回滚：按 npm 版本策略撤回/升补版本
 
-### Stargazer 工作流
-- Dev 入口：`cd agents/stargazer && make run`
-- Test 入口：`cd agents/stargazer && make lint`
-- Build 入口：`cd agents/stargazer && make build`
-- Release 入口：Docker 镜像 `bklite/stargazer`
+### 5) Stargazer（`agents/stargazer/`）
+- 入口：
+  - dev：`make run`
+  - test：`make lint`（`pre-commit run --all-files`）
+  - build：`make build`
+  - release：Docker 产物 `bklite/stargazer`
 - 验证标准：
-- dev：`8083` 监听
-- test：pre-commit hooks 全通过
-- build：镜像可构建
-- release：容器可启动且健康检查正常
-- 常见失败入口：Redis/NATS 配置错误、依赖未同步
-- 回滚方式：回退镜像 tag 或上个稳定提交
+  - dev：`sanic ... --port=8083` 启动成功
+  - test：pre-commit 执行成功
+  - build：镜像构建完成
+  - release：容器启动并可连通 Redis/NATS
+- 常见失败入口：
+  - Server/Worker Redis 配置不一致（README 明确要求）
+  - `.env` 未配置 NATS/Redis
+- 回滚方式：
+  - 回退代码：`git revert <commit>`
+  - 回滚镜像 tag
+  - 重新加载上一个稳定 `.env` 配置
+
+### 6) K8s 采集器（`deploy/dist/bk-lite-kubernetes-collector/`）
+- 入口：
+  - dev/build：无本地编译入口，按清单部署
+  - release：`kubectl apply -f bk-lite-metric-collector.yaml` 与 `bk-lite-log-collector.yaml`
+- 验证标准：
+  - `kubectl get pods/ds/deploy -n bk-lite-collector` 全部健康
+- 常见失败入口：
+  - `secret.env`/`ca.crt` 未注入或 NATS 参数错误
+- 回滚方式：
+  - `kubectl delete -f ...` 回退本次部署
 
 ## 质量门禁
 
-### 提交前最小门禁（必须执行）
-- 涉及 `web/`：`cd web && pnpm lint && pnpm type-check`
-- 涉及 `mobile/`：`cd mobile && pnpm lint && pnpm type-check`
-- 涉及 `server/`：`cd server && uv run pytest`
-- 涉及 `agents/stargazer/`：`cd agents/stargazer && make lint`
+### 本地门禁（提交前）
+- 影响 `server/`：`cd server && make test`
+- 影响 `web/`：`cd web && pnpm lint && pnpm type-check`
+- 影响 `mobile/`：`cd mobile && pnpm lint && pnpm type-check`
+- 影响 `agents/stargazer/`：`cd agents/stargazer && make lint`
+- 影响 `webchat/`：`cd webchat && npm run build && npm run test`
 
-### 自动门禁（已存在）
-- Git hooks：`.husky/pre-commit` 会对 `web/` 和 `mobile/` 变更自动执行 lint + type-check。
-- Python pre-commit：`server/.pre-commit-config.yaml` 包含 `black`、`isort`、`flake8` 与迁移检查脚本。
-
-### CI/CD 现状
-- 仓库根目录未发现通用 GitHub Actions workflow。
-- 已发现模块级 CI：`webchat/.github/workflows/build.yml`。
-- TODO: 根仓库统一 CI 入口确认；确认位置：组织级 CI 平台配置或仓库设置页面。
+### 自动门禁（仓库已有）
+- Git Hook：`.husky/pre-commit` 对 `web/`、`mobile/` 的 staged 变更自动执行 lint/type-check。
+- Python pre-commit：`server/.pre-commit-config.yaml` 包含 `black`、`isort`、`flake8`、`check_migrate`、`check_requirements`。
+- CI：仅确认到 `webchat/.github/workflows/build.yml`（build + publish）；根仓库无通用 workflow。
 
 ## Runbook（常见故障）
 
-1. `git fetch/pull` 失败（代理/网络）：检查 `git config --get-regexp '.*proxy'`，必要时清理代理后重试。
-2. `server make dev` 启动但接口 500：先核对 `server/envs/.env.example` 的 DB/NATS/Redis。
-3. `server pytest` 失败于迁移：执行 `make migrate`，再看 `server/scripts/check_migrate/` 提示。
-4. `web pnpm install` 被拒绝：确认使用 `pnpm`，不要用 npm/yarn（有 `only-allow pnpm`）。
-5. `web pnpm build` 内存不足：按 `web/Dockerfile` 思路调整 `NODE_OPTIONS`。
-6. `mobile dev:tauri` 无法连后端：检查 Tauri 代理配置与服务端地址。
+1. `git pull --ff-only` 失败：先解决本地分支分叉或未提交变更，再同步。
+2. `server make dev` 启动失败：核对 `server/envs/.env.example` 的 DB/NATS/Redis 配置。
+3. `server make test` 因迁移失败：先执行 `make migrate`，再排查 `server/scripts/check_migrate/check_migrate.py`。
+4. `web pnpm install` 被拒绝：必须使用 pnpm（`preinstall: only-allow pnpm`）。
+5. `web build` 内存不足：按 `web/Dockerfile` 使用 `NODE_OPTIONS`，并在本地减少并发任务。
+6. `mobile dev:tauri` 无法访问后端：确认 `src-tauri/tauri.conf.json` 的 `devUrl=3001` 且后端可达。
 7. `mobile build:android` 签名报错：补齐 `src-tauri/gen/android/keystore.properties` 与 keystore 文件。
-8. `webchat publish` 失败：确认 `NPM_TOKEN`、包版本号与 npm 权限。
-9. `stargazer` 启动后无任务消费：确认 Worker 与 Server 的 Redis 配置一致。
-10. K8s 采集器部署后无数据：检查 `secret.env` 的 `NATS_*` 与 `ca.crt` 是否正确注入。
+8. `webchat publish` 失败：检查 `NPM_TOKEN`、npm 包权限与版本冲突。
+9. `stargazer` 无任务消费：确认 Redis/NATS 与 Server/Worker 一致，先起 Worker 再起 Server。
+10. K8s 采集器无数据：检查 `secret.env` 的 `CLUSTER_NAME/NATS_*` 与 `ca.crt`。
 
 ## Agent 执行规则
 
-- 最小改动：只改任务相关文件，禁止无关重构。
-- 禁止格式化污染：只格式化受影响文件，不跑全仓格式化。
-- 变更后必验证：至少执行对应模块的最小门禁命令。
-- 先证据后结论：命令、端口、脚本、变量都必须能在仓库定位。
-- 不做向后兼容设计：发现失效入口直接修正文档，不保留旧路径说明。
-- TODO 策略：任何无法确认的信息写成 `TODO:`，并附“确认位置（文件路径/关键词）”。
+- 最小 diff：仅修改需求相关文件和代码块。
+- 避免格式化污染：只格式化触及文件，不执行全仓格式化。
+- 变更后必验证：至少执行对应模块最小门禁命令。
+- 先读再写：先提取证据再形成结论，不凭经验补步骤。
+- 不做向后兼容设计：发现旧入口与现状冲突时，直接更新到当前真实入口。
+- TODO 策略：无法确认的信息必须写 `TODO:`，并附“确认位置（具体路径+关键词）”。
 
-## 已识别 TODO（待仓库补齐）
+## TODO（待确认项）
 
-- TODO: `web/Makefile` 引用的 `web/support-files/release/*/Dockerfile` 在仓库中不存在；确认位置：`web/Makefile` 与实际前端发布目录。
-- TODO: 根仓库统一 CI 工作流未找到；确认位置：`.github/workflows/` 或外部 CI 系统。
-- TODO: `docs/overview/*`、`docs/changelog/release.md`、`docs/db/README.md` 当前为空；确认位置：`docs/` 目录对应文档维护流程。
+- TODO: 根仓库统一 CI/CD 流程未发现。确认位置：仓库根 `.github/workflows/`、组织级 CI 平台配置。
+- TODO: `Readme.md` 引用的 `docs/CONTRIBUTING.md` 与 `deploy/docker-compose/Readme.md` 在仓库中未找到。确认位置：`docs/` 与 `deploy/` 目录维护规范。
+- TODO: `docs/overview/*.md`、`docs/changelog/release.md`、`docs/db/README.md` 当前为空。确认位置：文档负责模块与发布流程。
+- TODO: Web 多模块镜像入口在 `web/Makefile` 中指向 `web/support-files/release/*/Dockerfile`，该目录当前不存在。确认位置：`web/Makefile` 对应发布脚本来源。

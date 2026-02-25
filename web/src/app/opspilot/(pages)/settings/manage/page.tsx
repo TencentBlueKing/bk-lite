@@ -8,6 +8,7 @@ import PermissionWrapper from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
 import QuotaModal from './quotaModal';
 import { useQuotaApi } from '@/app/opspilot/api/settings';
+import { QuotaFormValues } from '@/app/opspilot/types/settings';
 import { ColumnsType } from 'antd/es/table';
 
 const { Search } = Input;
@@ -38,7 +39,7 @@ const QuotaManagementPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
-  const [currentRecord, setCurrentRecord] = useState<QuotaRecord | null>(null);
+  const [currentRecord, setCurrentRecord] = useState<QuotaFormValues | null>(null);
   const [searchKey, setSearchKey] = useState('');
 
   const fetchData = async (params: QuotaParams = {}) => {

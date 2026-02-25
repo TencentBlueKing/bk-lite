@@ -1,213 +1,144 @@
 import useApiClient from '@/utils/request';
+import type {
+  LogSearchParams,
+  LogSearchResponse,
+  WorkflowTaskParams,
+  WorkflowTaskResponse,
+  ChannelProps,
+  BotDetail,
+  RasaModel,
+  LlmModel,
+  BotConfigPayload,
+  TokenConsumptionParams,
+  TokenConsumptionResponse,
+  TokenOverviewParams,
+  TokenOverviewResponse,
+  ConversationsParams,
+  ConversationsResponse,
+  ActiveUsersParams,
+  ActiveUsersResponse,
+  ExecuteWorkflowPayload,
+  ExecuteWorkflowResponse,
+  UserInfo,
+  WorkflowLogParams,
+  WorkflowLogResponse,
+  WorkflowLogDetailParams,
+  WorkflowLogDetailResponse,
+  ChatApplicationParams,
+  ChatApplicationResponse,
+  WebChatSession,
+  SessionMessagesResponse,
+  SkillGuideResponse,
+} from '@/app/opspilot/types/studio';
 
 export const useStudioApi = () => {
   const { get, post, del, patch } = useApiClient();
 
-  /**
-   * Fetches logs for a specific bot.
-   * @param params - Query parameters for fetching logs.
-   */
-  const fetchLogs = async (params: any): Promise<any> => {
+  const fetchLogs = async (params: LogSearchParams): Promise<LogSearchResponse> => {
     return get('/opspilot/bot_mgmt/history/search_log/', { params });
   };
 
-  /**
-   * Fetches workflow task results for bot type 3.
-   * @param params - Query parameters including bot_id, start_time, end_time.
-   */
-  const fetchWorkflowTaskResult = async (params: any): Promise<any> => {
+  const fetchWorkflowTaskResult = async (params: WorkflowTaskParams): Promise<WorkflowTaskResponse> => {
     return get('/opspilot/bot_mgmt/workflow_task_result/', { params });
   };
 
-  /**
-   * Fetches channels for a specific bot.
-   * @param botId - The ID of the bot.
-   */
-  const fetchChannels = async (botId: string | null): Promise<any[]> => {
+  const fetchChannels = async (botId: string | null): Promise<ChannelProps[]> => {
     return get('/opspilot/bot_mgmt/bot/get_bot_channels/', { params: { bot_id: botId } });
   };
 
-  /**
-   * Fetches bot detail information including permissions.
-   * @param botId - The ID of the bot.
-   */
-  const fetchBotDetail = async (botId: string | null): Promise<any> => {
+  const fetchBotDetail = async (botId: string | null): Promise<BotDetail> => {
     return get(`/opspilot/bot_mgmt/bot/${botId}/`);
   };
 
-  /**
-   * Updates a channel's configuration.
-   * @param config - The updated channel configuration.
-   */
-  const updateChannel = async (config: any): Promise<void> => {
+  const updateChannel = async (config: ChannelProps): Promise<void> => {
     return post('/opspilot/bot_mgmt/bot/update_bot_channel/', config);
   };
 
-  /**
-   * Deletes a studio by its ID.
-   * @param studioId - The ID of the studio to delete.
-   */
   const deleteStudio = async (studioId: number): Promise<void> => {
     return del(`/opspilot/bot_mgmt/bot/${studioId}/`);
   };
 
-  /**
-   * Toggles the pin status of a bot.
-   * @param botId - The ID of the bot to toggle pin status.
-   */
   const toggleBotPin = async (botId: number): Promise<void> => {
     return post(`/opspilot/bot_mgmt/bot/${botId}/toggle_pin/`);
   };
 
-  /**
-   * Fetches initial data for the studio settings page.
-   * @param botId - The ID of the bot.
-   */
-  const fetchInitialData = async (botId: string | null): Promise<any> => {
+  const fetchInitialData = async (botId: string | null): Promise<[RasaModel[], LlmModel[], ChannelProps[], BotDetail]> => {
     const [rasaModelsData, skillsResponse, channelsData, botData] = await Promise.all([
-      get('/opspilot/bot_mgmt/rasa_model/'),
-      get('/opspilot/model_provider_mgmt/llm/'),
-      get('/opspilot/bot_mgmt/bot/get_bot_channels/', { params: { bot_id: botId } }),
-      get(`/opspilot/bot_mgmt/bot/${botId}`)
+      get<RasaModel[]>('/opspilot/bot_mgmt/rasa_model/'),
+      get<LlmModel[]>('/opspilot/model_provider_mgmt/llm/'),
+      get<ChannelProps[]>('/opspilot/bot_mgmt/bot/get_bot_channels/', { params: { bot_id: botId } }),
+      get<BotDetail>(`/opspilot/bot_mgmt/bot/${botId}`)
     ]);
 
-    // Filter out template skills (is_template: true)
-    const skillsData = skillsResponse.filter((skill: any) => !skill.is_template);
+    const skillsData = skillsResponse.filter((skill) => !skill.is_template);
 
     return [rasaModelsData, skillsData, channelsData, botData];
   };
 
-  /**
-   * Saves the bot configuration.
-   * @param botId - The ID of the bot.
-   * @param payload - The configuration payload.
-   */
-  const saveBotConfig = async (botId: string | null, payload: any): Promise<void> => {
+  const saveBotConfig = async (botId: string | null, payload: BotConfigPayload): Promise<void> => {
     return patch(`/opspilot/bot_mgmt/bot/${botId}/`, payload);
   };
 
-  /**
-   * Toggles the online status of a bot.
-   * @param botId - The ID of the bot.
-   */
   const toggleOnlineStatus = async (botId: string | null): Promise<void> => {
     return post('/opspilot/bot_mgmt/bot/stop_pilot/', { bot_ids: [Number(botId)] });
   };
 
-  /**
-   * Fetches total token consumption.
-   * @param params - Query parameters.
-   */
-  const fetchTokenConsumption = async (params: any): Promise<any> => {
+  const fetchTokenConsumption = async (params: TokenConsumptionParams): Promise<TokenConsumptionResponse> => {
     return get('/opspilot/bot_mgmt/get_total_token_consumption/', { params });
   };
 
-  /**
-   * Fetches token consumption overview data.
-   * @param params - Query parameters.
-   */
-  const fetchTokenOverview = async (params: any): Promise<any> => {
+  const fetchTokenOverview = async (params: TokenOverviewParams): Promise<TokenOverviewResponse> => {
     return get('/opspilot/bot_mgmt/get_token_consumption_overview/', { params });
   };
 
-  /**
-   * Fetches conversations line data.
-   * @param params - Query parameters.
-   */
-  const fetchConversations = async (params: any): Promise<any> => {
+  const fetchConversations = async (params: ConversationsParams): Promise<ConversationsResponse> => {
     return get('/opspilot/bot_mgmt/get_conversations_line_data/', { params });
   };
 
-  /**
-   * Fetches active users line data.
-   * @param params - Query parameters.
-   */
-  const fetchActiveUsers = async (params: any): Promise<any> => {
+  const fetchActiveUsers = async (params: ActiveUsersParams): Promise<ActiveUsersResponse> => {
     return get('/opspilot/bot_mgmt/get_active_users_line_data/', { params });
   };
 
-  /**
-   * Executes a workflow node manually (JSON response).
-   * @param payload - The execution payload including message, bot_id, and node_id.
-   */
-  const executeWorkflow = async (payload: { message?: string; bot_id: string; node_id: string }): Promise<any> => {
+  const executeWorkflow = async (payload: ExecuteWorkflowPayload): Promise<ExecuteWorkflowResponse> => {
     return post(`/opspilot/bot_mgmt/execute_chat_flow/${payload.bot_id}/${payload.node_id}`, { message: payload.message, is_test: true });
   };
 
-  /**
-   * Gets the SSE URL for executing a workflow node with streaming.
-   * @param botId - The ID of the bot.
-   * @param nodeId - The ID of the node.
-   */
   const getExecuteWorkflowSSEUrl = (botId: string, nodeId: string): string => {
     return `/api/proxy/opspilot/bot_mgmt/execute_chat_flow/${botId}/${nodeId}`;
   };
 
-  /**
-   * Gets all users for notification configuration.
-   * @returns Promise<any[]> - List of all users with id, display_name, username.
-   */
-  const getAllUsers = async (): Promise<any[]> => {
+  const getAllUsers = async (): Promise<UserInfo[]> => {
     return get('/system_mgmt/user/user_id_all/');
   };
 
-  /**
-   * Fetches workflow conversation logs for bot type 3.
-   * @param params - Query parameters including bot_id, entry_type, start_time, end_time, search, page, page_size.
-   */
-  const fetchWorkflowLogs = async (params: any): Promise<any> => {
+  const fetchWorkflowLogs = async (params: WorkflowLogParams): Promise<WorkflowLogResponse> => {
     return get('/opspilot/bot_mgmt/bot/search_workflow_log/', { params });
   };
 
-  /**
-   * Fetches workflow log detail.
-   * @param params - Query parameters including ids, page, page_size.
-   */
-  const fetchWorkflowLogDetail = async (params: any): Promise<any> => {
+  const fetchWorkflowLogDetail = async (params: WorkflowLogDetailParams): Promise<WorkflowLogDetailResponse> => {
     return post('/opspilot/bot_mgmt/bot/get_workflow_log_detail/', params);
   };
 
-  /**
-   * Fetches agent list for chat studio (web_chat type).
-   * @param params - Query parameters for agent list.
-   */
-  const fetchApplication = async (params: any): Promise<any> => {
+  const fetchApplication = async (params: ChatApplicationParams): Promise<ChatApplicationResponse> => {
     return get('/opspilot/bot_mgmt/chat_application/', { params });
   };
 
-  /**
-   * Fetches web chat session list for a bot.
-   * @param botId - The ID of the bot.
-   * @param nodeId - The ID of the node.
-   */
-  const fetchWebChatSessions = async (botId: string | number, nodeId?: string | number): Promise<any[]> => {
+  const fetchWebChatSessions = async (botId: string | number, nodeId?: string | number): Promise<WebChatSession[]> => {
     return get('/opspilot/bot_mgmt/chat_application/web_chat_sessions/', { params: { bot_id: botId, node_id: nodeId } });
   };
 
-  /**
-   * 获取某个会话的消息列表
-   * @param sessionId - 会话ID
-   */
-  const fetchSessionMessages = async (sessionId: string): Promise<any> => {
+  const fetchSessionMessages = async (sessionId: string): Promise<SessionMessagesResponse> => {
     return get('/opspilot/bot_mgmt/chat_application/session_messages/', { params: { session_id: sessionId } });
   };
 
-  /**
-   * 查询技能引导语
-   * @param botId - 机器人ID
-   * @param nodeId - 节点ID
-   */
-  const fetchSkillGuide = async (botId: string, nodeId: string): Promise<any> => {
+  const fetchSkillGuide = async (botId: string, nodeId: string): Promise<SkillGuideResponse> => {
     return get('/opspilot/bot_mgmt/chat_application/skill_guide/', { params: { bot_id: botId, node_id: nodeId } });
   };
-  /**
-   * 删除会话历史
-   * @param nodeId - 节点ID
-   * @param sessionId - 会话ID
-   */
-  const deleteSessionHistory = async (nodeId: string | number, sessionId: string): Promise<any> => {
+
+  const deleteSessionHistory = async (nodeId: string | number, sessionId: string): Promise<void> => {
     return post('/opspilot/bot_mgmt/chat_application/delete_session_history/', { node_id: nodeId, session_id: sessionId });
   };
+
   return {
     fetchLogs,
     fetchWorkflowTaskResult,
