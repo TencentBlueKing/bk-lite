@@ -96,7 +96,7 @@ const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading
 
     setModalLoading(true);
     try {
-      const result = await updateProvider(filterType, selectedModel.id, updatedModel);
+      const result = await updateProvider(filterType, selectedModel.id, updatedModel as unknown as Record<string, unknown>);
       if (result && result.id) {
         message.success(t('common.updateSuccess'));
         setModels(prevModels => prevModels.map(model => (model.id === updatedModel.id ? updatedModel : model)));

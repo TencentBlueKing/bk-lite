@@ -70,8 +70,8 @@ const StudioSettingsPage: React.FC = () => {
         const [rasaModelsData, skillsData, channelsData, botData] = await fetchInitialData(botId);
 
         setRasaModels(rasaModelsData);
-        setSkills(skillsData);
-        setChannels(channelsData);
+        setSkills(skillsData as unknown as Skill[]);
+        setChannels(channelsData as unknown as { id: number; name: string; enabled: boolean }[]);
 
         const currentBotType = botData.bot_type || 1;
         setBotType(currentBotType);
@@ -115,9 +115,9 @@ const StudioSettingsPage: React.FC = () => {
         if (currentBotType === 2) {
           setSelectedChannels([]);
         } else {
-          const enabledChannelIds = channelsData
-            .filter((channel: { id: number; name: string; enabled: boolean }) => channel.enabled)
-            .map((channel: { id: number; name: string; enabled: boolean }) => channel.id);
+          const enabledChannelIds = (channelsData as unknown as { id: number; name: string; enabled: boolean }[])
+            .filter((channel) => channel.enabled)
+            .map((channel) => channel.id);
           setSelectedChannels(enabledChannelIds);
         }
         

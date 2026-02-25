@@ -69,7 +69,8 @@ const ChannelPage: React.FC = () => {
     setCurrentChannelType(Object.keys(app.channel_config)[0]);
 
     setFormLoading(true);
-    const fetchedFields = { ...app.channel_config[Object.keys(app.channel_config)[0]] };
+    const channelKey = Object.keys(app.channel_config)[0];
+    const fetchedFields = app.channel_config[channelKey] ? { ...(app.channel_config[channelKey] as Record<string, string>) } : {};
     setFields(fetchedFields);
     setFormLoading(false);
     setIsModalVisible(true);
@@ -92,7 +93,7 @@ const ChannelPage: React.FC = () => {
 
     try {
       setConfirmLoading(true);
-      await updateChannel(updatedConfig);
+      await updateChannel(updatedConfig as unknown as ChannelProps);
       message.success(t('common.saveSuccess'));
       handleCloseModal();
       await fetchData();
@@ -107,7 +108,7 @@ const ChannelPage: React.FC = () => {
     setSwitchLoading(prev => ({ ...prev, [app.id]: true }));
 
     try {
-      await updateChannel({ id: app.id, enabled: checked });
+      await updateChannel({ id: app.id, enabled: checked } as unknown as ChannelProps);
       const updatedApps = apps.map(a => a.id === app.id ? { ...a, enabled: checked } : a);
       setApps(updatedApps);
       message.success(t('common.updateSuccess'));
