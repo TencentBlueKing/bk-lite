@@ -6,7 +6,7 @@ import React, {
   useImperativeHandle,
   useEffect,
   useCallback,
-  useMemo,
+  useMemo
 } from 'react';
 import {
   Form,
@@ -15,7 +15,7 @@ import {
   Input,
   Popconfirm,
   InputNumber,
-  Select,
+  Select
 } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
@@ -24,7 +24,7 @@ import { useTranslation } from '@/utils/i18n';
 import {
   ModalSuccess,
   ModalRef,
-  TableDataItem,
+  TableDataItem
 } from '@/app/node-manager/types';
 import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
@@ -41,10 +41,10 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
     const cloudId = useCloudId();
     const { uninstallController } = useNodeManagerApi();
     //需要二次弹窗确定的类型
-    const Popconfirmarr = ['uninstallSidecar'];
+    const Popconfirmarr = ['uninstallController'];
     const instRef = useRef<ModalRef>(null);
     const collectorformRef = useRef<FormInstance>(null);
-    const [type, setType] = useState<string>('uninstallSidecar');
+    const [type, setType] = useState<string>('uninstallController');
     const [collectorVisible, setCollectorVisible] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [tableData, setTableData] = useState<TableDataItem[]>([]);
@@ -55,7 +55,7 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
           title: t('node-manager.cloudregion.node.ipAdrress'),
           dataIndex: 'ip',
           width: 100,
-          key: 'ip',
+          key: 'ip'
         },
         {
           title: (
@@ -81,7 +81,7 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
                 onChange={(e) => handlePortChange(e, row, 'port')}
               />
             );
-          },
+          }
         },
         {
           title: (
@@ -105,7 +105,7 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
                 onChange={(e) => handleInputBlur(e, row, 'username')}
               />
             );
-          },
+          }
         },
         {
           title: (
@@ -142,16 +142,16 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
                 options={[
                   {
                     label: t('node-manager.cloudregion.node.password'),
-                    value: 'password',
+                    value: 'password'
                   },
                   {
                     label: t('node-manager.cloudregion.node.privateKey'),
-                    value: 'private_key',
-                  },
+                    value: 'private_key'
+                  }
                 ]}
               />
             );
-          },
+          }
         },
         {
           title: (
@@ -183,7 +183,7 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
                         style={{
                           fontSize: 16,
                           color: 'var(--color-primary)',
-                          fontWeight: 'bold',
+                          fontWeight: 'bold'
                         }}
                         onClick={() => {
                           const data = cloneDeep(tableData);
@@ -243,8 +243,8 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
                 onChange={(e) => handleInputBlur(e, row, 'password')}
               />
             );
-          },
-        },
+          }
+        }
       ],
       [tableData]
     );
@@ -286,10 +286,10 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
           auth_type: 'password',
           password: null,
           private_key: null,
-          key_file_name: undefined,
+          key_file_name: undefined
         }));
         setTableData(list);
-      },
+      }
     }));
 
     useEffect(() => {
@@ -306,7 +306,7 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
         title: t('common.bulkEdit'),
         type: field,
         form: {},
-        authType,
+        authType
       });
     };
 
@@ -383,10 +383,10 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
               port: item.port,
               username: item.username,
               password: item.private_key ? '' : item.password,
-              private_key: item.private_key || '',
+              private_key: item.private_key || ''
             };
             return node;
-          }),
+          })
         };
         uninstall(params);
       });
@@ -400,7 +400,7 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
         handleCancel();
         onSuccess({
           taskId: data.task_id,
-          type: 'uninstallController',
+          type: 'uninstallController'
         });
       } finally {
         setConfirmLoading(false);
@@ -462,7 +462,7 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
           ref={instRef}
           config={{
             systemList: OPERATE_SYSTEMS,
-            groupList: [],
+            groupList: []
           }}
           onSuccess={handleBatchEdit}
         />

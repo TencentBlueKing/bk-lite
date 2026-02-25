@@ -15,7 +15,7 @@ import InstallGuidance from './installGuidance';
 
 const ControllerTable: React.FC<ControllerInstallProps> = ({
   cancel,
-  config,
+  config
 }) => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
@@ -33,7 +33,7 @@ const ControllerTable: React.FC<ControllerInstallProps> = ({
         title: t('node-manager.cloudregion.node.ipAdrress'),
         dataIndex: 'ip',
         width: 100,
-        key: 'ip',
+        key: 'ip'
       },
       {
         title: t('node-manager.cloudregion.node.operateSystem'),
@@ -48,7 +48,7 @@ const ControllerTable: React.FC<ControllerInstallProps> = ({
                 '--'}
             </>
           );
-        },
+        }
       },
       {
         title: t('node-manager.cloudregion.node.organaziton'),
@@ -58,7 +58,7 @@ const ControllerTable: React.FC<ControllerInstallProps> = ({
         ellipsis: true,
         render: (value: string[]) => {
           return <>{showGroupNames(value || []) || '--'}</>;
-        },
+        }
       },
       {
         title: t(
@@ -77,13 +77,13 @@ const ControllerTable: React.FC<ControllerInstallProps> = ({
             <span
               style={{
                 color:
-                  installMay[installStatus]?.color || 'var(--ant-color-text)',
+                  installMay[installStatus]?.color || 'var(--ant-color-text)'
               }}
             >
               {installMay[installStatus]?.text || '--'}
             </span>
           );
-        },
+        }
       },
       {
         title: t('common.actions'),
@@ -101,8 +101,8 @@ const ControllerTable: React.FC<ControllerInstallProps> = ({
               {t('node-manager.cloudregion.node.viewLog')}
             </Button>
           );
-        },
-      },
+        }
+      }
     ];
   }, [config.type]);
 
@@ -140,7 +140,7 @@ const ControllerTable: React.FC<ControllerInstallProps> = ({
     guidance.current?.showModal({
       title: t('node-manager.cloudregion.node.log'),
       type,
-      form: { message: str || '--' },
+      form: { message: str || '--' }
     });
   };
 
@@ -154,7 +154,7 @@ const ControllerTable: React.FC<ControllerInstallProps> = ({
       setTableData(
         data.map((item: TableDataItem, index: number) => ({
           id: index,
-          ...item,
+          ...item
         }))
       );
     } finally {
@@ -167,7 +167,11 @@ const ControllerTable: React.FC<ControllerInstallProps> = ({
       <div className={controllerInstallSyle.title}>
         <Popconfirm
           title={t('common.prompt')}
-          description={t('node-manager.cloudregion.node.installingTips')}
+          description={
+            config.type === 'uninstallController'
+              ? t('node-manager.cloudregion.node.uninstallControllerTips')
+              : t('node-manager.cloudregion.node.installingTips')
+          }
           okText={t('common.confirm')}
           cancelText={t('common.cancel')}
           onConfirm={cancel}
