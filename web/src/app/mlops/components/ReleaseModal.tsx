@@ -214,6 +214,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
           <Form.Item
             name='port'
             label={t(`mlops-common.port`)}
+            extra={<span className="text-xs">{t(`mlops-common.portDesc`)}</span>}
           >
             <InputNumber className="w-full" placeholder={t(`mlops-common.portIptMsg`)} min={1} max={65535} />
           </Form.Item>
@@ -221,7 +222,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
           <Form.Item
             name='description'
             label={t(`model-release.modelDescription`)}
-            rules={[{ required: true, message: t(`common.inputMsg`) }]}
+            // rules={[{ required: true, message: t(`common.inputMsg`) }]}
           >
             <TextArea placeholder={t(`common.inputMsg`)} rows={4} />
           </Form.Item>
