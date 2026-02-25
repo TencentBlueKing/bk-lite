@@ -8,7 +8,7 @@ import CustomTable from "@/components/custom-table";
 import EllipsisWithTooltip from "@/components/ellipsis-with-tooltip";
 import { useTranslation } from "@/utils/i18n";
 import { Button, Popconfirm, message, Tag, Tooltip, Input } from "antd";
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ReloadOutlined } from '@ant-design/icons';
 import ReleaseModal from "@/app/mlops/components/ReleaseModal";
 import PermissionWrapper from '@/components/permission';
 import { ModalRef, Option, Pagination, TableData, DatasetType } from "@/app/mlops/types";
@@ -58,7 +58,7 @@ const ServingPage = () => {
     startServingContainer,
     stopServingContainer
   } = useMlopsModelReleaseApi();
-  
+
   const [trainjobs, setTrainjobs] = useState<Option[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -85,21 +85,11 @@ const ServingPage = () => {
       dataIndex: 'name',
       key: 'name'
     },
-    {
-      title: t(`model-release.modelDescription`),
-      dataIndex: 'description',
-      key: 'description'
-    },
-    {
-      title: t(`mlops-common.port`),
-      dataIndex: 'port',
-      key: 'port',
-      width: 100,
-      render: (_, record) => {
-        const port = record.container_info?.port || record.port;
-        return port ? <span>{port}</span> : <span>--</span>;
-      }
-    },
+    // {
+    //   title: t(`model-release.modelDescription`),
+    //   dataIndex: 'description',
+    //   key: 'description'
+    // },
     {
       title: t(`model-release.publishStatus`),
       dataIndex: 'status',
@@ -125,6 +115,16 @@ const ServingPage = () => {
             <Tag color={CONTAINER_STATE_MAP[_status]}>{t(CONTAINER_TEXT_KEYS[text])}</Tag>
           </Tooltip>
         )
+      }
+    },
+    {
+      title: t(`mlops-common.port`),
+      dataIndex: 'port',
+      key: 'port',
+      width: 100,
+      render: (_, record) => {
+        const port = record.container_info?.port || '';
+        return port ? <span>{port}</span> : <span>--</span>;
       }
     },
     {
@@ -344,7 +344,7 @@ const ServingPage = () => {
             style={{ fontSize: 15 }}
           />
           <PermissionWrapper requiredPermissions={['Add']}>
-            <Button type="primary" icon={<PlusOutlined />} className="mr-2" onClick={() => publish({})}>{t(`model-release.modelRelease`)}</Button>
+            <Button type="primary" className="mr-2" onClick={() => publish({})}>{t(`model-release.modelRelease`)}</Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['View']}>
             <ReloadOutlined onClick={onRefresh} />

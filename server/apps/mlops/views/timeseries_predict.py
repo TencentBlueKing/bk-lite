@@ -144,13 +144,8 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                 train_job_id=train_job.id,
             )
 
-            logger.info(f"启动训练任务: {job_id}")
-            logger.info(f"  Dataset: {train_job.dataset_version.dataset_file.name}")
-            logger.info(f"  Config: {train_job.config_url.name}")
-
             # 动态获取训练镜像
             train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
-            logger.info(f"  Train Image: {train_image}")
 
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
@@ -168,8 +163,6 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             # 更新任务状态
             train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
-
-            logger.info(f"训练任务已启动: {job_id}")
 
             return Response(
                 {
@@ -221,16 +214,12 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                 train_job_id=train_job.id,
             )
 
-            logger.info(f"停止训练任务: {job_id}")
-
             # 调用 WebhookClient 停止任务（默认删除容器）
             result = WebhookClient.stop(job_id)
 
             # 更新任务状态
             train_job.status = TrainJobStatus.PENDING
             train_job.save(update_fields=["status"])
-
-            logger.info(f"训练任务已停止: {job_id}")
 
             return Response(
                 {
@@ -368,9 +357,6 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                 if new_status:
                     train_job.status = new_status
                     train_job.save(update_fields=["status"])
-                    logger.info(
-                        f"自动同步 TrainJob {train_job.id} 状态: running -> {new_status} (基于 MLflow: {latest_run_status})"
-                    )
 
             return Response(
                 {
@@ -767,10 +753,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 构建 serving ID
             container_id = f"TimeseriesPredict_Serving_{serving.id}"
 
-            logger.info(
-                f"自动启动 serving 服务: {container_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}"
-            )
-
             try:
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
@@ -786,10 +768,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 # 启动成功，仅更新容器信息
                 serving.container_info = result
                 serving.save(update_fields=["container_info"])
-
-                logger.info(
-                    f"Serving 服务已自动启动: {container_id}, Port: {result.get('port')}"
-                )
 
                 # 更新返回数据（status 由用户控制，不修改）
                 response.data["container_info"] = result
@@ -909,9 +887,8 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         # 如果需要重启，先删除旧容器
         if need_restart:
             try:
-                logger.info(f"配置变更需要重启，删除旧容器: {container_id}")
+                logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
                 WebhookClient.remove(container_id)
-                logger.info(f"旧容器已删除: {container_id}")
             except WebhookError as e:
                 logger.warning(f"删除旧容器失败（可能已不存在）: {e}")
                 # 继续执行，尝试启动新容器
@@ -924,10 +901,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
                 # 解析新的 model_uri
                 model_uri = self._resolve_model_uri(instance)
-
-                logger.info(
-                    f"使用新配置启动容器: {container_id}, Model URI: {model_uri}, Port: {instance.port or 'auto'}"
-                )
 
                 # 启动新容器
                 result = WebhookClient.serve(
@@ -943,8 +916,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 # 更新容器信息（status 由用户控制，不修改）
                 instance.container_info = result
                 instance.save(update_fields=["container_info"])
-
-                logger.info(f"新容器已启动: {container_id}, Port: {result.get('port')}")
 
                 # 更新返回数据
                 response.data["container_info"] = result
@@ -993,10 +964,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
 
-            logger.info(
-                f"启动 serving 服务: {serving_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}"
-            )
-
             try:
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
@@ -1012,10 +979,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 # 正常启动成功，仅更新容器信息
                 serving.container_info = result
                 serving.save(update_fields=["container_info"])
-
-                logger.info(
-                    f"Serving 服务已启动: {serving_id}, Port: {result.get('port')}"
-                )
 
                 return Response(
                     {
@@ -1047,8 +1010,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                         # 仅更新容器信息，不修改 status
                         serving.container_info = container_info
                         serving.save(update_fields=["container_info"])
-
-                        logger.info(f"容器信息已同步: {container_info.get('state')}")
 
                         return Response(
                             {
@@ -1098,12 +1059,8 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
 
-            logger.info(f"停止 serving 服务: {serving_id}")
-
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
-
-            logger.info(f"Serving 服务已停止: {serving_id}")
 
             return Response(
                 {
@@ -1145,8 +1102,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
 
-            logger.info(f"删除 serving 容器: {serving_id}")
-
             # 调用 WebhookClient 删除容器
             result = WebhookClient.remove(serving_id)
 
@@ -1158,8 +1113,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 "message": "容器已删除",
             }
             serving.save(update_fields=["container_info"])
-
-            logger.info(f"Serving 容器已删除: {serving_id}")
 
             return Response(
                 {
@@ -1208,6 +1161,13 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         try:
             serving = self.get_object()
 
+            # 校验服务状态
+            if serving.status != "active":
+                return Response(
+                    {"error": "服务未发布，请先发布服务"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # 获取参数
             url = request.data.get("url")
             data = request.data.get("data")
@@ -1244,10 +1204,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 构建请求体
             payload = {"data": data, "config": {"steps": steps}}
 
-            logger.info(
-                f"调用预测服务: serving_id={serving.id}, url={predict_url}, steps={steps}, data_size={len(data)}"
-            )
-
             # 发起 HTTP POST 请求
             response = requests.post(
                 predict_url,
@@ -1280,13 +1236,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     )
 
                 # 预测成功
-                prediction = result.get("prediction") or []
-                prediction_size = (
-                    len(prediction) if isinstance(prediction, (list, tuple)) else 0
-                )
-                logger.info(
-                    f"预测成功: serving_id={serving.id}, prediction_size={prediction_size}"
-                )
                 return Response(result)
             else:
                 error_msg = f"预测服务返回错误: HTTP {response.status_code}"
@@ -1407,8 +1356,6 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
             response = FileResponse(file, content_type="application/zip")
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
 
-            logger.info(f"下载数据集版本: {release.id} - {filename}")
-
             return response
 
         except Exception as e:
@@ -1436,8 +1383,6 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
             release.status = DatasetReleaseStatus.ARCHIVED
             release.description = f"[已归档] {release.description or ''}"
             release.save(update_fields=["status", "description"])
-
-            logger.info(f"归档数据集版本: {release.id}")
 
             return Response({"message": "归档成功", "release_id": release.id})
 
@@ -1470,10 +1415,6 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
 
             release.status = DatasetReleaseStatus.PUBLISHED
             release.save(update_fields=["status", "description"])
-
-            logger.info(
-                f"恢复数据集版本: {release.id} - {release.dataset.name} {release.version}"
-            )
 
             return Response(
                 {
