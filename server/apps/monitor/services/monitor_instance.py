@@ -49,7 +49,7 @@ class InstanceSearch:
         for obj in objs:
             try:
                 _instance_id = ast.literal_eval(obj["id"])[0]
-            except Exception:
+            except (ValueError, SyntaxError, IndexError):
                 _instance_id = obj["id"]
             data.append({"id": str(_instance_id), "name": obj["name"]})
         return data

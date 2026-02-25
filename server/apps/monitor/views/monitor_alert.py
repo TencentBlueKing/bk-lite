@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
+from apps.core.logger import monitor_logger as logger
 from apps.core.utils.permission_utils import (
     get_permission_rules,
     permission_filter,
@@ -29,7 +30,7 @@ from apps.monitor.services.policy_baseline import PolicyBaselineService
 from config.drf.pagination import CustomPageNumberPagination
 
 
-class MonitorAlertVieSet(
+class MonitorAlertViewSet(
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     mixins.ListModelMixin,
@@ -247,9 +248,6 @@ class MonitorAlertVieSet(
                 snapshots_data = []
         except Exception as e:
             # S3 读取异常时记录日志并返回空列表
-            import logging
-
-            logger = logging.getLogger(__name__)
             logger.error(f"Failed to load snapshots from S3 for alert {alert_id}: {e}")
             snapshots_data = []
 
@@ -269,7 +267,7 @@ class MonitorAlertVieSet(
         )
 
 
-class MonitorEventVieSet(viewsets.ViewSet):
+class MonitorEventViewSet(viewsets.ViewSet):
     @action(methods=["get"], detail=False, url_path="query/(?P<alert_id>[^/.]+)")
     def get_events(self, request, alert_id):
         """查询告警的事件列表 - 优化版：使用外键直接查询"""
@@ -338,9 +336,6 @@ class MonitorEventVieSet(viewsets.ViewSet):
                 raw_data = {}
         except Exception as e:
             # S3 读取异常时记录日志并返回空字典
-            import logging
-
-            logger = logging.getLogger(__name__)
             logger.error(f"Failed to load raw data from S3 for event {event_id}: {e}")
             raw_data = {}
 

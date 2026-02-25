@@ -134,6 +134,8 @@ class GenericViewSetFun(object):
             else:
                 # 不包含子组，team包含当前组 或者 是当前用户创建的
                 query = Q(**{f"{org_field}__contains": int(current_team)}) | creator_query
+        elif org_field in fields:
+            query = Q(**{f"{org_field}__contains": int(current_team)})
         else:
             query = Q()
         return current_team, include_children, org_field, query

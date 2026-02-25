@@ -3,9 +3,9 @@ from apps.cmdb.graph.format_type import FORMAT_TYPE
 
 
 class PermissionManage:
-    def __init__(self, roles=[], user_groups=[]):
-        self.roles = roles
-        self.user_groups = user_groups
+    def __init__(self, roles=None, user_groups=None):
+        self.roles = roles if roles is not None else []
+        self.user_groups = user_groups if user_groups is not None else []
 
     def get_group_params(self):
         """获取组织条件，用于列表页查询"""

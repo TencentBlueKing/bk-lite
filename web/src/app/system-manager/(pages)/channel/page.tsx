@@ -25,7 +25,7 @@ const ChannelPage = () => {
     {
       id: 'nats',
       name: t('system.channel.nats'),
-      icon: 'tongdao',
+      icon: 'dongzuo1',
       description: t('system.channel.natsDesc')
     },
   ]);

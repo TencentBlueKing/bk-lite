@@ -7,11 +7,10 @@ from rest_framework.decorators import action
 from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.permission_cache import clear_user_permission_cache
+from apps.core.utils.permission_cache import clear_user_permission_cache, clear_users_permission_cache
 from apps.rpc.cmdb import CMDB
 from apps.system_mgmt.models import Group, Role, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
-from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
@@ -195,25 +194,27 @@ class UserViewSet(ViewSetUtils):
         users = User.objects.filter(id__in=user_ids)
         usernames = list(users.values_list("username", flat=True))
 
-        # 收集需要删除的用户信息（username和domain）
-        user_info_list = list(users.values("username", "domain"))
+        # 收集需要删除的用户信息（id, username和domain）
+        user_info_list = list(users.values("id", "username", "domain"))
 
-        keys = []
-        for i in users:
-            keys.extend(RoleManage.get_cache_keys(i.username))
+        # 直接构造用户菜单缓存键删除（缓存键格式为 menus-user:{user_id}）
+        menu_cache_keys = [f"menus-user:{user['id']}" for user in user_info_list]
+        if menu_cache_keys:
+            cache.delete_many(menu_cache_keys)
 
-        cache.delete_many(keys)
-
-        # 删除用户相关的UserRule（根据username和domain）
-        for user_info in user_info_list:
-            UserRule.objects.filter(username=user_info["username"], domain=user_info["domain"]).delete()
+        # 批量删除用户相关的UserRule（避免N+1：使用Q对象组合条件）
+        if user_info_list:
+            user_rule_filter = Q()
+            for user_info in user_info_list:
+                user_rule_filter |= Q(username=user_info["username"], domain=user_info["domain"])
+            UserRule.objects.filter(user_rule_filter).delete()
 
         # 删除用户
         users.delete()
 
-        # 清除权限缓存
-        for user_info in user_info_list:
-            clear_user_permission_cache(user_info["username"], user_info.get("domain", "domain.com"))
+        # 清除权限缓存（批量清除）
+        if user_info_list:
+            clear_users_permission_cache(user_info_list)
 
         # 记录操作日志
         log_operation(
@@ -230,7 +231,6 @@ class UserViewSet(ViewSetUtils):
         params = request.data
         pk = params.pop("user_id")
         rules = params.pop("rules", [])
-        keys = RoleManage.get_cache_keys(params["username"])
         is_superuser = params.pop("is_superuser", False)
         if is_superuser:
             params["roles"] = [Role.objects.get(name="admin", app="").id]
@@ -249,7 +249,8 @@ class UserViewSet(ViewSetUtils):
                 group_list=params.get("groups"),
                 role_list=params.get("roles"),
             )
-            cache.delete_many(keys)
+            # 清除用户菜单缓存（缓存键格式为 menus-user:{user_id}）
+            cache.delete(f"menus-user:{pk}")
 
             # 同步用户数据到CMDB
             CMDB().sync_display_fields(

@@ -106,7 +106,6 @@ const Alert: React.FC = () => {
       title: t('monitor.events.level'),
       dataIndex: 'level',
       key: 'level',
-      width: 100,
       render: (_, { level }) => (
         <Tag icon={<AlertOutlined />} color={LEVEL_MAP[level] as string}>
           {LEVEL_LIST.find((item) => item.value === level)?.label || '--'}
@@ -117,7 +116,6 @@ const Alert: React.FC = () => {
       title: t('common.time'),
       dataIndex: 'updated_at',
       key: 'updated_at',
-      width: 160,
       sorter: (a: any, b: any) => a.id - b.id,
       render: (_, { updated_at }) => (
         <>{updated_at ? convertToLocalizedTime(updated_at) : '--'}</>
@@ -126,18 +124,12 @@ const Alert: React.FC = () => {
     {
       title: t('monitor.events.alertName'),
       dataIndex: 'content',
-      key: 'content',
-      onCell: () => ({
-        style: {
-          minWidth: 150
-        }
-      })
+      key: 'content'
     },
     {
       title: t('monitor.events.alertType'),
       dataIndex: 'alert_type',
       key: 'alert_type',
-      width: 100,
       render: (_, { alert_type }) => (
         <Tag color="default">{ALERT_TYPE_MAP[alert_type] || '--'}</Tag>
       )
@@ -145,21 +137,18 @@ const Alert: React.FC = () => {
     {
       title: t('monitor.asset'),
       dataIndex: 'monitor_instance_name',
-      key: 'monitor_instance_name',
-      width: 200
+      key: 'monitor_instance_name'
     },
     {
       title: t('monitor.events.assetType'),
       dataIndex: 'assetType',
       key: 'assetType',
-      width: 120,
       render: (_, record) => <>{showObjName(record)}</>
     },
     {
       title: t('monitor.events.state'),
       dataIndex: 'status',
       key: 'status',
-      width: 80,
       render: (_, { status }) => (
         <Tag color={status === 'new' ? 'blue' : 'var(--color-text-4)'}>
           {STATE_MAP[status]}
@@ -170,7 +159,6 @@ const Alert: React.FC = () => {
       title: t('monitor.events.notify'),
       dataIndex: 'notify',
       key: 'notify',
-      width: 100,
       render: (_, record) => (
         <>
           {t(
@@ -185,7 +173,6 @@ const Alert: React.FC = () => {
       title: t('common.operator'),
       dataIndex: 'operator',
       key: 'operator',
-      width: 100,
       render: (_, { operator }) => {
         return operator ? (
           <div className="column-user" title={operator}>

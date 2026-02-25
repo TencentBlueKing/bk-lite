@@ -8,6 +8,7 @@ import PermissionWrapper from '@/components/permission';
 import CustomTable from '@/components/custom-table';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
 import { useSkillApi } from '@/app/opspilot/api/skill';
+import { getDocumentTypeLabel } from '@/app/opspilot/utils/knowledgeBaseUtils';
 
 const { TabPane } = Tabs;
 
@@ -21,8 +22,8 @@ interface GraphConfig {
 interface DocumentItem {
   key: string;
   title: string;
-  description: string;
-  status: string;
+  description?: string;
+  status?: string;
   type?: string;
 }
 
@@ -301,18 +302,9 @@ const KnowledgeGraphEditPage: React.FC = () => {
     }).filter(Boolean);
   }, [tempSelectedDocuments]);
 
-  const getDocumentTypeLabel = useCallback((type: string) => {
-    switch (type) {
-      case 'file':
-        return t('knowledge.localFile');
-      case 'web_page':
-        return t('knowledge.webLink');
-      case 'manual':
-        return t('knowledge.cusText');
-      default:
-        return type;
-    }
-  }, []);
+  const getDocumentTypeLabelCallback = useCallback((type: string) => {
+    return getDocumentTypeLabel(type, t);
+  }, [t]);
 
   const handleSave = async () => {
     try {
@@ -607,7 +599,7 @@ const KnowledgeGraphEditPage: React.FC = () => {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <Tag color="blue" className="text-xs">
-                              {getDocumentTypeLabel(doc.type || '')}
+                              {getDocumentTypeLabelCallback(doc.type || '')}
                             </Tag>
                             <Tag color={doc.status === '已完成' ? 'green' : 'orange'} className="text-xs">
                               {doc.status}

@@ -37,6 +37,7 @@ import {
   ThresholdField
 } from '@/app/monitor/types';
 import { LEVEL_MAP } from '@/app/monitor/constants';
+import { useLevelList } from '@/app/monitor/hooks';
 
 interface LineChartProps {
   data: ChartData[];
@@ -81,6 +82,7 @@ const LineChart: React.FC<LineChartProps> = memo(
     onXRangeChange
   }) => {
     const { formatTime } = useFormatTime();
+    const levelList = useLevelList();
     const [startX, setStartX] = useState<number | null>(null);
     const [endX, setEndX] = useState<number | null>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -110,6 +112,28 @@ const LineChart: React.FC<LineChartProps> = memo(
 
     const details = useMemo(() => getDetails(data), [data]);
 
+    const levelNameMap = useMemo(() => {
+      return levelList.reduce(
+        (acc, item) => {
+          if (item.value) {
+            acc[item.value as string] = item.label || '';
+          }
+          return acc;
+        },
+        {} as Record<string, string>
+      );
+    }, [levelList]);
+
+    // 格式化数值：固定最大宽度，超出显示省略号
+    const formatThresholdValue = useCallback((num: number): string => {
+      const MAX_LENGTH = 6; // 数值最大显示长度，超过5位数才显示省略号
+      const str = String(num);
+      if (str.length <= MAX_LENGTH) {
+        return str;
+      }
+      return str.slice(0, MAX_LENGTH - 1) + '…';
+    }, []);
+
     const { minTime, maxTime } = useMemo(() => {
       const times = data.map((d) => d.time);
       return {
@@ -136,22 +160,184 @@ const LineChart: React.FC<LineChartProps> = memo(
         });
       });
       // 获取所有有效阈值
-      const thresholdValues = threshold
-        .filter((item) => item.value !== null && item.value !== undefined)
-        .map((item) => item.value as number);
+      const validThresholdItems = threshold.filter(
+        (item) => item.value !== null && item.value !== undefined
+      );
+      const thresholdValues = validThresholdItems.map(
+        (item) => item.value as number
+      );
       // 如果没有数据或阈值，返回自动计算
       if (!dataValues.length || !thresholdValues.length) {
         return [0, 'auto'];
       }
       const dataMax = Math.max(...dataValues);
       const thresholdMax = Math.max(...thresholdValues);
+
+      // 检查是否有"大于"类型的阈值（需要向上显示阴影区域）
+      const hasGreaterThan = validThresholdItems.some(
+        (item) => item.method === '>' || item.method === '>=' || !item.method
+      );
+
       // 只有当阈值最大值超过数据最大值时，才用阈值最大值设置 Y 轴上限
       if (thresholdMax > dataMax) {
-        const yMax = thresholdMax;
+        // 如果有"大于"类型的阈值，需要额外留出空间显示阴影区域
+        const yMax = hasGreaterThan
+          ? Math.ceil(thresholdMax * 1.1)
+          : thresholdMax;
         return [0, yMax];
       }
       return [0, 'auto'];
     }, [data, threshold]);
+
+    // 计算阈值标签信息（包含格式化文本和偏移量）
+    const thresholdLabelInfo = useMemo(() => {
+      const validItems = threshold
+        .filter((item) => item.value !== null && item.value !== undefined)
+        .map((item) => ({
+          ...item,
+          numValue: item.value as number,
+          formattedValue: formatThresholdValue(item.value as number),
+          labelText: `${levelNameMap[item.level] || item.level} ${formatThresholdValue(item.value as number)}`,
+          // 使用 level + value 作为唯一标识
+          uniqueKey: `${item.level}_${item.value}`
+        }))
+        .sort((a, b) => b.numValue - a.numValue); // 按值从大到小排序
+
+      // 计算 Y 轴像素高度（估算，减去上下边距）
+      const chartHeight = (containerHeight || 300) - 40;
+      const yMin = 0;
+      const yMax =
+        typeof yAxisDomain[1] === 'number'
+          ? yAxisDomain[1]
+          : Math.max(...validItems.map((i) => i.numValue), 1);
+      const yRange = yMax - yMin || 1;
+
+      // 为每个标签计算 dy 偏移量，避免重叠
+      const LABEL_HEIGHT = 16; // 标签高度
+      const MIN_LABEL_DISTANCE = LABEL_HEIGHT + 4; // 最小标签间距（像素）
+      const BOTTOM_LIMIT = chartHeight - 10; // 底部限制，避免与X轴重叠
+      const TOP_LIMIT = 5; // 顶部限制，避免被裁剪
+
+      // 使用 uniqueKey 作为键存储偏移量
+      const labelOffsets: Record<string, number> = {};
+      // 记录每个标签的最终渲染 Y 位置（从顶部算起的像素）
+      const finalPositions: number[] = [];
+      // 记录每个标签的原始 Y 位置
+      const originalPositions: number[] = [];
+
+      // 第一步：计算每个标签的原始位置
+      for (let i = 0; i < validItems.length; i++) {
+        const current = validItems[i];
+        const currentYPixel =
+          ((yMax - current.numValue) / yRange) * chartHeight;
+        originalPositions.push(currentYPixel);
+        finalPositions.push(currentYPixel); // 初始化为原始位置
+      }
+
+      // 第二步：从下往上处理，检查是否压着X轴或重叠
+      for (let i = validItems.length - 1; i >= 0; i--) {
+        let currentY = finalPositions[i];
+
+        // 检查是否超出底部限制（压着X轴）
+        if (currentY > BOTTOM_LIMIT) {
+          currentY = BOTTOM_LIMIT;
+          finalPositions[i] = currentY;
+        }
+
+        // 检查是否与下一个标签重叠（下一个标签在下方，索引更大）
+        if (i < validItems.length - 1) {
+          const nextY = finalPositions[i + 1];
+          const distance = nextY - currentY;
+
+          if (distance < MIN_LABEL_DISTANCE) {
+            // 重叠了，当前标签需要往上移
+            currentY = nextY - MIN_LABEL_DISTANCE;
+            finalPositions[i] = currentY;
+          }
+        }
+
+        // 检查是否超出顶部限制
+        if (currentY < TOP_LIMIT) {
+          currentY = TOP_LIMIT;
+          finalPositions[i] = currentY;
+        }
+      }
+
+      // 第三步：从上往下再检查一次，确保顶部标签被限制后，下面的标签也正确排列
+      for (let i = 1; i < validItems.length; i++) {
+        const prevY = finalPositions[i - 1];
+        let currentY = finalPositions[i];
+
+        // 检查是否与上一个标签重叠
+        const distance = currentY - prevY;
+        if (distance < MIN_LABEL_DISTANCE) {
+          currentY = prevY + MIN_LABEL_DISTANCE;
+          finalPositions[i] = currentY;
+        }
+      }
+
+      // 第四步：计算偏移量
+      for (let i = 0; i < validItems.length; i++) {
+        const current = validItems[i];
+        labelOffsets[current.uniqueKey] =
+          finalPositions[i] - originalPositions[i];
+      }
+
+      return {
+        items: validItems,
+        labelOffsets,
+        maxLabelLength: Math.max(
+          ...validItems.map((i) => i.labelText.length),
+          0
+        )
+      };
+    }, [
+      threshold,
+      levelNameMap,
+      formatThresholdValue,
+      containerHeight,
+      yAxisDomain
+    ]);
+
+    // 计算右侧 margin：级别名称动态 + 数值动态（有最大宽度限制）
+    const rightMargin = useMemo(() => {
+      if (!threshold?.length) {
+        return eventData?.length ? 20 : 0;
+      }
+      const validItems = threshold.filter(
+        (item) => item.value !== null && item.value !== undefined
+      );
+      // 获取最长的级别名称长度
+      const maxLevelNameLength = Math.max(
+        ...validItems.map(
+          (item) => (levelNameMap[item.level] || item.level).length
+        ),
+        0
+      );
+      // 获取格式化后的数值最大长度（最多 6 个字符）
+      const maxValueLength = Math.max(
+        ...validItems.map(
+          (item) => formatThresholdValue(item.value as number).length
+        ),
+        0
+      );
+      // 级别名称宽度（中文字符约 12px）+ 数值宽度（数字约 8px）+ 间距
+      const levelNameWidth = maxLevelNameLength * 12;
+      const valueWidth = maxValueLength * 8;
+      const padding = 15;
+      return levelNameWidth + valueWidth + padding;
+    }, [threshold, eventData?.length, levelNameMap, formatThresholdValue]);
+
+    // 获取所有有效的阈值配置，用于渲染阴影区域
+    const validThresholds = useMemo(() => {
+      return threshold
+        .filter((item) => item.value !== null && item.value !== undefined)
+        .map((item) => ({
+          level: item.level,
+          value: item.value as number,
+          method: item.method || '>'
+        }));
+    }, [threshold]);
 
     const hasDimension = useMemo(() => {
       return !Object.values(details || {}).every((item) => !item.length);
@@ -274,7 +460,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                 data={data}
                 margin={{
                   top: 10,
-                  right: eventData?.length ? 20 : 0,
+                  right: rightMargin,
                   left: 0,
                   bottom: 0
                 }}
@@ -322,6 +508,50 @@ const LineChart: React.FC<LineChartProps> = memo(
                     hide={!visibleAreas.includes(key)}
                   />
                 ))}
+                {/* 为每个阈值级别渲染阴影区域 */}
+                {validThresholds.map((item, index) => {
+                  const levelColor =
+                    (LEVEL_MAP[item.level] as string) || '#F43B2C';
+                  // 将颜色转换为 rgba 格式，透明度 0.1
+                  const fillColor = levelColor.startsWith('#')
+                    ? `rgba(${parseInt(levelColor.slice(1, 3), 16)}, ${parseInt(levelColor.slice(3, 5), 16)}, ${parseInt(levelColor.slice(5, 7), 16)}, 0.1)`
+                    : levelColor;
+
+                  const yMax =
+                    yAxisDomain[1] === 'auto' ? undefined : yAxisDomain[1];
+
+                  // = 等于：不显示阴影区域（只显示阈值线）
+                  if (item.method === '=') {
+                    return null;
+                  }
+
+                  // != 不等于：显示全部区域（0 到最大值）
+                  if (item.method === '!=') {
+                    return (
+                      <ReferenceArea
+                        key={`area-${item.level}-${index}`}
+                        y1={0}
+                        y2={yMax}
+                        fill={fillColor}
+                        fillOpacity={1}
+                      />
+                    );
+                  }
+
+                  // < 或 <= ：从 0 到阈值
+                  const isLessThan =
+                    item.method === '<' || item.method === '<=';
+
+                  return (
+                    <ReferenceArea
+                      key={`area-${item.level}-${index}`}
+                      y1={isLessThan ? 0 : item.value}
+                      y2={isLessThan ? item.value : yMax}
+                      fill={fillColor}
+                      fillOpacity={1}
+                    />
+                  );
+                })}
                 {/* 阈值线的鼠标触发区域（透明，较粗） */}
                 {threshold.map((item, index) => (
                   <ReferenceLine
@@ -344,18 +574,52 @@ const LineChart: React.FC<LineChartProps> = memo(
                   />
                 ))}
 
-                {/* 阈值线的可视部分（较细） */}
-                {threshold.map((item, index) => (
-                  <ReferenceLine
-                    key={`visual-${index}`}
-                    y={`${item.value}`}
-                    isFront={true}
-                    stroke={`${LEVEL_MAP[item.level]}`}
-                    strokeDasharray="12 3 3 3 3 3"
-                    strokeWidth={2}
-                    style={{ pointerEvents: 'none' }}
-                  />
-                ))}
+                {/* 阈值线的可视部分（实线），使用排序后的列表确保正确的偏移计算 */}
+                {thresholdLabelInfo.items.map((item) => {
+                  const formattedValue = item.formattedValue;
+                  const originalValue = String(item.numValue);
+                  const levelColor =
+                    (LEVEL_MAP[item.level] as string) || '#F43B2C';
+                  const fullText = `${levelNameMap[item.level] || item.level} ${originalValue}`;
+                  // 使用 uniqueKey 获取偏移量
+                  const dy =
+                    thresholdLabelInfo.labelOffsets[item.uniqueKey] || 0;
+
+                  return (
+                    <ReferenceLine
+                      key={`visual-${item.uniqueKey}`}
+                      y={`${item.numValue}`}
+                      isFront={true}
+                      stroke={levelColor}
+                      strokeWidth={1}
+                      style={{ pointerEvents: 'none' }}
+                      label={({ viewBox }) => {
+                        const vb = viewBox as {
+                          x: number;
+                          y: number;
+                          width: number;
+                          height: number;
+                        };
+                        const levelName =
+                          levelNameMap[item.level] || item.level;
+                        return (
+                          <text
+                            x={vb.x + vb.width + 4}
+                            y={vb.y}
+                            dy={dy}
+                            fill={levelColor}
+                            fontSize={12}
+                            dominantBaseline="middle"
+                          >
+                            <title>{fullText}</title>
+                            <tspan>{levelName}</tspan>
+                            <tspan dx={2}>{formattedValue}</tspan>
+                          </text>
+                        );
+                      }}
+                    />
+                  );
+                })}
 
                 {isDragging &&
                   startX !== null &&

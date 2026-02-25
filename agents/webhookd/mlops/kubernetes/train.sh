@@ -75,7 +75,8 @@ if [ -z "$TRAIN_IMAGE" ]; then
 fi
 
 # Job 名称（Kubernetes 资源名称必须符合 DNS-1123 标准）
-JOB_NAME="${ID}"
+K8S_NAME=$(sanitize_k8s_name "$ID")
+JOB_NAME="${K8S_NAME}"
 
 # 确保命名空间存在
 ensure_namespace "$NAMESPACE" || {
@@ -118,7 +119,7 @@ if kubectl get job "$JOB_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
 fi
 
 # 创建 MinIO Secret
-SECRET_NAME=$(generate_secret_name "$ID")
+SECRET_NAME=$(generate_secret_name "$K8S_NAME")
 create_minio_secret "$NAMESPACE" "$SECRET_NAME" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" || {
     json_error "SECRET_CREATION_FAILED" "$ID" "Failed to create MinIO secret"
     exit 1

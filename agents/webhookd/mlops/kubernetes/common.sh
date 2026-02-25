@@ -2,9 +2,6 @@
 
 # MLOps Kubernetes 公共配置和函数
 
-# 工作目录
-MLOPS_DIR="${MLOPS_DIR:-/opt/webhookd/mlops}"
-
 # Kubernetes 命名空间（默认）
 KUBERNETES_NAMESPACE="${KUBERNETES_NAMESPACE:-mlops}"
 
@@ -116,7 +113,14 @@ ensure_namespace() {
     fi
 }
 
-# 生成 Secret 名称（基于 ID）
+# 将 ID 转换为 K8s DNS-1123 合规名称
+# 大写转小写、下划线转连字符
+sanitize_k8s_name() {
+    local name="$1"
+    echo "$name" | tr '[:upper:]' '[:lower:]' | tr '_' '-'
+}
+
+# 生成 Secret 名称（基于 sanitized ID）
 generate_secret_name() {
     local id="$1"
     echo "${id}-minio-secret"

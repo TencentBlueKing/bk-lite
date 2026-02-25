@@ -25,7 +25,7 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ visible, showMarkOnly
   const [isEditingQuestion, setIsEditingQuestion] = useState(false);
   const [isEditingAnswer, setIsEditingAnswer] = useState(false);
   const [knowledgeBase, setKnowledgeBase] = useState(annotation?.selectedKnowledgeBase || '');
-  const [knowledgeBases, setKnowledgeBases] = useState<{ id: string, name: string }[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<{ id: number, name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -35,7 +35,8 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ visible, showMarkOnly
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const data = await fetchKnowledgeBase({});
+        const response = await fetchKnowledgeBase({});
+        const data = Array.isArray(response) ? response : (response.items || []);
         setKnowledgeBases(data);
       } catch {
         message.error(t('common.fetchFailed'));

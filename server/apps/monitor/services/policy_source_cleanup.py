@@ -1,11 +1,9 @@
-import logging
 from typing import Iterable
 
 from django.db import transaction
 
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import MonitorPolicy
-
-logger = logging.getLogger("apps.monitor")
 
 BATCH_SIZE = 500
 

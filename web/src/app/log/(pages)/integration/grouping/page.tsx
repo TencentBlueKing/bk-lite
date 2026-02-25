@@ -9,7 +9,7 @@ import {
   ModalRef,
   Organization,
   Pagination,
-  TableDataItem,
+  TableDataItem
 } from '@/app/log/types';
 import { ReloadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
@@ -34,7 +34,7 @@ const Grouping = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
@@ -47,47 +47,42 @@ const Grouping = () => {
     {
       title: t('common.name'),
       dataIndex: 'name',
-      key: 'name',
-      width: 160,
+      key: 'name'
     },
     {
       title: t('log.integration.ruleDes'),
       dataIndex: 'rule',
       key: 'rule',
-      width: 200,
       render: (_, { rule }) => (
         <EllipsisWithTooltip
           className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
           text={getRuleDisplay(rule)}
         />
-      ),
+      )
     },
     {
       title: t('common.belongingGroup'),
       dataIndex: 'organizations',
       key: 'organizations',
-      width: 160,
       render: (_, { organizations }) => (
         <EllipsisWithTooltip
           className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
           text={showGroupName(organizations, organizationList)}
         />
-      ),
+      )
     },
     {
       title: t('common.createTime'),
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 180,
       render: (val: any) => {
         return <>{convertToLocalizedTime(val, 'YYYY-MM-DD HH:mm:ss')}</>;
-      },
+      }
     },
     {
       title: t('common.creator'),
       dataIndex: 'created_by',
-      key: 'created_by',
-      width: 160,
+      key: 'created_by'
     },
     {
       title: t('common.action'),
@@ -125,8 +120,8 @@ const Grouping = () => {
             </Popconfirm>
           </Permission>
         </>
-      ),
-    },
+      )
+    }
   ];
 
   useEffect(() => {
@@ -145,7 +140,7 @@ const Grouping = () => {
     setPageLoading(true);
     Promise.all([
       getCollectTypeList(),
-      getLogGroups(searchText, 'init'),
+      getLogGroups(searchText, 'init')
     ]).finally(() => {
       setPageLoading(false);
     });
@@ -175,7 +170,7 @@ const Grouping = () => {
     instanceRef.current?.showModal({
       title: t(`common.${type}`),
       type: row.id === 'default' ? 'builtIn' : type,
-      form: row,
+      form: row
     });
   };
 
@@ -189,13 +184,13 @@ const Grouping = () => {
       const params = {
         page: pagination.current,
         page_size: pagination.pageSize,
-        name: val || '',
+        name: val || ''
       };
       const data = await getLogStreams(params);
       setTableData(data?.items || []);
       setPagination((prev: Pagination) => ({
         ...prev,
-        total: data?.count || 0,
+        total: data?.count || 0
       }));
     } finally {
       setTableLoading(false);

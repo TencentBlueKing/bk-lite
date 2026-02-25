@@ -10,10 +10,10 @@ from apps.cmdb.services.model import ModelManage
 
 
 class Export:
-    def __init__(self, attrs, model_id: str = "", association: list = []):
+    def __init__(self, attrs, model_id: str = "", association: list = None):
         self.attrs = attrs
         self.model_id = model_id
-        self.association = association
+        self.association = association if association is not None else []
         self.association_type_map = {}
         self.model_name_map = {}
         self.model_asso_id_map = {}

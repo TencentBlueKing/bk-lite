@@ -33,6 +33,9 @@ if [ -z "$ID" ]; then
     exit 1
 fi
 
+# K8s 资源名称（DNS-1123 合规）
+K8S_NAME=$(sanitize_k8s_name "$ID")
+
 # 使用默认命名空间（如果未指定）
 if [ -z "$NAMESPACE" ]; then
     NAMESPACE="$KUBERNETES_NAMESPACE"
@@ -42,7 +45,7 @@ fi
 set +e
 
 # 首先尝试查找 Job 对应的 Pod（训练任务）
-JOB_POD=$(kubectl get pods -n "$NAMESPACE" -l "job-name=${ID}" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null)
+JOB_POD=$(kubectl get pods -n "$NAMESPACE" -l "job-name=${K8S_NAME}" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null)
 
 if [ -n "$JOB_POD" ]; then
     # 找到了 Job 的 Pod

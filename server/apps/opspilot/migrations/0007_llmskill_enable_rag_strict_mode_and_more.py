@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="webpageknowledge",
             name="sync_time",
-            field=models.CharField(blank=True, null=True, verbose_name="Sync Time"),
+            field=models.CharField(blank=True, null=True, verbose_name="Sync Time", max_length=20),
         ),
         migrations.CreateModel(
             name="QAPairs",

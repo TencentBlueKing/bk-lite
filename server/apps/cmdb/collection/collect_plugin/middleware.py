@@ -36,7 +36,7 @@ class MiddlewareCollectMetrics(CollectBase):
                         unescaped_json = codecs.decode(
                             result_json, 'unicode_escape')
                         result_data = json.loads(unescaped_json)
-                    except Exception:
+                    except Exception:  # noqa: BLE001 - JSON解析失败时使用空dict
                         result_data = {}
                 if isinstance(result_data, dict) and not result_data:
                     continue
@@ -305,7 +305,7 @@ class MiddlewareCollectMetrics(CollectBase):
             return value
         try:
             return json.dumps(value, ensure_ascii=False)
-        except Exception:
+        except Exception:  # noqa: BLE001 - JSON序列化失败时返回空字符串
             return ""
 
     @staticmethod
@@ -327,7 +327,7 @@ class MiddlewareCollectMetrics(CollectBase):
                     first = parsed[0]
                     if isinstance(first, dict):
                         return first.get("host_port") or first.get("container_port") or ""
-            except Exception:
+            except Exception:  # noqa: BLE001 - 端口解析失败时返回空字符串
                 return ""
         return ""
 

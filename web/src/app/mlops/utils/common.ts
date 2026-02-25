@@ -32,6 +32,16 @@ export const getEnumValue = (metric: MetricItem, id: number | string) => {
     : (+id).toFixed(2);
 };
 
+// 根据字符串生成确定性颜色（同一标签名始终返回同一颜色）
+export const hashColor = (name: string): string => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = ((hash % 360) + 360) % 360;
+  return `hsl(${h}, 65%, 50%)`;
+};
+
 // 获取随机颜色
 export const generateUniqueRandomColor = (() => {
   const generatedColors = new Set<string>();

@@ -211,7 +211,7 @@ class Import:
             for i, cell in enumerate(row):
                 try:
                     value = ast.literal_eval(cell.value)
-                except Exception:
+                except Exception:  # noqa: BLE001 - 字面量解析失败时使用原始值
                     value = cell.value
 
                 if not value:

@@ -1,18 +1,33 @@
 import React, { useMemo } from 'react';
 import { Form, Switch, Button, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { StrategyFields, ChannelItem } from '@/app/monitor/types/event';
+import {
+  StrategyFields,
+  ChannelItem,
+  CardItem
+} from '@/app/monitor/types/event';
 import { UserItem } from '@/app/monitor/types';
-import SelectCard, { CardItem } from './selectCard';
+import SelectCard from './selectCard';
 
 const { Option } = Select;
 
 const getChannelIcon = (channelType: string): string => {
   const iconMap: Record<string, string> = {
     email: 'youjian',
-    enterprise_wechat_bot: 'qiwei2'
+    enterprise_wechat_bot: 'qiwei2',
+    nats: 'dongzuo1'
   };
-  return iconMap[channelType] || 'youjian';
+  return iconMap[channelType] || 'jiqiren3';
+};
+
+// 根据 channel_type 返回对应的翻译键
+const getChannelTypeKey = (channelType: string): string => {
+  const keyMap: Record<string, string> = {
+    email: 'monitor.events.channelTypeEmail',
+    enterprise_wechat_bot: 'monitor.events.channelTypeWechatBot',
+    nats: 'monitor.events.channelTypeNats'
+  };
+  return keyMap[channelType] || '';
 };
 
 interface NotificationFormProps {
@@ -36,14 +51,17 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
 
   // 将 channelList 转换为 SelectCard 需要的数据格式
   const channelCardData: CardItem[] = useMemo(() => {
-    return channelList.map((item) => ({
-      icon: getChannelIcon(item.channel_type),
-      title: item.name,
-      subtitle: item.channel_type,
-      description: item.description,
-      value: item.id
-    }));
-  }, [channelList]);
+    return channelList.map((item) => {
+      const tagKey = getChannelTypeKey(item.channel_type);
+      return {
+        icon: getChannelIcon(item.channel_type),
+        title: item.name,
+        tag: tagKey ? t(tagKey) : item.channel_type,
+        description: item.description,
+        value: item.id
+      };
+    });
+  }, [channelList, t]);
 
   return (
     <>

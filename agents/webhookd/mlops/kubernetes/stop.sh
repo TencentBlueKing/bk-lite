@@ -33,6 +33,9 @@ if [ -z "$ID" ]; then
     exit 1
 fi
 
+# K8s 资源名称（DNS-1123 合规）
+K8S_NAME=$(sanitize_k8s_name "$ID")
+
 # 使用默认命名空间（如果未指定）
 if [ -z "$NAMESPACE" ]; then
     NAMESPACE="$KUBERNETES_NAMESPACE"
@@ -40,8 +43,8 @@ fi
 
 # 检查资源类型
 set +e
-JOB_EXISTS=$(kubectl get job "$ID" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
-DEPLOYMENT_EXISTS=$(kubectl get deployment "$ID" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+JOB_EXISTS=$(kubectl get job "$K8S_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+DEPLOYMENT_EXISTS=$(kubectl get deployment "$K8S_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
 set -e
 
 if [ -n "$JOB_EXISTS" ]; then
@@ -49,7 +52,7 @@ if [ -n "$JOB_EXISTS" ]; then
     # Kubernetes Job 无法"停止"，只能删除
     if [ "$REMOVE" = "true" ]; then
         # 删除 Job（会级联删除关联的 Pod）
-        DELETE_OUTPUT=$(kubectl delete job "$ID" -n "$NAMESPACE" 2>&1)
+        DELETE_OUTPUT=$(kubectl delete job "$K8S_NAME" -n "$NAMESPACE" 2>&1)
         DELETE_STATUS=$?
         
         if [ $DELETE_STATUS -ne 0 ]; then
@@ -58,7 +61,7 @@ if [ -n "$JOB_EXISTS" ]; then
         fi
         
         # 删除关联的 Secret
-        SECRET_NAME=$(generate_secret_name "$ID")
+        SECRET_NAME=$(generate_secret_name "$K8S_NAME")
         delete_secret "$NAMESPACE" "$SECRET_NAME"
         
         json_success "$ID" "Job deleted successfully"
@@ -73,10 +76,10 @@ elif [ -n "$DEPLOYMENT_EXISTS" ]; then
     # 注意：为了与 Docker --rm 行为一致，stop 操作会删除 Deployment
     # 这样可以保证同一个 serving ID 可以"停止 → 重新部署"
     
-    SERVICE_NAME="${ID}-svc"
+    SERVICE_NAME="${K8S_NAME}-svc"
     
     # 删除 Deployment（模拟 docker stop + --rm）
-    DELETE_OUTPUT=$(kubectl delete deployment "$ID" -n "$NAMESPACE" 2>&1)
+    DELETE_OUTPUT=$(kubectl delete deployment "$K8S_NAME" -n "$NAMESPACE" 2>&1)
     DELETE_STATUS=$?
     
     if [ $DELETE_STATUS -ne 0 ]; then

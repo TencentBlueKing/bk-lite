@@ -134,7 +134,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       return 'editablePwd';
     }
     if (key === 'timeout') {
-      return 'number';
+      return 'inputNumber';
     }
     return 'input';
   };
