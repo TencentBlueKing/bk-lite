@@ -4,7 +4,7 @@ import React, {
   useRef,
   useState,
   useMemo,
-  useCallback,
+  useCallback
 } from 'react';
 import { Button, message, Space, Modal, Tooltip, Tag, Dropdown } from 'antd';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -22,7 +22,7 @@ import {
   useTelegrafMap,
   useSidecarItems,
   useCollectorItems,
-  useFieldConfigs,
+  useFieldConfigs
 } from '@/app/node-manager/hooks/node';
 import MainLayout from '../mainlayout/layout';
 import useApiClient from '@/utils/request';
@@ -75,7 +75,7 @@ const Node = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
 
   const columns = useColumns({
@@ -86,7 +86,7 @@ const Node = () => {
     editNode: (row: TableDataItem) => {
       editNodeRef.current?.showModal({
         type: 'edit',
-        form: row,
+        form: row
       });
     },
     deleteNode: async (row: TableDataItem) => {
@@ -98,7 +98,7 @@ const Node = () => {
       } catch {
         setLoading(false);
       }
-    },
+    }
   });
 
   const cancelInstall = useCallback(() => {
@@ -189,13 +189,13 @@ const Node = () => {
   }, [pagination.current, pagination.pageSize]);
 
   const handleSidecarMenuClick: MenuProps['onClick'] = (e) => {
-    if (e.key === 'uninstallSidecar') {
+    if (e.key === 'uninstallController') {
       const list = (nodeList || []).filter((item) =>
         selectedRowKeys.includes(item.key)
       );
       controllerRef.current?.showModal({
         type: e.key,
-        form: { list },
+        form: { list }
       });
       return;
     }
@@ -214,7 +214,7 @@ const Node = () => {
             resolve(true);
           }
         });
-      },
+      }
     });
   };
 
@@ -222,18 +222,18 @@ const Node = () => {
     collectorRef.current?.showModal({
       type: e.key,
       ids: selectedRowKeys as string[],
-      selectedsystem: getFirstSelectedNodeOS(),
+      selectedsystem: getFirstSelectedNodeOS()
     });
   };
 
   const SidecarmenuProps = {
     items: sidecarItems,
-    onClick: handleSidecarMenuClick,
+    onClick: handleSidecarMenuClick
   };
 
   const CollectormenuProps = {
     items: collectorItems,
-    onClick: handleCollectorMenuClick,
+    onClick: handleCollectorMenuClick
   };
 
   const onSelectChange = (newSelectedRowKeys: React.Key[]) => {
@@ -242,14 +242,14 @@ const Node = () => {
 
   const getCheckboxProps = () => {
     return {
-      disabled: false,
+      disabled: false
     };
   };
 
   const rowSelection: TableRowSelection<TableDataItem> = {
     selectedRowKeys,
     onChange: onSelectChange,
-    getCheckboxProps: getCheckboxProps,
+    getCheckboxProps: getCheckboxProps
   };
 
   const handleSearchChange = (filters: SearchFilters) => {
@@ -263,7 +263,7 @@ const Node = () => {
       const params: any = {
         cloud_region_id: cloudId,
         page: pagination.current,
-        page_size: pagination.pageSize,
+        page_size: pagination.pageSize
       };
 
       if (filters && Object.keys(filters).length > 0) {
@@ -273,11 +273,11 @@ const Node = () => {
       const res = await getNodeList(params);
       const data = (res?.items || []).map((item: TableDataItem) => ({
         ...item,
-        key: item.id,
+        key: item.id
       }));
       setPagination((prev: Pagination) => ({
         ...prev,
-        total: res?.count || 0,
+        total: res?.count || 0
       }));
       setNodeList(data);
     } finally {
@@ -298,8 +298,8 @@ const Node = () => {
         key: 'node_properties',
         onCell: () => ({
           style: {
-            minWidth: 80,
-          },
+            minWidth: 80
+          }
         }),
         render: (_: any, record: TableDataItem) => {
           // 获取操作系统映射
@@ -367,14 +367,14 @@ const Node = () => {
                     style={{
                       fontSize: isAutoInstall ? '32px' : '24px',
                       transform: isAutoInstall ? 'none' : 'translateX(2px)',
-                      cursor: 'pointer',
+                      cursor: 'pointer'
                     }}
                   />
                 </div>
               </Tooltip>
             </div>
           );
-        },
+        }
       },
       {
         title: t('node-manager.controller.controller'),
@@ -382,8 +382,8 @@ const Node = () => {
         key: 'controller',
         onCell: () => ({
           style: {
-            minWidth: 120,
-          },
+            minWidth: 120
+          }
         }),
         render: (_: any, record: TableDataItem) => {
           // 根据当前行的操作系统动态确定 NATS-Executor ID
@@ -416,7 +416,7 @@ const Node = () => {
               </Tooltip>
             </>
           );
-        },
+        }
       },
       {
         title: t('node-manager.cloudregion.node.sidecarVersion'),
@@ -424,8 +424,8 @@ const Node = () => {
         key: 'version',
         onCell: () => ({
           style: {
-            minWidth: 100,
-          },
+            minWidth: 100
+          }
         }),
         render: (_: any, record: TableDataItem) => {
           const versions = record.versions || [];
@@ -453,7 +453,7 @@ const Node = () => {
               )}
             </div>
           );
-        },
+        }
       },
       {
         title: t('node-manager.cloudregion.node.hostedProgram'),
@@ -461,8 +461,8 @@ const Node = () => {
         key: 'collectors',
         onCell: () => ({
           style: {
-            minWidth: 200,
-          },
+            minWidth: 200
+          }
         }),
         render: (_: any, record: TableDataItem) => {
           const allCollectors = getNodeCollectors(record);
@@ -483,7 +483,7 @@ const Node = () => {
             ([status, collectors]: [string, any]) => {
               const statusInfo = statusMap[status] || {
                 tagColor: 'default',
-                text: t('node-manager.cloudregion.node.unknown'),
+                text: t('node-manager.cloudregion.node.unknown')
               };
 
               return (
@@ -503,8 +503,8 @@ const Node = () => {
           ) : (
             <span>--</span>
           );
-        },
-      },
+        }
+      }
     ]);
   };
 
@@ -514,7 +514,7 @@ const Node = () => {
   ) => {
     collectorDetailRef.current?.showModal({
       collectors,
-      row: record,
+      row: record
     });
   };
 
@@ -536,7 +536,7 @@ const Node = () => {
       title,
       color,
       status,
-      tagColor,
+      tagColor
     };
   };
 
@@ -625,7 +625,7 @@ const Node = () => {
               ref={controllerRef}
               config={{
                 os: getFirstSelectedNodeOS(),
-                work_node: name,
+                work_node: name
               }}
               onSuccess={(config) => {
                 handleCollector(config);
@@ -646,7 +646,7 @@ const Node = () => {
       {showInstallController && (
         <ControllerInstall
           config={{
-            os: getFirstSelectedNodeOS(),
+            os: getFirstSelectedNodeOS()
           }}
           cancel={cancelInstall}
         />
