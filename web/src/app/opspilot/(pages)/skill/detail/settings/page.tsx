@@ -87,7 +87,7 @@ const SkillSettingsPage: React.FC = () => {
 
         const initialSelectedKnowledgeBases = data.rag_score_threshold.map((item: RagScoreThresholdItem) => Number(item.knowledge_base));
         setSelectedKnowledgeBases(initialSelectedKnowledgeBases);
-        setSelectedTools(data.tools);
+        setSelectedTools(data.tools as SelectTool[]);
         setToolEnabled(!!data.tools.length);
 
         setSkillType(data.skill_type);
@@ -109,7 +109,7 @@ const SkillSettingsPage: React.FC = () => {
           fetchLlmModels(),
           fetchKnowledgeBases()
         ]);
-        setLlmModels(llmModelsData);
+        setLlmModels(llmModelsData as { id: number; name: string; enabled: boolean; llm_model_type: string; }[]);
         setKnowledgeBases(knowledgeBasesData);
         fetchFormData(knowledgeBasesData);
       } catch (error) {
