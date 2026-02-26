@@ -51,16 +51,18 @@ import { useGBase8aConfig } from './objects/database/gBase8a';
 import { useVastBaseConfig } from './objects/database/vastBase';
 import { useKingBaseConfig } from './objects/database/kingBase';
 
-let useEnterpriseConfig: () => Record<string, any> = () => ({});
-try {
-  const mod = await import(
-    // @ts-expect-error 企业版目录可能不存在，运行时 try-catch 处理
-    /* webpackIgnore: true */ '@/app/monitor/enterprise/hooks/integration'
-  );
-  useEnterpriseConfig = mod.useEnterpriseConfig || (() => ({}));
-} catch {
-  useEnterpriseConfig = () => ({});
-}
+const loadEnterpriseConfig = (): (() => Record<string, any>) => {
+  try {
+    const enterprisePath = '../../enterprise/hooks/integration';
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require(enterprisePath);
+    return mod.useEnterpriseConfig || (() => ({}));
+  } catch {
+    return () => ({});
+  }
+};
+
+const useEnterpriseConfig = loadEnterpriseConfig();
 
 export const useMonitorConfig = () => {
   const hardwareConfig = useHardwareConfig();
