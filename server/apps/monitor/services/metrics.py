@@ -1,4 +1,5 @@
 import ast
+import re
 
 import pandas as pd
 
@@ -9,6 +10,8 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
 class Metrics:
+    _STEP_PATTERN = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw])$")
+
     @staticmethod
     def get_metrics(query):
         """查询指标信息"""
@@ -17,13 +20,57 @@ class Metrics:
     @staticmethod
     def get_metrics_range(query, start, end, step):
         """查询指标（范围）"""
+        step_seconds = Metrics.parse_step_to_seconds(step)
         start = int(start) / 1000  # Convert milliseconds to seconds
         end = int(end) / 1000  # Convert milliseconds to seconds
         resp = VictoriaMetricsAPI().query_range(query, start, end, step)
         Metrics.fill_missing_points(
-            start, end, step, resp.get("data", {}).get("result", [])
+            start, end, step_seconds, resp.get("data", {}).get("result", [])
         )
         return resp
+
+    @staticmethod
+    def parse_step_to_seconds(step) -> int:
+        """将 step 解析为秒数，支持整数秒或 Prometheus duration（如 5m、1h）。"""
+        if step is None:
+            raise ValueError("step is required")
+
+        if isinstance(step, int):
+            if step <= 0:
+                raise ValueError("step must be greater than 0")
+            return step
+
+        if isinstance(step, float):
+            if step <= 0:
+                raise ValueError("step must be greater than 0")
+            return int(step)
+
+        step_str = str(step).strip().lower()
+        if not step_str:
+            raise ValueError("step is required")
+
+        if step_str.isdigit():
+            step_seconds = int(step_str)
+            if step_seconds <= 0:
+                raise ValueError("step must be greater than 0")
+            return step_seconds
+
+        matched = Metrics._STEP_PATTERN.match(step_str)
+        if not matched:
+            raise ValueError("step format is invalid")
+
+        value = int(matched.group("value"))
+        if value <= 0:
+            raise ValueError("step must be greater than 0")
+
+        multiplier_map = {
+            "s": 1,
+            "m": 60,
+            "h": 3600,
+            "d": 86400,
+            "w": 604800,
+        }
+        return value * multiplier_map[matched.group("unit")]
 
     @staticmethod
     def fill_missing_points(start, end, step, data_list):
@@ -52,7 +99,7 @@ class Metrics:
             full_time_index = pd.date_range(
                 start=pd.to_datetime(start, unit="s"),
                 end=pd.to_datetime(end, unit="s"),
-                freq=f"{step}S",
+                freq=f"{int(step)}s",
             )
             full_df = pd.DataFrame(index=full_time_index, columns=["value"])
             full_df["value"] = None
