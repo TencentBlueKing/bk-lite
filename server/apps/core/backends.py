@@ -30,16 +30,21 @@ class APISecretAuthBackend(ModelBackend):
             return None
 
         try:
-            user_secret = UserAPISecret.objects.filter(api_secret=api_token).first()
-            if not user_secret:
-                return None
-
-            user = User.objects.get(username=user_secret.username)
+            user_secret = UserAPISecret.objects.get(api_secret=api_token)
+            user = User.objects.get(username=user_secret.username, domain=user_secret.domain)
             user.group_list = [user_secret.team]
             return user
 
+        except UserAPISecret.DoesNotExist:
+            return None
+        except UserAPISecret.MultipleObjectsReturned:
+            logger.error("Duplicate API token records detected")
+            return None
         except User.DoesNotExist:
-            logger.error(f"API token user not found: {user_secret.username}")
+            logger.error("API token user not found: %s@%s", user_secret.username, user_secret.domain)
+            return None
+        except User.MultipleObjectsReturned:
+            logger.error("Duplicate users detected for API token owner: %s@%s", user_secret.username, user_secret.domain)
             return None
         except Exception as e:
             logger.error(f"API token authentication failed: {e}")
