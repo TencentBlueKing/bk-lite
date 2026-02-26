@@ -10,7 +10,23 @@ import { ChannelType } from "@/app/system-manager/types/channel";
 import { useChannelApi } from "@/app/system-manager/api/channel";
 import PermissionWrapper from "@/components/permission";
 
+const WEBHOOK_SUB_TYPES: ChannelType[] = ['enterprise_wechat_bot', 'feishu_bot', 'dingtalk_bot', 'custom_webhook'];
+
+const SUB_TYPE_LABEL_KEYS: Record<string, string> = {
+  enterprise_wechat_bot: 'system.channel.settings.subTypeEnterpriseWechat',
+  feishu_bot: 'system.channel.settings.subTypeFeishu',
+  dingtalk_bot: 'system.channel.settings.subTypeDingtalk',
+  custom_webhook: 'system.channel.settings.subTypeCustom',
+};
+
 const { Search } = Input;
+
+interface ChannelRow {
+  key: string;
+  name: string;
+  description: string;
+  channel_type?: string;
+}
 
 const ChannelSettingsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -18,10 +34,8 @@ const ChannelSettingsPage: React.FC = () => {
 
   const channelType: ChannelType = (searchParams?.get("id") || "email") as ChannelType;
 
-  const [allTableData, setAllTableData] = useState<Array<{ key: string; name: string; description: string }>>([]);
-  const [tableData, setTableData] = useState<
-    Array<{ key: string; name: string; description: string }>
-  >([]);
+  const [allTableData, setAllTableData] = useState<ChannelRow[]>([]);
+  const [tableData, setTableData] = useState<ChannelRow[]>([]);
   const [searchValue, setSearchValue] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
@@ -33,12 +47,20 @@ const ChannelSettingsPage: React.FC = () => {
 
   const { getChannelData, deleteChannel } = useChannelApi();
 
-  const columns: ColumnsType<{ key: string; name: string; description: string }> = [
+  const isWebhookChannel = channelType === 'enterprise_wechat_bot';
+
+  const columns: ColumnsType<ChannelRow> = [
     {
       title: t("system.channel.table.name"),
       dataIndex: "name",
       width: 200,
     },
+    ...(isWebhookChannel ? [{
+      title: t("system.channel.table.type"),
+      dataIndex: "channel_type",
+      width: 120,
+      render: (val: string) => t(SUB_TYPE_LABEL_KEYS[val] || val),
+    }] : []),
     {
       title: t("system.channel.table.description"),
       dataIndex: "description",
@@ -76,13 +98,18 @@ const ChannelSettingsPage: React.FC = () => {
   const fetchChannels = async () => {
     setLoading(true);
     try {
-      const data = await getChannelData({
-        channel_type: channelType,
-      });
-      const channels = data.map((item: { id: string; name: string; description: string }) => ({
+      const typesToQuery = channelType === 'enterprise_wechat_bot'
+        ? WEBHOOK_SUB_TYPES
+        : [channelType];
+      const results = await Promise.all(
+        typesToQuery.map((ct) => getChannelData({ channel_type: ct }))
+      );
+      const merged = results.flat();
+      const channels: ChannelRow[] = merged.map((item: { id: string; name: string; description: string; channel_type?: string }) => ({
         key: item.id,
         name: item.name,
         description: item.description,
+        ...(isWebhookChannel ? { channel_type: item.channel_type } : {}),
       }));
       setAllTableData(channels);
       setTableData(getPaginatedData(filterData(channels)));
@@ -93,7 +120,7 @@ const ChannelSettingsPage: React.FC = () => {
     }
   };
 
-  const filterData = (data: Array<{ key: string; name: string; description: string }>) => {
+  const filterData = (data: ChannelRow[]) => {
     const lowerCaseSearch = searchValue.toLowerCase();
     return data.filter(
       (item) =>
@@ -102,7 +129,7 @@ const ChannelSettingsPage: React.FC = () => {
     );
   };
 
-  const getPaginatedData = (data: Array<{ key: string; name: string; description: string }>) => {
+  const getPaginatedData = (data: ChannelRow[]) => {
     const startIndex = (currentPage - 1) * pageSize;
     return data.slice(startIndex, startIndex + pageSize);
   };
