@@ -118,12 +118,24 @@ class InstanceManage(object):
         return permission_params
 
     @staticmethod
-    def check_instances_permission(instances: list, model_id: str):
+    def check_instances_permission(
+            instances: list,
+            model_id: str,
+            user_groups: list = None,
+            roles: list = None,
+    ):
         """实例权限校验，用于操作之前"""
+        permission_params = InstanceManage.get_permission_params(
+            user_groups=user_groups or [], roles=roles or []
+        )
+        query_params = [{"field": "model_id", "type": "str=", "value": model_id}]
+        if permission_params:
+            query_params.extend(permission_params)
+
         with GraphClient() as ag:
             inst_list, count = ag.query_entity(
                 label=INSTANCE,
-                params=[{"field": "model_id", "type": "str=", "value": model_id}],
+                params=query_params,
             )
 
         permission_map = {i["_id"]: i for i in inst_list}
@@ -215,7 +227,12 @@ class InstanceManage(object):
 
         model_info = ModelManage.search_model_info(inst_info["model_id"])
 
-        InstanceManage.check_instances_permission([inst_info], inst_info["model_id"])
+        InstanceManage.check_instances_permission(
+            [inst_info],
+            inst_info["model_id"],
+            user_groups=user_groups,
+            roles=roles,
+        )
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=True)
@@ -247,7 +264,13 @@ class InstanceManage(object):
         return result[0]
 
     @staticmethod
-    def batch_instance_update(inst_ids: list, update_attr: dict, operator: str):
+    def batch_instance_update(
+            user_groups: list,
+            roles: list,
+            inst_ids: list,
+            update_attr: dict,
+            operator: str,
+    ):
         """批量修改实例属性"""
 
         inst_list = InstanceManage.query_entity_by_ids(inst_ids)
@@ -257,7 +280,12 @@ class InstanceManage(object):
 
         model_info = ModelManage.search_model_info(inst_list[0]["model_id"])
 
-        InstanceManage.check_instances_permission(inst_list, model_info["model_id"])
+        InstanceManage.check_instances_permission(
+            inst_list,
+            model_info["model_id"],
+            user_groups=user_groups,
+            roles=roles,
+        )
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=True)
@@ -310,7 +338,12 @@ class InstanceManage(object):
 
         model_info = ModelManage.search_model_info(inst_list[0]["model_id"])
 
-        InstanceManage.check_instances_permission(inst_list, inst_list[0]["model_id"])
+        InstanceManage.check_instances_permission(
+            inst_list,
+            inst_list[0]["model_id"],
+            user_groups=user_groups,
+            roles=roles,
+        )
 
         with GraphClient() as ag:
             ag.batch_delete_entity(INSTANCE, inst_ids)

@@ -298,7 +298,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             if not self.check_creator_and_organizations(request, instance):
                 has_permission = CmdbRulesFormatUtil.has_object_permission(
                     obj_type=PERMISSION_INSTANCES,
-                    operator=VIEW,
+                    operator=OPERATE,
                     model_id=model_id,
                     permission_instances_map=permissions_map,
                     instance=instance,
@@ -375,7 +375,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             if not self.check_creator_and_organizations(request, instance):
                 has_permission = CmdbRulesFormatUtil.has_object_permission(
                     obj_type=PERMISSION_INSTANCES,
-                    operator=VIEW,
+                    operator=OPERATE,
                     model_id=model_id,
                     permission_instances_map=permissions_map,
                     instance=instance,
@@ -389,7 +389,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     )
 
         InstanceManage.batch_instance_update(
-            request.data["inst_ids"], request.data["update_data"], request.user.username
+            request.user.group_list,
+            request.user.roles,
+            request.data["inst_ids"],
+            request.data["update_data"],
+            request.user.username,
         )
         return WebUtils.response_success()
 
