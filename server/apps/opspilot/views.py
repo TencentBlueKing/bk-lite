@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import json
 import time
+from typing import Any
 
 from django.conf import settings
 from django.db.models import Count
@@ -29,6 +30,44 @@ from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import User
 
 
+def parse_json_body(request, default=None):
+    if default is None:
+        default = {}
+    if not request.body:
+        return default, None
+    try:
+        return json.loads(request.body), None
+    except json.JSONDecodeError:
+        return None, "Invalid JSON payload"
+
+
+def extract_api_token(request) -> str:
+    auth_header = (request.META.get("HTTP_AUTHORIZATION") or "").strip()
+    if not auth_header:
+        return ""
+    if "TOKEN" in auth_header:
+        return auth_header.split("TOKEN", 1)[-1].strip()
+    if auth_header.startswith("Bearer "):
+        return auth_header.split("Bearer ", 1)[-1].strip()
+    return auth_header
+
+
+def pick_request_value(payload: dict[str, Any], key: str, fallback: Any) -> Any:
+    value = payload.get(key)
+    return fallback if value is None else value
+
+
+def safe_conversation_window_size(payload: dict[str, Any], fallback: int) -> int:
+    value = payload.get("conversation_window_size")
+    if value is None:
+        return fallback
+    try:
+        num = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return num if num > 0 else fallback
+
+
 def get_loader(request=None, default_lang="en"):
     """获取语言加载器实例
 
@@ -47,7 +86,7 @@ def get_loader(request=None, default_lang="en"):
 
 @api_exempt
 def get_bot_detail(request, bot_id):
-    api_token = request.META.get("HTTP_AUTHORIZATION").split("TOKEN")[-1].strip()
+    api_token = extract_api_token(request)
     if not api_token:
         return JsonResponse({})
     bot = Bot.objects.filter(id=bot_id, api_token=api_token).first()
@@ -167,6 +206,8 @@ def get_skill_and_params(kwargs, team, bot_id=None):
     """
     loader = LanguageLoader(app="opspilot", default_lang="en")
     skill_id = kwargs.get("model")
+    if not skill_id:
+        return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.skill_not_found", "No skill")}}]})
 
     # 尝试通过 name 或 instance_id 查询
     if not bot_id:
@@ -184,17 +225,22 @@ def get_skill_and_params(kwargs, team, bot_id=None):
 
     if not skill_obj:
         return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.skill_not_found", "No skill")}}]})
-    num = kwargs.get("conversation_window_size") or skill_obj.conversation_window_size
-    chat_history = [{"message": i["content"], "event": i["role"]} for i in kwargs.get("messages", [])[-1 * num :]]
+    messages = kwargs.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.message_required", "Message is required")}}]})
+    num = safe_conversation_window_size(kwargs, skill_obj.conversation_window_size)
+    chat_history = [{"message": i.get("content", ""), "event": i.get("role", "")} for i in messages[-1 * num :] if isinstance(i, dict)]
+    if not chat_history or not chat_history[-1]["message"]:
+        return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.message_required", "Message is required")}}]})
 
     params = {
         "llm_model": skill_obj.llm_model_id,
         "skill_prompt": kwargs.get("prompt", "") or kwargs.get("skill_prompt", "") or skill_obj.skill_prompt,
-        "temperature": kwargs.get("temperature") or skill_obj.temperature,
+        "temperature": pick_request_value(kwargs, "temperature", skill_obj.temperature),
         "chat_history": chat_history,
         "user_message": chat_history[-1]["message"],
-        "conversation_window_size": kwargs.get("conversation_window_size") or skill_obj.conversation_window_size,
-        "enable_rag": kwargs.get("enable_rag") or skill_obj.enable_rag,
+        "conversation_window_size": num,
+        "enable_rag": pick_request_value(kwargs, "enable_rag", skill_obj.enable_rag),
         "rag_score_threshold": [{"knowledge_base": int(key), "score": float(value)} for key, value in skill_obj.rag_score_threshold_map.items()],
         "enable_rag_knowledge_source": skill_obj.enable_rag_knowledge_source,
         "show_think": skill_obj.show_think,
@@ -214,7 +260,9 @@ def invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log
 def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
     """Format and append knowledge source references if enabled"""
     if skill_obj.enable_rag_knowledge_source:
-        knowledge_titles = {doc_map.get(k, {}).get("name") for k in title_map.keys()}
+        doc_map = doc_map or {}
+        title_map = title_map or {}
+        knowledge_titles = sorted({doc_map.get(k, {}).get("name") for k in title_map.keys() if doc_map.get(k, {}).get("name")})
         last_content = content.strip().split("\n")[-1]
         if "引用知识" not in last_content and knowledge_titles:
             content += f"\n引用知识: {', '.join(knowledge_titles)}"
@@ -261,7 +309,12 @@ def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_lo
 @api_exempt
 def openai_completions(request):
     """Main entry point for OpenAI completions"""
-    kwargs = json.loads(request.body)
+    kwargs, parse_error = parse_json_body(request)
+    if parse_error:
+        return JsonResponse(
+            {"choices": [{"message": {"role": "assistant", "content": parse_error}}]},
+            status=400,
+        )
     current_ip, _ = get_client_ip(request)
 
     stream_mode = kwargs.get("stream", False)
@@ -302,7 +355,12 @@ def openai_completions(request):
 
 @api_exempt
 def lobe_skill_execute(request):
-    kwargs = json.loads(request.body)
+    kwargs, parse_error = parse_json_body(request)
+    if parse_error:
+        return JsonResponse(
+            {"choices": [{"message": {"role": "assistant", "content": parse_error}}]},
+            status=400,
+        )
     current_ip, _ = get_client_ip(request)
 
     stream_mode = kwargs.get("stream", False)
@@ -369,7 +427,12 @@ def lobe_skill_execute(request):
 
 @api_exempt
 def skill_execute(request):
-    kwargs = json.loads(request.body)
+    kwargs, parse_error = parse_json_body(request)
+    if parse_error:
+        return JsonResponse(
+            {"choices": [{"message": {"role": "assistant", "content": parse_error}}]},
+            status=400,
+        )
     logger.info(f"skill_execute kwargs: {kwargs}")
     skill_id = kwargs.get("skill_id")
     user_message = kwargs.get("user_message")
@@ -394,7 +457,7 @@ def skill_execute(request):
 
 def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sender_id, skill_id, user_message):
     loader = get_loader(request)
-    api_token = request.META.get("HTTP_AUTHORIZATION").split("TOKEN")[-1].strip()
+    api_token = extract_api_token(request)
     if not api_token:
         return {"content": loader.get("error.no_authorization", "No authorization")}
     bot = Bot.objects.filter(id=bot_id, api_token=api_token).first()
@@ -481,6 +544,8 @@ def set_channel_type_line(end_time, queryset, start_time):
         channel_type = entry["channel_user__channel_type"]
         date = entry["date"].strftime("%Y-%m-%d")
         user_count = entry["count"]
+        if channel_type not in result_dict:
+            result_dict[channel_type] = formatted_dates.copy()
         result_dict[channel_type][date] = user_count
         total_user_count[date] += user_count
     # 转换为所需的输出格式
@@ -500,7 +565,9 @@ def execute_chat_flow(request, bot_id, node_id):
         return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
 
     # 读取请求体
-    kwargs = json.loads(request.body)
+    kwargs, parse_error = parse_json_body(request)
+    if parse_error:
+        return JsonResponse({"result": False, "message": parse_error}, status=400)
     message = kwargs.get("message", "") or kwargs.get("user_message", "")
     session_id = kwargs.get("session_id", "")
     is_test = kwargs.get("is_test", False)
