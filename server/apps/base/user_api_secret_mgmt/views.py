@@ -15,6 +15,20 @@ def _get_loader(request) -> LanguageLoader:
     return LanguageLoader(app="core", default_lang=locale)
 
 
+def _parse_current_team(request, loader: LanguageLoader):
+    current_team = request.COOKIES.get("current_team", "0")
+    try:
+        return int(current_team), None
+    except (TypeError, ValueError):
+        return None, JsonResponse(
+            {
+                "result": False,
+                "message": loader.get("error.invalid_current_team", "Invalid current_team cookie"),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
 class UserAPISecretViewSet(viewsets.ModelViewSet):
     queryset = UserAPISecret.objects.all()
     serializer_class = UserAPISecretSerializer
@@ -22,8 +36,11 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
 
     @HasPermission("api_secret_key-View", "opspilot")
     def list(self, request, *args, **kwargs):
-        current_team = request.COOKIES.get("current_team") or 0
-        query = self.get_queryset().filter(username=request.user.username, domain=request.user.domain, team=int(current_team))
+        loader = _get_loader(request)
+        current_team, error_response = _parse_current_team(request, loader)
+        if error_response:
+            return error_response
+        query = self.get_queryset().filter(username=request.user.username, domain=request.user.domain, team=current_team)
         queryset = self.filter_queryset(query)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -37,9 +54,11 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
     @HasPermission("api_secret_key-Add", "opspilot")
     def create(self, request, *args, **kwargs):
         username = request.user.username
-        current_team = request.COOKIES.get("current_team")
-        if UserAPISecret.objects.filter(username=username, team=current_team).exists():
-            loader = _get_loader(request)
+        loader = _get_loader(request)
+        current_team, error_response = _parse_current_team(request, loader)
+        if error_response:
+            return error_response
+        if UserAPISecret.objects.filter(username=username, domain=request.user.domain, team=current_team).exists():
             return JsonResponse(
                 {
                     "result": False,

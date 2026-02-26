@@ -3,8 +3,10 @@
 避免多次启动 Python 进程，大幅提升启动速度
 """
 
+import os
+
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from apps.core.utils.loader import preload_language_cache
 
@@ -54,6 +56,8 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING(f"未知模块: {app}"))
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"初始化 {app} 失败: {str(e)}"))
+                if app == "system_mgmt":
+                    raise
                 # 继续执行其他模块的初始化
                 continue
 
@@ -62,12 +66,22 @@ class Command(BaseCommand):
     def _init_system_mgmt(self):
         """系统管理资源初始化"""
         self.stdout.write("系统管理资源初始化...")
+        admin_password = self._get_required_admin_password()
         call_command("init_realm_resource")
         call_command("init_login_settings")
-        call_command("create_user", "admin", "password", email="admin@bklite.net", is_superuser=True)
+        call_command("create_user", "admin", admin_password, email="admin@bklite.net", is_superuser=True)
         call_command("init_custom_menu")
         call_command("init_bk_login_settings")
         call_command("clean_group_data")
+
+    @staticmethod
+    def _get_required_admin_password() -> str:
+        admin_password = os.getenv("BK_INIT_ADMIN_PASSWORD", "").strip()
+        if not admin_password:
+            raise CommandError("Missing required env BK_INIT_ADMIN_PASSWORD for admin bootstrap.")
+        if len(admin_password) < 12:
+            raise CommandError("BK_INIT_ADMIN_PASSWORD must be at least 12 characters.")
+        return admin_password
 
     def _init_cmdb(self):
         """CMDB资源初始化"""
