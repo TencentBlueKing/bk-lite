@@ -9,6 +9,9 @@ class ChannelChoices(models.TextChoices):
     ENTERPRISE_WECHAT = "enterprise_wechat", "Enterprise Wechat"
     ENTERPRISE_WECHAT_BOT = "enterprise_wechat_bot", "Enterprise Wechat Bot"
     NATS = "nats", "NATS"
+    FEISHU_BOT = "feishu_bot", "Feishu Bot"
+    DINGTALK_BOT = "dingtalk_bot", "DingTalk Bot"
+    CUSTOM_WEBHOOK = "custom_webhook", "Custom Webhook"
 
 
 class Channel(MaintainerInfo, EncryptMixin):

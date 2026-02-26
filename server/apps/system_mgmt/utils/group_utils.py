@@ -1,4 +1,3 @@
-from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import Group
 
 
@@ -228,7 +227,6 @@ class GroupUtils(object):
         for group_id in user_groups:
             add_parent_groups(group_id)
 
-        logger.info(f"可见组数量: {len(visible_ids)}, 用户权限组: {len(user_groups)}")
         return visible_ids
 
     @staticmethod
@@ -287,5 +285,4 @@ class GroupUtils(object):
                 path = get_path_from_root(group_id)
                 group_paths.append(path)
 
-        logger.info(f"构建组路径完成，用户组数量: {len(user_groups)}, 路径数量: {len(group_paths)}")
         return group_paths
