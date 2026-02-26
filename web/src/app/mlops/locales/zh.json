@@ -52,9 +52,9 @@
     "selectValfile": "选择一个验证文件",
     "testfile": "测试文件",
     "selectTestfile": "选择一个测试文件",
-    "port": "端口",
+    "port": "运行端口",
     "portIptMsg": "请输入端口号",
-    "portDesc": "用于指定模型服务的访问端口。若留空，系统将自动分配一个可用端口。",
+    "portDesc": "用于指定模型服务的运行端口。若留空，系统将自动分配一个可用端口。",
     "containerStatus": "容器状态",
     "downloadStart": "开始下载",
     "downloadFailed": "下载失败",
@@ -134,6 +134,7 @@
   },
   "traintask": {
     "train": "训练",
+    "pageDescription": "管理训练任务，支持任务创建、执行和查看训练结果。",
     "traintask": "训练任务",
     "trainDetail": "训练详情",
     "trainStartTitle": "确认开始训练？",
@@ -157,8 +158,9 @@
   },
   "model-release": {
     "release": "发布",
+    "pageDescription": "管理模型服务，包括模型部署与发布等。",
     "modelName": "能力名称",
-    "modalTitle": "选择模型版本",
+    "modalTitle": "能力配置",
     "modelVersion": "模型版本",
     "modelDescription": "模型介绍",
     "modelRelease": "模型发布",
@@ -169,7 +171,8 @@
     "delModelContent": "你确认要删除这个模型吗？",
     "configuration": "配置",
     "discontinued": "停用",
-    "searchText": "搜索模型名称"
+    "searchText": "搜索模型名称",
+    "capabilityTip": "用于控制此能力是否对外开放的选项。"
   },
   "algorithmConfig": {
     "title": "算法配置",

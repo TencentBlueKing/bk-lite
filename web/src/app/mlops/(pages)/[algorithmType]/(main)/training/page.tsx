@@ -15,7 +15,7 @@ import { useTranslation } from '@/utils/i18n';
 import { ModalRef, ColumnItem, DatasetType } from '@/app/mlops/types';
 import type { Option } from '@/types';
 import { TrainJob } from '@/app/mlops/types/task';
-import { TRAIN_STATUS_MAP, TRAIN_TEXT } from '@/app/mlops/constants';
+import { TRAIN_STATUS_MAP, TRAIN_TEXT, ALGORITHM_TYPE_I18N_KEYS } from '@/app/mlops/constants';
 import { DataSet } from '@/app/mlops/types/manage';
 const { Search } = Input;
 
@@ -301,8 +301,17 @@ const TrainingPage = () => {
 
   return (
     <>
-      <div className="flex justify-end items-center mb-4 gap-2">
-        <div className="flex items-center">
+      <div className="flex justify-between items-center mb-4 gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <Tag color="blue" className="shrink-0">
+            {t(ALGORITHM_TYPE_I18N_KEYS[algorithmType] || algorithmType)}
+          </Tag>
+          {/* <span className="text-gray-500 text-sm truncate">
+            {t('traintask.pageDescription')}
+          </span> */}
+          <EllipsisWithTooltip className="w-full overflow-hidden text-ellipsis whitespace-nowrap" text={t('traintask.pageDescription')} />
+        </div>
+        <div className="flex items-center shrink-0">
           <Search
             className="w-60 mr-1.5"
             placeholder={t('traintask.searchText')}

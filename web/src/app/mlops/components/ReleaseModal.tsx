@@ -2,7 +2,7 @@
 import { ModalRef, Option, DatasetType } from "@/app/mlops/types";
 import { forwardRef, useImperativeHandle, useState, useRef, useEffect } from "react";
 import OperateModal from '@/components/operate-modal';
-import { Form, FormInstance, Select, Button, Input, InputNumber, message } from "antd";
+import { Form, FormInstance, Select, Button, Input, InputNumber, message, Switch } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import useMlopsModelReleaseApi from "@/app/mlops/api/modelRelease";
 const { TextArea } = Input;
@@ -146,18 +146,22 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     setConfirmLoading(true);
     try {
       const data = await formRef.current?.validateFields();
+      const payload = {
+        ...data,
+        status: data.status ? 'active' : 'inactive'
+      };
 
       if (type === 'add') {
         if (!handleAddMap[tagName]) {
           return;
         }
-        await handleAddMap[tagName]!({ status: 'active', ...data });
+        await handleAddMap[tagName]!(payload);
         message.success(t(`model-release.publishSuccess`));
       } else {
         if (!handleUpdateMap[tagName]) {
           return;
         }
-        await handleUpdateMap[tagName]!(formData?.id, data);
+        await handleUpdateMap[tagName]!(formData?.id, payload);
         message.success(t(`common.updateSuccess`));
       }
       setModalOpen(false);
@@ -214,15 +218,24 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
           <Form.Item
             name='port'
             label={t(`mlops-common.port`)}
-            extra={<span className="text-xs">{t(`mlops-common.portDesc`)}</span>}
+            tooltip={t(`mlops-common.portDesc`)}
           >
             <InputNumber className="w-full" placeholder={t(`mlops-common.portIptMsg`)} min={1} max={65535} />
           </Form.Item>
 
           <Form.Item
+            name='status'
+            label={t(`model-release.release`)}
+            layout="horizontal"
+            tooltip={t(`model-release.capabilityTip`)}
+          >
+            <Switch defaultChecked checkedChildren={t(`common.yes`)} unCheckedChildren={t(`common.no`)} size="small" />
+          </Form.Item>
+
+          <Form.Item
             name='description'
             label={t(`model-release.modelDescription`)}
-            // rules={[{ required: true, message: t(`common.inputMsg`) }]}
+          // rules={[{ required: true, message: t(`common.inputMsg`) }]}
           >
             <TextArea placeholder={t(`common.inputMsg`)} rows={4} />
           </Form.Item>

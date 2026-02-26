@@ -364,9 +364,10 @@ class ClassificationServingViewSet(ModelViewSet):
                             }
                         )
 
-                        # 仅更新容器信息
+                        # 正常启动成功，更新容器信息以及将status设为 'active'
                         serving.container_info = container_info
-                        serving.save(update_fields=["container_info"])
+                        serving.status = "active"
+                        serving.save(update_fields=["container_info", "status"])
 
                         return Response(
                             {
@@ -418,6 +419,10 @@ class ClassificationServingViewSet(ModelViewSet):
 
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
+
+            # 停止容器时同时将status改为'inactive'
+            serving.status = "inactive"
+            serving.save(update_fields=["status"])
 
             return Response(
                 {

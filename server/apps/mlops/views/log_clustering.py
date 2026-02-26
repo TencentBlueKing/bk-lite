@@ -1080,8 +1080,10 @@ class LogClusteringServingViewSet(ModelViewSet):
                     train_image=train_image,
                 )
 
+                # 正常启动成功，更新容器信息以及将status设为 'active'
                 serving.container_info = result
-                serving.save(update_fields=["container_info"])
+                serving.status = "active"
+                serving.save(update_fields=["container_info", "status"])
 
                 return Response(
                     {
@@ -1150,6 +1152,10 @@ class LogClusteringServingViewSet(ModelViewSet):
             serving_id = f"LogClustering_Serving_{serving.id}"
 
             result = WebhookClient.stop(serving_id)
+
+            # 停止容器时同时将status改为'inactive'
+            serving.status = "inactive"
+            serving.save(update_fields=["status"])
 
             return Response(
                 {
