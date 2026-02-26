@@ -23,7 +23,7 @@ class AliyunCollectMetrics(CollectBase):
     def check_task_id(self, instance_id):
         # 只要是同一个account 就认为是同一个task 为了保证不同的区域的数据能在同一个地方采集上来
         # TODO 做下架需要修改逻辑 保证task_id
-        task_id, _ = instance_id.split("_", 1)
+        _, task_id = instance_id.split("_", 1)
         return task_id == self.task_id
 
     @staticmethod
@@ -215,7 +215,6 @@ class AliyunCollectMetrics(CollectBase):
             instance_id = index_data["metric"]["instance_id"]
             if not self.check_task_id(instance_id):
                 continue
-
             _time, value = value[0], value[1]
             if not self.timestamp_gt:
                 if timestamp_gt_one_day_ago(_time):
@@ -238,6 +237,8 @@ class AliyunCollectMetrics(CollectBase):
             model_id = metric_key.split("_info_gauge")[0]
             mapping = self.model_field_mapping.get(model_id, {})
             for index_data in metrics:
+                if not index_data.get('resource_name'):
+                    continue
                 data = {}
                 for field, key_or_func in mapping.items():
                     if isinstance(key_or_func, tuple):
