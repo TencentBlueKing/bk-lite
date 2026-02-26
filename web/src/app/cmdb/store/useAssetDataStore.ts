@@ -22,6 +22,7 @@ interface AssetDataStore {
   case_sensitive: boolean;
   cloud_list: { proxy_id: string; proxy_name: string }[];
   user_configs: UserConfigs;
+  needRefresh: boolean;
   add: (item: FilterItem) => FilterItem[];
   remove: (index: number) => FilterItem[];
   clear: () => FilterItem[];
@@ -33,6 +34,7 @@ interface AssetDataStore {
   updateUserConfig: (key: string, value: unknown) => void;
   getSavedFilters: (modelId: string) => SavedFilterItem[];
   applySavedFilter: (filter: SavedFilter) => FilterItem[];
+  setNeedRefresh: (value: boolean) => void;
 }
 
 const useAssetDataStore = create<AssetDataStore>((set, get) => ({
@@ -41,6 +43,7 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   case_sensitive: false,
   cloud_list: [],
   user_configs: {},
+  needRefresh: false,
 
   add: (item: FilterItem) => {
     set((state) => ({ query_list: [...state.query_list, item] }));
@@ -93,6 +96,10 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   applySavedFilter: (filter: SavedFilter) => {
     set({ query_list: filter.filters as FilterItem[] });
     return filter.filters as FilterItem[];
+  },
+
+  setNeedRefresh: (value: boolean) => {
+    set({ needRefresh: value });
   },
 }))
 

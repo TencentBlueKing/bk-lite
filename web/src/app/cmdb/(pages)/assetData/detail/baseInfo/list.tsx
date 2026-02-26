@@ -108,6 +108,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     }
     setAttrList(list);
     onsuccessEdit();
+    useAssetDataStore.getState().setNeedRefresh(true);
   };
 
   const getEditableFieldValue = (fieldItem: any) =>
@@ -204,6 +205,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       setAttrList(list);
       setIsBatchEdit(false);
       onsuccessEdit();
+      useAssetDataStore.getState().setNeedRefresh(true);
     } finally {
       setIsBatchSaving(false);
     }

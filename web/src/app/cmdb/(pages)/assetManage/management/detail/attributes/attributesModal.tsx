@@ -370,7 +370,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                     name="option"
                     rules={[{ validator: validateEnumList }]}
                   >
-                    <div className="bg-[var(--color-bg-hover)] p-4 rounded">
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
                       </div>
@@ -435,7 +435,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'time' ? (
                   <Form.Item label=" " colon={false}>
-                    <div className="bg-[var(--color-bg-hover)] p-4 rounded">
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
                       </div>
@@ -453,7 +453,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'int' ? (
                   <Form.Item label=" " colon={false}>
-                    <div className="bg-[var(--color-bg-hover)] p-4 rounded">
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
                       </div>
@@ -478,7 +478,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'str' ? (
                   <Form.Item label=" " colon={false}>
-                    <div className="bg-[var(--color-bg-hover)] p-4 rounded">
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
                       </div>
