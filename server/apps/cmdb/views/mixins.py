@@ -20,7 +20,7 @@ from apps.cmdb.constants.constants import (
     PERMISSION_MODEL,
     VIEW,
 )
-from apps.cmdb.utils.base import get_organization_and_children_ids
+from apps.cmdb.utils.base import get_organization_and_children_ids, get_current_team_from_request
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.utils.web_utils import WebUtils
 
@@ -69,7 +69,7 @@ class CmdbPermissionMixin:
             True if user is creator with org access, False otherwise
         """
         organizations = instance.get("organization", [])
-        current_team = int(request.COOKIES.get("current_team", 0))
+        current_team = get_current_team_from_request(request, required=False)
         include_children = request.COOKIES.get("include_children") == "1"
 
         if include_children:

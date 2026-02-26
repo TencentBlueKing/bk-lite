@@ -2,7 +2,8 @@
 # @File: collect.py
 # @Time: 2025/2/27 14:00
 # @Author: windyzhao
-import os
+import re
+from pathlib import Path
 from django.conf import settings
 from django.db.models import Q
 from django.db import transaction
@@ -23,7 +24,6 @@ from apps.cmdb.models.collect_model import CollectModels, OidMapping
 from apps.cmdb.serializers.collect_serializer import CollectModelSerializer, CollectModelLIstSerializer, \
     OidModelSerializer, CollectModelIdStatusSerializer
 from apps.cmdb.services.collect_service import CollectModelService
-from apps.core.logger import cmdb_logger as logger
 
 
 class CollectModelViewSet(AuthViewSet):
@@ -144,12 +144,15 @@ class CollectModelViewSet(AuthViewSet):
         cloud_id = requests.data["cloud_id"]
         cloud_list = NodeMgmt().cloud_region_list()
         cloud_id_map = {i["id"]: i["name"] for i in cloud_list}
+        cloud_name = cloud_id_map.get(cloud_id)
+        if not cloud_name:
+            return WebUtils.response_error(error_message="cloud_id 不存在", status_code=400)
         params["model_id"] = params["model_id"].split("_account", 1)[0]
         task_id = params.pop("task_id", None)
         if task_id:
             node_object = NodeParamsFactory.get_node_params(instance=self.queryset.get(id=task_id))
             params.update(node_object.password)
-        result = CollectModelService.list_regions(params, cloud_name=cloud_id_map[cloud_id])
+        result = CollectModelService.list_regions(params, cloud_name=cloud_name)
         return WebUtils.response_success(result)
 
     @HasPermission("auto_collection-View")
@@ -174,17 +177,22 @@ class CollectModelViewSet(AuthViewSet):
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="collect_model_doc")
     def model_doc(self, request, *args, **kwargs):
-        model_id = request.GET.get("id")
-        file_name = str(model_id) + ".md"
-        template_dir = os.path.join(settings.BASE_DIR, "apps/cmdb/support-files/plugins_doc")
-        file_path = os.path.join(template_dir, file_name)
+        model_id = (request.GET.get("id") or "").strip()
+        if not model_id:
+            return WebUtils.response_error(error_message="id 不能为空", status_code=400)
+        if not re.fullmatch(r"[A-Za-z0-9_]+", model_id):
+            return WebUtils.response_error(error_message="id 参数非法", status_code=400)
+
+        template_dir = (Path(settings.BASE_DIR) / "apps/cmdb/support-files/plugins_doc").resolve()
+        file_path = (template_dir / f"{model_id}.md").resolve()
+        if template_dir not in file_path.parents:
+            return WebUtils.response_error(error_message="非法文档路径", status_code=400)
+
         data = ""
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
+        if file_path.exists():
+            with file_path.open("r", encoding="utf-8") as f:
                 data = f.read()
-        except Exception as e:
-            import traceback
-            logger.error(f"读取采集插件文档失败：{traceback.format_exc()}")
+        else:
             data = "未找到对应的文档！"
         return WebUtils.response_success(data)
 

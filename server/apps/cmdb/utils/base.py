@@ -3,6 +3,7 @@
 # @Time: 2025/7/21 14:00
 # @Author: windyzhao
 from apps.core.logger import cmdb_logger as logger
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.constants.constants import PERMISSION_TASK
 
 
@@ -127,3 +128,19 @@ def get_organization_and_children_ids(tree_data: list, target_id: int) -> list:
         return []
 
     return find_and_collect_ids(tree_data, target_id)
+
+
+def get_current_team_from_request(request, required: bool = True) -> int:
+    """
+    从请求 Cookie 中获取 current_team，并做严格校验。
+    """
+    current_team = request.COOKIES.get("current_team")
+    if current_team in (None, ""):
+        if required:
+            raise BaseAppException("缺少 current_team 参数")
+        return 0
+
+    try:
+        return int(current_team)
+    except (TypeError, ValueError):
+        raise BaseAppException("current_team 参数非法")
