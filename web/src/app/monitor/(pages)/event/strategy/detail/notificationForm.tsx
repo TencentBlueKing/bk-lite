@@ -15,6 +15,9 @@ const getChannelIcon = (channelType: string): string => {
   const iconMap: Record<string, string> = {
     email: 'youjian',
     enterprise_wechat_bot: 'qiwei2',
+    feishu_bot: 'feishu',
+    dingtalk_bot: 'dingding',
+    custom_webhook: 'webhook',
     nats: 'dongzuo1'
   };
   return iconMap[channelType] || 'youjian';
@@ -25,6 +28,9 @@ const getChannelTypeKey = (channelType: string): string => {
   const keyMap: Record<string, string> = {
     email: 'monitor.events.channelTypeEmail',
     enterprise_wechat_bot: 'monitor.events.channelTypeWechatBot',
+    feishu_bot: 'monitor.events.channelTypeFeishuBot',
+    dingtalk_bot: 'monitor.events.channelTypeDingtalkBot',
+    custom_webhook: 'monitor.events.channelTypeCustomWebhook',
     nats: 'monitor.events.channelTypeNats'
   };
   return keyMap[channelType] || '';
