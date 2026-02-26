@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { KeepAlive } from 'react-activation';
+import { KeepAlive, useActivate } from 'react-activation';
 import {
   Button,
   Space,
@@ -224,6 +224,14 @@ const AssetDataContent = () => {
   const [isActionsCollapsed, setIsActionsCollapsed] = useState(false);
   const urlQueryInitialized = useRef(false);
   const initialDataLoaded = useRef(false);
+
+  useActivate(() => {
+    const { needRefresh, setNeedRefresh } = useAssetDataStore.getState();
+    if (needRefresh && modelId) {
+      fetchData();
+      setNeedRefresh(false);
+    }
+  });
 
   // 监听窗口大小变化，更新折叠状态
   useEffect(() => {
@@ -463,7 +471,10 @@ const AssetDataContent = () => {
         setPropertyList(attrList);
         setTableData(instData.insts);
         setPagination(prev => ({ ...prev, total: instData.count }));
-        initialDataLoaded.current = true;
+        // 延迟到下一帧再设置
+        requestAnimationFrame(() => {
+          initialDataLoaded.current = true;
+        });
       })
       .finally(() => setLoading(false));
   };
