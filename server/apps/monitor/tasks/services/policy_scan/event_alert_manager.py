@@ -397,24 +397,3 @@ class EventAlertManager:
             "no_data": "2",
         }
         return level_map.get(level, "3")
-
-        content = {"events": alert_events}
-        try:
-            send_result = SystemMgmtUtils.send_msg_with_channel(
-                self.policy.notice_type_id, "", content, []
-            )
-            if send_result.get("result") is False:
-                logger.error(
-                    f"Push to alert center failed for policy {self.policy.name}: "
-                    f"{send_result.get('message', 'Unknown error')}"
-                )
-            else:
-                logger.info(
-                    f"Push to alert center success for policy {self.policy.name}: "
-                    f"{len(alert_events)} events"
-                )
-        except Exception as e:
-            logger.error(
-                f"Push to alert center exception for policy {self.policy.name}: {e}",
-                exc_info=True,
-            )
