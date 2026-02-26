@@ -143,6 +143,9 @@
       "channelTypeEmail": "Email",
       "channelTypeWechatBot": "WeChat Bot",
       "channelTypeNats": "NATS Channel",
+      "channelTypeFeishuBot": "Feishu Bot",
+      "channelTypeDingtalkBot": "DingTalk Bot",
+      "channelTypeCustomWebhook": "Custom Webhook",
       "notificationDesc": "Select the notification method and recipients when an alert is triggered.",
       "notificationConfig": "Notify",
       "notificationChannel": "Channel"

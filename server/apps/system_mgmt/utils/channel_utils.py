@@ -1,5 +1,10 @@
 import base64
+import hashlib
+import hmac
+import json
 import smtplib
+import time
+import urllib.parse
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -104,14 +109,14 @@ def send_email_to_user(channel_config, content, receivers, title, attachments=No
         return {"result": False, "message": f"Error sending email: {str(e)}"}
 
 
-def send_by_bot(channel_obj: Channel, content, receivers):
+def send_by_wecom_bot(channel_obj: Channel, content, receivers):
     if receivers:
         to_user_mentions = " ".join(f"@{name} " for name in receivers)
         content = f"{content}\nTo: {to_user_mentions}"
     channel_config = channel_obj.config
     payload = {"msgtype": "markdown", "markdown": {"content": content}}
 
-    # 优先使用 bot_key（企业微信机器人），其次使用 webhook_url（通用 webhook）
+    # 优先使用 webhook_url（通用 webhook）
     channel_obj.decrypt_field("webhook_url", channel_config)
     webhook_url = channel_config.get("webhook_url")
     if not webhook_url:
@@ -124,6 +129,80 @@ def send_by_bot(channel_obj: Channel, content, receivers):
     except Exception as e:
         logger.exception(e)
         return {"result": False, "message": "failed to send bot message"}
+
+
+def send_by_feishu_bot(channel_obj: Channel, title, content, receivers):
+    """发送飞书机器人消息（interactive 卡片格式，支持 Markdown，可选 HMAC-SHA256 签名）"""
+    if receivers:
+        to_user_mentions = " ".join(f"@{name} " for name in receivers)
+        content = f"{content}\nTo: {to_user_mentions}"
+    channel_config = channel_obj.config
+    channel_obj.decrypt_field("webhook_url", channel_config)
+    webhook_url = channel_config.get("webhook_url")
+    if not webhook_url:
+        return {"result": False, "message": "Feishu bot webhook_url is not configured"}
+
+    payload = {
+        "msg_type": "interactive",
+        "card": {
+            "header": {"title": {"tag": "plain_text", "content": title or "\u901a\u77e5"}},
+            "elements": [{"tag": "markdown", "content": content}],
+        },
+    }
+
+    # 可选签名验证（秒级时间戳）
+    channel_obj.decrypt_field("sign_secret", channel_config)
+    sign_secret = channel_config.get("sign_secret")
+    if sign_secret:
+        timestamp = str(int(time.time()))
+        string_to_sign = f"{timestamp}\n{sign_secret}"
+        hmac_code = hmac.new(string_to_sign.encode("utf-8"), digestmod=hashlib.sha256).digest()
+        sign = base64.b64encode(hmac_code).decode("utf-8")
+        payload["timestamp"] = timestamp
+        payload["sign"] = sign
+
+    try:
+        res = requests.post(webhook_url, json=payload, timeout=5)
+        return res.json()
+    except Exception as e:
+        logger.exception(e)
+        return {"result": False, "message": "failed to send feishu bot message"}
+
+
+def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers):
+    """发送钉钉机器人消息（markdown 格式，可选 HMAC-SHA256 签名）"""
+    # at_mobiles = []
+    if receivers:
+        to_user_mentions = " ".join(f"@{name} " for name in receivers)
+        content = f"{content}<br>To: {to_user_mentions}"
+    channel_config = channel_obj.config
+    channel_obj.decrypt_field("webhook_url", channel_config)
+    webhook_url = channel_config.get("webhook_url")
+    if not webhook_url:
+        return {"result": False, "message": "DingTalk bot webhook_url is not configured"}
+
+    # 可选签名验证（毫秒级时间戳，URL 编码）
+    channel_obj.decrypt_field("sign_secret", channel_config)
+    sign_secret = channel_config.get("sign_secret")
+    if sign_secret:
+        timestamp = str(int(round(time.time() * 1000)))
+        string_to_sign = f"{timestamp}\n{sign_secret}"
+        hmac_code = hmac.new(sign_secret.encode("utf-8"), string_to_sign.encode("utf-8"), digestmod=hashlib.sha256).digest()
+        sign = urllib.parse.quote_plus(base64.b64encode(hmac_code).decode("utf-8"))
+        webhook_url = f"{webhook_url}&timestamp={timestamp}&sign={sign}"
+
+    payload = {
+        "msgtype": "markdown",
+        "markdown": {"title": title or "\u901a\u77e5", "text": content},
+        # "at": {"atMobiles": at_mobiles},
+    }
+
+    try:
+        res = requests.post(webhook_url, json=payload, timeout=5)
+        return res.json()
+    except Exception as e:
+        logger.exception(e)
+        return {"result": False, "message": "failed to send dingtalk bot message"}
 
 
 def send_nats_message(channel_obj: Channel, content: dict):
@@ -147,3 +226,50 @@ def send_nats_message(channel_obj: Channel, content: dict):
     except Exception as e:
         logger.exception(e)
         return {"result": False, "message": f"NATS request failed: {str(e)}"}
+
+
+def send_by_custom_webhook(channel_obj: Channel, content, receivers):
+    """发送自定义 Webhook 消息，body_template 中的 {{content}} 被替换为实际内容"""
+    channel_config = channel_obj.config
+    channel_obj.decrypt_field("webhook_url", channel_config)
+    webhook_url = channel_config.get("webhook_url")
+    if not webhook_url:
+        return {"result": False, "message": "Custom webhook url is not configured"}
+    if receivers:
+        to_user_mentions = " ".join(f"@{name} " for name in receivers)
+        content = f"{content}<br>To: {to_user_mentions}"
+    body_template = channel_config.get("body_template", "")
+    request_method = channel_config.get("request_method", "POST").upper()
+
+    try:
+        headers = json.loads(channel_config.get("headers")) or {}
+    except (json.JSONDecodeError, TypeError):
+        headers = {}
+
+    body_str = ""
+    try:
+        body = _replace_placeholder(json.loads(body_template), "{{content}}", content)
+    except (json.JSONDecodeError, TypeError):
+        body = None
+        body_str = body_template.replace("{{content}}", content)
+    try:
+        if body is not None:
+            res = requests.request(request_method, webhook_url, json=body, headers=headers, timeout=10)
+        else:
+            headers.setdefault("Content-Type", "text/plain")
+            res = requests.request(request_method, webhook_url, data=body_str.encode("utf-8"), headers=headers, timeout=10)
+        return res.json()
+    except Exception as e:
+        logger.exception(e)
+        return {"result": False, "message": "failed to send custom webhook message"}
+
+
+# 先解析模板为结构体，再递归替换 {{content}}，避免 content 中的换行符等破坏 JSON 语法
+def _replace_placeholder(obj, placeholder, value):
+    if isinstance(obj, str):
+        return obj.replace(placeholder, value)
+    if isinstance(obj, dict):
+        return {k: _replace_placeholder(v, placeholder, value) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_replace_placeholder(i, placeholder, value) for i in obj]
+    return obj

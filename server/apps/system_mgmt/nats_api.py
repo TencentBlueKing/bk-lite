@@ -35,7 +35,15 @@ from apps.system_mgmt.models import (
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.bk_user_utils import get_bk_user_info
-from apps.system_mgmt.utils.channel_utils import send_by_bot, send_email, send_email_to_user, send_nats_message
+from apps.system_mgmt.utils.channel_utils import (
+    send_by_custom_webhook,
+    send_by_dingtalk_bot,
+    send_by_feishu_bot,
+    send_by_wecom_bot,
+    send_email,
+    send_email_to_user,
+    send_nats_message,
+)
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 
@@ -439,7 +447,21 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
             display_names = list(user_list.values_list("display_name", flat=True))
         else:
             display_names = receivers if isinstance(receivers, list) else [receivers]
-        return send_by_bot(channel_obj, content, display_names)
+        return send_by_wecom_bot(channel_obj, content, display_names)
+    elif channel_obj.channel_type == ChannelChoices.FEISHU_BOT:
+        if user_list is not None:
+            display_names = list(user_list.values_list("display_name", flat=True))
+        else:
+            display_names = receivers if isinstance(receivers, list) else [receivers]
+        return send_by_feishu_bot(channel_obj, title, content, display_names)
+    elif channel_obj.channel_type == ChannelChoices.DINGTALK_BOT:
+        if user_list is not None:
+            display_names = list(user_list.values_list("display_name", flat=True))
+        else:
+            display_names = receivers if isinstance(receivers, list) else [receivers]
+        return send_by_dingtalk_bot(channel_obj, title, content, display_names)
+    elif channel_obj.channel_type == ChannelChoices.CUSTOM_WEBHOOK:
+        return send_by_custom_webhook(channel_obj, content, receivers)
     elif channel_obj.channel_type == ChannelChoices.NATS:
         # NATS 通道：content 作为 kwargs 传递给目标服务
         if isinstance(content, str):
