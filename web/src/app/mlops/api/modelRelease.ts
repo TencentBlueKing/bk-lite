@@ -26,12 +26,18 @@ const useMlopsModelReleaseApi = () => {
     key,
     page,
     page_size,
+    name,
   }: {
     key: DatasetType,
     page?: number,
-    page_size?: number
+    page_size?: number,
+    name?: string
   }) => {
-    return await get(`/mlops/${SERVING_MAP[key]}/?page=${page}&page_size=${page_size}`)
+    const params = new URLSearchParams();
+    if (page) params.append('page', String(page));
+    if (page_size) params.append('page_size', String(page_size));
+    if (name) params.append('name', name);
+    return await get(`/mlops/${SERVING_MAP[key]}/?${params.toString()}`)
   };
 
 

@@ -54,6 +54,7 @@
     "selectTestfile": "选择一个测试文件",
     "port": "端口",
     "portIptMsg": "请输入端口号",
+    "portDesc": "用于指定模型服务的访问端口。若留空，系统将自动分配一个可用端口。",
     "containerStatus": "容器状态",
     "downloadStart": "开始下载",
     "downloadFailed": "下载失败",
@@ -61,7 +62,9 @@
     "containerCompleted": "已完成",
     "containerStopped": "已停止",
     "containerUnknown": "状态异常",
-    "containerError": "错误"
+    "containerError": "错误",
+    "terminating": "删除中",
+    "pendingDeploy": "等待中"
   },
   "datasets": {
     "datasets": "数据集",
@@ -120,7 +123,7 @@
     "fileNameMustHaveExtension": "文件名必须包含扩展名",
     "fileNameTooLong": "文件名过长（最多64个字符）",
     "fileNameInvalidChars": "文件名只能包含英文字母、数字和下划线",
-    "uploadHintAnomaly": "CSV文件必须包含列: timestamp, value",
+    "uploadHintAnomaly": "CSV文件必须包含列: timestamp, value, label",
     "uploadHintTimeseries": "CSV文件必须包含列: timestamp, value",
     "uploadHintClassification": "CSV文件必须包含列: text, label",
     "uploadHintImageClassification": "支持常见图片格式，单张图片不超过2MB",
@@ -165,7 +168,8 @@
     "delModel": "删除模型",
     "delModelContent": "你确认要删除这个模型吗？",
     "configuration": "配置",
-    "discontinued": "停用"
+    "discontinued": "停用",
+    "searchText": "搜索模型名称"
   },
   "algorithmConfig": {
     "title": "算法配置",
@@ -174,7 +178,7 @@
     "addConfig": "新增算法配置",
     "editConfig": "编辑算法配置",
     "algorithmName": "算法标识",
-    "algorithmNameTooltip": "算法的唯一标识名称，建议使用英文，如 ECOD、IsolationForest",
+    "algorithmNameTooltip": "算法的唯一标识ID，需要与算法镜像中的实际算法注册名称保持一致",
     "displayName": "显示名称",
     "scenarioDescription": "场景描述",
     "image": "镜像地址",

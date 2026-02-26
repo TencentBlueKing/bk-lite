@@ -92,17 +92,9 @@ class ObjectDetectionTrainDataViewSet(ModelViewSet):
         删除训练数据实例，自动删除关联的 MinIO ZIP 文件
         """
         try:
-            instance = self.get_object()
-            instance_id = instance.id
-            instance_name = instance.name
-
             # train_data FileField 会在模型的 save() 方法中自动清理
-            logger.info(f"开始删除训练数据实例: ID={instance_id}, 名称={instance_name}")
-
             # 删除实例（模型会自动清理文件）
             super().destroy(request, *args, **kwargs)
-
-            logger.info(f"训练数据实例删除完成: ID={instance_id}")
             return Response(status=status.HTTP_204_NO_CONTENT)
 
         except Exception as e:
@@ -145,7 +137,6 @@ class ObjectDetectionTrainDataViewSet(ModelViewSet):
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
             response["Content-Length"] = instance.train_data.size
 
-            logger.info(f"下载训练数据: {instance.name} (ID: {instance.id})")
             return response
 
         except Exception as e:
@@ -204,7 +195,6 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
             response = FileResponse(file, content_type="application/zip")
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
 
-            logger.info(f"下载数据集版本: {instance.dataset.name} - {instance.version}")
             return response
 
         except Exception as e:
@@ -229,10 +219,6 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
 
             instance.status = DatasetReleaseStatus.ARCHIVED
             instance.save(update_fields=["status"])
-
-            logger.info(
-                f"数据集版本已归档: {instance.dataset.name} - {instance.version}"
-            )
 
             serializer = self.get_serializer(instance)
             return Response(serializer.data)
@@ -259,10 +245,6 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
 
             instance.status = DatasetReleaseStatus.PUBLISHED
             instance.save(update_fields=["status"])
-
-            logger.info(
-                f"数据集版本已恢复: {instance.dataset.name} - {instance.version}"
-            )
 
             serializer = self.get_serializer(instance)
             return Response(serializer.data)
@@ -356,21 +338,14 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                 train_job_id=train_job.id,
             )
 
-            logger.info(f"启动目标检测训练任务: {job_id}")
-            logger.info(f"  Dataset: {train_job.dataset_version.dataset_file.name}")
-            logger.info(f"  Config: {train_job.config_url.name}")
-
             # 从 hyperopt_config 中提取 device 参数
             device = None
             if train_job.hyperopt_config:
                 hyperparams = train_job.hyperopt_config.get("hyperparams", {})
                 device = hyperparams.get("device")
-                if device:
-                    logger.info(f"  Device: {device}")
 
             # 动态获取训练镜像
             train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
-            logger.info(f"  Train Image: {train_image}")
 
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
@@ -389,8 +364,6 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             # 更新任务状态
             train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
-
-            logger.info(f"目标检测训练任务已启动: {job_id}")
 
             return Response(
                 {
@@ -443,16 +416,12 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                 train_job_id=train_job.id,
             )
 
-            logger.info(f"停止目标检测训练任务: {job_id}")
-
             # 调用 WebhookClient 停止任务（默认删除容器）
             result = WebhookClient.stop(job_id)
 
             # 更新任务状态
             train_job.status = TrainJobStatus.PENDING
             train_job.save(update_fields=["status"])
-
-            logger.info(f"目标检测训练任务已停止: {job_id}")
 
             return Response(
                 {
@@ -503,12 +472,9 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             version_data = mlflow_service.get_model_versions(model_name)
 
             if not version_data:
-                logger.info(f"模型未找到版本: {model_name}")
+                logger.warning(f"模型未找到版本: {model_name}")
                 return Response({"model_name": model_name, "versions": [], "total": 0})
 
-            logger.info(
-                f"获取模型版本列表成功: {model_name}, 共 {len(version_data)} 个版本"
-            )
 
             return Response(
                 {
@@ -671,9 +637,6 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                 if new_status:
                     train_job.status = new_status
                     train_job.save(update_fields=["status"])
-                    logger.info(
-                        f"自动同步 TrainJob {train_job.id} 状态: running -> {new_status} (基于 MLflow: {latest_run_status})"
-                    )
 
             return Response(
                 {
@@ -732,8 +695,6 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                         "metric_history": [],
                     }
                 )
-
-            logger.info(f"返回 {len(metric_data)} 条指标数据")
 
             return Response(
                 {
@@ -921,16 +882,11 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                 hyperparams = serving.train_job.hyperopt_config.get("hyperparams", {})
                 device = hyperparams.get("device")
 
-            logger.info(
-                f"自动启动 serving 服务: {container_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}, Device: {device or 'default'}"
-            )
-
             try:
                 # 动态获取服务镜像
                 train_image = get_image_by_prefix(
                     self.MLFLOW_PREFIX, serving.train_job.algorithm
                 )
-                logger.info(f"  Service Image: {train_image}")
 
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
@@ -944,10 +900,6 @@ class ObjectDetectionServingViewSet(ModelViewSet):
 
                 serving.container_info = result
                 serving.save(update_fields=["container_info"])
-
-                logger.info(
-                    f"Serving 服务已自动启动: {container_id}, Port: {result.get('port')}"
-                )
 
                 response.data["container_info"] = result
                 response.data["message"] = "服务已创建并启动"
@@ -1035,16 +987,11 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                 hyperparams = serving.train_job.hyperopt_config.get("hyperparams", {})
                 device = hyperparams.get("device")
 
-            logger.info(
-                f"启动目标检测 serving 服务: {serving_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}, Device: {device or 'default'}"
-            )
-
             try:
                 # 动态获取服务镜像
                 train_image = get_image_by_prefix(
                     self.MLFLOW_PREFIX, serving.train_job.algorithm
                 )
-                logger.info(f"  Service Image: {train_image}")
 
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
@@ -1059,10 +1006,6 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                 # 正常启动成功，仅更新容器信息
                 serving.container_info = result
                 serving.save(update_fields=["container_info"])
-
-                logger.info(
-                    f"目标检测 Serving 服务已启动: {serving_id}, Port: {result.get('port')}"
-                )
 
                 return Response(
                     {
@@ -1126,12 +1069,8 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"ObjectDetection_Serving_{serving.id}"
 
-            logger.info(f"停止目标检测 serving 服务: {serving_id}")
-
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
-
-            logger.info(f"目标检测 Serving 服务已停止: {serving_id}")
 
             return Response(
                 {
@@ -1173,8 +1112,6 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"ObjectDetection_Serving_{serving.id}"
 
-            logger.info(f"删除目标检测 serving 容器: {serving_id}")
-
             # 调用 WebhookClient 删除容器
             result = WebhookClient.remove(serving_id)
 
@@ -1186,8 +1123,6 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                 "message": "容器已删除",
             }
             serving.save(update_fields=["container_info"])
-
-            logger.info(f"目标检测 Serving 容器已删除: {serving_id}")
 
             return Response(
                 {
@@ -1232,6 +1167,13 @@ class ObjectDetectionServingViewSet(ModelViewSet):
         """
         serving = self.get_object()
 
+        # 校验服务状态
+        if serving.status != "active":
+            return Response(
+                {"error": "服务未发布，请先发布服务"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # 验证容器信息
         if not serving.container_info or not isinstance(serving.container_info, dict):
             return Response(
@@ -1263,7 +1205,6 @@ class ObjectDetectionServingViewSet(ModelViewSet):
         predict_url = f"{url}:{port}/predict"
 
         try:
-            logger.info(f"调用目标检测推理服务: {predict_url}")
 
             # 调用推理服务
             response = requests.post(
@@ -1272,9 +1213,6 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             response.raise_for_status()
 
             result = response.json()
-            logger.info(
-                f"目标检测推理成功，检测到 {len(result.get('predictions', []))} 个目标"
-            )
 
             return Response(result)
 

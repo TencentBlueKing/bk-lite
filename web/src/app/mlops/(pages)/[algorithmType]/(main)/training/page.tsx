@@ -31,7 +31,7 @@ const TrainingPage = () => {
   const { t } = useTranslation();
   const params = useParams();
   const algorithmType = params.algorithmType as DatasetType;
-  
+
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getDatasetsList } = useMlopsManageApi();
   const {
@@ -143,6 +143,7 @@ const TrainingPage = () => {
               <Button
                 type="link"
                 className="mr-2.5"
+                disabled={record.status === 'running'}
                 onClick={() => handleEdit(record)}
               >
                 {t('common.edit')}
