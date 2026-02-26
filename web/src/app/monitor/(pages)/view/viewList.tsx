@@ -288,7 +288,7 @@ const ViewList: React.FC<ViewListProps> = ({
       setPlugins(_plugins);
       setMetrics(res[0] || []);
       if (objName) {
-        const filterMetrics = getTableDiaplay(objName);
+        const filterMetrics = getTableDiaplay(objName) || [];
         const _columns = filterMetrics.map((item: any) => {
           const target = (res[0] || []).find(
             (tex: MetricItem) => tex.name === item.key
