@@ -81,7 +81,7 @@ const StudioSettingsPage: React.FC = () => {
           // Ensure workflow_data is in correct format
           if (botData.workflow_data && typeof botData.workflow_data === 'object') {
             const { nodes = [], edges = [] } = botData.workflow_data;
-            
+
             // Validate nodes and edges data are arrays
             if (Array.isArray(nodes) && Array.isArray(edges)) {
               setWorkflowData({ nodes, edges });
@@ -111,7 +111,7 @@ const StudioSettingsPage: React.FC = () => {
 
         setOnline(botData.online);
         setSelectedSkills(botData.llm_skills);
-        
+
         if (currentBotType === 2) {
           setSelectedChannels([]);
         } else {
@@ -120,7 +120,7 @@ const StudioSettingsPage: React.FC = () => {
             .map((channel) => channel.id);
           setSelectedChannels(enabledChannelIds);
         }
-        
+
         setIsDomainEnabled(botData.enable_bot_domain);
         setEnableSsl(botData.enable_ssl);
         setIsPortMappingEnabled(botData.enable_node_port);
@@ -140,9 +140,9 @@ const StudioSettingsPage: React.FC = () => {
   // Initialize original workflow data when page loads
   useEffect(() => {
     if (!pageLoading && botType === 3) {
-      setOriginalWorkflowData({ 
-        nodes: [...workflowData.nodes], 
-        edges: [...workflowData.edges] 
+      setOriginalWorkflowData({
+        nodes: [...workflowData.nodes],
+        edges: [...workflowData.edges]
       });
       setHasUnsavedChanges(false);
     }
@@ -175,7 +175,7 @@ const StudioSettingsPage: React.FC = () => {
       await saveBotConfig(botId, payload);
       message.success(t(isPublish ? 'common.publishSuccess' : 'common.saveSuccess'));
       refreshBotInfo();
-      
+
       if (isPublish) {
         setOnline(true);
       }
@@ -214,9 +214,9 @@ const StudioSettingsPage: React.FC = () => {
       </Menu.Item>
       <Menu.Divider />
       <Menu.Item key="save_publish">
-        <PermissionWrapper 
-          className='w-full' 
-          requiredPermissions={['Save&Publish']} 
+        <PermissionWrapper
+          className='w-full'
+          requiredPermissions={['Save&Publish']}
           instPermissions={botPermissions}>
           <Button type="primary" size="small" style={{ width: '100%' }} onClick={handleSaveAndPublish}>
             {t('common.save')} & {t('common.publish')}
@@ -224,9 +224,9 @@ const StudioSettingsPage: React.FC = () => {
         </PermissionWrapper>
       </Menu.Item>
       <Menu.Item key="save_only">
-        <PermissionWrapper 
-          className='w-full' 
-          requiredPermissions={['Edit']} 
+        <PermissionWrapper
+          className='w-full'
+          requiredPermissions={['Edit']}
           instPermissions={botPermissions}>
           <Button size="small" style={{ width: '100%' }} onClick={() => handleSave(false)}>
             {t('common.saveOnly')}
@@ -309,13 +309,13 @@ const StudioSettingsPage: React.FC = () => {
   const handleClearCanvas = () => {
     const emptyWorkflowData = { nodes: [], edges: [] };
     setWorkflowData(emptyWorkflowData);
-    
+
     // Check if clearing makes data different from original
     const originalDataStr = JSON.stringify(originalWorkflowData);
     const emptyDataStr = JSON.stringify(emptyWorkflowData);
     const isChanged = originalDataStr !== emptyDataStr;
     setHasUnsavedChanges(isChanged);
-    
+
     message.success('Canvas cleared');
   };
 
@@ -324,16 +324,16 @@ const StudioSettingsPage: React.FC = () => {
     setWorkflowData(prev => {
       const prevDataStr = JSON.stringify(prev);
       const newDataStr = JSON.stringify(newWorkflowData);
-      
+
       if (prevDataStr !== newDataStr) {
         // Check if data has changed from original
         const originalDataStr = JSON.stringify(originalWorkflowData);
         const isChanged = newDataStr !== originalDataStr;
         setHasUnsavedChanges(isChanged);
-        
+
         return { nodes: [...newWorkflowData.nodes], edges: [...newWorkflowData.edges] };
       }
-      
+
       return prev;
     });
   }, [originalWorkflowData]);
@@ -352,17 +352,17 @@ const StudioSettingsPage: React.FC = () => {
       };
 
       await saveBotConfig(botId, payload);
-      
+
       // Reset unsaved changes status after successful save
-      setOriginalWorkflowData({ 
-        nodes: [...workflowData.nodes], 
-        edges: [...workflowData.edges] 
+      setOriginalWorkflowData({
+        nodes: [...workflowData.nodes],
+        edges: [...workflowData.edges]
       });
       setHasUnsavedChanges(false);
       refreshBotInfo();
-      
+
       message.success(t(isPublish ? 'common.publishSuccess' : 'common.saveSuccess'));
-      
+
       if (isPublish) {
         setOnline(true);
       }
@@ -391,9 +391,9 @@ const StudioSettingsPage: React.FC = () => {
       </Menu.Item>
       <Menu.Divider />
       <Menu.Item key="save_publish">
-        <PermissionWrapper 
-          className='w-full' 
-          requiredPermissions={['Save&Publish']} 
+        <PermissionWrapper
+          className='w-full'
+          requiredPermissions={['Save&Publish']}
           instPermissions={botPermissions}>
           <Button type="primary" size="small" style={{ width: '100%' }} onClick={() => handleChatflowSave(true)}>
             {t('common.save')} & {t('common.publish')}
@@ -401,9 +401,9 @@ const StudioSettingsPage: React.FC = () => {
         </PermissionWrapper>
       </Menu.Item>
       <Menu.Item key="save_only">
-        <PermissionWrapper 
-          className='w-full' 
-          requiredPermissions={['Edit']} 
+        <PermissionWrapper
+          className='w-full'
+          requiredPermissions={['Edit']}
           instPermissions={botPermissions}>
           <Button size="small" style={{ width: '100%' }} onClick={() => handleChatflowSave(false)}>
             {t('common.saveOnly')}
@@ -446,8 +446,8 @@ const StudioSettingsPage: React.FC = () => {
                 </Button>
               </Dropdown>
             </div>
-            
-            <ChatflowSettings 
+
+            <ChatflowSettings
               form={form}
               groups={groups}
               onClear={handleClearCanvas}

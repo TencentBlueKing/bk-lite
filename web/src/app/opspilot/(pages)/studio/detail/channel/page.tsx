@@ -42,7 +42,7 @@ const ChannelPage: React.FC = () => {
         fetchChannels(botId),
         fetchBotDetail(botId)
       ]);
-      
+
       const appsData = channelsData.map((channel: any) => ({
         id: channel.id,
         name: channel.name,
@@ -131,8 +131,8 @@ const ChannelPage: React.FC = () => {
             <div
               className='border shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group'>
               <div className="absolute top-2 right-2">
-                <PermissionWrapper 
-                  requiredPermissions={['Setting']} 
+                <PermissionWrapper
+                  requiredPermissions={['Setting']}
                   instPermissions={botPermissions}>
                   <Switch
                     size="small"
@@ -149,9 +149,9 @@ const ChannelPage: React.FC = () => {
                 <h2 className="text-lg font-bold m-0">{app.name}</h2>
               </div>
               <div className="w-full h-[32px] flex justify-center items-end">
-                <PermissionWrapper 
-                  className="w-full" 
-                  requiredPermissions={['Setting']} 
+                <PermissionWrapper
+                  className="w-full"
+                  requiredPermissions={['Setting']}
                   instPermissions={botPermissions}>
                   <Button
                     type="primary"
