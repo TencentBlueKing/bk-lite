@@ -286,7 +286,16 @@
       "minio_cluster_health_status_gauge": "Cluster Health Status",
       "cpu_usage_total": "CPU Usage",
       "disk_used_percent": "Disk Usage",
-      "mem_used_percent": "Memory Usage"
+      "mem_used_percent": "Memory Usage",
+      "kingbase_exporter_current_connections": "Current Connections",
+      "kingbase_exporter_slow_query_number": "Slow Query Number",
+      "kingbase_exporter_deadlocks": "Deadlocks",
+      "oceanbase_disk_used_percent": "Disk Used Percent",
+      "oceanbase_sysstat_cpu_usage": "CPU Usage",
+      "oceanbase_sysstat_memory_usage_percent": "Memory Usage Percent",
+      "cpu_ratio": "CPU Usage Ratio",
+      "mem_ratio": "Memory Usage Ratio",
+      "disk_ratio": "Disk Usage Ratio"
     },
     "integrations": {
       "publishAddressDes": "The main website for system monitoring, used to detect its availability and performance status.",
