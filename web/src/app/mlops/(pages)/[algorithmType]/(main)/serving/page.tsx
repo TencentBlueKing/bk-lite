@@ -10,6 +10,7 @@ import { useTranslation } from "@/utils/i18n";
 import { Button, Popconfirm, message, Tag, Tooltip, Input } from "antd";
 import { ReloadOutlined } from '@ant-design/icons';
 import ReleaseModal from "@/app/mlops/components/ReleaseModal";
+import ServingGuideDrawer from "@/app/mlops/components/ServingGuideDrawer";
 import PermissionWrapper from '@/components/permission';
 import { ModalRef, Option, Pagination, TableData, DatasetType } from "@/app/mlops/types";
 import { ColumnItem } from "@/types";
@@ -69,6 +70,8 @@ const ServingPage = () => {
     total: 0,
     pageSize: 20
   });
+  const [guideOpen, setGuideOpen] = useState<boolean>(false);
+  const [selectedServing, setSelectedServing] = useState<TableData | null>(null);
 
   // Update function mapping
   // const updateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
@@ -174,17 +177,12 @@ const ServingPage = () => {
         // const isActive = record.status === 'active';
         return (
           <>
+            <PermissionWrapper requiredPermissions={['View']}>
+              <Button type="link" className="mr-2" onClick={() => handleOpenGuide(record)}>{t(`serving-guide.usageExample`)}</Button>
+            </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`model-release.configuration`)}</Button>
             </PermissionWrapper>
-            {/* {status !== 'active' ?
-              <PermissionWrapper requiredPermissions={['Edit']}>
-                <Button type="link" className="mr-2" onClick={() => handleModelActive(record.id, isActive)}>{t(`model-release.release`)}</Button>
-              </PermissionWrapper> :
-              <PermissionWrapper requiredPermissions={['Edit']}>
-                <Button type="link" className="mr-2" danger onClick={() => handleModelActive(record.id, isActive)}>{t(`model-release.discontinued`)}</Button>
-              </PermissionWrapper>
-            } */}
             {state !== 'running' && state !== 'unknown' ?
               <PermissionWrapper requiredPermissions={['Start']}>
                 <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)}>{t(`mlops-common.start`)}</Button>
@@ -220,6 +218,11 @@ const ServingPage = () => {
 
   const handleEdit = (record: any) => {
     modalRef.current?.showModal({ type: 'edit', form: record });
+  };
+
+  const handleOpenGuide = (record: TableData) => {
+    setSelectedServing(record);
+    setGuideOpen(true);
   };
 
   const getModelServings = async (name = searchName) => {
@@ -372,6 +375,12 @@ const ServingPage = () => {
         </div>
       </div>
       <ReleaseModal ref={modalRef} trainjobs={trainjobs} activeTag={[algorithmType]} onSuccess={() => getModelServings()} />
+      <ServingGuideDrawer
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        algorithmType={algorithmType}
+        serving={selectedServing}
+      />
     </>
   )
 };

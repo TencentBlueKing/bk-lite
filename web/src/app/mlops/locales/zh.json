@@ -195,5 +195,54 @@
     "jsonError": "JSON 格式错误",
     "pleaseInput": "请输入",
     "editJsonConfigHint": "请在表单配置标签页中编辑 JSON 配置"
+  },
+  "serving-guide": {
+    "title": "使用指南",
+    "usageExample": "示例",
+    "capabilityTest": "能力测试",
+    "endpoint": "调用地址",
+    "endpointTip": "请将 <服务器IP> 替换为部署服务的机器 IP 地址",
+    "example": "示例",
+    "requestFormat": "请求格式",
+    "responseFormat": "响应格式",
+    "requestBody": "请求体",
+    "requestBodyPlaceholder": "输入 JSON 格式的请求数据",
+    "testTip": "serving_id 会自动填充，只需修改 data 中的测试数据",
+    "testTipNew": "只需修改请求体中的测试数据",
+    "sendRequest": "发送请求",
+    "response": "响应结果",
+    "serviceNotRunning": "服务未运行，请先启动服务后再进行测试",
+    "invalidJson": "请求体 JSON 格式无效",
+    "serverIp": "服务器IP",
+    "serverUrl": "服务器地址",
+    "serverUrlPlaceholder": "例如: http://192.168.1.100",
+    "serverUrlTip": "输入部署模型服务的服务器地址，不包含端口号",
+    "serverUrlRequired": "请输入服务器地址",
+    "tip": {
+      "anomalyDetection": {
+        "request": "data 数组包含时间序列数据点，每个点需要 timestamp（Unix时间戳）和 value（数值）字段；config.threshold 可选，用于设置异常阈值",
+        "response": "响应中 is_anomaly 表示是否为异常点，score 为异常分数（越高越可能是异常）"
+      },
+      "timeseriesPredict": {
+        "request": "data 数组包含历史时间序列数据点；config.steps 为必填项，指定预测未来的步数",
+        "response": "响应中 predictions 数组包含预测结果，每个点包含预测的 timestamp 和 value"
+      },
+      "logClustering": {
+        "request": "data 数组包含日志文本字符串；config.return_details 可选，设为 true 返回详细聚类信息",
+        "response": "响应中 clusters 数组包含聚类结果，每个聚类包含模板、日志数量和具体日志内容"
+      },
+      "classification": {
+        "request": "texts 数组包含待分类的文本字符串；config.top_k 可选，指定返回前 k 个分类结果",
+        "response": "响应中 results 数组包含分类结果，每条记录包含预测类别和概率分布"
+      },
+      "imageClassification": {
+        "request": "images 数组包含 base64 编码的图片数据；config.top_k 可选，指定返回前 k 个分类结果",
+        "response": "响应中 results 数组包含分类结果，每张图片返回预测类别和置信度列表"
+      },
+      "objectDetection": {
+        "request": "images 数组包含 base64 编码的图片数据；config.conf_threshold 可选，设置置信度阈值",
+        "response": "响应中 results 数组包含检测结果，每张图片返回检测到的目标及其边界框坐标"
+      }
+    }
   }
 }
