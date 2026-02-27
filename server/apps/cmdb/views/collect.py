@@ -13,6 +13,9 @@ from rest_framework.decorators import action
 
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.permissions.inst_task_permission import InstanceTaskPermission
+from apps.cmdb.utils.base import get_current_team_from_request
+from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.rpc.node_mgmt import NodeMgmt
@@ -56,13 +59,63 @@ class CollectModelViewSet(AuthViewSet):
         return WebUtils.response_success(data)
 
     def get_serializer_class(self):
-        if self.action == 'list':
+        if self.action == "list":
             return CollectModelLIstSerializer
         return super().get_serializer_class()
 
     @HasPermission("auto_collection-View")
     def list(self, request, *args, **kwargs):
         return super(CollectModelViewSet, self).list(request, *args, **kwargs)
+
+    def get_queryset_by_permission(self, request, queryset, permission_key=None):
+        current_team = get_current_team_from_request(request, required=False)
+        if not current_team:
+            return queryset.filter(id=0)
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        if include_children:
+            query_groups = GroupUtils.get_group_with_descendants(current_team)
+        else:
+            query_groups = [current_team]
+        if not query_groups:
+            query_groups = [current_team]
+
+        team_query = Q()
+        for team_id in query_groups:
+            team_query = team_query | Q(team__contains=[team_id]) | Q(team__contains=[str(team_id)])
+        base_queryset = queryset.filter(team_query)
+        permission_key = permission_key or getattr(self, "permission_key", None)
+        if not permission_key:
+            return base_queryset
+
+        if not include_children:
+            app_name = self._get_app_name()
+            current_team = request.COOKIES.get("current_team", "0")
+            permission_data = get_permission_rules(
+                request.user, current_team, app_name, permission_key, include_children
+            )
+            if not isinstance(permission_data, dict) or not permission_data:
+                return base_queryset
+            instance_ids = [
+                i["id"] for i in permission_data.get("instance", []) if isinstance(i, dict) and "id" in i
+            ]
+            team_entries = permission_data.get("team", [])
+            allowed_teams = set()
+            for team_entry in team_entries:
+                if isinstance(team_entry, dict) and "id" in team_entry:
+                    allowed_teams.add(team_entry["id"])
+                elif isinstance(team_entry, int):
+                    allowed_teams.add(team_entry)
+            allowed_teams &= set(query_groups)
+            allowed_team_query = Q()
+            for team_id in allowed_teams:
+                allowed_team_query = allowed_team_query | Q(team__contains=[team_id]) | Q(team__contains=[str(team_id)])
+            if instance_ids:
+                if allowed_teams:
+                    return base_queryset.filter(Q(id__in=instance_ids) | allowed_team_query)
+                return base_queryset.filter(id__in=instance_ids)
+            if allowed_teams:
+                return base_queryset.filter(allowed_team_query)
+        return base_queryset
 
     @HasPermission("auto_collection-Add")
     def create(self, request, *args, **kwargs):
@@ -170,7 +223,18 @@ class CollectModelViewSet(AuthViewSet):
         # 云对象可以重复选择不做过滤
         instances = CollectModels.objects.filter(~Q(instances=[]), ~Q(task_type=CollectPluginTypes.CLOUD),
                                                  task_type=task_type).values_list("instances", flat=True)
-        result = [{"id": instance[0]["_id"], "inst_name": instance[0]["inst_name"]} for instance in instances]
+        result = []
+        for instance in instances:
+            if not isinstance(instance, list) or not instance:
+                continue
+            instance_data = instance[0]
+            if not isinstance(instance_data, dict):
+                continue
+            instance_id = instance_data.get("_id")
+            instance_name = instance_data.get("inst_name")
+            if instance_id is None or instance_name is None:
+                continue
+            result.append({"id": instance_id, "inst_name": instance_name})
         return WebUtils.response_success(result)
 
     @action(methods=["POST"], detail=False)

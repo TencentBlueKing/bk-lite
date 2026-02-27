@@ -93,7 +93,7 @@ export const K8S_FORM_INITIAL_VALUES = {
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalMinutes: 30,
   intervalValue: 30,
-  timeout: 60,
+  timeout: 300,
 };
 
 export const VM_FORM_INITIAL_VALUES = {
@@ -102,7 +102,7 @@ export const VM_FORM_INITIAL_VALUES = {
   intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
   port: '443',
-  timeout: 600,
+  timeout: 300,
   sslVerify: false,
 };
 
@@ -113,7 +113,7 @@ export const SNMP_FORM_INITIAL_VALUES = {
   enterType: ENTER_TYPE.AUTOMATIC,
   version: 'v2',
   snmp_port: '161',
-  timeout: 60,
+  timeout: 10,
   level: 'authNoPriv',
   integrity: 'sha',
   privacy: 'aes',
@@ -128,7 +128,7 @@ export const SQL_FORM_INITIAL_VALUES = {
   name: '',
   password: '',
   port: '3306',
-  timeout: 60,
+  timeout: 10,
 };
 
 export const CLOUD_FORM_INITIAL_VALUES = {
@@ -139,7 +139,7 @@ export const CLOUD_FORM_INITIAL_VALUES = {
   accessKey: '',
   accessSecret: '',
   regionId: '',
-  timeout: 600
+  timeout: 300
 };
 
 export const HOST_FORM_INITIAL_VALUES = {
@@ -150,7 +150,7 @@ export const HOST_FORM_INITIAL_VALUES = {
   username: '',
   password: '',
   port: '22',
-  timeout: 60
+  timeout: 10
 };
 
 export const validateCycleTime = (
