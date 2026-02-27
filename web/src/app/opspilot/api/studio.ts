@@ -42,6 +42,10 @@ export const useStudioApi = () => {
     return get('/opspilot/bot_mgmt/workflow_task_result/', { params });
   };
 
+  const fetchExecutionOutputData = async (params: { execution_id: string; id: number }): Promise<Record<string, unknown>> => {
+    return get('/opspilot/bot_mgmt/workflow_task_result/execution_output_data/', { params });
+  };
+
   const fetchChannels = async (botId: string | null): Promise<ChannelProps[]> => {
     return get('/opspilot/bot_mgmt/bot/get_bot_channels/', { params: { bot_id: botId } });
   };
@@ -142,6 +146,7 @@ export const useStudioApi = () => {
   return {
     fetchLogs,
     fetchWorkflowTaskResult,
+    fetchExecutionOutputData,
     fetchChannels,
     fetchBotDetail,
     updateChannel,
