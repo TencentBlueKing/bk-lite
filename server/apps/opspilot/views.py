@@ -66,6 +66,13 @@ def safe_conversation_window_size(payload: dict[str, Any], fallback: int) -> int
     return num if num > 0 else fallback
 
 
+def safe_int(value: Any, default: int | None = None) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def get_loader(request=None, default_lang="en"):
     """获取语言加载器实例
 
@@ -115,7 +122,10 @@ def validate_openai_token(token, team=None, is_mobile=False):
     if not user:
         if team is None and not is_mobile:
             return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
-        team = team or 0
+        team_id = safe_int(team, 0 if is_mobile else None)
+        if team_id is None:
+            logger.warning(f"Invalid team value in token validation: {team}")
+            return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
         client = SystemMgmt()
         result = client.verify_token(token)
         if not result.get("result"):
@@ -124,7 +134,7 @@ def validate_openai_token(token, team=None, is_mobile=False):
         user = UserAPISecret(
             username=user_info["username"],
             domain=user_info["domain"],
-            team=int(team),
+            team=team_id,
         )
         # Token 认证：从 verify_token 结果获取 locale
         user.locale = user_info.get("locale", "en")
@@ -339,7 +349,13 @@ def lobe_skill_execute(request):
     stream_mode = kwargs.get("stream", False)
     # stream_mode = False
     token = extract_api_token(request)
-    is_valid, msg = validate_header_token(token, int(kwargs["studio_id"]))
+    studio_id = safe_int(kwargs.get("studio_id"))
+    if studio_id is None:
+        return JsonResponse(
+            {"choices": [{"message": {"role": "assistant", "content": "Invalid studio_id"}}]},
+            status=400,
+        )
+    is_valid, msg = validate_header_token(token, studio_id)
     if not is_valid:
         if stream_mode:
             return generate_stream_error(msg["choices"][0]["message"]["content"])
