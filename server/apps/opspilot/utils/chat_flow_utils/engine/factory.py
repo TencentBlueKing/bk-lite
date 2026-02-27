@@ -14,7 +14,11 @@ class FlowExecutionFactory:
 
     @staticmethod
     def create_flow_engine(
-        workflow: BotWorkFlow, start_node_id: str = None, config: Optional[Dict[str, Any]] = None, entry_type: str = None
+        workflow: BotWorkFlow,
+        start_node_id: str = None,
+        config: Optional[Dict[str, Any]] = None,
+        entry_type: str = None,
+        execution_id: str = None,
     ) -> ChatFlowEngine:
         """创建流程引擎
 
@@ -24,7 +28,7 @@ class FlowExecutionFactory:
             config: 配置项
             entry_type: 入口类型（如 openai、agui 等）
         """
-        engine = ChatFlowEngine(workflow, start_node_id, entry_type=entry_type)
+        engine = ChatFlowEngine(workflow, start_node_id, entry_type=entry_type, execution_id=execution_id)
 
         if config:
             # 应用配置
@@ -37,7 +41,11 @@ class FlowExecutionFactory:
 
 # 为了向后兼容，创建一些工厂函数
 def create_chat_flow_engine(
-    workflow: BotWorkFlow, start_node_id: str = None, config: Optional[Dict[str, Any]] = None, entry_type: str = None
+    workflow: BotWorkFlow,
+    start_node_id: str = None,
+    config: Optional[Dict[str, Any]] = None,
+    entry_type: str = None,
+    execution_id: str = None,
 ) -> ChatFlowEngine:
     """创建聊天流程引擎
 
@@ -47,4 +55,4 @@ def create_chat_flow_engine(
         config: 配置项
         entry_type: 入口类型（如 openai、agui 等）
     """
-    return FlowExecutionFactory.create_flow_engine(workflow, start_node_id, config, entry_type)
+    return FlowExecutionFactory.create_flow_engine(workflow, start_node_id, config, entry_type, execution_id)

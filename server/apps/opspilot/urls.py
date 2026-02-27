@@ -65,7 +65,6 @@ urlpatterns += [
         views.get_bot_detail,
         name="get_bot_detail",
     ),
-    path(r"bot_mgmt/rasa_model_download/", views.model_download, name="model_download"),
     path(r"bot_mgmt/skill_execute/", views.skill_execute, name="skill_execute"),
     path(
         r"bot_mgmt/v1/chat/completions",
@@ -116,11 +115,6 @@ urlpatterns += [
         r"bot_mgmt/execute_chat_flow_dingtalk/<int:bot_id>/",
         views.execute_chat_flow_dingtalk,
         name="execute_chat_flow_dingtalk",
-    ),
-    path(
-        r"test/",
-        views.test,
-        name="test",
     ),
     # path(r"api/bot/automation_skill_execute", AutomationSkillExecuteView.as_view(), name="automation_skill_execute"),
 ]

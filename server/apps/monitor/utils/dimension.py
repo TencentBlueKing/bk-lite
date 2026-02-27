@@ -113,3 +113,34 @@ def parse_instance_id(instance_id: Any) -> tuple:
             return (instance_id,)
 
     return (instance_id,)
+
+
+def format_dimension_value(
+    dimensions: dict,
+    ordered_keys: list = None,
+    name_map: dict = None,
+) -> str:
+    """格式化dimension_value变量
+
+    规则：
+    - 按 ordered_keys 顺序输出，缺省按 dimensions 原顺序
+    - 单项格式为 "维度名称:维度值"
+    - 维度值为空时保留为 "维度名称:"
+    - 多项以英文逗号","连接（不带空格）
+    """
+    if not dimensions:
+        return ""
+
+    name_map = name_map or {}
+    keys = ordered_keys or list(dimensions.keys())
+    parts = []
+
+    for key in keys:
+        if key not in dimensions:
+            continue
+        display_name = name_map.get(key) or key
+        value = dimensions.get(key)
+        value_str = "" if value is None else str(value)
+        parts.append(f"{display_name}:{value_str}")
+
+    return ",".join(parts)

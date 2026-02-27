@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.db import transaction
 from django.http import JsonResponse
+from rest_framework import status
 from rest_framework.decorators import action
 
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
@@ -35,6 +36,18 @@ class CollectModelViewSet(AuthViewSet):
     pagination_class = CustomPageNumberPagination
     permission_classes = [InstanceTaskPermission]
     permission_key = PERMISSION_TASK
+
+    @staticmethod
+    def _parse_positive_int(value, field_name, default):
+        if value in (None, ""):
+            return default
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field_name} 必须是整数")
+        if parsed < 1:
+            raise ValueError(f"{field_name} 必须大于等于 1")
+        return parsed
 
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="collect_model_tree")
@@ -94,7 +107,21 @@ class CollectModelViewSet(AuthViewSet):
             return WebUtils.response_error(error_message="任务已审批！无法再次审批！", status_code=400)
 
         data = request.data
-        instances = data["instances"]
+        instances = data.get("instances")
+        if not isinstance(instances, list) or not instances:
+            return WebUtils.response_error(
+                error_message="instances 必须是非空数组",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        if any(
+            not isinstance(instance, dict) or not instance.get("model_id")
+            for instance in instances
+        ):
+            return WebUtils.response_error(
+                error_message="instances 参数非法，必须包含 model_id",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
         model_map = {instance['model_id']: instance for instance in instances}
         CollectModelService.collect_controller(instance, model_map)
         return WebUtils.response_success()
@@ -106,9 +133,21 @@ class CollectModelViewSet(AuthViewSet):
         获取所有节点
         """
         params = request.GET.dict()
+        try:
+            page = self._parse_positive_int(
+                params.get("page", 1), field_name="page", default=1
+            )
+            page_size = self._parse_positive_int(
+                params.get("page_size", 10), field_name="page_size", default=10
+            )
+        except ValueError as err:
+            return WebUtils.response_error(
+                error_message=str(err), status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         query_data = {
-            "page": int(params.get("page", 1)),
-            "page_size": int(params.get("page_size", 10)),
+            "page": page,
+            "page_size": page_size,
             "name": params.get("name", ""),
             "permission_data": {
                 "username": request.user.username,
@@ -211,7 +250,17 @@ class OidModelViewSet(ModelViewSet):
 
     @HasPermission("soid_library-Add")
     def create(self, request, *args, **kwargs):
-        oid = request.data["oid"]
+        raw_oid = request.data.get("oid")
+        oid = (raw_oid or "").strip() if isinstance(raw_oid, str) else ""
+        if not oid:
+            return WebUtils.response_error(
+                error_message="oid 不能为空", status_code=status.HTTP_400_BAD_REQUEST
+            )
+        if raw_oid != oid:
+            return WebUtils.response_error(
+                error_message="oid 不允许包含首尾空格",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
         if OidMapping.objects.filter(oid=oid).exists():
             return JsonResponse({"data": [], "result": False, "message": "OID已存在！"})
 
@@ -219,7 +268,17 @@ class OidModelViewSet(ModelViewSet):
 
     @HasPermission("soid_library-Edit")
     def update(self, request, *args, **kwargs):
-        oid = request.data["oid"]
+        raw_oid = request.data.get("oid")
+        oid = (raw_oid or "").strip() if isinstance(raw_oid, str) else ""
+        if not oid:
+            return WebUtils.response_error(
+                error_message="oid 不能为空", status_code=status.HTTP_400_BAD_REQUEST
+            )
+        if raw_oid != oid:
+            return WebUtils.response_error(
+                error_message="oid 不允许包含首尾空格",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
         if OidMapping.objects.filter(~Q(id=self.get_object().id), oid=oid).exists():
             return JsonResponse({"data": [], "result": False, "message": "OId已存在！"})
 
