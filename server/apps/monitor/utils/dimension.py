@@ -1,7 +1,7 @@
 """维度处理工具函数 - 用于处理监控指标的维度数据"""
 
 import ast
-from typing import Union
+from typing import Any, Union
 
 
 def build_dimensions(
@@ -91,3 +91,25 @@ def build_metric_template_vars(dimensions: dict) -> dict:
         模板变量字典，键名格式为 "metric__key"
     """
     return {f"metric__{k}": v for k, v in dimensions.items()}
+
+
+def parse_instance_id(instance_id: Any) -> tuple:
+    """统一解析实例ID为tuple，避免调用方重复写 literal_eval 兜底逻辑。"""
+    if isinstance(instance_id, tuple):
+        return instance_id
+
+    if isinstance(instance_id, list):
+        return tuple(instance_id)
+
+    if isinstance(instance_id, str):
+        try:
+            parsed = ast.literal_eval(instance_id)
+            if isinstance(parsed, tuple):
+                return parsed
+            if isinstance(parsed, list):
+                return tuple(parsed)
+            return (parsed,)
+        except (ValueError, SyntaxError):
+            return (instance_id,)
+
+    return (instance_id,)
