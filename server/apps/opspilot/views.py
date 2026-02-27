@@ -109,10 +109,15 @@ def get_bot_detail(request, bot_id):
 
 @api_exempt
 def model_download(request):
+    loader = get_loader(request)
     bot_id = request.GET.get("bot_id")
-    bot = Bot.objects.filter(id=bot_id).first()
+    api_token = extract_api_token(request)
+    if not api_token:
+        return JsonResponse({"result": False, "message": loader.get("error.no_authorization", "No authorization")}, status=401)
+
+    bot = Bot.objects.filter(id=bot_id, api_token=api_token).first()
     if not bot:
-        return JsonResponse({})
+        return JsonResponse({"result": False, "message": loader.get("error.no_authorization", "No authorization")}, status=403)
     rasa_model = bot.rasa_model
     if not rasa_model:
         return JsonResponse({})
@@ -120,8 +125,10 @@ def model_download(request):
     file = storage.open(rasa_model.model_file.name, "rb")
 
     # Calculate ETag
-    data = file.read()
-    etag = hashlib.md5(data).hexdigest()
+    md5_hash = hashlib.md5()
+    for chunk in iter(lambda: file.read(8192), b""):
+        md5_hash.update(chunk)
+    etag = md5_hash.hexdigest()
 
     # Reset file pointer to start
     file.seek(0)
@@ -318,7 +325,7 @@ def openai_completions(request):
     current_ip, _ = get_client_ip(request)
 
     stream_mode = kwargs.get("stream", False)
-    token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
+    token = extract_api_token(request)
 
     is_valid, msg = validate_openai_token(token)
     if not is_valid:
@@ -365,7 +372,7 @@ def lobe_skill_execute(request):
 
     stream_mode = kwargs.get("stream", False)
     # stream_mode = False
-    token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
+    token = extract_api_token(request)
     is_valid, msg = validate_header_token(token, int(kwargs["studio_id"]))
     if not is_valid:
         if stream_mode:
@@ -577,7 +584,7 @@ def execute_chat_flow(request, bot_id, node_id):
     is_mobile = any(keyword in user_agent.lower() for keyword in ["android", "iphone", "ipad", "mobile", "windows phone", "tauri"])
 
     # 验证token
-    token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
+    token = extract_api_token(request)
     is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None, is_mobile)
     if not is_valid:
         return JsonResponse(msg)
@@ -791,11 +798,3 @@ def execute_chat_flow_dingtalk(request, bot_id):
     # 5. 处理HTTP回调模式的消息
     return dingtalk_utils.handle_dingtalk_message(request, bot_chat_flow, dingtalk_config)
 
-
-@api_exempt
-def test(request):
-    ip, is_routable = get_client_ip(request)
-    kwargs = request.GET.dict()
-    data = json.loads(request.body) if request.body else {}
-    kwargs.update(data)
-    return JsonResponse({"result": True, "data": {"ip": ip, "is_routable": is_routable, "kwargs": kwargs}})

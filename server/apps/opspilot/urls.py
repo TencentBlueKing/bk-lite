@@ -117,10 +117,5 @@ urlpatterns += [
         views.execute_chat_flow_dingtalk,
         name="execute_chat_flow_dingtalk",
     ),
-    path(
-        r"test/",
-        views.test,
-        name="test",
-    ),
     # path(r"api/bot/automation_skill_execute", AutomationSkillExecuteView.as_view(), name="automation_skill_execute"),
 ]
