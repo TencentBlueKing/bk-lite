@@ -13,7 +13,8 @@ const DERIVATIVE_OBJECTS = [
   'Pod',
   'Node',
   'CVM',
-  'SangforSCPHost'
+  'SangforSCPHost',
+  'SangforSCPVM'
 ];
 
 const OBJECT_DEFAULT_ICON: string = 'ziyuan';

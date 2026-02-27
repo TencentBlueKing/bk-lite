@@ -18,9 +18,18 @@ const NODE_STATUS_MAP: ObjectIconMap = {
   unavailable: 'gray'
 };
 
+const OBJECT_NAME_TO_TYPE_MAP: Record<string, string> = {
+  Docker: 'Container Management',
+  Cluster: 'K8S',
+  vCenter: 'VMWare',
+  TCP: 'Tencent Cloud',
+  SangforSCP: 'Cloud'
+};
+
 export {
   CONNECTION_LIFETIME_UNITS,
   TIMEOUT_UNITS,
   NEED_TAGS_ENTRY_OBJECTS,
-  NODE_STATUS_MAP
+  NODE_STATUS_MAP,
+  OBJECT_NAME_TO_TYPE_MAP
 };

@@ -30,7 +30,10 @@ import GroupModal from './groupModal';
 import MetricModal from './metricModal';
 import { useSearchParams } from 'next/navigation';
 import Permission from '@/components/permission';
-import { NEED_TAGS_ENTRY_OBJECTS } from '@/app/monitor/constants/integration';
+import {
+  NEED_TAGS_ENTRY_OBJECTS,
+  OBJECT_NAME_TO_TYPE_MAP
+} from '@/app/monitor/constants/integration';
 import { cloneDeep } from 'lodash';
 
 const Configure = () => {
@@ -166,15 +169,12 @@ const Configure = () => {
     let _objId = '';
     try {
       if (NEED_TAGS_ENTRY_OBJECTS.includes(groupName)) {
-        const typeMaps: Record<string, string> = {
-          Docker: 'Container Management',
-          Cluster: 'K8S',
-          vCenter: 'VMWare',
-          TCP: 'Tencent Cloud'
-        };
         const data = await getMonitorObject();
         const _items = data
-          .filter((item: ObjectItem) => item.type === typeMaps[groupName])
+          .filter(
+            (item: ObjectItem) =>
+              item.type === OBJECT_NAME_TO_TYPE_MAP[groupName]
+          )
           .sort((a: ObjectItem, b: ObjectItem) => a.id - b.id)
           .map((item: ObjectItem) => ({
             label: item.display_name,
