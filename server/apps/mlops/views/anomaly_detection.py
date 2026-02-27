@@ -537,57 +537,6 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @action(detail=True, methods=["get"], url_path="get_file")
-    @HasPermission("anomaly_detection-View")
-    def get_file(self, request, *args, **kwargs):
-        try:
-            train_job = self.get_object()
-            train_obj = train_job.train_data_id
-            val_obj = train_job.val_data_id
-            test_obj = train_job.test_data_id
-
-            def mergePoints(data_obj, filename):
-                train_data = (
-                    list(data_obj.train_data) if hasattr(data_obj, "train_data") else []
-                )
-                anomlay_indices = (
-                    data_obj.metadata.get("anomaly_point", [])
-                    if hasattr(data_obj, "metadata")
-                    and isinstance(data_obj.metadata, dict)
-                    else []
-                )
-
-                columns = ["timestamp", "value"]
-
-                if anomlay_indices and isinstance(anomlay_indices, list):
-                    for idx, item in enumerate(train_data):
-                        item["label"] = 1 if idx in anomlay_indices else 0
-                    columns.append("label")
-
-                return {"data": train_data, "columns": columns, "filename": filename}
-
-            return Response(
-                [
-                    mergePoints(train_obj, "train_file.csv"),
-                    mergePoints(val_obj, "val_file.csv"),
-                    mergePoints(test_obj, "test_file.csv"),
-                    {
-                        "data": train_job.hyperopt_config,
-                        "columns": [],
-                        "filename": "hyperopt_config.json",
-                    },
-                ]
-            )
-
-        except Exception as e:
-            logger.error(
-                f"获取训练文件失败 - TrainJobID: {kwargs.get('pk')} - {str(e)}"
-            )
-            return Response(
-                {"error": f"获取文件信息失败: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
     @HasPermission("anomaly_detection-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
