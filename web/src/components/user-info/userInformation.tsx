@@ -26,6 +26,7 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
+import { useUserInfoContext } from '@/context/userInfo';
 import useApiClient from '@/utils/request';
 import { ZONEINFO_OPTIONS, LOCALE_OPTIONS } from '@/app/system-manager/constants/userDropdowns';
 import PasswordModal from './passwordModal';
@@ -43,6 +44,7 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
   const [emailForm] = Form.useForm();
   const { get, post } = useApiClient();
   const { clientData } = useClientData();
+  const { refreshUserInfo } = useUserInfoContext();
 
 
   // 状态管理
@@ -103,6 +105,8 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
         locale: values.locale
       });
       message.success(t('common.saveSuccess'));
+      // 刷新右上角用户信息
+      await refreshUserInfo();
       onClose();
     } catch {
       console.error('Failed to save user info');

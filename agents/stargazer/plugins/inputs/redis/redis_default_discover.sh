@@ -63,7 +63,6 @@ discover_redis() {
     read -r -a procs <<< "$procs_output"
     
     if [ ${#procs[@]} -eq 0 ]; then
-        echo "{}"
         exit 0
     fi
 
@@ -86,7 +85,7 @@ discover_redis() {
 
     for proc in "${procs[@]}"; do
         local pid ip port redis_cli install_path version max_clients max_memory role inst_name redis_info
-        
+
         pid=$(echo "$proc" | cut -d: -f1)
         ip=$(echo "$proc" | cut -d: -f2)
         port=$(echo "$proc" | cut -d: -f3)
@@ -111,10 +110,7 @@ discover_redis() {
             max_memory=$(run_cmd "$redis_cli -p $port config get maxmemory" 2>/dev/null | grep -A1 "maxmemory" | tail -n1)
             role=$(run_cmd "$redis_cli -p $port info replication" 2>/dev/null | grep "role:" | awk -F: '{print $2}' | tr -d '\r')
         else
-            version=""
-            max_clients=""
-            max_memory=""
-            role=""
+            continue
         fi
 
         inst_name="${bk_host_innerip}-redis-${port}"

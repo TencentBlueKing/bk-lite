@@ -54,6 +54,7 @@
     "selectTestfile": "Select a test file",
     "port": "Port",
     "portIptMsg": "Please enter the port number",
+    "portDesc": "Specify the access port for the model service. If left empty, the system will automatically assign an available port.",
     "containerStatus": "Container Status",
     "downloadStart": "Download Started",
     "downloadFailed": "Download Failed",
@@ -61,7 +62,9 @@
     "containerCompleted": "Completed",
     "containerStopped": "Stopped",
     "containerUnknown": "Unknown",
-    "containerError": "Error"
+    "containerError": "error",
+    "terminating": "Deleting",
+    "pendingDeploy": "Waiting"
   },
   "datasets": {
     "datasets": "Datasets",
@@ -120,7 +123,7 @@
     "fileNameMustHaveExtension": "Filename must have an extension",
     "fileNameTooLong": "Filename is too long (maximum 64 characters)",
     "fileNameInvalidChars": "Filename can only contain English letters, numbers, and underscores",
-    "uploadHintAnomaly": "CSV file must contain columns: timestamp, value",
+    "uploadHintAnomaly": "CSV file must contain columns: timestamp, value, label",
     "uploadHintTimeseries": "CSV file must contain columns: timestamp, value",
     "uploadHintClassification": "CSV file must contain columns: text, label",
     "uploadHintImageClassification": "Supports common image formats, max 2MB per image",
@@ -165,7 +168,8 @@
     "delModel": "Delete Model",
     "delModelContent": "Are you sure you want to delete this model?",
     "configuration": "Configuration",
-    "discontinued": "Discontinued"
+    "discontinued": "Discontinued",
+    "searchText": "Search model name"
   },
   "algorithmConfig": {
     "title": "Algorithm Config",
@@ -174,7 +178,7 @@
     "addConfig": "Add Algorithm Config",
     "editConfig": "Edit Algorithm Config",
     "algorithmName": "Algorithm ID",
-    "algorithmNameTooltip": "Unique algorithm identifier name, English recommended, e.g., ECOD, IsolationForest",
+    "algorithmNameTooltip": "The unique identifier ID for the algorithm must match the actual algorithm registration name within the algorithm image.",
     "displayName": "Display Name",
     "scenarioDescription": "Scenario Description",
     "image": "Image",

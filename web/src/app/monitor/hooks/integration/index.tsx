@@ -51,6 +51,19 @@ import { useGBase8aConfig } from './objects/database/gBase8a';
 import { useVastBaseConfig } from './objects/database/vastBase';
 import { useKingBaseConfig } from './objects/database/kingBase';
 
+const loadEnterpriseConfig = (): (() => Record<string, any>) => {
+  try {
+    const enterprisePath = '../../enterprise/hooks/integration';
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require(enterprisePath);
+    return mod.useEnterpriseConfig || (() => ({}));
+  } catch {
+    return () => ({});
+  }
+};
+
+const useEnterpriseConfig = loadEnterpriseConfig();
+
 export const useMonitorConfig = () => {
   const hardwareConfig = useHardwareConfig();
   const oracleConfig = useOracleConfig();
@@ -102,6 +115,7 @@ export const useMonitorConfig = () => {
   const gBase8aConfig = useGBase8aConfig();
   const vastBaseConfig = useVastBaseConfig();
   const kingBaseConfig = useKingBaseConfig();
+  const enterpriseConfig = useEnterpriseConfig();
 
   const config: any = useMemo(
     () => ({
@@ -155,8 +169,9 @@ export const useMonitorConfig = () => {
       GBase8a: gBase8aConfig,
       VastBase: vastBaseConfig,
       KingBase: kingBaseConfig,
+      ...enterpriseConfig // 商业版扩展
     }),
-    []
+    [enterpriseConfig]
   );
 
   // 获取指定插件的手动/自动配置模式
@@ -175,15 +190,15 @@ export const useMonitorConfig = () => {
       config_type: [],
       collector: '',
       instance_type: '',
-      object_name: '',
+      object_name: ''
     };
     let defaultPluginCfg: any = {
       getParams: () => ({
         instance_id: '',
-        instance_name: '',
+        instance_name: ''
       }),
       getFormItems: () => null,
-      configText: '',
+      configText: ''
     };
     if (data.mode === 'auto') {
       defaultPluginCfg = {
@@ -191,7 +206,7 @@ export const useMonitorConfig = () => {
         initTableItems: {},
         defaultForm: {},
         columns: [],
-        getParams: () => ({}),
+        getParams: () => ({})
       };
     }
     return pluginCfg || { ...commonConfig, ...defaultPluginCfg };
@@ -199,6 +214,6 @@ export const useMonitorConfig = () => {
 
   return {
     config,
-    getPlugin,
+    getPlugin
   };
 };

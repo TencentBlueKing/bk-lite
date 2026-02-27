@@ -1,24 +1,31 @@
 'use client';
 import { useState, useRef, useEffect } from "react";
 import { useParams } from 'next/navigation';
+import { useLocalizedTime } from "@/hooks/useLocalizedTime";
 import useMlopsTaskApi from "@/app/mlops/api/task";
 import useMlopsModelReleaseApi from "@/app/mlops/api/modelRelease";
 import CustomTable from "@/components/custom-table";
+import EllipsisWithTooltip from "@/components/ellipsis-with-tooltip";
 import { useTranslation } from "@/utils/i18n";
-import { Button, Popconfirm, message, Tag, Tooltip } from "antd";
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Popconfirm, message, Tag, Tooltip, Input } from "antd";
+import { ReloadOutlined } from '@ant-design/icons';
 import ReleaseModal from "@/app/mlops/components/ReleaseModal";
 import PermissionWrapper from '@/components/permission';
 import { ModalRef, Option, Pagination, TableData, DatasetType } from "@/app/mlops/types";
 import { ColumnItem } from "@/types";
 import { TrainJob } from "@/app/mlops/types/task";
 
+const { Search } = Input;
+
 const CONTAINER_STATE_MAP: Record<string, string> = {
   'running': 'green',
   'completed': 'blue',
   'not_found': 'default',
   'unknown': 'orange',
-  'error': 'red'
+  'error': 'red',
+  "terminating": 'orange',
+  'pending': 'default',
+  'failed': 'red'
 };
 
 const CONTAINER_TEXT_KEYS: Record<string, string> = {
@@ -26,7 +33,10 @@ const CONTAINER_TEXT_KEYS: Record<string, string> = {
   'completed': 'mlops-common.containerCompleted',
   'not_found': 'mlops-common.containerStopped',
   'unknown': 'mlops-common.containerUnknown',
-  'error': 'mlops-common.containerError'
+  'error': 'mlops-common.containerError',
+  'terminating': "mlops-common.terminating",
+  "pending": "mlops-common.pendingDeploy",
+  "failed": "mlops-common.failed"
 };
 
 const ServingPage = () => {
@@ -34,6 +44,7 @@ const ServingPage = () => {
   const params = useParams();
   const algorithmType = params.algorithmType as DatasetType;
   const modalRef = useRef<ModalRef>(null);
+  const { convertToLocalizedTime } = useLocalizedTime();
   const { getTrainJobList } = useMlopsTaskApi();
   const {
     getServingList,
@@ -47,10 +58,11 @@ const ServingPage = () => {
     startServingContainer,
     stopServingContainer
   } = useMlopsModelReleaseApi();
-  
+
   const [trainjobs, setTrainjobs] = useState<Option[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [searchName, setSearchName] = useState<string>('');
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -73,15 +85,16 @@ const ServingPage = () => {
       dataIndex: 'name',
       key: 'name'
     },
-    {
-      title: t(`model-release.modelDescription`),
-      dataIndex: 'description',
-      key: 'description'
-    },
+    // {
+    //   title: t(`model-release.modelDescription`),
+    //   dataIndex: 'description',
+    //   key: 'description'
+    // },
     {
       title: t(`model-release.publishStatus`),
       dataIndex: 'status',
       key: 'status',
+      width: 100,
       render: (_, record) => {
         const isActive = record.status === 'active'
         return <Tag color={isActive ? 'green' : 'default'}>{isActive ? t(`mlops-common.published`) : t(`mlops-common.waitRelease`)}</Tag>
@@ -91,6 +104,7 @@ const ServingPage = () => {
       title: t(`mlops-common.containerStatus`),
       dataIndex: 'container_info',
       key: 'container_info',
+      width: 120,
       render: (_, record) => {
         const { status, state, detail } = record.container_info;
         const isSuccess = status === 'success';
@@ -101,6 +115,51 @@ const ServingPage = () => {
             <Tag color={CONTAINER_STATE_MAP[_status]}>{t(CONTAINER_TEXT_KEYS[text])}</Tag>
           </Tooltip>
         )
+      }
+    },
+    {
+      title: t(`mlops-common.port`),
+      dataIndex: 'port',
+      key: 'port',
+      width: 100,
+      render: (_, record) => {
+        const port = record.container_info?.port || '';
+        return port ? <span>{port}</span> : <span>--</span>;
+      }
+    },
+    {
+      title: t(`mlops-common.createdAt`),
+      key: 'created_at',
+      dataIndex: 'created_at',
+      width: 170,
+      render: (_, record) => {
+        return <span>{convertToLocalizedTime(record.created_at, 'YYYY-MM-DD HH:mm:ss')}</span>
+      }
+    },
+    {
+      title: t(`mlops-common.creator`),
+      key: 'created_by',
+      dataIndex: 'created_by',
+      width: 120,
+      render: (_, { created_by }) => {
+        return created_by ? (
+          <div className="flex h-full items-center" title={created_by}>
+            <span
+              className="block w-4.5 h-4.5 leading-4.5 text-center content-center rounded-[50%] mr-2 text-white"
+              style={{ background: 'blue' }}
+            >
+              {created_by.slice(0, 1).toLocaleUpperCase()}
+            </span>
+            <span>
+              <EllipsisWithTooltip
+                className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+                text={created_by}
+              />
+            </span>
+          </div>
+        ) : (
+          <>--</>
+        );
       }
     },
     {
@@ -152,7 +211,7 @@ const ServingPage = () => {
 
   useEffect(() => {
     getModelServings();
-  }, [algorithmType]);
+  }, [algorithmType, pagination.current, pagination.pageSize]);
 
   const publish = (record: any) => {
     modalRef.current?.showModal({ type: 'add', form: record })
@@ -162,7 +221,7 @@ const ServingPage = () => {
     modalRef.current?.showModal({ type: 'edit', form: record });
   };
 
-  const getModelServings = async () => {
+  const getModelServings = async (name = searchName) => {
     if (!algorithmType) {
       setTableData([]);
       return;
@@ -174,6 +233,7 @@ const ServingPage = () => {
         key: algorithmType,
         page: pagination.current,
         page_size: pagination.pageSize,
+        name: name || undefined,
       };
 
       const [taskList, { count, items }] = await Promise.all([
@@ -262,15 +322,34 @@ const ServingPage = () => {
     getModelServings();
   };
 
+  const onSearch = (value: string) => {
+    setSearchName(value);
+    setPagination(prev => ({ ...prev, current: 1 }));
+    getModelServings(value);
+  };
+
+  const handleTableChange = (value: Pagination) => {
+    setPagination(value);
+  };
+
   return (
     <>
-      <div className="flex justify-end items-center mb-2 gap-2">
-        <PermissionWrapper requiredPermissions={['Add']}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => publish({})}>{t(`model-release.modelRelease`)}</Button>
-        </PermissionWrapper>
-        <PermissionWrapper requiredPermissions={['View']}>
-          <ReloadOutlined onClick={onRefresh} />
-        </PermissionWrapper>
+      <div className="flex justify-end items-center mb-4 gap-2">
+        <div className="flex items-center">
+          <Search
+            className="w-60 mr-1.5"
+            placeholder={t('model-release.searchText')}
+            enterButton
+            onSearch={onSearch}
+            style={{ fontSize: 15 }}
+          />
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button type="primary" className="mr-2" onClick={() => publish({})}>{t(`model-release.modelRelease`)}</Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['View']}>
+            <ReloadOutlined onClick={onRefresh} />
+          </PermissionWrapper>
+        </div>
       </div>
       <div className="flex-1 relative">
         <div className="absolute w-full">
@@ -281,6 +360,7 @@ const ServingPage = () => {
             loading={loading}
             rowKey='id'
             pagination={pagination}
+            onChange={handleTableChange}
           />
         </div>
       </div>

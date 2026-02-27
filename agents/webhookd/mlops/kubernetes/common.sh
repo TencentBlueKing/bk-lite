@@ -5,14 +5,65 @@
 # Kubernetes 命名空间（默认）
 KUBERNETES_NAMESPACE="${KUBERNETES_NAMESPACE:-mlops}"
 
+# 当前 Pod 所在的命名空间（用于将服务短名称解析为 FQDN）
+# 优先使用环境变量，其次读取 ServiceAccount 挂载，最终回退为 default
+if [ -n "${POD_NAMESPACE:-}" ]; then
+    _CURRENT_NAMESPACE="$POD_NAMESPACE"
+elif [ -f /var/run/secrets/kubernetes.io/serviceaccount/namespace ]; then
+    _CURRENT_NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+else
+    _CURRENT_NAMESPACE="default"
+fi
+
 # 训练镜像（如果没有从 JSON 传入，使用此默认值）
 TRAIN_IMAGE="${TRAIN_IMAGE:-classify-timeseries:latest}"
 
-# 日志函数
+# 日志函数（注意：webhookd 合并 stdout/stderr，日志会污染 HTTP 响应，此函数仅供调试使用）
+# 生产环境中不应使用此函数
 logger() {
     while IFS= read -r line; do
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $line" >&2
+        # 日志被禁用以避免污染 HTTP 响应
+        # echo "[$(date '+%Y-%m-%d %H:%M:%S')] $line" >&2
+        :
     done
+}
+
+# 将服务 URL 中的短名称 host 解析为 K8s FQDN
+# 例: http://minio:9000 → http://minio.bklite-prod.svc.cluster.local:9000
+# 如果 host 已包含 '.'（如 FQDN 或 IP），则不做转换
+resolve_endpoint_fqdn() {
+    local url="$1"
+    local ns="${2:-$_CURRENT_NAMESPACE}"
+
+    # 提取 scheme（http:// 或 https://）
+    local scheme="${url%%://*}"
+    local rest="${url#*://}"
+
+    # 提取 host:port 部分（去掉路径）
+    local host_port="${rest%%/*}"
+    local path="/${rest#*/}"
+    # 如果没有路径部分，path 会等于 /rest 本身，修正
+    if [ "$rest" = "$host_port" ]; then
+        path=""
+    fi
+
+    # 分离 host 和 port
+    local host="${host_port%%:*}"
+    local port=""
+    if [ "$host_port" != "$host" ]; then
+        port=":${host_port#*:}"
+    fi
+
+    # 如果 host 不含 '.'，说明是短名称，需要补全
+    case "$host" in
+        *.*)
+            # 已经是 FQDN 或 IP，原样返回
+            echo "$url"
+            ;;
+        *)
+            echo "${scheme}://${host}.${ns}.svc.cluster.local${port}${path}"
+            ;;
+    esac
 }
 
 # JSON 成功响应
@@ -66,35 +117,31 @@ setup_device_resources() {
     
     # 未传递、null 或 cpu：默认 CPU 模式
     if [ -z "$device" ] || [ "$device" = "null" ] || [ "$device" = "cpu" ]; then
-        echo "[INFO] Device: CPU" >&2
+        # Device: CPU (日志被禁用以避免污染 HTTP 响应)
         return 0
     fi
     
     case "$device" in
         "auto")
             # 自动检测 GPU
-            echo "[INFO] Device: auto (detecting GPU availability...)" >&2
             if check_gpu_available_k8s; then
                 DEVICE_LIMIT_YAML="            nvidia.com/gpu: \"1\""
-                echo "[INFO] GPU nodes detected, requesting 1 GPU" >&2
-            else
-                echo "[INFO] No GPU nodes detected, using CPU mode" >&2
+                # GPU nodes detected, requesting 1 GPU
             fi
+            # else: No GPU nodes detected, using CPU mode
             return 0
             ;;
         "gpu")
             # 必须使用 GPU
-            echo "[INFO] Device: GPU (required)" >&2
             if ! check_gpu_available_k8s; then
-                echo "[ERROR] GPU required but no GPU nodes found in cluster" >&2
+                # GPU required but no GPU nodes found - 返回错误
                 return 1
             fi
             DEVICE_LIMIT_YAML="            nvidia.com/gpu: \"1\""
-            echo "[INFO] GPU nodes available, requesting 1 GPU" >&2
             return 0
             ;;
         *)
-            echo "[ERROR] Invalid device parameter: $device (expected: cpu, gpu, auto)" >&2
+            # Invalid device parameter
             return 1
             ;;
     esac
@@ -105,9 +152,8 @@ ensure_namespace() {
     local namespace="$1"
     
     if ! kubectl get namespace "$namespace" >/dev/null 2>&1; then
-        echo "[INFO] Creating namespace: $namespace" >&2
+        # Creating namespace (日志被禁用)
         kubectl create namespace "$namespace" >/dev/null 2>&1 || {
-            echo "[ERROR] Failed to create namespace: $namespace" >&2
             return 1
         }
     fi
@@ -135,16 +181,39 @@ create_minio_secret() {
     
     # 检查 Secret 是否已存在
     if kubectl get secret "$secret_name" -n "$namespace" >/dev/null 2>&1; then
-        echo "[INFO] Secret $secret_name already exists in namespace $namespace" >&2
+        # Secret already exists (日志被禁用)
         return 0
     fi
     
-    echo "[INFO] Creating secret: $secret_name" >&2
+    # Creating secret (日志被禁用)
     kubectl create secret generic "$secret_name" \
         --from-literal=access_key="$access_key" \
         --from-literal=secret_key="$secret_key" \
         -n "$namespace" >/dev/null 2>&1 || {
-        echo "[ERROR] Failed to create secret: $secret_name" >&2
+        return 1
+    }
+}
+
+# 为 Secret 添加 ownerReference，使其跟随 Job 自动删除
+# 参数: $1=namespace, $2=secret_name, $3=owner_kind, $4=owner_name, $5=owner_uid
+set_secret_owner() {
+    local namespace="$1"
+    local secret_name="$2"
+    local owner_kind="$3"
+    local owner_name="$4"
+    local owner_uid="$5"
+    
+    kubectl patch secret "$secret_name" -n "$namespace" --type='merge' -p "{
+        \"metadata\": {
+            \"ownerReferences\": [{
+                \"apiVersion\": \"batch/v1\",
+                \"kind\": \"$owner_kind\",
+                \"name\": \"$owner_name\",
+                \"uid\": \"$owner_uid\",
+                \"blockOwnerDeletion\": true
+            }]
+        }
+    }" >/dev/null 2>&1 || {
         return 1
     }
 }
@@ -155,7 +224,7 @@ delete_secret() {
     local secret_name="$2"
     
     if kubectl get secret "$secret_name" -n "$namespace" >/dev/null 2>&1; then
-        echo "[INFO] Deleting secret: $secret_name" >&2
+        # Deleting secret (日志被禁用)
         kubectl delete secret "$secret_name" -n "$namespace" >/dev/null 2>&1 || true
     fi
 }

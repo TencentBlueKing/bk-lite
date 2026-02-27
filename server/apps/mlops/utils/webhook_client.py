@@ -10,32 +10,32 @@ from typing import Optional, Any
 from apps.core.logger import mlops_logger as logger
 
 # 敏感字段列表，日志输出时会被脱敏
-_SENSITIVE_KEYS = frozenset(
-    {
-        "minio_access_key",
-        "minio_secret_key",
-        "access_key",
-        "secret_key",
-        "password",
-        "token",
-        "secret",
-        "credential",
-        "api_key",
-    }
-)
+# _SENSITIVE_KEYS = frozenset(
+#     {
+#         "minio_access_key",
+#         "minio_secret_key",
+#         "access_key",
+#         "secret_key",
+#         "password",
+#         "token",
+#         "secret",
+#         "credential",
+#         "api_key",
+#     }
+# )
 
 
-def _sanitize_payload(payload: dict) -> dict:
-    """
-    移除敏感信息用于日志输出
+# def _sanitize_payload(payload: dict) -> dict:
+#     """
+#     移除敏感信息用于日志输出
 
-    Args:
-        payload: 原始请求数据
+#     Args:
+#         payload: 原始请求数据
 
-    Returns:
-        dict: 脱敏后的数据，敏感字段值替换为 "***"
-    """
-    return {k: "***" if k.lower() in _SENSITIVE_KEYS else v for k, v in payload.items()}
+#     Returns:
+#         dict: 脱敏后的数据，敏感字段值替换为 "***"
+#     """
+#     return {k: "***" if k.lower() in _SENSITIVE_KEYS else v for k, v in payload.items()}
 
 
 class WebhookError(Exception):
@@ -123,7 +123,7 @@ class WebhookClient:
         runtime = WebhookClient.get_runtime()
         full_url = f"{base_url}mlops/{runtime}/{endpoint_name}"
 
-        logger.debug(f"构建 webhook URL (runtime={runtime}): {full_url}")
+        # logger.debug(f"构建 webhook URL (runtime={runtime}): {full_url}")
         return full_url
 
     @staticmethod
@@ -191,21 +191,27 @@ class WebhookClient:
         if not url:
             raise WebhookError("环境变量 WEBHOOK_SERVER_URL 未配置")
 
-        logger.debug(
-            f"请求 webhookd - URL: {url}, Payload: {_sanitize_payload(payload)}"
-        )
+        # logger.debug(
+        #     f"请求 webhookd - URL: {url}, Payload: {_sanitize_payload(payload)}"
+        # )
 
         try:
             response = requests.post(url, json=payload, timeout=timeout)
 
-            logger.info(
-                f"Webhookd 响应 - 状态码: {response.status_code}, 内容: {response.text[:500]}"
-            )
+            # logger.info(
+            #     f"Webhookd 响应 - 状态码: {response.status_code}, 内容: {response.text[:500]}"
+            # )
 
             if response.status_code != 200:
-                raise WebhookError(f"Webhookd 返回错误状态码: {response.status_code}")
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("message", f"Webhookd 返回错误状态码: {response.status_code}")
+                    error_code = error_data.get("code")
+                except (ValueError, KeyError):
+                    error_msg = f"Webhookd 返回错误状态码: {response.status_code}"
+                    error_code = None
+                raise WebhookError(error_msg, code=error_code)
 
-            response.raise_for_status()
             return response.json()
 
         except requests.exceptions.Timeout:

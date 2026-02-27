@@ -92,7 +92,7 @@ const SkillSettingsPage: React.FC = () => {
 
         setSkillType(data.skill_type);
         setSkillPermissions(data.permissions || []);
-        
+
         setEnableKmRoute(data.enable_km_route !== undefined ? data.enable_km_route : true);
         setKmLlmModel(data.km_llm_model || data.llm_model);
       } catch (error) {
@@ -131,7 +131,7 @@ const SkillSettingsPage: React.FC = () => {
         message.error(t('skill.ragKnowledgeBaseRequired'));
         return;
       }
-      if (showToolEnabled && selectedTools.length === 0) { 
+      if (showToolEnabled && selectedTools.length === 0) {
         message.error(t('skill.ragToolRequired'));
         return;
       }
@@ -179,28 +179,28 @@ const SkillSettingsPage: React.FC = () => {
   const handleSendMessage = async (userMessage: string, currentMessages: any[] = [], userMessageObj?: any): Promise<{ url: string; payload: any } | null> => {
     try {
       const values = await form.validateFields();
-      
+
       // Check if knowledge base is selected when RAG is enabled
       if (ragEnabled && ragSources.length === 0) {
         message.error(t('skill.ragKnowledgeBaseRequired'));
         return null;
       }
-      
+
       // Check if tool is selected when tool functionality is enabled
-      if (showToolEnabled && selectedTools.length === 0) { 
+      if (showToolEnabled && selectedTools.length === 0) {
         message.error(t('skill.ragToolRequired'));
         return null;
       }
-      
+
       const ragScoreThreshold = selectedKnowledgeBases.map(id => ({
         knowledge_base: id,
         score: ragSources.find(base => base.id === id)?.score || 0.7,
       }));
 
-      const chatHistory = chatHistoryEnabled && quantity 
-        ? currentMessages.slice(-quantity).map(msg => ({ 
-          message: msg.content, 
-          event: msg.role 
+      const chatHistory = chatHistoryEnabled && quantity
+        ? currentMessages.slice(-quantity).map(msg => ({
+          message: msg.content,
+          event: msg.role
         }))
         : [];
 
@@ -396,8 +396,8 @@ const SkillSettingsPage: React.FC = () => {
                           <div>{t('skill.form.guideTip')}</div>
                         </>
                       }>
-                      <TextArea 
-                        rows={4} 
+                      <TextArea
+                        rows={4}
                         onChange={(e) => setGuideValue(e.target.value)}
                       />
                     </Form.Item>
@@ -511,8 +511,8 @@ const SkillSettingsPage: React.FC = () => {
             </div>
           </div>
           <div className="w-1/2 space-y-4">
-            <CustomChatSSE 
-              handleSendMessage={handleSendMessage} 
+            <CustomChatSSE
+              handleSendMessage={handleSendMessage}
               guide={guideValue}
               useAGUIProtocol={true}
               initialMessages={initialMessages}

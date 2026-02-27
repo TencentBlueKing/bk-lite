@@ -41,20 +41,32 @@ Get_Config_Context(){
 
 GetZookeeperVersion(){
     local pid=$1
-    # Check if lsof command exists
-    if command -v lsof &> /dev/null; then
-        # Use lsof to get version
-        version=$(lsof -p $pid | grep 'lib/zookeeper-' | awk -F'-' '{print $NF}' | awk -F'.jar' '{print $1}' | head -n 1)
-        install_path=$(lsof -p $pid | grep 'lib/zookeeper-' | awk '{print $9}' | awk -F'/lib' '{print $1}' | head -n 1)
+    local proc_cwd=$2
+    version="unknown"
+    install_path="unknown"
+
+    # 1. 尝试从进程打开的文件句柄中精准定位 jar 包
+    # 这样可以直接获取到实际运行中的 jar 包路径
+    local jar_line=$(lsof -p $pid 2>/dev/null | grep -E 'zookeeper-[0-9].*\.jar$' | head -n 1)
+    
+    if [ -n "$jar_line" ]; then
+        # 提取完整路径：从第9列到行尾（处理空格路径）
+        local full_path=$(echo "$jar_line" | awk '{print substr($0, index($0,$9))}')
+        install_path=$(dirname "$(dirname "$full_path")")
+        # 提取版本号：匹配 zookeeper- 后面跟着的数字和点
+        version=$(echo "$full_path" | grep -oP 'zookeeper-\K[0-9.]+(?=\.jar|-[0-9])')
     else
-        # Fallback to default method
-        if [[ "$2" == */ ]]; then
-            lib_path="$2../lib"
-        else
-            lib_path="$2/../lib"
+        # 2. Fallback: 如果没 lsof，尝试从 /proc/$pid/fd 查找
+        local fd_path=$(ls -l /proc/$pid/fd 2>/dev/null | grep -E 'zookeeper-[0-9].*\.jar' | head -n 1 | awk '{print $NF}')
+        if [ -n "$fd_path" ]; then
+            install_path=$(dirname "$(dirname "$fd_path")")
+            version=$(echo "$fd_path" | grep -oP 'zookeeper-\K[0-9.]+(?=\.jar)')
         fi
-        version=$(ls $lib_path | grep zookeeper | grep "\.jar" | awk -F '-' '{print $NF}' | awk -F '.jar' '{print $1}' | head -n 1)
-        install_path=$2
+    fi
+
+    # 3. 兜底方案：从 install_path 查找版本
+    if [ "$version" == "unknown" ] && [ -d "$install_path" ]; then
+        version=$(ls "$install_path/lib" 2>/dev/null | grep -oP 'zookeeper-\K[0-9.]+(?=\.jar)' | head -n 1)
     fi
 }
 
@@ -77,7 +89,6 @@ Cover_Zookeeper(){
     condition='Dzookeeper'
     Get_Soft_Pid $condition
     if [ ${#soft_pid[@]} -eq 0 ]; then
-        echo "{}"
         exit 1
     fi
     inst_name_array=()
@@ -92,7 +103,6 @@ Cover_Zookeeper(){
         Get_Data_Path $cfg_path
 
         if [[ -z $port ]]; then
-            echo "not found port"
             continue
         fi
 

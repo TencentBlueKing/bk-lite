@@ -368,6 +368,9 @@
       "channelTypeEmail": "邮件",
       "channelTypeWechatBot": "企业微信机器人",
       "channelTypeNats": "NATS通道",
+      "channelTypeFeishuBot": "飞书机器人",
+      "channelTypeDingtalkBot": "钉钉机器人",
+      "channelTypeCustomWebhook": "自定义Webhook",
       "notificationDesc": "选择告警触发时的通知方式和接收人。",
       "notificationConfig": "通知配置",
       "notificationChannel": "通知渠道"

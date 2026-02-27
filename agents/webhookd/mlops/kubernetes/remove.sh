@@ -7,7 +7,10 @@ set -e
 
 # 加载公共配置
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/common.sh" || {
+    echo '{"status":"error","code":"COMMON_SH_LOAD_FAILED","message":"Failed to load common.sh"}'
+    exit 1
+}
 
 # 解析传入的 JSON 数据（第一个参数）
 if [ -z "$1" ]; then
@@ -17,14 +20,23 @@ fi
 
 JSON_DATA="$1"
 
+# 检查 jq 是否可用
+if ! command -v jq >/dev/null 2>&1; then
+    json_error "JQ_NOT_FOUND" "" "jq command not found"
+    exit 1
+fi
+
 # 检查 kubectl 是否可用
 if ! command -v kubectl >/dev/null 2>&1; then
-    echo '{"status":"error","code":"KUBECTL_NOT_FOUND","message":"kubectl command not found"}' >&2
+    json_error "KUBECTL_NOT_FOUND" "" "kubectl command not found"
     exit 1
 fi
 
 # 提取 id 和 namespace
-ID=$(echo "$JSON_DATA" | jq -r '.id // empty')
+ID=$(echo "$JSON_DATA" | jq -r '.id // empty' 2>/dev/null) || {
+    json_error "JSON_PARSE_FAILED" "" "Failed to parse JSON data"
+    exit 1
+}
 NAMESPACE=$(echo "$JSON_DATA" | jq -r '.namespace // empty')
 
 if [ -z "$ID" ]; then

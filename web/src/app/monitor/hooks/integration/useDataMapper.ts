@@ -42,6 +42,30 @@ export class DataMapper {
       processedValue = originValue;
       // 2. 应用 to_form 转换
       if (to_form) {
+        // 映射转换（优先处理）
+        if (to_form.mapping) {
+          // 遍历映射表，查找匹配的值
+          const mappingEntries = Object.entries(to_form.mapping);
+          for (const [targetValue, sourceValues] of mappingEntries) {
+            // sourceValues 可以是单个值或数组
+            const valuesToMatch = Array.isArray(sourceValues)
+              ? sourceValues
+              : [sourceValues];
+            if (valuesToMatch.some((v) => v === processedValue)) {
+              // 尝试将 targetValue 转换为合适的类型
+              if (targetValue === 'true') {
+                processedValue = true;
+              } else if (targetValue === 'false') {
+                processedValue = false;
+              } else if (!isNaN(Number(targetValue))) {
+                processedValue = Number(targetValue);
+              } else {
+                processedValue = targetValue;
+              }
+              break;
+            }
+          }
+        }
         // 正则提取
         if (to_form.regex && typeof processedValue === 'string') {
           const match = processedValue.match(new RegExp(to_form.regex));
@@ -62,6 +86,9 @@ export class DataMapper {
             case 'parseFloat':
               processedValue = parseFloat(processedValue);
               break;
+            case 'boolean':
+              processedValue = Boolean(processedValue);
+              break;
           }
         }
       }
@@ -71,6 +98,26 @@ export class DataMapper {
       // 如果没有 to_api 配置，表示不需要处理
       if (!to_api) {
         return value;
+      }
+      // 映射转换（优先处理）
+      if (to_api.mapping) {
+        // 遍历映射表，查找匹配的值
+        const mappingEntries = Object.entries(to_api.mapping);
+        for (const [sourceValue, targetValue] of mappingEntries) {
+          // 比较时需要处理类型转换
+          const sourceToMatch =
+            sourceValue === 'true'
+              ? true
+              : sourceValue === 'false'
+                ? false
+                : !isNaN(Number(sourceValue))
+                  ? Number(sourceValue)
+                  : sourceValue;
+          if (processedValue === sourceToMatch) {
+            processedValue = targetValue;
+            break;
+          }
+        }
       }
       // 应用 to_api 转换
       if (to_api.type) {
@@ -159,6 +206,25 @@ export class DataMapper {
         if (encrypted && fieldValue) {
           fieldValue = encodeURIComponent(String(fieldValue));
         }
+        // 如果有 transform_on_create.mapping 配置，应用映射转换（auto 模式专用）
+        if (fieldValue !== undefined && transform_on_create?.mapping) {
+          const mappingEntries = Object.entries(transform_on_create.mapping);
+          for (const [sourceValue, targetValue] of mappingEntries) {
+            // 比较时需要处理类型转换
+            const sourceToMatch =
+              sourceValue === 'true'
+                ? true
+                : sourceValue === 'false'
+                  ? false
+                  : !isNaN(Number(sourceValue))
+                    ? Number(sourceValue)
+                    : sourceValue;
+            if (fieldValue === sourceToMatch) {
+              fieldValue = targetValue;
+              break;
+            }
+          }
+        }
         if (fieldValue !== undefined && transform_on_create?.target_path) {
           // 如果字段有 transform_on_create.target_path 配置，设置到指定路径
           // 例如：username -> custom_headers.username
@@ -175,8 +241,12 @@ export class DataMapper {
         }
       });
       // 复制其他未在配置中的字段（排除已转换的字段）
+      // 注意：使用 hasOwnProperty 检查而非 falsy 检查，避免空字符串被覆盖
       Object.keys(formData).forEach((key) => {
-        if (!processedFormData[key] && !fieldsToDelete.includes(key)) {
+        if (
+          !Object.prototype.hasOwnProperty.call(processedFormData, key) &&
+          !fieldsToDelete.includes(key)
+        ) {
           processedFormData[key] = formData[key];
         }
       });
@@ -187,7 +257,7 @@ export class DataMapper {
     // 构建configs数组：每个config_type生成一个config
     const configs = configTypes.map((type: string) => ({
       ...processedFormData,
-      type, // config的type字段
+      type // config的type字段
     }));
     // 转换 instances 部分
     const instances = tableData.map((row) => {
@@ -232,7 +302,7 @@ export class DataMapper {
         ...cleanedInstanceData,
         instance_id,
         node_ids: nodeIds,
-        instance_type: context.instance_type,
+        instance_type: context.instance_type
       };
     });
 
@@ -240,7 +310,7 @@ export class DataMapper {
       collect_type: context.collect_type,
       collector: context.collector,
       configs,
-      instances,
+      instances
     };
   }
 

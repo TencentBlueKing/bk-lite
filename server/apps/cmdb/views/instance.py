@@ -16,6 +16,18 @@ from apps.system_mgmt.utils.group_utils import GroupUtils
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @staticmethod
+    def _parse_positive_int(value, field_name, default):
+        if value in (None, ""):
+            return default
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field_name} 必须是整数")
+        if parsed < 1:
+            raise ValueError(f"{field_name} 必须大于等于 1")
+        return parsed
+
+    @staticmethod
     def _normalize_query_list(query_list):
         """
         Normalize request.data['query_list'] into a flat list of valid query dicts.
@@ -163,10 +175,18 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             )
 
         query_list = self._normalize_query_list(request.data.get("query_list", []))
-        page, page_size = (
-            int(request.data.get("page", 1)),
-            int(request.data.get("page_size", 10)),
-        )
+        try:
+            page = self._parse_positive_int(
+                request.data.get("page", 1), field_name="page", default=1
+            )
+            page_size = self._parse_positive_int(
+                request.data.get("page_size", 10), field_name="page_size", default=10
+            )
+        except ValueError as err:
+            return WebUtils.response_error(
+                error_message=str(err), status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         case_sensitive = request.data.get("case_sensitive", True)
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
             request, model_id
@@ -298,7 +318,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             if not self.check_creator_and_organizations(request, instance):
                 has_permission = CmdbRulesFormatUtil.has_object_permission(
                     obj_type=PERMISSION_INSTANCES,
-                    operator=VIEW,
+                    operator=OPERATE,
                     model_id=model_id,
                     permission_instances_map=permissions_map,
                     instance=instance,
@@ -356,7 +376,18 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-Edit")
     @action(detail=False, methods=["post"], url_path="batch_update")
     def instance_batch_update(self, request):
-        instances = InstanceManage.query_entity_by_ids(request.data["inst_ids"])
+        inst_ids = request.data.get("inst_ids")
+        if not isinstance(inst_ids, list) or not inst_ids:
+            return WebUtils.response_error(
+                "inst_ids 必须是非空数组", status_code=status.HTTP_400_BAD_REQUEST
+            )
+        update_data = request.data.get("update_data")
+        if not isinstance(update_data, dict) or not update_data:
+            return WebUtils.response_error(
+                "update_data 必须是非空对象", status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        instances = InstanceManage.query_entity_by_ids(inst_ids)
         if not instances:
             return WebUtils.response_success()
 
@@ -375,7 +406,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             if not self.check_creator_and_organizations(request, instance):
                 has_permission = CmdbRulesFormatUtil.has_object_permission(
                     obj_type=PERMISSION_INSTANCES,
-                    operator=VIEW,
+                    operator=OPERATE,
                     model_id=model_id,
                     permission_instances_map=permissions_map,
                     instance=instance,
@@ -389,7 +420,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     )
 
         InstanceManage.batch_instance_update(
-            request.data["inst_ids"], request.data["update_data"], request.user.username
+            request.user.group_list,
+            request.user.roles,
+            inst_ids,
+            update_data,
+            request.user.username,
         )
         return WebUtils.response_success()
 

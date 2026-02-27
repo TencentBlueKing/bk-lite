@@ -220,10 +220,6 @@ class ClassificationServingViewSet(ModelViewSet):
             # 构建 serving ID
             container_id = f"Classification_Serving_{serving.id}"
 
-            logger.info(
-                f"自动启动 serving 服务: {container_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}"
-            )
-
             try:
                 # 动态获取推理镜像
                 train_image = get_image_by_prefix(
@@ -241,10 +237,6 @@ class ClassificationServingViewSet(ModelViewSet):
 
                 serving.container_info = result
                 serving.save(update_fields=["container_info"])
-
-                logger.info(
-                    f"Serving 服务已自动启动: {container_id}, Port: {result.get('port')}"
-                )
 
                 response.data["container_info"] = result
                 response.data["message"] = "服务已创建并启动"
@@ -326,10 +318,6 @@ class ClassificationServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"Classification_Serving_{serving.id}"
 
-            logger.info(
-                f"启动 serving 服务: {serving_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}"
-            )
-
             try:
                 # 动态获取推理镜像
                 train_image = get_image_by_prefix(
@@ -348,10 +336,6 @@ class ClassificationServingViewSet(ModelViewSet):
                 # 正常启动成功，仅更新容器信息
                 serving.container_info = result
                 serving.save(update_fields=["container_info"])
-
-                logger.info(
-                    f"Serving 服务已启动: {serving_id}, Port: {result.get('port')}"
-                )
 
                 return Response(
                     {
@@ -383,8 +367,6 @@ class ClassificationServingViewSet(ModelViewSet):
                         # 仅更新容器信息
                         serving.container_info = container_info
                         serving.save(update_fields=["container_info"])
-
-                        logger.info(f"容器信息已同步: {container_info.get('state')}")
 
                         return Response(
                             {
@@ -434,12 +416,8 @@ class ClassificationServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"Classification_Serving_{serving.id}"
 
-            logger.info(f"停止 serving 服务: {serving_id}")
-
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
-
-            logger.info(f"Serving 服务已停止: {serving_id}")
 
             return Response(
                 {
@@ -481,8 +459,6 @@ class ClassificationServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"Classification_Serving_{serving.id}"
 
-            logger.info(f"删除 serving 容器: {serving_id}")
-
             # 调用 WebhookClient 删除容器
             result = WebhookClient.remove(serving_id)
 
@@ -494,8 +470,6 @@ class ClassificationServingViewSet(ModelViewSet):
                 "message": "容器已删除",
             }
             serving.save(update_fields=["container_info"])
-
-            logger.info(f"Serving 容器已删除: {serving_id}")
 
             return Response(
                 {
@@ -557,6 +531,13 @@ class ClassificationServingViewSet(ModelViewSet):
         try:
             serving = self.get_object()
 
+            # 校验服务状态
+            if serving.status != "active":
+                return Response(
+                    {"error": "服务未发布，请先发布服务"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # 获取参数
             url = request.data.get("url")
             data = request.data.get("data")
@@ -591,10 +572,6 @@ class ClassificationServingViewSet(ModelViewSet):
             # 构建请求体
             payload = {"data": data}
 
-            logger.info(
-                f"调用预测服务: serving_id={serving.id}, url={predict_url}, data_size={len(data)}"
-            )
-
             # 发起 HTTP POST 请求
             response = requests.post(
                 predict_url,
@@ -626,13 +603,6 @@ class ClassificationServingViewSet(ModelViewSet):
                     )
 
                 # 预测成功
-                predictions = result.get("data") or []
-                prediction_size = (
-                    len(predictions) if isinstance(predictions, (list, tuple)) else 0
-                )
-                logger.info(
-                    f"预测成功: serving_id={serving.id}, prediction_size={prediction_size}"
-                )
                 return Response(result)
             else:
                 error_msg = f"预测服务返回错误: HTTP {response.status_code}"
@@ -785,10 +755,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 train_job_id=train_job.id,
             )
 
-            logger.info(f"启动训练任务: {job_id}")
-            logger.info(f"  Dataset: {train_job.dataset_version.dataset_file.name}")
-            logger.info(f"  Config: {train_job.config_url.name}")
-
             # 调用 WebhookClient 启动训练
             # 动态获取训练镜像
             train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
@@ -808,8 +774,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             # 更新任务状态
             train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
-
-            logger.info(f"训练任务已启动: {job_id}")
 
             return Response(
                 {
@@ -944,9 +908,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 if new_status:
                     train_job.status = new_status
                     train_job.save(update_fields=["status"])
-                    logger.info(
-                        f"自动同步 TrainJob {train_job.id} 状态: running -> {new_status} (基于 MLflow: {latest_run_status})"
-                    )
 
             return Response(
                 {
@@ -1005,8 +966,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                         "metric_history": [],
                     }
                 )
-
-            logger.info(f"返回 {len(metric_data)} 条指标数据")
 
             return Response(
                 {
@@ -1083,12 +1042,9 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             version_data = mlflow_service.get_model_versions(model_name)
 
             if not version_data:
-                logger.info(f"模型未找到版本: {model_name}")
+                logger.warning(f"模型未找到版本: {model_name}")
                 return Response({"model_name": model_name, "versions": [], "total": 0})
 
-            logger.info(
-                f"获取模型版本列表成功: {model_name}, 共 {len(version_data)} 个版本"
-            )
 
             return Response(
                 {
@@ -1130,7 +1086,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 filename=filename,
             )
 
-            logger.info(f"模型下载请求完成: {filename}")
             return response
 
         except Exception as e:
@@ -1191,8 +1146,6 @@ class ClassificationDatasetReleaseViewSet(ModelViewSet):
 
             response = FileResponse(file, content_type="application/zip")
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
-
-            logger.info(f"下载数据集版本: {release.id} - {filename}")
 
             return response
 
