@@ -172,7 +172,8 @@
     "configuration": "配置",
     "discontinued": "停用",
     "searchText": "搜索模型名称",
-    "capabilityTip": "用于控制此能力是否对外开放的选项。"
+    "capabilityTip": "用于控制此能力是否对外开放的选项。",
+    "statusDisabledTip": "容器未运行，无法启用发布。请先启动服务。"
   },
   "algorithmConfig": {
     "title": "算法配置",

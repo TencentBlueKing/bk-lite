@@ -172,7 +172,8 @@
     "configuration": "Configuration",
     "discontinued": "Discontinued",
     "searchText": "Search model name",
-    "capabilityTip": "The option to control whether this capability is made available externally."
+    "capabilityTip": "The option to control whether this capability is made available externally.",
+    "statusDisabledTip": "Container is not running. Cannot enable release. Please start the service first."
   },
   "algorithmConfig": {
     "title": "Algorithm Config",

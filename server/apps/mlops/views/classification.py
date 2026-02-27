@@ -22,6 +22,7 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.utils import mlflow_service
+from apps.mlops.utils.validators import validate_serving_status_change
 from apps.mlops.services import (
     get_image_by_prefix,
     get_mlflow_train_config,
@@ -289,7 +290,126 @@ class ClassificationServingViewSet(ModelViewSet):
 
     @HasPermission("classification-Edit")
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        """
+        更新 serving 配置，自动检测并重启容器
+
+        基于实际容器运行状态决策：
+        - 容器 running + 配置变更 → 自动重启
+        - 容器非 running → 仅更新数据库，用户自行决定是否启动
+        """
+        instance = self.get_object()
+
+        # 兜底校验：容器未运行时不允许设置 status=active
+        new_status = request.data.get("status")
+        if error_response := validate_serving_status_change(instance, new_status):
+            return error_response
+
+        # 保存旧值用于判断变更
+        old_port = instance.port
+        old_model_version = instance.model_version
+        old_train_job_id = instance.train_job.id
+
+        # 检测是否更新了影响容器的字段（基于请求数据与旧值对比）
+        model_version_changed = "model_version" in request.data and str(
+            request.data["model_version"]
+        ) != str(old_model_version)
+        train_job_changed = (
+            "train_job" in request.data
+            and int(request.data["train_job"]) != old_train_job_id
+        )
+        port_changed = "port" in request.data and request.data.get("port") != old_port
+
+        container_id = f"Classification_Serving_{instance.id}"
+
+        # 获取容器实际状态（更新前），防御性处理 container_info 为空的情况
+        container_info = instance.container_info or {}
+        container_state = container_info.get("state")
+        container_port = container_info.get("port")
+
+        # 更新数据库
+        response = super().update(request, *args, **kwargs)
+        instance.refresh_from_db()
+
+        # 只有容器在运行时才考虑重启
+        if container_state != "running":
+            return response
+
+        # 决策：是否需要重启
+        need_restart = False
+
+        # 1. model/train_job 变更，必须重启
+        if model_version_changed or train_job_changed:
+            need_restart = True
+
+        # 2. 仅 port 变更，检查策略
+        elif port_changed:
+            new_port = instance.port
+            if new_port is None and old_port is not None:
+                # 有值 → None：不重启（当前端口视为自动分配，下次再应用）
+                need_restart = False
+            elif new_port is not None and old_port is None:
+                # None → 有值：需要重启（用户明确要指定端口）
+                need_restart = True
+            elif new_port is not None and old_port is not None:
+                # 有值 → 另一个有值：检查是否与实际端口一致
+                if container_port and str(new_port) != str(container_port):
+                    need_restart = True
+
+        # 如果需要重启，先删除旧容器
+        if need_restart:
+            try:
+                logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
+                WebhookClient.remove(container_id)
+            except WebhookError as e:
+                logger.warning(f"删除旧容器失败（可能已不存在）: {e}")
+                # 继续执行，尝试启动新容器
+
+            try:
+                # 获取环境变量
+                mlflow_tracking_uri = get_mlflow_tracking_uri()
+                if not mlflow_tracking_uri:
+                    raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
+
+                # 解析新的 model_uri
+                model_uri = self._resolve_model_uri(instance)
+
+                # 动态获取推理镜像
+                train_image = get_image_by_prefix(
+                    self.MLFLOW_PREFIX, instance.train_job.algorithm
+                )
+
+                # 启动新容器
+                result = WebhookClient.serve(
+                    container_id,
+                    mlflow_tracking_uri,
+                    model_uri,
+                    port=instance.port,
+                    train_image=train_image,
+                )
+
+                # 更新容器信息（status 由用户控制，不修改）
+                instance.container_info = result
+                instance.save(update_fields=["container_info"])
+
+                # 更新返回数据
+                response.data["container_info"] = result
+                response.data["message"] = "配置已更新并重启服务"
+
+            except Exception as e:
+                logger.error(f"自动重启失败: {str(e)}", exc_info=True)
+
+                # 启动失败，仅更新容器信息
+                instance.container_info = {
+                    "status": "error",
+                    "message": f"配置已更新但重启失败: {str(e)}",
+                }
+                instance.save(update_fields=["container_info"])
+
+                response.data["container_info"] = instance.container_info
+                response.data["message"] = f"配置已更新但重启失败: {str(e)}"
+                response.data["warning"] = "请手动调用 start 接口重新启动服务"
+
+        return response
 
     @action(detail=True, methods=["post"], url_path="start")
     @HasPermission("classification-Start")

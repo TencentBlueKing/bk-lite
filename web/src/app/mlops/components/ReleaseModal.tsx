@@ -227,9 +227,19 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             name='status'
             label={t(`model-release.release`)}
             layout="horizontal"
-            tooltip={t(`model-release.capabilityTip`)}
+            tooltip={
+              type === 'edit' && formData?.container_info?.state !== 'running'
+                ? t(`model-release.statusDisabledTip`)
+                : t(`model-release.capabilityTip`)
+            }
           >
-            <Switch defaultChecked checkedChildren={t(`common.yes`)} unCheckedChildren={t(`common.no`)} size="small" />
+            <Switch
+              defaultChecked
+              checkedChildren={t(`common.yes`)}
+              unCheckedChildren={t(`common.no`)}
+              size="small"
+              disabled={type === 'edit' && formData?.container_info?.state !== 'running'}
+            />
           </Form.Item>
 
           <Form.Item
