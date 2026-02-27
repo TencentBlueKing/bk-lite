@@ -1,4 +1,4 @@
-import ast
+import re
 import uuid
 
 from django.db import transaction
@@ -13,6 +13,7 @@ from apps.monitor.models.monitor_object import (
     MonitorInstanceOrganization,
     MonitorObjectType,
 )
+from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 
@@ -108,7 +109,7 @@ class MonitorObjectService:
             result.append(
                 {
                     "instance_id": obj.id,
-                    "instance_id_values": [i for i in ast.literal_eval(obj.id)],
+                    "instance_id_values": list(parse_instance_id(obj.id)),
                     "instance_name": obj.name or obj.id,
                     "agent_id": instance_map.get(obj.id, {}).get("agent_id", ""),
                     "time": instance_map.get(obj.id, {}).get("time", ""),
@@ -118,7 +119,7 @@ class MonitorObjectService:
         if add_metrics and page_size != -1:
             instance_ids = []
             for instance_info in result:
-                instance_id = ast.literal_eval(instance_info["instance_id"])
+                instance_id = parse_instance_id(instance_info["instance_id"])
                 instance_ids.append(instance_id)
 
             metrics_obj = Metric.objects.filter(
@@ -128,9 +129,14 @@ class MonitorObjectService:
             for metric_obj in metrics_obj:
                 query_parts = []
                 for i, key in enumerate(metric_obj.instance_id_keys):
-                    values = "|".join(
-                        set(item[i] for item in instance_ids)
-                    )  # 去重并拼接
+                    values_set = {
+                        re.escape(str(item[i]))
+                        for item in instance_ids
+                        if len(item) > i and item[i] is not None
+                    }
+                    if not values_set:
+                        continue
+                    values = "|".join(values_set)  # 去重并拼接
                     query_parts.append(f'{key}=~"{values}"')
 
                 query = metric_obj.query
