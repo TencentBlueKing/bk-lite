@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
 from rest_framework import viewsets
@@ -11,7 +12,7 @@ from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_policy import MonitorPolicyFilter
-from apps.monitor.models import PolicyOrganization
+from apps.monitor.models import PolicyOrganization, MonitorAlert
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.policy import PolicyService
@@ -49,7 +50,9 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         queryset = queryset.distinct()
 
         # 获取分页参数
-        page, page_size = parse_page_params(request.GET, default_page=1, default_page_size=10)
+        page, page_size = parse_page_params(
+            request.GET, default_page=1, default_page_size=10
+        )
 
         # 计算分页的起始位置
         start = (page - 1) * page_size
@@ -88,8 +91,14 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         request.data["updated_by"] = request.user.username
-        response = super().update(request, *args, **kwargs)
         policy_id = kwargs["pk"]
+
+        # 获取策略变更前的 enable 状态
+        policy = MonitorPolicy.objects.filter(id=policy_id).first()
+        old_enable = policy.enable if policy else None
+
+        response = super().update(request, *args, **kwargs)
+
         schedule = request.data.get("schedule")
         if schedule:
             self.update_or_create_task(policy_id, schedule)
@@ -100,12 +109,24 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             self.update_policy_baselines(
                 policy_id, request.data.get("enable_alerts", [])
             )
+
+        # 处理 enable 字段变更
+        if "enable" in request.data and policy:
+            new_enable = request.data.get("enable")
+            self.handle_policy_enable_change(policy_id, old_enable, new_enable)
+
         return response
 
     def partial_update(self, request, *args, **kwargs):
         request.data["updated_by"] = request.user.username
-        response = super().partial_update(request, *args, **kwargs)
         policy_id = kwargs["pk"]
+
+        # 获取策略变更前的 enable 状态
+        policy = MonitorPolicy.objects.filter(id=policy_id).first()
+        old_enable = policy.enable if policy else None
+
+        response = super().partial_update(request, *args, **kwargs)
+
         schedule = request.data.get("schedule")
         if schedule:
             self.update_or_create_task(policy_id, schedule)
@@ -116,6 +137,12 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             self.update_policy_baselines(
                 policy_id, request.data.get("enable_alerts", [])
             )
+
+        # 处理 enable 字段变更
+        if "enable" in request.data and policy:
+            new_enable = request.data.get("enable")
+            self.handle_policy_enable_change(policy_id, old_enable, new_enable)
+
         return response
 
     def destroy(self, request, *args, **kwargs):
@@ -137,6 +164,19 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             baseline_service.refresh()
         else:
             baseline_service.clear()
+
+    def handle_policy_enable_change(self, policy_id, old_enable, new_enable):
+        if old_enable == new_enable:
+            return
+
+        if old_enable and not new_enable:
+            MonitorAlert.objects.filter(policy_id=policy_id, status="new").update(
+                status="closed", end_event_time=datetime.now(timezone.utc)
+            )
+        elif not old_enable and new_enable:
+            MonitorPolicy.objects.filter(id=policy_id).update(
+                last_run_time=datetime.now(timezone.utc)
+            )
 
     def format_crontab(self, schedule):
         """
