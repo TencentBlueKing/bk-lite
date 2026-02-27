@@ -131,7 +131,9 @@ class MonitorAlertViewSet(
             )
 
         # 获取分页参数
-        page, page_size = parse_page_params(request.GET, default_page=1, default_page_size=10)
+        page, page_size = parse_page_params(
+            request.GET, default_page=1, default_page_size=10
+        )
 
         # 计算分页的起始位置
         start = (page - 1) * page_size
@@ -191,8 +193,17 @@ class MonitorAlertViewSet(
 
         updated_data = serializer.validated_data
         if updated_data.get("status") == "closed":
-            updated_data["end_event_time"] = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
+            updated_data["end_event_time"] = now
             updated_data["operator"] = request.user.username
+            updated_data["operation_logs"] = (instance.operation_logs or []) + [
+                {
+                    "action": "closed",
+                    "reason": "manual",
+                    "operator": request.user.username,
+                    "time": now.isoformat(),
+                }
+            ]
 
             if instance.alert_type == "no_data" and instance.metric_instance_id:
                 update_baseline = request.data.get("update_baseline", False)
