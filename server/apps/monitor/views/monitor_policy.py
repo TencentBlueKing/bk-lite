@@ -170,9 +170,28 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             return
 
         if old_enable and not new_enable:
-            MonitorAlert.objects.filter(policy_id=policy_id, status="new").update(
-                status="closed", end_event_time=datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
+            alerts_to_close = list(
+                MonitorAlert.objects.filter(policy_id=policy_id, status="new")
             )
+            if alerts_to_close:
+                operation_log = {
+                    "action": "closed",
+                    "reason": "policy_disabled",
+                    "operator": "system",
+                    "time": now.isoformat(),
+                }
+                for alert in alerts_to_close:
+                    alert.status = "closed"
+                    alert.end_event_time = now
+                    alert.operator = "system"
+                    alert.operation_logs = (alert.operation_logs or []) + [
+                        operation_log
+                    ]
+                MonitorAlert.objects.bulk_update(
+                    alerts_to_close,
+                    fields=["status", "end_event_time", "operator", "operation_logs"],
+                )
         elif not old_enable and new_enable:
             MonitorPolicy.objects.filter(id=policy_id).update(
                 last_run_time=datetime.now(timezone.utc)

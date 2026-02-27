@@ -131,9 +131,11 @@ class AlertDetector:
             display_name = (
                 f"{resource_name} - {dimension_str}" if dimension_str else resource_name
             )
+            group_by_keys = self.policy.group_by or []
+            sub_dimension_keys = [k for k in group_by_keys if k != "instance_id"]
             dimension_value = format_dimension_value(
                 dimensions,
-                ordered_keys=self.policy.group_by or [],
+                ordered_keys=sub_dimension_keys,
                 name_map=self._build_dimension_name_map(),
             )
 
@@ -251,12 +253,29 @@ class AlertDetector:
             alert.id for alert in self.active_alerts if alert.alert_type == "alert"
         ]
 
-        MonitorAlert.objects.filter(
-            id__in=alert_ids, info_event_count__gte=self.policy.recovery_condition
-        ).update(
-            status="recovered",
-            end_event_time=self.policy.last_run_time,
-            operator="system",
+        alerts_to_recover = list(
+            MonitorAlert.objects.filter(
+                id__in=alert_ids, info_event_count__gte=self.policy.recovery_condition
+            )
+        )
+        if not alerts_to_recover:
+            return
+
+        end_time = self.policy.last_run_time
+        operation_log = {
+            "action": "recovered",
+            "reason": "auto_recovered",
+            "operator": "system",
+            "time": end_time.isoformat() if end_time else None,
+        }
+        for alert in alerts_to_recover:
+            alert.status = "recovered"
+            alert.end_event_time = end_time
+            alert.operator = "system"
+            alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+        MonitorAlert.objects.bulk_update(
+            alerts_to_recover,
+            fields=["status", "end_event_time", "operator", "operation_logs"],
         )
 
     def recover_no_data_alerts(self):
@@ -298,13 +317,24 @@ class AlertDetector:
                 f"in_data_set={alert_metric_id in metric_instance_ids_with_data}"
             )
             if alert_metric_id in metric_instance_ids_with_data:
-                alerts_to_recover.append(alert.id)
+                alerts_to_recover.append(alert)
 
         if alerts_to_recover:
-            MonitorAlert.objects.filter(id__in=alerts_to_recover).update(
-                status="recovered",
-                end_event_time=self.policy.last_run_time,
-                operator="system",
+            end_time = self.policy.last_run_time
+            operation_log = {
+                "action": "recovered",
+                "reason": "auto_recovered",
+                "operator": "system",
+                "time": end_time.isoformat() if end_time else None,
+            }
+            for alert in alerts_to_recover:
+                alert.status = "recovered"
+                alert.end_event_time = end_time
+                alert.operator = "system"
+                alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+            MonitorAlert.objects.bulk_update(
+                alerts_to_recover,
+                fields=["status", "end_event_time", "operator", "operation_logs"],
             )
             logger.info(
                 f"Policy {self.policy.id}: recovered {len(alerts_to_recover)} no_data alerts"
