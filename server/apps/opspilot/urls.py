@@ -65,7 +65,6 @@ urlpatterns += [
         views.get_bot_detail,
         name="get_bot_detail",
     ),
-    path(r"bot_mgmt/rasa_model_download/", views.model_download, name="model_download"),
     path(r"bot_mgmt/skill_execute/", views.skill_execute, name="skill_execute"),
     path(
         r"bot_mgmt/v1/chat/completions",

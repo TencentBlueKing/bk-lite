@@ -1,5 +1,4 @@
 import datetime
-import hashlib
 import json
 import time
 from typing import Any
@@ -7,8 +6,7 @@ from typing import Any
 from django.conf import settings
 from django.db.models import Count
 from django.db.models.functions import TruncDate
-from django.http import FileResponse, HttpResponse, JsonResponse
-from django_minio_backend import MinioBackend
+from django.http import HttpResponse, JsonResponse
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
 
@@ -105,38 +103,6 @@ def get_bot_detail(request, bot_id):
         ],
     }
     return JsonResponse(return_data)
-
-
-@api_exempt
-def model_download(request):
-    loader = get_loader(request)
-    bot_id = request.GET.get("bot_id")
-    api_token = extract_api_token(request)
-    if not api_token:
-        return JsonResponse({"result": False, "message": loader.get("error.no_authorization", "No authorization")}, status=401)
-
-    bot = Bot.objects.filter(id=bot_id, api_token=api_token).first()
-    if not bot:
-        return JsonResponse({"result": False, "message": loader.get("error.no_authorization", "No authorization")}, status=403)
-    rasa_model = bot.rasa_model
-    if not rasa_model:
-        return JsonResponse({})
-    storage = MinioBackend(bucket_name="munchkin-private")
-    file = storage.open(rasa_model.model_file.name, "rb")
-
-    # Calculate ETag
-    md5_hash = hashlib.md5()
-    for chunk in iter(lambda: file.read(8192), b""):
-        md5_hash.update(chunk)
-    etag = md5_hash.hexdigest()
-
-    # Reset file pointer to start
-    file.seek(0)
-
-    response = FileResponse(file)
-    response["ETag"] = etag
-
-    return response
 
 
 def validate_openai_token(token, team=None, is_mobile=False):
@@ -797,4 +763,3 @@ def execute_chat_flow_dingtalk(request, bot_id):
 
     # 5. 处理HTTP回调模式的消息
     return dingtalk_utils.handle_dingtalk_message(request, bot_chat_flow, dingtalk_config)
-
