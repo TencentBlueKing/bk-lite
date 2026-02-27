@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作业详情 - Playbook - Job</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Fira Sans', 'Fira Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #1f2329; line-height: 1.5; }
+        .top-header { background: #fff; height: 60px; border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 100; }
+        .header-left { display: flex; align-items: center; gap: 8px; }
+        .logo { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 18px; }
+        .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; font-weight: bold; box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25); }
+        .header-nav { display: flex; gap: 8px; margin-left: 48px; }
+        .nav-item { display: flex; align-items: center; gap: 8px; color: #646a73; cursor: pointer; font-size: 14px; padding: 8px 16px; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.1); }
+        .header-right { display: flex; align-items: center; gap: 20px; color: #646a73; font-size: 14px; }
+        .header-right > span { cursor: pointer; padding: 6px 12px; border-radius: 6px; transition: all 0.3s; }
+        .header-right > span:hover { background: rgba(0, 0, 0, 0.04); color: #0052d9; }
+        .sub-header { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); height: 52px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); display: flex; align-items: center; padding: 0 32px; }
+        .sub-nav { display: flex; gap: 4px; }
+        .sub-nav-item { padding: 10px 20px; cursor: pointer; font-size: 14px; color: #646a73; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .sub-nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .sub-nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.12); }
+        .main-container { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
+        
+        .detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .detail-header-left { display: flex; align-items: center; gap: 16px; }
+        .back-btn { width: 36px; height: 36px; border: 1px solid #dcdee0; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; background: white; font-size: 16px; }
+        .back-btn:hover { border-color: #0052d9; color: #0052d9; }
+        .detail-title-group { display: flex; align-items: center; gap: 12px; }
+        .detail-title { font-size: 20px; font-weight: 600; color: #1f2329; }
+        .detail-id { font-size: 14px; color: #8f959e; }
+        .detail-header-right { display: flex; align-items: center; gap: 12px; }
+        .btn { padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; }
+        .btn-default { background: white; border-color: #dcdee0; color: #646a73; }
+        .btn-default:hover { border-color: #0052d9; color: #0052d9; }
+
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .status-badge.success { background: #e6fff2; color: #00a870; }
+        .status-badge.failed { background: #ffe6e6; color: #ea3636; }
+        .status-badge.running { background: #e6f0ff; color: #0052d9; }
+        .status-badge.unreachable { background: #fff0e6; color: #d46b08; }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+        .source-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .source-badge.manual { background: #e6f0ff; color: #0052d9; }
+        .source-badge.scheduled { background: #fff4e6; color: #d46b08; }
+        .source-badge.api { background: #f0f1f5; color: #646a73; }
+
+        .info-card { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+        .info-row { display: flex; flex-wrap: wrap; gap: 32px; flex: 1; }
+        .info-item { display: flex; align-items: center; gap: 8px; }
+        .info-item label { font-size: 13px; color: #8f959e; }
+        .info-item span { font-size: 14px; color: #1f2329; }
+        .info-actions { display: flex; align-items: center; gap: 8px; }
+        .info-action-btn { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #dcdee0; border-radius: 6px; background: white; font-size: 13px; color: #646a73; cursor: pointer; transition: all 0.2s; }
+        .info-action-btn:hover { border-color: #0052d9; color: #0052d9; background: #f0f5ff; }
+
+        .drawer-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 1000; opacity: 0; visibility: hidden; transition: all 0.3s; }
+        .drawer-overlay.active { opacity: 1; visibility: visible; }
+        .drawer { position: fixed; top: 0; right: -600px; width: 600px; height: 100vh; background: #f5f7fa; z-index: 1001; transition: right 0.3s ease; display: flex; flex-direction: column; }
+        .drawer.active { right: 0; }
+        .drawer-header { padding: 20px 24px; background: white; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+        .drawer-title { font-size: 16px; font-weight: 600; color: #1f2329; }
+        .drawer-close { width: 32px; height: 32px; border: none; background: #f5f7fa; border-radius: 6px; cursor: pointer; font-size: 18px; color: #646a73; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .drawer-close:hover { background: #e5e7eb; color: #1f2329; }
+        .drawer-body { flex: 1; overflow-y: auto; padding: 20px; }
+        .drawer-section { background: white; border-radius: 10px; border: 1px solid #e5e7eb; margin-bottom: 16px; overflow: hidden; }
+        .drawer-section:last-child { margin-bottom: 0; }
+        .drawer-section-header { padding: 14px 18px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+        .drawer-section-title { font-size: 14px; font-weight: 600; color: #1f2329; display: flex; align-items: center; gap: 8px; }
+        .drawer-section-meta { font-size: 12px; color: #8f959e; }
+        .drawer-section-actions { display: flex; gap: 8px; }
+        .drawer-action-btn { padding: 5px 10px; border: 1px solid #dcdee0; border-radius: 4px; background: white; font-size: 12px; color: #646a73; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s; }
+        .drawer-action-btn:hover { border-color: #0052d9; color: #0052d9; }
+        .drawer-info-grid { padding: 16px 18px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+        .drawer-info-item { display: flex; flex-direction: column; gap: 4px; }
+        .drawer-info-item label { font-size: 12px; color: #8f959e; }
+        .drawer-info-item span { font-size: 13px; color: #1f2329; }
+        .drawer-playbook { background: #1e1e1e; color: #d4d4d4; padding: 16px 18px; font-family: 'Fira Code', 'Fira Code', 'Monaco', 'Menlo', monospace; font-size: 13px; line-height: 1.7; max-height: 400px; overflow-y: auto; }
+        .drawer-playbook .line { display: flex; }
+        .drawer-playbook .line-number { width: 36px; color: #5a5a5a; user-select: none; text-align: right; padding-right: 14px; flex-shrink: 0; }
+        .drawer-playbook .line-code { flex: 1; white-space: pre; }
+        .drawer-playbook .keyword { color: #569cd6; }
+        .drawer-playbook .string { color: #ce9178; }
+        .drawer-playbook .comment { color: #6a9955; }
+        .drawer-playbook .key { color: #9cdcfe; }
+
+        .execution-panel { display: flex; gap: 16px; height: calc(100vh - 320px); min-height: 400px; }
+
+        .step-list-panel { width: 260px; flex-shrink: 0; background: white; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; flex-direction: column; }
+        .step-list-header { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; }
+        .step-list-title { font-size: 15px; font-weight: 600; color: #1f2329; margin-bottom: 8px; }
+        .step-progress { display: flex; align-items: center; gap: 8px; }
+        .step-progress-bar { flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+        .step-progress-fill { height: 100%; background: #00a870; border-radius: 3px; }
+        .step-progress-text { font-size: 12px; color: #8f959e; white-space: nowrap; }
+        .step-list { flex: 1; overflow-y: auto; }
+        .step-item { display: flex; align-items: flex-start; gap: 10px; padding: 12px 16px; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid #f0f1f5; }
+        .step-item:hover { background: #f9fafb; }
+        .step-item.active { background: #e6f0ff; border-left: 3px solid #0052d9; }
+        .step-num { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+        .step-num.success { background: #e6fff2; color: #00a870; }
+        .step-num.failed { background: #ffe6e6; color: #ea3636; }
+        .step-num.running { background: #e6f0ff; color: #0052d9; }
+        .step-num.pending { background: #f5f7fa; color: #8f959e; }
+        .step-info { flex: 1; min-width: 0; }
+        .step-name { font-size: 13px; font-weight: 500; color: #1f2329; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+        .step-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8f959e; }
+        .step-type-tag { padding: 1px 5px; background: #f5f7fa; border-radius: 3px; font-size: 11px; color: #646a73; }
+
+        .host-list-panel { width: 260px; flex-shrink: 0; background: white; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; flex-direction: column; }
+        .host-list-header { padding: 14px 16px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+        .host-list-title { font-size: 14px; font-weight: 600; color: #1f2329; }
+        .host-stats { display: flex; gap: 10px; font-size: 12px; }
+        .host-stat { display: flex; align-items: center; gap: 4px; }
+        .host-stat.success { color: #00a870; }
+        .host-stat.failed { color: #ea3636; }
+        .host-stat.running { color: #0052d9; }
+        .host-list { flex: 1; overflow-y: auto; }
+        .host-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid #f0f1f5; }
+        .host-item:hover { background: #f9fafb; }
+        .host-item.active { background: #e6f0ff; border-left: 3px solid #0052d9; }
+        .host-item-info { display: flex; flex-direction: column; gap: 2px; }
+        .host-item-name { font-size: 13px; font-weight: 500; color: #1f2329; }
+        .host-item-ip { font-size: 12px; color: #8f959e; }
+        .host-item-status { display: flex; align-items: center; gap: 6px; }
+        .host-item-time { font-size: 12px; color: #8f959e; }
+
+        .log-panel { flex: 1; background: white; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; }
+        .log-header { padding: 12px 20px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+        .log-header-left { display: flex; align-items: center; gap: 12px; }
+        .log-title { font-size: 15px; font-weight: 600; color: #1f2329; }
+        .log-host-info { font-size: 13px; color: #8f959e; }
+        .log-toolbar { display: flex; align-items: center; gap: 8px; }
+        .log-search { display: flex; align-items: center; border: 1px solid #dcdee0; border-radius: 6px; overflow: hidden; }
+        .log-search input { padding: 6px 12px; border: none; font-size: 13px; width: 180px; outline: none; }
+        .log-search input::placeholder { color: #8f959e; }
+        .log-search-btn { padding: 6px 10px; background: #f5f7fa; border: none; border-left: 1px solid #dcdee0; cursor: pointer; color: #646a73; }
+        .log-search-btn:hover { background: #eef0f3; color: #0052d9; }
+        .log-action-btn { width: 32px; height: 32px; border: 1px solid #dcdee0; border-radius: 6px; background: white; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; color: #646a73; transition: all 0.2s; }
+        .log-action-btn:hover { border-color: #0052d9; color: #0052d9; }
+        .log-viewer { flex: 1; background: #1e1e1e; color: #d4d4d4; padding: 16px 20px; font-family: 'Fira Code', 'Fira Code', 'Monaco', 'Menlo', monospace; font-size: 13px; line-height: 1.7; overflow-y: auto; }
+        .log-line { margin-bottom: 2px; display: flex; }
+        .log-content { flex: 1; }
+        .log-content.success { color: #4ec9b0; }
+        .log-content.error { color: #f48771; }
+        .log-content.warning { color: #dcdcaa; }
+        .log-content.info { color: #9cdcfe; }
+
+    
+        /* ===== UI/UX ENHANCEMENTS ===== */
+        
+        /* Focus states for accessibility */
+        a:focus-visible, button:focus-visible, input:focus-visible, 
+        select:focus-visible, textarea:focus-visible, 
+        [tabindex]:focus-visible, .nav-item:focus-visible,
+        .sub-nav-item:focus-visible {
+            outline: 2px solid #0052d9;
+            outline-offset: 2px;
+        }
+
+        /* Enhanced table row hover */
+        tbody tr {
+            border-left: 3px solid transparent;
+        }
+        tbody tr:hover {
+            background: #f0f5ff !important;
+            border-left: 3px solid #0052d9;
+        }
+
+        /* Inline SVG icon alignment */
+        .nav-item svg, .sub-nav-item svg, .header-right svg {
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+    
+        /* Drawer transform animation */
+        .drawer {
+            transform: translateX(100%);
+            transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .drawer.active {
+            transform: translateX(0);
+        }
+
+    
+        /* Table responsive wrapper */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table-responsive table {
+            min-width: 100%;
+        }
+
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo"><div class="logo-icon">BK</div><span>Job</span></div>
+            <nav class="header-nav">
+                <div class="nav-item" onclick="location.href='首页.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>首页</span></div>
+                <div class="nav-item active" onclick="location.href='快速执行.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></span><span>作业执行</span></div>
+                <div class="nav-item" onclick="location.href='脚本库.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span>作业模版</span></div>
+                <div class="nav-item" onclick="location.href='目标管理.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><span>目标管理</span></div>
+                <div class="nav-item" onclick="location.href='高危命令配置.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span>系统配置</span></div>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> 帮助文档</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 语言: 简体中文</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Admin</span>
+        </div>
+    </div>
+
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <div class="sub-nav-item" onclick="location.href='快速执行.html'">快速执行</div>
+            <div class="sub-nav-item" onclick="location.href='文件分发.html'">文件分发</div>
+            <div class="sub-nav-item" onclick="location.href='定时任务.html'">定时任务</div>
+            <div class="sub-nav-item active">作业记录</div>
+        </nav>
+    </div>
+
+    <div class="main-container">
+        <div class="detail-header">
+            <div class="detail-header-left">
+                <div class="back-btn" onclick="location.href='作业记录.html'">←</div>
+                <div class="detail-title-group">
+                    <h1 class="detail-title">Ansible 变量测试 Playbook</h1>
+                    <span class="detail-id">#10020</span>
+                    <span class="status-badge failed"><span class="status-dot"></span>部分失败</span>
+                </div>
+            </div>
+            <div class="detail-header-right">
+                <button class="btn btn-default">重新执行</button>
+            </div>
+        </div>
+
+        <div class="info-card">
+            <div class="info-row">
+                <div class="info-item"><label>作业类型</label><span>Playbook</span></div>
+                <div class="info-item"><label>触发来源</label><span class="source-badge manual">手动执行</span></div>
+                <div class="info-item"><label>发起人</label><span>Admin</span></div>
+                <div class="info-item"><label>开始时间</label><span>2026-02-10 17:10:00</span></div>
+                <div class="info-item"><label>耗时</label><span>5.5s</span></div>
+                <div class="info-item"><label>目标主机</label><span>3 台</span></div>
+                <div class="info-item"><label>超时时间</label><span>600秒</span></div>
+            </div>
+            <div class="info-actions">
+                <button class="info-action-btn" onclick="openDrawer()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg> 查看 Playbook</button>
+            </div>
+        </div>
+
+        <div class="execution-panel">
+            <div class="host-list-panel">
+                <div class="host-list-header">
+                    <span class="host-list-title">目标主机</span>
+                    <div class="host-stats">
+                        <span class="host-stat success"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;"><polyline points="20 6 9 17 4 12"/></svg> 2</span>
+                        <span class="host-stat failed">× 1</span>
+                    </div>
+                </div>
+                <div class="host-list" id="hostList">
+                    <div class="host-item active" onclick="selectHost(0)">
+                        <div class="host-item-info">
+                            <span class="host-item-name">localhost</span>
+                            <span class="host-item-ip">localhost</span>
+                        </div>
+                        <div class="host-item-status">
+                            <span class="host-item-time">5.5s</span>
+                            <span class="status-badge success"><span class="status-dot"></span>成功</span>
+                        </div>
+                    </div>
+                    <div class="host-item" onclick="selectHost(1)">
+                        <div class="host-item-info">
+                            <span class="host-item-name">127.0.0.1</span>
+                            <span class="host-item-ip">127.0.0.1</span>
+                        </div>
+                        <div class="host-item-status">
+                            <span class="host-item-time">5.5s</span>
+                            <span class="status-badge success"><span class="status-dot"></span>成功</span>
+                        </div>
+                    </div>
+                    <div class="host-item" onclick="selectHost(2)">
+                        <div class="host-item-info">
+                            <span class="host-item-name">10.10.11.11</span>
+                            <span class="host-item-ip">10.10.11.11</span>
+                        </div>
+                        <div class="host-item-status">
+                            <span class="host-item-time">--</span>
+                            <span class="status-badge failed"><span class="status-dot"></span>不可达</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="step-list-panel">
+                <div class="step-list-header">
+                    <div class="step-list-title" id="stepListTitle">执行步骤 - localhost</div>
+                    <div class="step-progress">
+                        <div class="step-progress-bar"><div class="step-progress-fill" style="width: 100%"></div></div>
+                        <span class="step-progress-text">7/7</span>
+                    </div>
+                </div>
+                <div class="step-list" id="stepList"></div>
+            </div>
+
+            <div class="log-panel">
+                <div class="log-header">
+                    <div class="log-header-left">
+                        <span class="log-title">执行日志</span>
+                        <span class="log-host-info" id="logHostInfo">web-server-01 (192.168.1.101)</span>
+                    </div>
+                    <div class="log-toolbar">
+                        <div class="log-search">
+                            <input type="text" placeholder="搜索日志..." />
+                            <button class="log-search-btn"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+                        </div>
+                        <button class="log-action-btn" title="复制日志" onclick="copyLogs()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg></button>
+                        <button class="log-action-btn" title="下载日志" onclick="downloadLogs()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+                    </div>
+                </div>
+                <div class="log-viewer" id="logViewer"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+    <div class="drawer" id="drawer">
+        <div class="drawer-header">
+            <span class="drawer-title">Playbook 详情</span>
+            <button class="drawer-close" onclick="closeDrawer()">×</button>
+        </div>
+        <div class="drawer-body">
+            <div class="drawer-section">
+                <div class="drawer-section-header">
+                    <span class="drawer-section-title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg> Playbook 信息</span>
+                </div>
+                <div class="drawer-info-grid">
+                    <div class="drawer-info-item">
+                        <label>Playbook 来源</label>
+                        <span>Playbook 库</span>
+                    </div>
+                    <div class="drawer-info-item">
+                        <label>Playbook 名称</label>
+                        <span>Ansible 变量测试 Playbook</span>
+                    </div>
+                    <div class="drawer-info-item">
+                        <label>版本</label>
+                        <span>v1.0.0</span>
+                    </div>
+                    <div class="drawer-info-item">
+                        <label>代码行数</label>
+                        <span>51 行</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="drawer-section">
+                <div class="drawer-section-header">
+                    <span class="drawer-section-title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Playbook 内容</span>
+                    <div class="drawer-section-actions">
+                        <button class="drawer-action-btn" onclick="copyPlaybook()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg> 复制</button>
+                    </div>
+                </div>
+                <div class="drawer-playbook">
+                    <div class="line"><span class="line-number">1</span><span class="line-code"><span class="comment">---</span></span></div>
+                    <div class="line"><span class="line-number">2</span><span class="line-code"><span class="keyword">- name:</span> <span class="string">Ansible 变量测试 Playbook</span></span></div>
+                    <div class="line"><span class="line-number">3</span><span class="line-code">  <span class="key">hosts:</span> all</span></div>
+                    <div class="line"><span class="line-number">4</span><span class="line-code">  <span class="key">gather_facts:</span> <span class="keyword">no</span></span></div>
+                    <div class="line"><span class="line-number">5</span><span class="line-code">  <span class="key">vars:</span></span></div>
+                    <div class="line"><span class="line-number">6</span><span class="line-code">    <span class="key">playbook_var_string:</span> <span class="string">defined_in_playbook</span></span></div>
+                    <div class="line"><span class="line-number">7</span><span class="line-code">    <span class="key">playbook_var_int:</span> 999</span></div>
+                    <div class="line"><span class="line-number">8</span><span class="line-code">    <span class="key">playbook_config:</span></span></div>
+                    <div class="line"><span class="line-number">9</span><span class="line-code">      <span class="key">setting1:</span> <span class="string">abc</span></span></div>
+                    <div class="line"><span class="line-number">10</span><span class="line-code">      <span class="key">setting2:</span> 100</span></div>
+                    <div class="line"><span class="line-number">11</span><span class="line-code"></span></div>
+                    <div class="line"><span class="line-number">12</span><span class="line-code">  <span class="key">tasks:</span></span></div>
+                    <div class="line"><span class="line-number">13</span><span class="line-code">    <span class="keyword">- name:</span> <span class="string">Print Input Variables</span></span></div>
+                    <div class="line"><span class="line-number">14</span><span class="line-code">      <span class="key">debug:</span></span></div>
+                    <div class="line"><span class="line-number">15</span><span class="line-code">        <span class="key">msg:</span> <span class="string">|</span></span></div>
+                    <div class="line"><span class="line-number">16</span><span class="line-code">          <span class="string">===== extravars =====</span></span></div>
+                    <div class="line"><span class="line-number">17</span><span class="line-code">          <span class="string">custom_string: {{ custom_string }}</span></span></div>
+                    <div class="line"><span class="line-number">18</span><span class="line-code">          <span class="string">custom_int: {{ custom_int }}</span></span></div>
+                    <div class="line"><span class="line-number">19</span><span class="line-code">          <span class="string">===== playbook vars =====</span></span></div>
+                    <div class="line"><span class="line-number">20</span><span class="line-code">          <span class="string">playbook_var_string: {{ playbook_var_string }}</span></span></div>
+                    <div class="line"><span class="line-number">21</span><span class="line-code">          <span class="string">playbook_config: {{ playbook_config }}</span></span></div>
+                    <div class="line"><span class="line-number">22</span><span class="line-code"></span></div>
+                    <div class="line"><span class="line-number">23</span><span class="line-code">    <span class="keyword">- name:</span> <span class="string">Set dynamic facts</span></span></div>
+                    <div class="line"><span class="line-number">24</span><span class="line-code">      <span class="key">set_fact:</span></span></div>
+                    <div class="line"><span class="line-number">25</span><span class="line-code">        <span class="key">computed_value:</span> <span class="string">"{{ playbook_var_string }}_{{ custom_string }}"</span></span></div>
+                    <div class="line"><span class="line-number">26</span><span class="line-code">        <span class="key">host_info:</span></span></div>
+                    <div class="line"><span class="line-number">27</span><span class="line-code">          <span class="key">hostname:</span> <span class="string">"{{ inventory_hostname }}"</span></span></div>
+                    <div class="line"><span class="line-number">28</span><span class="line-code">          <span class="key">custom_int_doubled:</span> <span class="string">"{{ custom_int | int * 2 }}"</span></span></div>
+                    <div class="line"><span class="line-number">29</span><span class="line-code"></span></div>
+                    <div class="line"><span class="line-number">30</span><span class="line-code">    <span class="keyword">- name:</span> <span class="string">Print set_fact results</span></span></div>
+                    <div class="line"><span class="line-number">31</span><span class="line-code">      <span class="key">debug:</span></span></div>
+                    <div class="line"><span class="line-number">32</span><span class="line-code">        <span class="key">msg:</span> <span class="string">"computed_value: {{ computed_value }}"</span></span></div>
+                    <div class="line"><span class="line-number">33</span><span class="line-code"></span></div>
+                    <div class="line"><span class="line-number">34</span><span class="line-code">    <span class="keyword">- name:</span> <span class="string">Get hostname</span></span></div>
+                    <div class="line"><span class="line-number">35</span><span class="line-code">      <span class="key">shell:</span> hostname</span></div>
+                    <div class="line"><span class="line-number">36</span><span class="line-code">      <span class="key">register:</span> hostname_result</span></div>
+                    <div class="line"><span class="line-number">37</span><span class="line-code"></span></div>
+                    <div class="line"><span class="line-number">38</span><span class="line-code">    <span class="keyword">- name:</span> <span class="string">Get system uptime</span></span></div>
+                    <div class="line"><span class="line-number">39</span><span class="line-code">      <span class="key">shell:</span> uptime</span></div>
+                    <div class="line"><span class="line-number">40</span><span class="line-code">      <span class="key">register:</span> uptime_result</span></div>
+                    <div class="line"><span class="line-number">41</span><span class="line-code"></span></div>
+                    <div class="line"><span class="line-number">42</span><span class="line-code">    <span class="keyword">- name:</span> <span class="string">Check disk usage</span></span></div>
+                    <div class="line"><span class="line-number">43</span><span class="line-code">      <span class="key">shell:</span> df -h / | tail -1</span></div>
+                    <div class="line"><span class="line-number">44</span><span class="line-code">      <span class="key">register:</span> disk_result</span></div>
+                    <div class="line"><span class="line-number">45</span><span class="line-code"></span></div>
+                    <div class="line"><span class="line-number">46</span><span class="line-code">    <span class="keyword">- name:</span> <span class="string">Print results</span></span></div>
+                    <div class="line"><span class="line-number">47</span><span class="line-code">      <span class="key">debug:</span></span></div>
+                    <div class="line"><span class="line-number">48</span><span class="line-code">        <span class="key">msg:</span> <span class="string">|</span></span></div>
+                    <div class="line"><span class="line-number">49</span><span class="line-code">          <span class="string">Host: {{ hostname_result.stdout }}</span></span></div>
+                    <div class="line"><span class="line-number">50</span><span class="line-code">          <span class="string">Uptime: {{ uptime_result.stdout }}</span></span></div>
+                    <div class="line"><span class="line-number">51</span><span class="line-code">          <span class="string">Disk: {{ disk_result.stdout }}</span></span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 步骤元数据（7个 task，来自真实 Ansible 返回）
+        const steps = [
+            { name: 'Print Input Variables', type: 'debug' },
+            { name: 'Set dynamic facts', type: 'set_fact' },
+            { name: 'Print set_fact results', type: 'debug' },
+            { name: 'Get hostname', type: 'shell' },
+            { name: 'Get system uptime', type: 'shell' },
+            { name: 'Check disk usage', type: 'shell' },
+            { name: 'Print results', type: 'debug' }
+        ];
+
+        // 每个步骤在每台主机上的状态：stepHostStatus[step][host]
+        // 10.10.11.11 在 task 4（Get hostname）unreachable，后续 task 跳过
+        const stepHostStatus = [
+            ['ok', 'ok', 'ok'],
+            ['ok', 'ok', 'ok'],
+            ['ok', 'ok', 'ok'],
+            ['changed', 'changed', 'unreachable'],
+            ['changed', 'changed', 'skipped'],
+            ['changed', 'changed', 'skipped'],
+            ['ok', 'ok', 'skipped']
+        ];
+
+        // 主机元数据（含整机状态）
+        const hostInfo = [
+            { name: 'localhost', ip: 'localhost', status: 'success' },
+            { name: '127.0.0.1', ip: '127.0.0.1', status: 'success' },
+            { name: '10.10.11.11', ip: '10.10.11.11', status: 'failed' }
+        ];
+
+        // 每个步骤下每台主机的耗时：stepHostTime[step][host]
+        const stepHostTime = [
+            ['--', '--', '--'],
+            ['--', '--', '--'],
+            ['--', '--', '--'],
+            ['0.04s', '0.04s', '--'],
+            ['0.04s', '0.04s', '--'],
+            ['0.05s', '0.05s', '--'],
+            ['--', '--', '--']
+        ];
+
+        // 每台主机的总耗时
+        const hostTotalTime = ['5.5s', '5.5s', '--'];
+
+        // 任务结果数据：taskResults[task][host] = 结构化结果对象
+        const taskResults = [
+            // Task 0: Print Input Variables (debug)
+            [
+                { task: 'Print Input Variables (extravars + playbook vars)', task_action: 'debug', status: 'ok', changed: false, msg: '===== extravars (从 Python 传入) =====\ncustom_string: hello_world\ncustom_int: 12345\ncustom_bool: True\ncustom_list: [\'item1\', \'item2\', \'item3\']\ncustom_dict: {\'key1\': \'value1\', \'key2\': \'value2\'}\n\n===== playbook vars (在 playbook 中定义) =====\nplaybook_var_string: defined_in_playbook\nplaybook_var_int: 999\nplaybook_config: {\'setting1\': \'abc\', \'setting2\': 100}' },
+                { task: 'Print Input Variables (extravars + playbook vars)', task_action: 'debug', status: 'ok', changed: false, msg: '===== extravars (从 Python 传入) =====\ncustom_string: hello_world\ncustom_int: 12345\ncustom_bool: True\ncustom_list: [\'item1\', \'item2\', \'item3\']\ncustom_dict: {\'key1\': \'value1\', \'key2\': \'value2\'}\n\n===== playbook vars (在 playbook 中定义) =====\nplaybook_var_string: defined_in_playbook\nplaybook_var_int: 999\nplaybook_config: {\'setting1\': \'abc\', \'setting2\': 100}' },
+                { task: 'Print Input Variables (extravars + playbook vars)', task_action: 'debug', status: 'ok', changed: false, msg: '===== extravars (从 Python 传入) =====\ncustom_string: hello_world\ncustom_int: 12345\ncustom_bool: True\ncustom_list: [\'item1\', \'item2\', \'item3\']\ncustom_dict: {\'key1\': \'value1\', \'key2\': \'value2\'}\n\n===== playbook vars (在 playbook 中定义) =====\nplaybook_var_string: defined_in_playbook\nplaybook_var_int: 999\nplaybook_config: {\'setting1\': \'abc\', \'setting2\': 100}' }
+            ],
+            // Task 1: Set dynamic facts (set_fact)
+            [
+                { task: 'Set dynamic facts', task_action: 'set_fact', status: 'ok', changed: false, ansible_facts: { computed_value: 'defined_in_playbook_hello_world', timestamp: 'unknown', host_info: { hostname: 'localhost', custom_int_doubled: '24690', combined_list: ['item1', 'item2', 'item3', 'from_set_fact'] } } },
+                { task: 'Set dynamic facts', task_action: 'set_fact', status: 'ok', changed: false, ansible_facts: { computed_value: 'defined_in_playbook_hello_world', timestamp: 'unknown', host_info: { hostname: '127.0.0.1', custom_int_doubled: '24690', combined_list: ['item1', 'item2', 'item3', 'from_set_fact'] } } },
+                { task: 'Set dynamic facts', task_action: 'set_fact', status: 'ok', changed: false, ansible_facts: { computed_value: 'defined_in_playbook_hello_world', timestamp: 'unknown', host_info: { hostname: '10.10.11.11', custom_int_doubled: '24690', combined_list: ['item1', 'item2', 'item3', 'from_set_fact'] } } }
+            ],
+            // Task 2: Print set_fact results (debug)
+            [
+                { task: 'Print set_fact results', task_action: 'debug', status: 'ok', changed: false, msg: '===== set_fact 动态计算结果 =====\ncomputed_value: defined_in_playbook_hello_world\ntimestamp: unknown\nhost_info: {\'hostname\': \'localhost\', \'custom_int_doubled\': \'24690\', \'combined_list\': [\'item1\', \'item2\', \'item3\', \'from_set_fact\']}' },
+                { task: 'Print set_fact results', task_action: 'debug', status: 'ok', changed: false, msg: '===== set_fact 动态计算结果 =====\ncomputed_value: defined_in_playbook_hello_world\ntimestamp: unknown\nhost_info: {\'hostname\': \'127.0.0.1\', \'custom_int_doubled\': \'24690\', \'combined_list\': [\'item1\', \'item2\', \'item3\', \'from_set_fact\']}' },
+                { task: 'Print set_fact results', task_action: 'debug', status: 'ok', changed: false, msg: '===== set_fact 动态计算结果 =====\ncomputed_value: defined_in_playbook_hello_world\ntimestamp: unknown\nhost_info: {\'hostname\': \'10.10.11.11\', \'custom_int_doubled\': \'24690\', \'combined_list\': [\'item1\', \'item2\', \'item3\', \'from_set_fact\']}' }
+            ],
+            // Task 3: Get hostname (shell)
+            [
+                { task: 'Get hostname', task_action: 'shell', status: 'ok', changed: true, stdout: 'JustindeMacBook-Pro.local', rc: 0, cmd: 'hostname', start: '2026-02-10 17:10:02.629749', end: '2026-02-10 17:10:02.672763', delta: '0:00:00.043014' },
+                { task: 'Get hostname', task_action: 'shell', status: 'ok', changed: true, stdout: 'JustindeMacBook-Pro.local', rc: 0, cmd: 'hostname', start: '2026-02-10 17:10:02.629739', end: '2026-02-10 17:10:02.672775', delta: '0:00:00.043036' },
+                { task: 'Get hostname', task_action: 'shell', status: 'unreachable', changed: false, msg: 'Failed to connect to the host via ssh: Connection closed by 10.10.11.11 port 22' }
+            ],
+            // Task 4: Get system uptime (shell)
+            [
+                { task: 'Get system uptime', task_action: 'shell', status: 'ok', changed: true, stdout: '17:10  up 18 days,  1:24, 3 users, load averages: 4.29 4.38 4.35', rc: 0, cmd: 'uptime', start: '2026-02-10 17:10:07.564332', end: '2026-02-10 17:10:07.608528', delta: '0:00:00.044196' },
+                { task: 'Get system uptime', task_action: 'shell', status: 'ok', changed: true, stdout: '17:10  up 18 days,  1:24, 3 users, load averages: 4.29 4.38 4.35', rc: 0, cmd: 'uptime', start: '2026-02-10 17:10:07.586256', end: '2026-02-10 17:10:07.630082', delta: '0:00:00.043826' },
+                { task: 'Get system uptime', task_action: 'shell', status: 'skipped', changed: false, msg: 'Host unreachable, task skipped' }
+            ],
+            // Task 5: Check disk usage (shell)
+            [
+                { task: 'Check disk usage', task_action: 'shell', status: 'ok', changed: true, stdout: '/dev/disk3s1s1   460Gi    11Gi    36Gi    24%    447k  373M    0%   /', rc: 0, cmd: 'df -h / | tail -1', start: '2026-02-10 17:10:08.316632', end: '2026-02-10 17:10:08.364000', delta: '0:00:00.047368' },
+                { task: 'Check disk usage', task_action: 'shell', status: 'ok', changed: true, stdout: '/dev/disk3s1s1   460Gi    11Gi    36Gi    24%    447k  373M    0%   /', rc: 0, cmd: 'df -h / | tail -1', start: '2026-02-10 17:10:08.334512', end: '2026-02-10 17:10:08.381385', delta: '0:00:00.046873' },
+                { task: 'Check disk usage', task_action: 'shell', status: 'skipped', changed: false, msg: 'Host unreachable, task skipped' }
+            ],
+            // Task 6: Print results (debug)
+            [
+                { task: 'Print results', task_action: 'debug', status: 'ok', changed: false, msg: 'Host: JustindeMacBook-Pro.local\nUptime: 17:10  up 18 days,  1:24, 3 users, load averages: 4.29 4.38 4.35\nDisk: /dev/disk3s1s1   460Gi    11Gi    36Gi    24%    447k  373M    0%   /' },
+                { task: 'Print results', task_action: 'debug', status: 'ok', changed: false, msg: 'Host: JustindeMacBook-Pro.local\nUptime: 17:10  up 18 days,  1:24, 3 users, load averages: 4.29 4.38 4.35\nDisk: /dev/disk3s1s1   460Gi    11Gi    36Gi    24%    447k  373M    0%   /' },
+                { task: 'Print results', task_action: 'debug', status: 'skipped', changed: false, msg: 'Host unreachable, task skipped' }
+            ]
+        ];
+
+        let currentHost = 0;
+        let currentStep = 0;
+
+        function selectHost(index) {
+            currentHost = index;
+            currentStep = 0;
+            // 更新主机高亮
+            document.querySelectorAll('.host-item').forEach((el, i) => {
+                el.classList.toggle('active', i === index);
+            });
+            // 更新步骤列表标题
+            document.getElementById('stepListTitle').textContent = `执行步骤 - ${hostInfo[index].name}`;
+            // 重新渲染步骤列表（耗时随主机变化）
+            renderStepList();
+            // 渲染日志
+            renderLogs();
+        }
+
+        function selectStep(index) {
+            currentStep = index;
+            document.querySelectorAll('.step-item').forEach((el, i) => {
+                el.classList.toggle('active', i === index);
+            });
+            renderLogs();
+        }
+
+        function renderStepList() {
+            const container = document.getElementById('stepList');
+            // Map Ansible statuses to CSS classes
+            const statusCssMap = { ok: 'success', changed: 'success', failed: 'failed', unreachable: 'failed', skipped: 'pending' };
+            container.innerHTML = steps.map((step, i) => {
+                const rawStatus = stepHostStatus[i][currentHost];
+                const cssClass = statusCssMap[rawStatus] || 'pending';
+                return `
+                <div class="step-item ${i === currentStep ? 'active' : ''}" onclick="selectStep(${i})">
+                    <div class="step-num ${cssClass}">${i + 1}</div>
+                    <div class="step-info">
+                        <div class="step-name">${step.name}</div>
+                        <div class="step-meta"><span class="step-type-tag">${step.type}</span></div>
+                    </div>
+                </div>`;
+            }).join('');
+            // 更新进度条
+            const statuses = stepHostStatus.map(s => s[currentHost]);
+            const okCount = statuses.filter(s => s === 'ok' || s === 'changed').length;
+            const failCount = statuses.filter(s => s === 'failed' || s === 'unreachable').length;
+            const total = steps.length;
+            const pct = Math.round((okCount / total) * 100);
+            const bar = document.querySelector('.step-progress-fill');
+            const text = document.querySelector('.step-progress-text');
+            bar.style.width = pct + '%';
+            bar.style.background = failCount > 0 ? '#ea3636' : '#00a870';
+            text.textContent = failCount > 0 ? `${okCount}/${total} (${failCount} 失败)` : `${okCount}/${total}`;
+        }
+
+        function renderLogs() {
+            const viewer = document.getElementById('logViewer');
+            const result = taskResults[currentStep][currentHost];
+
+            // msg 优先，无 msg 时 fallback 到 stdout / ansible_facts
+            const mainContent = result.msg || result.stdout || (result.ansible_facts ? JSON.stringify(result.ansible_facts, null, 2) : null);
+
+            let html = '';
+            if (mainContent) {
+                const escaped = mainContent.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                escaped.split('\n').forEach(line => {
+                    const lineClass = line.match(/^(FAILED|fatal|error)/i) ? 'error' : line.match(/^(ok|changed|success)/i) ? 'success' : line.match(/^(warn|skip)/i) ? 'warning' : '';
+                    html += `<div class="log-line"><span class="log-content ${lineClass}">${line || '&nbsp;'}</span></div>`;
+                });
+            } else {
+                html += `<div class="log-line"><span class="log-content" style="color: #5a5a5a; font-style: italic;">No output</span></div>`;
+            }
+
+            viewer.innerHTML = html;
+            document.getElementById('logHostInfo').textContent = `${hostInfo[currentHost].name} - ${steps[currentStep].name}`;
+        }
+
+        function openDrawer() {
+            document.getElementById('drawerOverlay').classList.add('active');
+            document.getElementById('drawer').classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeDrawer() {
+            document.getElementById('drawerOverlay').classList.remove('active');
+            document.getElementById('drawer').classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        function copyLogs() {
+            const result = taskResults[currentStep][currentHost];
+            let text = `TASK [${result.task}] - ${result.status}\n`;
+            if (result.msg) text += `msg: ${result.msg}\n`;
+            if (result.stdout) text += `stdout: ${result.stdout}\n`;
+            if (result.cmd) text += `cmd: ${result.cmd}\n`;
+            if (result.rc !== undefined) text += `rc: ${result.rc}\n`;
+            if (result.delta) text += `delta: ${result.delta}\n`;
+            if (result.ansible_facts) text += `ansible_facts: ${JSON.stringify(result.ansible_facts, null, 2)}\n`;
+            if (result.stderr) text += `stderr: ${result.stderr}\n`;
+            navigator.clipboard.writeText(text);
+            alert('任务结果已复制到剪贴板');
+        }
+
+        function downloadLogs() {
+            const result = taskResults[currentStep][currentHost];
+            let text = `TASK [${result.task}] - ${result.status}\n`;
+            if (result.msg) text += `msg: ${result.msg}\n`;
+            if (result.stdout) text += `stdout: ${result.stdout}\n`;
+            if (result.cmd) text += `cmd: ${result.cmd}\n`;
+            if (result.rc !== undefined) text += `rc: ${result.rc}\n`;
+            if (result.delta) text += `delta: ${result.delta}\n`;
+            if (result.ansible_facts) text += `ansible_facts: ${JSON.stringify(result.ansible_facts, null, 2)}\n`;
+            if (result.stderr) text += `stderr: ${result.stderr}\n`;
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${hostInfo[currentHost].name}-task${currentStep + 1}-result.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function copyPlaybook() {
+            alert('Playbook 已复制到剪贴板');
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeDrawer();
+        });
+
+        // 初始化：渲染步骤列表和日志
+        renderStepList();
+        renderLogs();
+    </script>
+</body>
+</html>
