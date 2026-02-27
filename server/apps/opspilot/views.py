@@ -1,9 +1,9 @@
 import datetime
 import json
 import time
+import uuid
 from typing import Any
 
-from django.conf import settings
 from django.db.models import Count
 from django.db.models.functions import TruncDate
 from django.http import HttpResponse, JsonResponse
@@ -17,6 +17,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.services.skill_execute_service import SkillExecuteService
+from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
@@ -612,6 +613,24 @@ def execute_chat_flow(request, bot_id, node_id):
         }
 
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
+
+        if is_test:
+            execution_id = str(uuid.uuid4())
+            input_data["entry_type"] = node_type
+            input_data["execution_id"] = execution_id
+
+            async_task = chat_flow_test_execute_task.delay(bot_chat_flow.id, node_id, input_data, node_type, execution_id)
+            return JsonResponse(
+                {
+                    "result": True,
+                    "data": {
+                        "status": "accepted",
+                        "execution_id": execution_id,
+                        "task_id": async_task.id,
+                    },
+                },
+                status=202,
+            )
 
         # 区分流式响应节点类型：openai、agui、embedded_chat、mobile、web_chat
         stream_node_types = ["openai", "agui", "embedded_chat", "mobile", "web_chat"]
