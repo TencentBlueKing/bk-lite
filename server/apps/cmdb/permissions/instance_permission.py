@@ -1,7 +1,4 @@
 from apps.cmdb.constants.constants import ORGANIZATION
-from apps.cmdb.graph.format_type import FORMAT_TYPE
-
-
 class PermissionManage:
     def __init__(self, roles=None, user_groups=None):
         self.roles = roles if roles is not None else []
@@ -10,9 +7,9 @@ class PermissionManage:
     def get_group_params(self):
         """获取组织条件，用于列表页查询"""
         group_ids = [group["id"] for group in self.user_groups]
-        method = FORMAT_TYPE.get("list[]")
-        params = method({"field": ORGANIZATION, "value": group_ids})
-        return params
+        if not group_ids:
+            return []
+        return [{"field": ORGANIZATION, "type": "list[]", "value": group_ids}]
 
     def get_permission_params(self):
         """获取基础权限条件，用于列表页查询（作为必须的组织权限过滤）admin用户也会受到他当前组的限制"""
