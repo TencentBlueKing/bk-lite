@@ -66,9 +66,10 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
         display_name = (
             f"{resource_name} - {dimension_str}" if dimension_str else resource_name
         )
+        sub_dimension_keys = [k for k in instance_id_keys if k != "instance_id"]
         dimension_value = format_dimension_value(
             dimensions,
-            ordered_keys=instance_id_keys,
+            ordered_keys=sub_dimension_keys,
             name_map=dimension_name_map,
         )
 

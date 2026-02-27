@@ -132,7 +132,7 @@ def format_dimension_value(
         return ""
 
     name_map = name_map or {}
-    keys = ordered_keys or list(dimensions.keys())
+    keys = list(dimensions.keys()) if ordered_keys is None else ordered_keys
     parts = []
 
     for key in keys:

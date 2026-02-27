@@ -34,10 +34,7 @@ def test_format_dimension_value_with_display_name_and_empty_value():
 def test_calculate_alerts_should_render_resource_and_dimension_value():
     calculate_module = _load_module(
         "policy_calculate_module",
-        Path(__file__).resolve().parents[1]
-        / "tasks"
-        / "utils"
-        / "policy_calculate.py",
+        Path(__file__).resolve().parents[1] / "tasks" / "utils" / "policy_calculate.py",
     )
 
     df = pd.DataFrame(
@@ -69,7 +66,4 @@ def test_calculate_alerts_should_render_resource_and_dimension_value():
 
     assert len(alert_events) == 1
     assert len(info_events) == 0
-    assert (
-        alert_events[0]["content"]
-        == "主机A|实例ID:i-1,节点:a-1|主机A - agent_id:a-1|92.00%"
-    )
+    assert alert_events[0]["content"] == "主机A|节点:a-1|主机A - agent_id:a-1|92.00%"

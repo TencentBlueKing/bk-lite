@@ -131,9 +131,11 @@ class AlertDetector:
             display_name = (
                 f"{resource_name} - {dimension_str}" if dimension_str else resource_name
             )
+            group_by_keys = self.policy.group_by or []
+            sub_dimension_keys = [k for k in group_by_keys if k != "instance_id"]
             dimension_value = format_dimension_value(
                 dimensions,
-                ordered_keys=self.policy.group_by or [],
+                ordered_keys=sub_dimension_keys,
                 name_map=self._build_dimension_name_map(),
             )
 
