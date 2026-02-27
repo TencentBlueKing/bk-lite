@@ -306,9 +306,6 @@ const TrainingPage = () => {
           <Tag color="blue" className="shrink-0">
             {t(ALGORITHM_TYPE_I18N_KEYS[algorithmType] || algorithmType)}
           </Tag>
-          {/* <span className="text-gray-500 text-sm truncate">
-            {t('traintask.pageDescription')}
-          </span> */}
           <EllipsisWithTooltip className="w-full overflow-hidden text-ellipsis whitespace-nowrap" text={t('traintask.pageDescription')} />
         </div>
         <div className="flex items-center shrink-0">

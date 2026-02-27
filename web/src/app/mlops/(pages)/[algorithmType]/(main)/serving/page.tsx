@@ -51,12 +51,6 @@ const ServingPage = () => {
   const {
     getServingList,
     deleteServing,
-    // updateAnomalyServings,
-    // updateTimeSeriesPredictServings,
-    // updateLogClusteringServings,
-    // updateClassificationServings,
-    // updateImageClassificationServings,
-    // updateObjectDetectionServings,
     startServingContainer,
     stopServingContainer
   } = useMlopsModelReleaseApi();
@@ -73,37 +67,12 @@ const ServingPage = () => {
   const [guideOpen, setGuideOpen] = useState<boolean>(false);
   const [selectedServing, setSelectedServing] = useState<TableData | null>(null);
 
-  // Update function mapping
-  // const updateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
-  //   [DatasetType.ANOMALY_DETECTION]: updateAnomalyServings,
-  //   [DatasetType.LOG_CLUSTERING]: updateLogClusteringServings,
-  //   [DatasetType.TIMESERIES_PREDICT]: updateTimeSeriesPredictServings,
-  //   [DatasetType.CLASSIFICATION]: updateClassificationServings,
-  //   [DatasetType.IMAGE_CLASSIFICATION]: updateImageClassificationServings,
-  //   [DatasetType.OBJECT_DETECTION]: updateObjectDetectionServings
-  // };
-
   const columns: ColumnItem[] = [
     {
       title: t(`model-release.modelName`),
       dataIndex: 'name',
       key: 'name'
     },
-    // {
-    //   title: t(`model-release.modelDescription`),
-    //   dataIndex: 'description',
-    //   key: 'description'
-    // },
-    // {
-    //   title: t(`model-release.publishStatus`),
-    //   dataIndex: 'status',
-    //   key: 'status',
-    //   width: 100,
-    //   render: (_, record) => {
-    //     const isActive = record.status === 'active'
-    //     return <Tag color={isActive ? 'green' : 'default'}>{isActive ? t(`mlops-common.published`) : t(`mlops-common.waitRelease`)}</Tag>
-    //   }
-    // },
     {
       title: t(`mlops-common.containerStatus`),
       dataIndex: 'container_info',
@@ -172,9 +141,7 @@ const ServingPage = () => {
       key: 'action',
       width: 180,
       render: (_, record: TableData) => {
-        // const { status } = record;
         const { state } = record.container_info;
-        // const isActive = record.status === 'active';
         return (
           <>
             <PermissionWrapper requiredPermissions={['View']}>
@@ -303,24 +270,6 @@ const ServingPage = () => {
       message.error(t(`common.delFailed`));
     }
   };
-
-  // const handleModelActive = async (id: number, value: boolean) => {
-  //   if (!algorithmType || !updateMap[algorithmType]) {
-  //     return;
-  //   }
-
-  //   setLoading(true);
-  //   try {
-  //     const status = value ? 'inactive' : 'active';
-  //     await updateMap[algorithmType]!(id, { status });
-  //     message.success(t(`common.updateSuccess`));
-  //   } catch (e) {
-  //     console.error(e);
-  //     message.error(t(`common.updateFailed`));
-  //   } finally {
-  //     getModelServings();
-  //   }
-  // };
 
   const onRefresh = () => {
     getModelServings();
