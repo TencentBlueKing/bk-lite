@@ -119,8 +119,13 @@ class UserPersonalConfigViewSet(viewsets.ModelViewSet):
         """
         username = request.user.username
         domain = getattr(request.user, "domain", "domain.com")
-        config_key = request.data["config_key"]
-        config_value = request.data["config_value"]
+        config_key = request.data.get("config_key")
+        config_value = request.data.get("config_value")
+        if not isinstance(config_key, str) or not config_key.strip():
+            return Response(
+                {"result": False, "message": "config_key 不能为空"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # 配置值校验
         if not isinstance(config_value, dict):

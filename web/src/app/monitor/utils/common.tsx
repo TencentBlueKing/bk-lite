@@ -18,9 +18,9 @@ import {
 import { Group } from '@/types';
 import {
   APPOINT_METRIC_IDS,
-  DERIVATIVE_OBJECTS,
   OBJECT_DEFAULT_ICON
 } from '@/app/monitor/constants';
+import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import dayjs from 'dayjs';
@@ -396,8 +396,15 @@ export const findTreeParentKey = (
 };
 
 // 展示监控示例名称
-export const showInstName = (objectItem: ObjectItem, row: TableDataItem) => {
-  const isDerivative = DERIVATIVE_OBJECTS.includes(objectItem?.name);
+// 注意：objectItem 必须包含 level 字段，或者传入 objects 参数进行动态判断
+export const showInstName = (
+  objectItem: ObjectItem,
+  row: TableDataItem,
+  objects?: ObjectItem[]
+) => {
+  const isDerivative = objects
+    ? isDerivativeObject(objectItem, objects)
+    : isDerivativeObject(objectItem);
   return (
     (isDerivative ? row?.instance_id_values?.[1] : row?.instance_name) || '--'
   );
@@ -414,7 +421,7 @@ export const getBaseInstanceColumn = (config: {
     .filter((item) => item.type === config.row?.type)
     .find((item) => item.level === 'base');
   const title = baseTarget?.display_name || config.t('monitor.source');
-  const isDerivative = DERIVATIVE_OBJECTS.includes(config.row?.name);
+  const isDerivative = isDerivativeObject(config.row, config.objects);
   const columnItems: any = [
     {
       title: config.t('common.name'),
@@ -426,7 +433,7 @@ export const getBaseInstanceColumn = (config: {
       }),
       key: 'instance_name',
       render: (_: unknown, record: TableDataItem) => {
-        const instanceName = showInstName(config.row, record);
+        const instanceName = showInstName(config.row, record, config.objects);
         return (
           <EllipsisWithTooltip
             text={instanceName}
