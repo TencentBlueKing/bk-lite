@@ -488,6 +488,7 @@ class SkillToolsViewSet(AuthViewSet):
             }
         """
         server_url = request.data.get("server_url")
+        transport = request.data.get("transport", "")
         enable_auth = request.data.get("enable_auth", False)
         auth_token = request.data.get("auth_token", "")
         force_refresh = request.data.get("force_refresh", False)
@@ -498,12 +499,12 @@ class SkillToolsViewSet(AuthViewSet):
 
         # 先查缓存（非强制刷新时）
         if not force_refresh:
-            cached_tools = get_cached_mcp_tools(server_url, auth_token)
+            cached_tools = get_cached_mcp_tools(server_url, auth_token, transport)
             if cached_tools is not None:
                 return JsonResponse({"result": True, "data": cached_tools, "cached": True})
 
         # 构建 MCP 客户端配置
-        mcp_config = {"server_url": server_url}
+        mcp_config = {"server_url": server_url, "transport": transport}
 
         # 如果启用认证，添加认证信息
         if enable_auth:
@@ -518,7 +519,7 @@ class SkillToolsViewSet(AuthViewSet):
             with MCPClient(**mcp_config) as mcp_client:
                 tools = mcp_client.get_tools()
                 # 缓存结果
-                set_cached_mcp_tools(server_url, tools, auth_token)
+                set_cached_mcp_tools(server_url, tools, auth_token, transport)
                 return JsonResponse({"result": True, "data": tools, "cached": False})
         except Exception as e:
             logger.exception("Failed to fetch MCP tools: server_url=%s", server_url)

@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 
 import json_repair
 from deepagents import create_deep_agent
@@ -516,6 +517,27 @@ class ToolsNodes(BasicNode):
             return tools_info
         return ""
 
+    @staticmethod
+    def _resolve_remote_transport(server_url: str, transport: str = "") -> str:
+        """解析远程 MCP 传输协议（仅 HTTP/HTTPS）"""
+        explicit_transport = (transport or "").strip().lower()
+        if explicit_transport in {"sse", "streamable_http"}:
+            return explicit_transport
+
+        parsed_url = urlparse(server_url or "")
+        query_dict = parse_qs(parsed_url.query)
+        query_transport = (query_dict.get("transport", [""])[0] or "").strip().lower()
+        if query_transport in {"sse", "streamable_http"}:
+            return query_transport
+
+        normalized_path = (parsed_url.path or "").rstrip("/").lower()
+        if normalized_path.endswith("/sse"):
+            return "sse"
+        if normalized_path.endswith("/mcp") or normalized_path.endswith("/streamable_http"):
+            return "streamable_http"
+
+        return "sse"
+
     async def call_with_structured_output(self, llm, user_message: str, pydantic_model):
         """
         通用结构化输出调用方法
@@ -546,7 +568,10 @@ class ToolsNodes(BasicNode):
                 # stdio-mcp:name
                 self.mcp_config[server.name] = {"command": server.command, "args": server.args, "transport": "stdio"}
             else:
-                self.mcp_config[server.name] = {"url": server.url, "transport": "sse"}
+                self.mcp_config[server.name] = {
+                    "url": server.url,
+                    "transport": self._resolve_remote_transport(server.url, getattr(server, "transport", "")),
+                }
             if server.enable_auth:
                 self.mcp_config[server.name]["headers"] = {"Authorization": server.auth_token}
 
