@@ -44,7 +44,7 @@ import EditConfig from './updateConfig';
 import EditInstance from './editInstance';
 import TemplateConfigDrawer from './templateConfigDrawer';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
-import { DERIVATIVE_OBJECTS } from '@/app/monitor/constants';
+import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableProps, MenuProps } from 'antd';
@@ -443,7 +443,7 @@ const Asset = () => {
             children: []
           };
         }
-        if (!DERIVATIVE_OBJECTS.includes(item.name)) {
+        if (!isDerivativeObject(item, data)) {
           acc[item.type].children.push({
             title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
             key: item.id,
