@@ -10,6 +10,7 @@ from apps.monitor.utils.dimension import (
     build_dimensions,
     extract_monitor_instance_id,
     format_dimension_str,
+    format_dimension_value,
     build_metric_template_vars,
 )
 from apps.core.logger import celery_logger as logger
@@ -49,6 +50,7 @@ class AlertDetector:
             "metric_name": self._get_metric_display_name(),
             "instances_map": self.instances_map,
             "instance_id_keys": group_by_keys,
+            "dimension_name_map": self._build_dimension_name_map(),
             "display_unit": self.metric_query_service.get_display_unit(),
             "enum_value_map": self.metric_query_service.get_enum_value_map(),
         }
@@ -121,23 +123,30 @@ class AlertDetector:
             monitor_instance_id = self.baselines_map.get(
                 metric_instance_id
             ) or self._extract_monitor_instance_id(metric_instance_id)
-            instance_name = self.instances_map.get(
+            resource_name = self.instances_map.get(
                 monitor_instance_id, monitor_instance_id
             )
             dimensions = self._parse_dimensions(metric_instance_id)
             dimension_str = self._format_dimension_str(dimensions)
             display_name = (
-                f"{instance_name} - {dimension_str}" if dimension_str else instance_name
+                f"{resource_name} - {dimension_str}" if dimension_str else resource_name
+            )
+            dimension_value = format_dimension_value(
+                dimensions,
+                ordered_keys=self.policy.group_by or [],
+                name_map=self._build_dimension_name_map(),
             )
 
             template_context = {
                 "metric_instance_id": metric_instance_id,
                 "monitor_instance_id": monitor_instance_id,
                 "instance_name": display_name,
+                "resource_name": resource_name,
                 "monitor_object": monitor_object_name,
                 "metric_name": metric_name,
                 "level": no_data_level,
                 "value": "",
+                "dimension_value": dimension_value,
             }
             template_context.update(self._build_metric_template_vars(dimensions))
 
@@ -165,6 +174,23 @@ class AlertDetector:
 
     def _build_metric_template_vars(self, dimensions: dict) -> dict:
         return build_metric_template_vars(dimensions)
+
+    def _build_dimension_name_map(self) -> dict:
+        metric = self.metric_query_service.metric
+        if not metric:
+            return {}
+
+        name_map = {}
+        for item in metric.dimensions or []:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            if not name:
+                continue
+            display_name = item.get("display_name") or item.get("description") or name
+            name_map[name] = display_name
+
+        return name_map
 
     def _log_alert_events(self, alert_events, vm_data):
         logger.info(f"=======alert events: {alert_events}")
