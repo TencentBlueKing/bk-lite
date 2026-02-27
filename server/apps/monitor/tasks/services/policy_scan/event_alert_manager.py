@@ -175,9 +175,9 @@ class EventAlertManager:
                 monitor_instance_id, monitor_instance_id
             )
             dimension_str = self._format_dimension_str(dimensions)
-            display_name = (
-                f"{instance_name} - {dimension_str}" if dimension_str else instance_name
-            )
+            # display_name = (
+            #     f"{instance_name} - {dimension_str}" if dimension_str else instance_name
+            # )
 
             if event["level"] != "no_data":
                 alert_type = "alert"
@@ -196,7 +196,8 @@ class EventAlertManager:
                     monitor_instance_id=monitor_instance_id,
                     metric_instance_id=metric_instance_id,
                     dimensions=dimensions,
-                    monitor_instance_name=display_name,
+                    # monitor_instance_name=display_name,
+                    monitor_instance_name=instance_name,
                     alert_type=alert_type,
                     level=level,
                     value=value,
