@@ -143,3 +143,12 @@ export const getName = (targetID: string, data: UserProfile[] | null) => {
   }
   return '--';
 };
+
+// Generate curl example for serving API
+export const generateCurlExample = (endpoint: string, requestBody: object): string => {
+  const bodyStr = JSON.stringify(requestBody, null, 2).split('\n').map((line, i) => i === 0 ? line : '  ' + line).join('\n');
+  
+  return `curl -X POST "${endpoint}" \\
+  -H "Content-Type: application/json" \\
+  -d '${bodyStr}'`;
+};
