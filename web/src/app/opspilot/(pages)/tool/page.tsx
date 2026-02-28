@@ -8,7 +8,7 @@ import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
-import { Tool, TagOption } from '@/app/opspilot/types/tool';
+import { Tool, TagOption, ToolPayload } from '@/app/opspilot/types/tool';
 import PermissionWrapper from "@/components/permission";
 import styles from '@/app/opspilot/styles/common.module.scss';
 import { useToolApi } from '@/app/opspilot/api/tool';
@@ -256,8 +256,9 @@ const ToolListPage: React.FC = () => {
             value: '',
           }));
           const { enable_auth, auth_token, ...restValues } = values;
-          const queryParams = {
+          const queryParams: ToolPayload = {
             ...restValues,
+            name: values.name,
             icon: 'gongjuji',
             params: {
               name: values.name,
