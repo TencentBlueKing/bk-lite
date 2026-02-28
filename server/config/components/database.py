@@ -105,6 +105,33 @@ elif db_engine == "gaussdb":
         }
     }
 
+elif db_engine == "goldendb":
+    DATABASES = {
+        "default": {
+            "ENGINE": "cw_cornerstone.db.goldendb.backend",
+            "NAME": os.getenv("DB_NAME"),
+            "USER": os.getenv("DB_USER"),
+            "PASSWORD": os.getenv("DB_PASSWORD"),
+            "HOST": os.getenv("DB_HOST"),
+            "PORT": os.getenv("DB_PORT", "8880"),
+            "OPTIONS": {
+                "charset": "utf8mb4",
+                "collation": "utf8mb4_bin",
+            },
+        }
+    }
+
+    # ============================================================
+    # GoldenDB 数据库 Migration 补丁说明
+    # ============================================================
+    # Migration 补丁通过 cw_cornerstone.migrate_patch 自动加载
+    # 补丁文件位于: migrate_patch/patches/goldendb/{app_label}/{migration_name}.py
+    # 补丁机制: 在 pre_migrate 信号时替换原始 migration 的 operations
+    # 当前已有补丁:
+    #   - alerts/0001_initial.py (跳过 JSONField 上的 GinIndex/BTreeIndex)
+    #   - alerts/0005_*.py (跳过重复 ForeignKey 索引)
+    #   - alerts/0010_*.py (跳过 RemoveIndex/AddIndex on JSONField)
+
 elif db_engine == "oceanbase":
     DATABASES = {
         "default": {
@@ -121,7 +148,7 @@ elif db_engine == "oceanbase":
     }
 
 else:
-    raise ValueError(f"Unsupported DB_ENGINE: '{db_engine}'. Supported values: postgresql, mysql, sqlite, dameng, gaussdb, oceanbase")
+    raise ValueError(f"Unsupported DB_ENGINE: '{db_engine}'. Supported values: postgresql, mysql, sqlite, dameng, gaussdb, oceanbase, goldendb")
 
 
 # ============================================================
