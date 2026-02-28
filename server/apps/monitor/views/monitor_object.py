@@ -1,6 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
+from apps.core.logger import monitor_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
     get_permissions_rules,
@@ -40,9 +41,11 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
         if request.GET.get("add_instance_count") in ["true", "True"]:
             include_children = request.COOKIES.get("include_children", "0") == "1"
+            current_team = request.COOKIES.get("current_team")
+
             inst_res = get_permissions_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                current_team,
                 "monitor",
                 f"{PermissionConstants.INSTANCE_MODULE}",
                 include_children=include_children,
@@ -52,6 +55,11 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
                 inst_res.get("data", {}),
                 inst_res.get("team", []),
             )
+
+            logger.warning(
+                f"[STAT] current_team={current_team}, include_children={include_children}"
+            )
+            logger.warning(f"[STAT] inst_res={inst_res}")
 
             inst_objs = MonitorInstance.objects.filter(
                 is_deleted=False
@@ -117,7 +125,6 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             for result in results:
                 result["policy_count"] = policy_map.get(result["id"], 0)
 
-        # queryset已经通过模型的ordering自动排序，无需再次排序
         return WebUtils.response_success(results)
 
     @action(methods=["post"], detail=False, url_path="order")

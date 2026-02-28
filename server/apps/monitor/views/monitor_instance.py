@@ -2,6 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
@@ -35,13 +36,21 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
     def monitor_instance_list(self, request, monitor_object_id):
         """非特殊对象的通用列表接口"""
         include_children = request.COOKIES.get("include_children", "0") == "1"
+        current_team = request.COOKIES.get("current_team")
+
         permission = get_permission_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            current_team,
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
             include_children=include_children,
         )
+
+        logger.warning(
+            f"[LIST] current_team={current_team}, include_children={include_children}, obj_id={monitor_object_id}"
+        )
+        logger.warning(f"[LIST] permission={permission}")
+
         qs = permission_filter(
             MonitorInstance,
             permission,
