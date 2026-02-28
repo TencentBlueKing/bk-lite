@@ -900,7 +900,8 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                 )
 
                 serving.container_info = result
-                serving.save(update_fields=["container_info"])
+                serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
+                serving.save(update_fields=["container_info", "port"])
 
                 response.data["container_info"] = result
                 response.data["message"] = "服务已创建并启动"
@@ -1054,7 +1055,8 @@ class ObjectDetectionServingViewSet(ModelViewSet):
 
                 # 更新容器信息（status 由用户控制，不修改）
                 instance.container_info = result
-                instance.save(update_fields=["container_info"])
+                instance.port = int(result.get("port", 0)) if result.get("port") else instance.port
+                instance.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据
                 response.data["container_info"] = result
@@ -1127,7 +1129,8 @@ class ObjectDetectionServingViewSet(ModelViewSet):
 
                 # 正常启动成功，更新容器信息
                 serving.container_info = result
-                serving.save(update_fields=["container_info"])
+                serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
+                serving.save(update_fields=["container_info", "port"])
 
                 return Response(
                     {

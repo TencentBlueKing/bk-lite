@@ -59,14 +59,16 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     if (!formRef.current) return;
     formRef.current.resetFields();
 
-    if (type === 'add') {
-      const defaultValues: Record<string, any> = {
-        model_version: 'latest',
-        status: true
-      };
+    // if (type === 'add') {
+    //   // const defaultValues: Record<string, any> = {
+    //   //   // model_version: 'latest',
+    //   //   // status: true
+    //   // };
 
-      formRef.current.setFieldsValue(defaultValues);
-    } else {
+    //   // formRef.current.setFieldsValue(defaultValues);
+    // } else
+
+    if (type === 'edit') {
       const editValues: Record<string, any> = {
         ...formData,
         port: formData.port || undefined // port 为 null 时设置为 undefined，让表单为空
@@ -128,7 +130,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
         label: `Version_${item?.version}`,
         value: item?.version
       }));
-      options.unshift({ label: 'latest', value: 'latest' });
+      // options.unshift({ label: 'latest', value: 'latest' });
       setVersionOptions(options);
     } catch (e) {
       console.error(e);
@@ -171,6 +173,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
 
   const handleCancel = () => {
     setModalOpen(false);
+    setVersionOptions([]);
   };
 
   return (
@@ -218,29 +221,9 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             <InputNumber className="w-full" placeholder={t(`mlops-common.portIptMsg`)} min={1} max={65535} />
           </Form.Item>
 
-          {/* <Form.Item
-            name='status'
-            label={t(`model-release.release`)}
-            layout="horizontal"
-            tooltip={
-              type === 'edit' && formData?.container_info?.state !== 'running'
-                ? t(`model-release.statusDisabledTip`)
-                : t(`model-release.capabilityTip`)
-            }
-          >
-            <Switch
-              defaultChecked
-              checkedChildren={t(`common.yes`)}
-              unCheckedChildren={t(`common.no`)}
-              size="small"
-              disabled={type === 'edit' && formData?.container_info?.state !== 'running'}
-            />
-          </Form.Item> */}
-
           <Form.Item
             name='description'
             label={t(`model-release.modelDescription`)}
-          // rules={[{ required: true, message: t(`common.inputMsg`) }]}
           >
             <TextArea placeholder={t(`common.inputMsg`)} rows={4} />
           </Form.Item>
