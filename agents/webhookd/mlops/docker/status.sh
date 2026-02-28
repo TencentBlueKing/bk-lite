@@ -45,16 +45,17 @@ fi
 
 # ============ 关键优化：一次性 inspect 所有指定容器 ============
 # 使用 docker inspect 批量查询（只查询指定的容器，不查询所有）
+# 注意：部分容器不存在时 docker inspect 返回非零退出码，但 stdout 仍包含存在容器的有效 JSON
 set +e
-INSPECT_OUTPUT=$(docker inspect "${IDS[@]}" 2>&1)
-INSPECT_STATUS=$?
+INSPECT_OUTPUT=$(docker inspect "${IDS[@]}" 2>/dev/null)
 set -e
 
 # 构建结果数组
 RESULTS="["
 FIRST=true
 
-if [ $INSPECT_STATUS -eq 0 ]; then
+# 判断 inspect 输出是否为有效 JSON 数组（不依赖 exit code，因为部分容器不存在时 exit code 非零但输出仍有效）
+if echo "$INSPECT_OUTPUT" | jq -e 'type == "array"' >/dev/null 2>&1; then
     # inspect 成功，解析每个容器的状态
     for container_id in "${IDS[@]}"; do
         # 从 inspect 输出中提取该容器的信息（禁用 set -e 防止 jq 失败）

@@ -211,6 +211,11 @@ const useMlopsManageApi = () => {
     return await del(`/mlops/${TRAINDATA_MAP[key]}/${id}/`);
   };
 
+  // 通用更新训练数据（用于 detail 场景的 is_train_data / is_val_data / is_test_data 更新）
+  const updateTrainData = async (id: string, datasetType: DatasetType, params: BaseTrainDataUpdateParams) => {
+    return await patch(`/mlops/${TRAINDATA_MAP[datasetType]}/${id}/`, params);
+  };
+
   return {
     getDatasetsList,
     getOneDatasetInfo,
@@ -234,6 +239,8 @@ const useMlopsManageApi = () => {
     updateImageClassificationTrainData,
     updateObjectDetectionTrainData,
     updateAnomalyTrainDataFile,
+
+    updateTrainData,
 
     deleteDataset,
     deleteTrainDataFile,

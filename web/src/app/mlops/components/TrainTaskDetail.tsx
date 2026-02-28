@@ -268,10 +268,6 @@ const TrainTaskDetail = ({
           {/* Metrics Grid */}
           {!loading && metrics.length > 0 && (
             <div className={styles.metricsSection}>
-              {/* <div className={styles.metricsHeader}>
-                <h2 className={styles.metricsTitle}>训练指标</h2>
-                <div className={styles.metricsCount}>{metrics.length} 个指标</div>
-              </div> */}
               <div className={styles.metricsGrid}>
                 {metrics.map((metricName) => (
                   <LazyChart

@@ -10,12 +10,18 @@ interface EditablePasswordFieldProps {
 const EditablePasswordField: React.FC<EditablePasswordFieldProps> = ({ value, onChange }) => {
   const [isEditable, setIsEditable] = React.useState(!value);
   const [internalValue, setInternalValue] = React.useState(value || '');
+  const hasFilledRef = React.useRef(!!value);
 
+  // Only handle external prefill: value set from outside when field was empty
+  // This covers edit-mode backfill via form.setFieldsValue
   React.useEffect(() => {
-    if (!isEditable) {
-      setInternalValue(value || '');
+    if (hasFilledRef.current) return;
+    if (value && !internalValue) {
+      hasFilledRef.current = true;
+      setInternalValue(value);
+      setIsEditable(false);
     }
-  }, [value, isEditable]);
+  }, [value]);
 
   const handleEdit = () => {
     setIsEditable(true);

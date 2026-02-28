@@ -6,7 +6,7 @@ from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.filters.plugin import MonitorPluginFilter
 from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
-from apps.monitor.serializers.pligin import MonitorPluginSerializer
+from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.services.plugin import MonitorPluginService
 from config.drf.pagination import CustomPageNumberPagination
 

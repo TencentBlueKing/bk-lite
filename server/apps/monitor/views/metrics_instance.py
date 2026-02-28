@@ -28,6 +28,9 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         target_unit = request.GET.get("unit")
         auto_convert = request.GET.get("auto_convert_unit", "true").lower() == "true"
 
+        if not query:
+            raise BaseAppException("query is required")
+
         data = MetricsService.get_metrics(query)
 
         if source_unit:
@@ -55,10 +58,33 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         query = request.GET.get("query")
         start = request.GET.get("start")
         end = request.GET.get("end")
-        step = request.GET.get("step")
+        step = request.GET.get("step", "5m")
         source_unit = request.GET.get("source_unit")
         target_unit = request.GET.get("unit")
         auto_convert = request.GET.get("auto_convert_unit", "true").lower() == "true"
+
+        if not query:
+            raise BaseAppException("query is required")
+
+        if start is None or end is None:
+            raise BaseAppException("start and end are required")
+
+        try:
+            start_int = int(start)
+            end_int = int(end)
+        except (TypeError, ValueError):
+            raise BaseAppException("start and end must be integer timestamps in milliseconds")
+
+        if start_int >= end_int:
+            raise BaseAppException("start must be less than end")
+
+        if not step:
+            raise BaseAppException("step is required")
+
+        try:
+            MetricsService.parse_step_to_seconds(step)
+        except ValueError as e:
+            raise BaseAppException(f"invalid step: {e}")
 
         data = MetricsService.get_metrics_range(query, start, end, step)
 
@@ -103,7 +129,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
                 if not values:
                     continue
 
-                extracted_values = MetricsInstanceVieSet._extract_values_from_item(
+                extracted_values = MetricsInstanceViewSet._extract_values_from_item(
                     values
                 )
                 all_numeric_values.extend(extracted_values)
@@ -137,11 +163,11 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
                 )
 
                 if is_single_value:
-                    MetricsInstanceVieSet._convert_single_value(
+                    MetricsInstanceViewSet._convert_single_value(
                         item, values, source_unit, final_target_unit
                     )
                 else:
-                    MetricsInstanceVieSet._convert_range_values(
+                    MetricsInstanceViewSet._convert_range_values(
                         item, values, source_unit, final_target_unit
                     )
 

@@ -5,7 +5,10 @@
 import json
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from datetime import timezone as dt_timezone
 from graphlib import CycleError, TopologicalSorter
 from typing import Any, Callable, Dict, List, Optional, Set
 
@@ -16,7 +19,7 @@ from django.utils import timezone
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import WorkFlowExecuteType, WorkFlowTaskStatus
 from apps.opspilot.models import BotWorkFlow
-from apps.opspilot.models.bot_mgmt import WorkFlowConversationHistory, WorkFlowTaskResult
+from apps.opspilot.models.bot_mgmt import WorkFlowConversationHistory, WorkFlowTaskNodeResult, WorkFlowTaskResult
 
 from .core.base_executor import BaseNodeExecutor
 from .core.enums import NodeStatus
@@ -46,10 +49,11 @@ class ChatFlowEngine:
         }
     )
 
-    def __init__(self, instance: BotWorkFlow, start_node_id: str = None, entry_type: str = None):
+    def __init__(self, instance: BotWorkFlow, start_node_id: str = None, entry_type: str = None, execution_id: str = None):
         self.instance = instance
         self.start_node_id = start_node_id
         self.entry_type = entry_type or WorkFlowExecuteType.OPENAI  # 默认为 openai
+        self.execution_id = execution_id or str(uuid.uuid4())
         self.variable_manager = VariableManager()
         self.execution_contexts: Dict[str, NodeExecutionContext] = {}
 
@@ -87,8 +91,51 @@ class ChatFlowEngine:
             input_data: 输入数据
         """
         self.variable_manager.set_variable("flow_id", str(self.instance.id))
+        self.variable_manager.set_variable("execution_id", self.execution_id)
         self.variable_manager.set_variable("last_message", input_data.get("last_message", ""))
         self.variable_manager.set_variable("flow_input", input_data)
+
+    @staticmethod
+    def _to_datetime(timestamp: Optional[float]):
+        if not timestamp:
+            return None
+        return datetime.fromtimestamp(timestamp, tz=dt_timezone.utc)
+
+    def _record_node_execution_result(self, node_id: str, context: NodeExecutionContext) -> None:
+        """记录节点执行明细（幂等 upsert）"""
+        if not node_id or not context:
+            return
+
+        try:
+            status = context.status.value if hasattr(context.status, "value") else str(context.status)
+            node_index = self.variable_manager.get_variable(f"node_{node_id}_index")
+            node_type = self.variable_manager.get_variable(f"node_{node_id}_type") or ""
+            node_name = self.variable_manager.get_variable(f"node_{node_id}_name") or ""
+
+            duration_ms = None
+            if context.start_time and context.end_time:
+                duration_ms = int((context.end_time - context.start_time) * 1000)
+
+            defaults = {
+                "node_name": node_name,
+                "node_type": node_type,
+                "node_index": node_index,
+                "status": status,
+                "input_data": context.input_data or {},
+                "output_data": context.output_data or {},
+                "error_message": context.error_message,
+                "start_time": self._to_datetime(context.start_time),
+                "end_time": self._to_datetime(context.end_time),
+                "duration_ms": duration_ms,
+            }
+
+            WorkFlowTaskNodeResult.objects.update_or_create(
+                execution_id=self.execution_id,
+                node_id=node_id,
+                defaults=defaults,
+            )
+        except Exception as e:
+            logger.exception(f"记录节点执行明细失败: execution_id={self.execution_id}, node_id={node_id}, error={str(e)}")
 
     def _get_start_node(self) -> Optional[Dict[str, Any]]:
         """获取起始节点
@@ -228,6 +275,7 @@ class ChatFlowEngine:
 
                 # 更新节点执行顺序
                 self._update_node_execution_order(agent_node_id)
+                self._record_node_execution_result(agent_node_id, agent_context)
 
                 # 记录系统输出到对话历史
                 if accumulated_content:
@@ -266,6 +314,7 @@ class ChatFlowEngine:
 
                 # 更新节点执行顺序
                 self._update_node_execution_order(agent_node_id)
+                self._record_node_execution_result(agent_node_id, agent_context)
 
                 error_data = {"type": "ERROR", "error": f"流处理错误: {str(e)}", "timestamp": int(time.time() * 1000)}
                 yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
@@ -334,6 +383,7 @@ class ChatFlowEngine:
 
         # 更新节点执行顺序
         self._update_node_execution_order(start_node_id)
+        self._record_node_execution_result(start_node_id, start_context)
 
         return filtered_output
 
@@ -374,6 +424,7 @@ class ChatFlowEngine:
 
         # 注册到 execution_contexts
         self.execution_contexts[node_id] = context
+        self._record_node_execution_result(node_id, context)
 
         return context
 
@@ -455,6 +506,7 @@ class ChatFlowEngine:
 
                 # 更新节点执行顺序
                 self._update_node_execution_order(node_id)
+                self._record_node_execution_result(node_id, context)
 
                 self.variable_manager.set_variable(f"node_{node_id}_output", result)
                 if isinstance(result, dict):
@@ -467,6 +519,7 @@ class ChatFlowEngine:
 
                 # 更新节点执行顺序
                 self._update_node_execution_order(node_id)
+                self._record_node_execution_result(node_id, context)
 
                 logger.exception(f"[SSE-Engine] 前置节点 {node_id} ({node_type}) 执行失败: {str(e)}")
                 # 记录错误到 WorkFlowTaskResult
@@ -556,6 +609,7 @@ class ChatFlowEngine:
 
                         # 更新节点执行顺序
                         self._update_node_execution_order(next_node_id)
+                        self._record_node_execution_result(next_node_id, context)
 
                         # 更新输入为下一个节点准备
                         if result and isinstance(result, dict):
@@ -572,6 +626,7 @@ class ChatFlowEngine:
 
                             # 更新节点执行顺序
                             self._update_node_execution_order(next_node_id)
+                            self._record_node_execution_result(next_node_id, context)
 
                         logger.exception(f"[SSE-Engine] 后续节点 {next_node_id} 执行失败: {str(e)}")
                         # 记录错误信息，稍后统一记录
@@ -740,41 +795,70 @@ class ChatFlowEngine:
                 if effective_type.lower() in [choice[0] for choice in WorkFlowExecuteType.choices]:
                     execute_type = effective_type.lower()
 
-            # 收集所有节点的输出数据（包括失败节点的错误信息）
-            output_data = {}
+            # 主表仅保存执行摘要，节点全量输入输出在 WorkFlowTaskNodeResult 中维护
+            total_nodes = len(self.execution_contexts)
+            completed_nodes = 0
+            failed_nodes = 0
+            running_nodes = 0
+            pending_nodes = 0
+            final_node_id = None
+            final_node_index = -1
+            final_node_name = ""
+            final_node_type = ""
+            failed_node_id = None
+            failed_node_name = ""
+            failed_node_type = ""
+            failed_error = ""
+
             for node_id, context in self.execution_contexts.items():
-                # 从变量管理器获取节点的执行信息
                 node_index = self.variable_manager.get_variable(f"node_{node_id}_index")
-                node_type = self.variable_manager.get_variable(f"node_{node_id}_type")
-                node_name = self.variable_manager.get_variable(f"node_{node_id}_name")
-                # 获取用户指定的输出参数名
-                output_key = self.variable_manager.get_variable(f"node_{node_id}_output_key") or "last_message"
+                node_type = self.variable_manager.get_variable(f"node_{node_id}_type") or ""
+                node_name = self.variable_manager.get_variable(f"node_{node_id}_name") or ""
+                status_value = context.status.value if hasattr(context.status, "value") else str(context.status)
 
-                # 获取节点配置的输入参数名，只记录该参数（而非完整的 input_data）
-                node_config = self._node_map.get(node_id, {}).get("data", {}).get("config", {})
-                input_key = node_config.get("inputParams", "last_message")
-                filtered_input = {input_key: context.input_data.get(input_key)} if context.input_data else {}
+                if status_value == NodeStatus.COMPLETED.value:
+                    completed_nodes += 1
+                elif status_value == NodeStatus.FAILED.value:
+                    failed_nodes += 1
+                    failed_node_id = node_id
+                    failed_node_name = node_name
+                    failed_node_type = node_type
+                    failed_error = context.error_message or ""
+                elif status_value == NodeStatus.RUNNING.value:
+                    running_nodes += 1
+                else:
+                    pending_nodes += 1
 
-                # 构建节点数据
-                node_data = {
-                    "index": node_index,
-                    "name": node_name,
-                    "type": node_type,
-                    "input_data": filtered_input,
-                    "status": context.status.value if hasattr(context.status, "value") else str(context.status),
+                if isinstance(node_index, int) and node_index > final_node_index:
+                    final_node_index = node_index
+                    final_node_id = node_id
+                    final_node_name = node_name
+                    final_node_type = node_type
+
+            output_data = {
+                "summary": {
+                    "execution_id": self.execution_id,
+                    "total_nodes": total_nodes,
+                    "completed_nodes": completed_nodes,
+                    "failed_nodes": failed_nodes,
+                    "running_nodes": running_nodes,
+                    "pending_nodes": pending_nodes,
+                    "final_node": {
+                        "node_id": final_node_id,
+                        "node_name": final_node_name,
+                        "node_type": final_node_type,
+                        "node_index": final_node_index if final_node_index >= 0 else None,
+                    },
+                    "failed_node": {
+                        "node_id": failed_node_id,
+                        "node_name": failed_node_name,
+                        "node_type": failed_node_type,
+                        "error": failed_error,
+                    }
+                    if failed_node_id
+                    else None,
                 }
-
-                # 根据节点状态记录输出或错误信息
-                if context.output_data:
-                    node_data["output"] = context.output_data
-                if context.error_message:
-                    node_data["error"] = context.error_message
-                    # 失败节点：使用用户指定的输出参数名存储错误信息
-                    node_data["output"] = {output_key: context.error_message}
-
-                # 只记录有实际数据的节点（有输出或有错误）
-                if context.output_data or context.error_message:
-                    output_data[node_id] = node_data
+            }
 
             # 确定状态
             status = WorkFlowTaskStatus.SUCCESS if success else WorkFlowTaskStatus.FAIL
@@ -791,14 +875,17 @@ class ChatFlowEngine:
                 last_output = str(result)
 
             # 创建执行结果记录
-            WorkFlowTaskResult.objects.create(
+            task_result = WorkFlowTaskResult.objects.create(
                 bot_work_flow=self.instance,
+                execution_id=self.execution_id,
                 status=status,
                 input_data=input_data_str,
                 output_data=output_data,
                 last_output=last_output,
                 execute_type=execute_type,
             )
+
+            WorkFlowTaskNodeResult.objects.filter(execution_id=self.execution_id, task_result__isnull=True).update(task_result=task_result)
 
         except Exception as e:
             logger.error(f"记录工作流执行结果失败: {str(e)}")
@@ -1015,6 +1102,7 @@ class ChatFlowEngine:
                 conversation_time=timezone.now(),
                 entry_type=entry_type,
                 session_id=session_id,
+                execution_id=self.execution_id,
             )
         except Exception as e:
             logger.error(f"记录{role}对话历史失败: {str(e)}")
@@ -1201,6 +1289,7 @@ class ChatFlowEngine:
 
             # 更新节点执行顺序
             self._update_node_execution_order(node_id)
+            self._record_node_execution_result(node_id, context)
 
             # 将节点结果保存到变量管理器（保持原有的节点结果存储机制）
             self.variable_manager.set_variable(f"node_{node_id}_result", result)
@@ -1220,6 +1309,7 @@ class ChatFlowEngine:
 
             # 更新节点执行顺序（失败节点也需要记录顺序）
             self._update_node_execution_order(node_id)
+            self._record_node_execution_result(node_id, context)
 
             logger.error(f"节点 {node_id} 执行失败: {str(e)}")
 

@@ -84,7 +84,7 @@ const TrainTaskHistory = ({
             <Button type="link" onClick={() => openDetail(record)} className="mr-2">{t(`common.detail`)}</Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['View']}>
-            <Button type="link" onClick={() => downloadModel(record)}>{t(`common.download`)}</Button>
+            <Button type="link" disabled={record.status !== 'FINISHED'} onClick={() => downloadModel(record)}>{t(`common.download`)}</Button>
           </PermissionWrapper>
         </>
       )

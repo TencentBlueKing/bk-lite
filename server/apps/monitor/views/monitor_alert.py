@@ -27,6 +27,7 @@ from apps.monitor.filters.monitor_alert import MonitorAlertFilter
 from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.policy_baseline import PolicyBaselineService
+from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -130,8 +131,9 @@ class MonitorAlertViewSet(
             )
 
         # 获取分页参数
-        page = int(request.GET.get("page", 1))  # 默认第1页
-        page_size = int(request.GET.get("page_size", 10))  # 默认每页10条数据
+        page, page_size = parse_page_params(
+            request.GET, default_page=1, default_page_size=10
+        )
 
         # 计算分页的起始位置
         start = (page - 1) * page_size
@@ -171,7 +173,7 @@ class MonitorAlertViewSet(
                 alert["instance_id_values"] = [
                     i for i in ast.literal_eval(alert["monitor_instance_id"])
                 ]
-            except Exception as e:
+            except (ValueError, SyntaxError):
                 alert["instance_id_values"] = [alert["monitor_instance_id"]]
             # 在 results 字典中添加完整的 policy 和 monitor_instance 信息
             alert["policy"] = (
@@ -191,8 +193,17 @@ class MonitorAlertViewSet(
 
         updated_data = serializer.validated_data
         if updated_data.get("status") == "closed":
-            updated_data["end_event_time"] = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
+            updated_data["end_event_time"] = now
             updated_data["operator"] = request.user.username
+            updated_data["operation_logs"] = (instance.operation_logs or []) + [
+                {
+                    "action": "closed",
+                    "reason": "manual",
+                    "operator": request.user.username,
+                    "time": now.isoformat(),
+                }
+            ]
 
             if instance.alert_type == "no_data" and instance.metric_instance_id:
                 update_baseline = request.data.get("update_baseline", False)
@@ -271,8 +282,12 @@ class MonitorEventViewSet(viewsets.ViewSet):
     @action(methods=["get"], detail=False, url_path="query/(?P<alert_id>[^/.]+)")
     def get_events(self, request, alert_id):
         """查询告警的事件列表 - 优化版：使用外键直接查询"""
-        page = int(request.GET.get("page", 1))
-        page_size = int(request.GET.get("page_size", 10))
+        page, page_size = parse_page_params(
+            request.GET,
+            default_page=1,
+            default_page_size=10,
+            allow_page_size_all=True,
+        )
 
         try:
             alert_obj = MonitorAlert.objects.get(id=alert_id)

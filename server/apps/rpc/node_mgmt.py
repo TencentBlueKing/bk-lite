@@ -1,9 +1,14 @@
+import os
+
 from apps.rpc.base import RpcClient, AppClient
 
 
 class NodeMgmt(object):
     def __init__(self, is_local_client=False):
-        self.client = AppClient("apps.node_mgmt.nats.node") if is_local_client else RpcClient()
+        is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
+        self.client = (
+            AppClient("apps.node_mgmt.nats.node") if is_local_client else RpcClient()
+        )
 
     def get_module_data(self, **kwargs):
         """
@@ -47,13 +52,17 @@ class NodeMgmt(object):
         return_data = self.client.run("node_list", query_data)
         return return_data
 
-    def batch_create_configs_and_child_configs(self, configs: list, child_configs: list):
+    def batch_create_configs_and_child_configs(
+        self, configs: list, child_configs: list
+    ):
         """
         批量创建配置和子配置
         :param configs: 配置列表
         :param child_configs: 子配置列表
         """
-        return_data = self.client.run("batch_create_configs_and_child_configs", configs, child_configs)
+        return_data = self.client.run(
+            "batch_create_configs_and_child_configs", configs, child_configs
+        )
         return return_data
 
     def batch_add_node_child_config(self, configs: list):
@@ -105,7 +114,10 @@ class NodeMgmt(object):
         :param id: 子配置ID
         :param content: 子配置内容
         """
-        return_data = self.client.run("update_child_config_content", {"id": id, "content": content, "env_config": env_config})
+        return_data = self.client.run(
+            "update_child_config_content",
+            {"id": id, "content": content, "env_config": env_config},
+        )
         return return_data
 
     def update_config_content(self, id, content, env_config=None):
@@ -113,7 +125,10 @@ class NodeMgmt(object):
         :param id: 配置ID
         :param content: 配置内容
         """
-        return_data = self.client.run("update_config_content", {"id": id, "content": content, "env_config": env_config})
+        return_data = self.client.run(
+            "update_config_content",
+            {"id": id, "content": content, "env_config": env_config},
+        )
         return return_data
 
     def delete_child_configs(self, ids):

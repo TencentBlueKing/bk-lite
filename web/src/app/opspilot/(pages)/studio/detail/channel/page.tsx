@@ -42,7 +42,7 @@ const ChannelPage: React.FC = () => {
         fetchChannels(botId),
         fetchBotDetail(botId)
       ]);
-      
+
       const appsData = channelsData.map((channel: any) => ({
         id: channel.id,
         name: channel.name,
@@ -69,7 +69,8 @@ const ChannelPage: React.FC = () => {
     setCurrentChannelType(Object.keys(app.channel_config)[0]);
 
     setFormLoading(true);
-    const fetchedFields = { ...app.channel_config[Object.keys(app.channel_config)[0]] };
+    const channelKey = Object.keys(app.channel_config)[0];
+    const fetchedFields = app.channel_config[channelKey] ? { ...(app.channel_config[channelKey] as Record<string, string>) } : {};
     setFields(fetchedFields);
     setFormLoading(false);
     setIsModalVisible(true);
@@ -92,7 +93,7 @@ const ChannelPage: React.FC = () => {
 
     try {
       setConfirmLoading(true);
-      await updateChannel(updatedConfig);
+      await updateChannel(updatedConfig as unknown as ChannelProps);
       message.success(t('common.saveSuccess'));
       handleCloseModal();
       await fetchData();
@@ -107,7 +108,7 @@ const ChannelPage: React.FC = () => {
     setSwitchLoading(prev => ({ ...prev, [app.id]: true }));
 
     try {
-      await updateChannel({ id: app.id, enabled: checked });
+      await updateChannel({ id: app.id, enabled: checked } as unknown as ChannelProps);
       const updatedApps = apps.map(a => a.id === app.id ? { ...a, enabled: checked } : a);
       setApps(updatedApps);
       message.success(t('common.updateSuccess'));
@@ -130,8 +131,8 @@ const ChannelPage: React.FC = () => {
             <div
               className='border shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group'>
               <div className="absolute top-2 right-2">
-                <PermissionWrapper 
-                  requiredPermissions={['Setting']} 
+                <PermissionWrapper
+                  requiredPermissions={['Setting']}
                   instPermissions={botPermissions}>
                   <Switch
                     size="small"
@@ -148,9 +149,9 @@ const ChannelPage: React.FC = () => {
                 <h2 className="text-lg font-bold m-0">{app.name}</h2>
               </div>
               <div className="w-full h-[32px] flex justify-center items-end">
-                <PermissionWrapper 
-                  className="w-full" 
-                  requiredPermissions={['Setting']} 
+                <PermissionWrapper
+                  className="w-full"
+                  requiredPermissions={['Setting']}
                   instPermissions={botPermissions}>
                   <Button
                     type="primary"

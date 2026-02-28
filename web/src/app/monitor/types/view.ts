@@ -3,7 +3,7 @@ import {
   ChartProps,
   MetricItem,
   ObjectItem,
-  TableDataItem,
+  TableDataItem
 } from '@/app/monitor/types';
 
 export interface ViewModalProps {
@@ -50,7 +50,7 @@ export interface ViewDetailProps {
 export interface ViewInstanceSearchProps {
   monitor_object_id: React.Key;
   instance_id: string;
-  metric_id: string;
+  metric_id: React.Key;
   auto_convert: boolean;
 }
 
@@ -64,9 +64,13 @@ export interface TooltipDimensionDataItem {
   value: string;
 }
 
+export interface MetricInfo {
+  metricItem: MetricItem;
+  metricUnit: string;
+}
+
 export interface MetricDimensionTooltipProps {
   instanceId: string;
-  metricId: string;
   monitorObjectId: React.Key;
-  metricItem: MetricItem;
+  metricInfo: MetricInfo;
 }

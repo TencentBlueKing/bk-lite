@@ -69,7 +69,9 @@ async def vmware_metrics(request):
     config_type = request.headers.get("config_type")
 
     logger.info(f"Request: Host={host}, Minutes={minutes}, User={username}")
-    logger.info(f"Tags: agent_id={agent_id}, instance_id={instance_id}, instance_type={instance_type}")
+    logger.info(
+        f"Tags: agent_id={agent_id}, instance_id={instance_id}, instance_type={instance_type}"
+    )
 
     try:
         # 构建任务参数
@@ -86,7 +88,7 @@ async def vmware_metrics(request):
                 "instance_type": instance_type,
                 "collect_type": collect_type,
                 "config_type": config_type,
-            }
+            },
         }
 
         # 获取任务队列并加入任务
@@ -101,7 +103,7 @@ async def vmware_metrics(request):
         prometheus_lines = [
             "# HELP monitor_request_accepted Indicates that monitor request was accepted",
             "# TYPE monitor_request_accepted gauge",
-            f'monitor_request_accepted{{monitor_type="vmware",host="{host}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}'
+            f'monitor_request_accepted{{monitor_type="vmware",host="{host}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
         ]
 
         metrics_response = "\n".join(prometheus_lines) + "\n"
@@ -109,11 +111,11 @@ async def vmware_metrics(request):
         # 返回指标格式的响应
         return response.raw(
             metrics_response,
-            content_type='text/plain; version=0.0.4; charset=utf-8',
+            content_type="text/plain; version=0.0.4; charset=utf-8",
             headers={
-                'X-Task-ID': task_info['task_id'],
-                'X-Job-ID': task_info['job_id']
-            }
+                "X-Task-ID": task_info["task_id"],
+                "X-Job-ID": task_info.get("job_id", ""),
+            },
         )
 
     except Exception as e:
@@ -124,13 +126,13 @@ async def vmware_metrics(request):
         error_lines = [
             "# HELP monitor_request_error Monitor request error",
             "# TYPE monitor_request_error gauge",
-            f'monitor_request_error{{monitor_type="vmware",host="{host}",error="{str(e)}"}} 1 {current_timestamp}'
+            f'monitor_request_error{{monitor_type="vmware",host="{host}",error="{str(e)}"}} 1 {current_timestamp}',
         ]
 
         return response.raw(
             "\n".join(error_lines) + "\n",
-            content_type='text/plain; version=0.0.4; charset=utf-8',
-            status=500
+            content_type="text/plain; version=0.0.4; charset=utf-8",
+            status=500,
         )
 
 
@@ -191,7 +193,9 @@ async def qcloud_metrics(request):
     config_type = request.headers.get("config_type")
 
     logger.info(f"Request: Minutes={minutes}, User={username}")
-    logger.info(f"Tags: agent_id={agent_id}, instance_id={instance_id}, instance_type={instance_type}")
+    logger.info(
+        f"Tags: agent_id={agent_id}, instance_id={instance_id}, instance_type={instance_type}"
+    )
 
     try:
         # 构建任务参数
@@ -207,7 +211,7 @@ async def qcloud_metrics(request):
                 "instance_type": instance_type,
                 "collect_type": collect_type,
                 "config_type": config_type,
-            }
+            },
         }
 
         # 获取任务队列并加入任务
@@ -222,7 +226,7 @@ async def qcloud_metrics(request):
         prometheus_lines = [
             "# HELP monitor_request_accepted Indicates that monitor request was accepted",
             "# TYPE monitor_request_accepted gauge",
-            f'monitor_request_accepted{{monitor_type="qcloud",username="{username}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}'
+            f'monitor_request_accepted{{monitor_type="qcloud",username="{username}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
         ]
 
         metrics_response = "\n".join(prometheus_lines) + "\n"
@@ -230,11 +234,11 @@ async def qcloud_metrics(request):
         # 返回指标格式的响应
         return response.raw(
             metrics_response,
-            content_type='text/plain; version=0.0.4; charset=utf-8',
+            content_type="text/plain; version=0.0.4; charset=utf-8",
             headers={
-                'X-Task-ID': task_info['task_id'],
-                'X-Job-ID': task_info['job_id']
-            }
+                "X-Task-ID": task_info["task_id"],
+                "X-Job-ID": task_info.get("job_id", ""),
+            },
         )
 
     except Exception as e:
@@ -245,11 +249,11 @@ async def qcloud_metrics(request):
         error_lines = [
             "# HELP monitor_request_error Monitor request error",
             "# TYPE monitor_request_error gauge",
-            f'monitor_request_error{{monitor_type="qcloud",username="{username}",error="{str(e)}"}} 1 {current_timestamp}'
+            f'monitor_request_error{{monitor_type="qcloud",username="{username}",error="{str(e)}"}} 1 {current_timestamp}',
         ]
 
         return response.raw(
             "\n".join(error_lines) + "\n",
-            content_type='text/plain; version=0.0.4; charset=utf-8',
-            status=500
+            content_type="text/plain; version=0.0.4; charset=utf-8",
+            status=500,
         )

@@ -474,12 +474,11 @@ const SearchView: React.FC = () => {
             title: item,
             dataIndex: item,
             key: item,
-            width: 200,
             ellipsis: {
               showTitle: true
             }
           }));
-        const _columns: any = cloneDeep(tableColumns);
+        const _columns: ColumnItem[] = cloneDeep(tableColumns);
         if (_columns[0]) _columns[0].fixed = 'left';
         setColumns(_columns);
         setTableData(_tableData);
@@ -772,7 +771,7 @@ const SearchView: React.FC = () => {
                 </div>
               ) : (
                 <CustomTable
-                  scroll={{ y: 'calc(100vh - 440px)' }}
+                  scroll={{ x: 'max-content', y: 'calc(100vh - 440px)' }}
                   columns={columns}
                   dataSource={tableData}
                   pagination={false}

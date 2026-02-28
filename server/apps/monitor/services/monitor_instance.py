@@ -1,4 +1,5 @@
-import ast
+import re
+from datetime import datetime, timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.loader import LanguageLoader
@@ -14,8 +15,8 @@ from apps.monitor.models import (
     MonitorInstance,
 )
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
-from datetime import datetime, timezone
 
 
 class InstanceSearch:
@@ -48,8 +49,8 @@ class InstanceSearch:
         data = []
         for obj in objs:
             try:
-                _instance_id = ast.literal_eval(obj["id"])[0]
-            except (ValueError, SyntaxError, IndexError):
+                _instance_id = parse_instance_id(obj["id"])[0]
+            except IndexError:
                 _instance_id = obj["id"]
             data.append({"id": str(_instance_id), "name": obj["name"]})
         return data
@@ -192,7 +193,7 @@ class InstanceSearch:
             item = dict(**metric["metric"])
             item.update(
                 instance_id=instance_id,
-                instance_id_values=[i for i in ast.literal_eval(instance_id)],
+                instance_id_values=list(parse_instance_id(instance_id)),
                 instance_name=obj.name or obj.id,
                 time=metric["value"][0],
                 value=metric["value"][1],
@@ -368,9 +369,7 @@ class InstanceSearch:
                 {
                     "instance_id": obj.id,
                     "instance_name": obj.name,
-                    "instance_id_values": [i for i in ast.literal_eval(obj.id)]
-                    if isinstance(obj.id, str) and obj.id.startswith("(")
-                    else [obj.id],
+                    "instance_id_values": list(parse_instance_id(obj.id)),
                 }
                 for obj in results
             ],
@@ -392,8 +391,17 @@ class InstanceSearch:
 
     def get_vm_metrics(self):
         query = self.obj_metric_map.get("default_metric")
-        vm_params = self.query_data.get("vm_params")
-        params_str = ",".join([f'{k}="{v}"' for k, v in vm_params.items() if v])
+        vm_params = self.query_data.get("vm_params") or {}
+        if not isinstance(vm_params, dict):
+            raise BaseAppException("vm_params must be an object")
+
+        params_str = ",".join(
+            [
+                f'{k}="{self._escape_promql_label_value(v)}"'
+                for k, v in vm_params.items()
+                if v is not None and str(v) != ""
+            ]
+        )
         if vm_params:
             if "}" in query:
                 query = query.replace("}", f",{params_str}}}")
@@ -402,10 +410,15 @@ class InstanceSearch:
         metrics = VictoriaMetricsAPI().query(query, step="20m")
         return metrics.get("data", {}).get("result", [])
 
+    @staticmethod
+    def _escape_promql_label_value(value):
+        value_str = str(value)
+        return value_str.replace("\\", "\\\\").replace('"', '\\"')
+
     def add_other_metrics(self, items):
         instance_ids = []
         for instance_info in items:
-            instance_id = ast.literal_eval(instance_info["instance_id"])
+            instance_id = parse_instance_id(instance_info["instance_id"])
             instance_ids.append(instance_id)
 
         metrics_obj = Metric.objects.filter(
@@ -416,7 +429,14 @@ class InstanceSearch:
         for metric_obj in metrics_obj:
             query_parts = []
             for i, key in enumerate(metric_obj.instance_id_keys):
-                values = "|".join(set(item[i] for item in instance_ids))  # 去重并拼接
+                values_set = {
+                    re.escape(str(item[i]))
+                    for item in instance_ids
+                    if len(item) > i and item[i] is not None
+                }
+                if not values_set:
+                    continue
+                values = "|".join(values_set)
                 query_parts.append(f'{key}=~"{values}"')
 
             query = metric_obj.query

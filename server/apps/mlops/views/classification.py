@@ -22,6 +22,7 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.utils import mlflow_service
+from apps.mlops.utils.validators import validate_serving_status_change
 from apps.mlops.services import (
     get_image_by_prefix,
     get_mlflow_train_config,
@@ -220,10 +221,6 @@ class ClassificationServingViewSet(ModelViewSet):
             # 构建 serving ID
             container_id = f"Classification_Serving_{serving.id}"
 
-            logger.info(
-                f"自动启动 serving 服务: {container_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}"
-            )
-
             try:
                 # 动态获取推理镜像
                 train_image = get_image_by_prefix(
@@ -241,10 +238,6 @@ class ClassificationServingViewSet(ModelViewSet):
 
                 serving.container_info = result
                 serving.save(update_fields=["container_info"])
-
-                logger.info(
-                    f"Serving 服务已自动启动: {container_id}, Port: {result.get('port')}"
-                )
 
                 response.data["container_info"] = result
                 response.data["message"] = "服务已创建并启动"
@@ -297,7 +290,126 @@ class ClassificationServingViewSet(ModelViewSet):
 
     @HasPermission("classification-Edit")
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        """
+        更新 serving 配置，自动检测并重启容器
+
+        基于实际容器运行状态决策：
+        - 容器 running + 配置变更 → 自动重启
+        - 容器非 running → 仅更新数据库，用户自行决定是否启动
+        """
+        instance = self.get_object()
+
+        # 兜底校验：容器未运行时不允许设置 status=active
+        new_status = request.data.get("status")
+        if error_response := validate_serving_status_change(instance, new_status):
+            return error_response
+
+        # 保存旧值用于判断变更
+        old_port = instance.port
+        old_model_version = instance.model_version
+        old_train_job_id = instance.train_job.id
+
+        # 检测是否更新了影响容器的字段（基于请求数据与旧值对比）
+        model_version_changed = "model_version" in request.data and str(
+            request.data["model_version"]
+        ) != str(old_model_version)
+        train_job_changed = (
+            "train_job" in request.data
+            and int(request.data["train_job"]) != old_train_job_id
+        )
+        port_changed = "port" in request.data and request.data.get("port") != old_port
+
+        container_id = f"Classification_Serving_{instance.id}"
+
+        # 获取容器实际状态（更新前），防御性处理 container_info 为空的情况
+        container_info = instance.container_info or {}
+        container_state = container_info.get("state")
+        container_port = container_info.get("port")
+
+        # 更新数据库
+        response = super().update(request, *args, **kwargs)
+        instance.refresh_from_db()
+
+        # 只有容器在运行时才考虑重启
+        if container_state != "running":
+            return response
+
+        # 决策：是否需要重启
+        need_restart = False
+
+        # 1. model/train_job 变更，必须重启
+        if model_version_changed or train_job_changed:
+            need_restart = True
+
+        # 2. 仅 port 变更，检查策略
+        elif port_changed:
+            new_port = instance.port
+            if new_port is None and old_port is not None:
+                # 有值 → None：不重启（当前端口视为自动分配，下次再应用）
+                need_restart = False
+            elif new_port is not None and old_port is None:
+                # None → 有值：需要重启（用户明确要指定端口）
+                need_restart = True
+            elif new_port is not None and old_port is not None:
+                # 有值 → 另一个有值：检查是否与实际端口一致
+                if container_port and str(new_port) != str(container_port):
+                    need_restart = True
+
+        # 如果需要重启，先删除旧容器
+        if need_restart:
+            try:
+                logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
+                WebhookClient.remove(container_id)
+            except WebhookError as e:
+                logger.warning(f"删除旧容器失败（可能已不存在）: {e}")
+                # 继续执行，尝试启动新容器
+
+            try:
+                # 获取环境变量
+                mlflow_tracking_uri = get_mlflow_tracking_uri()
+                if not mlflow_tracking_uri:
+                    raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
+
+                # 解析新的 model_uri
+                model_uri = self._resolve_model_uri(instance)
+
+                # 动态获取推理镜像
+                train_image = get_image_by_prefix(
+                    self.MLFLOW_PREFIX, instance.train_job.algorithm
+                )
+
+                # 启动新容器
+                result = WebhookClient.serve(
+                    container_id,
+                    mlflow_tracking_uri,
+                    model_uri,
+                    port=instance.port,
+                    train_image=train_image,
+                )
+
+                # 更新容器信息（status 由用户控制，不修改）
+                instance.container_info = result
+                instance.save(update_fields=["container_info"])
+
+                # 更新返回数据
+                response.data["container_info"] = result
+                response.data["message"] = "配置已更新并重启服务"
+
+            except Exception as e:
+                logger.error(f"自动重启失败: {str(e)}", exc_info=True)
+
+                # 启动失败，仅更新容器信息
+                instance.container_info = {
+                    "status": "error",
+                    "message": f"配置已更新但重启失败: {str(e)}",
+                }
+                instance.save(update_fields=["container_info"])
+
+                response.data["container_info"] = instance.container_info
+                response.data["message"] = f"配置已更新但重启失败: {str(e)}"
+                response.data["warning"] = "请手动调用 start 接口重新启动服务"
+
+        return response
 
     @action(detail=True, methods=["post"], url_path="start")
     @HasPermission("classification-Start")
@@ -326,10 +438,6 @@ class ClassificationServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"Classification_Serving_{serving.id}"
 
-            logger.info(
-                f"启动 serving 服务: {serving_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}"
-            )
-
             try:
                 # 动态获取推理镜像
                 train_image = get_image_by_prefix(
@@ -348,10 +456,6 @@ class ClassificationServingViewSet(ModelViewSet):
                 # 正常启动成功，仅更新容器信息
                 serving.container_info = result
                 serving.save(update_fields=["container_info"])
-
-                logger.info(
-                    f"Serving 服务已启动: {serving_id}, Port: {result.get('port')}"
-                )
 
                 return Response(
                     {
@@ -380,11 +484,10 @@ class ClassificationServingViewSet(ModelViewSet):
                             }
                         )
 
-                        # 仅更新容器信息
+                        # 正常启动成功，更新容器信息以及将status设为 'active'
                         serving.container_info = container_info
-                        serving.save(update_fields=["container_info"])
-
-                        logger.info(f"容器信息已同步: {container_info.get('state')}")
+                        serving.status = "active"
+                        serving.save(update_fields=["container_info", "status"])
 
                         return Response(
                             {
@@ -434,12 +537,12 @@ class ClassificationServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"Classification_Serving_{serving.id}"
 
-            logger.info(f"停止 serving 服务: {serving_id}")
-
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
 
-            logger.info(f"Serving 服务已停止: {serving_id}")
+            # 停止容器时同时将status改为'inactive'
+            serving.status = "inactive"
+            serving.save(update_fields=["status"])
 
             return Response(
                 {
@@ -481,8 +584,6 @@ class ClassificationServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"Classification_Serving_{serving.id}"
 
-            logger.info(f"删除 serving 容器: {serving_id}")
-
             # 调用 WebhookClient 删除容器
             result = WebhookClient.remove(serving_id)
 
@@ -494,8 +595,6 @@ class ClassificationServingViewSet(ModelViewSet):
                 "message": "容器已删除",
             }
             serving.save(update_fields=["container_info"])
-
-            logger.info(f"Serving 容器已删除: {serving_id}")
 
             return Response(
                 {
@@ -557,6 +656,13 @@ class ClassificationServingViewSet(ModelViewSet):
         try:
             serving = self.get_object()
 
+            # 校验服务状态
+            if serving.status != "active":
+                return Response(
+                    {"error": "服务未发布，请先发布服务"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # 获取参数
             url = request.data.get("url")
             data = request.data.get("data")
@@ -591,10 +697,6 @@ class ClassificationServingViewSet(ModelViewSet):
             # 构建请求体
             payload = {"data": data}
 
-            logger.info(
-                f"调用预测服务: serving_id={serving.id}, url={predict_url}, data_size={len(data)}"
-            )
-
             # 发起 HTTP POST 请求
             response = requests.post(
                 predict_url,
@@ -626,13 +728,6 @@ class ClassificationServingViewSet(ModelViewSet):
                     )
 
                 # 预测成功
-                predictions = result.get("data") or []
-                prediction_size = (
-                    len(predictions) if isinstance(predictions, (list, tuple)) else 0
-                )
-                logger.info(
-                    f"预测成功: serving_id={serving.id}, prediction_size={prediction_size}"
-                )
                 return Response(result)
             else:
                 error_msg = f"预测服务返回错误: HTTP {response.status_code}"
@@ -785,10 +880,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 train_job_id=train_job.id,
             )
 
-            logger.info(f"启动训练任务: {job_id}")
-            logger.info(f"  Dataset: {train_job.dataset_version.dataset_file.name}")
-            logger.info(f"  Config: {train_job.config_url.name}")
-
             # 调用 WebhookClient 启动训练
             # 动态获取训练镜像
             train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
@@ -808,8 +899,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             # 更新任务状态
             train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
-
-            logger.info(f"训练任务已启动: {job_id}")
 
             return Response(
                 {
@@ -944,9 +1033,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 if new_status:
                     train_job.status = new_status
                     train_job.save(update_fields=["status"])
-                    logger.info(
-                        f"自动同步 TrainJob {train_job.id} 状态: running -> {new_status} (基于 MLflow: {latest_run_status})"
-                    )
 
             return Response(
                 {
@@ -1005,8 +1091,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                         "metric_history": [],
                     }
                 )
-
-            logger.info(f"返回 {len(metric_data)} 条指标数据")
 
             return Response(
                 {
@@ -1083,12 +1167,9 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             version_data = mlflow_service.get_model_versions(model_name)
 
             if not version_data:
-                logger.info(f"模型未找到版本: {model_name}")
+                logger.warning(f"模型未找到版本: {model_name}")
                 return Response({"model_name": model_name, "versions": [], "total": 0})
 
-            logger.info(
-                f"获取模型版本列表成功: {model_name}, 共 {len(version_data)} 个版本"
-            )
 
             return Response(
                 {
@@ -1130,7 +1211,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 filename=filename,
             )
 
-            logger.info(f"模型下载请求完成: {filename}")
             return response
 
         except Exception as e:
@@ -1191,8 +1271,6 @@ class ClassificationDatasetReleaseViewSet(ModelViewSet):
 
             response = FileResponse(file, content_type="application/zip")
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
-
-            logger.info(f"下载数据集版本: {release.id} - {filename}")
 
             return response
 

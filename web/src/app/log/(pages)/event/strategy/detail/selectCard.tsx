@@ -1,17 +1,7 @@
 import React from 'react';
 import { Tag } from 'antd';
 import Icon from '@/components/icon';
-import { useTranslation } from '@/utils/i18n';
 import { CardItem, SelectCardProps } from '@/app/log/types/event';
-
-// 根据 channel_type 返回对应的 Tag 显示文本的翻译键
-const getChannelTypeKey = (channelType: string): string => {
-  const keyMap: Record<string, string> = {
-    email: 'log.event.channelTypeEmail',
-    enterprise_wechat_bot: 'log.event.channelTypeWechatBot'
-  };
-  return keyMap[channelType] || '';
-};
 
 // 根据 CSS 变量生成带透明度的颜色
 const getColorWithOpacity = (cssVar: string, opacity: number): string => {
@@ -22,10 +12,9 @@ const SelectCard: React.FC<SelectCardProps> = ({
   data = [],
   value,
   onChange,
-  cardWidth
+  cardWidth,
+  style
 }) => {
-  const { t } = useTranslation();
-
   const handleCardClick = (item: CardItem) => {
     onChange?.(item.value);
   };
@@ -37,12 +26,12 @@ const SelectCard: React.FC<SelectCardProps> = ({
         gridAutoRows: '1fr',
         ...(cardWidth
           ? { gridTemplateColumns: `repeat(auto-fill, ${cardWidth}px)` }
-          : {})
+          : {}),
+        ...style
       }}
     >
       {data.map((item, index) => {
         const isSelected = value === item.value;
-        const tagKey = item.tag ? getChannelTypeKey(item.tag) : '';
         return (
           <div
             key={index}
@@ -78,7 +67,7 @@ const SelectCard: React.FC<SelectCardProps> = ({
                 {item.tag && (
                   <div className="mt-1">
                     <Tag color="blue" className="text-[12px]">
-                      {tagKey ? t(tagKey) : item.tag}
+                      {item.tag}
                     </Tag>
                   </div>
                 )}

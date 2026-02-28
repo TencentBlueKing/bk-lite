@@ -25,8 +25,7 @@ make_command() {
 
 # Function to get config content
 get_config_content() {
-    installpath=$1
-    cfg_dir="${installpath}/config"  # 只保留目录部分
+    cfg_dir=$1  
     declare -A ret
     if [[ ! -d "$cfg_dir" ]]; then
         return
@@ -71,23 +70,28 @@ get_es_version() {
 }
 
 # Function to get PID list
+# Function to get PID list
 common_get_pid() {
     filterlist=("$@")
     grep_str=$(printf "%s|" "${filterlist[@]}" | sed 's/|$//')
-    pid_list=()
-    while IFS= read -r line; do
-        all_list=($line)
-        user=${all_list[0]}
-        pid=${all_list[1]}
-        cwd=$(readlink -f /proc/$pid/cwd)
-        if [[ -z $cwd ]]; then
-            continue
-        fi
-        exe=$(readlink -f /proc/$pid/exe)
-        command=$(ps -p $pid -o args=)
-        pid_list+=("${all_list[0]} $pid $exe $cwd $command")
-    done < <(ps -ef | grep -E "$grep_str" | grep -v grep)
-    echo "${pid_list[@]}"
+    
+    # 使用管道将结果传给大括号内的代码块，确保变量在同层级生效并输出
+    ps -ef | grep -E "$grep_str" | grep -v grep | {
+        pid_list=()
+        while IFS= read -r line; do
+            all_list=($line)
+            user=${all_list[0]}
+            pid=${all_list[1]}
+            cwd=$(readlink -f /proc/$pid/cwd)
+            if [[ -z $cwd ]]; then
+                continue
+            fi
+            exe=$(readlink -f /proc/$pid/exe)
+            command=$(ps -p $pid -o args=)
+            pid_list+=("${all_list[0]} $pid $exe $cwd $command")
+        done
+        echo "${pid_list[@]}"
+    }
 }
 
 # Main script to get ElasticSearch information
@@ -119,9 +123,9 @@ for pid_info in "${pid_list[@]}"; do
             jdk_path="$exe"
         fi
     fi
-
-    output=$(get_config_content "$install_path")
-    eval $(get_config_content "$install_path")
+    actual_cfg_dir=${ret_dict[-Des.path.conf]:-"$install_path/config"}
+    output=$(get_config_content "$actual_cfg_dir")
+    eval $(get_config_content "$actual_cfg_dir")
     cfg_path=$(echo "$output" | grep ^CFG_PATH= | cut -d= -f2-)
 
     port=${ret[port]:-9200}

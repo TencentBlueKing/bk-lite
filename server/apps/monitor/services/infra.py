@@ -196,7 +196,11 @@ class InfraService:
             raise BaseAppException(f"Infra API request failed: {str(e)}")
         except ValueError as e:
             raise BaseAppException(f"Failed to parse response from infra API: {str(e)}")
+        except BaseAppException:
+            raise
         except Exception as e:
-            import traceback
-            error_detail = traceback.format_exc()
-            raise BaseAppException(f"Failed to render config: {str(e)} | Detail: {error_detail}")
+            logger.error(
+                "Unexpected error occurred while rendering infra config",
+                exc_info=True,
+            )
+            raise BaseAppException(f"Failed to render config: {str(e)}")

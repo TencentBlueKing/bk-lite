@@ -1,5 +1,3 @@
-import ast
-
 from django.db import transaction
 from django.db import models
 
@@ -8,6 +6,7 @@ from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, CollectConfig, MonitorObject, \
     MonitorObjectOrganizationRule, Metric
+from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
@@ -90,7 +89,7 @@ class InstanceConfigService:
             return []
 
         rules = []
-        _monitor_instance_id = ast.literal_eval(monitor_instance_id)[0]
+        _monitor_instance_id = parse_instance_id(monitor_instance_id)[0]
 
         for child_obj in child_objs:
             metric_obj = Metric.objects.filter(monitor_object_id=child_obj.id).first()
@@ -158,7 +157,7 @@ class InstanceConfigService:
         for instance in instances:
             instance_id = instance["instance_id"]
             group_ids = instance["group_ids"]
-            _monitor_instance_id = ast.literal_eval(instance_id)[0]
+            _monitor_instance_id = parse_instance_id(instance_id)[0]
 
             for child_id, (child_obj, metric_obj) in child_metric_map.items():
                 all_rules.append(MonitorObjectOrganizationRule(

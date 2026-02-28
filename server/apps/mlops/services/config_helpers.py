@@ -36,7 +36,7 @@ def get_mlflow_train_config() -> MLflowTrainConfig:
     Raises:
         ConfigurationError: 当必要的环境变量未配置时抛出
     """
-    bucket = os.getenv("MINIO_PUBLIC_BUCKETS", "munchkin-public")
+    bucket = "munchkin-public"
     minio_endpoint = os.getenv("MLFLOW_S3_ENDPOINT_URL", "")
     mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
     minio_access_key = os.getenv("MINIO_ACCESS_KEY", "")

@@ -12,7 +12,7 @@ interface Task {
 }
 
 interface QATaskStatus {
-  process: string;
+  process: string | number;
   status: string;
 }
 

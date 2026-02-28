@@ -64,7 +64,7 @@ const BaseInfo = () => {
   };
 
   return (
-    <Spin spinning={pageLoading}>
+    <Spin spinning={pageLoading} className="min-h-[calc(100vh-180px)]">
       {/* propertyList是模型属性列表+值 */}
       <List
         instDetail={instDetail}

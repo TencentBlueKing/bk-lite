@@ -7,7 +7,10 @@ set -e
 
 # 加载公共配置
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/common.sh" || {
+    echo '{"status":"error","code":"COMMON_SH_LOAD_FAILED","message":"Failed to load common.sh"}'
+    exit 1
+}
 
 # 解析传入的 JSON 数据（第一个参数）
 if [ -z "$1" ]; then
@@ -17,18 +20,28 @@ fi
 
 JSON_DATA="$1"
 
+# 检查 jq 是否可用
+if ! command -v jq >/dev/null 2>&1; then
+    json_error "JQ_NOT_FOUND" "" "jq command not found"
+    exit 1
+fi
+
 # 检查 kubectl 是否可用
 if ! command -v kubectl >/dev/null 2>&1; then
-    echo '{"status":"error","code":"KUBECTL_NOT_FOUND","message":"kubectl command not found"}' >&2
+    json_error "KUBECTL_NOT_FOUND" "" "kubectl command not found"
+    exit 1
+fi
+
+# 验证 JSON 格式
+if ! echo "$JSON_DATA" | jq -e '.' >/dev/null 2>&1; then
+    json_error "JSON_PARSE_FAILED" "" "Failed to parse JSON data"
     exit 1
 fi
 
 # 提取参数（单个或多个）
-set +e
-SINGLE_ID=$(echo "$JSON_DATA" | jq -r '.id // empty' 2>/dev/null)
-HAS_IDS=$(echo "$JSON_DATA" | jq -r 'if .ids then "true" else "false" end' 2>/dev/null)
-NAMESPACE=$(echo "$JSON_DATA" | jq -r '.namespace // empty' 2>/dev/null)
-set -e
+SINGLE_ID=$(echo "$JSON_DATA" | jq -r '.id // empty')
+HAS_IDS=$(echo "$JSON_DATA" | jq -r 'if .ids then "true" else "false" end')
+NAMESPACE=$(echo "$JSON_DATA" | jq -r '.namespace // empty')
 
 # 使用默认命名空间（如果未指定）
 if [ -z "$NAMESPACE" ]; then
@@ -56,20 +69,27 @@ else
 fi
 
 # 查询资源状态的辅助函数
+# 参数: $1 = 原始 resource_id（用于 JSON 返回）, $2 = K8s 资源名称（sanitized）, $3 = namespace
 query_resource_status() {
     local resource_id="$1"
-    local namespace="$2"
+    local k8s_name="$2"
+    local namespace="$3"
     
     # 尝试查询 Job（训练任务）
     set +e
-    JOB_EXISTS=$(kubectl get job "$resource_id" -n "$namespace" --ignore-not-found 2>/dev/null)
+    JOB_JSON=$(kubectl get job "$k8s_name" -n "$namespace" -o json 2>/dev/null)
     set -e
     
-    if [ -n "$JOB_EXISTS" ]; then
+    if [ -n "$JOB_JSON" ]; then
+        # 检查是否正在删除中（有 deletionTimestamp）
+        DELETION_TS=$(echo "$JOB_JSON" | jq -r '.metadata.deletionTimestamp // empty')
+        if [ -n "$DELETION_TS" ]; then
+            echo "{\"status\":\"success\",\"id\":\"$resource_id\",\"state\":\"terminating\",\"port\":\"\",\"detail\":\"Job is being deleted\"}"
+            return
+        fi
+        
         # 这是一个训练 Job
-        set +e
-        JOB_STATUS=$(kubectl get job "$resource_id" -n "$namespace" -o json 2>/dev/null)
-        set -e
+        JOB_STATUS="$JOB_JSON"
         
         if [ -z "$JOB_STATUS" ]; then
             echo "{\"status\":\"success\",\"id\":\"$resource_id\",\"state\":\"not_found\",\"port\":\"\",\"detail\":\"Job does not exist\"}"
@@ -112,7 +132,7 @@ query_resource_status() {
         elif [ "$FAILED" -gt 0 ]; then
             STATUS="failed"
             # 获取失败原因（从 Pod 中获取）
-            POD_NAME=$(kubectl get pods -n "$namespace" -l "job-name=${resource_id}" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null || echo "")
+            POD_NAME=$(kubectl get pods -n "$namespace" -l "job-name=${k8s_name}" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null || echo "")
             if [ -n "$POD_NAME" ]; then
                 POD_REASON=$(kubectl get pod "$POD_NAME" -n "$namespace" -o jsonpath='{.status.containerStatuses[0].state.terminated.reason}' 2>/dev/null || echo "Unknown")
                 DETAIL="Job failed (reason: $POD_REASON)"
@@ -157,14 +177,19 @@ query_resource_status() {
     
     # 尝试查询 Deployment（推理服务）
     set +e
-    DEPLOYMENT_EXISTS=$(kubectl get deployment "$resource_id" -n "$namespace" --ignore-not-found 2>/dev/null)
+    DEPLOYMENT_JSON=$(kubectl get deployment "$k8s_name" -n "$namespace" -o json 2>/dev/null)
     set -e
     
-    if [ -n "$DEPLOYMENT_EXISTS" ]; then
+    if [ -n "$DEPLOYMENT_JSON" ]; then
+        # 检查是否正在删除中（有 deletionTimestamp）
+        DELETION_TS=$(echo "$DEPLOYMENT_JSON" | jq -r '.metadata.deletionTimestamp // empty')
+        if [ -n "$DELETION_TS" ]; then
+            echo "{\"status\":\"success\",\"id\":\"$resource_id\",\"state\":\"terminating\",\"port\":\"\",\"detail\":\"Deployment is being deleted\"}"
+            return
+        fi
+        
         # 这是一个推理 Deployment
-        set +e
-        DEPLOYMENT_STATUS=$(kubectl get deployment "$resource_id" -n "$namespace" -o json 2>/dev/null)
-        set -e
+        DEPLOYMENT_STATUS="$DEPLOYMENT_JSON"
         
         if [ -z "$DEPLOYMENT_STATUS" ]; then
             echo "{\"status\":\"success\",\"id\":\"$resource_id\",\"state\":\"not_found\",\"port\":\"\",\"detail\":\"Deployment does not exist\"}"
@@ -177,7 +202,7 @@ query_resource_status() {
         AVAILABLE=$(echo "$DEPLOYMENT_STATUS" | jq -r '.status.availableReplicas // 0')
         
         # 获取 Service 端口
-        SERVICE_NAME="${resource_id}-svc"
+        SERVICE_NAME="${k8s_name}-svc"
         set +e
         SERVICE_PORT=$(kubectl get svc "$SERVICE_NAME" -n "$namespace" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
         if [ -z "$SERVICE_PORT" ]; then
@@ -213,7 +238,8 @@ RESULTS="["
 FIRST=true
 
 for resource_id in "${IDS[@]}"; do
-    RESULT=$(query_resource_status "$resource_id" "$NAMESPACE")
+    k8s_name=$(sanitize_k8s_name "$resource_id")
+    RESULT=$(query_resource_status "$resource_id" "$k8s_name" "$NAMESPACE")
     
     if [ "$FIRST" = false ]; then
         RESULTS="$RESULTS,"

@@ -31,12 +31,12 @@ const useHandleCopy = () => {
     }
   };
   return {
-    handleCopy,
+    handleCopy
   };
 };
 
 const useDetailColumns = ({
-  handleDelete,
+  handleDelete
 }: {
   handleDelete: (id: number) => void;
 }): ColumnItem[] => {
@@ -46,26 +46,22 @@ const useDetailColumns = ({
     {
       title: t('node-manager.packetManage.packageName'),
       dataIndex: 'name',
-      key: 'name',
-      width: 120,
+      key: 'name'
     },
     {
       title: t('node-manager.packetManage.version'),
       dataIndex: 'version',
-      key: 'version',
-      width: 120,
+      key: 'version'
     },
     {
       title: t('common.createdBy'),
       dataIndex: 'created_by',
-      key: 'created_by',
-      width: 120,
+      key: 'created_by'
     },
     {
       title: t('common.createdAt'),
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 120,
       ellipsis: true,
       render: (value, { created_at }) => (
         <>
@@ -73,7 +69,7 @@ const useDetailColumns = ({
             ? convertToLocalizedTime(new Date(created_at) + '')
             : '--'}
         </>
-      ),
+      )
     },
     {
       title: t('common.actions'),
@@ -95,8 +91,8 @@ const useDetailColumns = ({
             <Button type="link">{t('common.delete')}</Button>
           </Popconfirm>
         </Permission>
-      ),
-    },
+      )
+    }
   ];
 
   return detailColumns;

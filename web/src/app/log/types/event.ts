@@ -14,6 +14,7 @@ export interface SelectCardProps {
   value?: string | number;
   onChange?: (value: string | number) => void;
   cardWidth?: number;
+  style?: React.CSSProperties;
 }
 
 export interface UnitMap {

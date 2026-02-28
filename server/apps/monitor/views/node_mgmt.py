@@ -5,6 +5,7 @@ from apps.core.utils.web_utils import WebUtils
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.core.logger import monitor_logger as logger
+from apps.monitor.utils.pagination import parse_page_params
 
 
 class NodeMgmtView(ViewSet):
@@ -14,6 +15,8 @@ class NodeMgmtView(ViewSet):
         orgs = {i["id"] for i in request.user.group_list if i["name"] == "OpsPilotGuest"}
         orgs.add(request.COOKIES.get("current_team"))
 
+        page, page_size = parse_page_params(request.data, default_page=1, default_page_size=10)
+
         organization_ids = [] if request.user.is_superuser else list(orgs)
         data = NodeMgmt().node_list(dict(
             cloud_region_id=request.data.get("cloud_region_id", 1),
@@ -21,8 +24,8 @@ class NodeMgmtView(ViewSet):
             name=request.data.get("name"),
             ip=request.data.get("ip"),
             os=request.data.get("os"),
-            page=request.data.get("page", 1),
-            page_size=request.data.get("page_size", 10),
+            page=page,
+            page_size=page_size,
             is_active=request.data.get("is_active"),
             is_manual=request.data.get("is_manual"),
             is_container=request.data.get("is_container"),
@@ -36,7 +39,11 @@ class NodeMgmtView(ViewSet):
 
     @action(methods=['post'], detail=False, url_path='batch_setting_node_child_config')
     def batch_setting_node_child_config(self, request):
-        logger.debug(f"batch_setting_node_child_config: {request.data}")
+        logger.debug(
+            "batch_setting_node_child_config called by user=%s, current_team=%s",
+            request.user.username,
+            request.COOKIES.get("current_team"),
+        )
         InstanceConfigService.create_monitor_instance_by_node_mgmt(request.data)
         return WebUtils.response_success()
 

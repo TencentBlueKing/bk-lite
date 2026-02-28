@@ -3,6 +3,16 @@ from apps.system_mgmt.models import Channel, ChannelChoices
 
 
 class ChannelSerializer(UsernameSerializer):
+    # 各 channel_type 需要加密的字段列表
+    ENCRYPT_FIELDS_MAP = {
+        ChannelChoices.EMAIL: ["smtp_pwd"],
+        ChannelChoices.ENTERPRISE_WECHAT: ["secret", "token", "aes_key"],
+        ChannelChoices.ENTERPRISE_WECHAT_BOT: ["webhook_url"],
+        ChannelChoices.FEISHU_BOT: ["webhook_url", "sign_secret"],
+        ChannelChoices.DINGTALK_BOT: ["webhook_url", "sign_secret"],
+        ChannelChoices.CUSTOM_WEBHOOK: ["webhook_url"],
+    }
+
     class Meta:
         model = Channel
         fields = "__all__"
@@ -24,20 +34,8 @@ class ChannelSerializer(UsernameSerializer):
         if old_config is None:
             old_config = {}
         config = validated_data["config"]
-        if validated_data["channel_type"] == "email":
-            Channel.encrypt_field("smtp_pwd", config)
-            config.setdefault("smtp_pwd", old_config.get("smtp_pwd", ""))
-        elif validated_data["channel_type"] == "enterprise_wechat":
-            Channel.encrypt_field("secret", config)
-            Channel.encrypt_field("token", config)
-            Channel.encrypt_field("aes_key", config)
-            config.setdefault("secret", old_config.get("secret", ""))
-            config.setdefault("token", old_config.get("token", ""))
-            config.setdefault("aes_key", old_config.get("aes_key", ""))
-        elif validated_data["channel_type"] == ChannelChoices.ENTERPRISE_WECHAT_BOT:
-            Channel.encrypt_field("webhook_url", config)
-            config.setdefault("webhook_url", old_config.get("webhook_url", ""))
-        elif validated_data["channel_type"] == ChannelChoices.NATS:
-            # NATS 配置无需加密，直接保存
-            pass
+        encrypt_fields = ChannelSerializer.ENCRYPT_FIELDS_MAP.get(validated_data["channel_type"], [])
+        for field in encrypt_fields:
+            Channel.encrypt_field(field, config)
+            config.setdefault(field, old_config.get(field, ""))
         validated_data["config"] = config

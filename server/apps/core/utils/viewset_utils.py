@@ -12,6 +12,14 @@ logger = logging.getLogger(__name__)
 
 
 class GenericViewSetFun(object):
+    @staticmethod
+    def _parse_current_team_cookie(request, default=0):
+        current_team = request.COOKIES.get("current_team", str(default))
+        try:
+            return int(current_team)
+        except (TypeError, ValueError):
+            return default
+
     def _get_app_name(self):
         """获取当前序列化器所属的应用名称"""
         module_path = self.__class__.__module__
@@ -111,7 +119,7 @@ class GenericViewSetFun(object):
 
     @classmethod
     def filter_by_group(cls, queryset, request, user):
-        current_team = request.COOKIES.get("current_team", "0")
+        current_team = cls._parse_current_team_cookie(request)
         include_children = request.COOKIES.get("include_children", "0") == "1"
         fields = [i.name for i in queryset.model._meta.fields]
         org_field = getattr(cls, "ORGANIZATION_FIELD", "team")
@@ -120,7 +128,7 @@ class GenericViewSetFun(object):
             if include_children:
                 # 提取当前组及其所有子组的 ID
                 group_tree = getattr(user, "group_tree", [])
-                team_ids = cls.extract_child_group_ids(group_tree, int(current_team))
+                team_ids = cls.extract_child_group_ids(group_tree, current_team)
 
                 if team_ids:
                     # 查询组织 ID 在子组列表中，或者是当前用户创建的数据
@@ -130,12 +138,12 @@ class GenericViewSetFun(object):
                     query = team_query | creator_query
                 else:
                     # 没有找到子组，使用当前组
-                    query = Q(**{f"{org_field}__contains": int(current_team)}) | creator_query
+                    query = Q(**{f"{org_field}__contains": current_team}) | creator_query
             else:
                 # 不包含子组，team包含当前组 或者 是当前用户创建的
-                query = Q(**{f"{org_field}__contains": int(current_team)}) | creator_query
+                query = Q(**{f"{org_field}__contains": current_team}) | creator_query
         elif org_field in fields:
-            query = Q(**{f"{org_field}__contains": int(current_team)})
+            query = Q(**{f"{org_field}__contains": current_team})
         else:
             query = Q()
         return current_team, include_children, org_field, query
@@ -328,7 +336,10 @@ class AuthViewSet(MaintainerViewSet):
                     self.delete_rules(instance.id, delete_team)
                 return super().update(request, *args, **kwargs)
 
-            current_team = int(request.COOKIES.get("current_team", None))
+            current_team = self._parse_current_team_cookie(request, default=None)
+            if current_team is None:
+                message = self.loader.get("error.invalid_current_team") if self.loader else "Invalid current_team cookie"
+                return self.value_error(message)
             if current_team not in instance_org_value:
                 message = self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
                 return self.value_error(message)

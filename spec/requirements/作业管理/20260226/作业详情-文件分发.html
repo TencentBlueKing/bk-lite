@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作业详情 - 文件分发 - Job</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Fira Sans', 'Fira Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #1f2329; line-height: 1.5; }
+        .top-header { background: #fff; height: 60px; border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 100; }
+        .header-left { display: flex; align-items: center; gap: 8px; }
+        .logo { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 18px; }
+        .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; font-weight: bold; box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25); }
+        .header-nav { display: flex; gap: 8px; margin-left: 48px; }
+        .nav-item { display: flex; align-items: center; gap: 8px; color: #646a73; cursor: pointer; font-size: 14px; padding: 8px 16px; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.1); }
+        .header-right { display: flex; align-items: center; gap: 20px; color: #646a73; font-size: 14px; }
+        .header-right > span { cursor: pointer; padding: 6px 12px; border-radius: 6px; transition: all 0.3s; }
+        .header-right > span:hover { background: rgba(0, 0, 0, 0.04); color: #0052d9; }
+        .sub-header { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); height: 52px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); display: flex; align-items: center; padding: 0 32px; }
+        .sub-nav { display: flex; gap: 4px; }
+        .sub-nav-item { padding: 10px 20px; cursor: pointer; font-size: 14px; color: #646a73; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .sub-nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .sub-nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.12); }
+        .main-container { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
+        
+        .detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .detail-header-left { display: flex; align-items: center; gap: 16px; }
+        .back-btn { width: 36px; height: 36px; border: 1px solid #dcdee0; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; background: white; font-size: 16px; }
+        .back-btn:hover { border-color: #0052d9; color: #0052d9; }
+        .detail-title-group { display: flex; align-items: center; gap: 12px; }
+        .detail-title { font-size: 20px; font-weight: 600; color: #1f2329; }
+        .detail-id { font-size: 14px; color: #8f959e; }
+        .detail-header-right { display: flex; align-items: center; gap: 12px; }
+        .btn { padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; }
+        .btn-default { background: white; border-color: #dcdee0; color: #646a73; }
+        .btn-default:hover { border-color: #0052d9; color: #0052d9; }
+
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .status-badge.success { background: #e6fff2; color: #00a870; }
+        .status-badge.failed { background: #ffe6e6; color: #ea3636; }
+        .status-badge.running { background: #e6f0ff; color: #0052d9; }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+        .source-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .source-badge.manual { background: #e6f0ff; color: #0052d9; }
+        .source-badge.scheduled { background: #fff4e6; color: #d46b08; }
+        .source-badge.api { background: #f0f1f5; color: #646a73; }
+
+        .info-card { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+        .info-row { display: flex; flex-wrap: wrap; gap: 32px; flex: 1; }
+        .info-item { display: flex; align-items: center; gap: 8px; }
+        .info-item label { font-size: 13px; color: #8f959e; }
+        .info-item span { font-size: 14px; color: #1f2329; }
+        .info-actions { display: flex; align-items: center; gap: 8px; }
+        .info-action-btn { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #dcdee0; border-radius: 6px; background: white; font-size: 13px; color: #646a73; cursor: pointer; transition: all 0.2s; }
+        .info-action-btn:hover { border-color: #0052d9; color: #0052d9; background: #f0f5ff; }
+
+        /* 抽屉样式 */
+        .drawer-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 1000; opacity: 0; visibility: hidden; transition: all 0.3s; }
+        .drawer-overlay.active { opacity: 1; visibility: visible; }
+        .drawer { position: fixed; top: 0; right: -520px; width: 520px; height: 100vh; background: #f5f7fa; z-index: 1001; transition: right 0.3s ease; display: flex; flex-direction: column; }
+        .drawer.active { right: 0; }
+        .drawer-header { padding: 20px 24px; background: white; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+        .drawer-title { font-size: 16px; font-weight: 600; color: #1f2329; }
+        .drawer-close { width: 32px; height: 32px; border: none; background: #f5f7fa; border-radius: 6px; cursor: pointer; font-size: 18px; color: #646a73; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .drawer-close:hover { background: #e5e7eb; color: #1f2329; }
+        .drawer-body { flex: 1; overflow-y: auto; padding: 20px; }
+        .drawer-section { background: white; border-radius: 10px; border: 1px solid #e5e7eb; margin-bottom: 16px; }
+        .drawer-section:last-child { margin-bottom: 0; }
+        .drawer-section-header { padding: 14px 18px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+        .drawer-section-title { font-size: 14px; font-weight: 600; color: #1f2329; }
+        .drawer-section-meta { font-size: 12px; color: #8f959e; }
+        .drawer-file-list { padding: 12px 16px; }
+        .drawer-file-item { display: flex; align-items: flex-start; gap: 12px; padding: 14px; background: #f9fafb; border-radius: 8px; margin-bottom: 10px; }
+        .drawer-file-item:last-child { margin-bottom: 0; }
+        .drawer-file-icon { width: 36px; height: 36px; background: linear-gradient(135deg, #e6f0ff 0%, #cce0ff 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+        .drawer-file-icon.folder { background: linear-gradient(135deg, #fff4e6 0%, #ffe6cc 100%); }
+        .drawer-file-content { flex: 1; min-width: 0; }
+        .drawer-file-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+        .drawer-file-name { font-size: 14px; font-weight: 500; color: #1f2329; }
+        .drawer-file-size { font-size: 12px; color: #8f959e; }
+        .drawer-file-paths { display: flex; flex-direction: column; gap: 4px; }
+        .drawer-file-path-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+        .drawer-file-path-label { color: #8f959e; min-width: 32px; }
+        .drawer-file-path-value { color: #1f2329; font-family: 'Fira Code', 'Monaco', 'Menlo', monospace; word-break: break-all; }
+
+        .execution-panel { display: flex; gap: 16px; height: calc(100vh - 320px); min-height: 360px; }
+        .host-list-panel { width: 320px; flex-shrink: 0; background: white; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; flex-direction: column; }
+        .host-list-header { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+        .host-list-title { font-size: 15px; font-weight: 600; color: #1f2329; }
+        .host-stats { display: flex; gap: 12px; font-size: 12px; }
+        .host-stat { display: flex; align-items: center; gap: 4px; }
+        .host-stat.success { color: #00a870; }
+        .host-stat.failed { color: #ea3636; }
+        .host-stat.running { color: #0052d9; }
+        .host-list { flex: 1; overflow-y: auto; }
+        .host-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid #f0f1f5; }
+        .host-item:hover { background: #f9fafb; }
+        .host-item.active { background: #e6f0ff; border-left: 3px solid #0052d9; }
+        .host-item-info { display: flex; flex-direction: column; gap: 2px; }
+        .host-item-name { font-size: 14px; font-weight: 500; color: #1f2329; }
+        .host-item-ip { font-size: 12px; color: #8f959e; }
+        .host-item-status { display: flex; align-items: center; gap: 8px; }
+        .host-item-time { font-size: 12px; color: #8f959e; }
+
+        .transfer-panel { flex: 1; background: white; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; }
+        .transfer-header { padding: 12px 20px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+        .transfer-header-left { display: flex; align-items: center; gap: 12px; }
+        .transfer-title { font-size: 15px; font-weight: 600; color: #1f2329; }
+        .transfer-host-info { font-size: 13px; color: #8f959e; }
+        .transfer-content { flex: 1; overflow-y: auto; padding: 16px 20px; }
+        .transfer-item { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: #f9fafb; border-radius: 8px; margin-bottom: 10px; }
+        .transfer-item:last-child { margin-bottom: 0; }
+        .transfer-item-left { display: flex; align-items: center; gap: 12px; flex: 1; }
+        .transfer-file-icon { font-size: 20px; }
+        .transfer-file-info { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+        .transfer-file-name { font-size: 14px; font-weight: 500; color: #1f2329; }
+        .transfer-file-path { font-size: 12px; color: #8f959e; font-family: 'Fira Code', 'Monaco', 'Menlo', monospace; }
+        .transfer-progress { display: flex; align-items: center; gap: 12px; }
+        .progress-bar { width: 120px; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+        .progress-fill.success { background: #00a870; }
+        .progress-fill.failed { background: #ea3636; }
+        .progress-fill.running { background: #0052d9; }
+        .transfer-speed { font-size: 12px; color: #8f959e; min-width: 80px; text-align: right; }
+        .transfer-status { min-width: 60px; }
+        .transfer-footer { padding: 12px 20px; border-top: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #8f959e; }
+    
+        /* ===== UI/UX ENHANCEMENTS ===== */
+        
+        /* Focus states for accessibility */
+        a:focus-visible, button:focus-visible, input:focus-visible, 
+        select:focus-visible, textarea:focus-visible, 
+        [tabindex]:focus-visible, .nav-item:focus-visible,
+        .sub-nav-item:focus-visible {
+            outline: 2px solid #0052d9;
+            outline-offset: 2px;
+        }
+
+        /* Enhanced table row hover */
+        tbody tr {
+            border-left: 3px solid transparent;
+        }
+        tbody tr:hover {
+            background: #f0f5ff !important;
+            border-left: 3px solid #0052d9;
+        }
+
+        /* Inline SVG icon alignment */
+        .nav-item svg, .sub-nav-item svg, .header-right svg {
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+    
+        /* Drawer transform animation */
+        .drawer {
+            transform: translateX(100%);
+            transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .drawer.active {
+            transform: translateX(0);
+        }
+
+    
+        /* Table responsive wrapper */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table-responsive table {
+            min-width: 100%;
+        }
+
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo"><div class="logo-icon">BK</div><span>Job</span></div>
+            <nav class="header-nav">
+                <div class="nav-item" onclick="location.href='首页.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>首页</span></div>
+                <div class="nav-item active" onclick="location.href='快速执行.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></span><span>作业执行</span></div>
+                <div class="nav-item" onclick="location.href='脚本库.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span>作业模版</span></div>
+                <div class="nav-item" onclick="location.href='目标管理.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><span>目标管理</span></div>
+                <div class="nav-item" onclick="location.href='高危命令配置.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span>系统配置</span></div>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> 帮助文档</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 语言: 简体中文</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Admin</span>
+        </div>
+    </div>
+
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <div class="sub-nav-item" onclick="location.href='快速执行.html'">快速执行</div>
+            <div class="sub-nav-item" onclick="location.href='文件分发.html'">文件分发</div>
+            <div class="sub-nav-item" onclick="location.href='定时任务.html'">定时任务</div>
+            <div class="sub-nav-item active">作业记录</div>
+        </nav>
+    </div>
+
+    <div class="main-container">
+        <div class="detail-header">
+            <div class="detail-header-left">
+                <div class="back-btn" onclick="location.href='作业记录.html'">←</div>
+                <div class="detail-title-group">
+                    <h1 class="detail-title">部署配置文件</h1>
+                    <span class="detail-id">#10024</span>
+                    <span class="status-badge success"><span class="status-dot"></span>成功</span>
+                </div>
+            </div>
+            <div class="detail-header-right">
+                <button class="btn btn-default">重新执行</button>
+            </div>
+        </div>
+
+        <div class="info-card">
+            <div class="info-row">
+                <div class="info-item"><label>作业类型</label><span>文件分发</span></div>
+                <div class="info-item"><label>触发来源</label><span class="source-badge manual">手动执行</span></div>
+                <div class="info-item"><label>发起人</label><span>张三</span></div>
+                <div class="info-item"><label>开始时间</label><span>2026-01-20 14:18:42</span></div>
+                <div class="info-item"><label>耗时</label><span>2m 15s</span></div>
+                <div class="info-item"><label>目标主机</label><span>3 台</span></div>
+                <div class="info-item"><label>传输模式</label><span>强制覆盖</span></div>
+                <div class="info-item"><label>超时时间</label><span>600秒</span></div>
+            </div>
+            <div class="info-actions">
+                <button class="info-action-btn" onclick="openDrawer()"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg> 查看文件</button>
+            </div>
+        </div>
+
+        <div class="execution-panel">
+            <div class="host-list-panel">
+                <div class="host-list-header">
+                    <span class="host-list-title">目标主机</span>
+                    <div class="host-stats">
+                        <span class="host-stat success"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;"><polyline points="20 6 9 17 4 12"/></svg> 3</span>
+                        <span class="host-stat failed">× 0</span>
+                    </div>
+                </div>
+                <div class="host-list">
+                    <div class="host-item active" onclick="selectHost(0)">
+                        <div class="host-item-info">
+                            <span class="host-item-name">web-server-01</span>
+                            <span class="host-item-ip">192.168.1.101</span>
+                        </div>
+                        <div class="host-item-status">
+                            <span class="host-item-time">45s</span>
+                            <span class="status-badge success"><span class="status-dot"></span>成功</span>
+                        </div>
+                    </div>
+                    <div class="host-item" onclick="selectHost(1)">
+                        <div class="host-item-info">
+                            <span class="host-item-name">web-server-02</span>
+                            <span class="host-item-ip">192.168.1.102</span>
+                        </div>
+                        <div class="host-item-status">
+                            <span class="host-item-time">52s</span>
+                            <span class="status-badge success"><span class="status-dot"></span>成功</span>
+                        </div>
+                    </div>
+                    <div class="host-item" onclick="selectHost(2)">
+                        <div class="host-item-info">
+                            <span class="host-item-name">web-server-03</span>
+                            <span class="host-item-ip">192.168.1.103</span>
+                        </div>
+                        <div class="host-item-status">
+                            <span class="host-item-time">2m 15s</span>
+                            <span class="status-badge success"><span class="status-dot"></span>成功</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="transfer-panel">
+                <div class="transfer-header">
+                    <div class="transfer-header-left">
+                        <span class="transfer-title">传输详情</span>
+                        <span class="transfer-host-info" id="transferHostInfo">web-server-01 (192.168.1.101)</span>
+                    </div>
+                </div>
+                <div class="transfer-content" id="transferContent">
+                    <div class="transfer-item">
+                        <div class="transfer-item-left">
+                            <span class="transfer-file-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+                            <div class="transfer-file-info">
+                                <span class="transfer-file-name">nginx.conf</span>
+                                <span class="transfer-file-path">/etc/nginx/nginx.conf</span>
+                            </div>
+                        </div>
+                        <div class="transfer-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill success" style="width: 100%"></div>
+                            </div>
+                            <span class="transfer-speed">4.2 KB/s</span>
+                            <span class="transfer-status"><span class="status-badge success"><span class="status-dot"></span>完成</span></span>
+                        </div>
+                    </div>
+                    <div class="transfer-item">
+                        <div class="transfer-item-left">
+                            <span class="transfer-file-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+                            <div class="transfer-file-info">
+                                <span class="transfer-file-name">app.properties</span>
+                                <span class="transfer-file-path">/opt/app/conf/app.properties</span>
+                            </div>
+                        </div>
+                        <div class="transfer-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill success" style="width: 100%"></div>
+                            </div>
+                            <span class="transfer-speed">1.8 KB/s</span>
+                            <span class="transfer-status"><span class="status-badge success"><span class="status-dot"></span>完成</span></span>
+                        </div>
+                    </div>
+                    <div class="transfer-item">
+                        <div class="transfer-item-left">
+                            <span class="transfer-file-icon"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></span>
+                            <div class="transfer-file-info">
+                                <span class="transfer-file-name">ssl-certs/ (3 files)</span>
+                                <span class="transfer-file-path">/etc/nginx/ssl/</span>
+                            </div>
+                        </div>
+                        <div class="transfer-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill success" style="width: 100%"></div>
+                            </div>
+                            <span class="transfer-speed">12.5 KB/s</span>
+                            <span class="transfer-status"><span class="status-badge success"><span class="status-dot"></span>完成</span></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="transfer-footer">
+                    <span>共传输 3 个文件/目录，18.5 KB</span>
+                    <span>完成时间: 14:19:27</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 文件列表抽屉 -->
+    <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+    <div class="drawer" id="drawer">
+        <div class="drawer-header">
+            <span class="drawer-title">分发文件</span>
+            <button class="drawer-close" onclick="closeDrawer()">×</button>
+        </div>
+        <div class="drawer-body">
+            <div class="drawer-section">
+                <div class="drawer-section-header">
+                    <span class="drawer-section-title">文件列表</span>
+                    <span class="drawer-section-meta">共 3 个文件/目录</span>
+                </div>
+                <div class="drawer-file-list">
+                    <div class="drawer-file-item">
+                        <div class="drawer-file-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
+                        <div class="drawer-file-content">
+                            <div class="drawer-file-header">
+                                <span class="drawer-file-name">nginx.conf</span>
+                                <span class="drawer-file-size">4.2 KB</span>
+                            </div>
+                            <div class="drawer-file-paths">
+                                <div class="drawer-file-path-row">
+                                    <span class="drawer-file-path-label">源</span>
+                                    <span class="drawer-file-path-value">/data/deploy/configs/nginx.conf</span>
+                                </div>
+                                <div class="drawer-file-path-row">
+                                    <span class="drawer-file-path-label">→</span>
+                                    <span class="drawer-file-path-value">/etc/nginx/nginx.conf</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="drawer-file-item">
+                        <div class="drawer-file-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
+                        <div class="drawer-file-content">
+                            <div class="drawer-file-header">
+                                <span class="drawer-file-name">app.properties</span>
+                                <span class="drawer-file-size">1.8 KB</span>
+                            </div>
+                            <div class="drawer-file-paths">
+                                <div class="drawer-file-path-row">
+                                    <span class="drawer-file-path-label">源</span>
+                                    <span class="drawer-file-path-value">/data/deploy/configs/app.properties</span>
+                                </div>
+                                <div class="drawer-file-path-row">
+                                    <span class="drawer-file-path-label">→</span>
+                                    <span class="drawer-file-path-value">/opt/app/conf/app.properties</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="drawer-file-item">
+                        <div class="drawer-file-icon folder"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></div>
+                        <div class="drawer-file-content">
+                            <div class="drawer-file-header">
+                                <span class="drawer-file-name">ssl-certs/</span>
+                                <span class="drawer-file-size">12.5 KB</span>
+                            </div>
+                            <div class="drawer-file-paths">
+                                <div class="drawer-file-path-row">
+                                    <span class="drawer-file-path-label">源</span>
+                                    <span class="drawer-file-path-value">/data/deploy/ssl-certs/</span>
+                                </div>
+                                <div class="drawer-file-path-row">
+                                    <span class="drawer-file-path-label">→</span>
+                                    <span class="drawer-file-path-value">/etc/nginx/ssl/</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openDrawer() {
+            document.getElementById('drawerOverlay').classList.add('active');
+            document.getElementById('drawer').classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeDrawer() {
+            document.getElementById('drawerOverlay').classList.remove('active');
+            document.getElementById('drawer').classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeDrawer();
+        });
+
+        const hostTransfers = [
+            {
+                name: 'web-server-01', ip: '192.168.1.101',
+                files: [
+                    { name: 'nginx.conf', path: '/etc/nginx/nginx.conf', size: '4.2 KB', speed: '4.2 KB/s', progress: 100, status: 'success' },
+                    { name: 'app.properties', path: '/opt/app/conf/app.properties', size: '1.8 KB', speed: '1.8 KB/s', progress: 100, status: 'success' },
+                    { name: 'ssl-certs/ (3 files)', path: '/etc/nginx/ssl/', size: '12.5 KB', speed: '12.5 KB/s', progress: 100, status: 'success' }
+                ],
+                totalSize: '18.5 KB', finishTime: '14:19:27'
+            },
+            {
+                name: 'web-server-02', ip: '192.168.1.102',
+                files: [
+                    { name: 'nginx.conf', path: '/etc/nginx/nginx.conf', size: '4.2 KB', speed: '3.8 KB/s', progress: 100, status: 'success' },
+                    { name: 'app.properties', path: '/opt/app/conf/app.properties', size: '1.8 KB', speed: '1.5 KB/s', progress: 100, status: 'success' },
+                    { name: 'ssl-certs/ (3 files)', path: '/etc/nginx/ssl/', size: '12.5 KB', speed: '10.2 KB/s', progress: 100, status: 'success' }
+                ],
+                totalSize: '18.5 KB', finishTime: '14:19:34'
+            },
+            {
+                name: 'web-server-03', ip: '192.168.1.103',
+                files: [
+                    { name: 'nginx.conf', path: '/etc/nginx/nginx.conf', size: '4.2 KB', speed: '2.1 KB/s', progress: 100, status: 'success' },
+                    { name: 'app.properties', path: '/opt/app/conf/app.properties', size: '1.8 KB', speed: '0.9 KB/s', progress: 100, status: 'success' },
+                    { name: 'ssl-certs/ (3 files)', path: '/etc/nginx/ssl/', size: '12.5 KB', speed: '5.8 KB/s', progress: 100, status: 'success' }
+                ],
+                totalSize: '18.5 KB', finishTime: '14:20:57'
+            }
+        ];
+
+        let currentHost = 0;
+
+        function selectHost(index) {
+            currentHost = index;
+            document.querySelectorAll('.host-item').forEach((el, i) => {
+                el.classList.toggle('active', i === index);
+            });
+            const host = hostTransfers[index];
+            document.getElementById('transferHostInfo').textContent = `${host.name} (${host.ip})`;
+            renderTransfers();
+        }
+
+        function renderTransfers() {
+            const host = hostTransfers[currentHost];
+            const content = document.getElementById('transferContent');
+            content.innerHTML = host.files.map(file => `
+                <div class="transfer-item">
+                    <div class="transfer-item-left">
+                        <span class="transfer-file-icon">${file.name.includes('/') ? '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>'}</span>
+                        <div class="transfer-file-info">
+                            <span class="transfer-file-name">${file.name}</span>
+                            <span class="transfer-file-path">${file.path}</span>
+                        </div>
+                    </div>
+                    <div class="transfer-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill ${file.status}" style="width: ${file.progress}%"></div>
+                        </div>
+                        <span class="transfer-speed">${file.speed}</span>
+                        <span class="transfer-status"><span class="status-badge ${file.status}"><span class="status-dot"></span>完成</span></span>
+                    </div>
+                </div>
+            `).join('');
+            document.querySelector('.transfer-footer span:first-child').textContent = `共传输 ${host.files.length} 个文件/目录，${host.totalSize}`;
+            document.querySelector('.transfer-footer span:last-child').textContent = `完成时间: ${host.finishTime}`;
+        }
+    </script>
+</body>
+</html>

@@ -23,6 +23,78 @@ import {
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
+type UserDisplayContext = 'table' | 'detail';
+
+interface UserDisplayResult {
+  users: UserItem[];
+  isEmpty: boolean;
+}
+
+const resolveUsers = (
+  value: unknown,
+  userList: UserItem[]
+): UserDisplayResult => {
+  if (Array.isArray(value) && value.length > 0) {
+    const userIdsStr = value.map((id) => String(id));
+    const users = userList.filter((user) => userIdsStr.includes(String(user.id)));
+    return { users, isEmpty: users.length === 0 };
+  }
+  if (value !== null && value !== undefined && value !== '') {
+    const user = userList.find((item) => String(item.id) === String(value));
+    return { users: user ? [user] : [], isEmpty: !user };
+  }
+  return { users: [], isEmpty: true };
+};
+
+const formatUserName = (user: UserItem): string =>
+  `${user.display_name}(${user.username})`;
+
+export const renderUserDisplay = (
+  value: unknown,
+  userList: UserItem[],
+  context: UserDisplayContext,
+  hideUserAvatar = false
+): React.ReactNode => {
+  const { users, isEmpty } = resolveUsers(value, userList);
+  
+  if (isEmpty) {
+    return context === 'detail' ? '--' : <>--</>;
+  }
+
+  if (context === 'table') {
+    return (
+      <div className="flex items-center gap-2 max-h-[28px] overflow-hidden">
+        <UserAvatar key={users[0].id} userName={formatUserName(users[0])} size="small" />
+        {users.length > 1 && (
+          <Tooltip
+            title={
+              <div className="flex flex-col gap-1">
+                {users.map((user) => (
+                  <div key={user.id}>{formatUserName(user)}</div>
+                ))}
+              </div>
+            }
+          >
+            <span className="text-[var(--color-text-3)] cursor-pointer">...</span>
+          </Tooltip>
+        )}
+      </div>
+    );
+  }
+
+  if (hideUserAvatar) {
+    return users.map((u) => formatUserName(u)).join('，');
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {users.map((user) => (
+        <UserAvatar key={user.id} userName={formatUserName(user)} />
+      ))}
+    </div>
+  );
+};
+
 // 查找组织对象
 const findOrganizationById = (arr: Array<any>, targetValue: unknown) => {
   for (let i = 0; i < arr.length; i++) {
@@ -54,7 +126,7 @@ const getOrganizationFullPath = (org: any, flatGroups: Array<any>): string => {
 };
 
 // 通用的组织显示文本处理函数
-const getOrganizationDisplayText = (value: any, flatGroups: Array<any>) => {
+export const getOrganizationDisplayText = (value: any, flatGroups: Array<any>) => {
   if (Array.isArray(value)) {
     if (value.length === 0) return '--';
     const groupNames = value
@@ -231,59 +303,13 @@ export const getAssetColumns = (config: {
         showTitle: false,
       },
     };
-    // 表格中，用户字段为多选
     switch (attrType) {
       case 'user':
         return {
           ...columnItem,
-          render: (_: unknown, record: any) => {
-            const userIds = record[attrId];
-
-            // 处理数组情况
-            if (Array.isArray(userIds) && userIds.length > 0) {
-              const userIdsStr = userIds.map((id: any) => String(id));
-              const users = (config.userList || []).filter((user) =>
-                userIdsStr.includes(String(user.id))
-              );
-
-              // 处理没有用户的情况
-              if (users.length === 0) return <>--</>;
-
-              return (
-                <div className="flex items-center gap-2 max-h-[28px] overflow-hidden">
-                  <UserAvatar key={users[0].id} userName={`${users[0].display_name}(${users[0].username})`} size="small" />
-                  {users.length > 0 && (
-                    <Tooltip
-                      title={
-                        <div className="flex flex-col gap-1">
-                          {users.map((user) => (
-                            <div key={user.id}>
-                              {String(user.display_name || '')}({user.username})
-                            </div>
-                          ))}
-                        </div>
-                      }
-                    >
-                      <span className="text-[var(--color-text-3)] cursor-pointer">...</span>
-                    </Tooltip>
-                  )}
-                </div>
-              );
-
-            }
-
-            // 处理单个值情况
-            if (userIds !== null && userIds !== undefined && userIds !== '') {
-              const user = (config.userList || []).find(
-                (item) => String(item.id) === String(userIds)
-              );
-              // 表格的user渲染
-              return user ? <UserAvatar userName={`${user.display_name}(${user.username})`} /> : <>--</>;
-            }
-
-            // 处理空值情况
-            return <>--</>;
-          },
+          render: (_: unknown, record: any) => (
+            <>{renderUserDisplay(record[attrId], config.userList || [], 'table')}</>
+          ),
         };
       case 'pwd':
         return {
@@ -383,6 +409,7 @@ export const getFieldItem = (config: {
   hideUserAvatar?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  flatGroups?: Array<{ id: string; name: string; parentId?: string }>;
 }) => {
   const { disabled, placeholder } = config;
   if (config.isEdit) {
@@ -482,41 +509,16 @@ export const getFieldItem = (config: {
   }
   switch (config.fieldItem.attr_type) {
     case 'user':
-      // 实例详情页中的用户字段
-      if (Array.isArray(config.value)) {
-        if (config.value.length === 0) return '--';
-        const userIds = config.value.map((id: any) => String(id));
-        const users = (config.userList || []).filter((user) =>
-          userIds.includes(String(user.id))
-        );
-        if (users.length === 0) return '--';
-        const userNames = users
-          .map((user) => `${user.display_name}(${user.username})`)
-          .join('，');
-        return config.hideUserAvatar ? (
-          userNames
-        ) : (
-          <div className="flex items-center gap-2 flex-wrap">
-            {users.map((user) => (
-              <UserAvatar
-                key={user.id}
-                userName={`${user.display_name}(${user.username})`}
-              />
-            ))}
-          </div>
-        );
-      }
-      // 处理单选情况
-      const user = (config.userList || []).find(
-        (item) => String(item.id) === String(config.value)
-      );
-      if (!user) return '--';
-      return config.hideUserAvatar ? (
-        `${user.display_name}(${user.username})`
-      ) : (
-        <UserAvatar userName={`${user.display_name}(${user.username})`} />
+      return renderUserDisplay(
+        config.value,
+        config.userList || [],
+        'detail',
+        config.hideUserAvatar
       );
     case 'organization':
+      if (config.hideUserAvatar && config.flatGroups) {
+        return getOrganizationDisplayText(config.value, config.flatGroups);
+      }
       return (
         <OrganizationField
           value={config.value}

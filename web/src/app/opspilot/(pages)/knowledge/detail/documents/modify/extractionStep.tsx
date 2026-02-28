@@ -7,7 +7,7 @@ import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
 import styles from './modify.module.scss';
-import { ModelOption } from '@/app/opspilot/types/knowledge';
+import { OcrModel } from '@/app/opspilot/types/knowledge';
 import fullTextImg from '@/app/opspilot/img/full_text_extraction.png';
 import chapterImg from '@/app/opspilot/img/chapter_extraction.png';
 import worksheetImg from '@/app/opspilot/img/worksheet_extraction.png';
@@ -39,7 +39,7 @@ const ExtractionStep: React.FC<{
   const [selectedDocument, setSelectedDocument] = useState<any>(null);
   const [selectedMethod, setSelectedMethod] = useState<keyof typeof extractionMethods | null>(null);
   const [ocrEnabled, setOcrEnabled] = useState<boolean>(false);
-  const [ocrModels, setOcrModels] = useState<ModelOption[]>([]);
+  const [ocrModels, setOcrModels] = useState<OcrModel[]>([]);
   const [loadingOcrModels, setLoadingOcrModels] = useState<boolean>(true);
   const [selectedOcrModel, setSelectedOcrModel] = useState<string | null>(null);
 

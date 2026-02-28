@@ -29,10 +29,8 @@ import TimeSelector from '@/components/time-selector';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ListItem } from '@/types';
-import {
-  OBJECT_DEFAULT_ICON,
-  DERIVATIVE_OBJECTS
-} from '@/app/monitor/constants';
+import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { getDerivativeObjectNames } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
 
@@ -139,14 +137,27 @@ const ViewList: React.FC<ViewListProps> = ({
   }, [objects, objectId]);
 
   const showMultipleConditions = useMemo(() => {
-    const objectNames = DERIVATIVE_OBJECTS.filter(
-      (item) => !['Pod', 'Node'].includes(item)
+    const derivativeNames = getDerivativeObjectNames(objects).filter(
+      (name) => !['Pod', 'Node'].includes(name)
     );
     const currentObjectName = objects.find(
       (item) => item.id === objectId
     )?.name;
-    return objectNames.includes(currentObjectName as string) || showTab;
-  }, [objects, objectId]);
+    return derivativeNames.includes(currentObjectName as string) || showTab;
+  }, [objects, objectId, showTab]);
+
+  // 动态处理进度条列宽度：有数据时固定300，无数据时自适应
+  const displayColumns = useMemo(() => {
+    return tableColumn.map((col: ColumnItem) => {
+      if (col.type === 'progress') {
+        return {
+          ...col,
+          width: tableData.length > 0 ? 300 : undefined
+        };
+      }
+      return col;
+    });
+  }, [tableColumn, tableData.length]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -275,7 +286,7 @@ const ViewList: React.FC<ViewListProps> = ({
       setPlugins(_plugins);
       setMetrics(res[0] || []);
       if (objName) {
-        const filterMetrics = getTableDiaplay(objName);
+        const filterMetrics = getTableDiaplay(objName) || [];
         const _columns = filterMetrics.map((item: any) => {
           const target = (res[0] || []).find(
             (tex: MetricItem) => tex.name === item.key
@@ -288,7 +299,6 @@ const ViewList: React.FC<ViewListProps> = ({
                 '--',
               dataIndex: item.key,
               key: item.key,
-              width: 300,
               sorter: (a: any, b: any) =>
                 a[item.key]?.value - b[item.key]?.value,
               render: (_: unknown, record: TableDataItem) => {
@@ -296,6 +306,7 @@ const ViewList: React.FC<ViewListProps> = ({
                 const size: [number, number] = hasDimensions
                   ? [220, 20]
                   : [240, 20];
+                const metricUnit = record[item.key]?.unit || target?.unit || '';
                 return (
                   <div className="flex items-center justify-between">
                     <Progress
@@ -309,10 +320,12 @@ const ViewList: React.FC<ViewListProps> = ({
                     />
                     {hasDimensions && (
                       <MetricDimensionTooltip
-                        metricItem={target}
                         instanceId={record.instance_id}
-                        metricId={target.id}
                         monitorObjectId={objectId}
+                        metricInfo={{
+                          metricItem: target,
+                          metricUnit
+                        }}
                       />
                     )}
                   </div>
@@ -331,7 +344,7 @@ const ViewList: React.FC<ViewListProps> = ({
             ...(item.type === 'value'
               ? {
                 sorter: (a: any, b: any) =>
-                  a[item.key]?.value - b[item.key]?.value,
+                  a[item.key]?.value - b[item.key]?.value
               }
               : {}),
             render: (_: unknown, record: TableDataItem) => {
@@ -358,10 +371,12 @@ const ViewList: React.FC<ViewListProps> = ({
                   </span>
                   {hasDimensions && (
                     <MetricDimensionTooltip
-                      metricItem={target}
                       instanceId={record.instance_id}
-                      metricId={target.id}
                       monitorObjectId={objectId}
+                      metricInfo={{
+                        metricItem: target,
+                        metricUnit
+                      }}
                     />
                   )}
                 </div>
@@ -575,7 +590,7 @@ const ViewList: React.FC<ViewListProps> = ({
           y: `calc(100vh - ${showTab ? '330px' : '280px'})`,
           x: 'max-content'
         }}
-        columns={tableColumn}
+        columns={displayColumns}
         dataSource={tableData}
         pagination={pagination}
         loading={tableLoading}

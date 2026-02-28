@@ -106,7 +106,7 @@ def get_experiment_by_name(experiment_name: str) -> Optional[object]:
         result = experiments[0] if experiments else None
 
         if not result:
-            logger.info(f"未找到实验: {experiment_name}")
+            logger.warning(f"未找到实验: {experiment_name}")
 
         return result
 
@@ -135,7 +135,6 @@ def get_experiment_runs(
         mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
         runs = mlflow.search_runs(experiment_ids=[experiment_id], order_by=[order_by])
 
-        logger.debug(f"查询到 {len(runs)} 条运行记录 [实验ID: {experiment_id}]")
         return runs
 
     except Exception as e:
@@ -193,7 +192,6 @@ def get_run_metrics(run_id: str, filter_system: bool = True) -> List[str]:
         if filter_system:
             metrics = [m for m in metrics if not str(m).startswith("system")]
 
-        logger.debug(f"获取到 {len(metrics)} 个指标 [run_id: {run_id}]")
         return metrics
 
     except Exception as e:
@@ -244,7 +242,6 @@ def get_metric_history(run_id: str, metric_name: str) -> List[dict]:
                 }
                 for idx, m in enumerate(sorted_history)
             ]
-            logger.debug(f"按 timestamp 排序 [run_id: {run_id}, metric: {metric_name}]")
         else:
             # 按 step 排序
             sorted_history = sorted(history, key=lambda m: m.step)
@@ -256,7 +253,6 @@ def get_metric_history(run_id: str, metric_name: str) -> List[dict]:
                 }
                 for m in sorted_history
             ]
-            logger.debug(f"按 step 排序 [run_id: {run_id}, metric: {metric_name}]")
 
         return result
 
@@ -286,7 +282,6 @@ def get_run_params(run_id: str) -> dict:
         run = client.get_run(run_id)
         params = dict(run.data.params)
 
-        logger.debug(f"获取到 {len(params)} 个参数 [run_id: {run_id}]")
         return params
 
     except Exception as e:
@@ -330,7 +325,6 @@ def get_model_versions(model_name: str) -> List[dict]:
             for v in versions
         ]
 
-        logger.debug(f"获取到 {len(result)} 个模型版本 [model: {model_name}]")
         return result
 
     except Exception as e:

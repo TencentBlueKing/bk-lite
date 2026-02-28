@@ -13,6 +13,7 @@ from apps.cmdb.models import CREATE_INST, UPDATE_INST, DELETE_INST, EXECUTE
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
 from apps.cmdb.utils.change_record import create_change_record
+from apps.cmdb.utils.base import get_current_team_from_request
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.celery_utils import crontab_format, CeleryUtils
@@ -33,7 +34,7 @@ class CollectModelService(object):
         """
 
         user = request.user
-        current_team = int(request.COOKIES.get("current_team", None))
+        current_team = get_current_team_from_request(request)
         include_children = request.COOKIES.get("include_children", "0") == "1"
         has_permission = view_self.get_has_permission(user, instance, current_team, include_children=include_children)
         if not has_permission:

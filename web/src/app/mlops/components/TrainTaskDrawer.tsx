@@ -1,9 +1,7 @@
 import { Drawer, message, Button } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import { useAuth } from "@/context/auth";
-// import { Tooltip } from 'antd';
 import useMlopsTaskApi from "@/app/mlops/api/task";
-// import SimpleLineChart from "@/app/mlops/components/charts/simpleLineChart";
 import TrainTaskHistory from "./TrainTaskHistory";
 import TrainTaskDetail from "./TrainTaskDetail";
 import { useEffect, useMemo, useState } from "react";
@@ -41,7 +39,6 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
     try {
       const { data } = await getTrainTaskState(selectId as number, key);
       setHistoryData(data);
-      // setHistoryData(Object.entries(data?.metrics_history) || []);
     } catch (e) {
       console.error(e);
       message.error(t(`traintask.getTrainStatusFailed`));
@@ -116,7 +113,6 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
         <Button
           key='back'
           type="primary"
-          // icon={<LeftOutlined />}
           onClick={() => setShowList(true)}
           className="float-right"
         >

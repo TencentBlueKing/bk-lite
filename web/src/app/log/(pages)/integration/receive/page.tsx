@@ -7,7 +7,7 @@ import {
   Dropdown,
   Popconfirm,
   Space,
-  Modal,
+  Modal
 } from 'antd';
 import useApiClient from '@/utils/request';
 import useLogApi from '@/app/log/api/integration';
@@ -18,7 +18,7 @@ import {
   Organization,
   Pagination,
   TableDataItem,
-  TreeItem,
+  TreeItem
 } from '@/app/log/types';
 import { ObjectItem } from '@/app/log/types/event';
 import CustomTable from '@/components/custom-table';
@@ -56,7 +56,7 @@ const Asset = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
@@ -71,7 +71,7 @@ const Asset = () => {
   const handleAssetMenuClick: MenuProps['onClick'] = (e) => {
     openInstanceModal(
       {
-        keys: selectedRowKeys,
+        keys: selectedRowKeys
       },
       e.key
     );
@@ -79,51 +79,46 @@ const Asset = () => {
 
   const assetMenuProps = {
     items: assetMenuItems,
-    onClick: handleAssetMenuClick,
+    onClick: handleAssetMenuClick
   };
 
   const columns: ColumnItem[] = [
     {
       title: t('common.name'),
       dataIndex: 'name',
-      key: 'name',
-      width: 100,
+      key: 'name'
     },
     {
       title: t('common.belongingGroup'),
       dataIndex: 'organization',
       key: 'organization',
-      width: 100,
       render: (_, { organization }) => (
         <EllipsisWithTooltip
           className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
           text={showGroupName(organization, organizationList)}
         />
-      ),
+      )
     },
     {
       title: t('log.integration.collectionMethod'),
       dataIndex: 'collect_type__name',
-      key: 'collect_type__name',
-      width: 100,
+      key: 'collect_type__name'
     },
     {
       title: t('log.integration.collector'),
       dataIndex: 'collect_type__collector',
-      key: 'collect_type__collector',
-      width: 100,
+      key: 'collect_type__collector'
     },
     {
       title: t('log.integration.collectionNode'),
       dataIndex: 'node_name',
-      key: 'node_name',
-      width: 100,
+      key: 'node_name'
     },
     {
       title: t('common.action'),
       key: 'action',
       dataIndex: 'action',
-      width: 170,
+      width: 240,
       fixed: 'right',
       render: (_, record) => (
         <>
@@ -166,8 +161,8 @@ const Asset = () => {
             </Popconfirm>
           </Permission>
         </>
-      ),
-    },
+      )
+    }
   ];
 
   const enableOperateAsset = useMemo(() => {
@@ -210,12 +205,12 @@ const Asset = () => {
     pagination.current,
     pagination.pageSize,
     searchText,
-    objectId,
+    objectId
   ]);
 
   const viewLog = (row: TableDataItem) => {
     const params = {
-      query: `instance_id:"${row.id}"`,
+      query: `instance_id:"${row.id}"`
     };
     const queryString = new URLSearchParams(params).toString();
     const url = `/log/search?${queryString}`;
@@ -232,7 +227,7 @@ const Asset = () => {
       setTreeLoading(true);
       const data: ObjectItem[] = await getCollectTypes(
         {
-          add_instance_count: true,
+          add_instance_count: true
         },
         { signal: abortController.signal }
       );
@@ -248,29 +243,32 @@ const Asset = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.collector]) {
-        acc[item.collector] = {
-          title: item.collector || '--',
-          key: item.collector,
-          children: [],
-        };
-      }
-      acc[item.collector].children.push({
-        title: `${item.name}(${item.instance_count || 0})`,
-        label: item.name || '--',
-        key: item.id,
-        children: [],
-      });
-      return acc;
-    }, {} as Record<string, TreeItem>);
+    const groupedData = data.reduce(
+      (acc, item) => {
+        if (!acc[item.collector]) {
+          acc[item.collector] = {
+            title: item.collector || '--',
+            key: item.collector,
+            children: []
+          };
+        }
+        acc[item.collector].children.push({
+          title: `${item.name}(${item.instance_count || 0})`,
+          label: item.name || '--',
+          key: item.id,
+          children: []
+        });
+        return acc;
+      },
+      {} as Record<string, TreeItem>
+    );
     return [
       {
         title: t('common.all'),
         key: 'all',
-        children: [],
+        children: []
       },
-      ...Object.values(groupedData),
+      ...Object.values(groupedData)
     ];
   };
 
@@ -289,7 +287,7 @@ const Asset = () => {
           try {
             await deleteLogInstance({
               clean_child_config: true,
-              instance_ids: selectedRowKeys,
+              instance_ids: selectedRowKeys
             });
             message.success(t('common.successfullyDeleted'));
             if (pagination?.current) {
@@ -304,7 +302,7 @@ const Asset = () => {
             resolve(true);
           }
         });
-      },
+      }
     });
   };
 
@@ -323,8 +321,8 @@ const Asset = () => {
       type: 'edit',
       form: {
         ...row,
-        objName: '',
-      },
+        objName: ''
+      }
     });
   };
 
@@ -336,7 +334,7 @@ const Asset = () => {
     instanceRef.current?.showModal({
       title: t(`common.${type}`),
       type,
-      form: row,
+      form: row
     });
   };
 
@@ -356,17 +354,17 @@ const Asset = () => {
         page: pagination.current,
         page_size: pagination.pageSize,
         collect_type_id: objectId === 'all' ? '' : objectId,
-        name: type === 'clear' ? '' : searchText,
+        name: type === 'clear' ? '' : searchText
       };
       const data = await getInstanceList(params, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       // 只有最新请求才处理数据
       if (currentRequestId !== instanceRequestIdRef.current) return;
       setTableData(data?.items || []);
       setPagination((prev: Pagination) => ({
         ...prev,
-        total: data?.count || 0,
+        total: data?.count || 0
       }));
     } finally {
       // 只有最新请求才控制 loading
@@ -381,7 +379,7 @@ const Asset = () => {
     try {
       const data = {
         instance_ids: [row.id],
-        clean_child_config: true,
+        clean_child_config: true
       };
       await deleteLogInstance(data);
       message.success(t('common.successfullyDeleted'));
@@ -404,7 +402,7 @@ const Asset = () => {
 
   const rowSelection: TableRowSelection<TableDataItem> = {
     selectedRowKeys,
-    onChange: onSelectChange,
+    onChange: onSelectChange
   };
 
   // 取消所有请求
