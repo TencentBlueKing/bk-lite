@@ -1,94 +1,81 @@
 """采集服务 V2 - 基于 YAML 配置的新版本采集服务"""
-import asyncio
-import copy
 import importlib
 import json
 import time
 import traceback
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from sanic.log import logger
 
 from core.nats_utils import nats_request
 from core.yaml_reader import yaml_reader
 from core.plugin_executor import PluginExecutor
-from plugins.base_utils import expand_ip_range
-from utils.async_executor import AsyncExecutor
 from plugins.base_utils import convert_to_prometheus_format
 
 
 class CollectionService:
     """
-    采集服务- 基于 YAML 配置的新架构
+    采集服务 - 基于 YAML 配置的新架构
+    
+    设计说明：
+    - API层已完成IP拆分，每个CollectionService实例只处理单个host（或无host）
+    - host字段可能为None（云采集使用默认endpoint）
+    - 不再需要内部并发，并发在Worker Pool层实现
     
     工作流程：
     1. 根据 plugin_name 推断 model（或直接传入 model）
     2. 读取 plugins/inputs/{model}/plugin.yml
     3. 确定执行器类型（job/protocol）
-    4. 通过 PluginExecutor 执行采集
+    4. 通过 PluginExecutor 执行单次采集
     """
 
-    def __init__(self, params: Optional[dict] = None, max_workers: Optional[int] = None):
-        self._node_info_map = {}
+    def __init__(self, params: Optional[dict] = None):
+        self._node_info = None  # 单个节点信息
         self.namespace = "bklite"
         self.yaml_reader = yaml_reader
         self.params = params
         self.plugin_name = self.params.pop("plugin_name", None)
         self.model_id = self.params["model_id"]
-        self.hosts = self.ip_split(self.params.get("hosts", ""))
-        # 是否启用并发（默认启用）
-        self.enable_concurrent = len(self.hosts) >= 3
-        if self.enable_concurrent:
-            # 初始化异步执行器
-            self.async_executor = AsyncExecutor(max_workers=max_workers)
-        else:
-            self.async_executor = None
-
-    @staticmethod
-    def ip_split(ip_range):
-        if "-" in ip_range:
-            result = expand_ip_range(ip_range=ip_range)
-        else:
-            result = ip_range.split(",")
-
-        return result
+        self.host = self.params.get("host")  # 可能为None（云采集）
 
     async def collect(self):
         """
+        单次采集方法
+        
         Returns:
             采集结果（Prometheus 格式字符串 或 字典）
         """
         logger.info(f"{'=' * 30}")
         logger.info(f"🎯 Starting collection V2: model={self.model_id} Plugin: {self.plugin_name}")
-        if not self.hosts:
-            logger.warning("❌ Hosts parameter is empty")
+        if self.host:
+            logger.info(f"📍 Host: {self.host}")
+        else:
+            logger.info(f"📍 No host specified (cloud collection or default endpoint)")
 
         try:
             # 根据参数确定执行器类型（job 或 protocol）
             executor_type = self.params["executor_type"]
             logger.info(f"🔧 Executor type: {executor_type}")
 
-            #  获取执行器配置
+            # 获取执行器配置
             executor_config = self.yaml_reader.get_executor_config(self.model_id, executor_type)
 
-            # 对于非云协议采集，先获取节点信息
-            if executor_config.is_job:
-                await self.set_nodes_info_map()
+            # 对于job类型且有host，获取节点信息
+            if executor_config.is_job and self.host:
+                await self.set_node_info()
+                if self._node_info:
+                    self.params["node_info"] = self._node_info
 
-            # 判断是否启用并发
-            if self.enable_concurrent:
-                logger.info(f"🚀 Concurrent mode enabled for {len(self.hosts)} hosts")
-                collect_data = await self._collect_concurrent(executor_config)
-            else:
-                logger.info(f"📝 Sequential mode for {len(self.hosts)} host(s)")
-                collect_data = await self._collect_sequential(executor_config)
+            # 执行单次采集
+            executor = PluginExecutor(self.model_id, executor_config, self.params)
+            result = await executor.execute()
 
-            # 合并多主机数据并转换为 Prometheus 格式
-            merged_data = self._merge_raw_data(collect_data)
-            result = convert_to_prometheus_format(merged_data)
+            # 处理结果并转换为 Prometheus 格式
+            processed_data = self._process_result(result)
+            final_result = convert_to_prometheus_format(processed_data)
 
             logger.info(f"✅ Collection completed successfully")
             logger.info('=' * 60)
-            return result
+            return final_result
 
         except FileNotFoundError as e:
             logger.error(f"❌ YAML config not found: {e}")
@@ -100,114 +87,63 @@ class CollectionService:
             logger.info(f"{'=' * 60}")
             return self._generate_error_response(str(e))
 
-        finally:
-            # 清理线程池资源
-            if self.async_executor:
-                self.async_executor.shutdown(wait=False)
-
-    async def _collect_single_host(self, host: str, executor_config) -> Dict[str, Any]:
-        """采集单个主机的数据"""
-        try:
-            # 为每个主机创建独立的参数副本
-            host_params = copy.deepcopy(self.params)
-            host_params["host"] = host
-
-            if executor_config.is_job:
-                if host in self._node_info_map:
-                    host_params["node_info"] = self._node_info_map[host]
-
-            executor = PluginExecutor(self.model_id, executor_config, host_params)
-            return await executor.execute()
-        except Exception as e:
-            logger.error(f"❌ Host {host} collection failed: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "host": host
+    def _process_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        处理单次采集结果
+        
+        为采集结果添加必要的元数据字段（host、collect_status等）
+        """
+        processed = {}
+        
+        # 处理采集失败的情况
+        if not result.get("success", True):
+            logger.warning(f"⚠️  Collection failed for {self.host or 'default endpoint'}")
+            
+            # 提取错误信息
+            result_data = result.get("result", {})
+            error_msg = result_data.get("cmdb_collect_error", result.get("error", "Unknown error"))
+            
+            # 创建错误记录
+            error_record = {
+                "collect_status": "failed",
+                "collect_error": error_msg,
+                "bk_obj_id": self.model_id
             }
-
-    async def _collect_sequential(self, executor_config) -> List[Dict[str, Any]]:
-        """串行采集（原有逻辑）"""
-        collect_data = []
-        for host in self.hosts:
-            result = await self._collect_single_host(host, executor_config)
-            collect_data.append(result)
-        return collect_data
-
-    async def _collect_concurrent(self, executor_config) -> List[Dict[str, Any]]:
-        """并发采集（使用异步任务优化）"""
-        # 创建所有主机的采集任务
-        tasks = [
-            self._collect_single_host(host, executor_config)
-            for host in self.hosts
-        ]
-        # 使用 asyncio.gather 并发执行所有任务
-        return await asyncio.gather(*tasks, return_exceptions=False)
-
-    def _merge_raw_data(self, raw_data_list: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """合并多个主机的原始数据"""
-        merged = {}
-        # 判断是否需要添加 host 字段（云平台采集不需要）
-        has_hosts = self.hosts and len(self.hosts) > 0
-
-        for i, data in enumerate(raw_data_list):
-            # 只有在有 hosts 的情况下才获取 current_host
-            current_host = None
-            if has_hosts and i < len(self.hosts):
-                current_host = self.hosts[i]
-
-            # 处理采集失败的情况
-            if not data.get("success", True):
-                error_context = f"Host {current_host}" if current_host else f"Index {i}"
-                logger.warning(f"⚠️  {error_context} collection failed")
-
-                # 提取错误信息
-                result_data = data.get("result", {})
-                error_msg = result_data.get("cmdb_collect_error", data.get("error", "Unknown error"))
-
-                # 创建错误记录，保留到结果中
-                error_record = {
-                    "collect_status": "failed",
-                    "collect_error": error_msg,
-                    "bk_obj_id": self.model_id
-                }
-                # 只有在有 host 的情况下才添加 host 字段
-                if current_host:
-                    error_record["host"] = current_host
-
-                # 将错误记录添加到对应的模型中
-                if self.model_id not in merged:
-                    merged[self.model_id] = []
-                merged[self.model_id].append(error_record)
+            if self.host:
+                error_record["host"] = self.host
+            
+            processed[self.model_id] = [error_record]
+            return processed
+        
+        # 处理采集成功的情况
+        result_data = result.get("result", {})
+        for model_id, items in result_data.items():
+            if model_id not in processed:
+                processed[model_id] = []
+            
+            if not items:
+                # 空结果也标记为成功
+                processed[model_id].append({"bk_obj_id": model_id, "collect_status": "success"})
                 continue
-
-            result_data = data.get("result", {})
-            for model_id, items in result_data.items():
-                if model_id not in merged:
-                    merged[model_id] = []
-
-                if not items:
-                    merged[model_id].extend([{"bk_obj_id": model_id, "collect_status": "success"}])
-                    continue
-
-                # 为每个 item 添加状态和 host 标签（仅在有 host 时添加）
-                if isinstance(items, list):
-                    for item in items:
-                        if isinstance(item, dict):
-                            # 只有在有 host 的情况下才添加 host 字段
-                            if current_host:
-                                item['host'] = current_host
-                            item["bk_obj_id"] = model_id
-                            item['collect_status'] = 'success'
-                    merged[model_id].extend(items)
-                elif isinstance(items, dict):
-                    # 单个字典的情况
-                    if current_host:
-                        items['host'] = current_host
-                    items['collect_status'] = 'success'
-                    merged[model_id].append(items)
-
-        return merged
+            
+            # 为每个item添加状态和host标签
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict):
+                        if self.host:
+                            item['host'] = self.host
+                        item["bk_obj_id"] = model_id
+                        item['collect_status'] = 'success'
+                processed[model_id].extend(items)
+            elif isinstance(items, dict):
+                # 单个字典的情况
+                if self.host:
+                    items['host'] = self.host
+                items['collect_status'] = 'success'
+                items["bk_obj_id"] = model_id
+                processed[model_id].append(items)
+        
+        return processed
 
     def _generate_error_response(self, error_message: str):
         return self._generate_error_metrics(Exception(error_message), self.model_id)
@@ -266,8 +202,11 @@ class CollectionService:
             logger.error(f"Error list_regions for {self.plugin_name or self.model_id}: {traceback.format_exc()}")
             return {"result": [], "success": False}
 
-    async def set_nodes_info_map(self):
-        """查询节点信息"""
+    async def set_node_info(self):
+        """查询单个节点信息"""
+        if not self.host:
+            return
+        
         try:
             exec_params = {
                 "args": [{"page_size": -1}],
@@ -280,6 +219,11 @@ class CollectionService:
 
             if response.get('success') and response['result']['nodes']:
                 for node in response['result']['nodes']:
-                    self._node_info_map[node["ip"]] = node
+                    if node["ip"] == self.host:
+                        self._node_info = node
+                        logger.info(f"✅ Found node info for {self.host}")
+                        break
+                else:
+                    logger.warning(f"⚠️  Node info not found for {self.host}")
         except Exception as e:
-            logger.warning(f"⚠️  Failed to get node info: {e}")
+            logger.warning(f"⚠️  Failed to get node info for {self.host}: {e}")

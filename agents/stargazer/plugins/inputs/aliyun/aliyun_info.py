@@ -185,6 +185,11 @@ class CwAliyun(object):
         self.AccessSecret = params["access_secret"]
         self.RegionId = params.get("region_id", "cn-hangzhou")
         self.timeout = int(params.get("timeout", 30))
+        
+        # 🆕 支持自定义endpoint（私有云场景）
+        # 从host参数读取endpoint，如: ecs.private-cloud.example.com
+        self.custom_endpoint = params.get("host")
+        
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -220,7 +225,8 @@ class CwAliyun(object):
         :return:
         """
         return Aliyun(
-            aliyun_client=self.client, name=item, region=self.RegionId, auth=self.auth, auth_config=self.auth_config
+            aliyun_client=self.client, name=item, region=self.RegionId, auth=self.auth, 
+            auth_config=self.auth_config, custom_endpoint=self.custom_endpoint
         )
 
 
@@ -229,12 +235,13 @@ class Aliyun(object):
     阿里云接口类。使用阿里云开发者工具套件（SDK），并进行封装，访问阿里云服务
     """
 
-    def __init__(self, aliyun_client, name, region, auth, auth_config):
+    def __init__(self, aliyun_client, name, region, auth, auth_config, custom_endpoint=None):
         """
         初始化方法
         :param aliyun_client:
         :param name:
         :param region:
+        :param custom_endpoint: 自定义endpoint（用于私有云）
         """
         self.client = aliyun_client
         self.name = name
@@ -242,53 +249,56 @@ class Aliyun(object):
         self.auth = auth
         self.cloud_type = CloudType.ALIYUN.value
         self.auth_config = auth_config
+        self.custom_endpoint = custom_endpoint
+        
+        # 如果有自定义endpoint，优先使用自定义endpoint
         domain_config = copy.deepcopy(auth_config)
-        domain_config.endpoint = "domain.aliyuncs.com"
+        domain_config.endpoint = custom_endpoint if custom_endpoint else "domain.aliyuncs.com"
         self.domain_client = Domain20180129Client(domain_config)
         dns_config = copy.deepcopy(auth_config)
-        dns_config.endpoint = f"alidns.{region}.aliyuncs.com"
+        dns_config.endpoint = custom_endpoint if custom_endpoint else f"alidns.{region}.aliyuncs.com"
         self.dns_client = Alidns20150109Client(dns_config)
         cdn_config = copy.deepcopy(auth_config)
-        cdn_config.endpoint = "cdn.aliyuncs.com"
+        cdn_config.endpoint = custom_endpoint if custom_endpoint else "cdn.aliyuncs.com"
         self.cdn_client = Cdn20180510Client(cdn_config)
         waf_config = copy.deepcopy(auth_config)
-        waf_config.endpoint = f"wafopenapi.{region}.aliyuncs.com"
+        waf_config.endpoint = custom_endpoint if custom_endpoint else f"wafopenapi.{region}.aliyuncs.com"
         self.waf_client = WafOpenapi20211001Client(waf_config)
         cas_config = copy.deepcopy(auth_config)
-        cas_config.endpoint = "cas.aliyuncs.com"
+        cas_config.endpoint = custom_endpoint if custom_endpoint else "cas.aliyuncs.com"
         self.cas_client = Cas20200407Client(cas_config)
         rds_config = copy.deepcopy(auth_config)
-        rds_config.endpoint = "rds.aliyuncs.com"
+        rds_config.endpoint = custom_endpoint if custom_endpoint else "rds.aliyuncs.com"
         self.rds_client = Rds20140815Client(rds_config)
         kvs_config = copy.deepcopy(auth_config)
-        kvs_config.endpoint = "r-kvstore.aliyuncs.com"
+        kvs_config.endpoint = custom_endpoint if custom_endpoint else "r-kvstore.aliyuncs.com"
         self.kvs_client = R_kvstore20150101Client(kvs_config)
         oss_config = copy.deepcopy(auth_config)
-        oss_config.endpoint = f"oss-{region}.aliyuncs.com"
+        oss_config.endpoint = custom_endpoint if custom_endpoint else f"oss-{region}.aliyuncs.com"
         self.oss_client = Oss20190517Client(oss_config)
         dds_config = copy.deepcopy(auth_config)
-        dds_config.endpoint = "mongodb.aliyuncs.com"
+        dds_config.endpoint = custom_endpoint if custom_endpoint else "mongodb.aliyuncs.com"
         self.dds_client = Dds20151201Client(dds_config)
         kafka_config = copy.deepcopy(auth_config)
-        kafka_config.endpoint = f"alikafka.{region}.aliyuncs.com"
+        kafka_config.endpoint = custom_endpoint if custom_endpoint else f"alikafka.{region}.aliyuncs.com"
         self.kafka_client = alikafka20190916Client(kafka_config)
         slb_config = copy.deepcopy(auth_config)
-        slb_config.endpoint = f"slb.{region}.aliyuncs.com"
+        slb_config.endpoint = custom_endpoint if custom_endpoint else f"slb.{region}.aliyuncs.com"
         self.slb_client = Slb20140515Client(slb_config)
         cs_config = copy.deepcopy(auth_config)
-        cs_config.endpoint = f"cs.{region}.aliyuncs.com"
+        cs_config.endpoint = custom_endpoint if custom_endpoint else f"cs.{region}.aliyuncs.com"
         self.cs_client = CS20151215Client(cs_config)
         vpc_config = copy.deepcopy(auth_config)
-        vpc_config.endpoint = "vpc.aliyuncs.com"
+        vpc_config.endpoint = custom_endpoint if custom_endpoint else "vpc.aliyuncs.com"
         self.vpc_client = Vpc20160428Client(vpc_config)
         mse_config = copy.deepcopy(auth_config)
-        mse_config.endpoint = f"mse.{region}.aliyuncs.com"
+        mse_config.endpoint = custom_endpoint if custom_endpoint else f"mse.{region}.aliyuncs.com"
         self.mse_client = mse20190531Client(mse_config)
         alb_config = copy.deepcopy(auth_config)
-        alb_config.endpoint = f"alb.{region}.aliyuncs.com"
+        alb_config.endpoint = custom_endpoint if custom_endpoint else f"alb.{region}.aliyuncs.com"
         self.alb_client = Alb20200616Client(alb_config)
         nas_config = copy.deepcopy(auth_config)
-        nas_config.endpoint = f"nas.{region}.aliyuncs.com"
+        nas_config.endpoint = custom_endpoint if custom_endpoint else f"nas.{region}.aliyuncs.com"
         self.nas_client = NAS20170626Client(nas_config)
 
     def __call__(self, *args, **kwargs):

@@ -59,6 +59,10 @@ class TencentCloudManager:
         self.timeout = int(params.get("timeout", 60))
         ssl = params.get("ssl", "false")
         self.protocol = "https" if ssl.lower() == "true" else "http"
+        
+        # 🆕 支持自定义endpoint（私有云场景）
+        # 从host参数读取endpoint，如: cvm.private-cloud.example.com
+        self.custom_endpoint = params.get("host")
 
     def get_tencent_client(self, region="ap-guangzhou") -> TencentClientProxy:
         """
@@ -69,6 +73,11 @@ class TencentCloudManager:
         httpProfile = HttpProfile()
         httpProfile.protocol = self.protocol
         httpProfile.reqTimeout = self.timeout
+        
+        # 🆕 如果有自定义endpoint，优先使用
+        if self.custom_endpoint:
+            httpProfile.endpoint = self.custom_endpoint
+        
         client_profile = ClientProfile()
         client_profile.httpProfile = httpProfile
         cred = self.get_credentials()
