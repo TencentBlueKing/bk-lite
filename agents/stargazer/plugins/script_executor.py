@@ -5,10 +5,12 @@ SSH 脚本执行器插件
 """
 import os
 import json
+import logging
 from pathlib import Path
 from typing import Dict, Any, List
-from sanic.log import logger
 from core.nats_utils import nats_request
+
+logger = logging.getLogger("stargazer.ssh_plugin")
 
 
 class SSHPlugin:
@@ -38,7 +40,7 @@ class SSHPlugin:
         """
         self.node_id = params["node_id"]
         self.host = params.get("host", "")
-        self.script_path = params.get("script_path")
+        script_path = params.get("script_path")
         self.username = params.get("username")
         self.password = params.get("password")
         self.port = params.get("port", 22)
@@ -46,8 +48,9 @@ class SSHPlugin:
         self.node_info = params.get("node_info", {})
         self.model_id = params.get("model_id")
 
-        if not self.script_path:
+        if not script_path:
             raise ValueError("script_path is required for SSHPlugin")
+        self.script_path = script_path
 
     @property
     def namespace(self):
@@ -121,11 +124,11 @@ class SSHPlugin:
 
     def _parse_collect_output(self, collect_output: str) -> List[Dict[str, Any]]:
         if not collect_output:
-            return [{}]
+            return []
         try:
             parsed = json.loads(collect_output)
             if isinstance(parsed, list):
-                return [item for item in parsed if isinstance(item, dict)] or [{}]
+                return [item for item in parsed if isinstance(item, dict)]
             if isinstance(parsed, dict):
                 return [parsed]
         except Exception:
@@ -141,7 +144,7 @@ class SSHPlugin:
                     records.append(parsed_line)
             except Exception:
                 continue
-        return records or [{}]
+        return records
 
     async def list_all_resources(self, need_raw=False) -> Dict[str, Any]:
         """
@@ -179,7 +182,10 @@ class SSHPlugin:
                     return response
                 collect_data = response["result"]
                 parsed_payload = self._parse_collect_output(collect_data)
-                result = {"result": {self.model_id: parsed_payload}, "success": True}
+                if parsed_payload:
+                    result = {"result": {self.model_id: parsed_payload}, "success": True}
+                else:
+                    result = {"result": {}, "success": True}
             else:
                 result = {"result": {"cmdb_collect_error": response.get("result")}, "success": False}
             logger.info(f"✅ Script execution completed: success={response.get('success')}")
