@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Input,
   Button,
@@ -52,6 +52,71 @@ import { cloneDeep } from 'lodash';
 const { Search } = Input;
 const { Option } = Select;
 
+const ResizableTitle = (
+  props: React.HTMLAttributes<HTMLTableCellElement> & {
+    onResize?: (width: number) => void;
+    width?: number;
+  }
+) => {
+  const { onResize, width, children, ...restProps } = props;
+  const thRef = useRef<HTMLTableCellElement>(null);
+  const startXRef = useRef<number>(0);
+  const startWidthRef = useRef<number>(0);
+
+  if (!width || !onResize) {
+    return <th {...restProps}>{children}</th>;
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    startXRef.current = e.clientX;
+    // 使用实际渲染的宽度，而不是 props 中的 width
+    startWidthRef.current = thRef.current?.offsetWidth || width;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startXRef.current;
+      const newWidth = Math.max(60, startWidthRef.current + delta);
+      onResize(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  return (
+    <th
+      ref={thRef}
+      {...restProps}
+      style={{ 
+        ...restProps.style, 
+        width, 
+        minWidth: 60,
+        maxWidth: width,
+        userSelect: 'none', 
+        position: 'relative' 
+      }}
+    >
+      {children}
+      <span
+        className="resize-handle"
+        onMouseDown={handleMouseDown}
+        onClick={(e) => e.stopPropagation()}
+      />
+    </th>
+  );
+};
+
 const Alert: React.FC = () => {
   const { isLoading } = useApiClient();
   const { getMonitorAlert, getMonitorObject, patchMonitorAlert } =
@@ -100,12 +165,36 @@ const Alert: React.FC = () => {
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [objectId, setObjectId] = useState<React.Key>('');
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+    level: 100,
+    updated_at: 180,
+    content: 300,
+    alert_type: 100,
+    monitor_instance_name: 200,
+    assetType: 100,
+    status: 80,
+    notify: 80,
+    operator: 120,
+    action: 120
+  });
 
-  const columns: ColumnItem[] = [
+  const handleResize = useCallback(
+    (key: string) =>
+      (width: number) => {
+        setColumnWidths((prev) => ({
+          ...prev,
+          [key]: width
+        }));
+      },
+    []
+  );
+
+  const baseColumns: ColumnItem[] = [
     {
       title: t('monitor.events.level'),
       dataIndex: 'level',
       key: 'level',
+      width: 100,
       render: (_, { level }) => (
         <Tag icon={<AlertOutlined />} color={LEVEL_MAP[level] as string}>
           {LEVEL_LIST.find((item) => item.value === level)?.label || '--'}
@@ -116,6 +205,7 @@ const Alert: React.FC = () => {
       title: t('common.time'),
       dataIndex: 'updated_at',
       key: 'updated_at',
+      width: 180,
       sorter: (a: any, b: any) => a.id - b.id,
       render: (_, { updated_at }) => (
         <>{updated_at ? convertToLocalizedTime(updated_at) : '--'}</>
@@ -124,12 +214,19 @@ const Alert: React.FC = () => {
     {
       title: t('monitor.events.alertName'),
       dataIndex: 'content',
-      key: 'content'
+      key: 'content',
+      width: 300,
+      render: (text: string) => (
+        <Tooltip placement="topLeft" title={text}>
+          <div className="truncate">{text || '--'}</div>
+        </Tooltip>
+      )
     },
     {
       title: t('monitor.events.alertType'),
       dataIndex: 'alert_type',
       key: 'alert_type',
+      width: 100,
       render: (_, { alert_type }) => (
         <Tag color="default">{ALERT_TYPE_MAP[alert_type] || '--'}</Tag>
       )
@@ -137,18 +234,26 @@ const Alert: React.FC = () => {
     {
       title: t('monitor.asset'),
       dataIndex: 'monitor_instance_name',
-      key: 'monitor_instance_name'
+      key: 'monitor_instance_name',
+      width: 200,
+      render: (text: string) => (
+        <Tooltip placement="topLeft" title={text}>
+          <div className="truncate">{text || '--'}</div>
+        </Tooltip>
+      )
     },
     {
       title: t('monitor.events.assetType'),
       dataIndex: 'assetType',
       key: 'assetType',
+      width: 100,
       render: (_, record) => <>{showObjName(record)}</>
     },
     {
       title: t('monitor.events.state'),
       dataIndex: 'status',
       key: 'status',
+      width: 80,
       render: (_, { status }) => (
         <Tag color={status === 'new' ? 'blue' : 'var(--color-text-4)'}>
           {STATE_MAP[status]}
@@ -159,6 +264,7 @@ const Alert: React.FC = () => {
       title: t('monitor.events.notify'),
       dataIndex: 'notify',
       key: 'notify',
+      width: 80,
       render: (_, record) => (
         <>
           {t(
@@ -173,6 +279,7 @@ const Alert: React.FC = () => {
       title: t('common.operator'),
       dataIndex: 'operator',
       key: 'operator',
+      width: 120,
       render: (_, { operator }) => {
         return operator ? (
           <div className="column-user" title={operator}>
@@ -230,6 +337,34 @@ const Alert: React.FC = () => {
       )
     }
   ];
+
+  const columns: ColumnItem[] = useMemo(() => {
+    return baseColumns.map((col) => {
+      const key = (col.dataIndex || col.key) as string;
+      const width = columnWidths[key] || (col.width as number);
+      return {
+        ...col,
+        width,
+        onHeaderCell: () => ({
+          width,
+          onResize: handleResize(key)
+        })
+      };
+    });
+  }, [baseColumns, columnWidths, handleResize]);
+
+  const tableComponents = useMemo(
+    () => ({
+      header: {
+        cell: ResizableTitle
+      }
+    }),
+    []
+  );
+
+  const tableScrollX = useMemo(() => {
+    return Object.values(columnWidths).reduce((sum, w) => sum + w, 0);
+  }, [columnWidths]);
 
   const isActiveAlarm = useMemo(() => {
     return activeTab === 'activeAlarms';
@@ -694,13 +829,14 @@ const Alert: React.FC = () => {
             />
             <CustomTable
               className="w-full"
-              scroll={{ y: 'calc(100vh - 640px)', x: 'max-content' }}
+              scroll={{ y: 'calc(100vh - 640px)', x: tableScrollX }}
               columns={columns}
               dataSource={tableData}
               pagination={pagination}
               loading={tableLoading}
               rowKey="id"
               onChange={handleTableChange}
+              components={tableComponents}
             />
           </div>
         </div>

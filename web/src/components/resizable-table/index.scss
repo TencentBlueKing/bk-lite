@@ -1,0 +1,15 @@
+.resize-handle {
+  position: absolute;
+  right: -5px;
+  bottom: 0;
+  top: 0;
+  z-index: 10;
+  width: 10px;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.resize-handle:hover {
+  background-color: var(--ant-primary-color);
+  opacity: 0.3;
+}
