@@ -4,7 +4,12 @@ from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.constants.constants import PERMISSION_INSTANCES, OPERATE, VIEW
 from apps.cmdb.services.instance import InstanceManage
-from apps.cmdb.utils.base import format_group_params, get_organization_and_children_ids
+from apps.cmdb.utils.base import (
+    format_group_params,
+    format_groups_params,
+    get_current_team_from_request,
+    get_organization_and_children_ids,
+)
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.core.decorators.api_permission import HasPermission
@@ -266,8 +271,18 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
                 )
 
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            team_ids = get_organization_and_children_ids(
+                tree_data=request.user.group_tree, target_id=current_team
+            )
+            user_groups = format_groups_params(team_ids)
+        else:
+            user_groups = format_group_params(current_team)
+
         InstanceManage.instance_batch_delete(
-            format_group_params(request.COOKIES.get("current_team")),
+            user_groups,
             request.user.roles,
             [int(pk)],
             request.user.username,
@@ -311,12 +326,27 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                         status_code=status.HTTP_403_FORBIDDEN,
                     )
 
-        InstanceManage.instance_batch_delete(
-            request.user.group_list,
-            request.user.roles,
-            request.data,
-            request.user.username,
-        )
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            team_ids = get_organization_and_children_ids(
+                tree_data=request.user.group_tree, target_id=current_team
+            )
+            user_groups = format_groups_params(team_ids)
+        else:
+            user_groups = format_group_params(current_team)
+
+        try:
+            InstanceManage.instance_batch_delete(
+                user_groups,
+                request.user.roles,
+                request.data,
+                request.user.username,
+            )
+        except BaseAppException as e:
+            return WebUtils.response_error(
+                error_message=e.message, status_code=status.HTTP_403_FORBIDDEN
+            )
         return WebUtils.response_success()
 
     @HasPermission("asset_info-Edit")
@@ -344,8 +374,18 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
                 )
 
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            team_ids = get_organization_and_children_ids(
+                tree_data=request.user.group_tree, target_id=current_team
+            )
+            user_groups = format_groups_params(team_ids)
+        else:
+            user_groups = format_group_params(current_team)
+
         inst = InstanceManage.instance_update(
-            request.user.group_list,
+            user_groups,
             request.user.roles,
             int(pk),
             request.data,
@@ -388,13 +428,28 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                         status_code=status.HTTP_403_FORBIDDEN,
                     )
 
-        InstanceManage.batch_instance_update(
-            request.user.group_list,
-            request.user.roles,
-            request.data["inst_ids"],
-            request.data["update_data"],
-            request.user.username,
-        )
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            team_ids = get_organization_and_children_ids(
+                tree_data=request.user.group_tree, target_id=current_team
+            )
+            user_groups = format_groups_params(team_ids)
+        else:
+            user_groups = format_group_params(current_team)
+
+        try:
+            InstanceManage.batch_instance_update(
+                user_groups,
+                request.user.roles,
+                request.data["inst_ids"],
+                request.data["update_data"],
+                request.user.username,
+            )
+        except BaseAppException as e:
+            return WebUtils.response_error(
+                error_message=e.message, status_code=status.HTTP_403_FORBIDDEN
+            )
         return WebUtils.response_success()
 
     @HasPermission("asset_info-Add Associate")
@@ -962,6 +1017,14 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         TODO 等节点管理开放接口后再对接接口
         """
         node_mgmt = NodeMgmt()
-        data = node_mgmt.cloud_region_list()
-        _data = [{"proxy_id": i["id"], "proxy_name": i["name"]} for i in data]
+        data = node_mgmt.cloud_region_list() or []
+        _data = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            proxy_id = item.get("id")
+            proxy_name = item.get("name")
+            if proxy_id is None or proxy_name is None:
+                continue
+            _data.append({"proxy_id": proxy_id, "proxy_name": proxy_name})
         return WebUtils.response_success(_data)

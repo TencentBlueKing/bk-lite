@@ -134,16 +134,39 @@ class CmdbRulesFormatUtil:
 
         current_team = get_current_team_from_request(request)
         include_children = request.COOKIES.get("include_children") == "1"
-        user_teams = get_organization_and_children_ids(tree_data=request.user.group_tree, target_id=current_team)
+        user_teams = get_organization_and_children_ids(
+            tree_data=request.user.group_tree, target_id=current_team
+        )
+        if not user_teams:
+            user_teams = [current_team]
         permission_key = f"{permission_type}.{model_id}" if model_id else permission_type
-        permission_rules = get_permission_rules(user=request.user, current_team=current_team, app_name=APP_NAME,
-                                                permission_key=permission_key, include_children=include_children)
+        permission_rules = get_permission_rules(
+            user=request.user,
+            current_team=current_team,
+            app_name=APP_NAME,
+            permission_key=permission_key,
+            include_children=include_children,
+        )
+        if not isinstance(permission_rules, dict):
+            permission_rules = {}
 
         teams = permission_rules.get("team", [])
         instance = permission_rules.get("instance", [])
         permission_instances_map = CmdbRulesFormatUtil().format_permission_instances_list(instances=instance)
         inst_names = list(permission_instances_map.keys())
         permission_rule_map = {}
+        if include_children:
+            print(
+                "CMDB_DEBUG include_children rules",
+                {
+                    "current_team": current_team,
+                    "user_teams": user_teams,
+                    "teams_rule": teams,
+                    "inst_rule_count": len(instance),
+                    "permission_key": permission_key,
+                },
+            )
+
         for team in user_teams:
             if not include_children and team not in teams:
                 # 不包含子组织的情况下跳过非当前的组织

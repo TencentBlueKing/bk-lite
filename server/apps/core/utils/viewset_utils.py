@@ -32,6 +32,11 @@ class GenericViewSetFun(object):
     def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False, include_children=False):
         """获取规则实例ID"""
         user_groups = [int(i["id"]) for i in user.group_list]
+        if include_children:
+            group_tree = getattr(user, "group_tree", [])
+            child_groups = self.extract_child_group_ids(group_tree, current_team)
+            if child_groups:
+                user_groups = child_groups
         org_field = getattr(self, "ORGANIZATION_FIELD", "team")
         if is_list:
             instance_id = list(instance.values_list("id", flat=True))
@@ -52,6 +57,11 @@ class GenericViewSetFun(object):
             permission_rules = get_permission_rules(user, current_team, app_name, self.permission_key, include_children)
             if int(current_team) in permission_rules["team"]:
                 return True
+            if include_children:
+                allowed_teams = {i for i in permission_rules.get("team", [])}
+                allowed_teams.add(current_team)
+                if allowed_teams & set(user_groups):
+                    return True
 
             operate = "View" if is_check else "Operate"
             instance_list = [int(i["id"]) for i in permission_rules["instance"] if operate in i["permission"]]
