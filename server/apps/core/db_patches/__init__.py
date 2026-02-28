@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # 新增数据库引擎时，只需在此处添加映射并创建对应的 .py 文件
 _ENGINE_PATCH_MAP = {
     "dameng": "apps.core.db_patches.dameng",
+    "goldendb": "apps.core.db_patches.goldendb",
     # "gaussdb": "apps.core.db_patches.gaussdb",
     # "oceanbase": "apps.core.db_patches.oceanbase",
     # "mysql": "apps.core.db_patches.mysql",
