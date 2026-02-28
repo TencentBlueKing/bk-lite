@@ -4,7 +4,7 @@ import React, {
   useState,
   forwardRef,
   useImperativeHandle,
-  useRef,
+  useRef
 } from 'react';
 import {
   Tag,
@@ -14,9 +14,14 @@ import {
   Badge,
   Popconfirm,
   message,
-  Input,
+  Input
 } from 'antd';
-import { RightOutlined, GlobalOutlined, EditOutlined } from '@ant-design/icons';
+import {
+  RightOutlined,
+  GlobalOutlined,
+  EditOutlined,
+  ExclamationCircleOutlined
+} from '@ant-design/icons';
 import Icon from '@/components/icon';
 import OperateDrawer from '@/app/node-manager/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
@@ -26,11 +31,11 @@ import { STATUS_CODE_PRIORITY } from '@/app/node-manager/constants/cloudregion';
 import {
   ModalSuccess,
   TableDataItem,
-  ModalRef,
+  ModalRef
 } from '@/app/node-manager/types';
 import {
   ConfigData,
-  ConfigListProps,
+  ConfigListProps
 } from '@/app/node-manager/types/cloudregion';
 import { Pagination } from '@/app/node-manager/types';
 import useNodeManagerApi from '@/app/node-manager/api';
@@ -75,7 +80,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const [subConfigPagination, setSubConfigPagination] = useState<Pagination>({
       current: 1,
       total: 0,
-      pageSize: 10,
+      pageSize: 10
     });
     const [searchKeyword, setSearchKeyword] = useState<string>('');
     const [inputValue, setInputValue] = useState<string>('');
@@ -101,7 +106,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
               collectorsInstallFromStatus.some(
                 (sc: any) => sc.collector_id === c.collector_id
               ) && !collectorIds.has(c.collector_id)
-          ),
+          )
         ];
         setCollectors(filteredCollectors);
         setForm(row);
@@ -128,7 +133,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
             operatingSystem: '',
             configInfo: '',
             nodeCount: 0,
-            collector_name: firstCollector.collector_name,
+            collector_name: firstCollector.collector_name
           } as ConfigData);
           if (firstCollector.collector_id && row.id) {
             // 加载所有配置数据
@@ -138,7 +143,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
             );
           }
         }
-      },
+      }
     }));
 
     // 加载所有配置数据（只调用一次 config_node_asso 接口）
@@ -152,7 +157,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         const configList = await getConfiglist(
           {
             cloud_region_id: cloudId,
-            node_id: nodeId,
+            node_id: nodeId
           },
           { signal: abortController.signal }
         );
@@ -164,7 +169,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
             operatingSystem: config.operating_system,
             configInfo: config.config_template || '',
             nodeCount: config.nodes?.length || 0,
-            collector_name: config.collector_name || '',
+            collector_name: config.collector_name || ''
           })
         );
         setAllConfigs(configData);
@@ -206,7 +211,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       configId,
       page,
       pageSize,
-      configType,
+      configType
     }: {
       configId: string;
       page?: number;
@@ -223,22 +228,22 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
           collector_config_id: configId,
           page: page || subConfigPagination.current,
           page_size: pageSize || subConfigPagination.pageSize,
-          config_type: configType === undefined ? searchKeyword : configType,
+          config_type: configType === undefined ? searchKeyword : configType
         };
         const res = await getChildConfig(params, {
-          signal: abortController.signal,
+          signal: abortController.signal
         });
         if (currentRequestId !== subConfigRequestIdRef.current) return;
         const data = res.items.map((item: any) => ({
           ...item,
-          key: item.id,
+          key: item.id
         }));
         setSubConfigs(data);
         setSubConfigPagination((prev) => ({
           ...prev,
           current: params.page,
           pageSize: params.page_size,
-          total: res?.count || 0,
+          total: res?.count || 0
         }));
       } catch (error) {
         console.error('Failed to load sub configs:', error);
@@ -250,14 +255,17 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     };
 
     const getSortedGroupedCollectors = () => {
-      const groupedCollectors = collectors.reduce((groups, collector) => {
-        const status = collector.status.toString();
-        if (!groups[status]) {
-          groups[status] = [];
-        }
-        groups[status].push(collector);
-        return groups;
-      }, {} as Record<string, TableDataItem[]>);
+      const groupedCollectors = collectors.reduce(
+        (groups, collector) => {
+          const status = collector.status.toString();
+          if (!groups[status]) {
+            groups[status] = [];
+          }
+          groups[status].push(collector);
+          return groups;
+        },
+        {} as Record<string, TableDataItem[]>
+      );
       return Object.entries(groupedCollectors).sort(([statusA], [statusB]) => {
         const priorityA = STATUS_CODE_PRIORITY[Number(statusA)] || 999;
         const priorityB = STATUS_CODE_PRIORITY[Number(statusB)] || 999;
@@ -287,7 +295,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       setSubConfigPagination((pre) => ({
         ...pre,
         count: 0,
-        current: 1,
+        current: 1
       }));
       setSearchKeyword('');
       setInputValue('');
@@ -305,7 +313,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       if (mainConfig) {
         configModalRef.current?.showModal({
           type: 'edit',
-          form: mainConfig,
+          form: mainConfig
         });
       }
     };
@@ -314,7 +322,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const handleSubConfigEdit = (record: any) => {
       configModalRef.current?.showModal({
         type: 'edit_child',
-        form: record,
+        form: record
       });
     };
 
@@ -342,13 +350,13 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         dataIndex: 'collect_type',
         key: 'collect_type',
         width: 150,
-        render: (text: string) => <Tag color="green">{text}</Tag>,
+        render: (text: string) => <Tag color="green">{text}</Tag>
       },
       {
         title: t('node-manager.cloudregion.Configuration.configurationType'),
         dataIndex: 'config_type',
         key: 'config_type',
-        width: 150,
+        width: 150
       },
       {
         title: t('common.action'),
@@ -381,8 +389,8 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
               </Popconfirm>
             )}
           </>
-        ),
-      },
+        )
+      }
     ];
 
     const handleDelete = (id: number) => {
@@ -403,7 +411,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         loadSubConfigs({
           configId: mainConfig.key,
           page: pagination.current,
-          pageSize: pagination.pageSize,
+          pageSize: pagination.pageSize
         });
       }
     };
@@ -416,7 +424,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
           configId: mainConfig.key,
           page: 1,
           pageSize: subConfigPagination.pageSize,
-          configType: value,
+          configType: value
         });
       }
     };
@@ -430,7 +438,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
           configId: mainConfig.key,
           page: 1,
           pageSize: subConfigPagination.pageSize,
-          configType: '',
+          configType: ''
         });
       }
     };
@@ -438,10 +446,24 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const getStatusInfo = (status: number) => {
       return (
         statusMap[status] || {
-          tagColor: 'default',
-          color: '#b2b5bd',
+          tagColor: '',
+          color: '#000000',
           text: t('node-manager.cloudregion.node.unknown'),
           engText: 'Unknown',
+          icon: (
+            <div
+              className="w-6 h-6 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)' }}
+            >
+              <ExclamationCircleOutlined
+                style={{
+                  color: '#000000',
+                  fontWeight: 'bold',
+                  fontSize: '12px'
+                }}
+              />
+            </div>
+          )
         }
       );
     };
@@ -486,7 +508,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
             <div
               style={{
                 color: 'var(--color-text-3)',
-                fontSize: '12px',
+                fontSize: '12px'
               }}
             >
               {t('node-manager.cloudregion.node.lastReportTime')}：
@@ -512,7 +534,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                   style={{
                     backgroundColor: 'var(--color-fill-2)',
                     color: 'var(--color-text-2)',
-                    boxShadow: 'none',
+                    boxShadow: 'none'
                   }}
                 />
               </div>
@@ -536,7 +558,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                               }`}
                               style={{
                                 border: '1px solid var(--color-border-1)',
-                                borderLeft: `4px solid ${collectorStatusInfo.color}`,
+                                borderLeft: `4px solid ${collectorStatusInfo.color}`
                               }}
                               onClick={() => handleCollectorClick(collector)}
                             >
@@ -590,7 +612,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                     <div
                       className="text-xs"
                       style={{
-                        color: getStatusInfo(selectedCollector.status).color,
+                        color: getStatusInfo(selectedCollector.status).color
                       }}
                     >
                       <span className="flex items-center text-xs">
@@ -599,7 +621,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                             color: getStatusInfo(selectedCollector.status)
                               .color,
                             fontSize: '16px',
-                            marginRight: '4px',
+                            marginRight: '4px'
                           }}
                         >
                           {React.cloneElement(
@@ -609,8 +631,8 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                               style: {
                                 ...getStatusInfo(selectedCollector.status).icon
                                   .props.children.props.style,
-                                fontSize: '14px',
-                              },
+                                fontSize: '14px'
+                              }
                             }
                           )}
                         </span>
@@ -678,7 +700,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                               y: !subConfigs?.length
                                 ? 'auto'
                                 : 'calc(100vh - 482px)',
-                              x: 'max-content',
+                              x: 'max-content'
                             }}
                             columns={subConfigColumns}
                             dataSource={subConfigs}
