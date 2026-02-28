@@ -2,7 +2,7 @@
 import { ModalRef, Option, DatasetType } from "@/app/mlops/types";
 import { forwardRef, useImperativeHandle, useState, useRef, useEffect } from "react";
 import OperateModal from '@/components/operate-modal';
-import { Form, FormInstance, Select, Button, Input, InputNumber, message, Switch } from "antd";
+import { Form, FormInstance, Select, Button, Input, InputNumber, message } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import useMlopsModelReleaseApi from "@/app/mlops/api/modelRelease";
 const { TextArea } = Input;
@@ -69,7 +69,6 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     } else {
       const editValues: Record<string, any> = {
         ...formData,
-        status: formData.status === 'active' ? true : false,
         port: formData.port || undefined // port 为 null 时设置为 undefined，让表单为空
       };
       getModelVersionListWithTrainJob(formData.train_job, tagName as DatasetType);
@@ -146,22 +145,18 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     setConfirmLoading(true);
     try {
       const data = await formRef.current?.validateFields();
-      const payload = {
-        ...data,
-        status: data.status ? 'active' : 'inactive'
-      };
 
       if (type === 'add') {
         if (!handleAddMap[tagName]) {
           return;
         }
-        await handleAddMap[tagName]!(payload);
+        await handleAddMap[tagName]!(data);
         message.success(t(`model-release.publishSuccess`));
       } else {
         if (!handleUpdateMap[tagName]) {
           return;
         }
-        await handleUpdateMap[tagName]!(formData?.id, payload);
+        await handleUpdateMap[tagName]!(formData?.id, data);
         message.success(t(`common.updateSuccess`));
       }
       setModalOpen(false);
@@ -223,7 +218,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             <InputNumber className="w-full" placeholder={t(`mlops-common.portIptMsg`)} min={1} max={65535} />
           </Form.Item>
 
-          <Form.Item
+          {/* <Form.Item
             name='status'
             label={t(`model-release.release`)}
             layout="horizontal"
@@ -240,7 +235,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
               size="small"
               disabled={type === 'edit' && formData?.container_info?.state !== 'running'}
             />
-          </Form.Item>
+          </Form.Item> */}
 
           <Form.Item
             name='description'

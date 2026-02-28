@@ -981,10 +981,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     ),
                 )
 
-                # 正常启动成功，更新容器信息以及将status设为 'active'
+                # 正常启动成功，更新容器信息
                 serving.container_info = result
-                serving.status = "active"
-                serving.save(update_fields=["container_info", "status"])
+                serving.save(update_fields=["container_info"])
 
                 return Response(
                     {
@@ -1067,10 +1066,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
-
-            # 停止容器时同时将status改为'inactive'
-            serving.status = "inactive"
-            serving.save(update_fields=["status"])
 
             return Response(
                 {
@@ -1170,13 +1165,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         """
         try:
             serving = self.get_object()
-
-            # 校验服务状态
-            if serving.status != "active":
-                return Response(
-                    {"error": "服务未发布，请先发布服务"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
 
             # 获取参数
             url = request.data.get("url")

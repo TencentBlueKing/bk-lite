@@ -200,7 +200,7 @@
   "serving-guide": {
     "title": "使用指南",
     "usageExample": "示例",
-    "capabilityTest": "能力测试",
+    "capabilityTest": "在线测试",
     "endpoint": "调用地址",
     "endpointTip": "请将 <服务器IP> 替换为部署服务的机器 IP 地址",
     "example": "示例",

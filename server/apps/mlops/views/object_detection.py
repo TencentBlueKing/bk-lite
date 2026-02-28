@@ -962,11 +962,6 @@ class ObjectDetectionServingViewSet(ModelViewSet):
         """
         instance = self.get_object()
 
-        # 兜底校验：容器未运行时不允许设置 status=active
-        new_status = request.data.get("status")
-        if error_response := validate_serving_status_change(instance, new_status):
-            return error_response
-
         # 保存旧值用于判断变更
         old_port = instance.port
         old_model_version = instance.model_version
@@ -1130,10 +1125,9 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                     device=device,
                 )
 
-                # 正常启动成功，更新容器信息以及将status设为 'active'
+                # 正常启动成功，更新容器信息
                 serving.container_info = result
-                serving.status = "active"
-                serving.save(update_fields=["container_info", "status"])
+                serving.save(update_fields=["container_info"])
 
                 return Response(
                     {
@@ -1199,10 +1193,6 @@ class ObjectDetectionServingViewSet(ModelViewSet):
 
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
-
-            # 停止容器时同时将status改为'inactive'
-            serving.status = "inactive"
-            serving.save(update_fields=["status"])
 
             return Response(
                 {

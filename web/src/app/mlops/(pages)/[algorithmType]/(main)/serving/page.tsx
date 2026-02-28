@@ -74,6 +74,11 @@ const ServingPage = () => {
       key: 'name'
     },
     {
+      title: t(`model-release.modelDescription`),
+      dataIndex: 'description',
+      key: 'description'
+    },
+    {
       title: t(`mlops-common.containerStatus`),
       dataIndex: 'container_info',
       key: 'container_info',
