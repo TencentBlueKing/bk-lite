@@ -13,6 +13,8 @@ class AWSNodeParams(BaseNodeParams):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.PLUGIN_MAP.update({self.model_id: "aws_info"})
+        self.host_field = "endpoint"
+
 
     def set_credential(self, *args, **kwargs):
         """
