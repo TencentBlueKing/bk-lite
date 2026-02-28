@@ -46,11 +46,6 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             include_children=include_children,
         )
 
-        logger.warning(
-            f"[LIST] current_team={current_team}, include_children={include_children}, obj_id={monitor_object_id}"
-        )
-        logger.warning(f"[LIST] permission={permission}")
-
         qs = permission_filter(
             MonitorInstance,
             permission,

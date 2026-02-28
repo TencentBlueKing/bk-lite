@@ -56,11 +56,6 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
                 inst_res.get("team", []),
             )
 
-            logger.warning(
-                f"[STAT] current_team={current_team}, include_children={include_children}"
-            )
-            logger.warning(f"[STAT] inst_res={inst_res}")
-
             inst_objs = MonitorInstance.objects.filter(
                 is_deleted=False
             ).prefetch_related("monitorinstanceorganization_set")
