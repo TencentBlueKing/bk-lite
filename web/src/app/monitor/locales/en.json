@@ -143,7 +143,7 @@
       "variableDimensionValue": "Dimension Value",
       "noDataAlertNameDefault": "${monitor_object}${resource_name} triggered ${metric_name} no data alert",
       "channelTypeEmail": "Email",
-      "channelTypeWechatBot": "WeChat Bot",
+      "channelTypeWechatBot": "Group Chat Assistant",
       "channelTypeNats": "NATS Channel",
       "channelTypeFeishuBot": "Feishu Bot",
       "channelTypeDingtalkBot": "DingTalk Bot",
