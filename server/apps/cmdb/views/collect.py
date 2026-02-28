@@ -242,6 +242,8 @@ class CollectModelViewSet(AuthViewSet):
     def list_regions(self, requests, *args, **kwargs):
         """
         查询云的所有区域
+        TODO 看看未来需不需要使用实例的endpoint和认证信息，目前先使用公共接口，后续如果有需要再调整
+        "host": "ecs.private-cloud.example.com"
         """
         params = requests.data
         cloud_id = requests.data["cloud_id"]
