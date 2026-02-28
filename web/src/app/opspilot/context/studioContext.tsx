@@ -1,71 +1,49 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { createEntityContext, BaseEntityInfo } from './createEntityContext';
 import { useStudioApi } from '@/app/opspilot/api/studio';
+import { BotDetail } from '@/app/opspilot/types/studio';
 
-interface BotInfo {
-  name: string;
-  introduction: string;
+export interface BotInfo extends BaseEntityInfo {
   botType: number | null;
 }
 
-interface StudioContextType {
+/** 向后兼容的 Context 类型 */
+export interface StudioContextType {
   botInfo: BotInfo;
   isLoading: boolean;
   refreshBotInfo: () => Promise<void>;
 }
 
-const StudioContext = createContext<StudioContextType | null>(null);
-
-export const StudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const searchParams = useSearchParams();
-  const id = searchParams?.get('id') || '';
-  const { fetchBotDetail } = useStudioApi();
-
-  const [botInfo, setBotInfo] = useState<BotInfo>({
+const { Provider, useEntity, Context } = createEntityContext<BotInfo, BotDetail>({
+  contextName: 'Studio',
+  useApi: () => {
+    const { fetchBotDetail } = useStudioApi();
+    return {
+      fetchDetail: (id: string) => fetchBotDetail(id),
+    };
+  },
+  transformResponse: (data) => ({
+    name: data.name,
+    introduction: data.introduction,
+    botType: data.bot_type ?? null,
+  }),
+  getDefaultInfo: (searchParams) => ({
     name: searchParams?.get('name') || '',
     introduction: searchParams?.get('desc') || '',
     botType: null,
-  });
-  const [isLoading, setIsLoading] = useState(true);
+  }),
+});
 
-  const refreshBotInfo = useCallback(async () => {
-    if (!id) {
-      setIsLoading(false);
-      return;
-    }
+export const StudioProvider = Provider;
+export const StudioContext = Context;
 
-    try {
-      setIsLoading(true);
-      const data = await fetchBotDetail(id);
-      setBotInfo({
-        name: data.name,
-        introduction: data.introduction,
-        botType: data.bot_type,
-      });
-    } catch (error) {
-      console.error('Failed to fetch bot info:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [id, fetchBotDetail]);
-
-  useEffect(() => {
-    refreshBotInfo();
-  }, [id]);
-
-  return (
-    <StudioContext.Provider value={{ botInfo, isLoading, refreshBotInfo }}>
-      {children}
-    </StudioContext.Provider>
-  );
-};
-
-export const useStudio = () => {
-  const context = useContext(StudioContext);
-  if (!context) {
-    throw new Error('useStudio must be used within a StudioProvider');
-  }
-  return context;
+/** 向后兼容的 hook，返回带别名的属性 */
+export const useStudio = (): StudioContextType => {
+  const { entityInfo, isLoading, refreshEntityInfo } = useEntity();
+  return {
+    botInfo: entityInfo,
+    isLoading,
+    refreshBotInfo: refreshEntityInfo,
+  };
 };

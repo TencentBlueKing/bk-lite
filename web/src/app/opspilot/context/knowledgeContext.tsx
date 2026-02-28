@@ -1,68 +1,45 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { createEntityContext, BaseEntityInfo } from './createEntityContext';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
+import { KnowledgeBaseDetails } from '@/app/opspilot/types/knowledge';
 
-interface KnowledgeInfo {
-  name: string;
-  introduction: string;
-}
+export type KnowledgeInfo = BaseEntityInfo;
 
-interface KnowledgeContextType {
+/** 向后兼容的 Context 类型 */
+export interface KnowledgeContextType {
   knowledgeInfo: KnowledgeInfo;
   isLoading: boolean;
   refreshKnowledgeInfo: () => Promise<void>;
 }
 
-const KnowledgeContext = createContext<KnowledgeContextType | null>(null);
-
-export const KnowledgeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const searchParams = useSearchParams();
-  const id = searchParams?.get('id') || '';
-  const { fetchKnowledgeBaseDetails } = useKnowledgeApi();
-
-  const [knowledgeInfo, setKnowledgeInfo] = useState<KnowledgeInfo>({
+const { Provider, useEntity, Context } = createEntityContext<KnowledgeInfo, KnowledgeBaseDetails>({
+  contextName: 'Knowledge',
+  useApi: () => {
+    const { fetchKnowledgeBaseDetails } = useKnowledgeApi();
+    return {
+      fetchDetail: (id: string) => fetchKnowledgeBaseDetails(Number(id)),
+    };
+  },
+  transformResponse: (data) => ({
+    name: data.name,
+    introduction: data.introduction,
+  }),
+  getDefaultInfo: (searchParams) => ({
     name: searchParams?.get('name') || '',
     introduction: searchParams?.get('desc') || '',
-  });
-  const [isLoading, setIsLoading] = useState(true);
+  }),
+});
 
-  const refreshKnowledgeInfo = useCallback(async () => {
-    if (!id) {
-      setIsLoading(false);
-      return;
-    }
+export const KnowledgeProvider = Provider;
+export const KnowledgeContext = Context;
 
-    try {
-      setIsLoading(true);
-      const data = await fetchKnowledgeBaseDetails(Number(id));
-      setKnowledgeInfo({
-        name: data.name,
-        introduction: data.introduction,
-      });
-    } catch (error) {
-      console.error('Failed to fetch knowledge info:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [id, fetchKnowledgeBaseDetails]);
-
-  useEffect(() => {
-    refreshKnowledgeInfo();
-  }, [id]);
-
-  return (
-    <KnowledgeContext.Provider value={{ knowledgeInfo, isLoading, refreshKnowledgeInfo }}>
-      {children}
-    </KnowledgeContext.Provider>
-  );
-};
-
-export const useKnowledge = () => {
-  const context = useContext(KnowledgeContext);
-  if (!context) {
-    throw new Error('useKnowledge must be used within a KnowledgeProvider');
-  }
-  return context;
+/** 向后兼容的 hook，返回带别名的属性 */
+export const useKnowledge = (): KnowledgeContextType => {
+  const { entityInfo, isLoading, refreshEntityInfo } = useEntity();
+  return {
+    knowledgeInfo: entityInfo,
+    isLoading,
+    refreshKnowledgeInfo: refreshEntityInfo,
+  };
 };
