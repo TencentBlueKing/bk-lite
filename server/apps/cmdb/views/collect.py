@@ -45,6 +45,12 @@ class CollectModelViewSet(AuthViewSet):
         data = COLLECT_OBJ_TREE
         return WebUtils.response_success(data)
 
+    @HasPermission("auto_collection-View")
+    @action(methods=["get"], detail=False, url_path="collect_task_names")
+    def collect_task_names(self, request, *args, **kwargs):
+        task_list = CollectModels.objects.values("id", "name").order_by("id")
+        return WebUtils.response_success(list(task_list))
+
     def get_serializer_class(self):
         if self.action == "list":
             return CollectModelLIstSerializer
