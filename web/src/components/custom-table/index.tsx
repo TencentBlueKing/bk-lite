@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Table, TableProps, Pagination } from 'antd';
 import { SettingFilled, HolderOutlined } from '@ant-design/icons';
 import customTableStyle from './index.module.scss';
@@ -27,7 +27,6 @@ interface CustomTableProps<T>
     sourceIndex: number,
     targetIndex: number
   ) => void;
-  components?: TableProps<T>['components'];
 }
 
 interface FieldRef {
@@ -63,49 +62,7 @@ const CustomTable = <T extends object>({
   const [filters, setFilters] = useState<Record<string, FilterValue | null>>({});
   const [sorter, setSorter] = useState<SorterResult<T> | SorterResult<T>[]>({});
   const [extra, setExtra] = useState<TableCurrentDataSource<T>>();
-
-  const enhanceColumnRender = useCallback((column: any) => {
-    const enhanced = { ...column };
-    
-    if (!enhanced.render) {
-      enhanced.render = (text: any) => {
-        if ([null, undefined, ''].includes(text)) return '--';
-        if (typeof text === 'string') {
-          return (
-            <EllipsisWithTooltip
-              text={text}
-              className="truncate w-full"
-            />
-          );
-        }
-        return text;
-      };
-    }
-    
-    return enhanced;
-  }, []);
-
-  const columns = useMemo(() => {
-    let cols = TableProps.columns || [];
-    cols = cols.map(col => enhanceColumnRender(col));
-
-    if (rowDraggable) {
-      return [
-        {
-          key: 'sort',
-          align: 'center',
-          width: 30,
-          title: '',
-          dataIndex: 'sort',
-          render: () => (
-            <HolderOutlined className="font-[800] text-[16px] mr-[6px] cursor-move" />
-          ),
-        },
-        ...cols,
-      ];
-    }
-    return cols;
-  }, [TableProps.columns, rowDraggable, enhanceColumnRender]);
+  const [columns, setColumns] = useState<any[]>([]);
 
   // 监听父容器高度变化
   useEffect(() => {
@@ -158,6 +115,54 @@ const CustomTable = <T extends object>({
       window.removeEventListener('resize', updateTableHeight);
     };
   }, [scroll, pagination, size]);
+
+  useEffect(() => {
+    const initialColumns = renderColumns();
+    setColumns(initialColumns);
+  }, [TableProps.columns, rowDraggable]);
+
+  const enhanceColumnRender = (column: any) => {
+    if (column.render) return column;
+
+    return {
+      ...column,
+      render: (text: any) => {
+        if ([null, undefined, ''].includes(text)) return '--';
+        if (typeof text === 'string') {
+          return (
+            <EllipsisWithTooltip
+              text={text}
+              className="truncate w-full"
+            />
+          );
+        }
+        return text;
+      }
+    };
+  };
+
+  const renderColumns = useCallback(() => {
+    let cols = TableProps.columns || [];
+
+    cols = cols.map(col => enhanceColumnRender(col));
+
+    if (rowDraggable) {
+      return [
+        {
+          key: 'sort',
+          align: 'center',
+          width: 30,
+          title: '',
+          dataIndex: 'sort',
+          render: () => (
+            <HolderOutlined className="font-[800] text-[16px] mr-[6px] cursor-move" />
+          ),
+        },
+        ...cols,
+      ];
+    }
+    return cols;
+  }, [TableProps.columns, rowDraggable]);
 
   const parseCalcY = (value: string): number => {
     const vh = window.innerHeight;

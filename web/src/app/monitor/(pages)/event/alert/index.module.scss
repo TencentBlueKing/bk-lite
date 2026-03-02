@@ -81,33 +81,3 @@
     padding: 0;
     margin: 0;
 }
-
-.alert :global(.resize-handle) {
-    position: absolute;
-    right: -5px;
-    bottom: 0;
-    top: 0;
-    z-index: 10;
-    width: 10px;
-    cursor: col-resize;
-    background: transparent;
-}
-
-.alert :global(.resize-handle:hover) {
-    background-color: var(--ant-primary-color);
-    opacity: 0.3;
-}
-
-.alert :global(.ant-table-thead > tr > th) {
-    position: relative;
-}
-
-.alert :global(.ant-table) {
-    table-layout: fixed !important;
-}
-
-.alert :global(.ant-table-cell) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
