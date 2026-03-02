@@ -155,18 +155,6 @@ class CmdbRulesFormatUtil:
         permission_instances_map = CmdbRulesFormatUtil().format_permission_instances_list(instances=instance)
         inst_names = list(permission_instances_map.keys())
         permission_rule_map = {}
-        if include_children:
-            print(
-                "CMDB_DEBUG include_children rules",
-                {
-                    "current_team": current_team,
-                    "user_teams": user_teams,
-                    "teams_rule": teams,
-                    "inst_rule_count": len(instance),
-                    "permission_key": permission_key,
-                },
-            )
-
         for team in user_teams:
             if not include_children and team not in teams:
                 # 不包含子组织的情况下跳过非当前的组织
