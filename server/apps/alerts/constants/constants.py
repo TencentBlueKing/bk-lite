@@ -3,6 +3,8 @@
 # @Time: 2025/5/9 14:57
 # @Author: windyzhao
 
+SYSTEM_OPERATOR_USER = "admin"
+
 
 class AlertAccessType:
     """告警源接入类型"""

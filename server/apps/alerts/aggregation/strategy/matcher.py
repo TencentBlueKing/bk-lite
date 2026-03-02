@@ -91,8 +91,7 @@ class StrategyMatcher:
             return filtered_events
 
         except Exception as e:  # noqa
-            import traceback
-            logger.error(f"match_rules过滤失败: {traceback.format_exc()}")
+            logger.exception("match_rules过滤失败")
             return events_queryset.none()
 
     @staticmethod
@@ -102,7 +101,7 @@ class StrategyMatcher:
 
         外层列表: OR 关系
         内层列表: AND 关系
-        
+
         Returns:
             Q对象，如果所有条件都无效则返回空Q()（匹配所有）
         """
@@ -151,7 +150,7 @@ class StrategyMatcher:
             "operator": "eq",      # 操作符（支持中文或英文）
             "value": "test"        # 值
         }
-        
+
         Returns:
             Q对象，如果条件无效返回None（而非空Q对象，以便调用方可以跳过该条件）
         """

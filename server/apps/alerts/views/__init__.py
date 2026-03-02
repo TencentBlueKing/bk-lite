@@ -9,7 +9,7 @@ Alerts Views
 from .alert_source import AlertSourceModelViewSet
 
 # 告警
-from .alert import AlterModelViewSet
+from .alert import AlertModelViewSet
 
 # 事件
 from .event import EventModelViewSet
@@ -42,7 +42,7 @@ __all__ = [
     # 告警源
     "AlertSourceModelViewSet",
     # 告警
-    "AlterModelViewSet",
+    "AlertModelViewSet",
     # 事件
     "EventModelViewSet",
     # 告警等级

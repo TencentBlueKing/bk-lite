@@ -4,7 +4,7 @@ import re
 from django.utils import timezone
 from django.db import transaction
 from apps.alerts.aggregation.recovery.recovery_checker import AlertRecoveryChecker
-from apps.alerts.models.models import  Level
+from apps.alerts.models.models import Level
 from apps.alerts.models import AlarmStrategy, Event, Alert
 from apps.alerts.constants import (
     EventAction,
@@ -53,6 +53,7 @@ class AggregationProcessor:
             logger.exception(f"聚合处理失败: {e}")
             raise
         finally:
+            AlertBuilder.clear_event_cache()
             self.db_conn.close()
 
     def _get_active_strategies(self) -> List[AlarmStrategy]:
@@ -125,7 +126,8 @@ class AggregationProcessor:
         )
 
         events = Event.objects.filter(
-            received_at__gte=cutoff_time, action__in=[EventAction.CREATED, EventAction.CLOSED]
+            received_at__gte=cutoff_time,
+            action__in=[EventAction.CREATED, EventAction.CLOSED],
         )
 
         logger.debug(f"策略 {strategy.name}: 时间范围内事件总数={events.count()}")
@@ -148,7 +150,9 @@ class AggregationProcessor:
                 logger.info(f"策略 {strategy.name}: 无事件需要处理")
                 return
 
-            matched_events = StrategyMatcher.match_events_to_strategy(events, strategy.match_rules)
+            matched_events = StrategyMatcher.match_events_to_strategy(
+                events, strategy.match_rules
+            )
 
             if not matched_events.exists():
                 logger.info(f"策略 {strategy.name}: 无匹配规则的事件")
@@ -162,15 +166,13 @@ class AggregationProcessor:
                 logger.info(f"策略 {strategy.name}: 维度 {dimensions} 聚合成功")
 
         except Exception as e:  # noqa
-            import traceback
-            logger.error(f"策略 {strategy.name} 处理失败: {traceback.format_exc()}")
+            logger.exception(f"策略 {strategy.name} 处理失败")
 
     def _aggregate_for_dimensions(
-            self, strategy: AlarmStrategy, events, dimensions: List[str]
+        self, strategy: AlarmStrategy, events, dimensions: List[str]
     ) -> bool:
         """对指定维度执行聚合"""
         try:
-
             # 优化：直接使用已过滤的 events QuerySet，避免重复查询
             load_success = self.db_conn.load_events_to_memory(events)
             if not load_success:
@@ -211,10 +213,10 @@ class AggregationProcessor:
             return False
 
     def _create_or_update_alerts(
-            self,
-            aggregation_results: List[Dict[str, Any]],
-            strategy: AlarmStrategy,
-            dimensions: List[str],
+        self,
+        aggregation_results: List[Dict[str, Any]],
+        strategy: AlarmStrategy,
+        dimensions: List[str],
     ):
         """创建或更新告警"""
 
@@ -223,8 +225,9 @@ class AggregationProcessor:
             f"结果数={len(aggregation_results)}"
         )
         alert_levels = list(
-            Level.objects.filter(level_type=LevelType.ALERT)
-            .values("level_id", "level_name", "level_display_name")
+            Level.objects.filter(level_type=LevelType.ALERT).values(
+                "level_id", "level_name", "level_display_name"
+            )
         )
         success_count = 0
         fail_count = 0
@@ -291,9 +294,9 @@ class AggregationProcessor:
         fingerprint = result.get("fingerprint")
         if not fingerprint:
             return
-        global_level = [str(i['level_id']) for i in alert_levels]
+        global_level = [str(i["level_id"]) for i in alert_levels]
         raw_fingerprint = fingerprint.split("|")[-1]
-        now_level = result['alert_level']
+        now_level = result["alert_level"]
         global_level = sorted(global_level)
         critical_level = [str(i) for i in [global_level[0]]]
         normal_level = [str(i) for i in global_level[1:]]
@@ -312,25 +315,24 @@ class AggregationProcessor:
     def _is_existing_alert(fingerprint: str) -> bool:
         """
         检查指定指纹的活跃告警是否已存在
-        
+
         Args:
             fingerprint: 告警指纹
-            
+
         Returns:
             bool: 存在返回True，否则返回False
         """
         return Alert.objects.filter(
-            fingerprint=fingerprint,
-            status__in=AlertStatus.ACTIVATE_STATUS
+            fingerprint=fingerprint, status__in=AlertStatus.ACTIVATE_STATUS
         ).exists()
 
     @staticmethod
     def _schedule_auto_assignment(alert_ids: List[str]) -> None:
         """
         调度告警自动分配任务（异步）
-        
+
         使用Celery异步任务，避免阻塞聚合流程
-        
+
         Args:
             alert_ids: 新创建的告警ID列表
         """
@@ -343,6 +345,5 @@ class AggregationProcessor:
             logger.debug(f"自动分配任务已提交到队列")
 
         except Exception as e:  # noqa
-            import traceback
-            logger.error(f"调度自动分配任务失败: {traceback.format_exc()}")
+            logger.exception("调度自动分配任务失败")
             # 调度失败不影响聚合主流程
