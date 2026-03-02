@@ -56,6 +56,9 @@ export const useCollectApi = () => {
   const getTaskStatus = () =>
     get('/cmdb/api/collect/task_status');
 
+  const getCollectTaskNames = () =>
+    get('/cmdb/api/collect/collect_task_names/');
+
   return {
     getCollectList,
     getCollectDetail,
@@ -70,5 +73,6 @@ export const useCollectApi = () => {
     getCollectRegions,
     getCollectModelDoc,
     getTaskStatus,
+    getCollectTaskNames,
   };
 };

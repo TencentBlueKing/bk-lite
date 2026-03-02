@@ -22,6 +22,7 @@ import {
   AttrLike,
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
+import { formatCollectTaskDisplay } from '@/app/cmdb/utils/collectTask';
 
 type UserDisplayContext = 'table' | 'detail';
 
@@ -373,6 +374,7 @@ export const getAssetColumns = (config: {
           ...columnItem,
           render: (_: unknown, record: any) => {
             const cloudOptions = useAssetDataStore.getState().cloud_list;
+            const collectTaskMap = useAssetDataStore.getState().collectTaskMap;
 
             const modelId = record.model_id;
             if (attrId === 'cloud' && modelId === 'host') {
@@ -386,7 +388,17 @@ export const getAssetColumns = (config: {
                   className="whitespace-nowrap overflow-hidden text-ellipsis"
                   text={displayText as string}
                 ></EllipsisWithTooltip>
-              )
+              );
+            }
+
+            if (attrId === 'collect_task') {
+              const displayText = formatCollectTaskDisplay(record[attrId], collectTaskMap);
+              return (
+                <EllipsisWithTooltip
+                  className="whitespace-nowrap overflow-hidden text-ellipsis"
+                  text={displayText}
+                ></EllipsisWithTooltip>
+              );
             }
 
             return (
@@ -394,7 +406,7 @@ export const getAssetColumns = (config: {
                 className="whitespace-nowrap overflow-hidden text-ellipsis"
                 text={record[attrId] || '--'}
               ></EllipsisWithTooltip>
-            )
+            );
           },
         };
     }
@@ -546,6 +558,12 @@ export const getFieldItem = (config: {
           (item: EnumList) => item.id === config.value,
         )?.name || '--'
       );
+    case 'str':
+      if (config.fieldItem.attr_id === 'collect_task') {
+        const taskMap = useAssetDataStore.getState().collectTaskMap;
+        return formatCollectTaskDisplay(config.value, taskMap);
+      }
+      return config.value || '--';
     default:
       if (config.fieldItem.attr_type === 'time' && config.value) {
         const timeOpt = config.fieldItem.option as TimeAttrOption;

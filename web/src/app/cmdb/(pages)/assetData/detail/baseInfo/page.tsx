@@ -1,10 +1,12 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
 import List from './list';
-import { useModelApi, useInstanceApi } from '@/app/cmdb/api';
+import { useModelApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import { useSearchParams } from 'next/navigation';
 import { Spin } from 'antd';
 import { useCommon } from '@/app/cmdb/context/common';
+import { ensureCollectTaskMap } from '@/app/cmdb/utils/collectTask';
+import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import {
   AttrFieldType,
   UserItem,
@@ -14,6 +16,7 @@ import {
 const BaseInfo = () => {
   const { getModelAttrGroupsFullInfo } = useModelApi();
   const { getInstanceDetail } = useInstanceApi();
+  const { getCollectTaskNames } = useCollectApi();
 
   const searchParams = useSearchParams();
   const commonContext = useCommon();
@@ -28,6 +31,12 @@ const BaseInfo = () => {
 
   useEffect(() => {
     getInitData();
+  }, []);
+
+  useEffect(() => {
+    ensureCollectTaskMap(getCollectTaskNames).catch(() => {
+      useAssetDataStore.getState().setCollectTaskMap({});
+    });
   }, []);
 
   const getInitData = async () => {

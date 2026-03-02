@@ -21,6 +21,7 @@ interface AssetDataStore {
   searchAttr: string;
   case_sensitive: boolean;
   cloud_list: { proxy_id: string; proxy_name: string }[];
+  collectTaskMap: Record<string, string>;
   user_configs: UserConfigs;
   needRefresh: boolean;
   add: (item: FilterItem) => FilterItem[];
@@ -30,6 +31,7 @@ interface AssetDataStore {
   setCaseSensitive: (value: boolean) => void;
   setQueryList: (items: FilterItem[]) => FilterItem[];
   setCloudList: (list: { proxy_id: string; proxy_name: string }[]) => void;
+  setCollectTaskMap: (map: Record<string, string>) => void;
   setUserConfigs: (configs: UserConfigs) => void;
   updateUserConfig: (key: string, value: unknown) => void;
   getSavedFilters: (modelId: string) => SavedFilterItem[];
@@ -42,6 +44,7 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   searchAttr: "inst_name",
   case_sensitive: false,
   cloud_list: [],
+  collectTaskMap: {},
   user_configs: {},
   needRefresh: false,
 
@@ -76,6 +79,10 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   },
   setCloudList: (list: { proxy_id: string; proxy_name: string }[]) => {
     set({ cloud_list: list });
+  },
+
+  setCollectTaskMap: (map: Record<string, string>) => {
+    set({ collectTaskMap: map });
   },
 
   setUserConfigs: (configs: UserConfigs) => {

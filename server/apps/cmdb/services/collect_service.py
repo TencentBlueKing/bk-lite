@@ -93,6 +93,13 @@ class CollectModelService(object):
                 data["credential"]["regions"] = regions
         else:
             old_credential = instance.decrypt_credentials
+            if not isinstance(old_credential, dict):
+                old_credential = {}
+            if credential is None:
+                data["credential"] = old_credential
+                return
+            if not isinstance(credential, dict):
+                raise BaseAppException("采集凭据格式错误！")
             old_credential.update(credential)
             data["credential"] = old_credential
 
