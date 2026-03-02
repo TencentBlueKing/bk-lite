@@ -12,6 +12,7 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.utils import mlflow_service
+from apps.mlops.utils.validators import validate_serving_status_change
 from apps.mlops.services import (
     get_image_by_prefix,
     get_mlflow_train_config,
@@ -833,6 +834,10 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         """
         instance = self.get_object()
 
+        # 兜底校验：容器未运行时不允许设置 status=active
+        new_status = request.data.get("status")
+        if error_response := validate_serving_status_change(instance, new_status):
+            return error_response
         # 保存旧值用于判断变更
         old_port = instance.port
         old_model_version = instance.model_version
@@ -976,9 +981,10 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     ),
                 )
 
-                # 正常启动成功，仅更新容器信息
+                # 正常启动成功，更新容器信息以及将status设为 'active'
                 serving.container_info = result
-                serving.save(update_fields=["container_info"])
+                serving.status = "active"
+                serving.save(update_fields=["container_info", "status"])
 
                 return Response(
                     {
@@ -1061,6 +1067,10 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
+
+            # 停止容器时同时将status改为'inactive'
+            serving.status = "inactive"
+            serving.save(update_fields=["status"])
 
             return Response(
                 {

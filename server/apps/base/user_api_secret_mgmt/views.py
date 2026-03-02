@@ -34,16 +34,34 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
     serializer_class = UserAPISecretSerializer
     ordering = ("-id",)
 
+    def get_queryset(self):
+        request = getattr(self, "request", None)
+        user = getattr(request, "user", None)
+        if not request or not user or not user.is_authenticated:
+            return UserAPISecret.objects.none()
+
+        current_team = request.COOKIES.get("current_team", "0")
+        try:
+            current_team = int(current_team)
+        except (TypeError, ValueError):
+            return UserAPISecret.objects.none()
+
+        return UserAPISecret.objects.filter(username=user.username, domain=user.domain, team=current_team)
+
     @HasPermission("api_secret_key-View", "opspilot")
     def list(self, request, *args, **kwargs):
         loader = _get_loader(request)
-        current_team, error_response = _parse_current_team(request, loader)
+        _, error_response = _parse_current_team(request, loader)
         if error_response:
             return error_response
-        query = self.get_queryset().filter(username=request.user.username, domain=request.user.domain, team=current_team)
+        query = self.get_queryset()
         queryset = self.filter_queryset(query)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+    @HasPermission("api_secret_key-View", "opspilot")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
 
     @action(detail=False, methods=["POST"])
     @HasPermission("api_secret_key-Add", "opspilot")

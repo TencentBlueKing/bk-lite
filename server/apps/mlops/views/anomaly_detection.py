@@ -19,6 +19,7 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.utils import mlflow_service
+from apps.mlops.utils.validators import validate_serving_status_change
 from apps.mlops.services import (
     get_image_by_prefix,
     get_mlflow_train_config,
@@ -536,57 +537,6 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @action(detail=True, methods=["get"], url_path="get_file")
-    @HasPermission("anomaly_detection-View")
-    def get_file(self, request, *args, **kwargs):
-        try:
-            train_job = self.get_object()
-            train_obj = train_job.train_data_id
-            val_obj = train_job.val_data_id
-            test_obj = train_job.test_data_id
-
-            def mergePoints(data_obj, filename):
-                train_data = (
-                    list(data_obj.train_data) if hasattr(data_obj, "train_data") else []
-                )
-                anomlay_indices = (
-                    data_obj.metadata.get("anomaly_point", [])
-                    if hasattr(data_obj, "metadata")
-                    and isinstance(data_obj.metadata, dict)
-                    else []
-                )
-
-                columns = ["timestamp", "value"]
-
-                if anomlay_indices and isinstance(anomlay_indices, list):
-                    for idx, item in enumerate(train_data):
-                        item["label"] = 1 if idx in anomlay_indices else 0
-                    columns.append("label")
-
-                return {"data": train_data, "columns": columns, "filename": filename}
-
-            return Response(
-                [
-                    mergePoints(train_obj, "train_file.csv"),
-                    mergePoints(val_obj, "val_file.csv"),
-                    mergePoints(test_obj, "test_file.csv"),
-                    {
-                        "data": train_job.hyperopt_config,
-                        "columns": [],
-                        "filename": "hyperopt_config.json",
-                    },
-                ]
-            )
-
-        except Exception as e:
-            logger.error(
-                f"获取训练文件失败 - TrainJobID: {kwargs.get('pk')} - {str(e)}"
-            )
-            return Response(
-                {"error": f"获取文件信息失败: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
     @HasPermission("anomaly_detection-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
@@ -1004,10 +954,18 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
         """
         instance = self.get_object()
 
+        # 兜底校验：容器未运行时不允许设置 status=active
+        new_status = request.data.get("status")
+        if error_response := validate_serving_status_change(instance, new_status):
+            return error_response
+
+        logger.info(request.data)
+
         # 保存旧值用于判断变更
         old_port = instance.port
         old_model_version = instance.model_version
         old_train_job_id = instance.train_job.id
+
 
         # 检测是否更新了影响容器的字段（基于请求数据与旧值对比）
         model_version_changed = "model_version" in request.data and str(
@@ -1153,9 +1111,10 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
                     train_image=train_image,
                 )
 
-                # 正常启动成功，仅更新容器信息
+                # 正常启动成功，更新容器信息以及将status设为 'active'
                 serving.container_info = result
-                serving.save(update_fields=["container_info"])
+                serving.status = "active"
+                serving.save(update_fields=["container_info","status"])
 
                 return Response(
                     {
@@ -1241,6 +1200,10 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
 
+            # 停止容器时同时将status改为'inactive'
+            serving.status = "inactive"
+            serving.save(update_fields=["status"])
+            
             return Response(
                 {
                     "message": "服务已停止并删除",

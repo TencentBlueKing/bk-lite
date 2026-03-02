@@ -74,9 +74,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         setGroupVisible(true);
         setTitle(title);
         getMetrics(form, objectId as React.Key);
-        if (form?.id) {
-          getEventData(form?.id);
-        }
       }
     }));
 
@@ -277,7 +274,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       setLoading(false);
       setTableLoading(false);
       setEventChartLoading(false);
-      if (formData.id) {
+      if (formData.id && val !== 'information') {
         getEventData(formData.id);
       }
       if (val === 'information') {
@@ -359,7 +356,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                   onClose={closeModal}
                   trapData={trapData}
                   chartData={chartData}
-                  eventData={eventData}
                 />
               </Spin>
             ) : (

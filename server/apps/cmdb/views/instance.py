@@ -4,7 +4,12 @@ from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.constants.constants import PERMISSION_INSTANCES, OPERATE, VIEW
 from apps.cmdb.services.instance import InstanceManage
-from apps.cmdb.utils.base import format_group_params, get_organization_and_children_ids
+from apps.cmdb.utils.base import (
+    format_group_params,
+    format_groups_params,
+    get_current_team_from_request,
+    get_organization_and_children_ids,
+)
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.core.decorators.api_permission import HasPermission
@@ -15,6 +20,18 @@ from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
+    @staticmethod
+    def _parse_positive_int(value, field_name, default):
+        if value in (None, ""):
+            return default
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field_name} 必须是整数")
+        if parsed < 1:
+            raise ValueError(f"{field_name} 必须大于等于 1")
+        return parsed
+
     @staticmethod
     def _normalize_query_list(query_list):
         """
@@ -163,10 +180,18 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             )
 
         query_list = self._normalize_query_list(request.data.get("query_list", []))
-        page, page_size = (
-            int(request.data.get("page", 1)),
-            int(request.data.get("page_size", 10)),
-        )
+        try:
+            page = self._parse_positive_int(
+                request.data.get("page", 1), field_name="page", default=1
+            )
+            page_size = self._parse_positive_int(
+                request.data.get("page_size", 10), field_name="page_size", default=10
+            )
+        except ValueError as err:
+            return WebUtils.response_error(
+                error_message=str(err), status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         case_sensitive = request.data.get("case_sensitive", True)
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
             request, model_id
@@ -266,8 +291,18 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
                 )
 
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            team_ids = get_organization_and_children_ids(
+                tree_data=request.user.group_tree, target_id=current_team
+            )
+            user_groups = format_groups_params(team_ids)
+        else:
+            user_groups = format_group_params(current_team)
+
         InstanceManage.instance_batch_delete(
-            format_group_params(request.COOKIES.get("current_team")),
+            user_groups,
             request.user.roles,
             [int(pk)],
             request.user.username,
@@ -311,12 +346,27 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                         status_code=status.HTTP_403_FORBIDDEN,
                     )
 
-        InstanceManage.instance_batch_delete(
-            request.user.group_list,
-            request.user.roles,
-            request.data,
-            request.user.username,
-        )
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            team_ids = get_organization_and_children_ids(
+                tree_data=request.user.group_tree, target_id=current_team
+            )
+            user_groups = format_groups_params(team_ids)
+        else:
+            user_groups = format_group_params(current_team)
+
+        try:
+            InstanceManage.instance_batch_delete(
+                user_groups,
+                request.user.roles,
+                request.data,
+                request.user.username,
+            )
+        except BaseAppException as e:
+            return WebUtils.response_error(
+                error_message=e.message, status_code=status.HTTP_403_FORBIDDEN
+            )
         return WebUtils.response_success()
 
     @HasPermission("asset_info-Edit")
@@ -344,8 +394,18 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
                 )
 
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            team_ids = get_organization_and_children_ids(
+                tree_data=request.user.group_tree, target_id=current_team
+            )
+            user_groups = format_groups_params(team_ids)
+        else:
+            user_groups = format_group_params(current_team)
+
         inst = InstanceManage.instance_update(
-            request.user.group_list,
+            user_groups,
             request.user.roles,
             int(pk),
             request.data,
@@ -356,7 +416,18 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-Edit")
     @action(detail=False, methods=["post"], url_path="batch_update")
     def instance_batch_update(self, request):
-        instances = InstanceManage.query_entity_by_ids(request.data["inst_ids"])
+        inst_ids = request.data.get("inst_ids")
+        if not isinstance(inst_ids, list) or not inst_ids:
+            return WebUtils.response_error(
+                "inst_ids 必须是非空数组", status_code=status.HTTP_400_BAD_REQUEST
+            )
+        update_data = request.data.get("update_data")
+        if not isinstance(update_data, dict) or not update_data:
+            return WebUtils.response_error(
+                "update_data 必须是非空对象", status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        instances = InstanceManage.query_entity_by_ids(inst_ids)
         if not instances:
             return WebUtils.response_success()
 
@@ -388,13 +459,28 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                         status_code=status.HTTP_403_FORBIDDEN,
                     )
 
-        InstanceManage.batch_instance_update(
-            request.user.group_list,
-            request.user.roles,
-            request.data["inst_ids"],
-            request.data["update_data"],
-            request.user.username,
-        )
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            team_ids = get_organization_and_children_ids(
+                tree_data=request.user.group_tree, target_id=current_team
+            )
+            user_groups = format_groups_params(team_ids)
+        else:
+            user_groups = format_group_params(current_team)
+
+        try:
+            InstanceManage.batch_instance_update(
+                user_groups,
+                request.user.roles,
+                request.data["inst_ids"],
+                request.data["update_data"],
+                request.user.username,
+            )
+        except BaseAppException as e:
+            return WebUtils.response_error(
+                error_message=e.message, status_code=status.HTTP_403_FORBIDDEN
+            )
         return WebUtils.response_success()
 
     @HasPermission("asset_info-Add Associate")
@@ -962,6 +1048,14 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         TODO 等节点管理开放接口后再对接接口
         """
         node_mgmt = NodeMgmt()
-        data = node_mgmt.cloud_region_list()
-        _data = [{"proxy_id": i["id"], "proxy_name": i["name"]} for i in data]
+        data = node_mgmt.cloud_region_list() or []
+        _data = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            proxy_id = item.get("id")
+            proxy_name = item.get("name")
+            if proxy_id is None or proxy_name is None:
+                continue
+            _data.append({"proxy_id": proxy_id, "proxy_name": proxy_name})
         return WebUtils.response_success(_data)

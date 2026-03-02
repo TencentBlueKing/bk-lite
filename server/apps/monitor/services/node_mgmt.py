@@ -1,20 +1,24 @@
-import ast
-
 from django.db import transaction
 from django.db import models
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
-from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, CollectConfig, MonitorObject, \
-    MonitorObjectOrganizationRule, Metric
+from apps.monitor.models import (
+    MonitorInstance,
+    MonitorInstanceOrganization,
+    CollectConfig,
+    MonitorObject,
+    MonitorObjectOrganizationRule,
+    Metric,
+)
+from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
 
 
 class InstanceConfigService:
-
     @staticmethod
     def get_config_content(ids):
         result = {}
@@ -45,19 +49,23 @@ class InstanceConfigService:
     def get_instance_configs(collect_instance_id):
         """获取实例配置"""
 
-        config_objs = CollectConfig.objects.filter(monitor_instance_id=collect_instance_id)
+        config_objs = CollectConfig.objects.filter(
+            monitor_instance_id=collect_instance_id
+        )
 
         configs = []
 
         for config_obj in config_objs:
-            configs.append({
-                "config_id": config_obj.id,
-                "collector": config_obj.collector,
-                "collect_type": config_obj.collect_type,
-                "config_type": config_obj.config_type,
-                "instance_id": collect_instance_id,
-                "is_child": config_obj.is_child,
-            })
+            configs.append(
+                {
+                    "config_id": config_obj.id,
+                    "collector": config_obj.collector,
+                    "collect_type": config_obj.collect_type,
+                    "config_type": config_obj.config_type,
+                    "instance_id": collect_instance_id,
+                    "is_child": config_obj.is_child,
+                }
+            )
 
         result = {}
         for config in configs:
@@ -74,7 +82,9 @@ class InstanceConfigService:
 
         items = list(result.values())
         for item in items:
-            config_content = InstanceConfigService.get_config_content(item["config_ids"])
+            config_content = InstanceConfigService.get_config_content(
+                item["config_ids"]
+            )
             item.update(config_content=config_content)
 
         return items
@@ -90,7 +100,7 @@ class InstanceConfigService:
             return []
 
         rules = []
-        _monitor_instance_id = ast.literal_eval(monitor_instance_id)[0]
+        _monitor_instance_id = parse_instance_id(monitor_instance_id)[0]
 
         for child_obj in child_objs:
             metric_obj = Metric.objects.filter(monitor_object_id=child_obj.id).first()
@@ -98,22 +108,29 @@ class InstanceConfigService:
                 logger.warning(f"子对象 {child_obj.id} 没有关联指标，跳过规则创建")
                 continue
 
-            rules.append(MonitorObjectOrganizationRule(
-                name=f"{child_obj.name}-{_monitor_instance_id}",
-                monitor_object_id=child_obj.id,
-                rule={
-                    "type": "metric",
-                    "metric_id": metric_obj.id,
-                    "filter": [{"name": "instance_id", "method": "=", "value": _monitor_instance_id}]
-                },
-                organizations=group_ids,
-                monitor_instance_id=monitor_instance_id,
-            ))
+            rules.append(
+                MonitorObjectOrganizationRule(
+                    name=f"{child_obj.name}-{_monitor_instance_id}",
+                    monitor_object_id=child_obj.id,
+                    rule={
+                        "type": "metric",
+                        "metric_id": metric_obj.id,
+                        "filter": [
+                            {
+                                "name": "instance_id",
+                                "method": "=",
+                                "value": _monitor_instance_id,
+                            }
+                        ],
+                    },
+                    organizations=group_ids,
+                    monitor_instance_id=monitor_instance_id,
+                )
+            )
 
         if rules:
             created_rules = MonitorObjectOrganizationRule.objects.bulk_create(
-                rules,
-                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
+                rules, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
             )
             return [rule.id for rule in created_rules]
 
@@ -134,9 +151,9 @@ class InstanceConfigService:
             return []
 
         # 一次性查询子对象和指标，避免重复查询
-        child_objs = MonitorObject.objects.filter(parent_id=monitor_object_id).prefetch_related(
-            models.Prefetch('metric_set', queryset=Metric.objects.all())
-        )
+        child_objs = MonitorObject.objects.filter(
+            parent_id=monitor_object_id
+        ).prefetch_related(models.Prefetch("metric_set", queryset=Metric.objects.all()))
 
         if not child_objs:
             return []
@@ -158,26 +175,33 @@ class InstanceConfigService:
         for instance in instances:
             instance_id = instance["instance_id"]
             group_ids = instance["group_ids"]
-            _monitor_instance_id = ast.literal_eval(instance_id)[0]
+            _monitor_instance_id = parse_instance_id(instance_id)[0]
 
             for child_id, (child_obj, metric_obj) in child_metric_map.items():
-                all_rules.append(MonitorObjectOrganizationRule(
-                    name=f"{child_obj.name}-{_monitor_instance_id}",
-                    monitor_object_id=child_obj.id,
-                    rule={
-                        "type": "metric",
-                        "metric_id": metric_obj.id,
-                        "filter": [{"name": "instance_id", "method": "=", "value": _monitor_instance_id}]
-                    },
-                    organizations=group_ids,
-                    monitor_instance_id=instance_id,
-                ))
+                all_rules.append(
+                    MonitorObjectOrganizationRule(
+                        name=f"{child_obj.name}-{_monitor_instance_id}",
+                        monitor_object_id=child_obj.id,
+                        rule={
+                            "type": "metric",
+                            "metric_id": metric_obj.id,
+                            "filter": [
+                                {
+                                    "name": "instance_id",
+                                    "method": "=",
+                                    "value": _monitor_instance_id,
+                                }
+                            ],
+                        },
+                        organizations=group_ids,
+                        monitor_instance_id=instance_id,
+                    )
+                )
 
         # 批量创建所有规则
         if all_rules:
             created_rules = MonitorObjectOrganizationRule.objects.bulk_create(
-                all_rules,
-                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
+                all_rules, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
             )
             logger.info(f"批量创建默认规则数量: {len(created_rules)}")
             return [rule.id for rule in created_rules]
@@ -185,7 +209,9 @@ class InstanceConfigService:
         return []
 
     @staticmethod
-    def _prepare_instances_for_creation(instances, monitor_object_id, collect_type, collector, configs):
+    def _prepare_instances_for_creation(
+        instances, monitor_object_id, collect_type, collector, configs
+    ):
         """准备待创建实例:格式化ID、检查已存在实例、分类处理、校验配置冲突
 
         Args:
@@ -208,14 +234,17 @@ class InstanceConfigService:
         # 检查已存在的实例（只需要查询 is_deleted 字段）
         instance_ids = [inst["instance_id"] for inst in instances]
         existing_instances_qs = MonitorInstance.objects.filter(
-            id__in=instance_ids,
-            monitor_object_id=monitor_object_id
-        ).values_list('id', 'is_deleted')
+            id__in=instance_ids, monitor_object_id=monitor_object_id
+        ).values_list("id", "is_deleted")
 
-        existing_map = {obj[0]: obj[1] for obj in existing_instances_qs}  # {id: is_deleted}
+        existing_map = {
+            obj[0]: obj[1] for obj in existing_instances_qs
+        }  # {id: is_deleted}
 
         # 提取将要创建的 config_type 列表
-        config_types_to_create = {config.get("type") for config in configs if config.get("type")}
+        config_types_to_create = {
+            config.get("type") for config in configs if config.get("type")
+        }
 
         # 检查已存在的配置（避免重复创建相同采集配置）
         if config_types_to_create:
@@ -223,8 +252,8 @@ class InstanceConfigService:
                 monitor_instance_id__in=instance_ids,
                 collector=collector,
                 collect_type=collect_type,
-                config_type__in=config_types_to_create
-            ).values_list('monitor_instance_id', 'config_type')
+                config_type__in=config_types_to_create,
+            ).values_list("monitor_instance_id", "config_type")
 
             # 构建已存在配置的映射: {instance_id: set(config_types)}
             config_map = {}
@@ -265,12 +294,16 @@ class InstanceConfigService:
                 else:
                     # 活跃实例，复用它
                     existing_instances.append(inst)
-                    logger.info(f"实例 {inst.get('instance_name', instance_id)} 已存在，将复用该实例并添加新的采集配置")
+                    logger.info(
+                        f"实例 {inst.get('instance_name', instance_id)} 已存在，将复用该实例并添加新的采集配置"
+                    )
 
         return new_instances, existing_instances, deleted_ids
 
     @staticmethod
-    def _create_instances_in_db(new_instances, existing_instances, deleted_ids, monitor_object_id):
+    def _create_instances_in_db(
+        new_instances, existing_instances, deleted_ids, monitor_object_id
+    ):
         """在数据库事务中创建实例、更新已存在实例、规则和关联关系
 
         Returns:
@@ -281,55 +314,53 @@ class InstanceConfigService:
 
         # 处理已删除的实例：恢复它们
         if deleted_ids:
-            MonitorInstance.objects.filter(
-                id__in=deleted_ids,
-                is_deleted=True
-            ).update(is_deleted=False, is_active=True)
+            MonitorInstance.objects.filter(id__in=deleted_ids, is_deleted=True).update(
+                is_deleted=False, is_active=True
+            )
             logger.info(f"恢复已删除实例数量: {len(deleted_ids)}")
 
         # 处理已存在的活跃实例：确保重新激活（可能被同步任务标记为不活跃）
         if existing_instances:
             existing_ids = [inst["instance_id"] for inst in existing_instances]
             updated_count = MonitorInstance.objects.filter(
-                id__in=existing_ids,
-                is_deleted=False
+                id__in=existing_ids, is_deleted=False
             ).update(is_active=True)
-            logger.info(f"复用已存在实例数量: {len(existing_ids)}, 重新激活: {updated_count}")
+            logger.info(
+                f"复用已存在实例数量: {len(existing_ids)}, 重新激活: {updated_count}"
+            )
 
             # 为已存在的实例创建组织关联（如果还没有）
             for instance in existing_instances:
                 instance_id = instance["instance_id"]
                 for group_id in instance["group_ids"]:
                     MonitorInstanceOrganization.objects.get_or_create(
-                        monitor_instance_id=instance_id,
-                        organization=group_id
+                        monitor_instance_id=instance_id, organization=group_id
                     )
 
         # 批量创建实例的默认分组规则（优化：一次性查询+批量创建）
         instances_to_process = new_instances + existing_instances
         if instances_to_process:
             rule_ids = InstanceConfigService._batch_create_default_rules(
-                instances_to_process,
-                monitor_object_id
+                instances_to_process, monitor_object_id
             )
             if rule_ids:
                 created_rule_ids.extend(rule_ids)
 
         # 构建并批量创建新实例及关联关系
         instance_objs, association_objs, created_instance_ids = (
-            InstanceConfigService._build_instance_objects(new_instances, monitor_object_id)
+            InstanceConfigService._build_instance_objects(
+                new_instances, monitor_object_id
+            )
         )
 
         if instance_objs:
             MonitorInstance.objects.bulk_create(
-                instance_objs,
-                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
+                instance_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
             )
 
         if association_objs:
             MonitorInstanceOrganization.objects.bulk_create(
-                association_objs,
-                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
+                association_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
             )
 
         return created_instance_ids, created_rule_ids
@@ -346,18 +377,21 @@ class InstanceConfigService:
             instance_ids.append(instance_id)
 
             # 创建实例对象
-            instance_objs.append(MonitorInstance(
-                id=instance_id,
-                name=instance["instance_name"],
-                monitor_object_id=monitor_object_id
-            ))
+            instance_objs.append(
+                MonitorInstance(
+                    id=instance_id,
+                    name=instance["instance_name"],
+                    monitor_object_id=monitor_object_id,
+                )
+            )
 
             # 创建关联对象
             for group_id in instance["group_ids"]:
-                association_objs.append(MonitorInstanceOrganization(
-                    monitor_instance_id=instance_id,
-                    organization=group_id
-                ))
+                association_objs.append(
+                    MonitorInstanceOrganization(
+                        monitor_instance_id=instance_id, organization=group_id
+                    )
+                )
 
         return instance_objs, association_objs, instance_ids
 
@@ -369,12 +403,6 @@ class InstanceConfigService:
         collect_type = data.get("collect_type", "")
         collector = data.get("collector", "")
 
-        logger.info(
-            f"开始创建监控实例,monitor_object_id={monitor_object_id}, "
-            f"collector={collector}, collect_type={collect_type}, "
-            f"instance_count={len(instances)}"
-        )
-
         # 快速失败:无实例直接返回
         if not instances:
             logger.info("没有需要创建的实例")
@@ -382,8 +410,14 @@ class InstanceConfigService:
 
         # ============ 阶段1: 参数预校验与数据准备 ============
         try:
-            new_instances, existing_instances, deleted_ids = InstanceConfigService._prepare_instances_for_creation(
-                instances, monitor_object_id, collect_type, collector, data.get("configs", [])
+            new_instances, existing_instances, deleted_ids = (
+                InstanceConfigService._prepare_instances_for_creation(
+                    instances,
+                    monitor_object_id,
+                    collect_type,
+                    collector,
+                    data.get("configs", []),
+                )
             )
         except BaseAppException:
             raise
@@ -405,8 +439,13 @@ class InstanceConfigService:
         try:
             with transaction.atomic():
                 # 阶段2：数据库操作（使用外层事务）
-                created_instance_ids, created_rule_ids = InstanceConfigService._create_instances_in_db(
-                    new_instances, existing_instances, deleted_ids, monitor_object_id
+                created_instance_ids, created_rule_ids = (
+                    InstanceConfigService._create_instances_in_db(
+                        new_instances,
+                        existing_instances,
+                        deleted_ids,
+                        monitor_object_id,
+                    )
                 )
                 logger.info(f"创建实例和规则成功,实例数: {len(created_instance_ids)}")
 
@@ -434,7 +473,6 @@ class InstanceConfigService:
 
     @staticmethod
     def update_instance_config(child_info, base_info):
-
         if base_info:
             config_obj = CollectConfig.objects.filter(id=base_info["id"]).first()
             if config_obj:
@@ -447,5 +485,9 @@ class InstanceConfigService:
             if not config_obj:
                 return
             env_config = child_info.get("env_config")
-            content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
-            NodeMgmt().update_child_config_content(child_info["id"], content, env_config)
+            content = (
+                ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
+            )
+            NodeMgmt().update_child_config_content(
+                child_info["id"], content, env_config
+            )

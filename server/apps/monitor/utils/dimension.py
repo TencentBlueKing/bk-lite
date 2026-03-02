@@ -1,7 +1,7 @@
 """维度处理工具函数 - 用于处理监控指标的维度数据"""
 
 import ast
-from typing import Union
+from typing import Any, Union
 
 
 def build_dimensions(
@@ -91,3 +91,56 @@ def build_metric_template_vars(dimensions: dict) -> dict:
         模板变量字典，键名格式为 "metric__key"
     """
     return {f"metric__{k}": v for k, v in dimensions.items()}
+
+
+def parse_instance_id(instance_id: Any) -> tuple:
+    """统一解析实例ID为tuple，避免调用方重复写 literal_eval 兜底逻辑。"""
+    if isinstance(instance_id, tuple):
+        return instance_id
+
+    if isinstance(instance_id, list):
+        return tuple(instance_id)
+
+    if isinstance(instance_id, str):
+        try:
+            parsed = ast.literal_eval(instance_id)
+            if isinstance(parsed, tuple):
+                return parsed
+            if isinstance(parsed, list):
+                return tuple(parsed)
+            return (parsed,)
+        except (ValueError, SyntaxError):
+            return (instance_id,)
+
+    return (instance_id,)
+
+
+def format_dimension_value(
+    dimensions: dict,
+    ordered_keys: list = None,
+    name_map: dict = None,
+) -> str:
+    """格式化dimension_value变量
+
+    规则：
+    - 按 ordered_keys 顺序输出，缺省按 dimensions 原顺序
+    - 单项格式为 "维度名称:维度值"
+    - 维度值为空时保留为 "维度名称:"
+    - 多项以英文逗号","连接（不带空格）
+    """
+    if not dimensions:
+        return ""
+
+    name_map = name_map or {}
+    keys = list(dimensions.keys()) if ordered_keys is None else ordered_keys
+    parts = []
+
+    for key in keys:
+        if key not in dimensions:
+            continue
+        display_name = name_map.get(key) or key
+        value = dimensions.get(key)
+        value_str = "" if value is None else str(value)
+        parts.append(f"{display_name}:{value_str}")
+
+    return ",".join(parts)

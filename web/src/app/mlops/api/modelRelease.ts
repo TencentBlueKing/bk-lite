@@ -3,14 +3,13 @@ import { TRAINJOB_MAP, SERVING_MAP } from '@/app/mlops/constants';
 import type { 
   DatasetType,
   AnomalyDetectionReasonParams,
-  ClassificationReasonParams
+  TimeseriesPredictReasonParams,
+  LogClusteringReasonParams,
+  ClassificationReasonParams,
+  ImageClassificationReasonParams,
+  ObjectDetectionReasonParams
 } from '@/app/mlops/types';
 
-
-
-// 使用导入的类型别名
-type AnomalyDetectionReason = AnomalyDetectionReasonParams;
-type ClassificationReason = ClassificationReasonParams;
 
 const useMlopsModelReleaseApi = () => {
   const {
@@ -118,23 +117,33 @@ const useMlopsModelReleaseApi = () => {
   };
 
   // 异常检测推理
-  const anomalyDetectionReason = async (params: AnomalyDetectionReason) => {
-    return await post(`/mlops/anomaly_detection_servings/predict/`, params);
+  const anomalyDetectionReason = async (servingId: number, params: AnomalyDetectionReasonParams) => {
+    return await post(`/mlops/anomaly_detection_servings/${servingId}/predict/`, params);
   };
 
   // 时序预测推理
-  const timeseriesPredictReason = async (params: AnomalyDetectionReason) => {
-    return await post(`/mlops/timeseries_predict_servings/predict/`, params);
+  const timeseriesPredictReason = async (servingId: number, params: TimeseriesPredictReasonParams) => {
+    return await post(`/mlops/timeseries_predict_servings/${servingId}/predict/`, params);
   };
 
   // 日志聚类推理
-  const logClusteringReason = async (params: AnomalyDetectionReason) => {
-    return await post(`/mlops/log_clustering_servings/predict/`, params);
+  const logClusteringReason = async (servingId: number, params: LogClusteringReasonParams) => {
+    return await post(`/mlops/log_clustering_servings/${servingId}/predict/`, params);
   };
 
   // 分类任务推理
-  const classificationReason = async (params: ClassificationReason) => {
-    return await post(`/mlops/classification_servings/predict/`, params);
+  const classificationReason = async (servingId: number, params: ClassificationReasonParams) => {
+    return await post(`/mlops/classification_servings/${servingId}/predict/`, params);
+  };
+
+  // 图片分类推理
+  const imageClassificationReason = async (servingId: number, params: ImageClassificationReasonParams) => {
+    return await post(`/mlops/image_classification_servings/${servingId}/predict/`, params);
+  };
+
+  // 目标检测推理
+  const objectDetectionReason = async (servingId: number, params: ObjectDetectionReasonParams) => {
+    return await post(`/mlops/object_detection_servings/${servingId}/predict/`, params);
   };
 
   // 编辑能力发布
@@ -234,6 +243,8 @@ const useMlopsModelReleaseApi = () => {
     timeseriesPredictReason,
     logClusteringReason,
     classificationReason,
+    imageClassificationReason,
+    objectDetectionReason,
     updateAnomalyServings,
     updateTimeSeriesPredictServings,
     updateLogClusteringServings,

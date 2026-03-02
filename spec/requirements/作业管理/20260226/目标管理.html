@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>目标管理 - Job</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Fira Sans', 'Fira Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #1f2329; line-height: 1.5; }
+        .top-header { background: #fff; height: 60px; border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 100; }
+        .header-left { display: flex; align-items: center; gap: 8px; }
+        .logo { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 18px; }
+        .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; font-weight: bold; box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25); }
+        .header-nav { display: flex; gap: 8px; margin-left: 48px; }
+        .nav-item { display: flex; align-items: center; gap: 8px; color: #646a73; cursor: pointer; font-size: 14px; padding: 8px 16px; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.1); }
+        .header-right { display: flex; align-items: center; gap: 20px; color: #646a73; font-size: 14px; }
+        .header-right > span { cursor: pointer; padding: 6px 12px; border-radius: 6px; transition: all 0.3s; }
+        .header-right > span:hover { background: rgba(0, 0, 0, 0.04); color: #0052d9; }
+        .sub-header { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); height: 52px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); display: flex; align-items: center; padding: 0 32px; }
+        .sub-nav { display: flex; gap: 4px; }
+        .sub-nav-item { padding: 10px 20px; cursor: pointer; font-size: 14px; color: #646a73; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .sub-nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .sub-nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.12); }
+        .main-container { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
+        .page-intro { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; border: 1px solid #e5e7eb; }
+        .intro-title { font-size: 16px; font-weight: 600; color: #1f2329; margin-bottom: 8px; }
+        .intro-desc { font-size: 14px; color: #646a73; line-height: 1.6; margin: 0; }
+        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+        .page-title { font-size: 20px; font-weight: 600; color: #1f2329; }
+        .btn { padding: 10px 20px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.3s; border: none; }
+        .btn-primary { background: #0052d9; color: white; }
+        .btn-primary:hover { background: #0041ad; }
+        .content-card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06); }
+        .info-banner { background: linear-gradient(135deg, #fff4e6 0%, #ffe6cc 100%); border: 1px solid #ffcc99; border-radius: 8px; padding: 16px; margin-bottom: 20px; display: flex; align-items: start; gap: 12px; }
+        .info-icon { font-size: 20px; }
+        .info-text { flex: 1; }
+        .info-text strong { color: #ff9500; }
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: #f5f7fa; }
+        th { padding: 12px 16px; text-align: left; font-size: 13px; font-weight: 600; color: #646a73; }
+        tbody tr { border-bottom: 1px solid #f0f1f5; transition: all 0.2s; }
+        tbody tr:hover { background: #f9fafb; }
+        td { padding: 16px; font-size: 14px; color: #1f2329; }
+        td.nowrap { white-space: nowrap; }
+        .org-cell { white-space: nowrap; }
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .status-badge.online { background: #e6fff2; color: #00a870; }
+        .status-badge.offline { background: #f0f1f5; color: #8f959e; }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+        .auth-badge { padding: 4px 10px; border-radius: 4px; font-size: 12px; background: #f5f7fa; color: #646a73; }
+        .action-links { display: flex; gap: 12px; }
+        .action-link { color: #0052d9; cursor: pointer; transition: all 0.2s; text-decoration: none; }
+        .action-link:hover { color: #0041ad; }
+        .action-link.danger { color: #ea3636; }
+        .action-link.danger:hover { color: #c72929; }
+        
+        /* 搜索组件 */
+        .search-group {
+            display: flex;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            overflow: hidden;
+            background: white;
+            transition: all 0.3s;
+        }
+        .search-group:hover { border-color: rgba(0, 82, 217, 0.3); }
+        .search-group:focus-within { border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .search-select {
+            padding: 8px 12px;
+            border: none;
+            border-right: 1px solid #dcdee0;
+            font-size: 14px;
+            outline: none;
+            background: #f5f7fa;
+            cursor: pointer;
+            min-width: 100px;
+        }
+        .search-select:hover { background: #eef0f3; }
+        .search-input-field {
+            padding: 8px 12px;
+            border: none;
+            font-size: 14px;
+            outline: none;
+            width: 200px;
+            background: white;
+        }
+        .search-input-field::placeholder { color: #8f959e; }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-title { font-size: 18px; font-weight: 600; }
+        .modal-close { font-size: 24px; cursor: pointer; color: #8f959e; }
+        .modal-close:hover { color: #1f2329; }
+        .form-group { margin-bottom: 20px; }
+        .form-label { display: block; font-size: 14px; font-weight: 500; color: #1f2329; margin-bottom: 8px; }
+        .form-input { width: 100%; padding: 10px 12px; border: 1px solid #dcdee0; border-radius: 6px; font-size: 14px; }
+        .form-input:focus { outline: none; border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .form-select { width: 100%; padding: 10px 12px; border: 1px solid #dcdee0; border-radius: 6px; font-size: 14px; background: white; }
+        .radio-group { display: flex; gap: 16px; }
+        .radio-item { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+        .radio-item input[type="radio"] { width: 16px; height: 16px; cursor: pointer; }
+        .modal-footer { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; flex-shrink: 0; }
+        .btn-default { background: white; color: #646a73; border: 1px solid #dcdee0; }
+        .btn-default:hover { border-color: #0052d9; color: #0052d9; }
+        .group-tree { padding: 0; }
+        .group-item { border-bottom: 1px solid #f0f1f5; }
+        .group-item:last-child { border-bottom: none; }
+        .group-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; transition: all 0.2s; user-select: none; position: relative; }
+        .group-header:hover { background: #f9fafb; }
+        .group-header:hover .group-delete { opacity: 1; }
+        .group-delete { position: absolute; right: 12px; color: #ea3636; font-size: 16px; opacity: 0; transition: all 0.2s; cursor: pointer; padding: 4px; }
+        .group-delete:hover { color: #c72929; background: #fee; border-radius: 4px; }
+        .group-name { font-size: 13px; color: #1f2329; font-weight: 500; flex: 1; }
+        .group-children { background: #fafbfc; padding: 0; border-top: 1px solid #f0f1f5; }
+        .group-child { padding: 6px 12px 6px 36px; font-size: 12px; color: #646a73; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid #f0f1f5; }
+        .group-child:last-child { border-bottom: none; }
+        .group-child:hover { background: #eff4ff; color: #0052d9; }
+        .btn-add-group { margin-top: 8px; padding: 8px 12px; font-size: 13px; color: #0052d9; background: white; border: 1px solid #dcdee0; border-radius: 4px; cursor: pointer; transition: all 0.2s; width: 100%; flex-shrink: 0; }
+        .btn-add-group:hover { border-color: #0052d9; background: #f0f5ff; }
+        .group-subitem .group-header { padding-left: 24px; }
+        .group-subitem .group-children { padding-left: 12px; }
+        .tag-selector { position: relative; }
+        .tag-selector-input { min-height: 40px; padding: 8px 12px; border: 1px solid #dcdee0; border-radius: 6px; cursor: pointer; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: white; transition: all 0.3s; }
+        .tag-selector-input:hover { border-color: #0052d9; }
+        .tag-selector-input.active { border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .tag-selector-placeholder { color: #8f959e; font-size: 14px; }
+        .tag-selector-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f5f7fa; color: #1f2329; border-radius: 4px; font-size: 12px; }
+        .tag-selector-tag-close { cursor: pointer; color: #8f959e; font-weight: bold; transition: color 0.2s; }
+        .tag-selector-tag-close:hover { color: #ea3636; }
+        .tag-selector-dropdown { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: white; border: 1px solid #dcdee0; border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); max-height: 240px; overflow-y: auto; z-index: 1000; display: none; }
+        .tag-selector-dropdown.active { display: block; }
+        .tag-selector-option { padding: 10px 12px; cursor: pointer; transition: all 0.2s; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+        .tag-selector-option:hover { background: #f5f7fa; }
+        .tag-selector-option.selected { background: #e6f4ff; color: #0052d9; }
+        .tag-selector-option input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+        .file-upload-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; background: #fff; border: 1px solid #dcdee0; border-radius: 6px; cursor: pointer; transition: all 0.3s; font-size: 14px; color: #1f2329; }
+        .file-upload-btn:hover { border-color: #0052d9; color: #0052d9; background: #f0f5ff; }
+        .file-upload-btn input[type="file"] { display: none; }
+        .file-name-display { margin-top: 8px; padding: 8px 12px; background: #f5f7fa; border-radius: 4px; font-size: 12px; color: #646a73; }
+    
+        /* ===== UI/UX ENHANCEMENTS ===== */
+        
+        /* Focus states for accessibility */
+        a:focus-visible, button:focus-visible, input:focus-visible, 
+        select:focus-visible, textarea:focus-visible, 
+        [tabindex]:focus-visible, .nav-item:focus-visible,
+        .sub-nav-item:focus-visible {
+            outline: 2px solid #0052d9;
+            outline-offset: 2px;
+        }
+
+        /* Enhanced table row hover */
+        tbody tr {
+            border-left: 3px solid transparent;
+        }
+        tbody tr:hover {
+            background: #f0f5ff !important;
+            border-left: 3px solid #0052d9;
+        }
+
+        /* Inline SVG icon alignment */
+        .nav-item svg, .sub-nav-item svg, .header-right svg {
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+    
+        /* Table responsive wrapper */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table-responsive table {
+            min-width: 100%;
+        }
+
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo"><div class="logo-icon">BK</div><span>Job</span></div>
+            <nav class="header-nav">
+                <div class="nav-item" onclick="location.href='首页.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>首页</span></div>
+                <div class="nav-item" onclick="location.href='快速执行.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></span><span>作业执行</span></div>
+                <div class="nav-item" onclick="location.href='脚本库.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span>作业模版</span></div>
+                <div class="nav-item active"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><span>目标管理</span></div>
+                <div class="nav-item" onclick="location.href='高危命令配置.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span>系统配置</span></div>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> 帮助文档</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 语言: 简体中文</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Admin</span>
+        </div>
+    </div>
+
+
+
+    <div class="main-container">
+        <div class="page-intro">
+            <h2 class="intro-title">目标管理</h2>
+            <p class="intro-desc">此处管理作业执行目标。目标可以来自节点管理（自动同步），也可以手动录入。每个目标都配置了执行驱动（nats-executor / ssh / ansible），系统会在作业执行时根据目标的驱动自动选择执行通道。</p>
+        </div>
+
+        <div class="content-card">
+            <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <div class="search-group">
+                    <select class="search-select" id="searchField" onchange="filterTargetList()">
+                        <option value="name">目标名称</option>
+                        <option value="ip">IP 地址</option>
+                        <option value="cloudArea">云区域</option>
+                        <option value="source">来源</option>
+                        <option value="driver">驱动</option>
+                        <option value="org">组织</option>
+                    </select>
+                    <input type="text" class="search-input-field" id="searchInput" placeholder="搜索..." oninput="filterTargetList()">
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button class="btn btn-default" onclick="syncNodes()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 同步节点</button>
+                    <button class="btn btn-primary" onclick="openModal()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 2px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加目标</button>
+                </div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 140px;">目标名称</th>
+                        <th style="width: 120px; white-space: nowrap;">IP 地址</th>
+                        <th style="width: 80px; white-space: nowrap;">云区域</th>
+                        <th style="width: 80px; white-space: nowrap;">来源</th>
+                        <th style="width: 60px; white-space: nowrap;">系统</th>
+                        <th style="width: 100px; white-space: nowrap;">当前驱动</th>
+                        <th style="width: 80px; white-space: nowrap;">凭据</th>
+                        <th style="width: 160px;">组织</th>
+                        <th style="width: 100px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="targetTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 添加/编辑目标弹窗 -->
+    <div class="modal" id="hostModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">添加目标</div>
+                <span class="modal-close" onclick="closeModal()">×</span>
+            </div>
+            
+            <!-- 基础信息区 -->
+            <div style="background: #fafbfc; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                <div style="font-size: 15px; font-weight: 600; color: #1f2329; margin-bottom: 16px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg> 基础信息</div>
+                
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label"><span style="color: #ea3636;">*</span> 目标名称</label>
+                    <input type="text" class="form-input" id="targetName" placeholder="请输入目标名称，例如：web-server-01" />
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label"><span style="color: #ea3636;">*</span> 操作系统</label>
+                    <div class="radio-group">
+                        <label class="radio-item">
+                            <input type="radio" name="os-type" value="linux" checked />
+                            <span>Linux</span>
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="os-type" value="windows" />
+                            <span>Windows</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label"><span style="color: #ea3636;">*</span> 云区域</label>
+                    <select class="form-select" id="cloudArea">
+                        <option value="">请选择云区域</option>
+                        <option value="default">默认区域</option>
+                        <option value="cloud-1">云区域-1</option>
+                        <option value="cloud-2">云区域-2</option>
+                        <option value="cloud-3">云区域-3</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label"><span style="color: #ea3636;">*</span> IP 地址</label>
+                    <input type="text" class="form-input" id="ipAddress" placeholder="请输入 IP 地址" />
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label"><span style="color: #ea3636;">*</span> 组织</label>
+                    <div class="tag-selector" id="orgSelector">
+                        <div class="tag-selector-input" onclick="toggleOrgDropdown()">
+                            <span class="tag-selector-placeholder">选择组织分类</span>
+                        </div>
+                        <div class="tag-selector-dropdown" id="orgDropdown">
+                            <div class="tag-selector-option" onclick="toggleOrg(event, 'web', 'Web服务')">
+                                <input type="checkbox" value="web" />
+                                <span>Web服务</span>
+                            </div>
+                            <div class="tag-selector-option" onclick="toggleOrg(event, 'database', '数据库')">
+                                <input type="checkbox" value="database" />
+                                <span>数据库</span>
+                            </div>
+                            <div class="tag-selector-option" onclick="toggleOrg(event, 'cache', '缓存服务')">
+                                <input type="checkbox" value="cache" />
+                                <span>缓存服务</span>
+                            </div>
+                            <div class="tag-selector-option" onclick="toggleOrg(event, 'k8s', '容器平台')">
+                                <input type="checkbox" value="k8s" />
+                                <span>容器平台</span>
+                            </div>
+                            <div class="tag-selector-option" onclick="toggleOrg(event, 'core', '核心业务')">
+                                <input type="checkbox" value="core" />
+                                <span>核心业务</span>
+                            </div>
+                            <div class="tag-selector-option" onclick="toggleOrg(event, 'production', '生产环境')">
+                                <input type="checkbox" value="production" />
+                                <span>生产环境</span>
+                            </div>
+                            <div class="tag-selector-option" onclick="toggleOrg(event, 'test', '测试环境')">
+                                <input type="checkbox" value="test" />
+                                <span>测试环境</span>
+                            </div>
+                            <div class="tag-selector-option" onclick="toggleOrg(event, 'legacy', '遗留系统')">
+                                <input type="checkbox" value="legacy" />
+                                <span>遗留系统</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 驱动配置区 -->
+            <div style="background: #fafbfc; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                <div style="font-size: 15px; font-weight: 600; color: #1f2329; margin-bottom: 16px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 驱动配置</div>
+                
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label"><span style="color: #ea3636;">*</span> 执行驱动</label>
+                    <select class="form-select" id="driverType" onchange="handleDriverChange()">
+                        <option value="ansible">Ansible</option>
+                        <option value="ssh">SSH</option>
+                        <option value="nats">nats-executor</option>
+                    </select>
+                    <div style="font-size: 12px; color: #8f959e; margin-top: 6px;">系统会在作业执行时根据目标的驱动自动选择执行通道</div>
+                </div>
+
+                <div class="form-group" id="credentialSourceGroup" style="margin-bottom: 16px;">
+                    <label class="form-label"><span style="color: #ea3636;">*</span> 凭据来源</label>
+                    <div class="radio-group">
+                        <label class="radio-item">
+                            <input type="radio" name="credential-source" value="manual" checked onchange="handleCredentialSourceChange()" />
+                            <span>手动录入</span>
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="credential-source" value="management" onchange="handleCredentialSourceChange()" />
+                            <span>凭据管理</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 凭据管理选择 -->
+                <div id="credentialManagementSelect" style="display: none;">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label class="form-label"><span style="color: #ea3636;">*</span> 选择凭据</label>
+                        <select class="form-select" id="credentialSelect">
+                            <option value="">请选择凭据</option>
+                            <option value="cred-1">SSH密钥 - web-servers</option>
+                            <option value="cred-2">SSH密码 - db-servers</option>
+                            <option value="cred-3">Ansible密钥 - k8s-nodes</option>
+                            <option value="cred-4">SSH密钥 - production-servers</option>
+                        </select>
+                    </div>
+
+                    <div style="background: #fff7e6; border: 1px solid #ffd591; border-radius: 6px; padding: 12px; margin-top: 12px;">
+                        <div style="display: flex; align-items: start; gap: 8px;">
+                            <span style="font-size: 16px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                            <div style="flex: 1; font-size: 12px; color: #ad6800;">
+                                <strong>测试连接说明：</strong>测试结果仅代表当前配置有效，实际执行以作业运行时为准。
+                            </div>
+                        </div>
+                        <button class="btn" style="margin-top: 8px; background: #fff; border: 1px solid #d9d9d9; color: #1f2329; width: 100%;" onclick="testConnection()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 2px;"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" y1="21" x2="20" y2="21"/><line x1="12" y1="18" x2="12" y2="21"/></svg> 测试连接</button>
+                    </div>
+                </div>
+
+                <!-- 手动录入配置 -->
+                <div id="manualCredentialConfig">
+                <!-- SSH 驱动配置 -->
+                <div id="sshConfig" style="display: none;">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label class="form-label">SSH 端口</label>
+                        <input type="number" class="form-input" id="sshPort" value="22" placeholder="22" />
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label class="form-label"><span style="color: #ea3636;">*</span> SSH 用户名</label>
+                        <input type="text" class="form-input" id="sshUser" placeholder="root" />
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label class="form-label"><span style="color: #ea3636;">*</span> SSH 凭据</label>
+                        <div class="radio-group" style="margin-bottom: 12px;">
+                            <label class="radio-item">
+                                <input type="radio" name="ssh-auth-type" value="key" checked onchange="handleSshAuthChange()" />
+                                <span>密钥</span>
+                            </label>
+                            <label class="radio-item">
+                                <input type="radio" name="ssh-auth-type" value="password" onchange="handleSshAuthChange()" />
+                                <span>密码</span>
+                            </label>
+                        </div>
+                        <div id="sshKeyInput">
+                            <label class="file-upload-btn">
+                                <span><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></span>
+                                <span>选择私钥文件</span>
+                                <input type="file" id="sshKeyFile" accept=".pem,.key,.ppk" onchange="handleFileSelect(event, 'ssh-key')" />
+                            </label>
+                            <div id="sshKeyFileName" class="file-name-display" style="display: none;"></div>
+                        </div>
+                        <div id="sshPasswordInput" style="display: none;">
+                            <input type="password" class="form-input" placeholder="请输入密码" />
+                        </div>
+                    </div>
+
+                    <div style="background: #fff7e6; border: 1px solid #ffd591; border-radius: 6px; padding: 12px; margin-top: 12px;">
+                        <div style="display: flex; align-items: start; gap: 8px;">
+                            <span style="font-size: 16px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                            <div style="flex: 1; font-size: 12px; color: #ad6800;">
+                                <strong>测试连接说明：</strong>测试结果仅代表当前配置有效，实际执行以作业运行时为准。
+                            </div>
+                        </div>
+                        <button class="btn" style="margin-top: 8px; background: #fff; border: 1px solid #d9d9d9; color: #1f2329; width: 100%;" onclick="testConnection()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 2px;"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" y1="21" x2="20" y2="21"/><line x1="12" y1="18" x2="12" y2="21"/></svg> 测试连接</button>
+                    </div>
+                </div>
+
+                <!-- Ansible 驱动配置 -->
+                <div id="ansibleConfig" style="display: block;">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label class="form-label">SSH 端口</label>
+                        <input type="number" class="form-input" id="ansibleSshPort" value="22" placeholder="22" />
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label class="form-label"><span style="color: #ea3636;">*</span> SSH 用户名</label>
+                        <input type="text" class="form-input" id="ansibleSshUser" placeholder="root" />
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label class="form-label"><span style="color: #ea3636;">*</span> SSH 凭据</label>
+                        <div class="radio-group" style="margin-bottom: 12px;">
+                            <label class="radio-item">
+                                <input type="radio" name="ansible-auth-type" value="key" checked onchange="handleAnsibleAuthChange()" />
+                                <span>密钥</span>
+                            </label>
+                            <label class="radio-item">
+                                <input type="radio" name="ansible-auth-type" value="password" onchange="handleAnsibleAuthChange()" />
+                                <span>密码</span>
+                            </label>
+                        </div>
+                        <div id="ansibleKeyInput">
+                            <label class="file-upload-btn">
+                                <span><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></span>
+                                <span>选择私钥文件</span>
+                                <input type="file" id="ansibleKeyFile" accept=".pem,.key,.ppk" onchange="handleFileSelect(event, 'ansible-key')" />
+                            </label>
+                            <div id="ansibleKeyFileName" class="file-name-display" style="display: none;"></div>
+                        </div>
+                        <div id="ansiblePasswordInput" style="display: none;">
+                            <input type="password" class="form-input" placeholder="请输入密码" />
+                        </div>
+                    </div>
+
+                    <div style="background: #fff7e6; border: 1px solid #ffd591; border-radius: 6px; padding: 12px; margin-top: 12px;">
+                        <div style="display: flex; align-items: start; gap: 8px;">
+                            <span style="font-size: 16px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                            <div style="flex: 1; font-size: 12px; color: #ad6800;">
+                                <strong>测试连接说明：</strong>测试结果仅代表当前配置有效，实际执行以作业运行时为准。
+                            </div>
+                        </div>
+                        <button class="btn" style="margin-top: 8px; background: #fff; border: 1px solid #d9d9d9; color: #1f2329; width: 100%;" onclick="testConnection()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 2px;"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" y1="21" x2="20" y2="21"/><line x1="12" y1="18" x2="12" y2="21"/></svg> 测试连接</button>
+                    </div>
+                </div>
+                </div>
+
+                <!-- nats-executor 驱动配置 -->
+                <div id="natsConfig" style="display: none;">
+                    <div style="background: #e6f4ff; border: 1px solid #91caff; border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+                        <div style="display: flex; align-items: start; gap: 8px;">
+                            <span style="font-size: 16px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                            <div style="flex: 1; font-size: 12px; color: #0958d9;">
+                                使用 nats-executor 驱动的目标通过节点管理的 Agent 执行作业，无需额外配置连接信息和凭据。
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background: #fff7e6; border: 1px solid #ffd591; border-radius: 6px; padding: 12px;">
+                        <div style="display: flex; align-items: start; gap: 8px;">
+                            <span style="font-size: 16px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                            <div style="flex: 1; font-size: 12px; color: #ad6800;">
+                                <strong>测试连接说明：</strong>测试结果仅代表当前配置有效，实际执行以作业运行时为准。
+                            </div>
+                        </div>
+                        <button class="btn" style="margin-top: 8px; background: #fff; border: 1px solid #d9d9d9; color: #1f2329; width: 100%;" onclick="testConnection()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 2px;"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" y1="21" x2="20" y2="21"/><line x1="12" y1="18" x2="12" y2="21"/></svg> 测试连接</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-primary">保存</button>
+                <button class="btn btn-default" onclick="closeModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加组织弹窗（保留用于未来扩展） -->
+    <div class="modal" id="groupModal" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <div class="modal-title">添加分组</div>
+                <span class="modal-close" onclick="closeGroupModal()">×</span>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">分组名称</label>
+                <input type="text" class="form-input" id="groupName" placeholder="请输入分组名称" />
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="saveGroup()">保存</button>
+                <button class="btn btn-default" onclick="closeGroupModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 组织列表（平台权限体系）
+        const orgList = [
+            { id: 1, name: '运维部', color: '#0052d9' },
+            { id: 2, name: '开发部', color: '#00a870' },
+            { id: 3, name: '测试部', color: '#ff9800' },
+            { id: 4, name: '安全部', color: '#ea3636' },
+            { id: 5, name: 'DBA组', color: '#7c3aed' },
+            { id: 6, name: '基础架构', color: '#0891b2' }
+        ];
+
+        // 目标数据
+        let targetData = [
+            { id: 1, name: 'web-server-01', ip: '192.168.1.101', cloudArea: '默认区域', source: 'node', os: 'Linux', driver: 'nats', credential: 'managed', orgIds: [1, 2] },
+            { id: 2, name: 'db-primary-01', ip: '192.168.1.201', cloudArea: '默认区域', source: 'manual', os: 'Linux', driver: 'ssh', credential: 'configured', orgIds: [5] },
+            { id: 3, name: 'k8s-node-master', ip: '10.0.1.10', cloudArea: '杭州', source: 'node', os: 'Linux', driver: 'nats', credential: 'managed', orgIds: [1, 6] },
+            { id: 4, name: 'legacy-app-server', ip: '172.16.10.50', cloudArea: '上海', source: 'manual', os: 'Windows', driver: 'ansible', credential: 'configured', orgIds: [2] },
+            { id: 5, name: 'cache-redis-cluster', ip: '192.168.2.88', cloudArea: '北京', source: 'manual', os: 'Linux', driver: 'ssh', credential: 'none', orgIds: [1] }
+        ];
+
+        // 渲染组织文本（逗号分隔）
+        function renderOrgText(orgIds) {
+            if (!orgIds || orgIds.length === 0) return '-';
+            return orgIds.map(id => {
+                const org = orgList.find(o => o.id === id);
+                return org ? org.name : '';
+            }).filter(n => n).join('，');
+        }
+
+        // 渲染来源标签
+        function renderSourceBadge(source) {
+            if (source === 'node') {
+                return '<span class="auth-badge" style="background: #e6f4ff; color: #0052d9;">节点管理</span>';
+            }
+            return '<span class="auth-badge">手动录入</span>';
+        }
+
+        // 渲染驱动标签
+        function renderDriverBadge(driver) {
+            const driverMap = {
+                'nats': { bg: '#f0f9ff', color: '#1677ff', label: 'nats-executor' },
+                'ssh': { bg: '#fff7e6', color: '#d46b08', label: 'ssh' },
+                'ansible': { bg: '#f6ffed', color: '#52c41a', label: 'ansible' }
+            };
+            const d = driverMap[driver] || { bg: '#f5f7fa', color: '#646a73', label: driver };
+            return `<span class="auth-badge" style="background: ${d.bg}; color: ${d.color};">${d.label}</span>`;
+        }
+
+        // 渲染凭据状态
+        function renderCredentialBadge(credential) {
+            const credMap = {
+                'managed': { bg: '#f0f5ff', color: '#4080ff', label: '系统托管' },
+                'configured': { bg: '#e6fff2', color: '#00a870', label: '已配置' },
+                'none': { bg: '#fff1f0', color: '#cf1322', label: '未配置' }
+            };
+            const c = credMap[credential] || { bg: '#f5f7fa', color: '#646a73', label: credential };
+            return `<span class="status-badge" style="background: ${c.bg}; color: ${c.color};">${c.label}</span>`;
+        }
+
+        // 渲染目标列表
+        function renderTargetList(data) {
+            const list = data || targetData;
+            const tbody = document.getElementById('targetTableBody');
+            tbody.innerHTML = list.map(target => `
+                <tr>
+                    <td>${target.name}</td>
+                    <td class="nowrap">${target.ip}</td>
+                    <td class="nowrap">${target.cloudArea}</td>
+                    <td class="nowrap">${renderSourceBadge(target.source)}</td>
+                    <td class="nowrap">${target.os}</td>
+                    <td class="nowrap">${renderDriverBadge(target.driver)}</td>
+                    <td class="nowrap">${renderCredentialBadge(target.credential)}</td>
+                    <td class="org-cell">${renderOrgText(target.orgIds)}</td>
+                    <td>
+                        <div class="action-links">
+                            <a class="action-link" onclick="openModal('${target.source === 'node' ? '节点管理' : '手动录入'}')">编辑</a>
+                            <a class="action-link danger" onclick="deleteTarget(${target.id})">删除</a>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 搜索过滤
+        function filterTargetList() {
+            const field = document.getElementById('searchField').value;
+            const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+            
+            if (!keyword) {
+                renderTargetList();
+                return;
+            }
+            
+            const filtered = targetData.filter(target => {
+                switch (field) {
+                    case 'name':
+                        return target.name.toLowerCase().includes(keyword);
+                    case 'ip':
+                        return target.ip.toLowerCase().includes(keyword);
+                    case 'cloudArea':
+                        return target.cloudArea.toLowerCase().includes(keyword);
+                    case 'source':
+                        const sourceLabel = target.source === 'node' ? '节点管理' : '手动录入';
+                        return sourceLabel.includes(keyword);
+                    case 'driver':
+                        const driverLabel = target.driver === 'nats' ? 'nats-executor' : target.driver;
+                        return driverLabel.toLowerCase().includes(keyword);
+                    case 'org':
+                        return renderOrgText(target.orgIds).toLowerCase().includes(keyword);
+                    default:
+                        return true;
+                }
+            });
+            
+            renderTargetList(filtered);
+        }
+
+        // 删除目标
+        function deleteTarget(id) {
+            if (confirm('确定要删除该目标吗？')) {
+                targetData = targetData.filter(t => t.id !== id);
+                renderTargetList();
+            }
+        }
+
+        // 存储选中的组织
+        let selectedOrgs = [];
+
+        // 切换组织下拉框
+        function toggleOrgDropdown() {
+            const dropdown = document.getElementById('orgDropdown');
+            const input = document.querySelector('#orgSelector .tag-selector-input');
+            const isActive = dropdown.classList.contains('active');
+            
+            if (isActive) {
+                dropdown.classList.remove('active');
+                input.classList.remove('active');
+            } else {
+                dropdown.classList.add('active');
+                input.classList.add('active');
+            }
+        }
+
+        // 切换组织选择
+        function toggleOrg(event, value, label) {
+            event.stopPropagation();
+            const checkbox = event.currentTarget.querySelector('input[type="checkbox"]');
+            const option = event.currentTarget;
+            
+            // 切换选中状态
+            checkbox.checked = !checkbox.checked;
+            
+            if (checkbox.checked) {
+                option.classList.add('selected');
+                if (!selectedOrgs.find(org => org.value === value)) {
+                    selectedOrgs.push({ value, label });
+                }
+            } else {
+                option.classList.remove('selected');
+                selectedOrgs = selectedOrgs.filter(org => org.value !== value);
+            }
+            
+            updateOrgDisplay();
+        }
+
+        // 移除组织标签
+        function removeOrg(value) {
+            selectedOrgs = selectedOrgs.filter(org => org.value !== value);
+            const checkbox = document.querySelector(`#orgDropdown input[value="${value}"]`);
+            const option = checkbox.closest('.tag-selector-option');
+            checkbox.checked = false;
+            option.classList.remove('selected');
+            updateOrgDisplay();
+        }
+
+        // 更新组织显示
+        function updateOrgDisplay() {
+            const input = document.querySelector('#orgSelector .tag-selector-input');
+            input.innerHTML = '';
+            
+            if (selectedOrgs.length === 0) {
+                input.innerHTML = '<span class="tag-selector-placeholder">选择组织分类</span>';
+            } else {
+                selectedOrgs.forEach(org => {
+                    const tag = document.createElement('span');
+                    tag.className = 'tag-selector-tag';
+                    tag.innerHTML = `
+                        <span>${org.label}</span>
+                        <span class="tag-selector-tag-close" onclick="event.stopPropagation(); removeOrg('${org.value}')">&times;</span>
+                    `;
+                    input.appendChild(tag);
+                });
+            }
+        }
+
+        // 点击外部关闭下拉框
+        document.addEventListener('click', function(event) {
+            const selector = document.getElementById('orgSelector');
+            if (selector && !selector.contains(event.target)) {
+                const dropdown = document.getElementById('orgDropdown');
+                const input = document.querySelector('#orgSelector .tag-selector-input');
+                if (dropdown) dropdown.classList.remove('active');
+                if (input) input.classList.remove('active');
+            }
+        });
+
+        // 处理凭据来源切换
+        function handleCredentialSourceChange() {
+            const credentialSource = document.querySelector('input[name="credential-source"]:checked').value;
+            const credentialManagementSelect = document.getElementById('credentialManagementSelect');
+            const manualCredentialConfig = document.getElementById('manualCredentialConfig');
+            
+            if (credentialSource === 'management') {
+                credentialManagementSelect.style.display = 'block';
+                manualCredentialConfig.style.display = 'none';
+            } else {
+                credentialManagementSelect.style.display = 'none';
+                manualCredentialConfig.style.display = 'block';
+            }
+        }
+
+        // 处理驱动类型切换
+        function handleDriverChange() {
+            const driverType = document.getElementById('driverType').value;
+            const sshConfig = document.getElementById('sshConfig');
+            const ansibleConfig = document.getElementById('ansibleConfig');
+            const natsConfig = document.getElementById('natsConfig');
+            const credentialSourceGroup = document.getElementById('credentialSourceGroup');
+            const credentialManagementSelect = document.getElementById('credentialManagementSelect');
+            const manualCredentialConfig = document.getElementById('manualCredentialConfig');
+            
+            // 隐藏所有配置区
+            sshConfig.style.display = 'none';
+            ansibleConfig.style.display = 'none';
+            natsConfig.style.display = 'none';
+            
+            // 显示对应配置区
+            if (driverType === 'ssh') {
+                sshConfig.style.display = 'block';
+                credentialSourceGroup.style.display = 'block';
+                // 根据当前凭据来源显示对应配置
+                handleCredentialSourceChange();
+            } else if (driverType === 'ansible') {
+                ansibleConfig.style.display = 'block';
+                credentialSourceGroup.style.display = 'block';
+                // 根据当前凭据来源显示对应配置
+                handleCredentialSourceChange();
+            } else if (driverType === 'nats') {
+                natsConfig.style.display = 'block';
+                // nats-executor不需要凭据来源选择
+                credentialSourceGroup.style.display = 'none';
+                credentialManagementSelect.style.display = 'none';
+                manualCredentialConfig.style.display = 'none';
+            }
+        }
+
+        // 处理SSH认证方式切换
+        function handleSshAuthChange() {
+            const authType = document.querySelector('input[name="ssh-auth-type"]:checked').value;
+            const sshKeyInput = document.getElementById('sshKeyInput');
+            const sshPasswordInput = document.getElementById('sshPasswordInput');
+            
+            if (authType === 'key') {
+                sshKeyInput.style.display = 'block';
+                sshPasswordInput.style.display = 'none';
+            } else {
+                sshKeyInput.style.display = 'none';
+                sshPasswordInput.style.display = 'block';
+            }
+        }
+
+        // 处理Ansible认证方式切换
+        function handleAnsibleAuthChange() {
+            const authType = document.querySelector('input[name="ansible-auth-type"]:checked').value;
+            const ansibleKeyInput = document.getElementById('ansibleKeyInput');
+            const ansiblePasswordInput = document.getElementById('ansiblePasswordInput');
+            
+            if (authType === 'key') {
+                ansibleKeyInput.style.display = 'block';
+                ansiblePasswordInput.style.display = 'none';
+            } else {
+                ansibleKeyInput.style.display = 'none';
+                ansiblePasswordInput.style.display = 'block';
+            }
+        }
+
+        // 处理文件选择
+        function handleFileSelect(event, type) {
+            const file = event.target.files[0];
+            if (file) {
+                let displayElement;
+                if (type === 'ssh-key') {
+                    displayElement = document.getElementById('sshKeyFileName');
+                } else if (type === 'ansible-key') {
+                    displayElement = document.getElementById('ansibleKeyFileName');
+                }
+                
+                if (displayElement) {
+                    displayElement.textContent = `已选择文件: ${file.name}`;
+                    displayElement.style.display = 'block';
+                }
+            }
+        }
+
+        // 处理来源切换
+        function handleSourceChange() {
+            const source = document.querySelector('input[name="source"]:checked').value;
+            const driverSelect = document.getElementById('driverType');
+            const natsOption = driverSelect.querySelector('option[value="nats"]');
+            
+            if (source === 'node') {
+                // 节点管理来源，启用nats-executor选项
+                natsOption.disabled = false;
+                natsOption.style.color = '';
+                driverSelect.value = 'nats';
+            } else {
+                // 手动录入，禁用nats-executor选项
+                natsOption.disabled = true;
+                natsOption.style.color = '#8f959e';
+                if (driverSelect.value === 'nats') {
+                    driverSelect.value = 'ssh';
+                }
+            }
+            
+            handleDriverChange();
+        }
+
+        // 测试连接
+        function testConnection() {
+            alert('测试连接功能演示\n\n测试结果仅代表当前配置有效，实际执行以作业运行时为准。');
+        }
+
+        // 监听分组位置切换
+        document.querySelectorAll('input[name="group-level"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const parentSelector = document.getElementById('parentGroupSelector');
+                if (this.value === 'sub') {
+                    parentSelector.style.display = 'block';
+                    updateParentGroupOptions();
+                } else {
+                    parentSelector.style.display = 'none';
+                }
+            });
+        });
+
+        // 更新父分组选项
+        function updateParentGroupOptions() {
+            const select = document.getElementById('parentGroupSelect');
+            select.innerHTML = '';
+            
+            // 获取所有分组（只显示顶级分组和一级子分组）
+            document.querySelectorAll('.group-item > .group-header .group-name').forEach(item => {
+                const option = document.createElement('option');
+                const value = item.closest('.group-header').querySelector('.group-radio').value;
+                option.value = value;
+                option.textContent = item.textContent;
+                select.appendChild(option);
+            });
+        }
+
+        function openModal(source) {
+            const modal = document.getElementById('hostModal');
+            modal.classList.add('active');
+            
+            // 获取所有基础信息的输入字段
+            const targetName = document.getElementById('targetName');
+            const osTypeInputs = document.querySelectorAll('input[name="os-type"]');
+            const cloudArea = document.getElementById('cloudArea');
+            const ipAddress = document.getElementById('ipAddress');
+            const orgSelectorInput = document.querySelector('#orgSelector .tag-selector-input');
+            
+            // 获取驱动选择器和nats选项
+            const driverType = document.getElementById('driverType');
+            const natsOption = driverType.querySelector('option[value="nats"]');
+            
+            if (source === '节点管理') {
+                // 节点管理来源：基础信息不可修改
+                targetName.disabled = true;
+                targetName.style.background = '#f5f7fa';
+                targetName.style.cursor = 'not-allowed';
+                
+                osTypeInputs.forEach(input => {
+                    input.disabled = true;
+                    input.style.cursor = 'not-allowed';
+                });
+                
+                cloudArea.disabled = true;
+                cloudArea.style.background = '#f5f7fa';
+                cloudArea.style.cursor = 'not-allowed';
+                
+                ipAddress.disabled = true;
+                ipAddress.style.background = '#f5f7fa';
+                ipAddress.style.cursor = 'not-allowed';
+                
+                // 禁用组织选择器
+                if (orgSelectorInput) {
+                    orgSelectorInput.style.pointerEvents = 'none';
+                    orgSelectorInput.style.background = '#f5f7fa';
+                    orgSelectorInput.style.cursor = 'not-allowed';
+                }
+                
+                // 显示nats-executor选项
+                if (natsOption) {
+                    natsOption.style.display = 'block';
+                }
+                
+                // 驱动配置可修改，默认设置为nats-executor
+                driverType.value = 'nats';
+                handleDriverChange();
+            } else {
+                // 手动录入或添加目标：所有字段可修改
+                targetName.disabled = false;
+                targetName.style.background = 'white';
+                targetName.style.cursor = 'text';
+                
+                osTypeInputs.forEach(input => {
+                    input.disabled = false;
+                    input.style.cursor = 'pointer';
+                });
+                
+                cloudArea.disabled = false;
+                cloudArea.style.background = 'white';
+                cloudArea.style.cursor = 'pointer';
+                
+                ipAddress.disabled = false;
+                ipAddress.style.background = 'white';
+                ipAddress.style.cursor = 'text';
+                
+                // 启用组织选择器
+                if (orgSelectorInput) {
+                    orgSelectorInput.style.pointerEvents = 'auto';
+                    orgSelectorInput.style.background = 'white';
+                    orgSelectorInput.style.cursor = 'pointer';
+                }
+                
+                // 隐藏nats-executor选项
+                if (natsOption) {
+                    natsOption.style.display = 'none';
+                }
+                
+                // 设置默认驱动为ansible
+                driverType.value = 'ansible';
+                handleDriverChange();
+            }
+        }
+
+        function syncNodes() {
+            // 同步节点功能
+            const confirmed = confirm('确定要从节点管理同步目标节点吗？');
+            if (confirmed) {
+                // 这里可以添加实际的同步逻辑
+                alert('正在同步节点数据...');
+                // 实际应该是调用后端API来同步节点
+                // fetch('/api/sync-nodes').then(...)
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('hostModal').classList.remove('active');
+        }
+
+        function openGroupModal() {
+            document.getElementById('groupModal').classList.add('active');
+        }
+
+        function closeGroupModal() {
+            document.getElementById('groupModal').classList.remove('active');
+        }
+
+        function saveGroup() {
+            const groupName = document.getElementById('groupName').value.trim();
+            if (!groupName) {
+                alert('请输入分组名称');
+                return;
+            }
+            closeGroupModal();
+            alert('分组添加成功');
+        }
+
+        // 页面加载时渲染列表
+        document.addEventListener('DOMContentLoaded', () => {
+            renderTargetList();
+        });
+    </script>
+</body>
+</html>

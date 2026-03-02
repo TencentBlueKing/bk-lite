@@ -366,7 +366,7 @@
       "period": "Period",
       "alertNameTitle": "Please fill in the corresponding alarm name for the generated alarm, which can reference aggregated fields as variables, such as (source).",
       "channelTypeEmail": "Email",
-      "channelTypeWechatBot": "WeChat Bot",
+      "channelTypeWechatBot": "Group Chat Assistant",
       "channelTypeNats": "NATS Channel",
       "channelTypeFeishuBot": "Feishu Bot",
       "channelTypeDingtalkBot": "DingTalk Bot",

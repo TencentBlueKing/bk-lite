@@ -25,8 +25,7 @@ make_command() {
 
 # Function to get config content
 get_config_content() {
-    installpath=$1
-    cfg_dir="${installpath}/config"  # 只保留目录部分
+    cfg_dir=$1  
     declare -A ret
     if [[ ! -d "$cfg_dir" ]]; then
         return
@@ -124,9 +123,9 @@ for pid_info in "${pid_list[@]}"; do
             jdk_path="$exe"
         fi
     fi
-
-    output=$(get_config_content "$install_path")
-    eval $(get_config_content "$install_path")
+    actual_cfg_dir=${ret_dict[-Des.path.conf]:-"$install_path/config"}
+    output=$(get_config_content "$actual_cfg_dir")
+    eval $(get_config_content "$actual_cfg_dir")
     cfg_path=$(echo "$output" | grep ^CFG_PATH= | cut -d= -f2-)
 
     port=${ret[port]:-9200}

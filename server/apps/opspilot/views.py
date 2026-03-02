@@ -1,14 +1,12 @@
 import datetime
-import hashlib
 import json
 import time
+import uuid
 from typing import Any
 
-from django.conf import settings
 from django.db.models import Count
 from django.db.models.functions import TruncDate
-from django.http import FileResponse, HttpResponse, JsonResponse
-from django_minio_backend import MinioBackend
+from django.http import HttpResponse, JsonResponse
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
 
@@ -19,6 +17,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.services.skill_execute_service import SkillExecuteService
+from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
@@ -105,31 +104,6 @@ def get_bot_detail(request, bot_id):
         ],
     }
     return JsonResponse(return_data)
-
-
-@api_exempt
-def model_download(request):
-    bot_id = request.GET.get("bot_id")
-    bot = Bot.objects.filter(id=bot_id).first()
-    if not bot:
-        return JsonResponse({})
-    rasa_model = bot.rasa_model
-    if not rasa_model:
-        return JsonResponse({})
-    storage = MinioBackend(bucket_name="munchkin-private")
-    file = storage.open(rasa_model.model_file.name, "rb")
-
-    # Calculate ETag
-    data = file.read()
-    etag = hashlib.md5(data).hexdigest()
-
-    # Reset file pointer to start
-    file.seek(0)
-
-    response = FileResponse(file)
-    response["ETag"] = etag
-
-    return response
 
 
 def validate_openai_token(token, team=None, is_mobile=False):
@@ -318,7 +292,7 @@ def openai_completions(request):
     current_ip, _ = get_client_ip(request)
 
     stream_mode = kwargs.get("stream", False)
-    token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
+    token = extract_api_token(request)
 
     is_valid, msg = validate_openai_token(token)
     if not is_valid:
@@ -365,7 +339,7 @@ def lobe_skill_execute(request):
 
     stream_mode = kwargs.get("stream", False)
     # stream_mode = False
-    token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
+    token = extract_api_token(request)
     is_valid, msg = validate_header_token(token, int(kwargs["studio_id"]))
     if not is_valid:
         if stream_mode:
@@ -577,7 +551,7 @@ def execute_chat_flow(request, bot_id, node_id):
     is_mobile = any(keyword in user_agent.lower() for keyword in ["android", "iphone", "ipad", "mobile", "windows phone", "tauri"])
 
     # 验证token
-    token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
+    token = extract_api_token(request)
     is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None, is_mobile)
     if not is_valid:
         return JsonResponse(msg)
@@ -639,6 +613,24 @@ def execute_chat_flow(request, bot_id, node_id):
         }
 
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
+
+        if is_test:
+            execution_id = str(uuid.uuid4())
+            input_data["entry_type"] = node_type
+            input_data["execution_id"] = execution_id
+
+            async_task = chat_flow_test_execute_task.delay(bot_chat_flow.id, node_id, input_data, node_type, execution_id)
+            return JsonResponse(
+                {
+                    "result": True,
+                    "data": {
+                        "status": "accepted",
+                        "execution_id": execution_id,
+                        "task_id": async_task.id,
+                    },
+                },
+                status=202,
+            )
 
         # 区分流式响应节点类型：openai、agui、embedded_chat、mobile、web_chat
         stream_node_types = ["openai", "agui", "embedded_chat", "mobile", "web_chat"]
@@ -790,12 +782,3 @@ def execute_chat_flow_dingtalk(request, bot_id):
 
     # 5. 处理HTTP回调模式的消息
     return dingtalk_utils.handle_dingtalk_message(request, bot_chat_flow, dingtalk_config)
-
-
-@api_exempt
-def test(request):
-    ip, is_routable = get_client_ip(request)
-    kwargs = request.GET.dict()
-    data = json.loads(request.body) if request.body else {}
-    kwargs.update(data)
-    return JsonResponse({"result": True, "data": {"ip": ip, "is_routable": is_routable, "kwargs": kwargs}})

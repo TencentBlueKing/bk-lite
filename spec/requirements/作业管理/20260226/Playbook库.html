@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Playbook库 - Job</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Fira Sans', 'Fira Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #1f2329; line-height: 1.5; }
+        .top-header { background: #fff; height: 60px; border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 100; }
+        .header-left { display: flex; align-items: center; gap: 8px; }
+        .logo { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 18px; }
+        .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; font-weight: bold; box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25); }
+        .header-nav { display: flex; gap: 8px; margin-left: 48px; }
+        .nav-item { display: flex; align-items: center; gap: 8px; color: #646a73; cursor: pointer; font-size: 14px; padding: 8px 16px; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.1); }
+        .header-right { display: flex; align-items: center; gap: 20px; color: #646a73; font-size: 14px; }
+        .header-right > span { cursor: pointer; padding: 6px 12px; border-radius: 6px; transition: all 0.3s; }
+        .header-right > span:hover { background: rgba(0, 0, 0, 0.04); color: #0052d9; }
+        .sub-header { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); height: 52px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); display: flex; align-items: center; padding: 0 32px; }
+        .sub-nav { display: flex; gap: 4px; }
+        .sub-nav-item { padding: 10px 20px; cursor: pointer; font-size: 14px; color: #646a73; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .sub-nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .sub-nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.12); }
+        .main-container { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
+        .page-intro { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; border: 1px solid #e5e7eb; }
+        .intro-title { font-size: 16px; font-weight: 600; color: #1f2329; margin-bottom: 8px; }
+        .intro-desc { font-size: 14px; color: #646a73; line-height: 1.6; margin: 0; }
+        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+        .page-title { font-size: 20px; font-weight: 600; color: #1f2329; }
+        .btn { padding: 10px 20px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.3s; border: none; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; }
+        .btn-primary { background: #0052d9; color: white; }
+        .btn-primary:hover { background: #0041ad; }
+        .btn-default { background: white; color: #646a73; border: 1px solid #dcdee0; }
+        .btn-default:hover { border-color: #0052d9; color: #0052d9; }
+        .btn-danger { background: #ea3636; color: white; }
+        .btn-danger:hover { background: #c72929; }
+        .btn-success { background: #00a870; color: white; }
+        .btn-success:hover { background: #008a5c; }
+        .content-card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06); }
+        
+        /* 表格样式 */
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: #f5f7fa; }
+        th { padding: 12px 16px; text-align: left; font-size: 13px; font-weight: 600; color: #646a73; }
+        tbody tr { border-bottom: 1px solid #f0f1f5; transition: all 0.2s; }
+        tbody tr:hover { background: #f9fafb; }
+        td { padding: 16px; font-size: 14px; color: #1f2329; }
+        .action-links { display: flex; gap: 12px; }
+        .action-link { color: #0052d9; cursor: pointer; transition: all 0.2s; text-decoration: none; }
+        .action-link:hover { color: #0041ad; }
+        .action-link.danger { color: #ea3636; }
+        .action-link.danger:hover { color: #c72929; }
+        .playbook-name { font-weight: 500; color: #1f2329; }
+        .playbook-desc-cell { color: #8f959e; font-size: 13px; max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+        .org-cell { white-space: nowrap; }
+        td.date-cell { white-space: nowrap; }
+
+        /* 搜索组件 */
+        .search-group {
+            display: flex;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            overflow: hidden;
+            background: white;
+            transition: all 0.3s;
+        }
+        .search-group:hover { border-color: rgba(0, 82, 217, 0.3); }
+        .search-group:focus-within { border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .search-select {
+            padding: 8px 12px;
+            border: none;
+            border-right: 1px solid #dcdee0;
+            font-size: 14px;
+            outline: none;
+            background: #f5f7fa;
+            cursor: pointer;
+            min-width: 100px;
+        }
+        .search-select:hover { background: #eef0f3; }
+        .search-input-field {
+            padding: 8px 12px;
+            border: none;
+            font-size: 14px;
+            outline: none;
+            width: 200px;
+            background: white;
+        }
+        .search-input-field::placeholder { color: #8f959e; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; }
+        .modal-content.large { max-width: 900px; }
+        .modal-content.xlarge { max-width: 1100px; max-height: 85vh; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-header-left { display: flex; align-items: center; gap: 16px; }
+        .modal-title { font-size: 18px; font-weight: 600; }
+        .modal-actions { display: flex; gap: 8px; }
+        .modal-close { font-size: 24px; cursor: pointer; color: #8f959e; transition: color 0.2s; }
+        .modal-close:hover { color: #1f2329; }
+        .modal-footer { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+        .modal-body { max-height: calc(85vh - 180px); overflow-y: auto; }
+
+        .form-group { margin-bottom: 20px; }
+        .form-label { display: block; font-size: 14px; font-weight: 500; color: #1f2329; margin-bottom: 8px; }
+        .form-input { width: 100%; padding: 10px 12px; border: 1px solid #dcdee0; border-radius: 6px; font-size: 14px; }
+        .form-input:focus { outline: none; border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+
+        .upload-area { border: 2px dashed #dcdee0; border-radius: 8px; padding: 40px; text-align: center; cursor: pointer; transition: all 0.3s; background: #fafbfc; }
+        .upload-area:hover { border-color: #0052d9; background: #f0f5ff; }
+        .upload-area.dragover { border-color: #0052d9; background: #e6f0ff; }
+        .upload-area.has-file { border-color: #00a870; background: #e6fff2; }
+        .upload-area-compact { padding: 24px; }
+        .upload-icon { font-size: 48px; margin-bottom: 12px; }
+        .upload-icon-sm { font-size: 32px; margin-bottom: 8px; }
+        .upload-text { font-size: 14px; color: #646a73; }
+        .upload-tip { font-size: 12px; color: #8f959e; margin-top: 8px; }
+        .upload-filename { font-size: 14px; color: #00a870; font-weight: 500; margin-top: 8px; }
+
+        .tabs { display: flex; gap: 4px; border-bottom: 1px solid #e5e7eb; margin-bottom: 20px; }
+        .tab-item { padding: 12px 20px; cursor: pointer; font-size: 14px; color: #646a73; border-bottom: 2px solid transparent; transition: all 0.3s; font-weight: 500; margin-bottom: -1px; }
+        .tab-item:hover { color: #0052d9; }
+        .tab-item.active { color: #0052d9; border-bottom-color: #0052d9; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .info-row { display: flex; padding: 12px 0; border-bottom: 1px solid #f0f1f5; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { width: 120px; color: #8f959e; font-size: 14px; flex-shrink: 0; }
+        .info-value { flex: 1; font-size: 14px; color: #1f2329; }
+
+        .param-table { width: 100%; border-collapse: collapse; }
+        .param-table th { background: #f5f7fa; padding: 12px 16px; text-align: left; font-size: 13px; font-weight: 600; color: #646a73; border-bottom: 1px solid #e5e7eb; }
+        .param-table td { padding: 12px 16px; font-size: 14px; color: #1f2329; border-bottom: 1px solid #f0f1f5; }
+        .param-table tr:last-child td { border-bottom: none; }
+        .param-name { font-family: 'Fira Code', 'Monaco', 'Menlo', monospace; background: #f5f7fa; padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #0052d9; }
+        .param-default { font-family: 'Fira Code', 'Monaco', 'Menlo', monospace; color: #646a73; font-size: 13px; }
+
+        .readme-content { background: #fafbfc; border-radius: 8px; padding: 20px; font-size: 14px; line-height: 1.8; }
+        .readme-content h1, .readme-content h2, .readme-content h3 { margin-top: 16px; margin-bottom: 8px; color: #1f2329; }
+        .readme-content h1 { font-size: 20px; }
+        .readme-content h2 { font-size: 16px; }
+        .readme-content h3 { font-size: 14px; }
+        .readme-content p { margin-bottom: 12px; color: #646a73; }
+        .readme-content ul { margin-left: 20px; margin-bottom: 12px; }
+        .readme-content li { margin-bottom: 4px; color: #646a73; }
+        .readme-content code { background: #e6f0ff; padding: 2px 6px; border-radius: 4px; font-family: 'Fira Code', 'Monaco', 'Menlo', monospace; font-size: 13px; color: #0052d9; }
+        .readme-content pre { background: #1f2329; color: #e6e6e6; padding: 16px; border-radius: 6px; overflow-x: auto; margin-bottom: 12px; }
+        .readme-content pre code { background: transparent; color: inherit; padding: 0; }
+
+        .file-tree { background: #fafbfc; border-radius: 8px; padding: 16px; }
+        .file-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 6px; transition: all 0.2s; }
+        .file-item:hover { background: #f0f1f5; }
+        .file-item-left { display: flex; align-items: center; gap: 8px; }
+        .file-icon { font-size: 16px; }
+        .file-name { font-size: 14px; color: #1f2329; }
+        .file-name.folder { font-weight: 500; }
+        .file-indent-1 { padding-left: 24px; }
+        .file-indent-2 { padding-left: 48px; }
+        .file-indent-3 { padding-left: 72px; }
+        .file-preview-btn { color: #0052d9; font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: all 0.2s; }
+        .file-preview-btn:hover { background: #e6f0ff; }
+
+        .code-viewer { background: #1f2329; border-radius: 8px; overflow: hidden; }
+        .code-header { background: #2d3748; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+        .code-filename { color: #e6e6e6; font-size: 13px; font-family: 'Fira Code', 'Monaco', 'Menlo', monospace; }
+        .code-close { color: #8f959e; cursor: pointer; font-size: 18px; }
+        .code-close:hover { color: #fff; }
+        .code-body { padding: 16px; max-height: 400px; overflow: auto; }
+        .code-body pre { margin: 0; color: #e6e6e6; font-family: 'Fira Code', 'Monaco', 'Menlo', monospace; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+        .code-keyword { color: #f472b6; }
+        .code-string { color: #a5d6ff; }
+        .code-comment { color: #6b7280; }
+
+        .confirm-text { font-size: 14px; color: #646a73; line-height: 1.6; }
+        .confirm-highlight { color: #ea3636; font-weight: 500; }
+
+        .version-badge { background: #e6f0ff; color: #0052d9; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+
+        /* 多选下拉组件 */
+        .multi-select { position: relative; }
+        .multi-select-trigger { display: flex; flex-wrap: wrap; gap: 6px; min-height: 42px; padding: 8px 12px; border: 1px solid #dcdee0; border-radius: 6px; cursor: pointer; background: white; align-items: center; }
+        .multi-select-trigger:hover { border-color: #0052d9; }
+        .multi-select-trigger.active { border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .multi-select-placeholder { color: #8f959e; font-size: 14px; }
+        .multi-select-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: #f0f1f5; border-radius: 4px; font-size: 13px; color: #1f2329; }
+        .multi-select-tag-remove { cursor: pointer; color: #8f959e; font-size: 14px; line-height: 1; }
+        .multi-select-tag-remove:hover { color: #ea3636; }
+        .multi-select-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12); margin-top: 4px; z-index: 200; display: none; max-height: 240px; overflow-y: auto; }
+        .multi-select-dropdown.active { display: block; }
+        .multi-select-option { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; transition: all 0.2s; }
+        .multi-select-option:hover { background: #f5f7fa; }
+        .multi-select-option.selected { background: #e6f0ff; }
+        .multi-select-checkbox { width: 16px; height: 16px; border: 1px solid #dcdee0; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: white; flex-shrink: 0; }
+        .multi-select-option.selected .multi-select-checkbox { background: #0052d9; border-color: #0052d9; }
+        .multi-select-label { font-size: 14px; color: #1f2329; }
+
+        /* 组织标签 */
+        .org-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; margin-right: 6px; margin-bottom: 4px; }
+        .org-tags { display: flex; flex-wrap: wrap; margin-top: 8px; }
+    
+        /* ===== UI/UX ENHANCEMENTS ===== */
+        
+        /* Focus states for accessibility */
+        a:focus-visible, button:focus-visible, input:focus-visible, 
+        select:focus-visible, textarea:focus-visible, 
+        [tabindex]:focus-visible, .nav-item:focus-visible,
+        .sub-nav-item:focus-visible {
+            outline: 2px solid #0052d9;
+            outline-offset: 2px;
+        }
+
+        /* Enhanced table row hover */
+        tbody tr {
+            border-left: 3px solid transparent;
+        }
+        tbody tr:hover {
+            background: #f0f5ff !important;
+            border-left: 3px solid #0052d9;
+        }
+
+        /* Inline SVG icon alignment */
+        .nav-item svg, .sub-nav-item svg, .header-right svg {
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+    
+        /* Table responsive wrapper */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table-responsive table {
+            min-width: 100%;
+        }
+
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo"><div class="logo-icon">BK</div><span>Job</span></div>
+            <nav class="header-nav">
+                <div class="nav-item" onclick="location.href='首页.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>首页</span></div>
+                <div class="nav-item" onclick="location.href='快速执行.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></span><span>作业执行</span></div>
+                <div class="nav-item active"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span>作业模版</span></div>
+                <div class="nav-item" onclick="location.href='目标管理.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><span>目标管理</span></div>
+                <div class="nav-item" onclick="location.href='高危命令配置.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span>系统配置</span></div>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> 帮助文档</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 语言: 简体中文</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Admin</span>
+        </div>
+    </div>
+
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <div class="sub-nav-item" onclick="location.href='脚本库.html'">脚本库</div>
+            <div class="sub-nav-item active">Playbook库</div>
+        </nav>
+    </div>
+
+    <div class="main-container">
+        <div class="page-intro">
+            <h2 class="intro-title">Playbook 库</h2>
+            <p class="intro-desc">Playbook 是 Ansible 自动化脚本的集合，用于批量执行运维任务。您可以在此上传、管理和版本控制 Playbook，并将其分配给不同组织使用。</p>
+        </div>
+
+        <div class="content-card">
+            <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <div class="search-group">
+                    <select class="search-select" id="searchField" onchange="filterPlaybookList()">
+                        <option value="name">名称</option>
+                        <option value="version">版本</option>
+                        <option value="org">组织</option>
+                        <option value="desc">描述</option>
+                    </select>
+                    <input type="text" class="search-input-field" id="searchInput" placeholder="搜索..." oninput="filterPlaybookList()">
+                </div>
+                <button class="btn btn-primary" onclick="openUploadModal()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg> 上传 Playbook</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 160px;">名称</th>
+                        <th style="width: 80px;">版本</th>
+                        <th style="width: 150px;">组织</th>
+                        <th style="width: 140px; white-space: nowrap;">更新时间</th>
+                        <th>描述</th>
+                        <th style="width: 180px; white-space: nowrap;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="playbookTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal" id="uploadModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">上传 Playbook</div>
+                <span class="modal-close" onclick="closeUploadModal()">×</span>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">上传文件</label>
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-icon"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
+                    <div class="upload-text">点击或拖拽 ZIP 文件到此处上传</div>
+                    <div class="upload-tip">上传一个包含 playbook.yml 和 README.md 的 Playbook 目录压缩包</div>
+                    <div class="upload-filename" id="uploadFilename" style="display: none;"></div>
+                    <input type="file" id="fileInput" accept=".zip" style="display: none;" onchange="handleFileSelect(event)" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">版本号 <span style="color: #8f959e; font-weight: normal;">(选填)</span></label>
+                <input type="text" class="form-input" id="uploadVersion" placeholder="不填则默认为 v1.0.0" />
+                <div style="font-size: 12px; color: #8f959e; margin-top: 6px;">建议使用语义化版本，如 v1.0.0、v2.1.0</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">所属组织 <span style="color: #ea3636;">*</span></label>
+                <div class="multi-select" id="uploadOrgSelect">
+                    <div class="multi-select-trigger" onclick="toggleMultiSelect('uploadOrgSelect')">
+                        <span class="multi-select-placeholder">请选择组织</span>
+                    </div>
+                    <div class="multi-select-dropdown" id="uploadOrgDropdown"></div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="confirmUpload()">确认上传</button>
+                <button class="btn btn-default" onclick="closeUploadModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="detailModal">
+        <div class="modal-content xlarge">
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <div class="modal-title" id="detailTitle">Playbook 详情</div>
+                    <span class="version-badge" id="detailVersion">v1.0</span>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-default btn-sm" onclick="downloadPlaybook()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 2px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 下载</button>
+                    <button class="btn btn-success btn-sm" onclick="openUpdateModal()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 更新版本</button>
+                    <span class="modal-close" onclick="closeDetailModal()">×</span>
+                </div>
+            </div>
+            
+            <div class="tabs" id="detailTabs">
+                <div class="tab-item active" data-tab="info" onclick="switchTab('info')">基本信息</div>
+                <div class="tab-item" data-tab="params" onclick="switchTab('params')">参数说明</div>
+                <div class="tab-item" data-tab="files" onclick="switchTab('files')">文件列表</div>
+                <div class="tab-item" data-tab="readme" onclick="switchTab('readme')">README</div>
+            </div>
+
+            <div class="modal-body">
+                <div class="tab-content active" id="tab-info">
+                    <div class="info-row">
+                        <div class="info-label">Playbook 名称</div>
+                        <div class="info-value" id="detailName">-</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">描述</div>
+                        <div class="info-value" id="detailDesc">-</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">当前版本</div>
+                        <div class="info-value" id="detailVersionInfo">-</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">最近更新时间</div>
+                        <div class="info-value" id="detailUpdateTime">-</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">上传者</div>
+                        <div class="info-value" id="detailUploader">-</div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-params">
+                    <table class="param-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 180px;">参数名</th>
+                                <th style="width: 150px;">默认值</th>
+                                <th>说明</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paramTableBody"></tbody>
+                    </table>
+                </div>
+
+                <div class="tab-content" id="tab-files">
+                    <div class="file-tree" id="fileTree"></div>
+                    <div class="code-viewer" id="codeViewer" style="display: none; margin-top: 16px;">
+                        <div class="code-header">
+                            <span class="code-filename" id="codeFilename">playbook.yml</span>
+                            <span class="code-close" onclick="closeCodeViewer()">×</span>
+                        </div>
+                        <div class="code-body">
+                            <pre id="codeContent"></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-readme">
+                    <div class="readme-content" id="readmeContent"></div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeDetailModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="updateModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">更新 Playbook</div>
+                <span class="modal-close" onclick="closeUpdateModal()">×</span>
+            </div>
+            
+            <div style="background: #fff7e6; border: 1px solid #ffd591; border-radius: 6px; padding: 12px; margin-bottom: 20px;">
+                <div style="display: flex; align-items: start; gap: 8px;">
+                    <span style="font-size: 16px;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+                    <div style="flex: 1; font-size: 13px; color: #ad6800;">
+                        上传新版本将覆盖当前版本。建议先下载当前版本备份。
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">当前版本</label>
+                <div style="font-size: 14px; color: #646a73;" id="updateCurrentVersion">v1.0.0</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">上传新版本</label>
+                <div class="upload-area upload-area-compact" id="updateUploadArea" onclick="document.getElementById('updateFileInput').click()">
+                    <div class="upload-icon-sm"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
+                    <div class="upload-text">点击选择新的 ZIP 文件</div>
+                    <div class="upload-filename" id="updateFilename" style="display: none;"></div>
+                    <input type="file" id="updateFileInput" accept=".zip" style="display: none;" onchange="handleUpdateFileSelect(event)" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">新版本号 <span style="color: #8f959e; font-weight: normal;">(选填)</span></label>
+                <input type="text" class="form-input" id="updateVersion" placeholder="" />
+                <div style="font-size: 12px; color: #8f959e; margin-top: 6px;">不填则在当前版本上自动 +0.0.1</div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-success" onclick="confirmUpdate()">确认更新</button>
+                <button class="btn btn-default" onclick="closeUpdateModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="editModal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <div class="modal-title">修改基础信息</div>
+                <span class="modal-close" onclick="closeEditModal()">×</span>
+            </div>
+            
+            <input type="hidden" id="editPlaybookId" />
+            
+            <div class="form-group">
+                <label class="form-label">名称</label>
+                <input type="text" class="form-input" id="editName" placeholder="请输入 Playbook 名称" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">描述</label>
+                <textarea class="form-input" id="editDesc" rows="3" placeholder="请输入描述信息" style="resize: vertical;"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">所属组织 <span style="color: #ea3636;">*</span></label>
+                <div class="multi-select" id="editOrgSelect">
+                    <div class="multi-select-trigger" onclick="toggleMultiSelect('editOrgSelect')">
+                        <span class="multi-select-placeholder">请选择组织</span>
+                    </div>
+                    <div class="multi-select-dropdown" id="editOrgDropdown"></div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="confirmEdit()">保存</button>
+                <button class="btn btn-default" onclick="closeEditModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="deleteModal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <div class="modal-title">确认删除</div>
+                <span class="modal-close" onclick="closeDeleteModal()">×</span>
+            </div>
+            
+            <div class="confirm-text">
+                确定要删除 Playbook <span class="confirm-highlight" id="deletePlaybookName">""</span> 吗？<br>
+                此操作不可恢复。
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-danger" onclick="confirmDelete()">确认删除</button>
+                <button class="btn btn-default" onclick="closeDeleteModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 组织列表（平台权限体系）
+        const orgList = [
+            { id: 1, name: '运维部', color: '#0052d9' },
+            { id: 2, name: '开发部', color: '#00a870' },
+            { id: 3, name: '测试部', color: '#ff9800' },
+            { id: 4, name: '安全部', color: '#ea3636' },
+            { id: 5, name: 'DBA组', color: '#7c3aed' },
+            { id: 6, name: '基础架构', color: '#0891b2' }
+        ];
+
+        let playbookData = [
+            {
+                id: 1,
+                name: 'Nginx 部署',
+                desc: '自动化部署和配置 Nginx Web 服务器，包含负载均衡和SSL配置',
+                version: 'v1.2.0',
+                updateTime: '2026-01-15',
+                uploader: 'Admin',
+                orgIds: [1, 2],
+                params: [
+                    { name: 'nginx_version', default: '1.24.0', desc: '要安装的 Nginx 版本' },
+                    { name: 'worker_processes', default: 'auto', desc: 'Nginx worker 进程数' },
+                    { name: 'enable_ssl', default: 'true', desc: '是否启用 SSL' },
+                    { name: 'ssl_cert_path', default: '/etc/nginx/ssl/', desc: 'SSL 证书存放路径' }
+                ],
+                files: [
+                    { name: 'nginx-deploy/', type: 'folder', indent: 0 },
+                    { name: 'playbook.yml', type: 'yaml', indent: 1, content: `---
+- name: Deploy Nginx
+  hosts: webservers
+  become: yes
+  vars:
+    nginx_version: "{{ nginx_version | default('1.24.0') }}"
+    worker_processes: "{{ worker_processes | default('auto') }}"
+    enable_ssl: "{{ enable_ssl | default(true) }}"
+  
+  tasks:
+    - name: Install Nginx
+      apt:
+        name: "nginx={{ nginx_version }}"
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Configure Nginx
+      template:
+        src: templates/nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+      notify: Restart Nginx
+    
+    - name: Enable SSL
+      include_tasks: tasks/ssl.yml
+      when: enable_ssl | bool
+  
+  handlers:
+    - name: Restart Nginx
+      service:
+        name: nginx
+        state: restarted` },
+                    { name: 'roles/', type: 'folder', indent: 1 },
+                    { name: 'nginx/', type: 'folder', indent: 2 },
+                    { name: 'tasks/', type: 'folder', indent: 3 },
+                    { name: 'templates/', type: 'folder', indent: 3 },
+                    { name: 'vars/', type: 'folder', indent: 1 },
+                    { name: 'main.yml', type: 'yaml', indent: 2, content: `---
+# Nginx 配置变量
+nginx_user: www-data
+nginx_worker_connections: 1024
+nginx_keepalive_timeout: 65
+
+# SSL 配置
+ssl_protocols: "TLSv1.2 TLSv1.3"
+ssl_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256"
+
+# 日志配置
+access_log_path: /var/log/nginx/access.log
+error_log_path: /var/log/nginx/error.log` },
+                    { name: 'README.md', type: 'md', indent: 1, content: '# Nginx 部署 Playbook\n\n自动化部署 Nginx...' }
+                ],
+                readme: `<h1>Nginx 部署 Playbook</h1>
+<p>本 Playbook 用于自动化部署和配置 Nginx Web 服务器。</p>
+<h2>功能特性</h2>
+<ul>
+    <li>支持自定义 Nginx 版本安装</li>
+    <li>自动配置负载均衡</li>
+    <li>SSL/TLS 证书自动配置</li>
+    <li>支持虚拟主机配置</li>
+</ul>
+<h2>使用方法</h2>
+<pre><code>ansible-playbook -i inventory playbook.yml -e "nginx_version=1.24.0"</code></pre>
+<h2>注意事项</h2>
+<p>运行前请确保目标主机已安装 Python 3.x。</p>`
+            },
+            {
+                id: 2,
+                name: 'MySQL 高可用部署',
+                desc: '部署 MySQL 主从复制架构，包含自动故障转移和数据备份',
+                version: 'v2.0.0',
+                updateTime: '2026-01-12',
+                uploader: 'Admin',
+                orgIds: [1, 5],
+                params: [
+                    { name: 'mysql_version', default: '8.0', desc: 'MySQL 版本' },
+                    { name: 'mysql_root_password', default: '', desc: 'root 用户密码（必填）' },
+                    { name: 'replication_user', default: 'repl', desc: '复制用户名' },
+                    { name: 'backup_enabled', default: 'true', desc: '是否启用自动备份' }
+                ],
+                files: [
+                    { name: 'mysql-ha/', type: 'folder', indent: 0 },
+                    { name: 'playbook.yml', type: 'yaml', indent: 1, content: `---
+- name: Deploy MySQL HA
+  hosts: databases
+  become: yes
+  vars:
+    mysql_version: "{{ mysql_version | default('8.0') }}"
+  
+  roles:
+    - mysql-server
+    - mysql-replication` },
+                    { name: 'roles/', type: 'folder', indent: 1 },
+                    { name: 'README.md', type: 'md', indent: 1 }
+                ],
+                readme: `<h1>MySQL 高可用部署 Playbook</h1>
+<p>部署 MySQL 主从复制架构，实现数据库高可用。</p>
+<h2>架构说明</h2>
+<ul><li>1 个 Master 节点</li><li>1-N 个 Slave 节点</li><li>支持半同步复制</li></ul>`
+            },
+            {
+                id: 3,
+                name: 'Docker 环境配置',
+                desc: '安装和配置 Docker Engine，包含镜像加速器和网络设置',
+                version: 'v1.5.0',
+                updateTime: '2026-01-10',
+                uploader: 'DevOps',
+                orgIds: [1, 2, 6],
+                params: [
+                    { name: 'docker_version', default: 'latest', desc: 'Docker 版本' },
+                    { name: 'docker_mirror', default: 'https://mirror.ccs.tencentyun.com', desc: '镜像加速器地址' },
+                    { name: 'storage_driver', default: 'overlay2', desc: '存储驱动类型' }
+                ],
+                files: [
+                    { name: 'docker-setup/', type: 'folder', indent: 0 },
+                    { name: 'playbook.yml', type: 'yaml', indent: 1, content: `---
+- name: Setup Docker
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Install Docker
+      include_role:
+        name: docker` },
+                    { name: 'README.md', type: 'md', indent: 1 }
+                ],
+                readme: `<h1>Docker 环境配置 Playbook</h1><p>一键安装和配置 Docker 运行环境。</p>`
+            },
+            {
+                id: 4,
+                name: 'Redis 集群部署',
+                desc: '部署 Redis 集群模式，支持数据分片和高可用',
+                version: 'v1.0.0',
+                updateTime: '2026-01-08',
+                uploader: 'Admin',
+                orgIds: [1],
+                params: [
+                    { name: 'redis_version', default: '7.0', desc: 'Redis 版本' },
+                    { name: 'cluster_replicas', default: '1', desc: '每个主节点的从节点数' }
+                ],
+                files: [
+                    { name: 'redis-cluster/', type: 'folder', indent: 0 },
+                    { name: 'playbook.yml', type: 'yaml', indent: 1 },
+                    { name: 'README.md', type: 'md', indent: 1 }
+                ],
+                readme: `<h1>Redis 集群部署</h1><p>最少需要 6 个节点（3主3从）。</p>`
+            },
+            {
+                id: 5,
+                name: '系统安全加固',
+                desc: 'Linux 系统安全加固，包含防火墙、SSH 配置和日志审计',
+                version: 'v3.1.0',
+                updateTime: '2026-01-05',
+                uploader: 'Security',
+                orgIds: [4],
+                params: [
+                    { name: 'ssh_port', default: '22', desc: 'SSH 端口' },
+                    { name: 'disable_root_login', default: 'true', desc: '禁用 root 远程登录' }
+                ],
+                files: [
+                    { name: 'security-hardening/', type: 'folder', indent: 0 },
+                    { name: 'playbook.yml', type: 'yaml', indent: 1 },
+                    { name: 'README.md', type: 'md', indent: 1 }
+                ],
+                readme: `<h1>系统安全加固</h1><p>符合等保要求的 Linux 安全加固。</p>`
+            },
+            {
+                id: 6,
+                name: 'Kubernetes 集群初始化',
+                desc: '初始化 K8s 集群，包含 Master 和 Worker 节点部署',
+                version: 'v2.3.0',
+                updateTime: '2026-01-03',
+                uploader: 'Admin',
+                orgIds: [1, 6],
+                params: [
+                    { name: 'k8s_version', default: '1.28.0', desc: 'Kubernetes 版本' },
+                    { name: 'pod_network_cidr', default: '10.244.0.0/16', desc: 'Pod 网络 CIDR' }
+                ],
+                files: [
+                    { name: 'k8s-init/', type: 'folder', indent: 0 },
+                    { name: 'playbook.yml', type: 'yaml', indent: 1 },
+                    { name: 'README.md', type: 'md', indent: 1 }
+                ],
+                readme: `<h1>Kubernetes 集群初始化</h1><p>使用 kubeadm 初始化集群。</p>`
+            }
+        ];
+
+        let selectedFile = null;
+        let updateFile = null;
+        let deleteTargetId = null;
+        let currentPlaybookId = null;
+        let nextId = 7;
+
+        function renderPlaybookList(data) {
+            const list = data || playbookData;
+            const tbody = document.getElementById('playbookTableBody');
+            tbody.innerHTML = list.map(playbook => `
+                <tr>
+                    <td><span class="playbook-name">${playbook.name}</span></td>
+                    <td><span class="version-badge">${playbook.version}</span></td>
+                    <td class="org-cell">${renderOrgText(playbook.orgIds)}</td>
+                    <td class="date-cell">${playbook.updateTime}</td>
+                    <td>${playbook.desc}</td>
+                    <td>
+                        <div class="action-links">
+                            <a class="action-link" onclick="viewPlaybook(${playbook.id})">查看</a>
+                            <a class="action-link" onclick="editPlaybook(${playbook.id})">编辑</a>
+                            <a class="action-link" href="快速执行.html">执行</a>
+                            <a class="action-link danger" onclick="deletePlaybook(${playbook.id})">删除</a>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 搜索过滤
+        function filterPlaybookList() {
+            const field = document.getElementById('searchField').value;
+            const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+            
+            if (!keyword) {
+                renderPlaybookList();
+                return;
+            }
+            
+            const filtered = playbookData.filter(playbook => {
+                switch (field) {
+                    case 'name':
+                        return playbook.name.toLowerCase().includes(keyword);
+                    case 'version':
+                        return playbook.version.toLowerCase().includes(keyword);
+                    case 'org':
+                        return renderOrgText(playbook.orgIds).toLowerCase().includes(keyword);
+                    case 'desc':
+                        return playbook.desc.toLowerCase().includes(keyword);
+                    default:
+                        return true;
+                }
+            });
+            
+            renderPlaybookList(filtered);
+        }
+
+        // 渲染组织文本（逗号分隔）
+        function renderOrgText(orgIds) {
+            if (!orgIds || orgIds.length === 0) return '-';
+            return orgIds.map(id => {
+                const org = orgList.find(o => o.id === id);
+                return org ? org.name : '';
+            }).filter(n => n).join('，');
+        }
+
+        // 渲染组织标签（用于弹窗等场景）
+        function renderOrgTags(orgIds) {
+            if (!orgIds || orgIds.length === 0) return '';
+            return orgIds.map(id => {
+                const org = orgList.find(o => o.id === id);
+                if (!org) return '';
+                return `<span class="org-tag" style="background: ${org.color}20; color: ${org.color};">${org.name}</span>`;
+            }).join('');
+        }
+
+        // 点击其他地方关闭多选下拉
+        document.addEventListener('click', function(e) {
+            // 关闭多选下拉
+            if (!e.target.closest('.multi-select')) {
+                document.querySelectorAll('.multi-select-dropdown').forEach(d => {
+                    d.classList.remove('active');
+                });
+                document.querySelectorAll('.multi-select-trigger').forEach(t => {
+                    t.classList.remove('active');
+                });
+            }
+        });
+
+        // 多选下拉组件状态
+        let uploadSelectedOrgs = [];
+        let editSelectedOrgs = [];
+
+        // 初始化多选下拉
+        function initMultiSelect(containerId, dropdownId, selectedIds = []) {
+            const dropdown = document.getElementById(dropdownId);
+            dropdown.innerHTML = orgList.map(org => `
+                <div class="multi-select-option ${selectedIds.includes(org.id) ? 'selected' : ''}" 
+                     data-id="${org.id}" 
+                     onclick="event.stopPropagation(); toggleOrgOption('${containerId}', ${org.id})">
+                    <div class="multi-select-checkbox">${selectedIds.includes(org.id) ? '&#10003;' : ''}</div>
+                    <span class="multi-select-label">${org.name}</span>
+                </div>
+            `).join('');
+            
+            if (containerId === 'uploadOrgSelect') {
+                uploadSelectedOrgs = [...selectedIds];
+            } else {
+                editSelectedOrgs = [...selectedIds];
+            }
+            updateMultiSelectTrigger(containerId);
+        }
+
+        // 切换多选下拉显示
+        function toggleMultiSelect(containerId) {
+            const container = document.getElementById(containerId);
+            const trigger = container.querySelector('.multi-select-trigger');
+            const dropdown = container.querySelector('.multi-select-dropdown');
+            
+            // 关闭其他下拉
+            document.querySelectorAll('.multi-select-dropdown').forEach(d => {
+                if (d !== dropdown) d.classList.remove('active');
+            });
+            document.querySelectorAll('.multi-select-trigger').forEach(t => {
+                if (t !== trigger) t.classList.remove('active');
+            });
+            
+            trigger.classList.toggle('active');
+            dropdown.classList.toggle('active');
+        }
+
+        // 切换选项
+        function toggleOrgOption(containerId, orgId) {
+            let selectedOrgs = containerId === 'uploadOrgSelect' ? uploadSelectedOrgs : editSelectedOrgs;
+            const idx = selectedOrgs.indexOf(orgId);
+            if (idx > -1) {
+                selectedOrgs.splice(idx, 1);
+            } else {
+                selectedOrgs.push(orgId);
+            }
+            
+            if (containerId === 'uploadOrgSelect') {
+                uploadSelectedOrgs = selectedOrgs;
+            } else {
+                editSelectedOrgs = selectedOrgs;
+            }
+            
+            // 更新选项状态
+            const dropdownId = containerId === 'uploadOrgSelect' ? 'uploadOrgDropdown' : 'editOrgDropdown';
+            initMultiSelect(containerId, dropdownId, selectedOrgs);
+        }
+
+        // 更新触发器显示
+        function updateMultiSelectTrigger(containerId) {
+            const container = document.getElementById(containerId);
+            const trigger = container.querySelector('.multi-select-trigger');
+            const selectedOrgs = containerId === 'uploadOrgSelect' ? uploadSelectedOrgs : editSelectedOrgs;
+            
+            if (selectedOrgs.length === 0) {
+                trigger.innerHTML = '<span class="multi-select-placeholder">请选择组织</span>';
+            } else {
+                trigger.innerHTML = selectedOrgs.map(id => {
+                    const org = orgList.find(o => o.id === id);
+                    return `<span class="multi-select-tag" style="background: ${org.color}20; color: ${org.color};">
+                        ${org.name}
+                        <span class="multi-select-tag-remove" onclick="event.stopPropagation(); removeOrg('${containerId}', ${id})">×</span>
+                    </span>`;
+                }).join('');
+            }
+        }
+
+        // 移除已选组织
+        function removeOrg(containerId, orgId) {
+            toggleOrgOption(containerId, orgId);
+        }
+
+        // 修改基础信息
+        function editPlaybook(id) {
+            const playbook = playbookData.find(p => p.id === id);
+            if (!playbook) return;
+            
+            // 填充编辑弹窗
+            document.getElementById('editPlaybookId').value = id;
+            document.getElementById('editName').value = playbook.name;
+            document.getElementById('editDesc').value = playbook.desc;
+            // 初始化组织多选
+            initMultiSelect('editOrgSelect', 'editOrgDropdown', playbook.orgIds || []);
+            document.getElementById('editModal').classList.add('active');
+        }
+
+        function openUploadModal() {
+            selectedFile = null;
+            document.getElementById('fileInput').value = '';
+            document.getElementById('uploadFilename').style.display = 'none';
+            document.getElementById('uploadArea').classList.remove('has-file');
+            document.getElementById('uploadVersion').value = '';
+            // 初始化组织多选
+            initMultiSelect('uploadOrgSelect', 'uploadOrgDropdown', []);
+            document.getElementById('uploadModal').classList.add('active');
+        }
+
+        function closeUploadModal() {
+            document.getElementById('uploadModal').classList.remove('active');
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file && file.name.endsWith('.zip')) {
+                selectedFile = file;
+                document.getElementById('uploadFilename').textContent = `已选择: ${file.name}`;
+                document.getElementById('uploadFilename').style.display = 'block';
+                document.getElementById('uploadArea').classList.add('has-file');
+            } else if (file) {
+                alert('请上传 ZIP 格式的文件');
+            }
+        }
+
+        function confirmUpload() {
+            if (!selectedFile) {
+                alert('请先选择要上传的 ZIP 文件');
+                return;
+            }
+            if (uploadSelectedOrgs.length === 0) {
+                alert('请选择所属组织');
+                return;
+            }
+            const newName = selectedFile.name.replace('.zip', '');
+            const today = new Date().toISOString().split('T')[0];
+            // 获取用户输入的版本号，如不填则默认 v1.0.0
+            let version = document.getElementById('uploadVersion').value.trim();
+            if (!version) {
+                version = 'v1.0.0';
+            } else if (!version.startsWith('v')) {
+                version = 'v' + version;
+            }
+            const newPlaybook = {
+                id: nextId++,
+                name: newName,
+                desc: '新上传的 Playbook',
+                version: version,
+                updateTime: today,
+                uploader: 'Admin',
+                orgIds: [...uploadSelectedOrgs],
+                params: [{ name: 'example_param', default: 'value', desc: '示例参数' }],
+                files: [
+                    { name: `${newName}/`, type: 'folder', indent: 0 },
+                    { name: 'playbook.yml', type: 'yaml', indent: 1 },
+                    { name: 'README.md', type: 'md', indent: 1 }
+                ],
+                readme: `<h1>${newName}</h1><p>新上传的 Playbook。</p>`
+            };
+            playbookData.unshift(newPlaybook);
+            renderPlaybookList();
+            closeUploadModal();
+            alert('上传成功！');
+        }
+
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+        uploadArea.addEventListener('dragleave', () => { uploadArea.classList.remove('dragover'); });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.zip')) {
+                selectedFile = file;
+                document.getElementById('uploadFilename').textContent = `已选择: ${file.name}`;
+                document.getElementById('uploadFilename').style.display = 'block';
+                uploadArea.classList.add('has-file');
+            } else if (file) {
+                alert('请上传 ZIP 格式的文件');
+            }
+        });
+
+        function viewPlaybook(id) {
+            const playbook = playbookData.find(p => p.id === id);
+            if (!playbook) return;
+            currentPlaybookId = id;
+
+            document.getElementById('detailTitle').textContent = playbook.name;
+            document.getElementById('detailVersion').textContent = playbook.version;
+            document.getElementById('detailName').textContent = playbook.name;
+            document.getElementById('detailDesc').textContent = playbook.desc;
+            document.getElementById('detailVersionInfo').textContent = playbook.version;
+            document.getElementById('detailUpdateTime').textContent = playbook.updateTime;
+            document.getElementById('detailUploader').textContent = playbook.uploader;
+
+            const paramBody = document.getElementById('paramTableBody');
+            if (playbook.params && playbook.params.length > 0) {
+                paramBody.innerHTML = playbook.params.map(param => `
+                    <tr>
+                        <td><span class="param-name">${param.name}</span></td>
+                        <td><span class="param-default">${param.default || '-'}</span></td>
+                        <td>${param.desc}</td>
+                    </tr>
+                `).join('');
+            } else {
+                paramBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #8f959e;">暂无参数</td></tr>';
+            }
+
+            renderFileTree(playbook.files);
+            document.getElementById('readmeContent').innerHTML = playbook.readme || '<p>暂无说明</p>';
+            closeCodeViewer();
+            switchTab('info');
+            document.getElementById('detailModal').classList.add('active');
+        }
+
+        function renderFileTree(files) {
+            const tree = document.getElementById('fileTree');
+            tree.innerHTML = files.map(file => {
+                const icon = file.type === 'folder' ? '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>' : (file.type === 'yaml' ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>');
+                const indentClass = `file-indent-${file.indent}`;
+                const nameClass = file.type === 'folder' ? 'file-name folder' : 'file-name';
+                const previewBtn = (file.type === 'yaml' || file.type === 'md') && file.content 
+                    ? `<span class="file-preview-btn" onclick="previewFile('${file.name}', ${JSON.stringify(file.content).replace(/'/g, "\\'")}')">预览</span>` 
+                    : '';
+                return `
+                    <div class="file-item ${indentClass}">
+                        <div class="file-item-left">
+                            <span class="file-icon">${icon}</span>
+                            <span class="${nameClass}">${file.name}</span>
+                        </div>
+                        ${previewBtn}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function previewFile(filename, content) {
+            document.getElementById('codeFilename').textContent = filename;
+            document.getElementById('codeContent').textContent = content;
+            document.getElementById('codeViewer').style.display = 'block';
+        }
+
+        function closeCodeViewer() {
+            document.getElementById('codeViewer').style.display = 'none';
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detailModal').classList.remove('active');
+            currentPlaybookId = null;
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('#detailTabs .tab-item').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.tab === tabName);
+            });
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.toggle('active', content.id === `tab-${tabName}`);
+            });
+        }
+
+        function downloadPlaybook() {
+            const playbook = playbookData.find(p => p.id === currentPlaybookId);
+            if (playbook) {
+                alert(`模拟下载: ${playbook.name}.zip\n\n实际使用时会下载 Playbook 压缩包。`);
+            }
+        }
+
+        function openUpdateModal() {
+            updateFile = null;
+            document.getElementById('updateFileInput').value = '';
+            document.getElementById('updateFilename').style.display = 'none';
+            document.getElementById('updateUploadArea').classList.remove('has-file');
+            document.getElementById('updateVersion').value = '';
+            const playbook = playbookData.find(p => p.id === currentPlaybookId);
+            if (playbook) {
+                document.getElementById('updateCurrentVersion').textContent = playbook.version;
+                // 设置 placeholder 提示默认版本
+                const nextVersion = suggestNextVersion(playbook.version);
+                if (nextVersion) {
+                    document.getElementById('updateVersion').placeholder = `不填则默认为 ${nextVersion}`;
+                } else {
+                    document.getElementById('updateVersion').placeholder = '请填写新版本号';
+                }
+            }
+            document.getElementById('updateModal').classList.add('active');
+        }
+
+        // 智能版本号递增函数，支持多种格式
+        function suggestNextVersion(currentVersion) {
+            const v = currentVersion.replace(/^v/i, '');
+            
+            // 1. SemVer 三段式：1.2.3 → 1.2.4
+            if (/^\d+\.\d+\.\d+$/.test(v)) {
+                const parts = v.split('.');
+                parts[2] = parseInt(parts[2]) + 1;
+                return 'v' + parts.join('.');
+            }
+            
+            // 2. 双段式：1.2 → 1.3
+            if (/^\d+\.\d+$/.test(v)) {
+                const parts = v.split('.');
+                parts[1] = parseInt(parts[1]) + 1;
+                return 'v' + parts.join('.');
+            }
+            
+            // 3. 纯数字：3 → 4
+            if (/^\d+$/.test(v)) {
+                return 'v' + (parseInt(v) + 1);
+            }
+            
+            // 4. 日期格式 YYYYMMDD：20250211 → 当天日期
+            if (/^\d{8}$/.test(v)) {
+                const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                return 'v' + today;
+            }
+            
+            // 5. 无法识别 → 返回 null，要求用户填写
+            return null;
+        }
+
+        function closeUpdateModal() {
+            document.getElementById('updateModal').classList.remove('active');
+        }
+
+        function handleUpdateFileSelect(event) {
+            const file = event.target.files[0];
+            if (file && file.name.endsWith('.zip')) {
+                updateFile = file;
+                document.getElementById('updateFilename').textContent = `已选择: ${file.name}`;
+                document.getElementById('updateFilename').style.display = 'block';
+                document.getElementById('updateUploadArea').classList.add('has-file');
+            } else if (file) {
+                alert('请上传 ZIP 格式的文件');
+            }
+        }
+
+        function confirmUpdate() {
+            if (!updateFile) {
+                alert('请先选择要上传的新版本文件');
+                return;
+            }
+            const playbook = playbookData.find(p => p.id === currentPlaybookId);
+            if (playbook) {
+                // 获取用户输入的版本号
+                let newVersion = document.getElementById('updateVersion').value.trim();
+                
+                if (!newVersion) {
+                    // 尝试自动生成
+                    const suggested = suggestNextVersion(playbook.version);
+                    if (suggested) {
+                        newVersion = suggested;
+                    } else {
+                        // 无法自动生成，要求用户填写
+                        alert('无法自动识别版本号格式，请手动填写新版本号');
+                        document.getElementById('updateVersion').focus();
+                        return;
+                    }
+                } else if (!newVersion.match(/^v/i)) {
+                    newVersion = 'v' + newVersion;
+                }
+                
+                playbook.version = newVersion;
+                playbook.updateTime = new Date().toISOString().split('T')[0];
+                document.getElementById('detailVersion').textContent = playbook.version;
+                document.getElementById('detailVersionInfo').textContent = playbook.version;
+                document.getElementById('detailUpdateTime').textContent = playbook.updateTime;
+                renderPlaybookList();
+                closeUpdateModal();
+                alert('更新成功！版本已更新为 ' + playbook.version);
+            }
+        }
+
+        function deletePlaybook(id) {
+            const playbook = playbookData.find(p => p.id === id);
+            if (!playbook) return;
+            deleteTargetId = id;
+            document.getElementById('deletePlaybookName').textContent = `"${playbook.name}"`;
+            document.getElementById('deleteModal').classList.add('active');
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').classList.remove('active');
+            deleteTargetId = null;
+        }
+
+        function confirmDelete() {
+            if (deleteTargetId !== null) {
+                playbookData = playbookData.filter(p => p.id !== deleteTargetId);
+                renderPlaybookList();
+                closeDeleteModal();
+            }
+        }
+
+        // 编辑弹窗相关
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('active');
+        }
+
+        function confirmEdit() {
+            const id = parseInt(document.getElementById('editPlaybookId').value);
+            const name = document.getElementById('editName').value.trim();
+            const desc = document.getElementById('editDesc').value.trim();
+            
+            if (!name) {
+                alert('请输入名称');
+                return;
+            }
+            if (editSelectedOrgs.length === 0) {
+                alert('请选择所属组织');
+                return;
+            }
+            
+            const playbook = playbookData.find(p => p.id === id);
+            if (playbook) {
+                playbook.name = name;
+                playbook.desc = desc;
+                playbook.orgIds = [...editSelectedOrgs];
+                renderPlaybookList();
+                closeEditModal();
+                alert('修改成功！');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderPlaybookList();
+        });
+    </script>
+</body>
+</html>
