@@ -9,35 +9,40 @@ from apps.monitor.utils.pagination import parse_page_params
 
 
 class NodeMgmtView(ViewSet):
-    @action(methods=['post'], detail=False, url_path='nodes')
+    @action(methods=["post"], detail=False, url_path="nodes")
     def get_nodes(self, request):
-
-        orgs = {i["id"] for i in request.user.group_list if i["name"] == "OpsPilotGuest"}
+        orgs = {
+            i["id"] for i in request.user.group_list if i["name"] == "OpsPilotGuest"
+        }
         orgs.add(request.COOKIES.get("current_team"))
 
-        page, page_size = parse_page_params(request.data, default_page=1, default_page_size=10)
+        page, page_size = parse_page_params(
+            request.data, default_page=1, default_page_size=10, allow_page_size_all=True
+        )
 
         organization_ids = [] if request.user.is_superuser else list(orgs)
-        data = NodeMgmt().node_list(dict(
-            cloud_region_id=request.data.get("cloud_region_id", 1),
-            organization_ids=organization_ids,
-            name=request.data.get("name"),
-            ip=request.data.get("ip"),
-            os=request.data.get("os"),
-            page=page,
-            page_size=page_size,
-            is_active=request.data.get("is_active"),
-            is_manual=request.data.get("is_manual"),
-            is_container=request.data.get("is_container"),
-            permission_data={
-                "username": request.user.username,
-                "domain": request.user.domain,
-                "current_team": request.COOKIES.get("current_team"),
-            }
-        ))
+        data = NodeMgmt().node_list(
+            dict(
+                cloud_region_id=request.data.get("cloud_region_id", 1),
+                organization_ids=organization_ids,
+                name=request.data.get("name"),
+                ip=request.data.get("ip"),
+                os=request.data.get("os"),
+                page=page,
+                page_size=page_size,
+                is_active=request.data.get("is_active"),
+                is_manual=request.data.get("is_manual"),
+                is_container=request.data.get("is_container"),
+                permission_data={
+                    "username": request.user.username,
+                    "domain": request.user.domain,
+                    "current_team": request.COOKIES.get("current_team"),
+                },
+            )
+        )
         return WebUtils.response_success(data)
 
-    @action(methods=['post'], detail=False, url_path='batch_setting_node_child_config')
+    @action(methods=["post"], detail=False, url_path="batch_setting_node_child_config")
     def batch_setting_node_child_config(self, request):
         logger.debug(
             "batch_setting_node_child_config called by user=%s, current_team=%s",
@@ -47,17 +52,19 @@ class NodeMgmtView(ViewSet):
         InstanceConfigService.create_monitor_instance_by_node_mgmt(request.data)
         return WebUtils.response_success()
 
-    @action(methods=['post'], detail=False, url_path='get_instance_asso_config')
+    @action(methods=["post"], detail=False, url_path="get_instance_asso_config")
     def get_instance_child_config(self, request):
         data = InstanceConfigService.get_instance_configs(request.data["instance_id"])
         return WebUtils.response_success(data)
 
-    @action(methods=['post'], detail=False, url_path='get_config_content')
+    @action(methods=["post"], detail=False, url_path="get_config_content")
     def get_config_content(self, request):
         result = InstanceConfigService.get_config_content(request.data["ids"])
         return WebUtils.response_success(result)
 
-    @action(methods=['post'], detail=False, url_path='update_instance_collect_config')
+    @action(methods=["post"], detail=False, url_path="update_instance_collect_config")
     def update_instance_collect_config(self, request):
-        InstanceConfigService.update_instance_config(request.data.get("child"), request.data.get("base"))
+        InstanceConfigService.update_instance_config(
+            request.data.get("child"), request.data.get("base")
+        )
         return WebUtils.response_success()
