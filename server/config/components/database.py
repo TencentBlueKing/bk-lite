@@ -147,6 +147,34 @@ elif db_engine == "oceanbase":
         }
     }
 
+    # ============================================================
+    # OceanBase 数据库 Migration 补丁说明
+    # ============================================================
+    # Migration 补丁通过 migrate_patch 自动加载
+    # 补丁文件位于: migrate_patch/patches/oceanbase/{app_label}/{migration_name}.py
+    # 补丁机制: 在 pre_migrate 信号时替换原始 migration 的 operations
+    #
+    # OceanBase 不支持的操作及解决方案:
+    #   1. JSON 列索引 (错误码 3152)
+    #      - GinIndex/BTreeIndex 替换为通用 models.Index (排除 JSON 列)
+    #   2. ALTER 非字符串类型字段 (错误码 1235)
+    #      - 使用 FakeAlterField 跳过，在初始迁移中直接定义最终类型
+    #   3. 删除 rowkey 列 (错误码 1235)
+    #      - 使用 FakeRemoveField 跳过
+    #   4. 删除不存在的约束 (错误码 1091)
+    #      - 使用 FakeRemoveConstraint 跳过
+    #
+    # 当前已有补丁:
+    #   - alerts/0001_initial.py (GinIndex/BTreeIndex → models.Index)
+    #   - alerts/0005_*.py (GinIndex → models.Index)
+    #   - alerts/0010_*.py (FakeRemoveIndex 跳过删除)
+    #   - log/0003_*.py (EventRawData.data 直接定义为 S3JSONField)
+    #   - log/0004_*.py, log/0009_*.py (FakeAlterField 跳过)
+    #   - mlops/0021_*.py (TimeSeriesPredictTrainData 直接定义最终类型)
+    #   - mlops/0027_*.py (ImageClassificationTrainData 直接定义最终类型)
+    #   - mlops/0032_*.py, 0036-0039_*.py (FakeAlterField 跳过)
+    #   - operation_analysis/0003_*.py, 0004_*.py (FakeRemoveConstraint 跳过)
+
 else:
     raise ValueError(f"Unsupported DB_ENGINE: '{db_engine}'. Supported values: postgresql, mysql, sqlite, dameng, gaussdb, oceanbase, goldendb")
 
