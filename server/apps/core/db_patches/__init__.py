@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 _ENGINE_PATCH_MAP = {
     "dameng": "apps.core.db_patches.dameng",
     "goldendb": "apps.core.db_patches.goldendb",
+    "oceanbase": "apps.core.db_patches.oceanbase",
     # "gaussdb": "apps.core.db_patches.gaussdb",
-    # "oceanbase": "apps.core.db_patches.oceanbase",
     # "mysql": "apps.core.db_patches.mysql",
 }
 
