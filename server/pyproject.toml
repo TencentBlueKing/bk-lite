@@ -133,6 +133,7 @@ opspilot = [
     "patchright==1.57.2",
     "playwright==1.57.0",
     "reportlab==4.2.5",
+    "pyodbc==5.2.0",
 ]
 
 [tool.black]
