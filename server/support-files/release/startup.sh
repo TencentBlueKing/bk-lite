@@ -28,6 +28,22 @@ if [ "$opspilot_installed" = false ]; then
     rm -f /etc/supervisor/conf.d/consumer.conf
 fi
 
+# 如果安装了 opspilot 模块，检查并安装 MSSQL ODBC 驱动
+if [ "$opspilot_installed" = true ]; then
+    if ! odbcinst -q -d -n "ODBC Driver 18 for SQL Server" > /dev/null 2>&1; then
+        echo "正在安装 Microsoft ODBC Driver 18 for SQL Server..."
+        curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+        curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list | tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+        apt-get update -qq
+        ACCEPT_EULA=Y apt-get install -y -qq msodbcsql18
+        apt-get clean
+        rm -rf /var/lib/apt/lists/*
+        echo "MSSQL ODBC 驱动安装完成"
+    else
+        echo "MSSQL ODBC 驱动已安装，跳过"
+    fi
+fi
+
 # 设置进程数量环境变量默认值
 export APP_WORKERS=${APP_WORKERS:-8}
 export CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-4}
