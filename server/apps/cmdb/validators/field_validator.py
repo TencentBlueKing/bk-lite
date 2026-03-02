@@ -258,6 +258,155 @@ class FieldValidator:
                 logger.warning(f"最大值配置无效: {max_value}, 跳过校验")
 
     @staticmethod
+    def validate_table_option(option: Any) -> None:
+        """
+        校验 table 字段的 option 配置
+
+        option 应该是列定义数组：
+        [
+            {
+                "column_id": "name",
+                "column_name": "名称",
+                "column_type": "str",  # str 或 number
+                "order": 1
+            },
+            ...
+        ]
+
+        Args:
+            option: table 字段的 option 配置
+
+        Raises:
+            BaseAppException: 校验失败时抛出
+        """
+        if not isinstance(option, list):
+            raise BaseAppException("table 字段 option 必须是数组")
+
+        if len(option) == 0:
+            raise BaseAppException("table 字段至少需要定义一列")
+
+        column_ids = set()
+        for idx, col in enumerate(option):
+            if not isinstance(col, dict):
+                raise BaseAppException(f"第{idx + 1}列配置必须是对象")
+
+            # 校验必填字段
+            column_id = col.get("column_id")
+            column_name = col.get("column_name")
+            column_type = col.get("column_type")
+            order = col.get("order")
+
+            if not column_id:
+                raise BaseAppException(f"第{idx + 1}列缺少 column_id")
+            if not column_name:
+                raise BaseAppException(f"第{idx + 1}列缺少 column_name")
+            if not column_type:
+                raise BaseAppException(f"第{idx + 1}列缺少 column_type")
+            if order is None:
+                raise BaseAppException(f"第{idx + 1}列缺少 order")
+
+            # 校验 column_id 格式（使用与 attr_id 相同的规则）
+            if not IdentifierValidator.is_valid(column_id):
+                raise BaseAppException(
+                    f"第{idx + 1}列 column_id '{column_id}' "
+                    + IdentifierValidator.get_error_message("列ID")
+                )
+
+            # 校验 column_id 唯一性
+            if column_id in column_ids:
+                raise BaseAppException(f"列ID '{column_id}' 重复")
+            column_ids.add(column_id)
+
+            # 校验 column_type 只能是 str 或 number
+            if column_type not in {"str", "number"}:
+                raise BaseAppException(
+                    f"第{idx + 1}列的 column_type 只能是 'str' 或 'number'，当前值: '{column_type}'"
+                )
+
+            # 校验 order 为正整数
+            try:
+                order_int = int(order)
+                if order_int < 1:
+                    raise BaseAppException(f"第{idx + 1}列的 order 必须 >= 1")
+            except (ValueError, TypeError):
+                raise BaseAppException(f"第{idx + 1}列的 order 必须是整数")
+
+    @staticmethod
+    def validate_table_value(value: Any, option: list, attr_id: str = "table") -> None:
+        """
+        校验 table 字段的值
+
+        value 应该是 JSON 字符串或已解析的数组：
+        [
+            {"name": "disk-a", "size": 100},
+            {"name": "disk-b", "size": 200}
+        ]
+
+        Args:
+            value: table 字段值（JSON string 或 list）
+            option: 列定义（已校验过的）
+            attr_id: 字段 ID（用于错误提示）
+
+        Raises:
+            BaseAppException: 校验失败时抛出
+        """
+        # 空值不校验
+        if value is None or value == "" or value == []:
+            return
+
+        # 统一为 rows 结构
+        if isinstance(value, str):
+            try:
+                rows = json.loads(value)
+            except json.JSONDecodeError as e:
+                raise BaseAppException(f"table 字段值不是合法的 JSON 格式: {str(e)}")
+        elif isinstance(value, list):
+            rows = value
+        else:
+            raise BaseAppException(
+                f"table 字段值必须是 JSON 字符串或数组，当前类型: {type(value)}"
+            )
+
+        if not isinstance(rows, list):
+            raise BaseAppException("table 字段值解析后必须是数组")
+
+        # 构建列ID到类型的映射
+        column_map = {col["column_id"]: col["column_type"] for col in option}
+
+        # 校验每一行
+        for row_idx, row in enumerate(rows):
+            if not isinstance(row, dict):
+                raise BaseAppException(
+                    f"第{row_idx + 1}行数据必须是对象，当前类型: {type(row)}"
+                )
+
+            # 校验行的键必须是定义的 column_id 子集
+            for key in row.keys():
+                if key not in column_map:
+                    raise BaseAppException(
+                        f"第{row_idx + 1}行包含未定义的列 '{key}'，允许的列: {list(column_map.keys())}"
+                    )
+
+            # 校验 number 列的值必须可转为数值
+            for col_id, col_type in column_map.items():
+                if col_id not in row:
+                    continue
+
+                cell_value = row[col_id]
+
+                # 空值允许
+                if cell_value is None or cell_value == "":
+                    continue
+
+                if col_type == "number":
+                    try:
+                        float(cell_value)
+                    except (ValueError, TypeError):
+                        raise BaseAppException(
+                            f"第{row_idx + 1}行，列 '{col_id}' 的值 '{cell_value}' 不是有效的数字"
+                        )
+
+    @staticmethod
     def validate_field_by_attr(value: Any, attr: Dict) -> None:
         """
         根据属性定义自动选择合适的校验方法
@@ -269,7 +418,7 @@ class FieldValidator:
             attr: 属性定义字典
                 {
                     "attr_id": "server_ip",
-                    "attr_type": "str",  # str/int/float/time/...
+                    "attr_type": "str",  # str/int/float/time/table/...
                     "option": {...}  # 对应类型的约束配置
 
                 }
@@ -307,6 +456,16 @@ class FieldValidator:
             elif attr_type == "float":
                 if option:
                     FieldValidator.validate_number(value, option, "float")
+
+            # 表格类型校验
+            elif attr_type == "table":
+                if option:
+                    # 先校验 option 配置
+                    FieldValidator.validate_table_option(option)
+                    # 再校验值
+                    FieldValidator.validate_table_value(
+                        value, option, attr.get("attr_id", "table")
+                    )
 
             # 其他类型暂不处理(password/user/organization/bool/enum/time等)
             # 这些类型由现有逻辑处理或不需要额外校验

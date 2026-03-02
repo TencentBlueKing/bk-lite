@@ -1,9 +1,17 @@
 import ast
+import json
 
 import openpyxl
 
-from apps.cmdb.constants.constants import INSTANCE, NEED_CONVERSION_TYPE, ORGANIZATION, USER, ENUM, \
-    INSTANCE_ASSOCIATION, ModelConstraintKey
+from apps.cmdb.constants.constants import (
+    INSTANCE,
+    NEED_CONVERSION_TYPE,
+    ORGANIZATION,
+    USER,
+    ENUM,
+    INSTANCE_ASSOCIATION,
+    ModelConstraintKey,
+)
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models import CREATE_INST_ASST
 from apps.cmdb.services.model import ModelManage
@@ -22,9 +30,11 @@ class Import:
         self.inst_name_id_map = {}
         self.inst_id_name_map = {}
         self.inst_list = []
-        self.import_result_message = {"add": {"success": 0, "error": 0, "data": []},
-                                      "update": {"success": 0, "error": 0, "data": []},
-                                      "asso": {"success": 0, "error": 0, "data": []}}
+        self.import_result_message = {
+            "add": {"success": 0, "error": 0, "data": []},
+            "update": {"success": 0, "error": 0, "data": []},
+            "asso": {"success": 0, "error": 0, "data": []},
+        }
         self.model_asso_map = self.get_model_asso_map()
         # 用于收集数据验证错误
         self.validation_errors = []
@@ -50,14 +60,22 @@ class Import:
             return s.rsplit("（", 1)[-1].rstrip("）").strip()
         return s
 
-    def _resolve_organization_ids(self, value_list: list, allowed_org_set: set, row_index: int, field_display_name: str):
+    def _resolve_organization_ids(
+        self,
+        value_list: list,
+        allowed_org_set: set,
+        row_index: int,
+        field_display_name: str,
+    ):
         """解析组织字段，支持组织名与路径(Default/xxx)，并按 allowed_org_set 做范围校验。
 
         Returns:
             tuple[list[int], str|None, bool]: (org_ids, error_msg, organization_cell_provided)
         """
 
-        normalized_values = [v.strip() if isinstance(v, str) else v for v in (value_list or [])]
+        normalized_values = [
+            v.strip() if isinstance(v, str) else v for v in (value_list or [])
+        ]
         organization_cell_provided = any(v not in (None, "") for v in normalized_values)
 
         if not organization_cell_provided:
@@ -77,13 +95,16 @@ class Import:
                 query_names.add(raw)
 
         # 先在全量组织表中定位，再根据 allowed_org_set 判定“越界”还是“无效”
-        group_rows = list(Group.objects.filter(name__in=query_names).values("id", "name", "parent_id"))
+        group_rows = list(
+            Group.objects.filter(name__in=query_names).values("id", "name", "parent_id")
+        )
 
         parent_ids = {r["parent_id"] for r in group_rows if r.get("parent_id")}
         parent_name_map = {}
         if parent_ids:
             parent_name_map = {
-                r["id"]: r["name"] for r in Group.objects.filter(id__in=parent_ids).values("id", "name")
+                r["id"]: r["name"]
+                for r in Group.objects.filter(id__in=parent_ids).values("id", "name")
             }
 
         rows_by_name = {}
@@ -109,7 +130,9 @@ class Import:
                 candidates = rows_by_name.get(leaf_name, [])
                 if parent_name:
                     candidates = [
-                        c for c in candidates if parent_name_map.get(c.get("parent_id")) == parent_name
+                        c
+                        for c in candidates
+                        if parent_name_map.get(c.get("parent_id")) == parent_name
                     ]
 
                 if not candidates:
@@ -117,7 +140,11 @@ class Import:
                     continue
 
                 if allowed_org_set is None:
-                    return [], f"第{row_index}行，字段'{field_display_name}'缺少组织范围上下文，请刷新后重试", organization_cell_provided
+                    return (
+                        [],
+                        f"第{row_index}行，字段'{field_display_name}'缺少组织范围上下文，请刷新后重试",
+                        organization_cell_provided,
+                    )
 
                 in_scope = [c for c in candidates if c["id"] in allowed_org_set]
                 if len(in_scope) == 1:
@@ -155,10 +182,18 @@ class Import:
             enum_id.append(mapped_id)
 
         if invalid_values:
-            return [], f"第{row_index}行，字段'{field_display_name}'的值'{invalid_values}'无效", organization_cell_provided
+            return (
+                [],
+                f"第{row_index}行，字段'{field_display_name}'的值'{invalid_values}'无效",
+                organization_cell_provided,
+            )
 
         if out_of_scope_values:
-            return [], f"第{row_index}行，字段'{field_display_name}'的值'{out_of_scope_values}'不在当前选择组织范围内", organization_cell_provided
+            return (
+                [],
+                f"第{row_index}行，字段'{field_display_name}'的值'{out_of_scope_values}'不在当前选择组织范围内",
+                organization_cell_provided,
+            )
 
         return enum_id, None, organization_cell_provided
 
@@ -168,16 +203,27 @@ class Import:
         allowed_org_set = set(allowed_org_ids) if allowed_org_ids is not None else None
 
         need_val_to_id_field_map, need_update_type_field_map, org_user_map = {}, {}, {}
+        table_field_set = set()
         # 创建属性名称映射，用于错误提示
-        attr_name_map = {attr_info["attr_id"]: attr_info["attr_name"] for attr_info in self.attrs}
+        attr_name_map = {
+            attr_info["attr_id"]: attr_info["attr_name"] for attr_info in self.attrs
+        }
 
         for attr_info in self.attrs:
             if attr_info["attr_type"] in NEED_CONVERSION_TYPE:
-                need_update_type_field_map[attr_info["attr_id"]] = attr_info["attr_type"]
+                need_update_type_field_map[attr_info["attr_id"]] = attr_info[
+                    "attr_type"
+                ]
+                continue
+
+            if attr_info["attr_type"] == "table":
+                table_field_set.add(attr_info["attr_id"])
                 continue
 
             if attr_info["attr_type"] in {ORGANIZATION, USER, ENUM}:
-                need_val_to_id_field_map[attr_info["attr_id"]] = {i["name"]: i["id"] for i in attr_info["option"]}
+                need_val_to_id_field_map[attr_info["attr_id"]] = {
+                    i["name"]: i["id"] for i in attr_info["option"]
+                }
                 if attr_info["attr_type"] in {ORGANIZATION, USER}:
                     org_user_map[attr_info["attr_id"]] = attr_info["attr_type"]
         # 读取临时文件
@@ -186,7 +232,9 @@ class Import:
         sheet1 = wb.worksheets[0]
         # 获取工作表名称 就是模型名称
         if sheet1.title != self.model_id:
-            raise ValueError(f"Excel sheet name '{sheet1.title}' does not match model_id '{self.model_id}'.")
+            raise ValueError(
+                f"Excel sheet name '{sheet1.title}' does not match model_id '{self.model_id}'."
+            )
 
         # 获取键
         keys = [cell.value for cell in sheet1[3]]  # 3
@@ -199,13 +247,17 @@ class Import:
                 asso_key_map[key] = {}
         result = []
         # 从第4行第1列开始遍历
-        for row_index, row in enumerate(sheet1.iter_rows(min_row=4, min_col=1), start=4):
+        for row_index, row in enumerate(
+            sheet1.iter_rows(min_row=4, min_col=1), start=4
+        ):
             # 创建字典
             item = {"model_id": self.model_id}
             inst_name = ""
             row_has_data = False
             organization_cell_provided = False
-            row_validation_errors_count = len(self.validation_errors)  # 记录处理该行前的错误数量
+            row_validation_errors_count = len(
+                self.validation_errors
+            )  # 记录处理该行前的错误数量
 
             # 遍历每一列
             for i, cell in enumerate(row):
@@ -236,10 +288,25 @@ class Import:
                 # 将需要类型转换的键和值存入字典
                 if keys[i] in need_update_type_field_map:
                     try:
-                        method = NEED_CONVERSION_TYPE[need_update_type_field_map[keys[i]]]
+                        method = NEED_CONVERSION_TYPE[
+                            need_update_type_field_map[keys[i]]
+                        ]
                         item[keys[i]] = method(value)
                     except (ValueError, TypeError) as e:
                         error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{value}'格式错误"
+                        self.validation_errors.append(error_msg)
+                        logger.warning(error_msg)
+                    continue
+
+                if keys[i] in table_field_set:
+                    try:
+                        if isinstance(value, str):
+                            parsed_value = json.loads(value)
+                        else:
+                            parsed_value = value
+                        item[keys[i]] = parsed_value
+                    except (json.JSONDecodeError, TypeError) as e:
+                        error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的表格数据JSON格式错误"
                         self.validation_errors.append(error_msg)
                         logger.warning(error_msg)
                     continue
@@ -248,10 +315,10 @@ class Import:
                 if keys[i] in need_val_to_id_field_map:
                     if keys[i] in org_user_map:
                         if type(value) != list:
-                            if ',' in str(value):
-                                value_list = str(value).split(',')
-                            elif '，' in str(value):
-                                value_list = str(value).split('，')
+                            if "," in str(value):
+                                value_list = str(value).split(",")
+                            elif "，" in str(value):
+                                value_list = str(value).split("，")
                             else:
                                 value_list = [str(value)]
                         else:
@@ -259,13 +326,19 @@ class Import:
 
                         # 组织字段：支持 Default/xxx，并做范围校验
                         if org_user_map[keys[i]] == ORGANIZATION:
-                            org_ids, error_msg, provided = self._resolve_organization_ids(
-                                value_list=value_list,
-                                allowed_org_set=allowed_org_set,
-                                row_index=row_index,
-                                field_display_name=attr_name_map.get(keys[i], keys[i]),
+                            org_ids, error_msg, provided = (
+                                self._resolve_organization_ids(
+                                    value_list=value_list,
+                                    allowed_org_set=allowed_org_set,
+                                    row_index=row_index,
+                                    field_display_name=attr_name_map.get(
+                                        keys[i], keys[i]
+                                    ),
+                                )
                             )
-                            organization_cell_provided = organization_cell_provided or provided
+                            organization_cell_provided = (
+                                organization_cell_provided or provided
+                            )
 
                             if error_msg:
                                 self.validation_errors.append(error_msg)
@@ -280,8 +353,14 @@ class Import:
                         invalid_values = []
                         for val in value_list:
                             raw_val = val
-                            lookup_val = self._normalize_user_token(val) if org_user_map[keys[i]] == USER else val
-                            mapped_id = need_val_to_id_field_map[keys[i]].get(lookup_val)
+                            lookup_val = (
+                                self._normalize_user_token(val)
+                                if org_user_map[keys[i]] == USER
+                                else val
+                            )
+                            mapped_id = need_val_to_id_field_map[keys[i]].get(
+                                lookup_val
+                            )
                             if mapped_id is not None:
                                 enum_id.append(mapped_id)
                             else:
@@ -320,7 +399,9 @@ class Import:
                 # 将键和值存入字典
                 item[keys[i]] = value
             # 检查该行是否有验证错误
-            row_has_validation_errors = len(self.validation_errors) > row_validation_errors_count
+            row_has_validation_errors = (
+                len(self.validation_errors) > row_validation_errors_count
+            )
 
             # 只有当行有数据且没有验证错误时才添加到结果列表
             if row_has_data and len(item) > 1 and not row_has_validation_errors:
@@ -331,23 +412,31 @@ class Import:
         check_attr_map = dict(is_only={}, is_required={}, editable={})
         for attr in self.attrs:
             if attr[ModelConstraintKey.unique.value]:
-                check_attr_map[ModelConstraintKey.unique.value][attr["attr_id"]] = attr["attr_name"]
+                check_attr_map[ModelConstraintKey.unique.value][attr["attr_id"]] = attr[
+                    "attr_name"
+                ]
             if attr[ModelConstraintKey.required.value]:
-                check_attr_map[ModelConstraintKey.required.value][attr["attr_id"]] = attr["attr_name"]
+                check_attr_map[ModelConstraintKey.required.value][attr["attr_id"]] = (
+                    attr["attr_name"]
+                )
             if attr[ModelConstraintKey.editable.value]:
-                check_attr_map[ModelConstraintKey.editable.value][attr["attr_id"]] = attr["attr_name"]
+                check_attr_map[ModelConstraintKey.editable.value][attr["attr_id"]] = (
+                    attr["attr_name"]
+                )
         return check_attr_map
 
     def inst_list_save(self, inst_list):
         """实例列表保存"""
         from apps.cmdb.validators import FieldValidator
         from apps.cmdb.display_field import DisplayFieldHandler
-        
+
         # 对每个实例进行字段校验和 _display 字段生成
         processed_inst_list = []
         for inst_data in inst_list:
             # 1. 字段格式校验（与创建实例逻辑一致）
-            validation_errors = FieldValidator.validate_instance_data(inst_data, self.attrs)
+            validation_errors = FieldValidator.validate_instance_data(
+                inst_data, self.attrs
+            )
             if validation_errors:
                 # 收集所有字段校验错误
                 for err in validation_errors:
@@ -355,7 +444,7 @@ class Import:
                     self.validation_errors.append(error_msg)
                     logger.warning(error_msg)
                 continue  # 跳过有错误的实例
-            
+
             # 2. 生成 _display 冗余字段（与创建实例逻辑一致）
             inst_data = DisplayFieldHandler.build_display_fields(
                 self.model_id, inst_data, self.attrs
@@ -363,20 +452,28 @@ class Import:
             processed_inst_list.append(inst_data)
 
         with GraphClient() as ag:
-            result = ag.batch_create_entity(INSTANCE, processed_inst_list, self.get_check_attr_map(), self.exist_items,
-                                            self.operator, self.attrs)
+            result = ag.batch_create_entity(
+                INSTANCE,
+                processed_inst_list,
+                self.get_check_attr_map(),
+                self.exist_items,
+                self.operator,
+                self.attrs,
+            )
         return result
 
     def inst_list_update(self, inst_list):
         """实例列表更新"""
         from apps.cmdb.validators import FieldValidator
         from apps.cmdb.display_field import DisplayFieldHandler
-        
+
         # 对每个实例进行字段校验和 _display 字段生成
         processed_inst_list = []
         for inst_data in inst_list:
             # 1. 字段格式校验（与修改实例逻辑一致）
-            validation_errors = FieldValidator.validate_instance_data(inst_data, self.attrs)
+            validation_errors = FieldValidator.validate_instance_data(
+                inst_data, self.attrs
+            )
             if validation_errors:
                 # 收集所有字段校验错误
                 for err in validation_errors:
@@ -384,7 +481,7 @@ class Import:
                     self.validation_errors.append(error_msg)
                     logger.warning(error_msg)
                 continue  # 跳过有错误的实例
-            
+
             # 2. 生成 _display 冗余字段（与修改实例逻辑一致）
             inst_data = DisplayFieldHandler.build_display_fields(
                 self.model_id, inst_data, self.attrs
@@ -392,8 +489,14 @@ class Import:
             processed_inst_list.append(inst_data)
 
         with GraphClient() as ag:
-            add_results, update_results = ag.batch_save_entity(INSTANCE, processed_inst_list, self.get_check_attr_map(),
-                                                               self.exist_items, self.operator, self.attrs)
+            add_results, update_results = ag.batch_save_entity(
+                INSTANCE,
+                processed_inst_list,
+                self.get_check_attr_map(),
+                self.exist_items,
+                self.operator,
+                self.attrs,
+            )
         return add_results, update_results
 
     def import_inst_list(self, file_stream: bytes):
@@ -402,13 +505,17 @@ class Import:
         result = self.inst_list_save(inst_list)
         return result
 
-    def import_inst_list_support_edit(self, file_stream: bytes, allowed_org_ids: list = None):
+    def import_inst_list_support_edit(
+        self, file_stream: bytes, allowed_org_ids: list = None
+    ):
         """将excel主机数据导入"""
-        inst_list, asso_key_map = self.format_excel_data(file_stream, allowed_org_ids=allowed_org_ids)
+        inst_list, asso_key_map = self.format_excel_data(
+            file_stream, allowed_org_ids=allowed_org_ids
+        )
         self.inst_list = inst_list
         # 执行导入（有错误的已在 format_excel_data 中被过滤）
         add_results, update_results = self.inst_list_update(inst_list)
-        
+
         # 处理关联数据
         if not self.model_asso_map:
             logger.info(f"模型 {self.model_id} 没有关联模型, 无需处理关联数据")
@@ -416,24 +523,24 @@ class Import:
         else:
             self.format_import_asso_data(asso_key_map)
             asso_result = self.add_asso_data(asso_key_map)
-        
+
         # 将验证错误转换为失败结果（这些数据在 Excel 解析或字段校验阶段就被过滤了）
         validation_failed_results = []
         if self.validation_errors:
-            logger.warning(f"数据导入过程中发现 {len(self.validation_errors)} 个验证错误，对应数据已跳过")
+            logger.warning(
+                f"数据导入过程中发现 {len(self.validation_errors)} 个验证错误，对应数据已跳过"
+            )
             for error in self.validation_errors:
-                validation_failed_results.append({
-                    "success": False,
-                    "data": {},
-                    "message": error
-                })
-        
+                validation_failed_results.append(
+                    {"success": False, "data": {}, "message": error}
+                )
+
         # 合并结果：验证失败 + 新增失败/成功 + 更新失败/成功
         all_add_results = validation_failed_results + add_results
-        
+
         # 格式化结果消息
         self.format_import_result_message(all_add_results, update_results, asso_result)
-        
+
         return all_add_results, update_results, asso_result
 
     def format_import_result_message(self, add_results, update_results, asso_result):
@@ -450,7 +557,9 @@ class Import:
                 data = "实例 {} 新增成功".format(inst_name)
                 self.import_result_message["add"]["success"] += 1
             else:
-                data = "实例 {} 新增失败: {}".format(inst_name, item.get("message", "未知错误"))
+                data = "实例 {} 新增失败: {}".format(
+                    inst_name, item.get("message", "未知错误")
+                )
                 self.import_result_message["add"]["error"] += 1
             self.import_result_message["add"]["data"].append(data)
 
@@ -460,7 +569,9 @@ class Import:
                 data = "实例 {} 更新成功".format(inst_name)
                 self.import_result_message["update"]["success"] += 1
             else:
-                data = "实例 {} 更新失败: {}".format(inst_name, item.get("message", "未知错误"))
+                data = "实例 {} 更新失败: {}".format(
+                    inst_name, item.get("message", "未知错误")
+                )
                 self.import_result_message["update"]["error"] += 1
             self.import_result_message["update"]["data"].append(data)
 
@@ -482,24 +593,41 @@ class Import:
             return
 
         model_asso_map = {
-            i["model_asst_id"]: i["src_model_id"] if self.model_id != i["src_model_id"] else i["dst_model_id"] for i in
-            self.model_asso_map.values()}
+            i["model_asst_id"]: i["src_model_id"]
+            if self.model_id != i["src_model_id"]
+            else i["dst_model_id"]
+            for i in self.model_asso_map.values()
+        }
 
         with GraphClient() as ag:
             # 获取当前模型的实例名称与ID映射
-            exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": self.model_id}])
-            self.inst_name_id_map[self.model_id] = {item["inst_name"]: item["_id"] for item in exist_items}
-            self.inst_id_name_map[self.model_id] = {item["_id"]: item["inst_name"] for item in exist_items}
+            exist_items, _ = ag.query_entity(
+                INSTANCE,
+                [{"field": "model_id", "type": "str=", "value": self.model_id}],
+            )
+            self.inst_name_id_map[self.model_id] = {
+                item["inst_name"]: item["_id"] for item in exist_items
+            }
+            self.inst_id_name_map[self.model_id] = {
+                item["_id"]: item["inst_name"] for item in exist_items
+            }
 
             # 获取关联模型的实例名称与ID映射
             for asso_key, inst_name_list in asso_key_map.items():
                 if not inst_name_list:
                     continue
                 src_model = model_asso_map[asso_key]
-                exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": src_model}])
-                self.inst_name_id_map[src_model] = {item["inst_name"]: item["_id"] for item in exist_items}
+                exist_items, _ = ag.query_entity(
+                    INSTANCE,
+                    [{"field": "model_id", "type": "str=", "value": src_model}],
+                )
+                self.inst_name_id_map[src_model] = {
+                    item["inst_name"]: item["_id"] for item in exist_items
+                }
                 # 反转实例名称与ID映射
-                self.inst_id_name_map[src_model] = {item["_id"]: item["inst_name"] for item in exist_items}
+                self.inst_id_name_map[src_model] = {
+                    item["_id"]: item["inst_name"] for item in exist_items
+                }
 
     def get_model_asso_map(self):
         """
@@ -548,15 +676,21 @@ class Import:
 
             for _model_src_inst_name, _dst_inst_name_list in inst_name_list.items():
                 # 导入模型的实例名称的ID 源ID
-                import_model_inst_name_id = self.inst_name_id_map[self.model_id].get(_model_src_inst_name)
+                import_model_inst_name_id = self.inst_name_id_map[self.model_id].get(
+                    _model_src_inst_name
+                )
                 if not import_model_inst_name_id:
                     continue
                 # 目标模型ID
-                _dst_inst_model_id = dst_model_id if self.model_id == src_model_id else src_model_id
+                _dst_inst_model_id = (
+                    dst_model_id if self.model_id == src_model_id else src_model_id
+                )
 
                 for dst_inst_name in _dst_inst_name_list:
                     # 目标模型的实例名称的ID
-                    _dst_inst_id = self.inst_name_id_map[_dst_inst_model_id].get(dst_inst_name)
+                    _dst_inst_id = self.inst_name_id_map[_dst_inst_model_id].get(
+                        dst_inst_name
+                    )
                     if not _dst_inst_id:
                         continue
                     if self.model_id == src_model_id:
@@ -573,7 +707,7 @@ class Import:
                             dst_model_id=dst_model_id,
                             asst_id=asst_id,
                             src_inst_id=src_inst_id,
-                            dst_inst_id=dst_inst_id
+                            dst_inst_id=dst_inst_id,
                         )
                     )
 
@@ -583,7 +717,9 @@ class Import:
         result = []
         for add_asso in add_asso_list:
             try:
-                asso = self.instance_association_create(add_asso, operator=self.operator)
+                asso = self.instance_association_create(
+                    add_asso, operator=self.operator
+                )
             except Exception as err:
                 asso = {"success": False, "message": "创建关联失败: {}".format(err)}
             result.append(asso)
@@ -599,14 +735,18 @@ class Import:
 
         try:
             from apps.cmdb.services.instance import InstanceManage
+
             InstanceManage.check_asso_mapping(data)
         except Exception as err:
             import traceback
+
             logger.error("校验关联约束失败: {}".format(traceback.format_exc()))
-            return {"success": False,
-                    "message": "【{}】与【{}】的关联关系【{}】创建失败！校验关联约束失败! ".format(src_inst_name,
-                                                                                            dst_inst_name,
-                                                                                            model_asst_id)}
+            return {
+                "success": False,
+                "message": "【{}】与【{}】的关联关系【{}】创建失败！校验关联约束失败! ".format(
+                    src_inst_name, dst_inst_name, model_asst_id
+                ),
+            }
 
         with GraphClient() as ag:
             try:
@@ -621,15 +761,29 @@ class Import:
                 )
             except BaseAppException as e:
                 if e.message == "edge already exists":
-                    message = "关联 【{}】与【{}】的关联关系【{}】 已存在".format(src_inst_name, dst_inst_name, model_asst_id)
+                    message = "关联 【{}】与【{}】的关联关系【{}】 已存在".format(
+                        src_inst_name, dst_inst_name, model_asst_id
+                    )
                 else:
-                    message = "【{}】与【{}】的关联关系【{}】创建失败！".format(src_inst_name, dst_inst_name, model_asst_id)
+                    message = "【{}】与【{}】的关联关系【{}】创建失败！".format(
+                        src_inst_name, dst_inst_name, model_asst_id
+                    )
                 return {"success": False, "message": message}
 
         asso_info = InstanceManage.instance_association_by_asso_id(edge["_id"])
         message = f"创建模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src']['inst_name']}  目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: {asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
-        create_change_record_by_asso(INSTANCE_ASSOCIATION, CREATE_INST_ASST, asso_info, message=message,
-                                     operator=operator)
+        create_change_record_by_asso(
+            INSTANCE_ASSOCIATION,
+            CREATE_INST_ASST,
+            asso_info,
+            message=message,
+            operator=operator,
+        )
 
-        return {"success": True, "data": edge,
-                "message": "【{}】与【{}】的关联关系【{}】创建成功".format(src_inst_name, dst_inst_name, model_asst_id)}
+        return {
+            "success": True,
+            "data": edge,
+            "message": "【{}】与【{}】的关联关系【{}】创建成功".format(
+                src_inst_name, dst_inst_name, model_asst_id
+            ),
+        }

@@ -22,7 +22,7 @@ from apps.cmdb.constants.field_constraints import (
     DEFAULT_USER_PROMPT,
     DEFAULT_STRING_CONSTRAINT,
     DEFAULT_NUMBER_CONSTRAINT,
-    DEFAULT_TIME_CONSTRAINT
+    DEFAULT_TIME_CONSTRAINT,
 )
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.display_field import ExcludeFieldsCache
@@ -161,7 +161,36 @@ class FalkorDBClient:
         """将使用fetchall查询的结果转换成列表类型"""
         _format = FormatDBResult(data)
         result = _format.to_list_of_lists()
-        return [self.entity_to_dict(i, _format=False) for i in result]
+        result_list = [self.entity_to_dict(i, _format=False) for i in result]
+
+        if result_list and result_list[0].get("model_id"):
+            try:
+                model_id = result_list[0].get("model_id")
+                if self.ENABLE_PARAMETERIZATION:
+                    query = "MATCH (n:model) WHERE n.model_id = $model_id RETURN n"
+                    params = {"model_id": model_id}
+                    model_result = self._execute_query(query, params=params)
+                else:
+                    query = f"MATCH (n:model) WHERE n.model_id = '{model_id}' RETURN n"
+                    model_result = self._execute_query(query)
+
+                if model_result:
+                    _format = FormatDBResult(model_result)
+                    model_data = _format.to_list_of_dicts()
+                    if model_data:
+                        attrs_json = model_data[0].get("attrs", "[]")
+                        attrs = (
+                            json.loads(attrs_json)
+                            if isinstance(attrs_json, str)
+                            else attrs_json
+                        )
+                        result_list = self._deserialize_table_fields_in_result_list(
+                            result_list, attrs
+                        )
+            except Exception as e:
+                logger.warning(f"[entity_to_list] 表格字段反序列化失败: {e}")
+
+        return result_list
 
     @staticmethod
     def entity_to_dict(data: dict, _format=True):
@@ -249,13 +278,13 @@ class FalkorDBClient:
         return {"props": validated_props} if validated_props else {}
 
     def create_entity(
-            self,
-            label: str,
-            properties: dict,
-            check_attr_map: dict,
-            exist_items: list,
-            operator: str = None,
-            attrs: list = None,
+        self,
+        label: str,
+        properties: dict,
+        check_attr_map: dict,
+        exist_items: list,
+        operator: str = None,
+        attrs: list = None,
     ):
         """
         快速创建一个实体
@@ -320,14 +349,92 @@ class FalkorDBClient:
         """取可编辑属性"""
         return {k: v for k, v in item.items() if k in check_attr_map}
 
+    def _serialize_table_fields(self, label: str, properties: dict, attrs: list = None):
+        """
+        序列化表格字段为 JSON 字符串
+
+        Args:
+            label: 实体标签
+            properties: 实体属性字典
+            attrs: 属性定义列表
+
+        Returns:
+            dict: 序列化后的属性字典
+        """
+        # 仅对 instance 类型实体进行表格字段序列化
+        if label != "instance" or not attrs:
+            return properties
+
+        # 识别 table 类型字段
+        table_field_ids = {
+            attr.get("attr_id") for attr in attrs if attr.get("attr_type") == "table"
+        }
+
+        if not table_field_ids:
+            return properties
+
+        # 序列化表格字段
+        serialized_properties = properties.copy()
+        for field_id in table_field_ids:
+            if field_id in serialized_properties and isinstance(
+                serialized_properties[field_id], list
+            ):
+                try:
+                    serialized_properties[field_id] = json.dumps(
+                        serialized_properties[field_id], ensure_ascii=False
+                    )
+                    logger.debug(
+                        f"[_serialize_table_fields] 序列化表格字段: {field_id}, "
+                        f"原始类型: list, 序列化后类型: str"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"[_serialize_table_fields] 表格字段序列化失败: {field_id}, 错误: {e}"
+                    )
+                    # 序列化失败时保持原值,让后续处理决定如何处理
+
+        return serialized_properties
+
+    def _deserialize_table_fields_in_result_list(
+        self, result_list: list, attrs: list = None
+    ):
+        """反序列化结果列表中的表格字段"""
+        if not result_list or not attrs:
+            return result_list
+
+        table_field_ids = {
+            attr.get("attr_id") for attr in attrs if attr.get("attr_type") == "table"
+        }
+
+        if not table_field_ids:
+            return result_list
+
+        for item in result_list:
+            for field_id in table_field_ids:
+                if field_id in item and isinstance(item[field_id], str):
+                    try:
+                        item[field_id] = json.loads(item[field_id])
+                        logger.debug(
+                            f"[_deserialize_table_fields] 反序列化字段: {field_id}, "
+                            f"原始类型: str, 反序列化后类型: list"
+                        )
+                    except (json.JSONDecodeError, TypeError) as e:
+                        logger.warning(
+                            f"[_deserialize_table_fields] 反序列化失败: {field_id}, "
+                            f"错误: {e}, 使用空列表"
+                        )
+                        item[field_id] = []
+
+        return result_list
+
     def _create_entity(
-            self,
-            label: str,
-            properties: dict,
-            check_attr_map: dict,
-            exist_items: list,
-            operator: str = None,
-            attrs: list = None,
+        self,
+        label: str,
+        properties: dict,
+        check_attr_map: dict,
+        exist_items: list,
+        operator: str = None,
+        attrs: list = None,
     ):
         # 验证标签（不能参数化）
         validated_label = CQLValidator.validate_label(label)
@@ -337,12 +444,15 @@ class FalkorDBClient:
         # 字段类型约束校验
         if attrs:
             from apps.cmdb.validators import FieldValidator
+
             validation_errors = FieldValidator.validate_instance_data(properties, attrs)
             if validation_errors:
-                error_msg = "; ".join([
-                    f"{err['field_name']}: {err['error']}"
-                    for err in validation_errors
-                ])
+                error_msg = "; ".join(
+                    [
+                        f"{err['field_name']}: {err['error']}"
+                        for err in validation_errors
+                    ]
+                )
                 raise BaseAppException(f"字段校验失败: {error_msg}")
 
         # 校验唯一属性
@@ -356,6 +466,9 @@ class FalkorDBClient:
         # 补充创建人
         if operator:
             properties = {**properties, "_creator": operator}
+
+        # 序列化表格字段为 JSON 字符串
+        properties = self._serialize_table_fields(label, properties, attrs)
 
         # 创建实体
         if self.ENABLE_PARAMETERIZATION:
@@ -373,14 +486,14 @@ class FalkorDBClient:
         return self.entity_to_dict(entity)
 
     def create_edge(
-            self,
-            label: str,
-            a_id: int,
-            a_label: str,
-            b_id: int,
-            b_label: str,
-            properties: dict,
-            check_asst_key: str,
+        self,
+        label: str,
+        a_id: int,
+        a_label: str,
+        b_id: int,
+        b_label: str,
+        properties: dict,
+        check_asst_key: str,
     ):
         """
         快速创建一条边
@@ -391,14 +504,14 @@ class FalkorDBClient:
         return result
 
     def _create_edge(
-            self,
-            label: str,
-            a_id: int,
-            a_label: str,
-            b_id: int,
-            b_label: str,
-            properties: dict,
-            check_asst_key: str = "model_asst_id",
+        self,
+        label: str,
+        a_id: int,
+        a_label: str,
+        b_id: int,
+        b_label: str,
+        properties: dict,
+        check_asst_key: str = "model_asst_id",
     ):
         # 验证标签和关系类型
         validated_label = CQLValidator.validate_relation(label)
@@ -467,13 +580,13 @@ class FalkorDBClient:
         return self.edge_to_dict(edge)
 
     def batch_create_entity(
-            self,
-            label: str,
-            properties_list: list,
-            check_attr_map: dict,
-            exist_items: list,
-            operator: str = None,
-            attrs: list = None,
+        self,
+        label: str,
+        properties_list: list,
+        check_attr_map: dict,
+        exist_items: list,
+        operator: str = None,
+        attrs: list = None,
     ):
         """批量创建实体"""
         results = []
@@ -492,12 +605,12 @@ class FalkorDBClient:
         return results
 
     def batch_create_edge(
-            self,
-            label: str,
-            a_label: str,
-            b_label: str,
-            edge_list: list,
-            check_asst_key: str,
+        self,
+        label: str,
+        a_label: str,
+        b_label: str,
+        edge_list: list,
+        check_asst_key: str,
     ):
         """批量创建边"""
         results = []
@@ -517,11 +630,11 @@ class FalkorDBClient:
         return results
 
     def format_search_params(
-            self,
-            params: list,
-            param_type: str = "AND",
-            param_collector: ParameterCollector = None,
-            case_sensitive: bool = True,
+        self,
+        params: list,
+        param_type: str = "AND",
+        param_collector: ParameterCollector = None,
+        case_sensitive: bool = True,
     ):
         """
         查询参数格式化（参数化版本）
@@ -542,9 +655,9 @@ class FalkorDBClient:
 
         # 如果使用实例 collector 且没有传入外部 collector，重置它（独立查询）
         if (
-                collector is self._param_collector
-                and param_collector is None
-                and self.ENABLE_PARAMETERIZATION
+            collector is self._param_collector
+            and param_collector is None
+            and self.ENABLE_PARAMETERIZATION
         ):
             collector.reset()
 
@@ -577,7 +690,7 @@ class FalkorDBClient:
         return final_str, collector.get_params() if self.ENABLE_PARAMETERIZATION else {}
 
     def format_final_params(
-            self, search_params: list, search_param_type: str = "AND", permission_params=""
+        self, search_params: list, search_param_type: str = "AND", permission_params=""
     ):
         """格式化最终参数"""
         search_params_str, _ = self.format_search_params(
@@ -593,16 +706,16 @@ class FalkorDBClient:
         return f"{search_params_str} AND {permission_params}"
 
     def query_entity(
-            self,
-            label: str,
-            params: list,
-            format_permission_dict: dict = {},
-            page: dict = None,
-            order: str = None,
-            order_type: str = "ASC",
-            param_type="AND",
-            organization_field: str = "organization",
-            case_sensitive: bool = True,
+        self,
+        label: str,
+        params: list,
+        format_permission_dict: dict = {},
+        page: dict = None,
+        order: str = None,
+        order_type: str = "ASC",
+        param_type="AND",
+        organization_field: str = "organization",
+        case_sensitive: bool = True,
     ):
         """
         查询实体（参数化版本）
@@ -785,11 +898,11 @@ class FalkorDBClient:
         return self.entity_to_list(objs)
 
     def query_edge(
-            self,
-            label: str,
-            params: list,
-            param_type: str = "AND",
-            return_entity: bool = False,
+        self,
+        label: str,
+        params: list,
+        param_type: str = "AND",
+        return_entity: bool = False,
     ):
         """
         查询边（参数化版本）
@@ -837,18 +950,18 @@ class FalkorDBClient:
         return properties_str if properties_str == "" else properties_str[:-1]
 
     def set_entity_properties(
-            self,
-            label: str,
-            entity_ids: list,
-            properties: dict,
-            check_attr_map: dict,
-            exist_items: list,
-            check: bool = True,
-            attrs: list = None,
+        self,
+        label: str,
+        entity_ids: list,
+        properties: dict,
+        check_attr_map: dict,
+        exist_items: list,
+        check: bool = True,
+        attrs: list = None,
     ):
         """
         设置实体属性
-        
+
         根据 label 类型执行不同的逻辑:
         - label == "instance": 校验实例数据是否符合模型字段约束
         - label == "model": 确保模型字段定义包含必要的默认值
@@ -878,19 +991,25 @@ class FalkorDBClient:
         if label == INSTANCE and attrs:
             # 实例：字段类型约束校验
             from apps.cmdb.validators import FieldValidator
+
             validation_errors = FieldValidator.validate_instance_data(properties, attrs)
             if validation_errors:
-                error_msg = "; ".join([
-                    f"{err['field_name']}: {err['error']}"
-                    for err in validation_errors
-                ])
+                error_msg = "; ".join(
+                    [
+                        f"{err['field_name']}: {err['error']}"
+                        for err in validation_errors
+                    ]
+                )
                 raise BaseAppException(f"字段校验失败: {error_msg}")
 
         elif label == MODEL and "attrs" in properties:
             # 模型：确保字段定义包含必要的默认值
             try:
-                attrs_list = json.loads(properties["attrs"]) if isinstance(properties["attrs"], str) else properties[
-                    "attrs"]
+                attrs_list = (
+                    json.loads(properties["attrs"])
+                    if isinstance(properties["attrs"], str)
+                    else properties["attrs"]
+                )
 
                 # 为每个字段补充默认值
                 for attr in attrs_list:
@@ -922,29 +1041,37 @@ class FalkorDBClient:
             except (json.JSONDecodeError, TypeError, KeyError) as e:
                 logger.warning(f"处理模型字段默认值时出错: {e}")
 
+        # 序列化表格字段为 JSON 字符串
+        properties = self._serialize_table_fields(label, properties, attrs)
+
         nodes = self.batch_update_node_properties(label, entity_ids, properties)
         return self.entity_to_list(nodes)
 
     def batch_update_entity_properties(
-            self,
-            label: str,
-            entity_ids: list,
-            properties: dict,
-            check_attr_map: dict,
-            check: bool = True,
-            attrs: list = None,
+        self,
+        label: str,
+        entity_ids: list,
+        properties: dict,
+        check_attr_map: dict,
+        check: bool = True,
+        attrs: list = None,
     ):
         """批量更新实体属性"""
         if check:
             # 字段类型约束校验
             if attrs:
                 from apps.cmdb.validators import FieldValidator
-                validation_errors = FieldValidator.validate_instance_data(properties, attrs)
+
+                validation_errors = FieldValidator.validate_instance_data(
+                    properties, attrs
+                )
                 if validation_errors:
-                    error_msg = "; ".join([
-                        f"{err['field_name']}: {err['error']}"
-                        for err in validation_errors
-                    ])
+                    error_msg = "; ".join(
+                        [
+                            f"{err['field_name']}: {err['error']}"
+                            for err in validation_errors
+                        ]
+                    )
                     raise BaseAppException(f"字段校验失败: {error_msg}")
 
             # 校验必填项
@@ -959,11 +1086,14 @@ class FalkorDBClient:
             if not properties:
                 return []
 
+        # 序列化表格字段为 JSON 字符串
+        properties = self._serialize_table_fields(label, properties, attrs)
+
         nodes = self.batch_update_node_properties(label, entity_ids, properties)
         return {"data": self.entity_to_list(nodes), "success": True, "message": ""}
 
     def batch_update_node_properties(
-            self, label: str, node_ids: Union[int, List[int]], properties: dict
+        self, label: str, node_ids: Union[int, List[int]], properties: dict
     ):
         """批量更新节点属性（参数化版本）"""
         validated_label = CQLValidator.validate_label(label) if label else ""
@@ -1181,7 +1311,7 @@ class FalkorDBClient:
             return {}
 
     def convert_to_cypher_match(
-            self, label_str: str, model_id: str, params_str: str, dst: bool = True
+        self, label_str: str, model_id: str, params_str: str, dst: bool = True
     ) -> str:
         edge_type = "dst" if dst else "src"
         default_match = (
@@ -1277,7 +1407,7 @@ class FalkorDBClient:
         )
 
     def query_topo_lite(
-            self, label: str, inst_id: int, depth: int = 3, exclude_ids=None
+        self, label: str, inst_id: int, depth: int = 3, exclude_ids=None
     ):
         """查询实例拓扑：限制返回层级，减少前端一次性渲染与网络传输压力"""
 
@@ -1340,9 +1470,13 @@ class FalkorDBClient:
                 relationships = getattr(element, "_edges", [])  # 获取所有节点
                 for node in nodes:
                     props = {k: v for k, v in node.properties.items() if k != "_id"}
-                    entity_map[node.id] = dict(_id=node.id, _label=node.labels[0], **props)
+                    entity_map[node.id] = dict(
+                        _id=node.id, _label=node.labels[0], **props
+                    )
                 for relationship in relationships:
-                    props = {k: v for k, v in relationship.properties.items() if k != "_id"}
+                    props = {
+                        k: v for k, v in relationship.properties.items() if k != "_id"
+                    }
                     edge_map[relationship.id] = dict(
                         _id=relationship.id,
                         _label=relationship.relation,
@@ -1390,7 +1524,7 @@ class FalkorDBClient:
         return node
 
     def format_topo_lite(
-            self, start_id, objs, entity_is_src=True, depth: int = 3, exclude_ids=None
+        self, start_id, objs, entity_is_src=True, depth: int = 3, exclude_ids=None
     ):
         """格式化拓扑数据：限制层级并支持排除父节点集合"""
 
@@ -1413,9 +1547,13 @@ class FalkorDBClient:
                 relationships = getattr(element, "_edges", [])
                 for node in nodes:
                     props = {k: v for k, v in node.properties.items() if k != "_id"}
-                    entity_map[node.id] = dict(_id=node.id, _label=node.labels[0], **props)
+                    entity_map[node.id] = dict(
+                        _id=node.id, _label=node.labels[0], **props
+                    )
                 for relationship in relationships:
-                    props = {k: v for k, v in relationship.properties.items() if k != "_id"}
+                    props = {
+                        k: v for k, v in relationship.properties.items() if k != "_id"
+                    }
                     edge_map[relationship.id] = dict(
                         _id=relationship.id,
                         _label=relationship.relation,
@@ -1424,9 +1562,7 @@ class FalkorDBClient:
 
         edges = list(edge_map.values())
         edges = [
-            edge
-            for edge in edges
-            if edge.get("src_inst_id") != edge.get("dst_inst_id")
+            edge for edge in edges if edge.get("src_inst_id") != edge.get("dst_inst_id")
         ]
 
         if exclude_id_set:
@@ -1436,7 +1572,7 @@ class FalkorDBClient:
                 edge
                 for edge in edges
                 if edge.get("src_inst_id") not in exclude_id_set
-                   and edge.get("dst_inst_id") not in exclude_id_set
+                and edge.get("dst_inst_id") not in exclude_id_set
             ]
 
         entities = list(entity_map.values())
@@ -1453,20 +1589,20 @@ class FalkorDBClient:
         )
 
     def create_node_lite(
-            self,
-            entity,
-            edges,
-            entities,
-            entity_is_src=True,
-            level: int = 1,
-            max_depth: int = 3,
+        self,
+        entity,
+        edges,
+        entities,
+        entity_is_src=True,
+        level: int = 1,
+        max_depth: int = 3,
     ):
         node = {
             "_id": entity.get("_id"),
             "model_id": entity.get("model_id"),
             "inst_name": entity.get("inst_name")
-                         or entity.get("ip_addr")
-                         or str(entity.get("_id")),
+            or entity.get("ip_addr")
+            or str(entity.get("_id")),
             "children": [],
         }
 
@@ -1477,8 +1613,7 @@ class FalkorDBClient:
 
         if level >= max_depth:
             node["has_more"] = any(
-                edge.get(f"{entity_key}_inst_id") == entity.get("_id")
-                for edge in edges
+                edge.get(f"{entity_key}_inst_id") == entity.get("_id") for edge in edges
             )
             return node
 
@@ -1509,7 +1644,7 @@ class FalkorDBClient:
         return None
 
     def entity_count(
-            self, label: str, group_by_attr: str, format_permission_dict: dict
+        self, label: str, group_by_attr: str, format_permission_dict: dict
     ):
         """
         按指定字段分组统计实体数量（参数化版本）
@@ -1593,13 +1728,13 @@ class FalkorDBClient:
         return result
 
     def full_text_stats(
-            self,
-            search: str,
-            permission_params: str = "",
-            inst_name_params: str = "",
-            created: str = "",
-            case_sensitive: bool = False,
-            permission_params_dict: dict = None,
+        self,
+        search: str,
+        permission_params: str = "",
+        inst_name_params: str = "",
+        created: str = "",
+        case_sensitive: bool = False,
+        permission_params_dict: dict = None,
     ) -> dict:
         """
         全文检索 - 模型统计接口（参数化版本）
@@ -1724,16 +1859,16 @@ class FalkorDBClient:
         return {"total": total, "model_stats": model_stats}
 
     def full_text_by_model(
-            self,
-            search: str,
-            model_id: str,
-            permission_params: str = "",
-            inst_name_params: str = "",
-            created: str = "",
-            page: int = 1,
-            page_size: int = 10,
-            case_sensitive: bool = False,
-            permission_params_dict: dict = None,
+        self,
+        search: str,
+        model_id: str,
+        permission_params: str = "",
+        inst_name_params: str = "",
+        created: str = "",
+        page: int = 1,
+        page_size: int = 10,
+        case_sensitive: bool = False,
+        permission_params_dict: dict = None,
     ) -> dict:
         """
         全文检索 - 模型数据查询接口
@@ -1894,12 +2029,12 @@ class FalkorDBClient:
         }
 
     def full_text(
-            self,
-            search: str,
-            permission_params: str = "",
-            inst_name_params: str = "",
-            created: str = "",
-            case_sensitive: bool = False,
+        self,
+        search: str,
+        permission_params: str = "",
+        inst_name_params: str = "",
+        created: str = "",
+        case_sensitive: bool = False,
     ):
         """
         全文检索（兼容旧接口，参数化版本）
@@ -1997,13 +2132,13 @@ class FalkorDBClient:
         return result
 
     def batch_save_entity(
-            self,
-            label: str,
-            properties_list: list,
-            check_attr_map: dict,
-            exist_items: list,
-            operator: str = None,
-            attrs: list = None,
+        self,
+        label: str,
+        properties_list: list,
+        check_attr_map: dict,
+        exist_items: list,
+        operator: str = None,
+        attrs: list = None,
     ):
         """批量保存实体，支持新增与更新"""
         unique_key = check_attr_map.get(ModelConstraintKey.unique.value, {}).keys()
