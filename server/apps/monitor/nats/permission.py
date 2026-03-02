@@ -1,21 +1,25 @@
 import nats_client
 from apps.monitor.models import MonitorInstance, MonitorObject, MonitorPolicy
+from apps.monitor.models.monitor_condition import MonitorCondition
 
 
 @nats_client.register
 def get_monitor_module_data(module, child_module, page, page_size, group_id):
     """
-        获取监控模块数据
+    获取监控模块数据
     """
     if module == "instance":
         queryset = MonitorInstance.objects.filter(
             monitor_object_id=child_module,
-            monitorinstanceorganization__organization=group_id
+            monitorinstanceorganization__organization=group_id,
         ).distinct("id")
     elif module == "policy":
         queryset = MonitorPolicy.objects.filter(
-            monitor_object_id=child_module,
-            policyorganization__organization=group_id
+            monitor_object_id=child_module, policyorganization__organization=group_id
+        ).distinct("id")
+    elif module == "condition":
+        queryset = MonitorCondition.objects.filter(
+            monitor_object_id=child_module, organizations__organization=group_id
         ).distinct("id")
     else:
         raise ValueError("Invalid module type")
@@ -26,13 +30,13 @@ def get_monitor_module_data(module, child_module, page, page_size, group_id):
     end = page * page_size
     # 获取当前页的数据
     data_list = queryset.values("id", "name")[start:end]
-    return {"count": total_count,"items": list(data_list)}
+    return {"count": total_count, "items": list(data_list)}
 
 
 @nats_client.register
 def get_monitor_module_list():
     """
-        获取监控模块列表
+    获取监控模块列表
     """
     objs = MonitorObject.objects.all().values("id", "type", "name")
 
@@ -44,11 +48,9 @@ def get_monitor_module_list():
 
     type_list = []
     for obj_type, items in obj_map.items():
-        type_list.append({
-            "name": obj_type,
-            "display_name": obj_type,
-            "children": items
-        })
+        type_list.append(
+            {"name": obj_type, "display_name": obj_type, "children": items}
+        )
 
     return [
         {
@@ -56,9 +58,6 @@ def get_monitor_module_list():
             "display_name": "Instance",
             "children": type_list,
         },
-        {
-            "name": "policy",
-            "display_name": "Policy",
-            "children": type_list
-        }
+        {"name": "policy", "display_name": "Policy", "children": type_list},
+        {"name": "condition", "display_name": "Condition", "children": type_list},
     ]
