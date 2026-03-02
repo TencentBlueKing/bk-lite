@@ -57,6 +57,22 @@ export interface WorkflowTaskResult {
   bot_work_flow: number;
   execution_duration?: number;
   error_log?: string;
+  execution_id?: string;
+}
+
+export interface ExecutionOutputParams {
+  execution_id: string;
+  id: number;
+}
+
+export interface ExecutionOutputData {
+  [nodeId: string]: {
+    name: string;
+    type: string;
+    index: number;
+    input_data: unknown;
+    output: unknown;
+  };
 }
 
 export interface Channel {

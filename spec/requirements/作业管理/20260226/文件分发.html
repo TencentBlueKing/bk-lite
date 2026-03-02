@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件分发 - Job</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Fira Sans', 'Fira Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            color: #1f2329;
+            line-height: 1.5;
+        }
+
+        .top-header {
+            background: #fff;
+            height: 60px;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 8px;
+            margin-left: 48px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #646a73;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+        }
+
+        .nav-item:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .nav-item.active {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.1);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: #646a73;
+            font-size: 14px;
+        }
+
+        .header-right > span {
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .header-right > span:hover {
+            background: rgba(0, 0, 0, 0.04);
+            color: #0052d9;
+        }
+
+        .sub-header {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            height: 52px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            padding: 0 32px;
+        }
+
+        .sub-nav {
+            display: flex;
+            gap: 4px;
+        }
+
+        .sub-nav-item {
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #646a73;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+        }
+
+        .sub-nav-item:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .sub-nav-item.active {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.12);
+        }
+
+        .main-container {
+            padding: 24px 32px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .page-intro {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .intro-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2329;
+            margin-bottom: 8px;
+        }
+
+        .intro-desc {
+            font-size: 14px;
+            color: #646a73;
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        .form-main {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #1f2329;
+            margin-bottom: 8px;
+        }
+
+        .required {
+            color: #ea3636;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #0052d9;
+            box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1);
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 16px;
+        }
+
+        .radio-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .radio-item input[type="radio"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+
+        .upload-area {
+            border: 2px dashed #dcdee0;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #fafbfc;
+        }
+
+        .upload-area:hover {
+            border-color: #0052d9;
+            background: #f0f5ff;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .upload-text {
+            font-size: 14px;
+            color: #646a73;
+        }
+
+        .upload-tip {
+            font-size: 12px;
+            color: #8f959e;
+            margin-top: 8px;
+        }
+
+        .file-list {
+            margin-top: 16px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            background: #f5f7fa;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .file-name {
+            font-size: 14px;
+            color: #1f2329;
+        }
+
+        .file-size {
+            font-size: 12px;
+            color: #8f959e;
+        }
+
+        .file-remove {
+            color: #ea3636;
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .host-selector {
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            padding: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .host-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .host-item:hover {
+            background: #f5f7fa;
+        }
+
+        .host-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .host-info {
+            flex: 1;
+        }
+
+        .host-name {
+            font-size: 14px;
+            color: #1f2329;
+            font-weight: 500;
+        }
+
+        .host-ip {
+            font-size: 12px;
+            color: #8f959e;
+        }
+
+        .action-footer {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid #f0f1f5;
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: none;
+        }
+
+        .btn-primary {
+            background: #0052d9;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0041ad;
+        }
+
+        .btn-default {
+            background: white;
+            color: #646a73;
+            border: 1px solid #dcdee0;
+        }
+
+        .btn-default:hover {
+            border-color: #0052d9;
+            color: #0052d9;
+        }
+
+        .form-tip {
+            font-size: 12px;
+            color: #8f959e;
+            margin-top: 4px;
+        }
+
+        .btn-add {
+            background: white;
+            color: #0052d9;
+            border: 1px dashed #0052d9;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-add:hover {
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+
+        .modal.hidden {
+            display: none;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            width: 90%;
+            max-width: 800px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-header {
+            padding: 16px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2329;
+        }
+
+        .modal-close {
+            cursor: pointer;
+            font-size: 18px;
+            color: #646a73;
+            transition: color 0.3s;
+        }
+
+        .modal-close:hover {
+            color: #0052d9;
+        }
+
+        .modal-body {
+            padding: 16px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .host-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .host-search {
+            flex: 1;
+            position: relative;
+        }
+
+        .host-search input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .host-search input:focus {
+            outline: none;
+            border-color: #0052d9;
+            box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1);
+        }
+
+        .host-toolbar .btn-mini {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #dcdee0;
+            background: #fff;
+            color: #646a73;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .host-toolbar .btn-mini:hover {
+            border-color: #0052d9;
+            color: #0052d9;
+        }
+
+        .host-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .host-table thead {
+            background: #f5f7fa;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .host-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            color: #646a73;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .host-table th:first-child {
+            width: 50px;
+            text-align: center;
+        }
+
+        .host-table tbody tr {
+            border-bottom: 1px solid #f0f1f5;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .host-table tbody tr:hover {
+            background: #f9fafb;
+        }
+
+        .host-table tbody tr.selected {
+            background: #e6f4ff;
+        }
+
+        .host-table td {
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #1f2329;
+        }
+
+        .host-table td:first-child {
+            text-align: center;
+        }
+
+        .host-table input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .driver-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .driver-badge.nats {
+            background: #f0f9ff;
+            color: #1677ff;
+        }
+
+        .driver-badge.ssh {
+            background: #fff7e6;
+            color: #d46b08;
+        }
+
+        .driver-badge.ansible {
+            background: #f6ffed;
+            color: #52c41a;
+        }
+
+        .os-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            background: #f5f7fa;
+            color: #646a73;
+        }
+
+        .modal-body .host-selector {
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 0;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+        }
+    
+        /* ===== UI/UX ENHANCEMENTS ===== */
+        
+        /* Focus states for accessibility */
+        a:focus-visible, button:focus-visible, input:focus-visible, 
+        select:focus-visible, textarea:focus-visible, 
+        [tabindex]:focus-visible, .nav-item:focus-visible,
+        .sub-nav-item:focus-visible {
+            outline: 2px solid #0052d9;
+            outline-offset: 2px;
+        }
+
+        /* Enhanced table row hover */
+        tbody tr {
+            border-left: 3px solid transparent;
+        }
+        tbody tr:hover {
+            background: #f0f5ff !important;
+            border-left: 3px solid #0052d9;
+        }
+
+        /* Inline SVG icon alignment */
+        .nav-item svg, .sub-nav-item svg, .header-right svg {
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+    
+        /* Table responsive wrapper */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table-responsive table {
+            min-width: 100%;
+        }
+
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo">
+                <div class="logo-icon">BK</div>
+                <span>Job</span>
+            </div>
+            <nav class="header-nav">
+                <div class="nav-item" onclick="location.href='首页.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>首页</span></div>
+                <div class="nav-item active"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></span><span>作业执行</span></div>
+                <div class="nav-item" onclick="location.href='脚本库.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span>作业模版</span></div>
+                <div class="nav-item" onclick="location.href='目标管理.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><span>目标管理</span></div>
+                <div class="nav-item" onclick="location.href='高危命令配置.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span>系统配置</span></div>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> 帮助文档</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 语言: 简体中文</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Admin</span>
+        </div>
+    </div>
+
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <div class="sub-nav-item" onclick="location.href='快速执行.html'">快速执行</div>
+            <div class="sub-nav-item active">文件分发</div>
+            <div class="sub-nav-item" onclick="location.href='定时任务.html'">定时任务</div>
+            <div class="sub-nav-item" onclick="location.href='作业记录.html'">作业记录</div>
+        </nav>
+    </div>
+
+    <div class="main-container">
+        <div class="page-intro">
+            <h2 class="intro-title">文件分发</h2>
+            <p class="intro-desc">快速将文件分发到目标主机。支持上传文件或压缩包，可配置目标路径和覆盖策略。</p>
+        </div>
+
+        <div class="form-main">
+            <div class="form-group">
+                <label class="form-label">
+                    <span class="required">*</span>
+                    作业名称
+                </label>
+                <input type="text" class="form-input" placeholder="请输入作业名称，例如：部署配置文件" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <span class="required">*</span>
+                    目标主机
+                </label>
+                
+                <button type="button" class="btn-add" onclick="openHostSelector()">
+                    <span>+</span>
+                    <span>添加目标主机</span>
+                </button>
+                
+                <div class="form-tip" id="hostSelectedTip" style="margin-top: 12px;">已选择 0 台主机</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <span class="required">*</span>
+                    文件上传
+                </label>
+                <div class="upload-area" onclick="document.getElementById('file-input').click()">
+                    <div class="upload-icon"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></div>
+                    <div class="upload-text">点击或拖拽文件到此处上传</div>
+                    <div class="upload-tip">支持上传文件或压缩包，单个文件不超过 500MB</div>
+                    <input type="file" id="file-input" multiple style="display: none;" />
+                </div>
+                <div class="file-list">
+                    <div class="file-item">
+                        <div class="file-info">
+                            <span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+                            <div>
+                                <div class="file-name">nginx.conf</div>
+                                <div class="file-size">12.5 KB</div>
+                            </div>
+                        </div>
+                        <span class="file-remove">×</span>
+                    </div>
+                    <div class="file-item">
+                        <div class="file-info">
+                            <span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+                            <div>
+                                <div class="file-name">app-config.yaml</div>
+                                <div class="file-size">8.3 KB</div>
+                            </div>
+                        </div>
+                        <span class="file-remove">×</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <span class="required">*</span>
+                    目标路径
+                </label>
+                <input type="text" class="form-input" value="/etc/nginx/" placeholder="请输入目标主机的文件路径" />
+                <div class="form-tip">文件将被分发到目标主机的此路径</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">覆盖策略</label>
+                <div class="radio-group">
+                    <label class="radio-item">
+                        <input type="radio" name="overwrite" value="overwrite" checked />
+                        <span>覆盖已存在文件</span>
+                    </label>
+                    <label class="radio-item">
+                        <input type="radio" name="overwrite" value="skip" />
+                        <span>跳过已存在文件</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">超时时间（秒）</label>
+                <input type="number" class="form-input" value="600" placeholder="默认 600 秒" />
+                <div class="form-tip">文件分发超时时间，超时后将自动终止</div>
+            </div>
+
+            <div class="action-footer">
+                <button class="btn btn-primary">立即执行</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="hostSelectorModal" class="modal hidden">
+        <div class="modal-overlay" onclick="closeHostSelector()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>选择目标主机</h2>
+                <span class="modal-close" onclick="closeHostSelector()">×</span>
+            </div>
+            <div class="modal-body">
+                <div class="host-toolbar">
+                    <div class="host-search">
+                        <input id="hostSearch" type="text" placeholder="搜索主机名或IP，支持模糊匹配" />
+                    </div>
+                    <button type="button" class="btn-mini" onclick="selectAllFiltered(true)">全选当前</button>
+                    <button type="button" class="btn-mini" onclick="selectAllFiltered(false)">取消全选</button>
+                </div>
+
+                <div class="host-selector">
+                    <table class="host-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="selectAllCheckbox" onclick="toggleSelectAll(this)" /></th>
+                                <th>目标名称</th>
+                                <th>IP 地址</th>
+                                <th>云区域</th>
+                                <th>操作系统</th>
+                                <th>当前驱动</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hostList">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" onclick="closeHostSelector()">取消</button>
+                <button type="button" class="btn btn-primary" onclick="confirmHostSelection()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const hostData = [
+            { id: 'host1', name: 'web-server-01', ip: '192.168.1.101', cloudArea: '默认区域', os: 'Linux', driver: 'nats-executor', checked: false },
+            { id: 'host2', name: 'web-server-02', ip: '192.168.1.102', cloudArea: '默认区域', os: 'Linux', driver: 'nats-executor', checked: false },
+            { id: 'host3', name: 'db-primary-01', ip: '192.168.1.201', cloudArea: '默认区域', os: 'Linux', driver: 'ssh', checked: false },
+            { id: 'host4', name: 'db-server-02', ip: '192.168.1.202', cloudArea: '杭州', os: 'Linux', driver: 'ssh', checked: false },
+            { id: 'host5', name: 'k8s-node-master', ip: '10.0.1.10', cloudArea: '杭州', os: 'Linux', driver: 'nats-executor', checked: false },
+            { id: 'host6', name: 'legacy-app-server', ip: '172.16.10.50', cloudArea: '上海', os: 'Windows', driver: 'ansible', checked: false },
+            { id: 'host7', name: 'cache-redis-cluster', ip: '192.168.2.88', cloudArea: '北京', os: 'Linux', driver: 'ssh', checked: false },
+        ];
+
+        function getDriverBadgeClass(driver) {
+            if (driver === 'nats-executor') return 'nats';
+            if (driver === 'ssh') return 'ssh';
+            if (driver === 'ansible') return 'ansible';
+            return '';
+        }
+
+        function renderHostList(filter = '') {
+            const listEl = document.getElementById('hostList');
+            listEl.innerHTML = '';
+            const keyword = filter.trim().toLowerCase();
+            const filtered = hostData.filter(h =>
+                !keyword ||
+                h.name.toLowerCase().includes(keyword) ||
+                h.ip.toLowerCase().includes(keyword) ||
+                h.cloudArea.toLowerCase().includes(keyword)
+            );
+            
+            filtered.forEach(h => {
+                const row = document.createElement('tr');
+                row.className = h.checked ? 'selected' : '';
+                row.innerHTML = `
+                    <td><input type="checkbox" id="${h.id}" ${h.checked ? 'checked' : ''} /></td>
+                    <td>${h.name}</td>
+                    <td>${h.ip}</td>
+                    <td>${h.cloudArea}</td>
+                    <td><span class="os-badge">${h.os}</span></td>
+                    <td><span class="driver-badge ${getDriverBadgeClass(h.driver)}">${h.driver}</span></td>
+                `;
+                
+                row.addEventListener('click', (e) => {
+                    if (e.target.type !== 'checkbox') {
+                        const checkbox = row.querySelector('input[type="checkbox"]');
+                        checkbox.checked = !checkbox.checked;
+                        h.checked = checkbox.checked;
+                        row.classList.toggle('selected', h.checked);
+                        updateHostSelectedTip();
+                        updateSelectAllCheckbox();
+                    }
+                });
+                
+                row.querySelector('input').addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    h.checked = e.target.checked;
+                    row.classList.toggle('selected', h.checked);
+                    updateHostSelectedTip();
+                    updateSelectAllCheckbox();
+                });
+                
+                listEl.appendChild(row);
+            });
+            
+            updateHostSelectedTip();
+            updateSelectAllCheckbox();
+        }
+
+        function updateHostSelectedTip() {
+            const count = hostData.filter(h => h.checked).length;
+            document.getElementById('hostSelectedTip').textContent = `已选择 ${count} 台主机`;
+        }
+
+        function updateSelectAllCheckbox() {
+            const keyword = document.getElementById('hostSearch').value.trim().toLowerCase();
+            const filtered = hostData.filter(h =>
+                !keyword ||
+                h.name.toLowerCase().includes(keyword) ||
+                h.ip.toLowerCase().includes(keyword) ||
+                h.cloudArea.toLowerCase().includes(keyword)
+            );
+            const allChecked = filtered.length > 0 && filtered.every(h => h.checked);
+            const someChecked = filtered.some(h => h.checked);
+            
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            selectAllCheckbox.checked = allChecked;
+            selectAllCheckbox.indeterminate = someChecked && !allChecked;
+        }
+
+        function selectAllFiltered(checked) {
+            const keyword = document.getElementById('hostSearch').value.trim().toLowerCase();
+            hostData.forEach(h => {
+                if (!keyword ||
+                    h.name.toLowerCase().includes(keyword) ||
+                    h.ip.toLowerCase().includes(keyword) ||
+                    h.cloudArea.toLowerCase().includes(keyword)) {
+                    h.checked = checked;
+                }
+            });
+            renderHostList(keyword);
+        }
+
+        function toggleSelectAll(checkbox) {
+            selectAllFiltered(checkbox.checked);
+        }
+
+        function openHostSelector() {
+            document.getElementById('hostSelectorModal').classList.remove('hidden');
+            renderHostList();
+        }
+
+        function closeHostSelector() {
+            document.getElementById('hostSelectorModal').classList.add('hidden');
+        }
+
+        function confirmHostSelection() {
+            updateHostSelectedTip();
+            closeHostSelector();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const search = document.getElementById('hostSearch');
+            search.addEventListener('input', () => {
+                renderHostList(search.value);
+            });
+        });
+
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            console.log('文件上传:', e.target.files);
+        });
+    </script>
+</body>
+</html>

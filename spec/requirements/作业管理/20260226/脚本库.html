@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>脚本库 - Job</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Fira Sans', 'Fira Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #1f2329; line-height: 1.5; }
+        .top-header { background: #fff; height: 60px; border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 100; }
+        .header-left { display: flex; align-items: center; gap: 8px; }
+        .logo { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 18px; }
+        .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; font-weight: bold; box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25); }
+        .header-nav { display: flex; gap: 8px; margin-left: 48px; }
+        .nav-item { display: flex; align-items: center; gap: 8px; color: #646a73; cursor: pointer; font-size: 14px; padding: 8px 16px; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.1); }
+        .header-right { display: flex; align-items: center; gap: 20px; color: #646a73; font-size: 14px; }
+        .header-right > span { cursor: pointer; padding: 6px 12px; border-radius: 6px; transition: all 0.3s; }
+        .header-right > span:hover { background: rgba(0, 0, 0, 0.04); color: #0052d9; }
+        .sub-header { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); height: 52px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); display: flex; align-items: center; padding: 0 32px; }
+        .sub-nav { display: flex; gap: 4px; }
+        .sub-nav-item { padding: 10px 20px; cursor: pointer; font-size: 14px; color: #646a73; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .sub-nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .sub-nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.12); }
+        .main-container { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
+        .page-intro { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; border: 1px solid #e5e7eb; }
+        .intro-title { font-size: 16px; font-weight: 600; color: #1f2329; margin-bottom: 8px; }
+        .intro-desc { font-size: 14px; color: #646a73; line-height: 1.6; margin: 0; }
+        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+        .page-title { font-size: 20px; font-weight: 600; color: #1f2329; }
+        .btn { padding: 10px 20px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.3s; border: none; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-primary { background: #0052d9; color: white; }
+        .btn-primary:hover { background: #0041ad; }
+        .btn-default { background: white; color: #646a73; border: 1px solid #dcdee0; }
+        .btn-default:hover { border-color: #0052d9; color: #0052d9; }
+        .content-card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06); }
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: #f5f7fa; }
+        th { padding: 12px 16px; text-align: left; font-size: 13px; font-weight: 600; color: #646a73; }
+        tbody tr { border-bottom: 1px solid #f0f1f5; transition: all 0.2s; }
+        tbody tr:hover { background: #f9fafb; }
+        td { padding: 16px; font-size: 14px; color: #1f2329; }
+        td.nowrap { white-space: nowrap; }
+        .org-cell { white-space: nowrap; }
+        .type-badge { padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+        .type-badge.shell { background: #e6f0ff; color: #0052d9; }
+        .type-badge.python { background: #fff4e6; color: #ff9500; }
+        .action-links { display: flex; gap: 12px; }
+        .action-link { color: #0052d9; cursor: pointer; transition: all 0.2s; text-decoration: none; }
+        .action-link:hover { color: #0041ad; }
+        .action-link.danger { color: #ea3636; }
+        .action-link.danger:hover { color: #c72929; }
+
+        /* 搜索组件 */
+        .search-group {
+            display: flex;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            overflow: hidden;
+            background: white;
+            transition: all 0.3s;
+        }
+        .search-group:hover { border-color: rgba(0, 82, 217, 0.3); }
+        .search-group:focus-within { border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .search-select {
+            padding: 8px 12px;
+            border: none;
+            border-right: 1px solid #dcdee0;
+            font-size: 14px;
+            outline: none;
+            background: #f5f7fa;
+            cursor: pointer;
+            min-width: 100px;
+        }
+        .search-select:hover { background: #eef0f3; }
+        .search-input-field {
+            padding: 8px 12px;
+            border: none;
+            font-size: 14px;
+            outline: none;
+            width: 200px;
+            background: white;
+        }
+        .search-input-field::placeholder { color: #8f959e; }
+        
+        /* 主弹窗 */
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-title { font-size: 18px; font-weight: 600; }
+        .modal-close { font-size: 24px; cursor: pointer; color: #8f959e; }
+        .modal-close:hover { color: #1f2329; }
+        .modal-footer { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; padding-top: 20px; border-top: 1px solid #f0f1f5; }
+        
+        .form-group { margin-bottom: 20px; }
+        .form-label { display: block; font-size: 14px; font-weight: 500; color: #1f2329; margin-bottom: 8px; }
+        .form-input { width: 100%; padding: 10px 12px; border: 1px solid #dcdee0; border-radius: 6px; font-size: 14px; }
+        .form-input:focus { outline: none; border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .form-select { width: 100%; padding: 10px 12px; border: 1px solid #dcdee0; border-radius: 6px; font-size: 14px; background: white; }
+        
+        /* 脚本编辑器 - 带 Tab 切换 */
+        .script-editor-wrapper { border: 1px solid #3a3f4b; border-radius: 8px; overflow: hidden; }
+        .script-editor-header { display: flex; align-items: center; justify-content: space-between; background: #2d2d2d; padding: 0 12px; border-bottom: 1px solid #3a3f4b; }
+        .script-tabs { display: flex; gap: 0; }
+        .script-tab { padding: 10px 20px; font-size: 13px; color: #8f959e; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; background: transparent; border: none; }
+        .script-tab:hover { color: #c4c6cc; }
+        .script-tab.active { color: #fff; border-bottom-color: #0052d9; background: #1e1e1e; }
+        .script-editor-actions { display: flex; gap: 12px; }
+        .script-editor-action { color: #8f959e; cursor: pointer; font-size: 14px; padding: 6px; border-radius: 4px; transition: all 0.2s; }
+        .script-editor-action:hover { color: #fff; background: rgba(255,255,255,0.1); }
+        .code-editor { width: 100%; min-height: 320px; padding: 16px; border: none; border-radius: 0; font-family: 'Fira Code', 'Fira Code', 'Monaco', 'Menlo', monospace; font-size: 13px; line-height: 1.7; resize: vertical; background: #1e1e1e; color: #d4d4d4; outline: none; }
+
+        /* 参数定义样式 */
+        .btn-add-param { background: white; color: #0052d9; border: 1px dashed #0052d9; padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: all 0.3s; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+        .btn-add-param:hover { background: rgba(0, 82, 217, 0.06); }
+        
+        .param-def-item { 
+            background: #f5f7fa; 
+            border: 1px solid #dcdee0; 
+            border-radius: 6px; 
+            padding: 12px 16px; 
+            margin-bottom: 10px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+        }
+        .param-def-info { 
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .param-def-index {
+            font-size: 14px;
+            color: #8f959e;
+            min-width: 24px;
+        }
+        .param-def-name { 
+            font-size: 14px; 
+            font-weight: 500; 
+            color: #1f2329; 
+        }
+        .param-def-actions { 
+            display: flex; 
+            gap: 8px; 
+        }
+        .param-edit-btn, .param-delete-btn { 
+            padding: 6px 14px; 
+            border-radius: 4px; 
+            border: 1px solid #dcdee0; 
+            background: white; 
+            cursor: pointer; 
+            font-size: 13px; 
+            transition: all 0.3s; 
+        }
+        .param-edit-btn:hover { 
+            border-color: #0052d9; 
+            color: #0052d9; 
+        }
+        .param-delete-btn:hover { 
+            background: #ea3636; 
+            color: white; 
+            border-color: #ea3636; 
+        }
+
+        /* 参数编辑弹窗 */
+        .param-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); z-index: 1001; align-items: center; justify-content: center; }
+        .param-modal.active { display: flex; }
+        .param-modal-content { background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 500px; }
+        .param-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .param-modal-title { font-size: 16px; font-weight: 600; }
+        .param-modal-close { font-size: 24px; cursor: pointer; color: #8f959e; }
+        .param-modal-close:hover { color: #1f2329; }
+        .param-modal-footer { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid #f0f1f5; }
+
+        .param-form-group { margin-bottom: 16px; }
+        .param-form-label { display: flex; align-items: center; font-size: 14px; font-weight: 500; color: #1f2329; margin-bottom: 8px; gap: 4px; }
+        .param-form-input { width: 100%; padding: 10px 12px; border: 1px solid #dcdee0; border-radius: 6px; font-size: 14px; }
+        .param-form-input:focus { outline: none; border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .param-form-textarea { width: 100%; min-height: 80px; padding: 10px 12px; border: 1px solid #dcdee0; border-radius: 6px; font-size: 14px; resize: vertical; }
+        .param-form-textarea:focus { outline: none; border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+
+        /* 新增：默认值输入框带眼睛按钮 */
+        .param-input-with-icon { position: relative; }
+        .param-input-with-icon input { padding-right: 42px; }
+        .param-eye-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #8f959e;
+            font-size: 16px;
+        }
+        .param-eye-btn:hover { color: #0052d9; }
+
+        /* 是否加密开关 */
+        .param-toggle { display: flex; align-items: center; gap: 10px; }
+        .toggle-switch {
+            width: 44px;
+            height: 24px;
+            background: #dcdee0;
+            border-radius: 12px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.3s;
+        }
+        .toggle-slider {
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        .toggle-switch.active { background: #0052d9; }
+        .toggle-switch.active .toggle-slider { left: 22px; }
+
+        /* 多选下拉组件 */
+        .multi-select { position: relative; }
+        .multi-select-trigger { display: flex; flex-wrap: wrap; gap: 6px; min-height: 42px; padding: 8px 12px; border: 1px solid #dcdee0; border-radius: 6px; cursor: pointer; background: white; align-items: center; }
+        .multi-select-trigger:hover { border-color: #0052d9; }
+        .multi-select-trigger.active { border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .multi-select-placeholder { color: #8f959e; font-size: 14px; }
+        .multi-select-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: #f0f1f5; border-radius: 4px; font-size: 13px; color: #1f2329; }
+        .multi-select-tag-remove { cursor: pointer; color: #8f959e; font-size: 14px; line-height: 1; }
+        .multi-select-tag-remove:hover { color: #ea3636; }
+        .multi-select-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12); margin-top: 4px; z-index: 200; display: none; max-height: 240px; overflow-y: auto; }
+        .multi-select-dropdown.active { display: block; }
+        .multi-select-option { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; transition: all 0.2s; }
+        .multi-select-option:hover { background: #f5f7fa; }
+        .multi-select-option.selected { background: #e6f0ff; }
+        .multi-select-checkbox { width: 16px; height: 16px; border: 1px solid #dcdee0; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: white; flex-shrink: 0; }
+        .multi-select-option.selected .multi-select-checkbox { background: #0052d9; border-color: #0052d9; }
+        .multi-select-label { font-size: 14px; color: #1f2329; }
+    
+        /* ===== UI/UX ENHANCEMENTS ===== */
+        
+        /* Focus states for accessibility */
+        a:focus-visible, button:focus-visible, input:focus-visible, 
+        select:focus-visible, textarea:focus-visible, 
+        [tabindex]:focus-visible, .nav-item:focus-visible,
+        .sub-nav-item:focus-visible {
+            outline: 2px solid #0052d9;
+            outline-offset: 2px;
+        }
+
+        /* Enhanced table row hover */
+        tbody tr {
+            border-left: 3px solid transparent;
+        }
+        tbody tr:hover {
+            background: #f0f5ff !important;
+            border-left: 3px solid #0052d9;
+        }
+
+        /* Inline SVG icon alignment */
+        .nav-item svg, .sub-nav-item svg, .header-right svg {
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+    
+        /* Table responsive wrapper */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table-responsive table {
+            min-width: 100%;
+        }
+
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo">
+                <div class="logo-icon">BK</div>
+                <span>Job</span>
+            </div>
+            <nav class="header-nav">
+                <div class="nav-item" onclick="location.href='首页.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>首页</span></div>
+                <div class="nav-item" onclick="location.href='快速执行.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></span><span>作业执行</span></div>
+                <div class="nav-item active"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span>作业模版</span></div>
+                <div class="nav-item" onclick="location.href='目标管理.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><span>目标管理</span></div>
+                <div class="nav-item" onclick="location.href='高危命令配置.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span>系统配置</span></div>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> 帮助文档</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 语言: 简体中文</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Admin</span>
+        </div>
+    </div>
+
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <div class="sub-nav-item active">脚本库</div>
+            <div class="sub-nav-item" onclick="location.href='Playbook库.html'">Playbook库</div>
+        </nav>
+    </div>
+
+    <!-- 主内容区域 -->
+    <div class="main-container">
+        <div class="page-intro">
+            <h2 class="intro-title">脚本库</h2>
+            <p class="intro-desc">脚本库用于集中管理运维脚本，支持 Shell、Python 等多种脚本类型。您可以在此创建、编辑和版本管理脚本，并快速执行或引用到作业模版中。</p>
+        </div>
+
+        <div class="content-card">
+            <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <div class="search-group">
+                    <select class="search-select" id="searchField" onchange="filterScriptList()">
+                        <option value="name">脚本名称</option>
+                        <option value="type">脚本类型</option>
+                        <option value="org">组织</option>
+                        <option value="creator">创建人</option>
+                        <option value="desc">描述</option>
+                    </select>
+                    <input type="text" class="search-input-field" id="searchInput" placeholder="搜索..." oninput="filterScriptList()">
+                </div>
+                <button class="btn btn-primary" onclick="openModal()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 2px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 新建脚本</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 180px;">脚本名称</th>
+                        <th style="width: 90px; white-space: nowrap;">脚本类型</th>
+                        <th style="width: 150px;">组织</th>
+                        <th style="width: 80px; white-space: nowrap;">创建人</th>
+                        <th style="width: 140px; white-space: nowrap;">更新时间</th>
+                        <th>描述</th>
+                        <th style="width: 180px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="scriptTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 新建/编辑脚本弹窗 -->
+    <div class="modal" id="scriptModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">新建脚本</div>
+                <span class="modal-close" onclick="closeModal()">×</span>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">脚本名称</label>
+                <input type="text" class="form-input" placeholder="请输入脚本名称，例如：清理磁盘空间.sh" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">脚本内容</label>
+                <div class="script-editor-wrapper">
+                    <div class="script-editor-header">
+                        <div class="script-tabs">
+                            <button type="button" class="script-tab active" data-type="shell" onclick="switchScriptType('shell')">Shell</button>
+                            <button type="button" class="script-tab" data-type="bat" onclick="switchScriptType('bat')">Bat</button>
+                            <button type="button" class="script-tab" data-type="python" onclick="switchScriptType('python')">Python</button>
+                            <button type="button" class="script-tab" data-type="powershell" onclick="switchScriptType('powershell')">Powershell</button>
+                        </div>
+                        <div class="script-editor-actions">
+                            <span class="script-editor-action" title="上传"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg></span>
+                            <span class="script-editor-action" title="历史"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+                            <span class="script-editor-action" title="全屏"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></span>
+                        </div>
+                    </div>
+                    <textarea class="code-editor" id="scriptContent" placeholder="请输入脚本内容...">#!/bin/bash
+
+###### 可在脚本执行成功的逻辑分支处调用，打印当时的时间戳及PID。
+function job_success
+{
+    MSG="$*"
+    echo " `eval $NOW` job_success:[$MSG]"
+    exit 0
+}
+
+###### 可在脚本执行失败的逻辑分支处调用，打印当时的时间戳及PID。
+function job_fail
+{
+    MSG="$*"
+    echo " `eval $NOW` job_fail:[$MSG]"
+    exit 1
+}
+
+job_start
+
+###### 作业平台中执行脚本成功和失败的标准只取决于脚本最后一条执行语句的返回值
+###### 如果返回值为0，则认为此脚本执行成功，如果非0，则认为脚本执行失败
+###### 可在此处开始编写您的脚本逻辑代码
+
+</textarea>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">组织 <span style="color: #ea3636;">*</span></label>
+                <div class="multi-select" id="scriptOrgSelect">
+                    <div class="multi-select-trigger" onclick="toggleMultiSelect('scriptOrgSelect')">
+                        <span class="multi-select-placeholder">请选择组织</span>
+                    </div>
+                    <div class="multi-select-dropdown" id="scriptOrgDropdown"></div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">脚本描述</label>
+                <input type="text" class="form-input" placeholder="简要描述脚本功能" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">参数定义</label>
+                <button type="button" class="btn-add-param" onclick="openParamModal()" style="margin-top: 12px;">
+                    <span>+</span>
+                    <span>新增参数</span>
+                </button>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-primary">保存</button>
+                <button class="btn btn-default" onclick="closeModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 参数编辑弹窗 -->
+    <div class="param-modal" id="paramModal">
+        <div class="param-modal-content">
+            <div class="param-modal-header">
+                <div class="param-modal-title">新增参数</div>
+                <span class="param-modal-close" onclick="closeParamModal()">×</span>
+            </div>
+
+            <div class="param-form-group">
+                <label class="param-form-label">
+                    <span style="color: #ea3636;">*</span>
+                    参数名称
+                </label>
+                <input type="text" id="paramNameInput" class="param-form-input" placeholder="请输入参数名称" />
+            </div>
+
+            <div class="param-form-group">
+                <label class="param-form-label">是否加密</label>
+                <div class="param-toggle">
+                    <div class="toggle-switch" id="paramEncryptToggle" onclick="toggleEncrypt()">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="param-form-group">
+                <label class="param-form-label">默认值</label>
+                <div class="param-input-with-icon">
+                    <input type="text" id="paramDefaultInput" class="param-form-input" placeholder="请输入默认值" />
+                    <button type="button" class="param-eye-btn" id="paramEyeBtn" onclick="toggleDefaultVisibility()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                </div>
+            </div>
+
+            <div class="param-form-group">
+                <label class="param-form-label">提示信息</label>
+                <textarea id="paramTipsInput" class="param-form-textarea" placeholder="请输入提示信息"></textarea>
+            </div>
+
+            <div class="param-modal-footer">
+                <button class="btn btn-primary" onclick="saveParamDef()">确认</button>
+                <button class="btn btn-default" onclick="closeParamModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 组织列表（平台权限体系）
+        const orgList = [
+            { id: 1, name: '运维部', color: '#0052d9' },
+            { id: 2, name: '开发部', color: '#00a870' },
+            { id: 3, name: '测试部', color: '#ff9800' },
+            { id: 4, name: '安全部', color: '#ea3636' },
+            { id: 5, name: 'DBA组', color: '#7c3aed' },
+            { id: 6, name: '基础架构', color: '#0891b2' }
+        ];
+
+        // 脚本数据
+        let scriptData = [
+            { id: 1, name: '清理磁盘空间.sh', type: 'shell', orgIds: [1], creator: 'Admin', updateTime: '2026-01-15 10:30:00', desc: '清理临时文件和过期日志' },
+            { id: 2, name: '日志轮转.sh', type: 'shell', orgIds: [1, 2], creator: '张三', updateTime: '2026-01-14 15:20:00', desc: '自动轮转应用日志文件' },
+            { id: 3, name: '进程监控.py', type: 'python', orgIds: [1, 4], creator: '李四', updateTime: '2026-01-12 09:15:00', desc: '监控关键进程运行状态' },
+            { id: 4, name: '数据库备份.sh', type: 'shell', orgIds: [5], creator: 'Admin', updateTime: '2026-01-10 14:00:00', desc: 'MySQL 数据库全量备份' },
+            { id: 5, name: '服务健康检查.py', type: 'python', orgIds: [1, 6], creator: '王五', updateTime: '2026-01-08 11:30:00', desc: '检查服务端口和响应状态' }
+        ];
+
+        // 渲染组织文本（逗号分隔）
+        function renderOrgText(orgIds) {
+            if (!orgIds || orgIds.length === 0) return '-';
+            return orgIds.map(id => {
+                const org = orgList.find(o => o.id === id);
+                return org ? org.name : '';
+            }).filter(n => n).join('，');
+        }
+
+        function renderScriptList(data) {
+            const list = data || scriptData;
+            const tbody = document.getElementById('scriptTableBody');
+            tbody.innerHTML = list.map(script => `
+                <tr>
+                    <td>${script.name}</td>
+                    <td class="nowrap"><span class="type-badge ${script.type}">${script.type === 'shell' ? 'Shell' : 'Python'}</span></td>
+                    <td class="org-cell">${renderOrgText(script.orgIds)}</td>
+                    <td class="nowrap">${script.creator}</td>
+                    <td class="nowrap">${script.updateTime}</td>
+                    <td>${script.desc}</td>
+                    <td>
+                        <div class="action-links">
+                            <a class="action-link" onclick="viewScript(${script.id})">查看</a>
+                            <a class="action-link" onclick="editScript(${script.id})">编辑</a>
+                            <a class="action-link" href="快速执行.html">执行</a>
+                            <a class="action-link danger" onclick="deleteScript(${script.id})">删除</a>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 搜索过滤
+        function filterScriptList() {
+            const field = document.getElementById('searchField').value;
+            const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+            
+            if (!keyword) {
+                renderScriptList();
+                return;
+            }
+            
+            const filtered = scriptData.filter(script => {
+                switch (field) {
+                    case 'name':
+                        return script.name.toLowerCase().includes(keyword);
+                    case 'type':
+                        const typeLabel = script.type === 'shell' ? 'shell' : 'python';
+                        return typeLabel.includes(keyword);
+                    case 'org':
+                        return renderOrgText(script.orgIds).toLowerCase().includes(keyword);
+                    case 'creator':
+                        return script.creator.toLowerCase().includes(keyword);
+                    case 'desc':
+                        return script.desc.toLowerCase().includes(keyword);
+                    default:
+                        return true;
+                }
+            });
+            
+            renderScriptList(filtered);
+        }
+
+        function viewScript(id) {
+            openModal();
+        }
+
+        function editScript(id) {
+            openModal();
+        }
+
+        function deleteScript(id) {
+            if (confirm('确定要删除该脚本吗？')) {
+                scriptData = scriptData.filter(s => s.id !== id);
+                renderScriptList();
+            }
+        }
+
+        function openModal() {
+            // 初始化组织多选
+            initMultiSelect('scriptOrgSelect', 'scriptOrgDropdown', []);
+            // 重置脚本类型为 Shell
+            switchScriptType('shell');
+            document.getElementById('scriptModal').classList.add('active');
+        }
+        function closeModal() { document.getElementById('scriptModal').classList.remove('active'); }
+
+        // 脚本类型切换
+        let currentScriptType = 'shell';
+        const scriptTemplates = {
+            shell: `#!/bin/bash
+
+###### 可在脚本执行成功的逻辑分支处调用，打印当时的时间戳及PID。
+function job_success
+{
+    MSG="$*"
+    echo " \`eval $NOW\` job_success:[$MSG]"
+    exit 0
+}
+
+###### 可在脚本执行失败的逻辑分支处调用，打印当时的时间戳及PID。
+function job_fail
+{
+    MSG="$*"
+    echo " \`eval $NOW\` job_fail:[$MSG]"
+    exit 1
+}
+
+job_start
+
+###### 作业平台中执行脚本成功和失败的标准只取决于脚本最后一条执行语句的返回值
+###### 如果返回值为0，则认为此脚本执行成功，如果非0，则认为脚本执行失败
+###### 可在此处开始编写您的脚本逻辑代码
+
+`,
+            bat: `@echo off
+REM Windows Batch Script
+
+echo Hello, World!
+`,
+            perl: `#!/usr/bin/perl
+use strict;
+use warnings;
+
+print "Hello, World!\\n";
+`,
+            python: `#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+def main():
+    print("Hello, World!")
+
+if __name__ == "__main__":
+    main()
+`,
+            powershell: `# PowerShell Script
+
+Write-Host "Hello, World!"
+`,
+            sql: `-- SQL Script
+
+SELECT 'Hello, World!' AS message;
+`
+        };
+
+        function switchScriptType(type) {
+            currentScriptType = type;
+            // 更新 Tab 状态
+            document.querySelectorAll('.script-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.type === type);
+            });
+            // 更新编辑器内容
+            document.getElementById('scriptContent').value = scriptTemplates[type] || '';
+        }
+
+        const paramDefs = [];
+        let currentParamId = null;
+        let defaultVisible = false; // 控制默认值显隐
+
+        function openParamModal() {
+            currentParamId = null;
+            defaultVisible = false;
+            document.getElementById('paramNameInput').value = '';
+            document.getElementById('paramDefaultInput').value = '';
+            document.getElementById('paramTipsInput').value = '';
+            document.getElementById('paramEncryptToggle').classList.remove('active');
+            document.querySelector('.param-modal-title').textContent = '新增参数';
+            document.getElementById('paramModal').classList.add('active');
+            setDefaultInputType(); // 重置类型
+        }
+
+        function closeParamModal() {
+            document.getElementById('paramModal').classList.remove('active');
+        }
+
+        function toggleEncrypt() {
+            const toggle = document.getElementById('paramEncryptToggle');
+            toggle.classList.toggle('active');
+            defaultVisible = false; // 切换加密时重置显隐
+            setDefaultInputType();
+        }
+
+        function toggleDefaultVisibility() {
+            // 仅加密时才允许切换
+            const required = document.getElementById('paramEncryptToggle').classList.contains('active');
+            if (!required) return;
+            defaultVisible = !defaultVisible;
+            setDefaultInputType();
+        }
+
+        function setDefaultInputType() {
+            const input = document.getElementById('paramDefaultInput');
+            const eyeBtn = document.getElementById('paramEyeBtn');
+            const required = document.getElementById('paramEncryptToggle').classList.contains('active');
+            if (!required) {
+                input.type = 'text';
+                eyeBtn.style.display = 'none';
+                defaultVisible = false;
+                eyeBtn.textContent = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+                return;
+            }
+            eyeBtn.style.display = 'inline';
+            if (defaultVisible) {
+                input.type = 'text';
+                eyeBtn.textContent = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+            } else {
+                input.type = 'password';
+                eyeBtn.textContent = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+            }
+        }
+
+        function saveParamDef() {
+            const name = document.getElementById('paramNameInput').value.trim();
+            const required = document.getElementById('paramEncryptToggle').classList.contains('active');
+            const defaultValue = document.getElementById('paramDefaultInput').value.trim();
+            const tips = document.getElementById('paramTipsInput').value.trim();
+
+            if (!name) { alert('参数名称不能为空'); return; }
+
+            if (currentParamId) {
+                const param = paramDefs.find(p => p.id === currentParamId);
+                if (param) {
+                    param.name = name;
+                    param.required = required;
+                    param.defaultValue = defaultValue;
+                    param.tips = tips;
+                }
+            } else {
+                paramDefs.push({ id: Date.now(), name, required, defaultValue, tips });
+            }
+
+            renderParamDefList();
+            closeParamModal();
+        }
+
+        function editParamDef(id) {
+            const param = paramDefs.find(p => p.id === id);
+            if (param) {
+                currentParamId = id;
+                defaultVisible = false;
+                document.getElementById('paramNameInput').value = param.name;
+                document.getElementById('paramDefaultInput').value = param.defaultValue || '';
+                document.getElementById('paramTipsInput').value = param.tips || '';
+                
+                const toggle = document.getElementById('paramEncryptToggle');
+                if (param.required) {
+                    toggle.classList.add('active');
+                } else {
+                    toggle.classList.remove('active');
+                }
+                setDefaultInputType();
+
+                document.querySelector('.param-modal-title').textContent = '编辑参数';
+                document.getElementById('paramModal').classList.add('active');
+            }
+        }
+
+        function removeParamDef(id) {
+            if (confirm('确定删除该参数吗？')) {
+                const index = paramDefs.findIndex(p => p.id === id);
+                if (index > -1) {
+                    paramDefs.splice(index, 1);
+                    renderParamDefList();
+                }
+            }
+        }
+
+        function renderParamDefList() {
+            const listEl = document.getElementById('paramDefList');
+            if (paramDefs.length === 0) {
+                listEl.innerHTML = '<div class="param-empty">暂无参数定义，点击下方按钮新增</div>';
+                return;
+            }
+
+            listEl.innerHTML = '';
+            paramDefs.forEach((param, index) => {
+                const paramItem = document.createElement('div');
+                paramItem.className = 'param-def-item';
+                const encryptText = param.required ? ' (加密)' : '';
+                paramItem.innerHTML = `
+                    <div class="param-def-info">
+                        <div class="param-def-index">第${index + 1}位置</div>
+                        <div class="param-def-name">${param.name}${encryptText}</div>
+                    </div>
+                    <div class="param-def-actions">
+                        <button class="param-edit-btn" onclick="editParamDef(${param.id})">编辑</button>
+                        <button class="param-delete-btn" onclick="removeParamDef(${param.id})">删除</button>
+                    </div>
+                `;
+                listEl.appendChild(paramItem);
+            });
+        }
+
+        function maskValue(val) {
+            if (!val) return '无';
+            const len = Math.min(val.length, 6);
+            return '•'.repeat(len || 3);
+        }
+
+        // 多选下拉组件
+        let scriptSelectedOrgs = [];
+
+        // 点击其他地方关闭多选下拉
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.multi-select')) {
+                document.querySelectorAll('.multi-select-dropdown').forEach(d => {
+                    d.classList.remove('active');
+                });
+                document.querySelectorAll('.multi-select-trigger').forEach(t => {
+                    t.classList.remove('active');
+                });
+            }
+        });
+
+        // 初始化多选下拉
+        function initMultiSelect(containerId, dropdownId, selectedIds = []) {
+            const dropdown = document.getElementById(dropdownId);
+            dropdown.innerHTML = orgList.map(org => `
+                <div class="multi-select-option ${selectedIds.includes(org.id) ? 'selected' : ''}" 
+                     data-id="${org.id}" 
+                     onclick="event.stopPropagation(); toggleOrgOption('${containerId}', ${org.id})">
+                    <div class="multi-select-checkbox">${selectedIds.includes(org.id) ? '&#10003;' : ''}</div>
+                    <span class="multi-select-label">${org.name}</span>
+                </div>
+            `).join('');
+            
+            scriptSelectedOrgs = [...selectedIds];
+            updateMultiSelectTrigger(containerId);
+        }
+
+        // 切换多选下拉显示
+        function toggleMultiSelect(containerId) {
+            const container = document.getElementById(containerId);
+            const trigger = container.querySelector('.multi-select-trigger');
+            const dropdown = container.querySelector('.multi-select-dropdown');
+            
+            // 关闭其他下拉
+            document.querySelectorAll('.multi-select-dropdown').forEach(d => {
+                if (d !== dropdown) d.classList.remove('active');
+            });
+            document.querySelectorAll('.multi-select-trigger').forEach(t => {
+                if (t !== trigger) t.classList.remove('active');
+            });
+            
+            trigger.classList.toggle('active');
+            dropdown.classList.toggle('active');
+        }
+
+        // 切换选项
+        function toggleOrgOption(containerId, orgId) {
+            const idx = scriptSelectedOrgs.indexOf(orgId);
+            if (idx > -1) {
+                scriptSelectedOrgs.splice(idx, 1);
+            } else {
+                scriptSelectedOrgs.push(orgId);
+            }
+            
+            // 更新选项状态
+            initMultiSelect(containerId, 'scriptOrgDropdown', scriptSelectedOrgs);
+        }
+
+        // 更新触发器显示
+        function updateMultiSelectTrigger(containerId) {
+            const container = document.getElementById(containerId);
+            const trigger = container.querySelector('.multi-select-trigger');
+            
+            if (scriptSelectedOrgs.length === 0) {
+                trigger.innerHTML = '<span class="multi-select-placeholder">请选择组织</span>';
+            } else {
+                trigger.innerHTML = scriptSelectedOrgs.map(id => {
+                    const org = orgList.find(o => o.id === id);
+                    return `<span class="multi-select-tag" style="background: ${org.color}20; color: ${org.color};">
+                        ${org.name}
+                        <span class="multi-select-tag-remove" onclick="event.stopPropagation(); removeOrg('${containerId}', ${id})">×</span>
+                    </span>`;
+                }).join('');
+            }
+        }
+
+        // 移除已选组织
+        function removeOrg(containerId, orgId) {
+            toggleOrgOption(containerId, orgId);
+        }
+
+        // 页面加载时渲染列表
+        document.addEventListener('DOMContentLoaded', () => {
+            renderScriptList();
+        });
+    </script>
+</body>
+</html>

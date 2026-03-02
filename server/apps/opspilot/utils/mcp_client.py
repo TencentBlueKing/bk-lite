@@ -6,6 +6,7 @@ MCP (Model Context Protocol) 客户端工具类
 
 import asyncio
 from typing import Any, Dict, List
+from urllib.parse import parse_qs, urlparse
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -19,6 +20,7 @@ class MCPClient:
         timeout: float = 30.0,
         enable_auth: bool = False,
         auth_token: str = "",
+        transport: str = "",
     ):
         """
         初始化 MCP 客户端
@@ -28,11 +30,13 @@ class MCPClient:
             timeout: 请求超时时间（秒）
             enable_auth: 是否启用基本认证
             auth_token: 基本认证的 token (已加密的 Base64 字符串或包含 "Basic " 前缀的完整 Authorization 值)
+            transport: 传输协议，可选值：sse / streamable_http；未传时根据 URL 自动判断
         """
         self.server_url = server_url.rstrip("/")
         self.timeout = timeout
         self.enable_auth = enable_auth
         self.auth_token = auth_token
+        self.transport = transport
         self._mcp_client = None
 
     def __enter__(self):
@@ -42,11 +46,13 @@ class MCPClient:
             # stdio-mcp: 协议需要 command 和 args，这里抛出错误提示
             raise ValueError("stdio-mcp protocol requires 'command' and 'args' parameters, use dedicated stdio client")
 
+        resolved_transport = self._resolve_transport()
+
         # 构建服务器配置
         server_config: Dict[str, Any] = {
             "url": self.server_url,
             "timeout": self.timeout,
-            "transport": "sse",  # 基于 HTTP/HTTPS URL 的默认使用 SSE 传输
+            "transport": resolved_transport,
         }
 
         # 添加认证信息
@@ -115,6 +121,26 @@ class MCPClient:
             tool_dict["parameters"] = self._parse_schema_to_parameters(input_schema)
 
         return tool_dict
+
+    def _resolve_transport(self) -> str:
+        """解析传输协议，支持显式指定与 URL 自动识别"""
+        explicit_transport = (self.transport or "").strip().lower()
+        if explicit_transport in {"sse", "streamable_http"}:
+            return explicit_transport
+
+        parsed_url = urlparse(self.server_url)
+        query_dict = parse_qs(parsed_url.query)
+        query_transport = (query_dict.get("transport", [""])[0] or "").strip().lower()
+        if query_transport in {"sse", "streamable_http"}:
+            return query_transport
+
+        normalized_path = (parsed_url.path or "").rstrip("/").lower()
+        if normalized_path.endswith("/sse"):
+            return "sse"
+        if normalized_path.endswith("/mcp") or normalized_path.endswith("/streamable_http"):
+            return "streamable_http"
+
+        return "sse"
 
     def _extract_input_schema(self, tool) -> Dict[str, Any]:
         """从工具对象中提取 input schema"""

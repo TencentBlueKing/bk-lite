@@ -7,6 +7,7 @@ from apps.monitor.utils.dimension import (
     build_dimensions,
     extract_monitor_instance_id,
     format_dimension_str,
+    format_dimension_value,
     build_metric_template_vars,
 )
 
@@ -52,6 +53,7 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
     instance_id_keys = template_context.get("instance_id_keys", [])
     display_unit = template_context.get("display_unit", "")
     enum_value_map = template_context.get("enum_value_map", {})
+    dimension_name_map = template_context.get("dimension_name_map", {})
 
     for _, row in df.iterrows():
         instance_id_tuple = row["instance_id"]
@@ -59,10 +61,16 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
 
         dimensions = build_dimensions(instance_id_tuple, instance_id_keys)
         monitor_instance_id = extract_monitor_instance_id(instance_id_tuple)
-        instance_name = instances_map.get(monitor_instance_id, monitor_instance_id)
+        resource_name = instances_map.get(monitor_instance_id, monitor_instance_id)
         dimension_str = format_dimension_str(dimensions, instance_id_keys)
         display_name = (
-            f"{instance_name} - {dimension_str}" if dimension_str else instance_name
+            f"{resource_name} - {dimension_str}" if dimension_str else resource_name
+        )
+        sub_dimension_keys = [k for k in instance_id_keys if k != "instance_id"]
+        dimension_value = format_dimension_value(
+            dimensions,
+            ordered_keys=sub_dimension_keys,
+            name_map=dimension_name_map,
         )
 
         values = row["values"][-n:]
@@ -89,9 +97,11 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
                     **raw_data,
                     "monitor_object": template_context.get("monitor_object", ""),
                     "instance_name": display_name,
+                    "resource_name": resource_name,
                     "metric_name": template_context.get("metric_name", ""),
                     "level": threshold_info["level"],
                     "value": formatted_value,
+                    "dimension_value": dimension_value,
                 }
                 context.update(build_metric_template_vars(dimensions))
 

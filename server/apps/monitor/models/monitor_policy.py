@@ -210,6 +210,7 @@ class MonitorAlert(TimeInfo):
         blank=True, null=True, max_length=50, verbose_name="告警处理人"
     )
     info_event_count = models.IntegerField(default=0, verbose_name="信息事件数量")
+    operation_logs = models.JSONField(default=list, verbose_name="操作记录")
 
     class Meta:
         verbose_name = "监控告警"

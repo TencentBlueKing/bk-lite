@@ -30,6 +30,10 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@/app/monitor/enterprise/*": [
+        "./src/app/monitor/enterprise/*",
+        "./src/lib/enterpriseStub.ts"
       ]
     }
   },

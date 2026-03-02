@@ -110,6 +110,7 @@ async def _clear_running_flag(task_id: str):
 
     这是一个独立的辅助函数，确保无论任务成功或失败都会执行
     """
+    pool = None
     try:
         redis_settings = RedisSettings(
             host=REDIS_CONFIG["host"],
@@ -121,12 +122,15 @@ async def _clear_running_flag(task_id: str):
         pool = await create_pool(redis_settings)
         running_key = f"task:running:{task_id}"
         await pool.delete(running_key)
-        await pool.aclose()
 
         logger.info(f"Task {task_id} completed, cleared running flag")
 
     except Exception as e:
         logger.warning(f"Failed to clear running flag for {task_id}: {e}")
+    finally:
+        # 正确关闭Redis连接池
+        if pool:
+            await pool.close()
 
 
 class WorkerSettings:
@@ -155,6 +159,6 @@ class WorkerSettings:
 
     # Worker 运行配置
     max_jobs = int(os.getenv("TASK_MAX_JOBS", "10"))
-    job_timeout = int(os.getenv("TASK_JOB_TIMEOUT", "300"))
+    job_timeout = int(os.getenv("TASK_JOB_TIMEOUT", "600"))
     keep_result = int(os.getenv("TASK_KEEP_RESULT", "3600"))
     max_tries = int(os.getenv("TASK_MAX_TRIES", "3"))

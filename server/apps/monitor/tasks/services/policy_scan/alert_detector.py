@@ -10,6 +10,7 @@ from apps.monitor.utils.dimension import (
     build_dimensions,
     extract_monitor_instance_id,
     format_dimension_str,
+    format_dimension_value,
     build_metric_template_vars,
 )
 from apps.core.logger import celery_logger as logger
@@ -49,6 +50,7 @@ class AlertDetector:
             "metric_name": self._get_metric_display_name(),
             "instances_map": self.instances_map,
             "instance_id_keys": group_by_keys,
+            "dimension_name_map": self._build_dimension_name_map(),
             "display_unit": self.metric_query_service.get_display_unit(),
             "enum_value_map": self.metric_query_service.get_enum_value_map(),
         }
@@ -121,23 +123,32 @@ class AlertDetector:
             monitor_instance_id = self.baselines_map.get(
                 metric_instance_id
             ) or self._extract_monitor_instance_id(metric_instance_id)
-            instance_name = self.instances_map.get(
+            resource_name = self.instances_map.get(
                 monitor_instance_id, monitor_instance_id
             )
             dimensions = self._parse_dimensions(metric_instance_id)
             dimension_str = self._format_dimension_str(dimensions)
             display_name = (
-                f"{instance_name} - {dimension_str}" if dimension_str else instance_name
+                f"{resource_name} - {dimension_str}" if dimension_str else resource_name
+            )
+            group_by_keys = self.policy.group_by or []
+            sub_dimension_keys = [k for k in group_by_keys if k != "instance_id"]
+            dimension_value = format_dimension_value(
+                dimensions,
+                ordered_keys=sub_dimension_keys,
+                name_map=self._build_dimension_name_map(),
             )
 
             template_context = {
                 "metric_instance_id": metric_instance_id,
                 "monitor_instance_id": monitor_instance_id,
                 "instance_name": display_name,
+                "resource_name": resource_name,
                 "monitor_object": monitor_object_name,
                 "metric_name": metric_name,
                 "level": no_data_level,
                 "value": "",
+                "dimension_value": dimension_value,
             }
             template_context.update(self._build_metric_template_vars(dimensions))
 
@@ -165,6 +176,23 @@ class AlertDetector:
 
     def _build_metric_template_vars(self, dimensions: dict) -> dict:
         return build_metric_template_vars(dimensions)
+
+    def _build_dimension_name_map(self) -> dict:
+        metric = self.metric_query_service.metric
+        if not metric:
+            return {}
+
+        name_map = {}
+        for item in metric.dimensions or []:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            if not name:
+                continue
+            display_name = item.get("display_name") or item.get("description") or name
+            name_map[name] = display_name
+
+        return name_map
 
     def _log_alert_events(self, alert_events, vm_data):
         logger.info(f"=======alert events: {alert_events}")
@@ -225,12 +253,29 @@ class AlertDetector:
             alert.id for alert in self.active_alerts if alert.alert_type == "alert"
         ]
 
-        MonitorAlert.objects.filter(
-            id__in=alert_ids, info_event_count__gte=self.policy.recovery_condition
-        ).update(
-            status="recovered",
-            end_event_time=self.policy.last_run_time,
-            operator="system",
+        alerts_to_recover = list(
+            MonitorAlert.objects.filter(
+                id__in=alert_ids, info_event_count__gte=self.policy.recovery_condition
+            )
+        )
+        if not alerts_to_recover:
+            return
+
+        end_time = self.policy.last_run_time
+        operation_log = {
+            "action": "recovered",
+            "reason": "auto_recovered",
+            "operator": "system",
+            "time": end_time.isoformat() if end_time else None,
+        }
+        for alert in alerts_to_recover:
+            alert.status = "recovered"
+            alert.end_event_time = end_time
+            alert.operator = "system"
+            alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+        MonitorAlert.objects.bulk_update(
+            alerts_to_recover,
+            fields=["status", "end_event_time", "operator", "operation_logs"],
         )
 
     def recover_no_data_alerts(self):
@@ -272,13 +317,24 @@ class AlertDetector:
                 f"in_data_set={alert_metric_id in metric_instance_ids_with_data}"
             )
             if alert_metric_id in metric_instance_ids_with_data:
-                alerts_to_recover.append(alert.id)
+                alerts_to_recover.append(alert)
 
         if alerts_to_recover:
-            MonitorAlert.objects.filter(id__in=alerts_to_recover).update(
-                status="recovered",
-                end_event_time=self.policy.last_run_time,
-                operator="system",
+            end_time = self.policy.last_run_time
+            operation_log = {
+                "action": "recovered",
+                "reason": "auto_recovered",
+                "operator": "system",
+                "time": end_time.isoformat() if end_time else None,
+            }
+            for alert in alerts_to_recover:
+                alert.status = "recovered"
+                alert.end_event_time = end_time
+                alert.operator = "system"
+                alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+            MonitorAlert.objects.bulk_update(
+                alerts_to_recover,
+                fields=["status", "end_event_time", "operator", "operation_logs"],
             )
             logger.info(
                 f"Policy {self.policy.id}: recovered {len(alerts_to_recover)} no_data alerts"

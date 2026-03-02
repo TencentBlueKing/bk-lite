@@ -13,6 +13,8 @@ class AliyunNodeParams(BaseNodeParams):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.PLUGIN_MAP.update({self.model_id: self.plugin_name})
+        self.host_field = "endpoint"
+
 
     def set_credential(self, *args, **kwargs):
         _access_key = f"PASSWORD_access_key_{self._instance_id}"

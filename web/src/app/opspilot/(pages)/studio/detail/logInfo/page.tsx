@@ -19,7 +19,7 @@ const { Search } = Input;
 const StudioLogsPage: React.FC = () => {
   const { t } = useTranslation();
   const { get, post } = useApiClient();
-  const { fetchLogs, fetchChannels, fetchBotDetail, fetchWorkflowTaskResult, fetchWorkflowLogs } = useStudioApi();
+  const { fetchLogs, fetchChannels, fetchBotDetail, fetchWorkflowTaskResult, fetchWorkflowLogs, fetchExecutionOutputData } = useStudioApi();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [searchText, setSearchText] = useState('');
   const [dates, setDates] = useState<number[]>([]);
@@ -31,6 +31,7 @@ const StudioLogsPage: React.FC = () => {
   const [conversationLoading, setConversationLoading] = useState(false);
   const [workflowDrawerVisible, setWorkflowDrawerVisible] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowTaskResult | null>(null);
+  const [workflowDetailLoading, setWorkflowDetailLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [pagination, setPagination] = useState({
     current: 1,
@@ -118,6 +119,7 @@ const StudioLogsPage: React.FC = () => {
           bot_work_flow: item.bot_work_flow,
           execution_duration: item.execution_duration || 0,
           error_log: item.error_log || '',
+          execution_id: item.execution_id || '',
         };
       }));
       setTotal(res.count);
@@ -221,9 +223,28 @@ const StudioLogsPage: React.FC = () => {
     }
   };
 
-  const handleWorkflowDetailClick = (record: WorkflowTaskResult) => {
+  const handleWorkflowDetailClick = async (record: WorkflowTaskResult) => {
     setSelectedWorkflow(record);
     setWorkflowDrawerVisible(true);
+
+    // 如果有 execution_id，则从接口获取详情数据
+    if (record.execution_id) {
+      setWorkflowDetailLoading(true);
+      try {
+        const outputData = await fetchExecutionOutputData({
+          execution_id: record.execution_id,
+          id: record.id,
+        });
+        setSelectedWorkflow({
+          ...record,
+          output_data: outputData,
+        });
+      } catch (error) {
+        console.error('Failed to fetch workflow execution detail:', error);
+      } finally {
+        setWorkflowDetailLoading(false);
+      }
+    }
   };
 
   const renderJsonData = (data: any) => {
@@ -644,9 +665,15 @@ const StudioLogsPage: React.FC = () => {
         onClose={() => setWorkflowDrawerVisible(false)}
         width={720}
       >
-        <div>
-          {renderWorkflowTimeline()}
-        </div>
+        {workflowDetailLoading ? (
+          <div className='flex justify-center items-center w-full h-full min-h-48'>
+            <Spin />
+          </div>
+        ) : (
+          <div>
+            {renderWorkflowTimeline()}
+          </div>
+        )}
       </Drawer>
     </div>
   );
