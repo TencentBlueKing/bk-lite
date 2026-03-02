@@ -17,6 +17,7 @@ from apps.alerts.constants.constants import (
     LogAction,
     LogTargetType,
     SessionStatus,
+    SYSTEM_OPERATOR_USER,
 )
 from apps.alerts.service.alter_operator import AlertOperator
 from apps.alerts.service.reminder_service import ReminderService
@@ -185,7 +186,7 @@ class AlertAssignmentOperator:
         OperatorLog.objects.bulk_create(bulk_data)
 
     def _batch_find_matching_alerts(
-            self, assignment: AlertAssignment, excluded_ids: set = None
+        self, assignment: AlertAssignment, excluded_ids: set = None
     ) -> List[int]:
         """
         批量查找匹配指定分派策略的告警ID列表
@@ -198,12 +199,11 @@ class AlertAssignmentOperator:
             匹配的告警ID列表
         """
         # 先过滤未分派状态的告警
-        base_queryset = (
-            Alert.objects.filter(alert_id__in=self.alert_id_list, status=AlertStatus.UNASSIGNED)
-            .exclude(
-                is_session_alert=True,
-                session_status__in=SessionStatus.NO_CONFIRMED,
-            )
+        base_queryset = Alert.objects.filter(
+            alert_id__in=self.alert_id_list, status=AlertStatus.UNASSIGNED
+        ).exclude(
+            is_session_alert=True,
+            session_status__in=SessionStatus.NO_CONFIRMED,
         )
 
         # 排除已分派的告警
@@ -237,7 +237,7 @@ class AlertAssignmentOperator:
         return []
 
     def _batch_execute_assignment(
-            self, alert_ids: List[int], assignment: AlertAssignment
+        self, alert_ids: List[int], assignment: AlertAssignment
     ) -> List[Dict[str, Any]]:
         """
         批量执行告警分派操作
@@ -296,7 +296,7 @@ class AlertAssignmentOperator:
                             continue
                         # 使用AlertOperator执alert.alert_id行分派操作
                         operator = AlertOperator(
-                            user="admin"
+                            user=SYSTEM_OPERATOR_USER
                         )  # 假设使用admin用户执行操作
 
                         # 执行分派操作
@@ -311,10 +311,6 @@ class AlertAssignmentOperator:
                         logger.debug(
                             f"Alert {alert.alert_id} assigned successfully to {personnel}, result={result}"
                         )
-
-                        # 创建提醒记录（如果配置了通知频率）
-                        if assignment.notification_frequency:
-                            operator._create_reminder_record(alert, str(assignment.id))
 
                         logger.info(
                             "== assignment alert notify start ==, assignment={}, alert_id={}".format(
@@ -341,10 +337,8 @@ class AlertAssignmentOperator:
                         )
 
                     except Exception as e:
-                        import traceback
-
-                        logger.error(
-                            f"Error executing assignment for alert {alert.alert_id}: {traceback.format_exc()}"
+                        logger.exception(
+                            f"Error executing assignment for alert {alert.alert_id}"
                         )
                         results.append(
                             {
@@ -393,10 +387,10 @@ def execute_auto_assignment_for_alerts(alert_ids: List[str]) -> Dict[str, Any]:
     operator = AlertAssignmentOperator(alert_ids)
     result = operator.execute_auto_assignment()
     logger.info(f"=== Auto assignment completed: {result} ===")
-    assignment_alart_ids = [
+    assignment_alert_ids = [
         i.get("alert_id") for i in result.get("assignment_results", [])
     ]
-    not_assignment_ids = set(alert_ids) - set(assignment_alart_ids)
+    not_assignment_ids = set(alert_ids) - set(assignment_alert_ids)
     if not_assignment_ids:
         # 去进行兜底分派 使用全局分派 每60分钟分派一次 知道告警被相应后结束
         not_assignment_alert_notify(not_assignment_ids)

@@ -213,7 +213,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
 
     try:
         # 提取参数
-        source_id = kwargs.pop("source_id", "nats")
+        source_id = kwargs.pop("source_id", "")
         events = kwargs.pop("events", [])
         pusher = kwargs.pop("pusher", None)
 

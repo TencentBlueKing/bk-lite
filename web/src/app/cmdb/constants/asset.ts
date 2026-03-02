@@ -443,6 +443,10 @@ export const ATTR_TYPE_LIST = [
     id: 'organization',
     name: 'organization',
   },
+  {
+    id: 'table',
+    name: 'table',
+  },
 ];
 
 export const CONSTRAINT_List = [

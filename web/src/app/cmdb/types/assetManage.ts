@@ -155,6 +155,15 @@ export interface IntAttrOption {
   max_value: string | number;
 }
 
+export interface TableColumnSpec {
+  column_id: string;
+  column_name: string;
+  column_type: 'str' | 'number';
+  order: number;
+}
+
+export type TableAttrOption = TableColumnSpec[];
+
 // 属性字段最小结构（用于工具函数）
 export interface AttrLike {
   attr_type: string;
@@ -163,7 +172,7 @@ export interface AttrLike {
 }
 
 // 属性 option 联合类型
-export type AttrOption = EnumList[] | StrAttrOption | TimeAttrOption | IntAttrOption | Record<string, unknown>;
+export type AttrOption = EnumList[] | StrAttrOption | TimeAttrOption | IntAttrOption | TableAttrOption | Record<string, unknown>;
 
 export interface CredentialListItem {
   classification_name: string;

@@ -20,25 +20,27 @@ class ReminderService:
     """告警提醒服务"""
 
     @classmethod
-    def create_reminder_task(cls, alert: Alert, assignment: AlertAssignment) -> Optional[AlertReminderTask]:
+    def create_reminder_task(
+        cls, alert: Alert, assignment: AlertAssignment
+    ) -> Optional[AlertReminderTask]:
         """创建提醒任务"""
         try:
             # 获取该告警级别的通知频率配置
             alert_level = alert.level
             level_config = assignment.notification_frequency.get(alert_level, {})
 
-            if not level_config or level_config.get('interval_minutes', 0) <= 0:
-                logger.warning(f"告警级别 {alert_level} 没有配置通知频率或频率为0，不创建提醒任务")
+            if not level_config or level_config.get("interval_minutes", 0) <= 0:
+                logger.warning(
+                    f"告警级别 {alert_level} 没有配置通知频率或频率为0，不创建提醒任务"
+                )
                 return None
 
-            interval_minutes = level_config.get('interval_minutes', 30)
-            max_count = level_config.get('max_count', 10)
+            interval_minutes = level_config.get("interval_minutes", 30)
+            max_count = level_config.get("max_count", 10)
 
             # 检查是否已存在活跃的提醒任务
             existing_task = AlertReminderTask.objects.filter(
-                alert=alert,
-                assignment=assignment,
-                is_active=True
+                alert=alert, assignment=assignment, is_active=True
             ).first()
 
             if existing_task:
@@ -56,7 +58,9 @@ class ReminderService:
                 next_reminder_time=timezone.now() + timedelta(minutes=interval_minutes),
             )
 
-            logger.info(f"为告警 {alert.alert_id} 创建提醒任务，频率: {interval_minutes}分钟，最大次数: {max_count}")
+            logger.info(
+                f"为告警 {alert.alert_id} 创建提醒任务，频率: {interval_minutes}分钟，最大次数: {max_count}"
+            )
             return reminder_task
 
         except Exception as e:
@@ -69,15 +73,13 @@ class ReminderService:
         try:
             with transaction.atomic():
                 updated_count = AlertReminderTask.objects.filter(
-                    alert=alert,
-                    is_active=True
-                ).update(
-                    is_active=False,
-                    completed_at=timezone.now()
-                )
+                    alert=alert, is_active=True
+                ).update(is_active=False)
 
                 if updated_count > 0:
-                    logger.info(f"停止告警 {alert.alert_id} 的 {updated_count} 个提醒任务")
+                    logger.info(
+                        f"停止告警 {alert.alert_id} 的 {updated_count} 个提醒任务"
+                    )
                     return True
                 else:
                     logger.warning(f"告警 {alert.alert_id} 没有找到活跃的提醒任务")
@@ -88,7 +90,9 @@ class ReminderService:
             return False
 
     @classmethod
-    def _update_reminder_task(cls, reminder: AlertReminderTask, new_frequency: int, new_max_count: int) -> bool:
+    def _update_reminder_task(
+        cls, reminder: AlertReminderTask, new_frequency: int, new_max_count: int
+    ) -> bool:
         """更新提醒任务配置"""
         try:
             with transaction.atomic():
@@ -103,9 +107,14 @@ class ReminderService:
                     now = timezone.now()
                     # 如果下次提醒时间还没到，按新频率重新计算
                     if reminder.next_reminder_time > now:
-                        time_since_last = now - reminder.last_reminder_time if reminder.last_reminder_time else timedelta(
-                            0)
-                        remaining_time = timedelta(minutes=new_frequency) - time_since_last
+                        time_since_last = (
+                            now - reminder.last_reminder_time
+                            if reminder.last_reminder_time
+                            else timedelta(0)
+                        )
+                        remaining_time = (
+                            timedelta(minutes=new_frequency) - time_since_last
+                        )
                         if remaining_time.total_seconds() > 0:
                             reminder.next_reminder_time = now + remaining_time
                         else:
@@ -113,13 +122,17 @@ class ReminderService:
 
                 reminder.save()
 
-                logger.info(f"更新提醒任务配置: alert_id={reminder.alert.alert_id}, "
-                            f"频率: {old_frequency}->{new_frequency}分钟, "
-                            f"最大次数: {old_max_count}->{new_max_count}")
+                logger.info(
+                    f"更新提醒任务配置: alert_id={reminder.alert.alert_id}, "
+                    f"频率: {old_frequency}->{new_frequency}分钟, "
+                    f"最大次数: {old_max_count}->{new_max_count}"
+                )
                 return True
 
         except Exception as e:
-            logger.error(f"更新提醒任务配置失败: reminder_id={reminder.id}, error={str(e)}")
+            logger.error(
+                f"更新提醒任务配置失败: reminder_id={reminder.id}, error={str(e)}"
+            )
             return False
 
     @classmethod
@@ -134,22 +147,26 @@ class ReminderService:
             pending_reminders = AlertReminderTask.objects.filter(
                 is_active=True,
                 next_reminder_time__lte=now,
-                reminder_count__lt=F('current_max_reminders')
-            ).select_related('alert', 'assignment')
+                reminder_count__lt=F("current_max_reminders"),
+            ).select_related("alert", "assignment")
 
             for reminder in pending_reminders:
                 processed += 1
 
                 try:
                     # 发送提醒通知
-                    if cls._send_reminder_notification(assignment=reminder.assignment, alert=reminder.alert):
+                    if cls._send_reminder_notification(
+                        assignment=reminder.assignment, alert=reminder.alert
+                    ):
                         # 更新提醒记录
                         reminder.reminder_count += 1
                         reminder.last_reminder_time = now
 
                         # 计算下次提醒时间
                         if reminder.reminder_count < reminder.current_max_reminders:
-                            reminder.next_reminder_time = now + timedelta(minutes=reminder.current_frequency_minutes)
+                            reminder.next_reminder_time = now + timedelta(
+                                minutes=reminder.current_frequency_minutes
+                            )
                         else:
                             # 达到最大次数，停止提醒
                             reminder.is_active = False
@@ -158,21 +175,25 @@ class ReminderService:
                         success += 1
 
                 except Exception as e:
-                    logger.error(f"处理提醒任务失败: reminder_id={reminder.alert.alert_id}, error={str(e)}")
+                    logger.error(
+                        f"处理提醒任务失败: reminder_id={reminder.alert.alert_id}, error={str(e)}"
+                    )
 
         except Exception as e:
             logger.error(f"检查提醒任务失败: {str(e)}")
 
-        return {
-            "processed": processed,
-            "success": success
-        }
+        return {"processed": processed, "success": success}
 
     @classmethod
-    def _send_reminder_notification(cls, assignment: AlertAssignment, alert: Alert) -> bool:
+    def _send_reminder_notification(
+        cls, assignment: AlertAssignment, alert: Alert
+    ) -> bool:
         """发送提醒通知"""
         try:
-            if alert.is_session_alert and alert.session_status != SessionStatus.CONFIRMED:
+            if (
+                alert.is_session_alert
+                and alert.session_status != SessionStatus.CONFIRMED
+            ):
                 logger.info(
                     "提醒任务跳过会话观察期告警: alert_id=%s, session_status=%s",
                     alert.alert_id,
@@ -182,7 +203,9 @@ class ReminderService:
 
             username_list = assignment.personnel
             if not username_list:
-                logger.warning(f"提醒任务 {assignment.id} 没有配置接收人员，无法发送通知")
+                logger.warning(
+                    f"提醒任务 {assignment.id} 没有配置接收人员，无法发送通知"
+                )
                 return False
 
             channel_list = assignment.notify_channels
@@ -190,30 +213,39 @@ class ReminderService:
                 try:
                     channel_list = json.loads(channel_list)
                 except json.JSONDecodeError:
-                    logger.error(f"提醒任务 {assignment.id} 的通知渠道配置错误: {channel_list}")
+                    logger.error(
+                        f"提醒任务 {assignment.id} 的通知渠道配置错误: {channel_list}"
+                    )
                     channel_list = []
 
             if not channel_list:
-                logger.warning(f"提醒任务 {assignment.id} 没有配置通知渠道，无法发送通知")
+                logger.warning(
+                    f"提醒任务 {assignment.id} 没有配置通知渠道，无法发送通知"
+                )
                 return False
 
-            param_format = NotifyParamsFormat(username_list=username_list, alerts=[alert])
+            param_format = NotifyParamsFormat(
+                username_list=username_list, alerts=[alert]
+            )
             title = param_format.format_title()
             content = param_format.format_content()
 
             channel_params = []
             for channel in channel_list:
-                channel_params.append({
-                    "username_list": username_list,
-                    "channel_type": channel["channel_type"],
-                    "channel_id": channel["id"],
-                    "title": title,
-                    "content": content,
-                    "object_id": alert.alert_id,
-                    "notify_action_object": "alert"
-                })
+                channel_params.append(
+                    {
+                        "username_list": username_list,
+                        "channel_type": channel["channel_type"],
+                        "channel_id": channel["id"],
+                        "title": title,
+                        "content": content,
+                        "object_id": alert.alert_id,
+                        "notify_action_object": "alert",
+                    }
+                )
             # 移动导入到函数内部避免循环导入
             from apps.alerts.tasks import sync_notify
+
             # 异步发送通知
             transaction.on_commit(lambda: sync_notify.delay(channel_params))
 
@@ -226,7 +258,9 @@ class ReminderService:
 
     @staticmethod
     def search_level_map(level_type) -> Dict[str, str]:
-        instance = Level.objects.filter(level_type=level_type).values_list("level_id", "level_display_name")
+        instance = Level.objects.filter(level_type=level_type).values_list(
+            "level_id", "level_display_name"
+        )
         return {str(i[0]): i[1] for i in instance}
 
     @classmethod
@@ -237,8 +271,7 @@ class ReminderService:
             cutoff_time = timezone.now() - timedelta(days=30)
 
             deleted_count = AlertReminderTask.objects.filter(
-                is_active=False,
-                updated_at__lt=cutoff_time
+                is_active=False, updated_at__lt=cutoff_time
             ).delete()[0]
 
             logger.info(f"清理了 {deleted_count} 条过期的提醒任务记录")
