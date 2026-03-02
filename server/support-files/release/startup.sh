@@ -32,13 +32,16 @@ fi
 if [ "$opspilot_installed" = true ]; then
     if ! odbcinst -q -d -n "ODBC Driver 18 for SQL Server" > /dev/null 2>&1; then
         echo "正在安装 Microsoft ODBC Driver 18 for SQL Server..."
-        curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
-        curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list | tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
-        apt-get update -qq
-        ACCEPT_EULA=Y apt-get install -y -qq msodbcsql18
-        apt-get clean
-        rm -rf /var/lib/apt/lists/*
-        echo "MSSQL ODBC 驱动安装完成"
+        if curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg && \
+           curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list | tee /etc/apt/sources.list.d/mssql-release.list > /dev/null && \
+           apt-get update -qq && \
+           ACCEPT_EULA=Y apt-get install -y -qq msodbcsql18; then
+            apt-get clean
+            rm -rf /var/lib/apt/lists/*
+            echo "MSSQL ODBC 驱动安装完成"
+        else
+            echo "警告: MSSQL ODBC 驱动安装失败，MSSQL 相关工具将不可用，但不影响其他功能"
+        fi
     else
         echo "MSSQL ODBC 驱动已安装，跳过"
     fi
