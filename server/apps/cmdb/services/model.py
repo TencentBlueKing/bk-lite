@@ -595,6 +595,11 @@ class ModelManage(object):
 
         attrs = ModelManage.parse_attrs(result[0].get("attrs", "[]"))
 
+        # 更新排除字段缓存
+        from apps.cmdb.display_field import ExcludeFieldsCache
+
+        ExcludeFieldsCache.update_on_model_change(model_id)
+
         attr = None
         for attr in attrs:
             if attr["attr_id"] == attr_info["attr_id"]:

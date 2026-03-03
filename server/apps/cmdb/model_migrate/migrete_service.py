@@ -125,6 +125,8 @@ class ModelMigrate:
             return self._parse_time_option(parsed)
         elif attr_type == "enum":
             return parsed if isinstance(parsed, list) else []
+        elif attr_type == "table":
+            return self._parse_table_option(parsed)
 
         return parsed if isinstance(parsed, dict) else {}
 
@@ -136,6 +138,8 @@ class ModelMigrate:
         elif attr_type == "time":
             return DEFAULT_TIME_CONSTRAINT.copy()
         elif attr_type == "enum":
+            return []
+        elif attr_type == "table":
             return []
         return {}
 
@@ -188,6 +192,44 @@ class ModelMigrate:
         type_value = parsed.get("type", "datetime")
         display_format = EXCEL_TIME_TYPE_MAP.get(type_value, TimeDisplayFormat.DATETIME)
         return {"display_format": display_format}
+
+    def _parse_table_option(self, parsed) -> list:
+        if not isinstance(parsed, list):
+            return []
+
+        result = []
+        for col in parsed:
+            if not isinstance(col, dict):
+                continue
+
+            column_id = col.get("column_id")
+            column_name = col.get("column_name")
+            column_type = col.get("column_type")
+            order = col.get("order")
+
+            if not all([column_id, column_name, column_type, order is not None]):
+                continue
+
+            if column_type not in ("str", "number"):
+                continue
+
+            try:
+                order_int = int(order)
+                if order_int < 1:
+                    continue
+            except (ValueError, TypeError):
+                continue
+
+            result.append(
+                {
+                    "column_id": str(column_id),
+                    "column_name": str(column_name),
+                    "column_type": str(column_type),
+                    "order": order_int,
+                }
+            )
+
+        return result
 
     def migrate_models(self):
         """初始化模型"""

@@ -17,7 +17,9 @@ from apps.core.logger import alert_logger as logger
 def event_aggregation_alert():
     """执行告警聚合任务（周期性调度）"""
     logger.info("开始执行告警聚合任务")
-    from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
+    from apps.alerts.aggregation.processor.aggregation_processor import (
+        AggregationProcessor,
+    )
 
     try:
         processor = AggregationProcessor()
@@ -29,6 +31,7 @@ def event_aggregation_alert():
 
     try:
         from apps.alerts.aggregation.recovery.timeout_checker import TimeoutChecker
+
         confirmed_count = TimeoutChecker.check_session_timeouts()
         logger.info(f"聚合后会话超时检查完成，确认告警数={confirmed_count}")
     except Exception as e:
@@ -104,22 +107,22 @@ def cleanup_reminder_tasks():
 def async_auto_assignment_for_alerts(alert_ids):
     """
     异步执行告警自动分配
-    
+
     Args:
         alert_ids: 告警ID列表
-        
+
     Returns:
         执行结果统计
     """
     if not alert_ids:
         logger.info("无告警需要自动分配")
         return {"total_alerts": 0, "assigned_alerts": 0}
-    
+
     logger.info(f"== 开始异步自动分配告警 == 告警数量: {len(alert_ids)}")
-    
+
     try:
         from apps.alerts.common.assignment import execute_auto_assignment_for_alerts
-        
+
         result = execute_auto_assignment_for_alerts(alert_ids)
         logger.info(
             f"== 异步自动分配完成 == "
@@ -128,7 +131,7 @@ def async_auto_assignment_for_alerts(alert_ids):
             f"失败={result.get('failed_alerts', 0)}"
         )
         return result
-        
+
     except Exception as e:
         import traceback
         logger.error(f"异步自动分配失败: {traceback.format_exc()}")

@@ -8,6 +8,7 @@ import { TableCurrentDataSource, FilterValue, SorterResult } from 'antd/es/table
 import { cloneDeep } from 'lodash';
 import EllipsisWithTooltip from '../ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
+import ResizableTitle from './resizableTitle';
 
 interface CustomTableProps<T>
   extends Omit<TableProps<T>, 'bordered' | 'fieldSetting' | 'onSelectFields'> {
@@ -63,6 +64,7 @@ const CustomTable = <T extends object>({
   const [sorter, setSorter] = useState<SorterResult<T> | SorterResult<T>[]>({});
   const [extra, setExtra] = useState<TableCurrentDataSource<T>>();
   const [columns, setColumns] = useState<any[]>([]);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
 
   // 监听父容器高度变化
   useEffect(() => {
@@ -163,6 +165,44 @@ const CustomTable = <T extends object>({
     }
     return cols;
   }, [TableProps.columns, rowDraggable]);
+
+  // 获取列的唯一标识
+  const getColumnKey = (col: any, index: number): string => {
+    return col.key || col.dataIndex || `col-${index}`;
+  };
+
+  // 处理列宽拖拽
+  const handleColumnResize = (colKey: string) => (newWidth: number) => {
+    setColumnWidths(prev => ({
+      ...prev,
+      [colKey]: newWidth,
+    }));
+  };
+
+  // 将列宽状态和 onHeaderCell 合并到 columns
+  const DEFAULT_COL_WIDTH = 150;
+
+  const resizableColumns = useCallback(() => {
+    return columns.map((col: any, index: number) => {
+      const colKey = getColumnKey(col, index);
+      const width = columnWidths[colKey] || col.width || DEFAULT_COL_WIDTH;
+
+      return {
+        ...col,
+        width,
+        onHeaderCell: () => ({
+          width,
+          resizeHandler: handleColumnResize(colKey),
+        }),
+      };
+    });
+  }, [columns, columnWidths]);
+
+  // 计算 scroll.x：列宽总和，当超过容器宽度时产生横向滚动
+  const getScrollX = useCallback(() => {
+    const cols = resizableColumns();
+    return cols.reduce((sum: number, col: any) => sum + (col.width || DEFAULT_COL_WIDTH), 0);
+  }, [resizableColumns]);
 
   const parseCalcY = (value: string): number => {
     const vh = window.innerHeight;
@@ -279,6 +319,15 @@ const CustomTable = <T extends object>({
       );
   };
 
+  // 合并外部传入的 components 和列宽拖拽的 header cell
+  const mergedComponents = {
+    ...TableProps.components,
+    header: {
+      ...TableProps.components?.header,
+      cell: ResizableTitle,
+    },
+  };
+
   return (
     <div
       ref={containerRef}
@@ -290,7 +339,7 @@ const CustomTable = <T extends object>({
       <Table
         size={size}
         bordered={bordered}
-        scroll={tableHeight ? { ...scroll, y: tableHeight } : scroll}
+        scroll={{ x: getScrollX(), ...(tableHeight ? { ...scroll, y: tableHeight } : scroll) }}
         loading={loading}
         pagination={false}
         rowClassName={(record, index) =>
@@ -298,7 +347,8 @@ const CustomTable = <T extends object>({
         }
         onRow={(record, index) => renderRow(index!)}
         {...TableProps}
-        columns={columns}
+        columns={resizableColumns()}
+        components={mergedComponents}
         rowSelection={rowSelection}
         onChange={(pageConfig, filters, sorter, extra) =>
           handleTableChange(filters, sorter, extra)

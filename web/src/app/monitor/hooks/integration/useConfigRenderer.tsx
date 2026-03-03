@@ -461,6 +461,8 @@ export const useConfigRenderer = () => {
                 placeholder={widget_props.placeholder || label}
                 style={{ flex: 1 }}
                 status={errorMsg ? 'error' : ''}
+                showSearch
+                optionFilterProp="children"
                 {...widget_props}
               >
                 {filteredOptions.map((option: any) => (

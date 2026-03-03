@@ -23,7 +23,7 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const { t } = useTranslation();
 
   const handleBackButtonClick = () => {
-    router.push(`/cmdb/assetData`);
+    router.back();
   };
 
   const intro = (

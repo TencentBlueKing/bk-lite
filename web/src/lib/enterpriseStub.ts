@@ -5,4 +5,5 @@
 
 export const useEnterpriseConfig = (): Record<string, any> => ({});
 
-export default {};
+const enterpriseStub = {};
+export default enterpriseStub;

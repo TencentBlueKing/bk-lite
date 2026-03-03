@@ -213,6 +213,7 @@ class CollectModelViewSet(AuthViewSet):
                 "domain": request.user.domain,
                 "current_team": request.COOKIES.get("current_team"),
             },
+            "node_type": "container"
         }
         node = NodeMgmt()
         data = node.node_list(query_data)

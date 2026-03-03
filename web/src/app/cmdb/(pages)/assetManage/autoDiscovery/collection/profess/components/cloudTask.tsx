@@ -132,7 +132,8 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     accessKey: string,
     accessSecret: string,
     cloudRegionId: string,
-    refreshFlag = true
+    refreshFlag = true,
+    host?: string
   ) => {
     if (!accessKey || !accessSecret || !cloudRegionId) return;
     setLoadingRegions(true);
@@ -144,6 +145,10 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         model_id: modelId,
         cloud_id: cloudRegionId,
       };
+
+      if (host) {
+        params.host = host;
+      }
 
       if (editId && isCredentialUnchanged) {
         params.task_id = editId;
@@ -187,11 +192,16 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     );
     const cloudRegion = selectedAccessPoint?.origin?.cloud_region || '';
 
+    const instId = form.getFieldValue('instId');
+    const instOption = baseRef.current?.instOptions?.find((item: any) => item.value === instId);
+    const host = instOption?.origin?.endpoint || undefined;
+
     await fetchRegions(
       values.accessKey,
       values.accessSecret,
       cloudRegion,
       refreshFlag,
+      host,
     );
   };
 
@@ -227,7 +237,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
 
         const cloudRegion = values.access_point?.[0]?.cloud_region || '';
         if (cloudRegion) {
-          fetchRegions(PASSWORD_PLACEHOLDER, PASSWORD_PLACEHOLDER, cloudRegion, false);
+          fetchRegions(PASSWORD_PLACEHOLDER, PASSWORD_PLACEHOLDER, cloudRegion, false, values.instances?.[0]?.endpoint || undefined);
         }
       } else {
         form.setFieldsValue(CLOUD_FORM_INITIAL_VALUES);
