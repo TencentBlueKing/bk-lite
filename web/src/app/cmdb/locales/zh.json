@@ -175,7 +175,12 @@
         "singleLine": "单行",
         "multiLine": "多行",
         "display": "显示",
-        "attrIdPattern": "属性ID必须以字母开头，且仅包含字母、数字或下划线"
+        "attrIdPattern": "属性ID必须以字母开头，且仅包含字母、数字或下划线",
+        "columnId": "列ID",
+        "columnName": "列名称",
+        "enterColumnId": "请输入列ID",
+        "enterColumnName": "请输入列名称",
+        "columnIdsMustBeUnique": "列ID不能重复"
     },
     "Collection": {
         "cycleDeprecated": "定时执行和一次性执行功能已下线，请调整配置为周期执行",

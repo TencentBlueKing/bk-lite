@@ -255,6 +255,12 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             if (target && values[key] !== undefined) {
               values[key] = normalizeTimeValueForSubmit(target, values[key]);
             }
+            if (target?.attr_type === 'table' && Array.isArray(values[key])) {
+              const filtered = values[key].filter((row: any) =>
+                Object.values(row).some((v) => v !== '' && v !== null && v !== undefined)
+              );
+              values[key] = filtered.length > 0 ? filtered : undefined;
+            }
           }
 
           if (values.cloud) {
