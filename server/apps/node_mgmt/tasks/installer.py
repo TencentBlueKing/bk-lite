@@ -146,11 +146,6 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
 
     # 基础准备工作：记录每个步骤的状态
     aes_obj = AESCryptor()
-    timestamp = (
-        task_obj.updated_at.isoformat()
-        if task_obj.updated_at
-        else datetime.now().isoformat()
-    )
 
     base_steps = []  # 记录基础准备步骤（download, unzip）
     base_run = True
@@ -164,7 +159,6 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             "download",
             "running",
             "Downloading package to work node",
-            timestamp,
         )
         download_to_local(
             task_obj.work_node,
@@ -182,7 +176,7 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
     # Unzip 步骤（仅在 download 成功时执行）
     if base_run:
         try:
-            _add_step(base_steps, "unzip", "running", "Extracting package", timestamp)
+            _add_step(base_steps, "unzip", "running", "Extracting package")
             unzip_name = unzip_file(
                 task_obj.work_node,
                 f"{controller_storage_dir}/{package_obj.name}",
@@ -214,7 +208,6 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 "credential_check",
                 "error",
                 "No authentication method provided. Password or private key is required.",
-                timestamp,
             )
             _save_node_result(node_obj, steps, "error", "Credential validation failed")
             continue
@@ -226,7 +219,6 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             "credential_check",
             "success",
             f"Credential validation passed (using {auth_method})",
-            timestamp,
         )
 
         # 解密密码（如果有）
@@ -251,7 +243,6 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 "send",
                 "running",
                 "Starting file transfer to remote host",
-                timestamp,
             )
             transfer_file_to_remote(
                 task_obj.work_node,
@@ -269,9 +260,7 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             )
 
             # 安装执行步骤
-            _add_step(
-                steps, "run", "running", "Starting controller installation", timestamp
-            )
+            _add_step(steps, "run", "running", "Starting controller installation")
             groups = ",".join([str(i) for i in node_obj.organizations])
 
             # token生成
@@ -305,7 +294,7 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             )
 
         except Exception as e:
-            _handle_step_exception(steps, str(e), e, timestamp)
+            _handle_step_exception(steps, str(e), e)
             overall_status = "error"
 
         # 保存结果
@@ -408,11 +397,6 @@ def uninstall_controller(task_id):
 
     nodes = task_obj.controllertasknode_set.all()
     aes_obj = AESCryptor()
-    timestamp = (
-        task_obj.updated_at.isoformat()
-        if task_obj.updated_at
-        else datetime.now().isoformat()
-    )
 
     for node_obj in nodes:
         steps = []
@@ -428,7 +412,6 @@ def uninstall_controller(task_id):
                 "credential_check",
                 "error",
                 "No authentication method provided. Password or private key is required.",
-                timestamp,
             )
             _save_node_result(node_obj, steps, "error", "Credential validation failed")
             continue
@@ -440,7 +423,6 @@ def uninstall_controller(task_id):
             "credential_check",
             "success",
             f"Credential validation passed (using {auth_method})",
-            timestamp,
         )
 
         # 解密密码（如果有）
@@ -460,9 +442,7 @@ def uninstall_controller(task_id):
 
         try:
             # 停止服务步骤
-            _add_step(
-                steps, "stop_run", "running", "Stopping controller service", timestamp
-            )
+            _add_step(steps, "stop_run", "running", "Stopping controller service")
             uninstall_command = get_uninstall_command(node_obj.os)
             exec_command_to_remote(
                 task_obj.work_node,
@@ -484,7 +464,6 @@ def uninstall_controller(task_id):
                 "delete_dir",
                 "running",
                 "Removing controller installation directory",
-                timestamp,
             )
             exec_command_to_remote(
                 task_obj.work_node,
@@ -506,7 +485,6 @@ def uninstall_controller(task_id):
                 "delete_node",
                 "running",
                 "Removing node from database",
-                timestamp,
             )
             Node.objects.filter(
                 cloud_region_id=task_obj.cloud_region_id, ip=node_obj.ip
@@ -516,7 +494,7 @@ def uninstall_controller(task_id):
             )
 
         except Exception as e:
-            _handle_step_exception(steps, str(e), e, timestamp)
+            _handle_step_exception(steps, str(e), e)
             overall_status = "error"
 
         # 保存结果
@@ -549,11 +527,6 @@ def install_collector(task_id):
 
     collector_install_dir = CollectorConstants.DOWNLOAD_DIR.get(package_obj.os)
     nodes = task_obj.collectortasknode_set.all()
-    timestamp = (
-        task_obj.updated_at.isoformat()
-        if task_obj.updated_at
-        else datetime.now().isoformat()
-    )
 
     for node_obj in nodes:
         steps = []
@@ -566,7 +539,6 @@ def install_collector(task_id):
                 "send",
                 "running",
                 f"Starting file download to node {node_obj.node_id}",
-                timestamp,
             )
             download_to_local(
                 node_obj.node_id,
@@ -581,9 +553,7 @@ def install_collector(task_id):
 
             # 根据文件扩展名决定是否解压
             if package_obj.name.lower().endswith(".zip"):
-                _add_step(
-                    steps, "unzip", "running", "Extracting collector package", timestamp
-                )
+                _add_step(steps, "unzip", "running", "Extracting collector package")
                 unzip_name = unzip_file(
                     node_obj.node_id,
                     f"{collector_install_dir}/{package_obj.name}",
@@ -600,7 +570,6 @@ def install_collector(task_id):
                     "prepare",
                     "success",
                     "Package ready (no extraction required)",
-                    timestamp,
                 )
 
             # Linux操作系统赋予执行权限
@@ -610,7 +579,6 @@ def install_collector(task_id):
                     "set_exe",
                     "running",
                     "Setting execution permissions",
-                    timestamp,
                 )
                 executable_path = f"{collector_install_dir}/{executable_name}"
                 exec_command_to_local(
@@ -622,7 +590,7 @@ def install_collector(task_id):
                 )
 
         except Exception as e:
-            _handle_step_exception(steps, str(e), e, timestamp)
+            _handle_step_exception(steps, str(e), e)
             overall_status = "error"
 
         # 保存结果
