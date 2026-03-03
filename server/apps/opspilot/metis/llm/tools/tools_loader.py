@@ -31,6 +31,7 @@ class ToolsLoader:
     # 静态定义所有工具模块映射
     TOOL_MODULES = {
         "browser_use": (browser_use, False),
+        "cmdb": (cmdb, False),
         "current_time": (date, False),
         "duckduckgo": (search, False),
         "fetch": (fetch, False),
