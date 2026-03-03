@@ -722,6 +722,9 @@ class InstanceManage(object):
             add_mgs += f"{key_map[_key]}: 成功{success_count}个，失败{fail_count}个:{message}\n"
             if fail_count > 0:
                 res_status = False
+
+        if res_status:
+            add_mgs = ""
         return res_status, add_mgs
 
     @staticmethod
