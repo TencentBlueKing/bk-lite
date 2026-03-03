@@ -26,8 +26,7 @@ const Information: React.FC<InformationProps> = ({
   objects,
   userList,
   onClose,
-  trapData,
-  eventData = []
+  trapData
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -124,11 +123,13 @@ const Information: React.FC<InformationProps> = ({
           )?.display_name || '--'}
         </Descriptions.Item>
         <Descriptions.Item label={t('monitor.asset')}>
-          <div className="flex justify-between">
-            {formData.monitor_instance_name || '--'}
+          <div className="flex justify-between items-center">
+            <span className="flex-1">
+              {formData.monitor_instance_name || '--'}
+            </span>
             <a
               href="#"
-              className="text-blue-500 w-[36px]"
+              className="text-blue-500 ml-2"
               onClick={() => checkDetail(formData)}
             >
               {t('common.more')}
@@ -218,7 +219,6 @@ const Information: React.FC<InformationProps> = ({
             <div className="h-[250px]">
               <LineChart
                 allowSelect={false}
-                eventData={eventData}
                 data={chartData}
                 threshold={
                   formData.alert_type === 'no_data'

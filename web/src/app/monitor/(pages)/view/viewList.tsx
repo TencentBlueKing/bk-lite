@@ -29,10 +29,8 @@ import TimeSelector from '@/components/time-selector';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ListItem } from '@/types';
-import {
-  OBJECT_DEFAULT_ICON,
-  DERIVATIVE_OBJECTS
-} from '@/app/monitor/constants';
+import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { getDerivativeObjectNames } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
 
@@ -139,14 +137,14 @@ const ViewList: React.FC<ViewListProps> = ({
   }, [objects, objectId]);
 
   const showMultipleConditions = useMemo(() => {
-    const objectNames = DERIVATIVE_OBJECTS.filter(
-      (item) => !['Pod', 'Node'].includes(item)
+    const derivativeNames = getDerivativeObjectNames(objects).filter(
+      (name) => !['Pod', 'Node'].includes(name)
     );
     const currentObjectName = objects.find(
       (item) => item.id === objectId
     )?.name;
-    return objectNames.includes(currentObjectName as string) || showTab;
-  }, [objects, objectId]);
+    return derivativeNames.includes(currentObjectName as string) || showTab;
+  }, [objects, objectId, showTab]);
 
   // 动态处理进度条列宽度：有数据时固定300，无数据时自适应
   const displayColumns = useMemo(() => {
@@ -346,7 +344,7 @@ const ViewList: React.FC<ViewListProps> = ({
             ...(item.type === 'value'
               ? {
                 sorter: (a: any, b: any) =>
-                  a[item.key]?.value - b[item.key]?.value,
+                  a[item.key]?.value - b[item.key]?.value
               }
               : {}),
             render: (_: unknown, record: TableDataItem) => {

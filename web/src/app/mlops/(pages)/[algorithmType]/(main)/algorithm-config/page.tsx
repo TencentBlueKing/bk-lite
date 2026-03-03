@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import useAlgorithmConfigApi from '@/app/mlops/api/algorithmConfig';
 import { Button, Input, Popconfirm, message, Tag, Switch } from 'antd';
-import { ReloadOutlined, PlusOutlined } from '@ant-design/icons';
+import { ReloadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
@@ -12,18 +12,9 @@ import AlgorithmConfigModal from '@/app/mlops/components/algorithm-config/Algori
 import { useTranslation } from '@/utils/i18n';
 import type { ColumnItem } from '@/app/mlops/types';
 import type { AlgorithmConfigListItem, AlgorithmType } from '@/app/mlops/types/algorithmConfig';
+import { ALGORITHM_TYPE_I18N_KEYS } from "@/app/mlops/constants";
 
 const { Search } = Input;
-
-// i18n key mapping for algorithm types
-const ALGORITHM_TYPE_I18N_KEYS: Record<string, string> = {
-  anomaly_detection: 'algorithmType.anomaly_detection',
-  timeseries_predict: 'algorithmType.timeseries_predict',
-  log_clustering: 'algorithmType.log_clustering',
-  classification: 'algorithmType.classification',
-  image_classification: 'algorithmType.image_classification',
-  object_detection: 'algorithmType.object_detection',
-};
 
 export interface ModalRef {
   showModal: (params: { type: string; title: string; form: AlgorithmConfigListItem | null }) => void;
@@ -33,7 +24,7 @@ const AlgorithmConfigPage = () => {
   const { t } = useTranslation();
   const params = useParams();
   const algorithmType = params.algorithmType as AlgorithmType;
-  
+
   const { convertToLocalizedTime } = useLocalizedTime();
   const {
     getAlgorithmConfigList,
@@ -85,10 +76,10 @@ const AlgorithmConfigPage = () => {
       render: (_, record: AlgorithmConfigListItem) => (
         <PermissionWrapper requiredPermissions={['Edit']}>
           <Switch
-          checked={record.is_active}
-          onChange={(checked) => handleToggleActive(record.id, checked)}
-          size="small"
-        />
+            checked={record.is_active}
+            onChange={(checked) => handleToggleActive(record.id, checked)}
+            size="small"
+          />
         </PermissionWrapper>
       ),
     },
@@ -239,9 +230,7 @@ const AlgorithmConfigPage = () => {
           <Tag color="blue">
             {t(ALGORITHM_TYPE_I18N_KEYS[algorithmType] || algorithmType)}
           </Tag>
-          <span className="text-gray-500 text-sm">
-            {t('algorithmConfig.pageDescription')}
-          </span>
+          <EllipsisWithTooltip className="w-full overflow-hidden text-ellipsis whitespace-nowrap" text={t('algorithmConfig.pageDescription')} />
         </div>
         <div className="flex items-center gap-2">
           <Search
@@ -253,7 +242,6 @@ const AlgorithmConfigPage = () => {
           <PermissionWrapper requiredPermissions={['Add']}>
             <Button
               type="primary"
-              icon={<PlusOutlined />}
               onClick={handleAdd}
             >
               {t('common.add')}

@@ -129,6 +129,7 @@
         "notStarted": "Stopped",
         "unknown": "Unknown",
         "stop": "Stop",
+        "stopped": "Stopped",
         "defaultNode": "Default Node",
         "active": "Active",
         "manual": "Manual",

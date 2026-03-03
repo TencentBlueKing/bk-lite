@@ -759,6 +759,25 @@ def chat_flow_celery_task(bot_id, node_id, message):
 
 
 @shared_task
+def chat_flow_test_execute_task(workflow_id, node_id, input_data, entry_type, execution_id):
+    """ChatFlow测试异步任务"""
+    logger.info(f"开始执行ChatFlow测试异步任务: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
+    workflow = BotWorkFlow.objects.filter(id=workflow_id).first()
+    if not workflow:
+        logger.error(f"ChatFlow测试异步任务失败: workflow_id={workflow_id} 不存在")
+        return
+
+    try:
+        engine = create_chat_flow_engine(workflow, node_id, entry_type=entry_type, execution_id=execution_id)
+        if entry_type:
+            engine.entry_type = entry_type
+        engine.execute(input_data)
+        logger.info(f"ChatFlow测试异步任务完成: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
+    except Exception as e:
+        logger.error(f"ChatFlow测试异步任务失败: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}, error={str(e)}")
+
+
+@shared_task
 def update_graph_task(current_count, all_count, task_id):
     task_obj = KnowledgeTask.objects.filter(id=task_id).first()
     if not task_obj:

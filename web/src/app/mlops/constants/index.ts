@@ -3,3 +3,6 @@
 
 // Common constants (status maps, type maps, etc.)
 export * from './common';
+
+// Serving related constants
+export * from './serving';

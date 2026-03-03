@@ -31,9 +31,9 @@ import MetricModal from './metricModal';
 import { useSearchParams } from 'next/navigation';
 import Permission from '@/components/permission';
 import {
-  NEED_TAGS_ENTRY_OBJECTS,
-  OBJECT_NAME_TO_TYPE_MAP
-} from '@/app/monitor/constants/integration';
+  needsTagsEntry,
+  getObjectTypeByName
+} from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 
 const Configure = () => {
@@ -67,6 +67,7 @@ const Configure = () => {
   const [dragOverTargetId, setDragOverTargetId] = useState<string | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [groupConfirmLoading, setGroupConfirmLoading] = useState(false);
+  const [showTabs, setShowTabs] = useState<boolean>(false);
 
   const columns: ColumnItem[] = [
     {
@@ -168,13 +169,12 @@ const Configure = () => {
     setLoading(true);
     let _objId = '';
     try {
-      if (NEED_TAGS_ENTRY_OBJECTS.includes(groupName)) {
-        const data = await getMonitorObject();
+      const data = await getMonitorObject();
+      if (needsTagsEntry(groupName, data)) {
+        setShowTabs(true);
+        const objectType = getObjectTypeByName(groupName, data);
         const _items = data
-          .filter(
-            (item: ObjectItem) =>
-              item.type === OBJECT_NAME_TO_TYPE_MAP[groupName]
-          )
+          .filter((item: ObjectItem) => item.type === objectType)
           .sort((a: ObjectItem, b: ObjectItem) => a.id - b.id)
           .map((item: ObjectItem) => ({
             label: item.display_name,
@@ -183,6 +183,7 @@ const Configure = () => {
         _objId = _items[0]?.value;
         setItems(_items);
       } else {
+        setShowTabs(false);
         _objId = groupId || '';
       }
       setActiveTab(_objId);
@@ -472,7 +473,7 @@ const Configure = () => {
 
   return (
     <div className={metricStyle.metric}>
-      {NEED_TAGS_ENTRY_OBJECTS.includes(groupName) && (
+      {showTabs && (
         <Segmented
           className="mb-[20px] custom-tabs"
           value={activeTab}
@@ -510,9 +511,7 @@ const Configure = () => {
         <div
           className={metricStyle.metricTable}
           style={{
-            height: NEED_TAGS_ENTRY_OBJECTS.includes(groupName)
-              ? 'calc(100vh - 396px)'
-              : 'calc(100vh - 346px)'
+            height: showTabs ? 'calc(100vh - 396px)' : 'calc(100vh - 346px)'
           }}
         >
           {!!filteredMetricData.length ? (

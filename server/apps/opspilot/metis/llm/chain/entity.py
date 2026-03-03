@@ -22,6 +22,7 @@ class ChatHistory(BaseModel):
 class ToolsServer(BaseModel):
     name: str
     url: str = ""
+    transport: str = ""
     command: str = ""
     args: list = []
     extra_param_prompt: dict = {}

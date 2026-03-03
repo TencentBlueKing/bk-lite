@@ -7,7 +7,8 @@ import {
   CloseCircleOutlined,
   StopOutlined,
   LoadingOutlined,
-  WarningOutlined
+  WarningOutlined,
+  PauseCircleOutlined
 } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -184,6 +185,26 @@ const useTelegrafMap = (): Record<string, Record<string, any>> => {
             <CloseCircleOutlined
               style={{
                 color: '#ff4d4f',
+                fontWeight: 'bold',
+                fontSize: '12px'
+              }}
+            />
+          </div>
+        )
+      },
+      3: {
+        tagColor: 'warning',
+        color: '#fa8c16',
+        text: t('node-manager.cloudregion.node.stopped'),
+        engText: 'Stopped',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(250, 140, 22, 0.1)' }}
+          >
+            <PauseCircleOutlined
+              style={{
+                color: '#fa8c16',
                 fontWeight: 'bold',
                 fontSize: '12px'
               }}

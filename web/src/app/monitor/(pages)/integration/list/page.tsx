@@ -23,7 +23,7 @@ import TreeSelector from '@/app/monitor/components/treeSelector';
 import { useSearchParams } from 'next/navigation';
 import Permission from '@/components/permission';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
-import { DERIVATIVE_OBJECTS } from '@/app/monitor/constants';
+import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 
 const Integration = () => {
@@ -143,7 +143,7 @@ const Integration = () => {
             children: []
           };
         }
-        if (!DERIVATIVE_OBJECTS.includes(item.name)) {
+        if (!isDerivativeObject(item, data)) {
           acc[item.type].children.push({
             title: item.display_name || '--',
             label: item.name || '--',
