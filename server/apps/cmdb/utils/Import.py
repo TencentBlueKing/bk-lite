@@ -554,7 +554,8 @@ class Import:
         for item in add_results:
             inst_name = item["data"].get("inst_name", "")
             if item.get("success", False):
-                data = "实例 {} 新增成功".format(inst_name)
+                # data = "实例 {} 新增成功".format(inst_name)
+                data = ""
                 self.import_result_message["add"]["success"] += 1
             else:
                 data = "实例 {} 新增失败: {}".format(
@@ -566,7 +567,8 @@ class Import:
         for item in update_results:
             inst_name = item["data"].get("inst_name", "")
             if item.get("success", False):
-                data = "实例 {} 更新成功".format(inst_name)
+                # data = "实例 {} 更新成功".format(inst_name)
+                data = ""
                 self.import_result_message["update"]["success"] += 1
             else:
                 data = "实例 {} 更新失败: {}".format(
@@ -577,7 +579,8 @@ class Import:
 
         for item in asso_result:
             if item.get("success", False):
-                data = item.get("message", "关联数据处理成功")
+                # data = item.get("message", "关联数据处理成功")
+                data = ""
                 self.import_result_message["asso"]["success"] += 1
             else:
                 data = item.get("message", "关联数据处理失败")
