@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"nats-executor/local"
+	"nats-executor/logger"
 	"nats-executor/ssh"
 )
 
@@ -64,7 +64,7 @@ func renderEnvVars(s string) string {
 			return envValue
 		}
 		// 如果环境变量不存在，保持原样
-		log.Printf("Warning: environment variable %s not found, keeping placeholder", varName)
+		logger.Warnf("environment variable %s not found, keeping placeholder", varName)
 		return match
 	})
 
@@ -102,12 +102,12 @@ func main() {
 	flag.Parse()
 
 	if *configPath == "" {
-		log.Fatal("Please specify the config file path using --config")
+		logger.Fatal("Please specify the config file path using --config")
 	}
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		logger.Fatalf("Failed to load config: %v", err)
 	}
 
 	//log.Printf("Connecting to NATS server at %s", cfg.NATSUrls)
@@ -138,7 +138,7 @@ func main() {
 		if tlsCertFile != "" && tlsKeyFile != "" {
 			cert, err := tls.LoadX509KeyPair(tlsCertFile, tlsKeyFile)
 			if err != nil {
-				log.Fatalf("Failed to load client certificate: %v", err)
+				logger.Fatalf("Failed to load client certificate: %v", err)
 			}
 			tlsConfig.Certificates = []tls.Certificate{cert}
 		}
@@ -146,25 +146,25 @@ func main() {
 		if tlsCAFile != "" {
 			caCert, err := os.ReadFile(tlsCAFile)
 			if err != nil {
-				log.Fatalf("Failed to read CA certificate file: %v", err)
+				logger.Fatalf("Failed to read CA certificate file: %v", err)
 			}
 			caCertPool := x509.NewCertPool()
 			if !caCertPool.AppendCertsFromPEM(caCert) {
-				log.Fatalf("Failed to append CA certificate")
+				logger.Fatal("Failed to append CA certificate")
 			}
 			tlsConfig.RootCAs = caCertPool
 		}
 
 		opts = append(opts, nats.Secure(tlsConfig))
-		log.Println("TLS enabled for NATS connection")
+		logger.Info("TLS enabled for NATS connection")
 	}
 
 	nc, err := nats.Connect(cfg.NATSUrls, opts...)
 	if err != nil {
-		log.Fatalf("Failed to connect to NATS server: %v", err)
+		logger.Fatalf("Failed to connect to NATS server: %v", err)
 	}
 	defer nc.Close()
-	log.Println("Connected to NATS server")
+	logger.Info("Connected to NATS server")
 
 	// 注册各类订阅
 	local.SubscribeLocalExecutor(nc, &cfg.NATSInstanceID)
@@ -176,6 +176,6 @@ func main() {
 	ssh.SubscribeDownloadToRemote(nc, &cfg.NATSInstanceID)
 	ssh.SubscribeUploadToRemote(nc, &cfg.NATSInstanceID)
 
-	log.Println("Waiting for messages...")
+	logger.Infof("Waiting for messages... (log level: %s)", logger.GetLevel())
 	select {}
 }

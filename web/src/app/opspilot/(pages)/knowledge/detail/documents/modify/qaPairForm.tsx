@@ -9,6 +9,7 @@ import CustomTable from '@/components/custom-table';
 import ChunkPreviewModal from './chunkPreviewModal';
 import Icon from '@/components/icon';
 import type { DocumentItem, QAPairFormProps } from '@/app/opspilot/types/knowledge';
+import { getDocumentTypeLabel } from '@/app/opspilot/utils/knowledgeBaseUtils';
 
 const { TabPane } = Tabs;
 const { TextArea } = Input;
@@ -69,6 +70,7 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
   });
   const onFormChangeRef = useRef(onFormChange);
   const onFormDataChangeRef = useRef(onFormDataChange);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 添加表单准备状态
   const [formReady, setFormReady] = useState(false);
@@ -78,6 +80,12 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
     onFormChangeRef.current = onFormChange;
     onFormDataChangeRef.current = onFormDataChange;
   }, [onFormChange, onFormDataChange]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   useImperativeHandle(ref, () => ({
     validateFields: () => form.validateFields(),
@@ -123,8 +131,8 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
         formValuesRef.current = defaultValues;
         setCurrentQaCount(1);
         
-        // 设置默认值后立即触发验证
-        setTimeout(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
           validateAndNotify();
         }, 100);
       }
@@ -241,7 +249,8 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
 
   useEffect(() => {
     if (formReady && editData && parId) {
-      setTimeout(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
         try {
           form.setFieldsValue(editData);
           formValuesRef.current = editData;
@@ -293,18 +302,9 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
     }).filter(Boolean);
   }, [tempSelectedDocuments, getSelectedDocumentInfo, t]);
 
-  const getDocumentTypeLabel = useCallback((type: string) => {
-    switch (type) {
-      case 'file':
-        return t('knowledge.localFile');
-      case 'web_page':
-        return t('knowledge.webLink');
-      case 'manual':
-        return t('knowledge.cusText');
-      default:
-        return type;
-    }
-  }, []);
+  const getDocumentTypeLabelCallback = useCallback((type: string) => {
+    return getDocumentTypeLabel(type, t);
+  }, [t]);
 
   const handleFormValuesChange = useCallback((_: any, allValues: any) => {
     const newValues = {
@@ -728,7 +728,7 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
         onClose={() => setPreviewModalVisible(false)}
         selectedDocuments={selectedDocuments}
         getSelectedDocumentInfo={getSelectedDocumentInfo}
-        getDocumentTypeLabel={getDocumentTypeLabel}
+        getDocumentTypeLabel={getDocumentTypeLabelCallback}
         onConfirm={handleConfirmChunks}
         initialSelectedChunks={selectedChunks}
       />
@@ -836,7 +836,7 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
                               color="blue"
                               className="text-xs"
                             >
-                              {getDocumentTypeLabel(doc.type)}
+                              {getDocumentTypeLabelCallback(doc.type)}
                             </Tag>
                           </div>
                           <div 

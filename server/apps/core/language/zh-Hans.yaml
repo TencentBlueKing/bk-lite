@@ -8,3 +8,74 @@ error:
   no_permission_view: 你没有权限查看此实例
   no_permission_delete: 你没有权限删除此实例
   no_permission_update: 你没有权限更新此实例
+  insufficient_permissions: 权限不足
+  token_validation_failed: 令牌验证失败
+  please_provide_token: 请提供令牌
+  auth_failed: 认证失败
+  not_authorized: 未授权
+  api_secret_exists: 该用户已拥有 API 密钥
+  system_error: 系统发生错误
+  username_password_empty: 用户名或密码不能为空
+  user_id_empty: user_id 不能为空
+  username_empty: 用户名不能为空
+  otp_empty: 用户名或 OTP 验证码不能为空
+
+# 应用描述 (内置应用)
+app:
+  ops-analysis: 整合运维数据，通过仪表盘、画布方式多维度分析挖掘潜在风险与优化空间，为决策提供数据支撑，助力提升运维质量与业务连续性。
+  playground: 用户可以在这里体验相关能力，包括 AIOps 模型测试、智能体使用等。
+  log: 用于集中收集、存储和分析日志数据，帮助用户实现高效的日志监控和故障排查。
+  monitor: 用于实时监测和管理系统运行状态的平台，提供数据可视化、告警通知、性能分析等功能，帮助快速定位问题，保障业务稳定
+  cmdb: 用于集中管理企业的所有IT资产和资源的平台，帮助组织有效地追踪资产生命周期、优化资源分配并确保系统安全
+  alarm: 汇聚企业多源告警事件，智能降噪，挖掘深层故障原因，提升运维响应效率，帮助快速定位问题。
+  mlops: AI模型全生命周期管理工具，集成数据集管理、模型任务训练等功能，提升机器学习的灵活性和效率。
+  opspilot: OpsPilot 是AI智能平台，基于前沿人工智能技术，融合机器学习与大模型能力，支持多元化场景
+  system-manager: 涵盖用户和组织角色权限管理，通过精细化权限控制，确保资源访问安全，同时提升操作效率。提供灵活的配置和管理，满足不同业务需求
+  node: 用于集中管理各个云区域下的节点，为各个节点安装各类探针，以便进行监控数据、配置信息、日志等信息的采集
+  ops-console: 统一运维控制台，用于管理和监控所有运维活动
+
+# 标签翻译 (内置应用标签)
+tag:
+  # system-manager
+  user_management: 用户管理
+  organization: 组织架构
+  role_permission: 角色权限
+  general_settings: 通用设置
+  # cmdb
+  asset_management: 资产管理
+  auto_discovery: 自动发现
+  model_customization: 模型自定义
+  # opspilot
+  agent: 智能体
+  knowledge_base: 知识库
+  smart_bot: 智能机器人
+  tool_management: 工具管理
+  # monitor
+  multi_object_access: 多对象接入
+  quick_search: 快速检索
+  monitor_dashboard: 监控仪表盘
+  monitor_strategy: 监控策略
+  smart_alert: 智能告警
+  # node
+  cloud_region: 云区域
+  probe_management: 探针管理
+  node_management: 节点管理
+  # alarm
+  unified_alarm: 统一告警
+  smart_noise_reduction: 智能降噪
+  incident_escalation: 事故升级
+  auto_dispatch: 自动分派
+  # log
+  multi_log_access: 多日志接入
+  flexible_search: 灵活检索
+  monitor_alert: 监控告警
+  permission_control: 权限管控
+  # mlops
+  dataset_management: 数据集管理
+  data_labeling: 数据打标
+  model_training: 模型训练
+  model_release: 模型发布
+  # ops-analysis
+  dashboard: 仪表盘
+  canvas: 画布
+  data_integration: 数据整合

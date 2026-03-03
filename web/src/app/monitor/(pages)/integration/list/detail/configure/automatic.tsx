@@ -11,7 +11,7 @@ import useIntegrationApi from '@/app/monitor/api/integration';
 import { TableDataItem } from '@/app/monitor/types';
 import {
   IntegrationAccessProps,
-  IntegrationMonitoredObject,
+  IntegrationMonitoredObject
 } from '@/app/monitor/types/integration';
 import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
@@ -89,13 +89,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       onTableDataChange,
       form,
       externalOptions: {
-        node_ids_option: nodeList,
-      },
+        node_ids_option: nodeList
+      }
     });
     return {
       formItems: cfg.formItems,
       defaultForm: cfg.defaultForm,
-      initTableItems: cfg.initTableItems,
+      initTableItems: cfg.initTableItems
     };
   }, [baseConfig, pluginId, form, nodeList, jsonConfig.buildPluginUI]);
 
@@ -108,7 +108,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         collector: '',
         instance_type: '',
         object_name: '',
-        getParams: () => ({}),
+        getParams: () => ({})
       };
     }
     return jsonConfig.buildPluginUI(pluginId, {
@@ -117,8 +117,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       onTableDataChange,
       form,
       externalOptions: {
-        node_ids_option: nodeList,
-      },
+        node_ids_option: nodeList
+      }
     });
   }, [
     baseConfig,
@@ -126,7 +126,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     dataSource,
     form,
     nodeList,
-    jsonConfig.buildPluginUI,
+    jsonConfig.buildPluginUI
   ]);
 
   const collectType = useMemo(() => {
@@ -140,7 +140,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
     const dataColumns = currentConfig.table_columns.map((columnConfig: any) =>
       renderTableColumn(columnConfig, dataSource, onTableDataChange, {
-        node_ids_option: nodeList,
+        node_ids_option: nodeList
       })
     );
     // 检查是否有 enable_row_filter 为 true 的列
@@ -153,7 +153,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       dataIndex: 'action',
       width: 160,
       fixed: 'right' as const,
-      render: (_: any, record: IntegrationMonitoredObject, index: number) => (
+      render: (_: any, record: IntegrationMonitoredObject) => (
         <>
           <Button
             type="link"
@@ -171,7 +171,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               {t('common.copy')}
             </Button>
           )}
-          {!!index && (
+          {dataSource.length > 1 && (
             <Button
               type="link"
               onClick={() => handleDelete(record.key as string)}
@@ -180,7 +180,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             </Button>
           )}
         </>
-      ),
+      )
     };
     return [...dataColumns, actionColumn];
   }, [
@@ -190,7 +190,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     nodeList,
     renderTableColumn,
     t,
-    collectType,
+    collectType
   ]);
 
   const formItems = useMemo(() => {
@@ -212,7 +212,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       const initItems = {
         ...formConfig.initTableItems,
         group_ids: formConfig.initTableItems.group_ids || groupId,
-        key: uuidv4(),
+        key: uuidv4()
       };
       setInitTableItems(initItems);
       setDataSource([initItems]);
@@ -224,7 +224,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     const index = dataSource.findIndex((item) => item.key === key);
     const newData = {
       ...initTableItems,
-      key: uuidv4(),
+      key: uuidv4()
     };
     const updatedData = [...dataSource];
     updatedData.splice(index + 1, 0, newData);
@@ -242,6 +242,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const handleDelete = (key: string) => {
     const updatedData = dataSource.filter((item) => item.key !== key);
     setDataSource(updatedData);
+    // 同步清理已删除行的选中状态
+    setSelectedRowKeys((prev) => prev.filter((k) => k !== key));
   };
 
   const handleBatchDelete = () => {
@@ -257,14 +259,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         if (updatedData.length === 0) {
           const newData = {
             ...initTableItems,
-            key: uuidv4(),
+            key: uuidv4()
           };
           setDataSource([newData]);
         } else {
           setDataSource(updatedData);
         }
         setSelectedRowKeys([]);
-      },
+      }
     });
   };
 
@@ -275,7 +277,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     batchEditModalRef.current?.showModal({
       columns: currentConfig?.table_columns || [],
       selectedRows,
-      nodeList,
+      nodeList
     });
   };
 
@@ -284,7 +286,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       if (selectedRowKeys.includes(item.key as string)) {
         return {
           ...item,
-          ...editedFields,
+          ...editedFields
         };
       }
       return item;
@@ -297,7 +299,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       title: t('monitor.integrations.importData'),
       columns: currentConfig?.table_columns || [],
       nodeList,
-      pluginName: pluginDisplayName,
+      pluginName: pluginDisplayName
     });
   };
 
@@ -305,7 +307,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     const newRows = importedData.map((row) => ({
       ...row,
       key: uuidv4(),
-      group_ids: row.group_ids || groupId,
+      group_ids: row.group_ids || groupId
     }));
     setDataSource([...dataSource, ...newRows]);
   };
@@ -313,13 +315,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const batchMenuItems: MenuProps['items'] = [
     {
       key: 'batchEdit',
-      label: t('common.batchEdit'),
+      label: t('common.batchEdit')
     },
     {
       key: 'batchDelete',
       label: t('common.batchDelete'),
-      disabled: selectedRowKeys.length === 1 && dataSource.length === 1,
-    },
+      disabled: dataSource.length === 1
+    }
   ];
 
   const handleBatchMenuClick: MenuProps['onClick'] = (e) => {
@@ -334,12 +336,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     selectedRowKeys,
     onChange: (newSelectedRowKeys: React.Key[]) => {
       setSelectedRowKeys(newSelectedRowKeys);
-    },
+    }
   };
 
   const initData = () => {
     form.setFieldsValue({
-      ...(formConfig?.defaultForm || {}),
+      ...(formConfig?.defaultForm || {})
     });
   };
 
@@ -350,12 +352,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         cloud_region_id: 0,
         page: 1,
         page_size: -1,
-        is_active: true,
+        is_active: true
       });
       const formattedNodes = (data.nodes || []).map((node: any) => ({
         ...node,
         label: `${node.name} (${node.ip})`,
-        value: node.id,
+        value: node.id
       }));
       setNodeList(formattedNodes);
     } finally {
@@ -373,7 +375,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         const { name } = column;
         newData[index] = {
           ...newData[index],
-          [`${name}_error`]: null,
+          [`${name}_error`]: null
         };
       });
     });
@@ -413,7 +415,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           hasError = true;
           newData[index] = {
             ...newData[index],
-            [`${name}_error`]: errorMsg,
+            [`${name}_error`]: errorMsg
           };
         }
       });
@@ -438,7 +440,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         configsInfo?.getParams?.(row, {
           dataSource,
           nodeList,
-          objectId,
+          objectId
         }) || {};
       params.monitor_object_id = Number(objectId);
       addNodesConfig(params);
@@ -451,7 +453,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       await updateNodeChildConfig(params);
       message.success(t('common.addSuccess'));
       const searchParams = new URLSearchParams({
-        objId: objectId,
+        objId: objectId
       });
       const targetUrl = `/monitor/integration/list?${searchParams.toString()}`;
       router.push(targetUrl);
@@ -504,7 +506,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                 <Dropdown
                   menu={{
                     items: batchMenuItems,
-                    onClick: handleBatchMenuClick,
+                    onClick: handleBatchMenuClick
                   }}
                   disabled={!selectedRowKeys.length}
                 >
@@ -557,8 +559,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                       }
                     }
                     return Promise.resolve();
-                  },
-                },
+                  }
+                }
               ]}
             >
               <CustomTable

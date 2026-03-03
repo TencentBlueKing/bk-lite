@@ -8,6 +8,194 @@
   "description": "",
   "default_metric": "any({instance_type='kafka'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": [],
-  "metrics": []
+  "supplementary_indicators": ["kafka_up_gauge", "kafka_topic_partition_under_replicated_partition", "kafka_consumergroup_lag"],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "up_gauge",
+      "display_name": "Probe Status",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"异常\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [],
+      "description": "Probe Uptime status. 0 means connection failed, 1 means connection success. Check for no data issues which may indicate a missing connection.",
+      "query": "kafka_up_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Base",
+      "name": "brokers_gauge",
+      "display_name": "Broker Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Number of Kafka Brokers in the cluster.",
+      "query": "sum(kafka_brokers_gauge{__$labels__})"
+    },
+    {
+      "metric_group": "Base",
+      "name": "broker_info_gauge",
+      "display_name": "Broker Info",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": ["address", "id"],
+      "description": "Information about Kafka node, including node address and ID.",
+      "query": "kafka_broker_info_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Topic",
+      "name": "topic_partition_count",
+      "display_name": "Topic Partition Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["topic"],
+      "description": "Number of partitions for a given Kafka topic.",
+      "query": "sum by (topic) (kafka_topic_partition_count{__$labels__})"
+    },
+    {
+      "metric_group": "Topic",
+      "name": "topic_partition_current_offset",
+      "display_name": "Partition Current Offset",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["partition", "topic"],
+      "description": "Current offset for the specified topic and partition.",
+      "query": "kafka_topic_partition_current_offset{__$labels__}"
+    },
+    {
+      "metric_group": "Topic",
+      "name": "topic_partition_oldest_offset",
+      "display_name": "Partition Oldest Offset",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["partition", "topic"],
+      "description": "Oldest offset for the specified topic and partition.",
+      "query": "kafka_topic_partition_oldest_offset{__$labels__}"
+    },
+    {
+      "metric_group": "Topic",
+      "name": "topic_partition_in_sync_replica",
+      "display_name": "Partition In-Sync Replicas",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["partition", "topic"],
+      "description": "Number of in-sync replicas for the specified topic and partition.",
+      "query": "kafka_topic_partition_in_sync_replica{__$labels__}"
+    },
+    {
+      "metric_group": "Topic",
+      "name": "topic_partition_leader_is_preferred",
+      "display_name": "Partition Preferred Leader Status",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"其它节点\",\"id\":0,\"color\":\"#faad14\"},{\"name\":\"首选Broker节点\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": ["partition", "topic"],
+      "description": "Value is 1 if the preferred Broker node is in use for the topic/partition, otherwise 0.",
+      "query": "kafka_topic_partition_leader_is_preferred{__$labels__}"
+    },
+    {
+      "metric_group": "Topic",
+      "name": "topic_partition_replicas",
+      "display_name": "Partition Replica Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["partition", "topic"],
+      "description": "Number of replicas for the specified topic and partition.",
+      "query": "kafka_topic_partition_replica{__$labels__}"
+    },
+    {
+      "metric_group": "Topic",
+      "name": "topic_partition_under_replicated_partition",
+      "display_name": "Partition Under-Replicated Status",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"副本不足\",\"id\":1,\"color\":\"#ff4d4f\"}]",
+      "dimensions": ["partition", "topic"],
+      "description": "Value is 1 if the topic/partition is under-replicated, otherwise 0.",
+      "query": "kafka_topic_partition_under_replicated_partition{__$labels__}"
+    },
+    {
+      "metric_group": "ConsumerGroup",
+      "name": "consumergroup_current_offset",
+      "display_name": "Consumer Group Current Offset",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["consumergroup", "partition", "topic"],
+      "description": "Current offset for the consumer group in the specified topic and partition.",
+      "query": "kafka_consumer_group_current_offset{__$labels__}"
+    },
+    {
+      "metric_group": "ConsumerGroup",
+      "name": "consumergroup_lag",
+      "display_name": "Consumer Group Lag",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["consumergroup", "partition", "topic"],
+      "description": "Current approximate lag of the consumer group in the specified topic and partition.",
+      "query": "kafka_consumer_group_lag{__$labels__}"
+    },
+    {
+      "metric_group": "Process",
+      "name": "process_cpu_seconds_total",
+      "display_name": "Probe Process CPU Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Total CPU time used by the probe process.",
+      "query": "process_cpu_seconds_total_counter{__$labels__}"
+    },
+    {
+      "metric_group": "Process",
+      "name": "process_max_fds_gauge",
+      "display_name": "Probe Process Max File Descriptors",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Maximum number of file descriptors that the probe process can open.",
+      "query": "process_max_fds_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Process",
+      "name": "process_open_fds_gauge",
+      "display_name": "Probe Process Open File Descriptors",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Current number of open file descriptors used by the probe process.",
+      "query": "process_open_fds_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Process",
+      "name": "process_resident_memory_bytes_gauge",
+      "display_name": "Probe Process Resident Memory",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "description": "Current resident memory size of the probe process.",
+      "query": "process_resident_memory_bytes_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Process",
+      "name": "process_virtual_memory_bytes_gauge",
+      "display_name": "Probe Process Virtual Memory",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "description": "Current virtual memory size of the probe process.",
+      "query": "process_virtual_memory_bytes_gauge{__$labels__}"
+    }
+  ]
 }

@@ -19,14 +19,14 @@ import {
   TimeValuesProps,
   MetricItem,
   ChartDataItem,
-  ChartData,
+  ChartData
 } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import {
   calculateMetrics,
   mergeViewQueryKeyValues,
   renderChart,
-  getRecentTimeRange,
+  getRecentTimeRange
 } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
@@ -41,7 +41,7 @@ const Overview: React.FC<ViewDetailProps> = ({
   monitorObjectName,
   instanceName,
   idValues,
-  instanceId,
+  instanceId
 }) => {
   const { isLoading } = useApiClient();
   const { getMonitorMetrics } = useMonitorApi();
@@ -54,7 +54,7 @@ const Overview: React.FC<ViewDetailProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
     timeRange: [],
-    originValue: 15,
+    originValue: 15
   });
   const [frequence, setFrequence] = useState<number>(0);
   const [metricData, setMetricData] = useState<MetricItem[]>([]);
@@ -62,7 +62,7 @@ const Overview: React.FC<ViewDetailProps> = ({
   const [timeDefaultValue, setTimeDefaultValue] =
     useState<TimeSelectorDefaultValue>({
       selectValue: 15,
-      rangePickerVaule: null,
+      rangePickerVaule: null
     });
 
   useEffect(() => {
@@ -89,7 +89,7 @@ const Overview: React.FC<ViewDetailProps> = ({
     const indexList = getDashboardDisplay(monitorObjectName);
     try {
       getMonitorMetrics({
-        monitor_object_id: monitorObjectId,
+        monitor_object_id: monitorObjectId
       }).then((res) => {
         const interfaceConfig = indexList.find(
           (item: TableDataItem) => item.indexId === 'interfaces'
@@ -128,10 +128,10 @@ const Overview: React.FC<ViewDetailProps> = ({
       query: (item.query || '').replace(
         /__\$labels__/g,
         mergeViewQueryKeyValues([
-          { keys: item.instance_id_keys || [], values: idValues },
+          { keys: item.instance_id_keys || [], values: idValues }
         ])
       ),
-      source_unit: item.unit || '',
+      source_unit: item.unit || ''
     };
     const recentTimeRange = getRecentTimeRange(timeValues);
     const startTime = recentTimeRange.at(0);
@@ -156,7 +156,7 @@ const Overview: React.FC<ViewDetailProps> = ({
     const requestQueue = data.map((item: MetricItem) =>
       getInstanceQuery(getParams(item)).then((response) => ({
         id: item.id,
-        data: response.data.result || [],
+        data: response.data.result || []
       }))
     );
     try {
@@ -171,8 +171,8 @@ const Overview: React.FC<ViewDetailProps> = ({
               instance_id: instanceId || '',
               instance_id_keys: metricItem?.instance_id_keys || [],
               dimensions: metricItem.dimensions || [],
-              title: metricItem.display_name || '--',
-            },
+              title: metricItem.display_name || '--'
+            }
           ];
           metricItem.viewData = renderChart(result.data || [], config);
         }
@@ -205,8 +205,8 @@ const Overview: React.FC<ViewDetailProps> = ({
             unit: '',
             description: '',
             display_description: '',
-            viewData: interfaceViewData as unknown as ChartData[],
-          } as MetricItem,
+            viewData: interfaceViewData as unknown as ChartData[]
+          } as MetricItem
         ];
       }
       setMetricData(_data);
@@ -235,7 +235,7 @@ const Overview: React.FC<ViewDetailProps> = ({
   const onTimeChange = (val: number[], originValue: number | null) => {
     setTimeValues({
       timeRange: val,
-      originValue,
+      originValue
     });
   };
 
@@ -261,12 +261,12 @@ const Overview: React.FC<ViewDetailProps> = ({
     setTimeDefaultValue((pre) => ({
       ...pre,
       rangePickerVaule: arr,
-      selectValue: 0,
+      selectValue: 0
     }));
     const _times = arr.map((item) => dayjs(item).valueOf());
     setTimeValues({
       timeRange: _times,
-      originValue: 0,
+      originValue: 0
     });
   };
 
@@ -302,13 +302,13 @@ const Overview: React.FC<ViewDetailProps> = ({
               interface:
                 (latestData.details?.[detailKey] || []).find(
                   (interfaceKey: any) => interfaceKey?.name === 'ifDescr'
-                )?.value || '--',
+                )?.value || '--'
             });
           } else {
             tableData.push({
               Device: createName(details[detailKey]),
               Value: latestData[detailKey].toFixed(2),
-              id: detailKey,
+              id: detailKey
             });
           }
         }
@@ -326,7 +326,7 @@ const Overview: React.FC<ViewDetailProps> = ({
         key: item,
         render: (_: unknown, record: TableDataItem) => (
           <>{getEnumValueUnit(target as MetricItem, record[item])}</>
-        ),
+        )
       };
     });
   };
@@ -371,7 +371,7 @@ const Overview: React.FC<ViewDetailProps> = ({
             columns={metricItem.displayDimension.map((item: ColumnItem) => ({
               title: item,
               dataIndex: item,
-              key: item,
+              key: item
             }))}
             scroll={{ y: 100 }}
             rowKey="id"
@@ -449,7 +449,7 @@ const Overview: React.FC<ViewDetailProps> = ({
                                   : '-3px',
                                 right: !findUnitNameById(metricItem.unit)
                                   ? '-13px'
-                                  : '-8px',
+                                  : '-8px'
                               }}
                             >
                               <Icon
@@ -465,7 +465,7 @@ const Overview: React.FC<ViewDetailProps> = ({
                   <div
                     className="flex justify-center items-center h-full"
                     style={{
-                      height: 'calc(100% - 30px)',
+                      height: 'calc(100% - 30px)'
                     }}
                   >
                     {renderView(metricItem)}

@@ -58,7 +58,7 @@ const useCommonColumns = () => {
           ...config.initTableItems,
           instance_id: replaceDynamicUUID(
             config.initTableItems?.instance_id || ''
-          ),
+          )
         };
         const updatedData = [...config.dataSource];
         updatedData.splice(index + 1, 0, newData); // 在当前行下方插入新数据
@@ -73,7 +73,7 @@ const useCommonColumns = () => {
           ...row,
           instance_id: replaceDynamicUUID(
             config.initTableItems?.instance_id || ''
-          ),
+          )
         };
         const updatedData = [...config.dataSource];
         updatedData.splice(index + 1, 0, newData);
@@ -122,10 +122,10 @@ const useCommonColumns = () => {
               }
               options={getFilterNodes(record.node_ids).map((item) => ({
                 value: item.id,
-                label: `${item.name}（${item.ip}）`,
+                label: `${item.name}（${item.ip}）`
               }))}
             ></Select>
-          ),
+          )
         },
         {
           title: t('log.integration.instanceName'),
@@ -138,11 +138,11 @@ const useCommonColumns = () => {
               onChange={(e) =>
                 handleInputChange(e, {
                   index,
-                  field: 'instance_name',
+                  field: 'instance_name'
                 })
               }
             />
-          ),
+          )
         },
         {
           title: (
@@ -165,7 +165,7 @@ const useCommonColumns = () => {
               value={record.group_ids}
               onChange={(val) => handleGroupChange(val as number[], index)}
             />
-          ),
+          )
         },
         {
           title: t('common.action'),
@@ -173,7 +173,7 @@ const useCommonColumns = () => {
           dataIndex: 'action',
           width: 160,
           fixed: 'right',
-          render: (_: unknown, record: TableDataItem, index: number) => (
+          render: (_: unknown, record: TableDataItem) => (
             <>
               <Button
                 type="link"
@@ -189,7 +189,7 @@ const useCommonColumns = () => {
               >
                 {t('common.copy')}
               </Button>
-              {!!index && (
+              {config.dataSource.length > 1 && (
                 <Button
                   type="link"
                   onClick={() => handleDelete(record.instance_id)}
@@ -198,10 +198,10 @@ const useCommonColumns = () => {
                 </Button>
               )}
             </>
-          ),
-        },
+          )
+        }
       ];
-    },
+    }
   };
 };
 export { useCommonColumns };

@@ -5,13 +5,14 @@
 from rest_framework import status
 from rest_framework.response import Response
 
-from apps.alerts.constants import LogAction, LogTargetType
+from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import AlertAssignmentModelFilter, AlertShieldModelFilter
-from apps.alerts.serializers.serializers import AlertAssignmentModelSerializer, AlertShieldModelSerializer
+from apps.alerts.serializers import AlertAssignmentModelSerializer, AlertShieldModelSerializer
 from apps.core.decorators.api_permission import HasPermission
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
-from apps.alerts.models import AlertAssignment, AlertReminderTask, AlertShield, OperatorLog
+from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.models.alert_operator import AlertAssignment, AlertReminderTask, AlertShield
 from apps.core.logger import alert_logger as logger
 from django.db import transaction
 

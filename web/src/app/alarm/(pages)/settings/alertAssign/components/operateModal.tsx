@@ -54,6 +54,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
   const [form] = Form.useForm();
   const [submitLoading, setSubmitLoading] = useState(false);
   const [notifyOptions, setNotifyOptions] = useState<NotifyOption[]>([]);
+  const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [channelLoading, setChannelLoading] = useState(false);
 
   // 获取通知渠道列表
@@ -61,15 +62,16 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
     setChannelLoading(true);
     try {
       const data: any = await getChannelList({});
+      setChannelList(data);
       const options: NotifyOption[] = data.map((channel: ChannelItem) => ({
         label: channel.name,
-        value: channel.channel_type,
+        value: channel.id.toString(),
       }));
       setNotifyOptions(options);
 
-      if (!currentRow && options.length > 0) {
+      if (!currentRow && data.length > 0) {
         form.setFieldsValue({
-          notify_channels: [options[0].value],
+          notify_channels: [data[0].id.toString()],
         });
       }
     } catch (error) {
@@ -89,8 +91,13 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
       fetchChannelList();
 
       if (currentRow) {
+        const notifyChannelIds = (currentRow.notify_channels || []).map(
+          (ch: any) => ch.id.toString(),
+        );
+
         form.setFieldsValue({
           ...currentRow,
+          notify_channels: notifyChannelIds,
           notification_frequency: currentRow.notification_frequency,
           match_rules:
             currentRow.match_type === 'filter'
@@ -134,16 +141,19 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
   };
 
   const getParams = (values: any) => {
+    const notifyChannels = (values.notify_channels || [])
+      .map((id: string) => channelList.find((ch) => ch.id.toString() === id))
+      .filter(Boolean);
+
     const params: any = {
       name: values.name,
       match_type: values.match_type,
-      notify_channels: values.notify_channels,
+      notify_channels: notifyChannels,
       personnel: values.personnel,
       config: values.config || defaultEffectiveTime,
+      match_rules: values.match_type === 'filter' ? values.match_rules : [],
     };
-    if (values.match_type === 'filter') {
-      params.match_rules = values.match_rules;
-    }
+
     if (values.notification_scenario) {
       params.notification_scenario = values.notification_scenario;
     }
@@ -152,7 +162,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
       Object.entries(values.notification_frequency).forEach(
         ([levelId, val]: any) => {
           freqObj[levelId] = {
-            interval_minutes: val.interval_minutes,
+            interval_minutes: val.interval_minutes || 0,
             max_count: 0,
           };
         }

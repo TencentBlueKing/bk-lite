@@ -1,11 +1,21 @@
+import base64
+import hashlib
+import hmac
+import json
 import smtplib
+import time
+import urllib.parse
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import encode_rfc2231
 
 import requests
 from wechatpy import WeChatClientException
 from wechatpy.enterprise import WeChatClient
 
+import nats_client
 from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import Channel
 
@@ -29,21 +39,57 @@ def send_wechat(channel_obj: Channel, content, user_list):
         return {"result": False, "message": f"Error sending WeChat message: {str(e)}"}
 
 
-def send_email(channel_obj: Channel, title, content, user_list):
+def send_email(channel_obj: Channel, title, content, user_list, attachments=None):
     """发送邮件"""
     channel_config = channel_obj.config
     channel_obj.decrypt_field("smtp_pwd", channel_config)
     receivers = list(user_list.values_list("email", flat=True).distinct())
-    return send_email_to_user(channel_config, content, receivers, title)
+    return send_email_to_user(channel_config, content, receivers, title, attachments)
 
 
-def send_email_to_user(channel_config, content, receivers, title):
+def send_email_to_user(channel_config, content, receivers, title, attachments=None):
+    """
+    发送邮件给用户
+    :param channel_config: 邮件通道配置
+    :param content: 邮件正文内容（HTML格式）
+    :param receivers: 收件人邮箱列表
+    :param title: 邮件主题
+    :param attachments: 附件列表，每个附件格式为:
+        - {"filename": "文件名", "content": "base64编码内容"} (用于NATS远程调用，推荐)
+        - {"filename": "文件名", "data": bytes} (仅用于本地直接调用)
+        注意: 通过NATS传输时，附件必须使用base64编码的content字段，因为NATS使用JSON序列化
+    """
     try:
         msg = MIMEMultipart()
         msg["From"] = channel_config["mail_sender"]
         msg["To"] = ",".join(receivers)
         msg["Subject"] = title
         msg.attach(MIMEText(content, "html", "utf-8"))
+
+        # 处理附件
+        if attachments:
+            for attachment in attachments:
+                filename = attachment.get("filename", "attachment")
+                # 支持两种方式：base64编码的content（NATS传输）或原始bytes的data（本地调用）
+                if "content" in attachment:
+                    file_data = base64.b64decode(attachment["content"])
+                elif "data" in attachment:
+                    file_data = attachment["data"]
+                else:
+                    continue
+
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(file_data)
+                # 使用 RFC 2231 编码处理中文文件名
+                part.add_header(
+                    "Content-Disposition",
+                    "attachment",
+                    filename=encode_rfc2231(filename, "utf-8"),
+                )
+                # 对附件内容进行 base64 编码
+                encoders.encode_base64(part)
+                msg.attach(part)
+
         # 根据配置决定使用 SSL 还是普通连接
         if channel_config.get("smtp_usessl", False):
             server = smtplib.SMTP_SSL(channel_config["smtp_server"], channel_config["port"])
@@ -63,18 +109,167 @@ def send_email_to_user(channel_config, content, receivers, title):
         return {"result": False, "message": f"Error sending email: {str(e)}"}
 
 
-def send_by_bot(channel_obj: Channel, content, receivers: list):
+def send_by_wecom_bot(channel_obj: Channel, content, receivers):
     if receivers:
-        to_user_mentions = " ".join(f"@{user}" for user in receivers)
+        to_user_mentions = " ".join(f"@{name} " for name in receivers)
         content = f"{content}\nTo: {to_user_mentions}"
     channel_config = channel_obj.config
-    channel_obj.decrypt_field("bot_key", channel_config)
-    bot_key = channel_config["bot_key"]
-    url = f"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={bot_key}"
-    res = requests.post(url, json={"msgtype": "markdown", "markdown": {"content": content}})
+    payload = {"msgtype": "markdown", "markdown": {"content": content}}
+
+    # 优先使用 webhook_url（通用 webhook）
+    channel_obj.decrypt_field("webhook_url", channel_config)
+    webhook_url = channel_config.get("webhook_url")
+    if not webhook_url:
+        channel_obj.decrypt_field("bot_key", channel_config)
+        bot_key = channel_config.get("bot_key")
+        webhook_url = f"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={bot_key}"
     try:
-        res = res.json()
-        return res
+        res = requests.post(webhook_url, json=payload, timeout=5)
+        return res.json()
     except Exception as e:
         logger.exception(e)
         return {"result": False, "message": "failed to send bot message"}
+
+
+def send_by_feishu_bot(channel_obj: Channel, title, content, receivers):
+    """发送飞书机器人消息（interactive 卡片格式，支持 Markdown，可选 HMAC-SHA256 签名）"""
+    if receivers:
+        to_user_mentions = " ".join(f"@{name} " for name in receivers)
+        content = f"{content}\nTo: {to_user_mentions}"
+    channel_config = channel_obj.config
+    channel_obj.decrypt_field("webhook_url", channel_config)
+    webhook_url = channel_config.get("webhook_url")
+    if not webhook_url:
+        return {"result": False, "message": "Feishu bot webhook_url is not configured"}
+
+    payload = {
+        "msg_type": "interactive",
+        "card": {
+            "header": {"title": {"tag": "plain_text", "content": title or "\u901a\u77e5"}},
+            "elements": [{"tag": "markdown", "content": content}],
+        },
+    }
+
+    # 可选签名验证（秒级时间戳）
+    channel_obj.decrypt_field("sign_secret", channel_config)
+    sign_secret = channel_config.get("sign_secret")
+    if sign_secret:
+        timestamp = str(int(time.time()))
+        string_to_sign = f"{timestamp}\n{sign_secret}"
+        hmac_code = hmac.new(string_to_sign.encode("utf-8"), digestmod=hashlib.sha256).digest()
+        sign = base64.b64encode(hmac_code).decode("utf-8")
+        payload["timestamp"] = timestamp
+        payload["sign"] = sign
+
+    try:
+        res = requests.post(webhook_url, json=payload, timeout=5)
+        return res.json()
+    except Exception as e:
+        logger.exception(e)
+        return {"result": False, "message": "failed to send feishu bot message"}
+
+
+def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers):
+    """发送钉钉机器人消息（markdown 格式，可选 HMAC-SHA256 签名）"""
+    # at_mobiles = []
+    if receivers:
+        to_user_mentions = " ".join(f"@{name} " for name in receivers)
+        content = f"{content}<br>To: {to_user_mentions}"
+    channel_config = channel_obj.config
+    channel_obj.decrypt_field("webhook_url", channel_config)
+    webhook_url = channel_config.get("webhook_url")
+    if not webhook_url:
+        return {"result": False, "message": "DingTalk bot webhook_url is not configured"}
+
+    # 可选签名验证（毫秒级时间戳，URL 编码）
+    channel_obj.decrypt_field("sign_secret", channel_config)
+    sign_secret = channel_config.get("sign_secret")
+    if sign_secret:
+        timestamp = str(int(round(time.time() * 1000)))
+        string_to_sign = f"{timestamp}\n{sign_secret}"
+        hmac_code = hmac.new(sign_secret.encode("utf-8"), string_to_sign.encode("utf-8"), digestmod=hashlib.sha256).digest()
+        sign = urllib.parse.quote_plus(base64.b64encode(hmac_code).decode("utf-8"))
+        webhook_url = f"{webhook_url}&timestamp={timestamp}&sign={sign}"
+
+    payload = {
+        "msgtype": "markdown",
+        "markdown": {"title": title or "\u901a\u77e5", "text": content},
+        # "at": {"atMobiles": at_mobiles},
+    }
+
+    try:
+        res = requests.post(webhook_url, json=payload, timeout=5)
+        return res.json()
+    except Exception as e:
+        logger.exception(e)
+        return {"result": False, "message": "failed to send dingtalk bot message"}
+
+
+def send_nats_message(channel_obj: Channel, content: dict):
+    """
+    发送 NATS 消息（Request 模式）
+    :param channel_obj: NATS Channel 对象
+    :param content: 消息内容，dict 类型，将作为 kwargs 传递给目标方法
+    :return: 目标服务的响应
+    """
+    config = channel_obj.config
+    namespace = config.get("namespace")
+    method_name = config.get("method_name")
+    timeout = config.get("timeout", 60)
+
+    if not namespace or not method_name:
+        return {"result": False, "message": "NATS channel config missing namespace or method_name"}
+
+    try:
+        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, _raw=True, **content)
+        return result
+    except Exception as e:
+        logger.exception(e)
+        return {"result": False, "message": f"NATS request failed: {str(e)}"}
+
+
+def send_by_custom_webhook(channel_obj: Channel, content, receivers):
+    """发送自定义 Webhook 消息，body_template 中的 {{content}} 被替换为实际内容"""
+    channel_config = channel_obj.config
+    channel_obj.decrypt_field("webhook_url", channel_config)
+    webhook_url = channel_config.get("webhook_url")
+    if not webhook_url:
+        return {"result": False, "message": "Custom webhook url is not configured"}
+    if receivers:
+        to_user_mentions = " ".join(f"@{name} " for name in receivers)
+        content = f"{content}<br>To: {to_user_mentions}"
+    body_template = channel_config.get("body_template", "")
+    request_method = channel_config.get("request_method", "POST").upper()
+
+    try:
+        headers = json.loads(channel_config.get("headers")) or {}
+    except (json.JSONDecodeError, TypeError):
+        headers = {}
+
+    body_str = ""
+    try:
+        body = _replace_placeholder(json.loads(body_template), "{{content}}", content)
+    except (json.JSONDecodeError, TypeError):
+        body = None
+        body_str = body_template.replace("{{content}}", content)
+    try:
+        if body is not None:
+            res = requests.request(request_method, webhook_url, json=body, headers=headers, timeout=10)
+        else:
+            headers.setdefault("Content-Type", "text/plain")
+            res = requests.request(request_method, webhook_url, data=body_str.encode("utf-8"), headers=headers, timeout=10)
+        return res.json()
+    except Exception as e:
+        logger.exception(e)
+        return {"result": False, "message": "failed to send custom webhook message"}
+
+
+# 先解析模板为结构体，再递归替换 {{content}}，避免 content 中的换行符等破坏 JSON 语法
+def _replace_placeholder(obj, placeholder, value):
+    if isinstance(obj, str):
+        return obj.replace(placeholder, value)
+    if isinstance(obj, dict):
+        return {k: _replace_placeholder(v, placeholder, value) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_replace_placeholder(i, placeholder, value) for i in obj]
+    return obj

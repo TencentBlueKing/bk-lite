@@ -306,11 +306,13 @@ const Notifications = () => {
       placement="bottom"
       arrow={false}
     >
-      <div className="cursor-pointer">
-        <Badge size="small" count={unreadCount}>
-          <BellOutlined className='text-xl text-[var(--color-text-3)] hover:text-[var(--color-primary)] transition-colors' />
-        </Badge>
-      </div>
+      <Tooltip title={t('common.notification')}>
+        <div className="cursor-pointer flex items-center justify-center">
+          <Badge size="small" count={unreadCount}>
+            <BellOutlined className='text-[16px] text-[var(--color-text-3)] hover:text-[var(--color-primary)] transition-colors' />
+          </Badge>
+        </div>
+      </Tooltip>
     </Popover>
   )
 }

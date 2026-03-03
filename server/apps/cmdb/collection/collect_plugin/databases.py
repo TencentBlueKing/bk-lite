@@ -7,7 +7,7 @@ from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.constants import DB_COLLECT_METRIC_MAP
 import codecs
 import json
-
+from apps.core.logger import cmdb_logger as logger
 class DBCollectCollectMetrics(CollectBase):
     """数据库 采集指标"""
 
@@ -88,11 +88,11 @@ class DBCollectCollectMetrics(CollectBase):
                 "ip_addr": "ip_addr",
                 "port": "port",
                 "version": "version",
-                "conf_path": "conf_path",
+                "conf": "conf_path",
                 "data_path": "data_path",
                 "max_conn": "max_conn",
-                "cache_memory_mb": "cache_memory_mb",
-                "log_path": "log_path",
+                "shared_buffer": "cache_memory_mb",
+                "log_directory": "log_path",
             },
             "dameng": {
                 "inst_name": self.get_inst_name,
@@ -156,13 +156,20 @@ class DBCollectCollectMetrics(CollectBase):
                 data = {}
                 for field, key_or_func in mapping.items():
                     if isinstance(key_or_func, tuple):
-                        data[field] = key_or_func[0](index_data[key_or_func[1]])
+                        try:
+                            data[field] = key_or_func[0](index_data[key_or_func[1]])
+                        except Exception as e:
+                            logger.error(f"数据转换失败 field:{field}, value:{index_data[key_or_func[1]]}, error:{e}")
                     elif callable(key_or_func):
-                        data[field] = key_or_func(index_data)
+                        try:
+                            data[field] = key_or_func(index_data)
+                        except Exception as e:
+                            logger.error(f"数据处理转换失败 field:{field}, error:{e}")
                     else:
                         data[field] = index_data.get(key_or_func, "")
                 if data:
-                    result.append(data)
+                    if data.get('inst_name'):
+                        result.append(data)
             self.result[self.model_id] = result
 
 

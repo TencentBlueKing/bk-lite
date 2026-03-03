@@ -13,14 +13,14 @@ import {
   ObjectItem,
   MetricItem,
   ChartDataItem,
-  OrganizationNode,
+  OrganizationNode
 } from '@/app/monitor/types';
 import { Group } from '@/types';
 import {
   APPOINT_METRIC_IDS,
-  DERIVATIVE_OBJECTS,
-  OBJECT_DEFAULT_ICON,
+  OBJECT_DEFAULT_ICON
 } from '@/app/monitor/constants';
+import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import dayjs from 'dayjs';
@@ -64,7 +64,7 @@ export const findCascaderPath = (
     if (node.children) {
       const result = findCascaderPath(node.children, targetValue, [
         ...path,
-        node.value,
+        node.value
       ]);
       // 如果在子节点中找到了目标值，返回结果
       if (result.length) {
@@ -85,7 +85,7 @@ export const convertArray = (
     const newItem: CascaderItem = {
       value: item.id,
       label: item.name,
-      children: [],
+      children: []
     };
     const subGroups: OriginSubGroupItem[] = item.subGroups;
     if (subGroups && !!subGroups.length) {
@@ -220,7 +220,7 @@ export const calculateMetrics = (
     minValue,
     avgValue,
     sumValue,
-    latestValue,
+    latestValue
   };
 };
 
@@ -286,7 +286,7 @@ export const transformTreeData = (nodes: Group[]): CascaderItem[] => {
     const transformedNode: CascaderItem = {
       value: node.id,
       label: node.name,
-      children: [],
+      children: []
     };
     if (node.children?.length) {
       transformedNode.children = transformTreeData(node.children);
@@ -331,7 +331,7 @@ export const renderChart = (
         .map(([key, dimenValue]) => ({
           name: key,
           label: target.find((sec) => sec.name === key)?.description || key,
-          value: dimenValue,
+          value: dimenValue
         }))
         .filter((item) => target.find((tex) => tex.name === item.name));
       if (config[0]?.showInstName) {
@@ -347,7 +347,7 @@ export const renderChart = (
                     return pre.concat(item.metric[cur] as any);
                   }, [])
                 )
-            )?.instance_name || '--',
+            )?.instance_name || '--'
         });
       }
       if (existing) {
@@ -361,13 +361,13 @@ export const renderChart = (
         existing.details[`value${index + 1}`].push(...detailValue);
       } else {
         const details = {
-          [`value${index + 1}`]: detailValue,
+          [`value${index + 1}`]: detailValue
         };
         result.push({
           time: timestamp,
           title: config[0]?.title || '--',
           [`value${index + 1}`]: parseFloat(value),
-          details,
+          details
         });
       }
     });
@@ -396,8 +396,15 @@ export const findTreeParentKey = (
 };
 
 // 展示监控示例名称
-export const showInstName = (objectItem: ObjectItem, row: TableDataItem) => {
-  const isDerivative = DERIVATIVE_OBJECTS.includes(objectItem?.name);
+// 注意：objectItem 必须包含 level 字段，或者传入 objects 参数进行动态判断
+export const showInstName = (
+  objectItem: ObjectItem,
+  row: TableDataItem,
+  objects?: ObjectItem[]
+) => {
+  const isDerivative = objects
+    ? isDerivativeObject(objectItem, objects)
+    : isDerivativeObject(objectItem);
   return (
     (isDerivative ? row?.instance_id_values?.[1] : row?.instance_name) || '--'
   );
@@ -414,38 +421,37 @@ export const getBaseInstanceColumn = (config: {
     .filter((item) => item.type === config.row?.type)
     .find((item) => item.level === 'base');
   const title = baseTarget?.display_name || config.t('monitor.source');
-  const isDerivative = DERIVATIVE_OBJECTS.includes(config.row?.name);
+  const isDerivative = isDerivativeObject(config.row, config.objects);
   const columnItems: any = [
     {
       title: config.t('common.name'),
       dataIndex: 'instance_name',
-      width: 300,
       onCell: () => ({
         style: {
-          minWidth: 200,
-        },
+          minWidth: 150
+        }
       }),
       key: 'instance_name',
       render: (_: unknown, record: TableDataItem) => {
-        const instanceName = showInstName(config.row, record);
+        const instanceName = showInstName(config.row, record, config.objects);
         return (
           <EllipsisWithTooltip
             text={instanceName}
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
           ></EllipsisWithTooltip>
         );
-      },
-    },
+      }
+    }
   ];
   if (isDerivative) {
     columnItems.unshift({
       title: title,
       dataIndex: 'base_instance_name',
-      width: 300,
+
       onCell: () => ({
         style: {
-          minWidth: 200,
-        },
+          minWidth: 150
+        }
       }),
       key: 'base_instance_name',
       render: (_: unknown, record: TableDataItem) => {
@@ -465,7 +471,7 @@ export const getBaseInstanceColumn = (config: {
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
           ></EllipsisWithTooltip>
         );
-      },
+      }
     });
   }
   return columnItems;

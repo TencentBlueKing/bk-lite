@@ -1,4 +1,5 @@
 [[inputs.system]]
+    startup_error_behavior = "retry"
     interval = "{{ interval }}s"
     [inputs.system.tags]
         instance_id = "{{ instance_id }}"

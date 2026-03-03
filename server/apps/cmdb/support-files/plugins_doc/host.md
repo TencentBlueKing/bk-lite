@@ -1,12 +1,12 @@
-## 说明
+### 说明
 支持基于 SSH 远程执行形式，采集主机操作系统、CPU、内存、磁盘、网络及运行状态核心参数并同步至 CMDB，用于资产盘点与容量评估。
 
-## 前置要求
+### 前置要求
 1. 已开通 SSH 访问（默认端口 22，可自定义），网络连通。
 2. 采集账号具备只读执行权限：uname、cat /etc/os-release、lscpu、free、df、ip/ifconfig、uptime。
 3. 允许读取 /etc/os-release、/proc/cpuinfo、/proc/meminfo、/proc 下基本信息（间接通过命令）。
 
-## 采集内容
+### 采集内容
 | Key 名称 | 含义 |
 | :----------- | :--- |
 | host.os_type | 操作系统类型 (uname -o) |

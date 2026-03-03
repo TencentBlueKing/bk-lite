@@ -13,6 +13,7 @@ from apps.cmdb.models import CREATE_INST, UPDATE_INST, DELETE_INST, EXECUTE
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
 from apps.cmdb.utils.change_record import create_change_record
+from apps.cmdb.utils.base import get_current_team_from_request
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.celery_utils import crontab_format, CeleryUtils
@@ -33,7 +34,7 @@ class CollectModelService(object):
         """
 
         user = request.user
-        current_team = int(request.COOKIES.get("current_team", None))
+        current_team = get_current_team_from_request(request)
         include_children = request.COOKIES.get("include_children", "0") == "1"
         has_permission = view_self.get_has_permission(user, instance, current_team, include_children=include_children)
         if not has_permission:
@@ -73,6 +74,35 @@ class CollectModelService(object):
             params["scan_cycle"] = scan_cycle
 
         return params, is_interval, scan_cycle
+
+    @staticmethod
+    def format_update_credential(instance, data):
+        """
+        格式化更新时的凭据参数
+        """
+        credential = data.get("credential")
+        if not credential and not instance.is_k8s:
+            raise BaseAppException("采集凭据不能为空！")
+        if credential and "regions" in credential:
+            regions = credential.pop("regions")
+            if not credential:
+                # 说明之修改了regions
+                data["credential"] = instance.decrypt_credentials
+                data["credential"]["regions"] = regions
+            else:
+                data["credential"]["regions"] = regions
+        else:
+            old_credential = instance.decrypt_credentials
+            if not isinstance(old_credential, dict):
+                old_credential = {}
+            if credential is None:
+                data["credential"] = old_credential
+                return
+            if not isinstance(credential, dict):
+                raise BaseAppException("采集凭据格式错误！")
+            old_credential.update(credential)
+            data["credential"] = old_credential
+
 
     @staticmethod
     def push_butch_node_params(instance):
@@ -144,7 +174,7 @@ class CollectModelService(object):
 
         cls.has_permission(request, instance, view_self)
         update_data, is_interval, scan_cycle = cls.format_params(request.data)
-
+        cls.format_update_credential(instance, update_data)
         # 使用数据库事务保证原子性
         with transaction.atomic():
             serializer = view_self.get_serializer(
@@ -252,11 +282,12 @@ class CollectModelService(object):
         return result
 
     @classmethod
-    def list_regions(cls, credential):
-        stargazer = Stargazer()
+    def list_regions(cls, credential, cloud_name):
+        instance_id = f"{cloud_name}_stargazer"
+        stargazer = Stargazer(instance_id=instance_id)
         result = stargazer.list_regions(credential)
         if result["success"]:
-            result = result["regions"]
+            result = result["regions"].get("result", [])
         return result
 
     @classmethod

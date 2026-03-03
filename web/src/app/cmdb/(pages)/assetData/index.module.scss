@@ -3,6 +3,7 @@
     display: flex;
     background: var(--color-bg-1);
     padding: 12px;
+
     .assetList {
       flex: 1;
       min-width: 988px;
@@ -71,6 +72,38 @@
       }
     }
   }
+}
+
+.actionSizer {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.menuItemClickable {
+  display: block;
+  width: 100%;
+}
+
+.actionGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  max-width: 400px;
+  opacity: 1;
+  transform: translateY(0);
+  transition: max-width 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+}
+
+.actionGroupCollapsed {
+  max-width: 0;
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
 }
 
 .assetLoading .assetData .groupSelector :global(.ant-radio-button-wrapper) {

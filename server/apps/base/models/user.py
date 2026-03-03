@@ -20,7 +20,7 @@ class UserAPISecret(TimeInfo):
         return binascii.hexlify(os.urandom(32)).decode()
 
     class Meta:
-        unique_together = ("username", "team")
+        unique_together = ("username", "domain", "team")
 
 
 class User(AbstractUser):

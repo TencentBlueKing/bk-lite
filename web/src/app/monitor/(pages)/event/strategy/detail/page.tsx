@@ -15,13 +15,13 @@ import {
   MetricItem,
   IndexViewItem,
   ThresholdField,
-  FilterItem,
+  FilterItem
 } from '@/app/monitor/types';
 import {
   PluginItem,
   SourceFeild,
   StrategyFields,
-  ChannelItem,
+  ChannelItem
 } from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
@@ -31,11 +31,26 @@ import SelectAssets from '../selectAssets';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useUserInfoContext } from '@/context/userInfo';
 import { cloneDeep } from 'lodash';
-import BasicInfoForm from './basicInfoForm';
+import BasicInfoForm, { BasicInfoFormRef } from './basicInfoForm';
 import MetricDefinitionForm from './metricDefinitionForm';
 import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
+import MetricPreview from './metricPreview';
+import VariablesTable from './variablesTable';
+import { isStringArray } from '@/app/monitor/utils/common';
+import {
+  COMPARISON_METHOD,
+  ENUM_COMPARISON_METHOD
+} from '@/app/monitor/constants/event';
 const defaultGroup = ['instance_id'];
+
+// 过滤无效的单位值（none 、 short 和 JSON 字符串格式 已从单位列表中移除，不能作为单位值）
+const filterInvalidUnit = (unit: string | null | undefined): string | null => {
+  if (!unit || unit === 'none' || unit === 'short' || isStringArray(unit)) {
+    return null;
+  }
+  return unit;
+};
 
 const StrategyOperation = () => {
   const { t } = useTranslation();
@@ -44,7 +59,7 @@ const StrategyOperation = () => {
     getMetricsGroup,
     getMonitorMetrics,
     getMonitorPlugin,
-    getMonitorObject,
+    getMonitorObject
   } = useMonitorApi();
   const { getMonitorPolicy, getSystemChannelList } = useEventApi();
   const commonContext = useCommon();
@@ -52,9 +67,11 @@ const StrategyOperation = () => {
   const [form] = Form.useForm();
   const router = useRouter();
   const { getCollectType, getGroupIds } = useObjectConfigInfo();
-  const users = useRef(commonContext?.userList || []);
-  const userList: UserItem[] = users.current;
+  const userList: UserItem[] = commonContext?.userList || [];
   const instRef = useRef<ModalRef>(null);
+  const formContainerRef = useRef<HTMLDivElement>(null);
+  const basicInfoRef = useRef<HTMLDivElement>(null);
+  const basicInfoFormRef = useRef<BasicInfoFormRef>(null);
   const userContext = useUserInfoContext();
   const currentGroup = useRef(userContext?.selectedGroup);
   const groupId = [currentGroup?.current?.id || ''];
@@ -67,7 +84,7 @@ const StrategyOperation = () => {
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [source, setSource] = useState<SourceFeild>({
     type: '',
-    values: [],
+    values: []
   });
   const [metric, setMetric] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
@@ -80,30 +97,34 @@ const StrategyOperation = () => {
   const [conditions, setConditions] = useState<FilterItem[]>([]);
   const [noDataAlert, setNoDataAlert] = useState<number | null>(null);
   const [noDataRecovery, setNoDataRecovery] = useState<number | null>(null);
+  const [noDataAlertLevel, setNoDataAlertLevel] = useState<string>('none');
+  const [noDataAlertName, setNoDataAlertName] = useState<string>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [groupBy, setGroupBy] = useState<string[]>(
     getGroupIds(monitorName as string)?.default || defaultGroup
   );
+  const [period, setPeriod] = useState<number | null>(null);
+  const [algorithm, setAlgorithm] = useState<string | null>(null);
   const [formData, setFormData] = useState<StrategyFields>({
     threshold: [],
-    source: { type: '', values: [] },
+    source: { type: '', values: [] }
   });
   const [threshold, setThreshold] = useState<ThresholdField[]>([
     {
       level: 'critical',
       method: '>',
-      value: null,
+      value: null
     },
     {
       level: 'error',
       method: '>',
-      value: null,
+      value: null
     },
     {
       level: 'warning',
       method: '>',
-      value: null,
-    },
+      value: null
+    }
   ]);
   const [calculationUnit, setCalculationUnit] = useState<string | null>(null);
   const [pluginList, setPluginList] = useState<SegmentedItem[]>([]);
@@ -119,7 +140,7 @@ const StrategyOperation = () => {
         getPlugins(),
         getChannelList(),
         getObjects(),
-        detailId && getStragyDetail(),
+        detailId && getStragyDetail()
       ]).finally(() => {
         setPageLoading(false);
       });
@@ -142,6 +163,7 @@ const StrategyOperation = () => {
         schedule: 5,
         recovery_condition: 5,
         collect_type: pluginList[0]?.value,
+        algorithm: 'avg'
       };
       let _metricId = searchParams.get('metricId') || null;
       if (type === 'builtIn') {
@@ -151,8 +173,44 @@ const StrategyOperation = () => {
         feedbackThreshold(strategyInfo.threshold || []);
         _metricId = strategyInfo.metric_name || null;
       }
-      form.setFieldsValue(initForm);
-      setMetric(_metricId);
+      // 设置无数据告警名称默认值
+      const defaultNoDataAlertName = t('monitor.events.noDataAlertNameDefault');
+      setNoDataAlertName(defaultNoDataAlertName);
+      // 设置汇聚方式默认值
+      setAlgorithm(initForm.algorithm);
+      // 设置无数据告警默认值为5分钟
+      setNoDataAlert(5);
+      form.setFieldsValue({
+        ...initForm,
+        no_data_alert_name: defaultNoDataAlertName
+      });
+      // 只有在指标数据加载完成后才设置 metric，确保 Select 组件能正确显示选中值
+      if (initMetricData.length > 0 && _metricId) {
+        const metricExists = initMetricData.some(
+          (item) => item.name === _metricId
+        );
+        if (metricExists) {
+          setMetric(_metricId);
+          // 同时设置 labels，确保条件维度能正常使用
+          const target = initMetricData.find((item) => item.name === _metricId);
+          if (target) {
+            const _labels = (target?.dimensions || []).map((item) => item.name);
+            setLabels(_labels);
+            setCalculationUnit(filterInvalidUnit(target?.unit));
+            // 计算完整的分组维度选项列表并设置为所有选项
+            const fixedList =
+              getGroupIds(monitorName as string)?.list || defaultGroup;
+            const allGroupByOptions = [...new Set([...fixedList, ..._labels])];
+            setGroupBy(allGroupByOptions);
+          }
+        }
+      } else if (!_metricId) {
+        setMetric(null);
+        // 新增模式下没有指标时，设置分组维度为固定列表（全选）
+        const fixedList =
+          getGroupIds(monitorName as string)?.list || defaultGroup;
+        setGroupBy(fixedList);
+      }
       const instanceIdStr = searchParams.get('instanceId');
       let instanceIds: string[] = [];
       if (instanceIdStr) {
@@ -161,12 +219,12 @@ const StrategyOperation = () => {
       }
       setSource({
         type: 'instance',
-        values: instanceIds,
+        values: instanceIds
       });
     } else {
       dealDetail(formData);
     }
-  }, [type, formData, pluginList, channelList]);
+  }, [type, formData, pluginList, channelList, initMetricData]);
 
   useEffect(() => {
     if (
@@ -186,7 +244,7 @@ const StrategyOperation = () => {
   const changeCollectType = (id: string) => {
     getMetrics({
       monitor_object_id: monitorObjId,
-      monitor_plugin_id: id,
+      monitor_plugin_id: id
     });
   };
 
@@ -197,18 +255,18 @@ const StrategyOperation = () => {
 
   const getPlugins = async () => {
     const data = await getMonitorPlugin({
-      monitor_object_id: monitorObjId,
+      monitor_object_id: monitorObjId
     });
     const plugins = data.map((item: PluginItem) => ({
       label: getCollectType(monitorName as string, item.name),
       value: item.id,
-      name: item.name,
+      name: item.name
     }));
     setPluginList(plugins);
     getMetrics(
       {
         monitor_object_id: monitorObjId,
-        monitor_plugin_id: plugins[0]?.value,
+        monitor_plugin_id: plugins[0]?.value
       },
       'init'
     );
@@ -228,6 +286,8 @@ const StrategyOperation = () => {
       enable_alerts,
       no_data_recovery_period,
       calculation_unit,
+      no_data_level,
+      no_data_alert_name
     } = data;
     form.setFieldsValue({
       ...data,
@@ -235,26 +295,45 @@ const StrategyOperation = () => {
       recovery_condition: recovery_condition || null,
       schedule: schedule?.value || null,
       period: period?.value || null,
-      query: query_condition?.query || null,
+      query: query_condition?.query || null
     });
     setGroupBy(group_by || []);
     feedbackThreshold(thresholdList);
-    setCalculationUnit(calculation_unit || null);
+    setCalculationUnit(filterInvalidUnit(calculation_unit));
+    setPeriod(period?.value || null);
+    setPeriodUnit(period?.type || 'min');
+    setAlgorithm(data.algorithm || null);
     if (source?.type) {
       setSource(source);
     } else {
       setSource({
         type: '',
-        values: [],
+        values: []
       });
     }
     setNoDataAlert(no_data_period?.value || null);
-    setNodataUnit(no_data_period?.type || '');
+    setNodataUnit(no_data_period?.type || 'min');
     setNoDataRecovery(no_data_recovery_period?.value || null);
     setNoDataRecoveryUnit(no_data_recovery_period?.type || '');
     setUnit(schedule?.type || '');
-    setPeriodUnit(period?.type || '');
     setEnableAlerts(enable_alerts?.length ? enable_alerts : ['threshold']);
+    // 设置无数据告警级别和名称
+    if (enable_alerts?.includes('no_data') && no_data_level) {
+      setNoDataAlertLevel(no_data_level as string);
+    } else {
+      setNoDataAlertLevel('none');
+    }
+    // 如果无数据告警名称为空，使用默认值
+    const defaultNoDataAlertName = t('monitor.events.noDataAlertNameDefault');
+    const finalNoDataAlertName =
+      (no_data_alert_name as string) || defaultNoDataAlertName;
+    setNoDataAlertName(finalNoDataAlertName);
+    // 同步更新 form 字段
+    if (!no_data_alert_name) {
+      form.setFieldsValue({
+        no_data_alert_name: defaultNoDataAlertName
+      });
+    }
   };
 
   const processMetricData = (data: StrategyFields) => {
@@ -268,6 +347,23 @@ const StrategyOperation = () => {
         setMetric(_metrics?.name || '');
         setLabels(_labels);
         setConditions(query_condition?.filter || []);
+        const isEnumMetric = isStringArray(_metrics?.unit || '');
+        const comparisonMethods = isEnumMetric
+          ? ENUM_COMPARISON_METHOD
+          : COMPARISON_METHOD;
+        const defaultMethod = comparisonMethods[0].value;
+        // 更新阈值：对于未填写的项，如果当前操作符不在当前指标类型的操作符列表中，则设置为默认值
+        setThreshold((prevThreshold: any) =>
+          prevThreshold.map((item) => {
+            const methodExists = comparisonMethods.some(
+              (m) => m.value === item.method
+            );
+            if (item.value === null && !methodExists) {
+              return { ...item, method: defaultMethod };
+            }
+            return item;
+          })
+        );
       }
     }
   };
@@ -293,13 +389,14 @@ const StrategyOperation = () => {
       type: 'add',
       form: {
         ...source,
-        id: detailId,
-      },
+        id: detailId
+      }
     });
   };
 
   const onChooseAssets = (assets: SourceFeild) => {
     setSource(assets);
+    form.validateFields(['source']);
   };
 
   const handleMetricChange = (val: string) => {
@@ -307,6 +404,53 @@ const StrategyOperation = () => {
     const target = metrics.find((item) => item.name === val);
     const _labels = (target?.dimensions || []).map((item) => item.name);
     setLabels(_labels);
+    // 计算完整的分组维度选项列表（固定列表 + 标签列表，去重）
+    const fixedList = getGroupIds(monitorName as string)?.list || defaultGroup;
+    const allGroupByOptions = [...new Set([...fixedList, ..._labels])];
+    // 设置分组维度为所有可用选项（如果没有则为空数组）
+    setGroupBy(allGroupByOptions);
+    setConditions([]);
+
+    // 判断新指标是否为枚举类型，并处理阈值的操作符和值
+    const newIsEnumMetric = isStringArray(target?.unit || '');
+    const newComparisonMethods = newIsEnumMetric
+      ? ENUM_COMPARISON_METHOD
+      : COMPARISON_METHOD;
+
+    // 重置阈值：切换指标时，操作符选中下拉列表的第一个值，并清空值
+    const newThreshold = threshold.map((item) => {
+      return {
+        ...item,
+        method: newComparisonMethods[0].value,
+        value: null // 切换指标时清空值
+      };
+    });
+    setThreshold(newThreshold as any);
+
+    // 选择指标后触发验证，清除错误信息（包括指标、条件维度和告警阈值）
+    form.validateFields(['metric', '_conditions_validator', 'threshold']);
+    // 自动设置告警阈值单位为指标的默认单位（过滤掉 none 和 short）
+    const filteredUnit = filterInvalidUnit(target?.unit);
+    if (filteredUnit) {
+      setCalculationUnit(filteredUnit);
+      return;
+    }
+    const unitList = commonContext?.unitList || [];
+    const baseFilteredList = unitList.filter(
+      (item) => !['none', 'short'].includes(item.unit_id)
+    );
+    const metricUnitItem = unitList.find(
+      (item) => item.unit_id === target?.unit
+    );
+    let defaultUnit: string | null = null;
+    if (metricUnitItem) {
+      // 找到相同 system 的第一个单位
+      const sameSystemUnit = baseFilteredList.find(
+        (item) => item.system === metricUnitItem.system
+      );
+      defaultUnit = sameSystemUnit?.unit_id || null;
+    }
+    setCalculationUnit(defaultUnit);
   };
 
   const getMetrics = async (params = {}, type = '') => {
@@ -320,7 +464,7 @@ const StrategyOperation = () => {
           setMetrics(res[1] || []);
           const groupData = res[0].map((item: GroupInfo) => ({
             ...item,
-            child: [],
+            child: []
           }));
           metricData.forEach((metric: MetricItem) => {
             const target = groupData.find(
@@ -355,18 +499,32 @@ const StrategyOperation = () => {
     setGroupBy(val);
   };
 
+  const handleConditionsChange = (newConditions: FilterItem[]) => {
+    setConditions(newConditions);
+    form.validateFields(['_conditions_validator']);
+  };
+
   const handleUnitChange = (val: string) => {
     setUnit(val);
     form.setFieldsValue({
-      schedule: null,
+      schedule: null
     });
   };
 
   const handlePeriodUnitChange = (val: string) => {
     setPeriodUnit(val);
+    setPeriod(null);
     form.setFieldsValue({
-      period: null,
+      period: null
     });
+  };
+
+  const handlePeriodChange = (val: number | null) => {
+    setPeriod(val);
+  };
+
+  const handleAlgorithmChange = (val: string) => {
+    setAlgorithm(val);
   };
 
   const handleNodataUnitChange = (val: string) => {
@@ -387,12 +545,21 @@ const StrategyOperation = () => {
     setNoDataRecovery(e);
   };
 
+  const handleNoDataAlertLevelChange = (val: string) => {
+    setNoDataAlertLevel(val);
+  };
+
+  const handleNoDataAlertNameChange = (val: string) => {
+    setNoDataAlertName(val);
+  };
+
   const handleThresholdChange = (value: ThresholdField[]) => {
     setThreshold(value);
   };
 
   const handleCalculationUnitChange = (unit: string) => {
     setCalculationUnit(unit);
+    form.validateFields(['threshold']);
   };
 
   const goBack = () => {
@@ -410,6 +577,9 @@ const StrategyOperation = () => {
   const createStrategy = () => {
     form?.validateFields().then((values) => {
       const params = cloneDeep(values);
+      delete params._conditions_validator;
+      delete params.no_data_level;
+      delete params.no_data_alert_name;
       const target: any = pluginList.find(
         (item) => item.value === params.collect_type
       );
@@ -417,7 +587,7 @@ const StrategyOperation = () => {
       if (isTrapPlugin) {
         params.query_condition = {
           type: 'pmq',
-          query: params.query,
+          query: params.query
         };
         params.source = {};
         params.algorithm = 'last_over_time';
@@ -426,42 +596,51 @@ const StrategyOperation = () => {
         params.query_condition = {
           type: 'metric',
           metric_id: mertricTarget?.id,
-          filter: conditions,
+          filter: conditions
         };
         params.source = source;
-        params.metric_unit = mertricTarget?.unit;
+        params.metric_unit = isStringArray(mertricTarget?.unit)
+          ? ''
+          : mertricTarget?.unit;
       }
       params.threshold = threshold.filter(
         (item) => !!item.value || item.value === 0
       );
-      params.calculation_unit = calculationUnit;
+      params.calculation_unit = calculationUnit || '';
       params.monitor_object = monitorObjId;
       params.schedule = {
         type: unit,
-        value: values.schedule,
+        value: values.schedule
       };
       params.period = {
         type: periodUnit,
-        value: values.period,
+        value: values.period
       };
-      if (enableAlerts.includes('no_data')) {
-        params.no_data_period = {
+      // 根据无数据告警级别设置 enable_alerts 和相关参数
+      const isNoDataEnabled = noDataAlertLevel && noDataAlertLevel !== 'none';
+      const _enableAlerts = isNoDataEnabled
+        ? [...new Set([...enableAlerts, 'no_data'])]
+        : enableAlerts.filter((item) => item !== 'no_data');
+
+      if (isNoDataEnabled) {
+        params.no_data_recovery_period = params.no_data_period = {
           type: nodataUnit,
-          value: noDataAlert,
+          value: noDataAlert
         };
-        params.no_data_recovery_period = {
-          type: noDataRecoveryUnit,
-          value: noDataRecovery,
-        };
+        params.no_data_level = noDataAlertLevel;
+        params.no_data_alert_name = noDataAlertName;
       } else {
-        params.no_data_period = params.no_data_recovery_period = {};
+        const periodValue = noDataAlert
+          ? { type: nodataUnit, value: noDataAlert }
+          : {};
+        params.no_data_period = params.no_data_recovery_period = periodValue;
       }
       if (params.notice_type_id) {
         params.notice_type =
           channelList.find((item) => item.id === params.notice_type_id)
             ?.channel_type || '';
       }
-      params.enable_alerts = enableAlerts;
+      params.enable_alerts = _enableAlerts;
       params.recovery_condition = params.recovery_condition || 0;
       params.group_by = groupBy;
       params.enable = true;
@@ -515,86 +694,138 @@ const StrategyOperation = () => {
             </span>
           )}
         </div>
-        <div className={strategyStyle.form}>
-          <Form form={form} name="basic">
-            <Steps
-              direction="vertical"
-              items={[
-                {
-                  title: t('monitor.events.basicInformation'),
-                  description: (
-                    <BasicInfoForm
-                      source={source}
-                      unit={unit}
-                      onOpenInstModal={openInstModal}
-                      onUnitChange={handleUnitChange}
-                      isTrap={isTrap}
-                    />
-                  ),
-                  status: 'process',
-                },
-                {
-                  title: t('monitor.events.defineTheMetric'),
-                  description: (
-                    <MetricDefinitionForm
-                      pluginList={pluginList}
-                      metric={metric}
-                      metricsLoading={metricsLoading}
-                      labels={labels}
-                      conditions={conditions}
-                      groupBy={groupBy}
-                      periodUnit={periodUnit}
-                      originMetricData={originMetricData}
-                      monitorName={monitorName as string}
-                      onCollectTypeChange={changeCollectType}
-                      onMetricChange={handleMetricChange}
-                      onFiltersChange={setConditions}
-                      onGroupChange={handleGroupByChange}
-                      onPeriodUnitChange={handlePeriodUnitChange}
-                      isTrap={isTrap}
-                    />
-                  ),
-                  status: 'process',
-                },
-                {
-                  title: t('monitor.events.setAlertConditions'),
-                  description: (
-                    <AlertConditionsForm
-                      enableAlerts={enableAlerts}
-                      threshold={threshold}
-                      calculationUnit={calculationUnit}
-                      noDataAlert={noDataAlert}
-                      nodataUnit={nodataUnit}
-                      noDataRecovery={noDataRecovery}
-                      noDataRecoveryUnit={noDataRecoveryUnit}
-                      onEnableAlertsChange={setEnableAlerts}
-                      onThresholdChange={handleThresholdChange}
-                      onCalculationUnitChange={handleCalculationUnitChange}
-                      onNodataUnitChange={handleNodataUnitChange}
-                      onNoDataAlertChange={handleNoDataAlertChange}
-                      onNodataRecoveryUnitChange={
-                        handleNodataRecoveryUnitChange
-                      }
-                      onNoDataRecoveryChange={handleNoDataRecoveryChange}
-                      isTrap={isTrap}
-                    />
-                  ),
-                  status: 'process',
-                },
-                {
-                  title: t('monitor.events.configureNotifications'),
-                  description: (
-                    <NotificationForm
-                      channelList={channelList}
-                      userList={userList}
-                      onLinkToSystemManage={linkToSystemManage}
-                    />
-                  ),
-                  status: 'process',
-                },
-              ]}
-            />
-          </Form>
+        <div className={strategyStyle.form} ref={formContainerRef}>
+          <div className="flex gap-6">
+            <div className="w-[820px] flex-shrink-0">
+              <Form form={form} name="basic">
+                <Steps
+                  direction="vertical"
+                  items={[
+                    {
+                      title: t('monitor.events.basicInformation'),
+                      description: (
+                        <div ref={basicInfoRef}>
+                          <BasicInfoForm
+                            ref={basicInfoFormRef}
+                            source={source}
+                            unit={unit}
+                            onOpenInstModal={openInstModal}
+                            onUnitChange={handleUnitChange}
+                            isTrap={isTrap}
+                          />
+                        </div>
+                      ),
+                      status: 'process'
+                    },
+                    {
+                      title: t('monitor.events.defineTheMetric'),
+                      description: (
+                        <MetricDefinitionForm
+                          form={form}
+                          pluginList={pluginList}
+                          metric={metric}
+                          metricsLoading={metricsLoading}
+                          labels={labels}
+                          conditions={conditions}
+                          groupBy={groupBy}
+                          period={period}
+                          periodUnit={periodUnit}
+                          originMetricData={originMetricData}
+                          monitorName={monitorName as string}
+                          onCollectTypeChange={changeCollectType}
+                          onMetricChange={handleMetricChange}
+                          onFiltersChange={handleConditionsChange}
+                          onGroupChange={handleGroupByChange}
+                          onPeriodChange={handlePeriodChange}
+                          onPeriodUnitChange={handlePeriodUnitChange}
+                          onAlgorithmChange={handleAlgorithmChange}
+                          isTrap={isTrap}
+                        />
+                      ),
+                      status: 'process'
+                    },
+                    {
+                      title: t('monitor.events.alertConditions'),
+                      description: (
+                        <AlertConditionsForm
+                          enableAlerts={enableAlerts}
+                          threshold={threshold}
+                          calculationUnit={calculationUnit}
+                          noDataAlert={noDataAlert}
+                          nodataUnit={nodataUnit}
+                          noDataRecovery={noDataRecovery}
+                          noDataRecoveryUnit={noDataRecoveryUnit}
+                          noDataAlertLevel={noDataAlertLevel}
+                          noDataAlertName={noDataAlertName}
+                          metricUnit={
+                            metrics.find((item) => item.name === metric)
+                              ?.unit || null
+                          }
+                          onEnableAlertsChange={setEnableAlerts}
+                          onThresholdChange={handleThresholdChange}
+                          onCalculationUnitChange={handleCalculationUnitChange}
+                          onNodataUnitChange={handleNodataUnitChange}
+                          onNoDataAlertChange={handleNoDataAlertChange}
+                          onNodataRecoveryUnitChange={
+                            handleNodataRecoveryUnitChange
+                          }
+                          onNoDataRecoveryChange={handleNoDataRecoveryChange}
+                          onNoDataAlertLevelChange={
+                            handleNoDataAlertLevelChange
+                          }
+                          onNoDataAlertNameChange={handleNoDataAlertNameChange}
+                          isTrap={isTrap}
+                        />
+                      ),
+                      status: 'process'
+                    },
+                    {
+                      title: t('monitor.events.configureNotifications'),
+                      description: (
+                        <NotificationForm
+                          channelList={channelList}
+                          userList={userList}
+                          onLinkToSystemManage={linkToSystemManage}
+                        />
+                      ),
+                      status: 'process'
+                    }
+                  ]}
+                />
+              </Form>
+            </div>
+            <div className="flex flex-col flex-1 min-w-[400px]">
+              <VariablesTable
+                onVariableSelect={(variable: string) => {
+                  const currentAlertName =
+                    form.getFieldValue('alert_name') || '';
+                  form.setFieldsValue({
+                    alert_name: currentAlertName + variable
+                  });
+                  // 自动聚焦到告警名称输入框
+                  basicInfoFormRef.current?.focusAlertName();
+                }}
+              />
+              <MetricPreview
+                monitorObjId={monitorObjId}
+                source={source}
+                metric={metric}
+                metrics={metrics}
+                groupBy={groupBy}
+                conditions={conditions}
+                period={period}
+                periodUnit={periodUnit}
+                algorithm={algorithm}
+                threshold={threshold}
+                calculationUnit={calculationUnit}
+                scrollContainerRef={formContainerRef}
+                anchorRef={basicInfoRef}
+                fixedGroupByList={
+                  getGroupIds(monitorName as string)?.list || defaultGroup
+                }
+              />
+            </div>
+          </div>
         </div>
         <div className={strategyStyle.footer}>
           <Button

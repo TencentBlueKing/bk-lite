@@ -2,12 +2,12 @@
   "client_id": "alarm",
   "name": "Alarm",
   "url": "/alarm/incidents",
-  "description": "Gather multiple sources of alarm events from enterprises, intelligently reduce noise, explore deep fault causes, improve operation and maintenance response efficiency, and help quickly locate problems.",
+  "description": "app.alarm",
   "tags": [
-    "统一告警",
-    "智能降噪",
-    "事故升级",
-    "自动分派"
+    "tag.unified_alarm",
+    "tag.smart_noise_reduction",
+    "tag.incident_escalation",
+    "tag.auto_dispatch"
   ],
   "menus": [
     {

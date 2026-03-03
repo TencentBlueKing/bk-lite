@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Introduction from '@/app/cmdb/components/introduction';
-import { Input, Button, Modal, message, Spin, Empty } from 'antd';
+import { Input, Button, Modal, message, Spin, Empty, Tooltip } from 'antd';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import {
@@ -11,6 +11,7 @@ import {
   SwitcherOutlined,
   HolderOutlined,
   CopyOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 import Image from 'next/image';
 import assetManageStyle from './index.module.scss';
@@ -354,13 +355,14 @@ const AssetManage = () => {
                             instPermissions={model.permission}
                           >
                             <div className={assetManageStyle.copyButton}>
-                              <Button
-                                type="primary"
-                                shape="circle"
-                                icon={<CopyOutlined />}
-                                onClick={(e) => handleCopyClick(e, model)}
-                                title={t('Model.copy')}
-                              />
+                              <Tooltip title={t('Model.copyModel')}>
+                                <Button
+                                  type="primary"
+                                  shape="circle"
+                                  icon={<CopyOutlined />}
+                                  onClick={(e) => handleCopyClick(e, model)}
+                                />
+                              </Tooltip>
                             </div>
                           </PermissionWrapper>
                         )}
@@ -375,6 +377,30 @@ const AssetManage = () => {
                         </div>
                       </li>
                     ))}
+                    <li
+                        className={`${assetManageStyle.modelListItem} ${assetManageStyle.addModelCard}`}
+                        key={`add-${item.classification_id}`}
+                      >
+                        <PermissionWrapper
+                          requiredPermissions={['Add Model']}
+                          instPermissions={item.permission}
+                          className="block w-full h-full"
+                        >
+                          <Button
+                            type="dashed"
+                            block
+                            icon={<PlusOutlined />}
+                            className={assetManageStyle.addModelButton}
+                            onClick={() =>
+                              showModelModal('add', {
+                                classification_id: item.classification_id,
+                              })
+                            }
+                        >
+                          {t('Model.addModel')}
+                        </Button>
+                      </PermissionWrapper>
+                    </li>
                   </ul>
                 </div>
               );

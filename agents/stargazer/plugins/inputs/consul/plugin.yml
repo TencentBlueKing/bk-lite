@@ -1,0 +1,26 @@
+name: consul
+version: "2.0.0"
+category: middleware
+
+metadata:
+  display_name: "Consul"
+  description: "Consul 中间件采集插件（脚本方式）"
+  author: "WeOps"
+  tags: [middleware, consul]
+  cloud_protocol: false
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  job:
+    type: job
+    timeout: 60
+    scripts:
+      linux: plugins/inputs/consul/consul_default_discover.sh
+    collector:
+      module: plugins.script_executor
+      class: SSHPlugin
+    default_script: linux
+
+default_executor: job

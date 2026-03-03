@@ -1,4 +1,5 @@
 [[inputs.redis]]
+    startup_error_behavior = "retry"
     servers = ["tcp://{{ host }}:{{ port }}"]
 
     {% if username %}

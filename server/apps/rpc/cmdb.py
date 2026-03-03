@@ -1,9 +1,14 @@
-from apps.rpc.base import RpcClient
+import os
+
+from apps.rpc.base import RpcClient, AppClient
 
 
 class CMDB(object):
-    def __init__(self):
-        self.client = RpcClient()
+    def __init__(self, is_local_client=False):
+        is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
+        self.client = (
+            AppClient("apps.cmdb.nats.nats") if is_local_client else RpcClient()
+        )
 
     def get_module_data(self, **kwargs):
         """

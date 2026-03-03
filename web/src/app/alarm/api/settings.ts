@@ -39,17 +39,31 @@ export const useSettingApi = () => {
   const getAggregationRule = (params: any) =>
     get(`/alerts/api/aggregation_rule/`, { params });
 
+  // Alarm Strategy API (告警策略)
+  const getAlarmStrategyList = (params: any) =>
+    get('/alerts/api/alarm_strategy/', { params });
+
+  const createAlarmStrategy = (params: any) =>
+    post('/alerts/api/alarm_strategy/', params);
+
+  const updateAlarmStrategy = (id: string | number, params: any) =>
+    put(`/alerts/api/alarm_strategy/${id}/`, params);
+
+  const deleteAlarmStrategy = (id: string | number) =>
+    del(`/alerts/api/alarm_strategy/${id}/`);
+
+  // Legacy aliases for backward compatibility (映射到新API)
   const getCorrelationRuleList = (params: any) =>
-    get(`/alerts/api/correlation_rule/`, { params });
+    getAlarmStrategyList(params);
 
   const createCorrelationRule = (params: any) =>
-    post('/alerts/api/correlation_rule/', params);
+    createAlarmStrategy(params);
 
   const updateCorrelationRule = (id: string | number, params: any) =>
-    put(`/alerts/api/correlation_rule/${id}/`, params);
+    updateAlarmStrategy(id, params);
 
   const deleteCorrelationRule = (id: string | number) =>
-    del(`/alerts/api/correlation_rule/${id}/`);
+    deleteAlarmStrategy(id);
 
   const getGlobalConfig = (key: any) =>
     get(`/alerts/api/settings/get_setting_key/${key}/`);
@@ -79,6 +93,10 @@ export const useSettingApi = () => {
     deleteShield,
     patchShield,
     getAggregationRule,
+    getAlarmStrategyList,
+    createAlarmStrategy,
+    updateAlarmStrategy,
+    deleteAlarmStrategy,
     getCorrelationRuleList,
     createCorrelationRule,
     updateCorrelationRule,

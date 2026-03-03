@@ -37,67 +37,38 @@ parse_config() {
     declare -p config_dict
 }
 
-# 生成未知实例
-generate_unknown_instance() {
-    innerip=$(hostname -I | awk '{print $1}')  # 获取第一个内网 IP 地址
-    inst_name="${innerip}-kafka-unknown"
-
-    cat <<EOF
-{
-    "inst_name": "$inst_name",
-    "obj_id": "kafka",
-    "ip_addr": "$innerip",
-    "port": "unknown",
-    "version": "unknown",
-    "bin_path": "unknown",
-    "conf_path": "unknown",
-    "log_path": "unknown",
-    "java_path": "unknown",
-    "java_version": "unknown",
-    "xms": "unknown",
-    "xmx": "unknown",
-    "broker_id": "unknown",
-    "io_threads": "unknown",
-    "network_threads": "unknown",
-    "socket_receive_buffer_bytes": "unknown",
-    "socket_request_max_bytes": "unknown",
-    "socket_send_buffer_bytes": "unknown"
-}
-EOF
-}
-
 # 主函数
 main() {
     # 获取Kafka进程
     pid_list=$(ps -ef | grep kafka.Kafka | grep -v grep | awk '{print $2}')
 
     # 如果没有Kafka进程，生成未知实例
-    [[ -z "$pid_list" ]] && generate_unknown_instance && exit 0
+    [[ -z "$pid_list" ]]  && exit 0
 
     for pid in $pid_list; do
         # 初始化所有变量
-        port="9092"
-        install_path="unknown"
-        cfg_path="unknown"
-        log_path="unknown"
-        exe="unknown"
-        xms="unknown"
-        xmx="unknown"
-        broker_id="unknown"
-        io_threads="unknown"
-        network_threads="unknown"
-        socket_receive="unknown"
-        socket_request="unknown"
-        socket_send="unknown"
-        bin_path="unknown"
-        kafka_version="unknown"
-        java_version="unknown"
+        port=""
+        install_path=""
+        cfg_path=""
+        log_path=""
+        exe=""
+        xms=""
+        xmx=""
+        broker_id=""
+        io_threads=""
+        network_threads=""
+        socket_receive=""
+        socket_request=""
+        socket_send=""
+        bin_path=""
+        kafka_version=""
+        java_version=""
 
         # 获取进程基本信息
         command=$(ps -p $pid -o args=)
         cwd=$(readlink -f /proc/$pid/cwd)
         user=$(ps -p $pid -o user=)
-        exe="unknown"
+        exe=""
 
         # 尝试从命令行参数中提取java路径
         exe_from_command=$(echo "$command" | grep -oP '/.*?/bin/java' | head -1)

@@ -43,6 +43,17 @@ class ProtocolCollectMetrics(CollectBase):
                 "wait_timeout": "wait_timeout",
                 "inst_name": self.get_inst_name
             },
+            "postgresql": {
+                "inst_name": self.get_inst_name,
+                "ip_addr": "ip_addr",
+                "port": "port",
+                "version": "version",
+                "config": "conf_path",
+                "data_path": "data_path",
+                "max_connect": "max_conn",
+                "shared_buffer": "cache_memory_mb",
+                "log_directory": "log_path",
+            },
             "oracle": {
                 "version": "version",
                 "max_mem": "max_mem",

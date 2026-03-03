@@ -31,9 +31,6 @@
       "widget_props": {
         "placeholder": "用户名"
       },
-      "transform_on_create": {
-        "target_path": "custom_headers.username"
-      },
       "transform_on_edit": {
         "origin_path": "child.content.config.http_headers.username"
       }
@@ -47,9 +44,6 @@
       "description": "对应的登录密码",
       "widget_props": {
         "placeholder": "密码"
-      },
-      "transform_on_create": {
-        "target_path": "custom_headers.password"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.http_headers.password"

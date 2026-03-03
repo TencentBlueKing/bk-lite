@@ -3,6 +3,7 @@ import { Popconfirm, Button, Tooltip, Flex, Spin, Drawer, ButtonProps, Upload, m
 import { FullscreenOutlined, FullscreenExitOutlined, SendOutlined, PictureOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { Bubble, Sender } from '@ant-design/x';
+import DOMPurify from 'dompurify';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
 import MarkdownIt from 'markdown-it';
@@ -14,6 +15,7 @@ import KnowledgeBase from '../custom-chat/knowledgeBase';
 import AnnotationModal from '../custom-chat/annotationModal';
 import KnowledgeGraphView from '../knowledge/knowledgeGraphView';
 import PermissionWrapper from '@/components/permission';
+import BrowserStepProgress from './BrowserStepProgress';
 import { CustomChatMessage, Annotation } from '@/app/opspilot/types/global';
 import { useSession } from 'next-auth/react';
 import { useAuth } from '@/context/auth';
@@ -23,7 +25,7 @@ import { useSendMessage } from './hooks/useSendMessage';
 import { useReferenceHandler } from './hooks/useReferenceHandler';
 
 const md = new MarkdownIt({
-  html: true,
+  html: true, // Enable raw HTML (sanitized by DOMPurify)
   highlight: function (str: string, lang: string) {
     if (lang && hljs.getLanguage(lang)) {
       try {
@@ -33,6 +35,15 @@ const md = new MarkdownIt({
     return '';
   },
 });
+
+// Sanitize HTML to prevent XSS
+const sanitizeHtml = (html: string): string => {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button', 'style'],
+    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'src', 'alt', 'width', 'height', 'aria-hidden'],
+    ALLOW_DATA_ATTR: true,
+  });
+};
 
 const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   handleSendMessage,
@@ -128,7 +139,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const { referenceModal, drawerContent, handleReferenceClick, closeDrawer } =
     useReferenceHandler(t);
 
-  // Parse guide
+  // Parse guide with proper HTML escaping
   const parseGuideItems = useCallback((guideText: string): GuideParseResult => {
     if (!guideText) return { text: '', items: [], renderedHtml: '' };
 
@@ -140,16 +151,37 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       items.push(match[1]);
     }
 
-    const processedText = guideText.replace(/\n/g, '<br>');
-    const renderedHtml = processedText.replace(regex, (match, content) => {
-      return `<span class="guide-clickable-item" data-content="${content}" style="color: #1890ff; cursor: pointer; font-weight: 600; margin: 0 2px;">${content}</span>`;
+    // Escape HTML entities to prevent XSS
+    const escapeHtml = (text: string) => {
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    };
+
+    const processedText = escapeHtml(guideText).replace(/\n/g, '<br>');
+    const renderedHtml = processedText.replace(/\[([^\]]+)\]/g, (match, content) => {
+      const escapedContent = escapeHtml(content);
+      return `<span class="guide-clickable-item" data-content="${escapedContent}" style="color: #1890ff; cursor: pointer; font-weight: 600; margin: 0 2px;">${escapedContent}</span>`;
     });
 
-    return { text: guideText, items, renderedHtml };
+    return { text: guideText, items, renderedHtml: sanitizeHtml(renderedHtml) };
   }, []);
 
-  // Parse links
+  // Parse links with proper HTML escaping
   const parseReferenceLinks = useCallback((content: string) => {
+    // Escape HTML entities to prevent XSS
+    const escapeAttr = (text: string) => {
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    };
+
     const referenceRegex = /\[\[(\d+)\]\]\(([^)]+)\)/g;
     return content.replace(referenceRegex, (match, refNumber, params) => {
       const paramPairs = params.split('|');
@@ -157,11 +189,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
       paramPairs.forEach((pair: string) => {
         const [key, value] = pair.split(':');
-        if (key && value) urlParams.set(key, value);
+        if (key && value) urlParams.set(key, escapeAttr(value));
       });
 
-      const chunkId = urlParams.get('chunk_id');
-      const knowledgeId = urlParams.get('knowledge_id');
+      const chunkId = urlParams.get('chunk_id') || '';
+      const knowledgeId = urlParams.get('knowledge_id') || '';
       const chunkType = urlParams.get('chunk_type') || 'Document';
       const iconType =
         chunkType === 'QA'
@@ -170,19 +202,29 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             ? 'zhishitupu'
             : 'wendangguanlixitong-wendangguanlixitongtubiao';
 
-      // 一行内联 HTML，避免换行和缩进
-      return `<span class="reference-link inline-flex items-center gap-1" data-ref-number="${refNumber}" data-chunk-id="${chunkId}" data-knowledge-id="${knowledgeId}" data-chunk-type="${chunkType}" style="color: #1890ff; cursor: pointer; margin: 0 2px;"><svg class="icon icon-${iconType} inline-block" style="width: 1em; height: 1em; vertical-align: text-bottom;" aria-hidden="true"><use href="#icon-${iconType}"></use></svg></span>`;
+      // Escape all dynamic values
+      const escapedRefNumber = escapeAttr(refNumber);
+      const escapedIconType = escapeAttr(iconType);
+
+      return `<span class="reference-link inline-flex items-center gap-1" data-ref-number="${escapedRefNumber}" data-chunk-id="${chunkId}" data-knowledge-id="${knowledgeId}" data-chunk-type="${chunkType}" style="color: #1890ff; cursor: pointer; margin: 0 2px;"><svg class="icon icon-${escapedIconType} inline-block" style="width: 1em; height: 1em; vertical-align: text-bottom;" aria-hidden="true"><use href="#icon-${escapedIconType}"></use></svg></span>`;
     });
   }, []);
 
   const parseSuggestionLinks = useCallback((content: string) => {
+    // Escape HTML entities to prevent XSS
+    const escapeHtml = (text: string) => {
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    };
+
     const suggestionRegex = /\[(\d+)\]\(suggest:\s*([^)]+)\)/g;
     return content.replace(suggestionRegex, (match, number, suggestionText) => {
-      const trimmedText = suggestionText.trim();
-      return `<button class="suggestion-button inline-block text-[var(--color-text-1)] text-left border border-[var(--color-border-1)] rounded-full px-3 py-1.5 mx-1 my-1 cursor-pointer text-xs transition-all duration-200 ease-in-out hover:shadow-md hover:-translate-y-0.5 hover:border-blue-400 active:scale-95" 
-                data-suggestion="${trimmedText}">
-                ${trimmedText}
-              </button>`;
+      const trimmedText = escapeHtml(suggestionText.trim());
+      return `<button class="suggestion-button inline-block text-[var(--color-text-1)] text-left border border-[var(--color-border-1)] rounded-full px-3 py-1.5 mx-1 my-1 cursor-pointer text-xs transition-all duration-200 ease-in-out hover:shadow-md hover:-translate-y-0.5 hover:border-blue-400 active:scale-95" data-suggestion="${trimmedText}">${trimmedText}</button>`;
     });
   }, []);
 
@@ -221,7 +263,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     async (msg: string, images?: UploadFile[]) => {
       if ((msg.trim() || (images && images.length > 0)) && !loading && token) {
         currentBotMessageRef.current = null;
-        
+
         // Convert images to base64
         let imageData: any[] | undefined;
         if (images && images.length > 0) {
@@ -244,7 +286,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             })
           ).then(results => results.filter(Boolean));
         }
-        
+
         await sendMessage(msg, messages, imageData);
       }
     },
@@ -256,11 +298,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = content;
     const plainText = tempDiv.textContent || tempDiv.innerText || content;
-    
+
     // 使用现代 API 或降级方案
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(plainText).then(
-        () => console.log(t('chat.copied')),
+      navigator.clipboard.writeText(plainText).catch(
         err => console.error(`${t('chat.copyFailed')}:`, err)
       );
     } else {
@@ -275,7 +316,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       textArea.select();
       try {
         document.execCommand('copy');
-        console.log(t('chat.copied'));
       } catch (err) {
         console.error(`${t('chat.copyFailed')}:`, err);
       }
@@ -298,11 +338,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   );
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images } = msg;
-    // 渲染前先替换 reference-link 和 suggestion-link
+    const { content, knowledgeBase, images, browserStepsHistory } = msg;
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
-    const html = md.render(replacedContent);
+    const html = sanitizeHtml(md.render(replacedContent));
 
     return (
       <>
@@ -322,14 +361,19 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             </Image.PreviewGroup>
           </div>
         )}
-        <div
-          dangerouslySetInnerHTML={{ __html: html }}
-          className={styles.markdownBody}
-          onClick={e => {
-            handleReferenceClick(e);
-            handleSuggestionClick(e);
-          }}
-        />
+        {browserStepsHistory && browserStepsHistory.steps.length > 0 && (
+          <BrowserStepProgress history={browserStepsHistory} />
+        )}
+        {content && (
+          <div
+            dangerouslySetInnerHTML={{ __html: html }}
+            className={styles.markdownBody}
+            onClick={e => {
+              handleReferenceClick(e);
+              handleSuggestionClick(e);
+            }}
+          />
+        )}
         {Array.isArray(knowledgeBase) && knowledgeBase.length ? (
           <KnowledgeBase knowledgeList={knowledgeBase} />
         ) : null}
@@ -379,10 +423,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         {imageList.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2 p-2 bg-gray-50 rounded">
             {imageList.map((file) => {
-              const previewUrl = file.originFileObj && typeof window !== 'undefined' 
-                ? URL.createObjectURL(file.originFileObj) 
+              const previewUrl = file.originFileObj && typeof window !== 'undefined'
+                ? URL.createObjectURL(file.originFileObj)
                 : '';
-              
+
               return (
                 <div key={file.uid} className="relative group">
                   {previewUrl && (
@@ -557,35 +601,40 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             </div>
           )}
           <Flex gap="small" vertical>
-            {messages.map(msg => (
-              <Bubble
-                key={msg.id}
-                className={styles.bubbleWrapper}
-                placement={msg.role === 'user' ? 'end' : 'start'}
-                loading={msg.content === '' && loading && currentBotMessageRef.current?.id === msg.id}
-                content={renderContent(msg)}
-                avatar={{
-                  icon: (
-                    <Icon
-                      type={msg.role === 'user' ? 'yonghu' : 'jiqiren3'}
-                      className={styles.avatar}
-                    />
-                  )
-                }}
-                footer={
-                  msg.content === '' && loading && currentBotMessageRef.current?.id === msg.id ? null : (
-                    <MessageActions
-                      message={msg}
-                      onCopy={handleCopyMessage}
-                      onRegenerate={handleRegenerateMessage}
-                      onDelete={handleDeleteMessage}
-                      onMark={toggleAnnotationModal}
-                      showMarkOnly={showMarkOnly}
-                    />
-                  )
-                }
-              />
-            ))}
+            {messages.map(msg => {
+              const hasBrowserSteps = msg.browserStepsHistory && msg.browserStepsHistory.steps.length > 0;
+              const isEmptyMessage = !msg.content && !hasBrowserSteps;
+              const isCurrentBotLoading = loading && currentBotMessageRef.current?.id === msg.id;
+              return (
+                <Bubble
+                  key={msg.id}
+                  className={styles.bubbleWrapper}
+                  placement={msg.role === 'user' ? 'end' : 'start'}
+                  loading={isEmptyMessage && isCurrentBotLoading}
+                  content={renderContent(msg)}
+                  avatar={{
+                    icon: (
+                      <Icon
+                        type={msg.role === 'user' ? 'yonghu' : 'jiqiren3'}
+                        className={styles.avatar}
+                      />
+                    )
+                  }}
+                  footer={
+                    isEmptyMessage && isCurrentBotLoading ? null : (
+                      <MessageActions
+                        message={msg}
+                        onCopy={handleCopyMessage}
+                        onRegenerate={handleRegenerateMessage}
+                        onDelete={handleDeleteMessage}
+                        onMark={toggleAnnotationModal}
+                        showMarkOnly={showMarkOnly}
+                      />
+                    )
+                  }
+                />
+              );
+            })}
           </Flex>
         </div>
 
@@ -644,9 +693,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <>
             {drawerContent.chunkType === 'Graph' ? (
               <div style={{ height: '100%', padding: '16px' }}>
-                <KnowledgeGraphView 
-                  data={drawerContent.graphData || { nodes: [], edges: [] }} 
-                  height="100%" 
+                <KnowledgeGraphView
+                  data={drawerContent.graphData || { nodes: [], edges: [] }}
+                  height="100%"
                 />
               </div>
             ) : (

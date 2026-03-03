@@ -5,7 +5,12 @@ Agent 工厂模块
 """
 
 import asyncio
+import datetime
+import time
 
+from asgiref.sync import sync_to_async
+
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.agent.chatbot_workflow import ChatBotWorkflowGraph, ChatBotWorkflowRequest
 from apps.opspilot.metis.llm.agent.lats_agent import LatsAgentGraph, LatsAgentRequest
 from apps.opspilot.metis.llm.agent.plan_and_execute_agent import PlanAndExecuteAgentGraph, PlanAndExecuteAgentRequest
@@ -77,8 +82,6 @@ def run_async_generator_in_loop(async_gen_func):
     Yields:
         异步生成器产生的结果
     """
-    import time
-
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -107,11 +110,6 @@ async def create_async_wrapper_for_sync_generator(sync_generator):
     Yields:
         生成器产生的每个 chunk
     """
-    import datetime
-
-    from asgiref.sync import sync_to_async
-
-    from apps.core.logger import opspilot_logger as logger
 
     def get_next_chunk():
         """同步函数:获取下一个chunk"""

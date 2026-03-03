@@ -1,4 +1,5 @@
 [[inputs.snmp]]
+    startup_error_behavior = "retry"
     interval = "{{ interval }}s"
     {% if version == 2 %}
     agents = ["udp://{{ ip }}:{{ port }}"]

@@ -1,4 +1,5 @@
 [[inputs.mongodb]]
+    startup_error_behavior = "retry"
     servers = [
         {% if username %}
         "mongodb://{{ username }}:${PASSWORD__{{ config_id }}}@{{ host }}:{{ port }}/?connect=direct"

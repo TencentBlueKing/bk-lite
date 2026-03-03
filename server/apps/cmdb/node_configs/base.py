@@ -39,6 +39,7 @@ class BaseNodeParams(metaclass=ABCMeta):
         self.timeout = instance.timeout
         self.response_timeout = 10
         self.executor_type = "protocol"  # 默认执行器类型
+        self.has_network_topo = bool(self.instance.params.get("has_network_topo"))  # 是否包含网络拓扑采集
 
     def get_hosts(self):
         """

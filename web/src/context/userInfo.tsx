@@ -33,6 +33,51 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isSuperUser, setIsSuperUser] = useState<boolean>(true);
   const [isFirstLogin, setIsFirstLogin] = useState<boolean>(true);
 
+  const fetchLoginInfo = async () => {
+    setLoading(true);
+    try {
+      const data = await get('/core/api/login_info/');
+      if (!data) {
+        console.error('Failed to fetch login info: No data received');
+        setLoading(false);
+        return;
+      }
+      
+      const { group_list: groupList, group_tree: groupTreeData, roles, is_superuser, is_first_login, user_id, display_name, username } = data;
+      setGroups(groupList || []);
+      const shouldSkipFilter = username === 'kayla';
+      setGroupTree(is_superuser || shouldSkipFilter ? groupTreeData : filterOpsPilotGuest(groupTreeData || []));
+      setRoles(roles || []);
+      setIsSuperUser(!!is_superuser);
+      setIsFirstLogin(!!is_first_login);
+      setUserId(user_id || '');
+      setDisplayName(display_name || (session?.user as any)?.username || 'User');
+
+      if (groupList?.length) {
+        const flattenedGroups = convertTreeDataToGroupOptions(groupList);
+        setFlatGroups(flattenedGroups);
+
+        const groupIdFromCookie = Cookies.get('current_team');
+        const initialGroup = flattenedGroups.find((group: Group) => String(group.id) === String(groupIdFromCookie));
+        
+        if (initialGroup) {
+          setSelectedGroupState(initialGroup);
+        } else {
+          const filteredGroups = is_superuser || shouldSkipFilter
+            ? [...flattenedGroups] 
+            : flattenedGroups.filter((group: Group) => group.name !== 'OpsPilotGuest');
+          const defaultGroup = filteredGroups[0];
+          setSelectedGroupState(defaultGroup);
+          Cookies.set('current_team', defaultGroup.id);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch login_info:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     // 如果还在检查认证状态，不要进行API调用
     if (isCheckingAuth) {
@@ -40,51 +85,6 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     
     if (status === 'authenticated' && session && (session.user as any)?.id) {
-      const fetchLoginInfo = async () => {
-        setLoading(true);
-        try {
-          const data = await get('/core/api/login_info/');
-          if (!data) {
-            console.error('Failed to fetch login info: No data received');
-            setLoading(false);
-            return;
-          }
-          
-          const { group_list: groupList, group_tree: groupTreeData, roles, is_superuser, is_first_login, user_id, display_name, username } = data;
-          setGroups(groupList || []);
-          const shouldSkipFilter = username === 'kayla';
-          setGroupTree(is_superuser || shouldSkipFilter ? groupTreeData : filterOpsPilotGuest(groupTreeData || []));
-          setRoles(roles || []);
-          setIsSuperUser(!!is_superuser);
-          setIsFirstLogin(!!is_first_login);
-          setUserId(user_id || '');
-          setDisplayName(display_name || (session.user as any)?.username || 'User');
-
-          if (groupList?.length) {
-            const flattenedGroups = convertTreeDataToGroupOptions(groupList);
-            setFlatGroups(flattenedGroups);
-
-            const groupIdFromCookie = Cookies.get('current_team');
-            const initialGroup = flattenedGroups.find((group: Group) => String(group.id) === String(groupIdFromCookie));
-            
-            if (initialGroup) {
-              setSelectedGroupState(initialGroup);
-            } else {
-              const filteredGroups = is_superuser || shouldSkipFilter
-                ? [...flattenedGroups] 
-                : flattenedGroups.filter((group: Group) => group.name !== 'OpsPilotGuest');
-              const defaultGroup = filteredGroups[0];
-              setSelectedGroupState(defaultGroup);
-              Cookies.set('current_team', defaultGroup.id);
-            }
-          }
-        } catch (err) {
-          console.error('Failed to fetch login_info:', err);
-        } finally {
-          setLoading(false);
-        }
-      };
-
       fetchLoginInfo();
     }
   }, [status, isCheckingAuth]);
@@ -94,8 +94,12 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     Cookies.set('current_team', group.id);
   };
 
+  const refreshUserInfo = async () => {
+    await fetchLoginInfo();
+  };
+
   return (
-    <UserInfoContext.Provider value={{ loading, roles, groups, groupTree, selectedGroup, flatGroups, isSuperUser, isFirstLogin, userId, displayName, setSelectedGroup }}>
+    <UserInfoContext.Provider value={{ loading, roles, groups, groupTree, selectedGroup, flatGroups, isSuperUser, isFirstLogin, userId, displayName, setSelectedGroup, refreshUserInfo }}>
       {children}
     </UserInfoContext.Provider>
   );

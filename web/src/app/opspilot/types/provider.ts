@@ -76,3 +76,16 @@ export interface ModelTreeProps {
     onGroupOrderChange?: (updateData: { id: number; index: number }[]) => void;
     loading: boolean;
 }
+
+export interface ModelGroupPayload {
+    name: string;
+    display_name: string;
+    provider_type?: string;
+    icon?: string;
+    tags?: string[];
+}
+
+export interface GroupOrderPayload {
+    id: number;
+    index: number;
+}

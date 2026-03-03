@@ -61,7 +61,6 @@ const QADetailDrawer: React.FC<QADetailDrawerProps> = ({
   }, [visible, qaPair]);
 
   const fetchChunkDetail = async () => {
-    console.log('Fetching chunk detail for base_chunk_id:', qaPair?.base_chunk_id, knowledgeId);
     if (!qaPair?.base_chunk_id || !knowledgeId) return;
     
     setChunkLoading(true);

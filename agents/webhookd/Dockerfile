@@ -8,9 +8,12 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
 
 RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list.d/debian.sources
 RUN apt-get update && \
-    apt-get install -y vim  unzip wget curl pkg-config libssl-dev supervisor jq && \
+    apt-get install -y vim  unzip wget curl pkg-config libssl-dev supervisor gettext-base jq && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+    chmod +x kubectl && mv kubectl /usr/local/bin/
 
 ADD ./bin/webhookd /usr/local/bin/webhookd
 ADD ./bin/runc /usr/local/bin/runc
@@ -30,6 +33,7 @@ ADD ./kubernetes /apps/scripts/kubernetes
 ADD ./common.sh /apps/scripts/common.sh
 ADD ./infra /apps/scripts/infra
 ADD ./*.yaml /apps/scripts/
+ADD ./mlops /apps/scripts/mlops
 
 RUN chmod -Rf 777 /apps/scripts
 CMD ["/usr/local/bin/webhookd", "-hook-default-mode","buffered","-hook-scripts","/apps/scripts","-hook-timeout", "30"]

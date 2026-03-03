@@ -27,7 +27,9 @@ def adapters():
     try:
         from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
         from apps.alerts.common.source_adapter.restful import RestFulAdapter
+        from apps.alerts.common.source_adapter.nats import NatsAdapter
         AlertSourceAdapterFactory.register_adapter('restful', RestFulAdapter)
+        AlertSourceAdapterFactory.register_adapter("nats", NatsAdapter)
     except Exception as e:
-        logger.error(f"Failed to register alert source adapter: {e}")
-        pass
+        logger.error(f"Failed to register alert source adapter: {e}", exc_info=True)
+        raise

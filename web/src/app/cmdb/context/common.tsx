@@ -3,7 +3,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import useApiClient from '@/utils/request';
 import { UserItem, ModelItem } from '@/app/cmdb/types/assetManage';
-import { useModelApi } from '@/app/cmdb/api';
+import { useModelApi, useUserConfigApi } from '@/app/cmdb/api';
+import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import Spin from '@/components/spin';
 import { usePathname } from 'next/navigation';
 import { useAliveController } from 'react-activation';
@@ -21,6 +22,8 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
   const [pageLoading, setPageLoading] = useState(false);
   const { get } = useApiClient();
   const { getModelList } = useModelApi();
+  const { getAllConfigs } = useUserConfigApi();
+  const setUserConfigs = useAssetDataStore((state) => state.setUserConfigs);
   const { drop } = useAliveController();
   const pathname = usePathname();
 
@@ -57,11 +60,21 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const fetchUserConfigs = async () => {
+    try {
+      const configs = await getAllConfigs();
+      setUserConfigs(configs);
+    } catch (error) {
+      console.error('Failed to fetch user configs:', error);
+      setUserConfigs({});
+    }
+  };
+
   useEffect(() => {
     const initializeData = async () => {
       setPageLoading(true);
       try {
-        await Promise.all([fetchUserList(), fetchModelList()]);
+        await Promise.all([fetchUserList(), fetchModelList(), fetchUserConfigs()]);
       } finally {
         setPageLoading(false);
       }

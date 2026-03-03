@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import Icon from '@/components/icon';
 import useApiClient from '@/utils/request';
 import dayjs from 'dayjs';
@@ -43,6 +43,7 @@ const Alert: React.FC = () => {
   const { getAlarmList } = useAlarmApi();
   const { convertToLocalizedTime } = useLocalizedTime();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const beginTime: number = dayjs().subtract(10080, 'minute').valueOf();
   const lastTime: number = dayjs().valueOf();
   const [searchCondition, setSearchCondition] =
@@ -83,7 +84,7 @@ const Alert: React.FC = () => {
     };
   });
 
-  const tabList: TabItem[] = [
+  const tabList: TabItem[] = useMemo(() => [
     {
       label: t('alarms.activeAlarms'),
       key: 'activeAlarms',
@@ -92,7 +93,7 @@ const Alert: React.FC = () => {
       label: t('alarms.historicalAlarms'),
       key: 'historicalAlarms',
     },
-  ];
+  ], [t]);
 
   const timeDefaultValue =
     (useRef<TimeSelectorDefaultValue>({
@@ -120,10 +121,17 @@ const Alert: React.FC = () => {
 
   const isActiveAlarms = activeTab === 'activeAlarms';
 
-  const stateOptions = (isActiveAlarms ? baseStates : allStates).map((val) => ({
+  const stateOptions = useMemo(() => (isActiveAlarms ? baseStates : allStates).map((val) => ({
     value: val,
     label: t(`alarms.${val}`),
-  }));
+  })), [isActiveAlarms, t]);
+
+  useEffect(() => {
+    return () => {
+      clearTimer();
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (!frequency) {
@@ -177,11 +185,11 @@ const Alert: React.FC = () => {
     filters.alarm_source,
   ]);
 
-  const changeTab = (val: string) => {
+  const changeTab = useCallback((val: string) => {
     setPagination((prev) => ({ ...prev, current: 1 }));
     setChartData([]);
     setActiveTab(val);
-  };
+  }, []);
 
   const clearTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -206,10 +214,10 @@ const Alert: React.FC = () => {
     return params;
   };
 
-  const handleTableChange = (pag: any) => {
+  const handleTableChange = useCallback((pag: any) => {
     saveSettings({ pageSize: pag.pageSize });
     setPagination(pag);
-  };
+  }, []);
 
   const getAlarmTableData = async (type: string, condition?: any) => {
     const params: any = getParams(condition);
@@ -264,9 +272,9 @@ const Alert: React.FC = () => {
     }
   };
 
-  const onFrequencyChange = (val: number) => {
+  const onFrequencyChange = useCallback((val: number) => {
     setFrequency(val);
-  };
+  }, []);
 
   const onRefresh = () => {
     setSelectedRowKeys([]);
@@ -274,29 +282,27 @@ const Alert: React.FC = () => {
     showChart && getChartData('refresh');
   };
 
-  const onTimeChange = (val: number[]) => {
+  const onTimeChange = useCallback((val: number[]) => {
     setTimeRange(val);
-  };
+  }, []);
 
-  const onFilterChange = (
+  const onFilterChange = useCallback((
     checkedValues: string[],
     field: keyof FiltersConfig
   ) => {
-    setFilters((pre: any) => {
-      pre[field] = checkedValues;
-      return {
-        ...pre,
-      };
-    });
+    setFilters((prev) => ({
+      ...prev,
+      [field]: checkedValues,
+    }));
 
     if (field === 'state') {
       saveSettings({ stateFilters: checkedValues });
     }
-  };
+  }, []);
 
-  const clearFilters = (field: keyof FiltersConfig) => {
+  const clearFilters = useCallback((field: keyof FiltersConfig) => {
     setFilters((prev: any) => ({ ...prev, [field]: [] }));
-  };
+  }, []);
 
   const onFilterSearch = (condition: SearchFilterCondition) => {
     setSearchCondition(condition);
@@ -304,7 +310,7 @@ const Alert: React.FC = () => {
     getAlarmTableData('search', condition);
   };
 
-  const alarmAttrList = [
+  const alarmAttrList = useMemo(() => [
     {
       attr_id: 'alert_id',
       attr_name: t('alarms.alertId'),
@@ -323,7 +329,12 @@ const Alert: React.FC = () => {
       attr_type: 'str',
       option: [],
     },
-  ];
+  ], [t]);
+
+  const selectedRowData = useMemo(() =>
+    tableData?.filter((item) => selectedRowKeys.includes(item.id)) || [],
+  [tableData, selectedRowKeys]
+  );
 
   return (
     <div className="w-full">
@@ -409,26 +420,14 @@ const Alert: React.FC = () => {
 
               <div className="flex items-center space-x-4">
                 <DeclareIncident
-                  rowData={
-                    tableData?.filter((item) =>
-                      selectedRowKeys.includes(item.id)
-                    ) || []
-                  }
-                  onSuccess={() => {
-                    onRefresh();
-                  }}
+                  rowData={selectedRowData}
+                  onSuccess={onRefresh}
                 />
                 <AlarmAction
-                  rowData={
-                    tableData?.filter((item) =>
-                      selectedRowKeys.includes(item.id)
-                    ) || []
-                  }
+                  rowData={selectedRowData}
                   displayMode="dropdown"
                   showAll
-                  onAction={() => {
-                    onRefresh();
-                  }}
+                  onAction={onRefresh}
                 />
               </div>
             </div>

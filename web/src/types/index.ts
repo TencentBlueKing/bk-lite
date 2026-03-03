@@ -55,6 +55,7 @@ export interface UserInfoContextType {
   userId: string;
   displayName: string;
   setSelectedGroup: (group: Group) => void;
+  refreshUserInfo: () => Promise<void>;
 }
 
 export interface ClientData {

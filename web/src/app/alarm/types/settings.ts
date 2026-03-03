@@ -57,6 +57,21 @@ export interface AggregationRule {
     image: string;
     [key: string]: any;
 }
+
+export interface FilterRule {
+    key: string;
+    operator: string;
+    value: string;
+}
+
+export interface AlarmStrategyParams {
+    policy?: 'service' | 'location' | 'resource_name' | 'other';
+    group_by?: string[];
+    window_size?: number;
+    time_out?: boolean;
+    time_minutes?: number;
+}
+
 export interface CorrelationRule {
     id: number;
     created_at: string;
@@ -64,12 +79,16 @@ export interface CorrelationRule {
     created_by: string;
     updated_by: string;
     name: string;
-    type: string;
-    scope: string;
-    description: string | null;
-    aggregation_rules: number[];
-    [key: string]: any;
+    strategy_type?: 'smart_denoise' | 'missing_detection';
+    team?: number[];
+    dispatch_team?: number[];
+    match_rules?: FilterRule[][];
+    params?: AlarmStrategyParams;
+    auto_close?: boolean;
+    close_minutes?: number;
 }
+
+
 
 export interface Config {
   notify_every: number;

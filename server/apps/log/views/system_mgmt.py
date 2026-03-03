@@ -6,13 +6,22 @@ from apps.rpc.system_mgmt import SystemMgmt
 
 
 class SystemMgmtView(ViewSet):
-    @action(methods=['get'], detail=False, url_path='user_all')
+    @action(methods=["get"], detail=False, url_path="user_all")
     def get_user_all(self, request):
-        result = SystemMgmt().get_all_users()
+        current_team = request.COOKIES.get("current_team")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        result = SystemMgmt().get_group_users(
+            group=current_team, include_children=include_children
+        )
         return WebUtils.response_success(result["data"])
 
-    @action(methods=['get'], detail=False, url_path='search_channel_list')
+    @action(methods=["get"], detail=False, url_path="search_channel_list")
     def search_channel_list(self, request):
         channel_type = request.GET.get("channel_type", "")
-        result = SystemMgmt().search_channel_list(channel_type)
+        current_team = request.COOKIES.get("current_team")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        teams = [current_team] if current_team else None
+        result = SystemMgmt().search_channel_list(
+            channel_type=channel_type, teams=teams, include_children=include_children
+        )
         return WebUtils.response_success(result["data"])

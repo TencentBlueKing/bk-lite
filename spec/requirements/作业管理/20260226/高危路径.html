@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高危路径配置 - Job</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Fira Sans', 'Fira Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #1f2329; line-height: 1.5; }
+        .top-header { background: #fff; height: 60px; border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 100; }
+        .header-left { display: flex; align-items: center; gap: 8px; }
+        .logo { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 18px; }
+        .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; font-weight: bold; box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25); }
+        .header-nav { display: flex; gap: 8px; margin-left: 48px; }
+        .nav-item { display: flex; align-items: center; gap: 8px; color: #646a73; cursor: pointer; font-size: 14px; padding: 8px 16px; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.1); }
+        .header-right { display: flex; align-items: center; gap: 20px; color: #646a73; font-size: 14px; }
+        .header-right > span { cursor: pointer; padding: 6px 12px; border-radius: 6px; transition: all 0.3s; }
+        .header-right > span:hover { background: rgba(0, 0, 0, 0.04); color: #0052d9; }
+        .sub-header { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); height: 52px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); display: flex; align-items: center; padding: 0 32px; }
+        .sub-nav { display: flex; gap: 4px; }
+        .sub-nav-item { padding: 10px 20px; cursor: pointer; font-size: 14px; color: #646a73; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .sub-nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .sub-nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.12); }
+        .main-container { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
+        
+        /* 页面介绍区 */
+        .page-intro { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; border: 1px solid #e5e7eb; }
+        .intro-title { font-size: 16px; font-weight: 600; color: #1f2329; margin-bottom: 8px; }
+        .intro-desc { font-size: 14px; color: #646a73; line-height: 1.6; margin: 0; }
+        
+        .btn { padding: 10px 20px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.3s; border: none; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-primary { background: #0052d9; color: white; }
+        .btn-primary:hover { background: #0041ad; }
+        .btn-default { background: white; color: #646a73; border: 1px solid #dcdee0; }
+        .btn-default:hover { border-color: #0052d9; color: #0052d9; }
+        .content-card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06); }
+        
+        /* 搜索组件 */
+        .search-group {
+            display: flex;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            overflow: hidden;
+            background: white;
+            transition: all 0.3s;
+        }
+        .search-group:hover { border-color: rgba(0, 82, 217, 0.3); }
+        .search-group:focus-within { border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .search-select {
+            padding: 8px 12px;
+            border: none;
+            border-right: 1px solid #dcdee0;
+            font-size: 14px;
+            outline: none;
+            background: #f5f7fa;
+            cursor: pointer;
+            min-width: 100px;
+        }
+        .search-select:hover { background: #eef0f3; }
+        .search-input-field {
+            padding: 8px 12px;
+            border: none;
+            font-size: 14px;
+            outline: none;
+            width: 200px;
+            background: white;
+        }
+        .search-input-field::placeholder { color: #8f959e; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: #f5f7fa; }
+        th { padding: 12px 16px; text-align: left; font-size: 13px; font-weight: 600; color: #646a73; }
+        tbody tr { border-bottom: 1px solid #f0f1f5; transition: all 0.2s; }
+        tbody tr:hover { background: #f9fafb; }
+        td { padding: 16px; font-size: 14px; color: #1f2329; }
+        td.nowrap { white-space: nowrap; }
+        .org-cell { white-space: nowrap; }
+        .policy-badge { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .policy-badge.block { background: #ffe6e6; color: #ea3636; }
+        .policy-badge.confirm { background: #fff4e6; color: #ff9500; }
+        .path-code { font-family: 'Fira Code', 'Monaco', 'Menlo', monospace; background: #f5f7fa; padding: 4px 8px; border-radius: 4px; font-size: 13px; color: #ea3636; }
+        .action-links { display: flex; gap: 12px; white-space: nowrap; }
+        .action-link { color: #0052d9; cursor: pointer; transition: all 0.2s; text-decoration: none; }
+        .action-link:hover { color: #0041ad; }
+        .action-link.danger { color: #ea3636; }
+        .action-link.disabled { color: #c4c6cc; cursor: not-allowed; pointer-events: none; }
+        .action-link.disabled:hover { color: #c4c6cc; }
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 700px; max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-title { font-size: 18px; font-weight: 600; }
+        .modal-close { font-size: 24px; cursor: pointer; color: #8f959e; }
+        .modal-close:hover { color: #1f2329; }
+        .form-group { margin-bottom: 20px; }
+        .form-label { display: block; font-size: 14px; font-weight: 500; color: #1f2329; margin-bottom: 8px; }
+        .form-input { width: 100%; padding: 10px 12px; border: 1px solid #dcdee0; border-radius: 6px; font-size: 14px; }
+        .form-input:focus { outline: none; border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .form-select { width: 100%; padding: 10px 12px; border: 1px solid #dcdee0; border-radius: 6px; font-size: 14px; background: white; }
+        .checkbox-group { display: flex; flex-direction: column; gap: 8px; }
+        .checkbox-item { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+        .checkbox-item input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+        .modal-footer { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; padding-top: 20px; border-top: 1px solid #f0f1f5; }
+        .form-tip { font-size: 12px; color: #8f959e; margin-top: 4px; line-height: 1.6; }
+        .example-box { background: #f5f7fa; border: 1px solid #dcdee0; border-radius: 6px; padding: 12px; margin-top: 8px; }
+        .example-item { font-size: 13px; color: #646a73; margin-bottom: 6px; font-family: 'Fira Code', 'Monaco', 'Menlo', monospace; }
+        
+        /* 多选下拉组件 */
+        .multi-select { position: relative; }
+        .multi-select-trigger { display: flex; flex-wrap: wrap; gap: 6px; min-height: 42px; padding: 8px 12px; border: 1px solid #dcdee0; border-radius: 6px; cursor: pointer; background: white; align-items: center; }
+        .multi-select-trigger:hover { border-color: #0052d9; }
+        .multi-select-trigger.active { border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .multi-select-placeholder { color: #8f959e; font-size: 14px; }
+        .multi-select-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: #f0f1f5; border-radius: 4px; font-size: 13px; color: #1f2329; }
+        .multi-select-tag-remove { cursor: pointer; color: #8f959e; font-size: 14px; line-height: 1; }
+        .multi-select-tag-remove:hover { color: #ea3636; }
+        .multi-select-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12); margin-top: 4px; z-index: 200; display: none; max-height: 240px; overflow-y: auto; }
+        .multi-select-dropdown.active { display: block; }
+        .multi-select-option { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; transition: all 0.2s; }
+        .multi-select-option:hover { background: #f5f7fa; }
+        .multi-select-option.selected { background: #e6f0ff; }
+        .multi-select-checkbox { width: 16px; height: 16px; border: 1px solid #dcdee0; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: white; flex-shrink: 0; }
+        .multi-select-option.selected .multi-select-checkbox { background: #0052d9; border-color: #0052d9; }
+        .multi-select-label { font-size: 14px; color: #1f2329; }
+        
+        /* 状态开关 */
+        .status-toggle {
+            width: 44px;
+            height: 24px;
+            background: #dcdee0;
+            border-radius: 12px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.3s;
+        }
+        .status-toggle.active { background: #00a870; }
+        .status-toggle-slider {
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        .status-toggle.active .status-toggle-slider { left: 22px; }
+    
+        /* ===== UI/UX ENHANCEMENTS ===== */
+        
+        /* Focus states for accessibility */
+        a:focus-visible, button:focus-visible, input:focus-visible, 
+        select:focus-visible, textarea:focus-visible, 
+        [tabindex]:focus-visible, .nav-item:focus-visible,
+        .sub-nav-item:focus-visible {
+            outline: 2px solid #0052d9;
+            outline-offset: 2px;
+        }
+
+        /* Enhanced table row hover */
+        tbody tr {
+            border-left: 3px solid transparent;
+        }
+        tbody tr:hover {
+            background: #f0f5ff !important;
+            border-left: 3px solid #0052d9;
+        }
+
+        /* Inline SVG icon alignment */
+        .nav-item svg, .sub-nav-item svg, .header-right svg {
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+    
+        /* Table responsive wrapper */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table-responsive table {
+            min-width: 100%;
+        }
+
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo"><div class="logo-icon">BK</div><span>Job</span></div>
+            <nav class="header-nav">
+                <div class="nav-item" onclick="location.href='首页.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>首页</span></div>
+                <div class="nav-item" onclick="location.href='快速执行.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></span><span>作业执行</span></div>
+                <div class="nav-item" onclick="location.href='脚本库.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span>作业模版</span></div>
+                <div class="nav-item" onclick="location.href='目标管理.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><span>目标管理</span></div>
+                <div class="nav-item active"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span>系统配置</span></div>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> 帮助文档</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 语言: 简体中文</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Admin</span>
+        </div>
+    </div>
+
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <div class="sub-nav-item" onclick="location.href='高危命令配置.html'">高危命令</div>
+            <div class="sub-nav-item active">高危路径</div>
+        </nav>
+    </div>
+
+    <div class="main-container">
+        <div class="page-intro">
+            <h2 class="intro-title">高危路径配置</h2>
+            <p class="intro-desc">高危路径规则用于限制文件分发操作的目标路径，防止向系统关键目录分发文件导致的安全风险或系统故障。建议配置系统关键目录（如 /etc、/bin、/boot 等）的保护规则，支持使用通配符和正则表达式匹配路径模式。</p>
+        </div>
+
+        <div class="content-card">
+            <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <div class="search-group">
+                    <select class="search-select" id="searchField" onchange="filterRuleList()">
+                        <option value="name">规则名称</option>
+                        <option value="pattern">路径规则</option>
+                        <option value="policy">处理策略</option>
+                        <option value="org">组织</option>
+                        <option value="status">启/停</option>
+                    </select>
+                    <input type="text" class="search-input-field" id="searchInput" placeholder="搜索..." oninput="filterRuleList()">
+                </div>
+                <button class="btn btn-primary" onclick="openModal()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 2px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 新增规则</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 150px;">规则名称</th>
+                        <th style="width: 220px;">路径匹配规则</th>
+                        <th style="width: 90px; white-space: nowrap;">处理策略</th>
+                        <th style="width: 150px;">组织</th>
+                        <th style="width: 70px; white-space: nowrap;">启/停</th>
+                        <th style="width: 140px; white-space: nowrap;">更新时间</th>
+                        <th style="width: 120px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="ruleTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 新增/编辑规则弹窗 -->
+    <div class="modal" id="ruleModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">新增高危路径规则</div>
+                <span class="modal-close" onclick="closeModal()">×</span>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">规则名称</label>
+                <input type="text" class="form-input" placeholder="请输入规则名称，例如：系统核心目录保护" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">路径匹配规则</label>
+                <input type="text" class="form-input" placeholder="请输入目标路径或路径匹配模式" />
+                <div class="form-tip">
+                    支持精确路径、通配符（*、**）和正则表达式。多个路径可用 | 分隔。
+                </div>
+                <div class="example-box">
+                    <strong style="font-size: 13px; color: #646a73;">示例：</strong>
+                    <div class="example-item">• /etc/passwd - 精确匹配单个文件</div>
+                    <div class="example-item">• /etc/** - 通配符匹配 /etc 下所有文件</div>
+                    <div class="example-item">• /bin|/sbin|/usr/bin - 匹配多个目录</div>
+                    <div class="example-item">• /tmp/.*\.(sh|bin) - 正则匹配临时目录下的可执行文件</div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">处理策略</label>
+                <select class="form-select">
+                    <option value="block">禁止分发</option>
+                    <option value="confirm">二次确认</option>
+                </select>
+                <div class="form-tip">
+                    禁止分发：直接拦截文件分发操作，不允许向该路径分发文件；<br>
+                    二次确认：弹窗提示用户确认后才能执行分发。
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">组织 <span style="color: #ea3636;">*</span></label>
+                <div class="multi-select" id="ruleOrgSelect">
+                    <div class="multi-select-trigger" onclick="toggleMultiSelect('ruleOrgSelect')">
+                        <span class="multi-select-placeholder">请选择组织</span>
+                    </div>
+                    <div class="multi-select-dropdown" id="ruleOrgDropdown"></div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">规则描述（可选）</label>
+                <input type="text" class="form-input" placeholder="简要描述规则的作用" />
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-primary">保存并启用</button>
+                <button class="btn btn-default">仅保存</button>
+                <button class="btn btn-default" onclick="closeModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 组织列表（平台权限体系）
+        const orgList = [
+            { id: 1, name: '运维部', color: '#0052d9' },
+            { id: 2, name: '开发部', color: '#00a870' },
+            { id: 3, name: '测试部', color: '#ff9800' },
+            { id: 4, name: '安全部', color: '#ea3636' },
+            { id: 5, name: 'DBA组', color: '#7c3aed' },
+            { id: 6, name: '基础架构', color: '#0891b2' }
+        ];
+
+        let ruleData = [
+            { id: 1, name: '系统核心目录保护', pattern: '/etc/**', policy: 'block', orgIds: '*', isSystem: true, status: 'enabled', updateTime: '2026-01-20 10:00:00' },
+            { id: 2, name: '系统二进制目录', pattern: '/bin|/sbin|/usr/bin|/usr/sbin', policy: 'block', orgIds: [1, 4], status: 'enabled', updateTime: '2026-01-18 14:30:00' },
+            { id: 3, name: '启动引导目录', pattern: '/boot/.*', policy: 'block', orgIds: [1, 6], status: 'enabled', updateTime: '2026-01-15 09:15:00' },
+            { id: 4, name: '用户家目录配置', pattern: '/root/\\.bashrc|/root/\\.profile', policy: 'confirm', orgIds: [1, 2], status: 'enabled', updateTime: '2026-01-12 11:20:00' },
+            { id: 5, name: '临时目录可执行文件', pattern: '/tmp/.*\\.(sh|bin|exe)', policy: 'confirm', orgIds: [4], status: 'disabled', updateTime: '2026-01-10 16:45:00' }
+        ];
+
+        // 渲染组织文本（逗号分隔）
+        function renderOrgText(orgIds) {
+            if (orgIds === '*') return '*';
+            if (!orgIds || orgIds.length === 0) return '-';
+            return orgIds.map(id => {
+                const org = orgList.find(o => o.id === id);
+                return org ? org.name : '';
+            }).filter(n => n).join('，');
+        }
+
+        function renderRuleList(data) {
+            const list = data || ruleData;
+            const tbody = document.getElementById('ruleTableBody');
+            tbody.innerHTML = list.map(rule => `
+                <tr>
+                    <td>${rule.name}</td>
+                    <td><code class="path-code">${rule.pattern}</code></td>
+                    <td class="nowrap"><span class="policy-badge ${rule.policy}">${rule.policy === 'block' ? '禁止分发' : '二次确认'}</span></td>
+                    <td class="org-cell">${renderOrgText(rule.orgIds)}</td>
+                    <td class="nowrap"><div class="status-toggle ${rule.status === 'enabled' ? 'active' : ''}" onclick="toggleRuleStatus(${rule.id})"><div class="status-toggle-slider"></div></div></td>
+                    <td class="nowrap">${rule.updateTime}</td>
+                    <td>
+                        <div class="action-links">
+                            <a class="action-link ${rule.isSystem ? 'disabled' : ''}" ${rule.isSystem ? '' : `onclick="editRule(${rule.id})"`}>编辑</a>
+                            <a class="action-link danger ${rule.isSystem ? 'disabled' : ''}" ${rule.isSystem ? '' : `onclick="deleteRule(${rule.id})"`}>删除</a>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 搜索过滤
+        function filterRuleList() {
+            const field = document.getElementById('searchField').value;
+            const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+            
+            if (!keyword) {
+                renderRuleList();
+                return;
+            }
+            
+            const filtered = ruleData.filter(rule => {
+                switch (field) {
+                    case 'name':
+                        return rule.name.toLowerCase().includes(keyword);
+                    case 'pattern':
+                        return rule.pattern.toLowerCase().includes(keyword);
+                    case 'policy':
+                        const policyLabel = rule.policy === 'block' ? '禁止分发' : '二次确认';
+                        return policyLabel.includes(keyword);
+                    case 'org':
+                        return renderOrgText(rule.orgIds).toLowerCase().includes(keyword);
+                    case 'status':
+                        const statusLabel = rule.status === 'enabled' ? '已启用' : '已停用';
+                        return statusLabel.includes(keyword);
+                    default:
+                        return true;
+                }
+            });
+            
+            renderRuleList(filtered);
+        }
+
+        function editRule(id) {
+            openModal();
+        }
+
+        function toggleRuleStatus(id) {
+            const rule = ruleData.find(r => r.id === id);
+            if (rule) {
+                rule.status = rule.status === 'enabled' ? 'disabled' : 'enabled';
+                renderRuleList();
+            }
+        }
+
+        function deleteRule(id) {
+            if (confirm('确定要删除该规则吗？')) {
+                ruleData = ruleData.filter(r => r.id !== id);
+                renderRuleList();
+            }
+        }
+
+        function openModal() {
+            initMultiSelect('ruleOrgSelect', 'ruleOrgDropdown', []);
+            document.getElementById('ruleModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('ruleModal').classList.remove('active');
+        }
+
+        // 多选下拉组件
+        let ruleSelectedOrgs = [];
+
+        // 点击其他地方关闭多选下拉
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.multi-select')) {
+                document.querySelectorAll('.multi-select-dropdown').forEach(d => {
+                    d.classList.remove('active');
+                });
+                document.querySelectorAll('.multi-select-trigger').forEach(t => {
+                    t.classList.remove('active');
+                });
+            }
+        });
+
+        // 初始化多选下拉
+        function initMultiSelect(containerId, dropdownId, selectedIds = []) {
+            const dropdown = document.getElementById(dropdownId);
+            dropdown.innerHTML = orgList.map(org => `
+                <div class="multi-select-option ${selectedIds.includes(org.id) ? 'selected' : ''}" 
+                     data-id="${org.id}" 
+                     onclick="event.stopPropagation(); toggleOrgOption('${containerId}', ${org.id})">
+                    <div class="multi-select-checkbox">${selectedIds.includes(org.id) ? '&#10003;' : ''}</div>
+                    <span class="multi-select-label">${org.name}</span>
+                </div>
+            `).join('');
+            
+            ruleSelectedOrgs = [...selectedIds];
+            updateMultiSelectTrigger(containerId);
+        }
+
+        // 切换多选下拉显示
+        function toggleMultiSelect(containerId) {
+            const container = document.getElementById(containerId);
+            const trigger = container.querySelector('.multi-select-trigger');
+            const dropdown = container.querySelector('.multi-select-dropdown');
+            
+            // 关闭其他下拉
+            document.querySelectorAll('.multi-select-dropdown').forEach(d => {
+                if (d !== dropdown) d.classList.remove('active');
+            });
+            document.querySelectorAll('.multi-select-trigger').forEach(t => {
+                if (t !== trigger) t.classList.remove('active');
+            });
+            
+            trigger.classList.toggle('active');
+            dropdown.classList.toggle('active');
+        }
+
+        // 切换选项
+        function toggleOrgOption(containerId, orgId) {
+            const idx = ruleSelectedOrgs.indexOf(orgId);
+            if (idx > -1) {
+                ruleSelectedOrgs.splice(idx, 1);
+            } else {
+                ruleSelectedOrgs.push(orgId);
+            }
+            
+            // 更新选项状态
+            initMultiSelect(containerId, 'ruleOrgDropdown', ruleSelectedOrgs);
+        }
+
+        // 更新触发器显示
+        function updateMultiSelectTrigger(containerId) {
+            const container = document.getElementById(containerId);
+            const trigger = container.querySelector('.multi-select-trigger');
+            
+            if (ruleSelectedOrgs.length === 0) {
+                trigger.innerHTML = '<span class="multi-select-placeholder">请选择组织</span>';
+            } else {
+                trigger.innerHTML = ruleSelectedOrgs.map(id => {
+                    const org = orgList.find(o => o.id === id);
+                    return `<span class="multi-select-tag" style="background: ${org.color}20; color: ${org.color};">
+                        ${org.name}
+                        <span class="multi-select-tag-remove" onclick="event.stopPropagation(); removeOrg('${containerId}', ${id})">×</span>
+                    </span>`;
+                }).join('');
+            }
+        }
+
+        // 移除已选组织
+        function removeOrg(containerId, orgId) {
+            toggleOrgOption(containerId, orgId);
+        }
+
+        // 页面加载时渲染列表
+        document.addEventListener('DOMContentLoaded', () => {
+            renderRuleList();
+        });
+    </script>
+</body>
+</html>

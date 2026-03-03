@@ -17,6 +17,7 @@ interface OperateModalProps {
   selectedOptions: number[];
   loading?: boolean;
   isNeedGuide?: boolean;
+  showToolDetail?: boolean;
   onOk: (selected: number[]) => void;
   onCancel: () => void;
 }
@@ -30,6 +31,7 @@ const SelectorOperateModal: React.FC<OperateModalProps> = ({
   selectedOptions,
   loading = false,
   isNeedGuide = true,
+  showToolDetail = false,
   onOk,
   onCancel
 }) => {
@@ -98,26 +100,45 @@ const SelectorOperateModal: React.FC<OperateModalProps> = ({
                 onChange={handleSearch}
               />
             </div>
-            {/* 展示过滤后的选项 */}
             <div className="grid grid-cols-3 gap-4 py-4 max-h-[50vh] overflow-y-auto">
-              {filteredOptions.map((option, index) => (
-                <div
-                  key={option.id}
-                  className={`flex items-center p-4 border rounded-md cursor-pointer ${
-                    tempSelectedOptions.includes(option.id) ? styles.selectedKnowledge : ''
-                  }`}
-                  onClick={() => handleOptionSelect(option.id)}
-                >
-                  <div className="w-8 flex-shrink-0">
-                    <Icon type={option.icon || getIconTypeByIndex(index)} className="text-2xl" />
+              {filteredOptions.map((option, index) => {
+                const tooltipContent = showToolDetail ? (
+                  <div className="max-w-[280px]">
+                    <div className="font-medium mb-1">{option.name}</div>
+                    {option.description && (
+                      <div className="text-xs text-gray-400 mb-2 line-clamp-3">{option.description}</div>
+                    )}
+                    <a
+                      href={`/opspilot/tool?id=${option.id}&name=${encodeURIComponent(option.name || '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-400 hover:text-blue-300"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {t('common.viewDetails')}
+                    </a>
                   </div>
-                  <Tooltip title={option.name}>
-                    <span className="ml-2 inline-block max-w-[150px] whitespace-nowrap overflow-hidden text-ellipsis">
-                      {option.name}
-                    </span>
-                  </Tooltip>
-                </div>
-              ))}
+                ) : option.name;
+
+                return (
+                  <div
+                    key={option.id}
+                    className={`flex items-center p-4 border rounded-md cursor-pointer ${
+                      tempSelectedOptions.includes(option.id) ? styles.selectedKnowledge : ''
+                    }`}
+                    onClick={() => handleOptionSelect(option.id)}
+                  >
+                    <div className="w-8 flex-shrink-0">
+                      <Icon type={option.icon || getIconTypeByIndex(index)} className="text-2xl" />
+                    </div>
+                    <Tooltip title={tooltipContent} overlayInnerStyle={showToolDetail ? { padding: '12px' } : undefined}>
+                      <span className="ml-2 inline-block max-w-[150px] whitespace-nowrap overflow-hidden text-ellipsis">
+                        {option.name}
+                      </span>
+                    </Tooltip>
+                  </div>
+                );
+              })}
             </div>
             <div className="pt-4">
               {t('skill.selectedCount')}: {tempSelectedOptions.length}

@@ -9,7 +9,7 @@ const useLevelList = (): ListItem[] => {
     () => [
       { label: t('monitor.events.critical'), value: 'critical' },
       { label: t('monitor.events.error'), value: 'error' },
-      { label: t('monitor.events.warning'), value: 'warning' },
+      { label: t('monitor.events.warning'), value: 'warning' }
     ],
     [t]
   );
@@ -22,7 +22,7 @@ const useConditionList = (): ListItem[] => {
       { id: '=', name: '=' },
       { id: '!=', name: '!=' },
       { id: '=~', name: t('monitor.include') },
-      { id: '!~', name: t('monitor.exclude') },
+      { id: '!~', name: t('monitor.exclude') }
     ],
     [t]
   );
@@ -34,10 +34,21 @@ const useStateMap = (): StateMap => {
     () => ({
       new: t('monitor.events.new'),
       recovered: t('monitor.events.recovery'),
-      closed: t('monitor.events.closed'),
+      closed: t('monitor.events.closed')
     }),
     [t]
   );
 };
 
-export { useLevelList, useConditionList, useStateMap };
+const useAlertTypeMap = (): Record<string, string> => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      alert: t('monitor.events.alertTypeThreshold'),
+      no_data: t('monitor.events.alertTypeNoData')
+    }),
+    [t]
+  );
+};
+
+export { useLevelList, useConditionList, useStateMap, useAlertTypeMap };

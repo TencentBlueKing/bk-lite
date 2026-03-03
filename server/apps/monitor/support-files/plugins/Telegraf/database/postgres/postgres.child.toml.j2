@@ -1,5 +1,6 @@
 [[inputs.postgresql]]
-    address = "host={{ host }} port={{ port }} user={{ username }} password=${PASSWORD__{{ config_id }}} sslmode=disable"
+    startup_error_behavior = "retry"
+    address = "postgres://{{ username }}:${PASSWORD__{{ config_id }}}@{{ host }}:{{ port }}/{{ dbname | default('postgres') }}?sslmode=disable"
     ignored_databases = ["template0", "template1"]
     interval = "{{ interval }}s"
     [inputs.postgresql.tags]

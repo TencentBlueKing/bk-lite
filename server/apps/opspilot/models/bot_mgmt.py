@@ -1,14 +1,13 @@
-import json
 import secrets
 import uuid
 
 from django.db import models
-from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from django_minio_backend import MinioBackend
 from django_yaml_field import YAMLField
 
+from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.opspilot.enum import BotTypeChoice, ChannelChoices, WorkFlowExecuteType
@@ -34,6 +33,8 @@ class Bot(MaintainerInfo):
     replica_count = models.IntegerField(verbose_name="副本数量", default=1)
     bot_type = models.IntegerField(default=BotTypeChoice.PILOT, verbose_name="类型", choices=BotTypeChoice.choices)
     instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name="实例ID", db_index=True)
+    is_builtin = models.BooleanField(default=False, verbose_name="是否内置", db_index=True)
+    is_pinned = models.BooleanField(default=False, verbose_name="是否置顶", db_index=True)
 
     def __str__(self):
         return self.name
@@ -265,74 +266,57 @@ class BotWorkFlow(models.Model):
 
         # 自动同步聊天应用
         try:
-            from apps.core.logger import opspilot_logger as logger
-
             created, updated, deleted = ChatApplication.sync_applications_from_workflow(self)
-            logger.info(f"BotWorkFlow {self.id} 保存完成，应用同步结果: " f"创建={created}, 更新={updated}, 删除={deleted}")
+            logger.info(f"BotWorkFlow {self.id} 保存完成，应用同步结果: 创建={created}, 更新={updated}, 删除={deleted}")
         except Exception as e:
-            from apps.core.logger import opspilot_logger as logger
-
             logger.error(f"BotWorkFlow {self.id} 同步聊天应用失败: {str(e)}", exc_info=True)
-
-    @classmethod
-    def create_celery_task(cls, bot_id, work_data):
-        from django_celery_beat.models import CrontabSchedule, PeriodicTask
-
-        cls.delete_celery_task(bot_id)
-        celery_nodes = [i for i in work_data["nodes"] if i.get("type") == "celery"]
-        for i in celery_nodes:
-            node_id = i["id"]
-            data_config = i["data"]["config"]
-            hour, minute = data_config.get("time", "00:00").split(":")
-            if data_config["frequency"] == "daily":
-                crontab_config = {}
-            elif data_config["frequency"] == "weekly":
-                crontab_config = {"day_of_week": str(data_config.get("weekday", 0))}
-            else:
-                crontab_config = {
-                    "day_of_month": str(data_config.get("day", 1)),
-                }
-            # 创建或获取 Crontab 调度配置
-            crontab_schedule, created = CrontabSchedule.objects.get_or_create(
-                minute=minute,
-                hour=hour,
-                day_of_week=crontab_config.get("day_of_week", "*"),
-                day_of_month=crontab_config.get("day_of_month", "*"),
-                month_of_year="*",
-                timezone=timezone.get_current_timezone(),
-            )
-            # 准备任务参数
-            task_kwargs = {"bot_id": bot_id, "node_id": node_id, "message": data_config["message"]}
-
-            task_name = f"chat_flow_celery_task_{bot_id}_{node_id}"
-            # 创建或更新周期性任务
-            PeriodicTask.objects.update_or_create(
-                name=task_name,
-                defaults={
-                    "task": "apps.opspilot.tasks.chat_flow_celery_task",
-                    "enabled": True,
-                    "crontab": crontab_schedule,
-                    "kwargs": json.dumps(task_kwargs),  # 使用kwargs而不是args
-                    "args": "[]",  # 清空args
-                },
-            )
-
-    @staticmethod
-    def delete_celery_task(bot_id):
-        from django_celery_beat.models import PeriodicTask
-
-        task_name = f"chat_flow_celery_task_{bot_id}_"
-        PeriodicTask.objects.filter(name__startswith=task_name).delete()
 
 
 class WorkFlowTaskResult(models.Model):
     bot_work_flow = models.ForeignKey(BotWorkFlow, on_delete=models.CASCADE, verbose_name="机器人工作流")
+    execution_id = models.CharField(max_length=36, default="", blank=True, db_index=True, verbose_name="执行实例ID")
     run_time = models.DateTimeField(auto_now_add=True, verbose_name="运行时间")
     status = models.CharField(max_length=50, verbose_name="状态")
     input_data = models.TextField(verbose_name="输入数据")
     output_data = models.JSONField(verbose_name="输出数据", default=dict)
     last_output = models.TextField(verbose_name="最后输出", blank=True, null=True)
     execute_type = models.CharField(max_length=50, default="restful")
+
+
+class WorkFlowTaskNodeResult(models.Model):
+    task_result = models.ForeignKey(
+        WorkFlowTaskResult,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        verbose_name="执行主记录",
+        related_name="node_results",
+    )
+    execution_id = models.CharField(max_length=36, db_index=True, verbose_name="执行实例ID")
+    node_id = models.CharField(max_length=100, verbose_name="节点ID")
+    node_name = models.CharField(max_length=255, default="", blank=True, verbose_name="节点名称")
+    node_type = models.CharField(max_length=100, default="", blank=True, verbose_name="节点类型")
+    node_index = models.IntegerField(null=True, blank=True, verbose_name="节点执行顺序")
+    status = models.CharField(max_length=20, verbose_name="执行状态")
+    input_data = models.JSONField(default=dict, verbose_name="节点输入")
+    output_data = models.JSONField(default=dict, verbose_name="节点输出")
+    error_message = models.TextField(blank=True, null=True, verbose_name="错误信息")
+    start_time = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
+    end_time = models.DateTimeField(null=True, blank=True, verbose_name="结束时间")
+    duration_ms = models.BigIntegerField(null=True, blank=True, verbose_name="耗时毫秒")
+
+    class Meta:
+        verbose_name = "WorkFlow节点执行明细"
+        verbose_name_plural = verbose_name
+        db_table = "bot_mgmt_workflowtasknoderesult"
+        constraints = [
+            models.UniqueConstraint(fields=["execution_id", "node_id"], name="uniq_workflow_node_execution"),
+        ]
+        indexes = [
+            models.Index(fields=["task_result", "node_index"]),
+            models.Index(fields=["status", "end_time"]),
+            models.Index(fields=["execution_id"]),
+        ]
 
 
 class WorkFlowConversationHistory(models.Model):
@@ -364,6 +348,7 @@ class WorkFlowConversationHistory(models.Model):
         help_text="对话入口类型：openai/restful/enterprise_wechat/wechat_official/dingtalk，celery定时触发不记录",
     )
     session_id = models.CharField(max_length=100, default="")
+    execution_id = models.CharField(max_length=36, default="", blank=True, db_index=True, verbose_name="执行实例ID")
 
     class Meta:
         verbose_name = "WorkFlow对话历史"
@@ -435,7 +420,6 @@ class ChatApplication(models.Model):
         ordering = ["id"]
         indexes = [
             models.Index(fields=["bot", "app_type"]),
-            models.Index(fields=["node_id"]),
         ]
 
     def __str__(self):
@@ -455,8 +439,6 @@ class ChatApplication(models.Model):
         Returns:
             tuple: (创建数量, 更新数量, 删除数量)
         """
-        from apps.core.logger import opspilot_logger as logger
-
         bot = bot_work_flow.bot
 
         # 只有当 Bot 上线时才同步应用

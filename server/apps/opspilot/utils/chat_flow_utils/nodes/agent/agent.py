@@ -1,6 +1,7 @@
 """
 智能体节点
 """
+
 import json
 import time
 from typing import Any, Dict
@@ -9,8 +10,7 @@ import jinja2
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMModel, LLMSkill
-from apps.opspilot.services.chat_service import ChatService
-from apps.opspilot.services.llm_service import llm_service
+from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 
@@ -122,6 +122,10 @@ class AgentNode(BaseNodeExecutor):
         Returns:
             LLM参数字典
         """
+        # 判断是否为第三方渠道调用，如果是则禁用知识来源显示
+        is_third_party = flow_input.get("is_third_party", False)
+        enable_rag_knowledge_source = False if is_third_party else skill.enable_rag_knowledge_source
+        logger.info(f"is_third_party：{is_third_party}")
         return {
             "llm_model": skill.llm_model_id,
             "skill_prompt": skill.skill_prompt,
@@ -131,7 +135,7 @@ class AgentNode(BaseNodeExecutor):
             "conversation_window_size": skill.conversation_window_size,
             "enable_rag": skill.enable_rag,
             "rag_score_threshold": [{"knowledge_base": int(key), "score": float(value)} for key, value in skill.rag_score_threshold_map.items()],
-            "enable_rag_knowledge_source": skill.enable_rag_knowledge_source,
+            "enable_rag_knowledge_source": enable_rag_knowledge_source,
             "show_think": skill.show_think,
             "tools": skill.tools,
             "skill_type": skill.skill_type,
@@ -141,6 +145,7 @@ class AgentNode(BaseNodeExecutor):
             "km_llm_model": skill.km_llm_model,
             "enable_suggest": skill.enable_suggest,
             "enable_query_rewrite": skill.enable_query_rewrite,
+            "locale": flow_input.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
         }
 
     def sse_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):
@@ -170,7 +175,7 @@ class AgentNode(BaseNodeExecutor):
         skill_type = llm_params.get("skill_type")
         llm_params.pop("group", 0)
 
-        chat_kwargs, _, _ = llm_service.format_chat_server_kwargs(llm_params, llm_model)
+        chat_kwargs, _, _ = chat_service.format_chat_server_kwargs(llm_params, llm_model)
         # 创建 agent 实例
         graph, request = create_agent_instance(skill_type, chat_kwargs)
 
@@ -182,26 +187,16 @@ class AgentNode(BaseNodeExecutor):
 
                 chunk_index = 0
                 async for sse_line in graph.agui_stream(request):
-                    # 如果 show_think=False，过滤掉工具调用相关事件
-                    if not show_think and sse_line.startswith("data: "):
-                        try:
-                            data_str = sse_line[6:].strip()
-                            data_json = json.loads(data_str)
-                            event_type = data_json.get("type", "")
-
-                            # 过滤工具调用相关事件
-                            if event_type in ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]:
-                                continue
-                        except (json.JSONDecodeError, ValueError):
-                            pass
-
-                    chunk_index += 1
                     yield sse_line
 
                 logger.info(f"[AgentNode-AGUI] 流式处理完成 - 生成 {chunk_index} 个chunk")
             except Exception as e:
                 logger.error(f"[AgentNode-AGUI] stream error: {e}", exc_info=True)
-                error_data = {"type": "ERROR", "error": f"节点执行错误: {str(e)}", "timestamp": int(time.time() * 1000)}
+                error_data = {
+                    "type": "ERROR",
+                    "error": f"节点执行错误: {str(e)}",
+                    "timestamp": int(time.time() * 1000),
+                }
                 yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
         return generate_agui_stream()
@@ -250,7 +245,10 @@ class AgentNode(BaseNodeExecutor):
         # 使用同步版本的 invoke_chat,避免异步上下文冲突
         data, _, _ = ChatService.invoke_chat(llm_params)
 
-        return {output_key: data["message"]}
+        result = {output_key: data["message"]}
+        if data.get("browser_steps"):
+            result["browser_steps"] = data["browser_steps"]
+        return result
 
 
 # 向后兼容的别名

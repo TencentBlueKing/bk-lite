@@ -33,13 +33,11 @@ const ChunkDetail: React.FC<ChunkDetailProps> = ({
 
   const fetchQAPairData = useCallback(async () => {
     if (!chunkId || !indexName) {
-      console.log('Missing parameters:', { chunkId, indexName });
       setQaPairs([]);
       setLoading(false);
       return;
     }
     
-    console.log('Fetching QA pairs with params:', { indexName, chunkId });
     setLoading(true);
     try {
       const data = await fetchChunkQAPairs(indexName, chunkId, knowledgeBaseId);

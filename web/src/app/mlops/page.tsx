@@ -2,5 +2,5 @@
 import { redirect } from "next/navigation";
 
 export default function HomePage() {
-  return redirect('/mlops/manage');
+  return redirect('/mlops/anomaly_detection');
 }

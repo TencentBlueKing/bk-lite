@@ -5,7 +5,7 @@ import {
   TableDataItem,
   Organization,
   UserItem,
-  ColumnItem,
+  ColumnItem
 } from '@/app/log/types';
 import { useTranslation } from '@/utils/i18n';
 import informationStyle from './index.module.scss';
@@ -24,7 +24,7 @@ const Information: React.FC<TableDataItem> = ({
   formData,
   userList,
   onClose,
-  rawData = [],
+  rawData = []
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -53,22 +53,22 @@ const Information: React.FC<TableDataItem> = ({
         sorter: (a: any, b: any) => a.id - b.id,
         render: (val, { _time }) => (
           <>{val ? convertToLocalizedTime(_time) : '--'}</>
-        ),
+        )
       },
       {
         title: 'message',
         dataIndex: '_msg',
         key: '_msg',
         width: 600,
-        render: (val) => <>{val || '--'}</>,
-      },
+        render: (val) => <>{val || '--'}</>
+      }
     ];
     if (!isAggregate && formData.show_fields?.length) {
       const displayColumns = formData.show_fields.map((item: string) => ({
         title: item,
         dataIndex: item,
         key: item,
-        width: 100,
+        width: 100
       }));
       columns = [...columns, ...displayColumns];
     }
@@ -79,7 +79,7 @@ const Information: React.FC<TableDataItem> = ({
           title: item,
           dataIndex: item,
           key: item,
-          width: 100,
+          width: 100
         }));
     }
     return columns;
@@ -218,7 +218,7 @@ const Information: React.FC<TableDataItem> = ({
         isClosed
           ? +new Date(convertToLocalizedTime(formData.end_event_time))
           : +new Date()
-      ),
+      )
     };
     if (isAggregate) {
       params.query = buildVictoriaLogsQuery();
@@ -233,7 +233,7 @@ const Information: React.FC<TableDataItem> = ({
     try {
       await patchLogAlert({
         status: 'closed',
-        id: row.id,
+        id: row.id
       });
       message.success(t('log.event.successfullyClosed'));
       onClose();
@@ -243,7 +243,8 @@ const Information: React.FC<TableDataItem> = ({
   };
 
   const getUsers = (id: string) => {
-    return userList.find((item: UserItem) => item.id === id)?.username || '--';
+    const user = userList.find((item: UserItem) => item.id === id);
+    return user?.display_name || '--';
   };
 
   const showNotifiers = (row: TableDataItem) => {
@@ -266,12 +267,12 @@ const Information: React.FC<TableDataItem> = ({
           <div
             className={informationStyle.level}
             style={{
-              borderLeft: `4px solid ${LEVEL_MAP[formData.level]}`,
+              borderLeft: `4px solid ${LEVEL_MAP[formData.level]}`
             }}
           >
             <span
               style={{
-                color: LEVEL_MAP[formData.level] as string,
+                color: LEVEL_MAP[formData.level] as string
               }}
             >
               {LEVEL_LIST.find((item) => item.value === formData.level)

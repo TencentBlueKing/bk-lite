@@ -9,7 +9,7 @@ import {
   Tabs,
   Spin,
   Tooltip,
-  Popconfirm,
+  Popconfirm
 } from 'antd';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -24,7 +24,7 @@ import {
   TabItem,
   TimeSelectorDefaultValue,
   TimeValuesProps,
-  TreeItem,
+  TreeItem
 } from '@/app/log/types';
 import { ObjectItem } from '@/app/log/types/event';
 import { AlertOutlined } from '@ant-design/icons';
@@ -61,12 +61,11 @@ const Alert: React.FC = () => {
   const commonContext = useCommon();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const detailRef = useRef<ModalRef>(null);
-  const users = useRef(commonContext?.userList || []);
   const alertAbortControllerRef = useRef<AbortController | null>(null);
   const alertRequestIdRef = useRef<number>(0);
   const chartAbortControllerRef = useRef<AbortController | null>(null);
   const chartRequestIdRef = useRef<number>(0);
-  const userList: UserItem[] = users.current;
+  const userList: UserItem[] = commonContext?.userList || [];
   const [searchText, setSearchText] = useState<string>('');
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [chartLoading, setChartLoading] = useState<boolean>(false);
@@ -74,20 +73,20 @@ const Alert: React.FC = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
   const [frequence, setFrequence] = useState<number>(0);
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
     timeRange: [],
-    originValue: 10080,
+    originValue: 10080
   });
   const timeDefaultValue = (useRef<TimeSelectorDefaultValue>({
     selectValue: 10080,
-    rangePickerVaule: null,
+    rangePickerVaule: null
   })?.current || {}) as any;
   const [filters, setFilters] = useState<FiltersConfig>({
     level: [],
-    state: [],
+    state: []
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
@@ -102,40 +101,35 @@ const Alert: React.FC = () => {
       title: t('log.event.level'),
       dataIndex: 'level',
       key: 'level',
-      width: 100,
       render: (_, { level }) => (
         <Tag icon={<AlertOutlined />} color={LEVEL_MAP[level] as string}>
           {LEVEL_LIST.find((item) => item.value === level)?.label || '--'}
         </Tag>
-      ),
+      )
     },
     {
       title: t('common.time'),
       dataIndex: 'updated_at',
       key: 'updated_at',
-      width: 160,
       sorter: (a: any, b: any) => a.id - b.id,
       render: (_, { updated_at }) => (
         <>{updated_at ? convertToLocalizedTime(updated_at) : '--'}</>
-      ),
+      )
     },
     {
       title: t('log.event.alertName'),
       dataIndex: 'alert_name',
-      key: 'alert_name',
-      width: 120,
+      key: 'alert_name'
     },
     {
       title: t('log.integration.collectType'),
       dataIndex: 'collect_type_name',
-      key: 'collect_type_name',
-      width: 120,
+      key: 'collect_type_name'
     },
     {
       title: t('log.event.alertType'),
       dataIndex: 'alert_type',
       key: 'alert_type',
-      width: 140,
       render: (_, { alert_type }) => (
         <EllipsisWithTooltip
           className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
@@ -145,33 +139,30 @@ const Alert: React.FC = () => {
               : t('log.event.aggregationAlert')
           }
         />
-      ),
+      )
     },
     {
       title: t('log.event.state'),
       dataIndex: 'status',
       key: 'status',
-      width: 80,
       render: (_, { status }) => (
         <Tag color={status === 'new' ? 'blue' : 'var(--color-text-4)'}>
           {STATE_MAP[status]}
         </Tag>
-      ),
+      )
     },
     {
       title: t('log.event.notify'),
       dataIndex: 'notify',
       key: 'notify',
-      width: 100,
       render: (_, record) => (
         <>{t(`log.event.${record.notice ? 'notified' : 'unnotified'}`)}</>
-      ),
+      )
     },
     {
       title: t('common.operator'),
       dataIndex: 'operator',
       key: 'operator',
-      width: 100,
       render: (_, { operator }) => {
         return operator ? (
           <div className="column-user" title={operator}>
@@ -191,7 +182,7 @@ const Alert: React.FC = () => {
         ) : (
           <>--</>
         );
-      },
+      }
     },
     {
       title: t('common.action'),
@@ -226,8 +217,8 @@ const Alert: React.FC = () => {
             </Popconfirm>
           </Permission>
         </>
-      ),
-    },
+      )
+    }
   ];
 
   const isActiveAlarm = useMemo(() => {
@@ -254,7 +245,7 @@ const Alert: React.FC = () => {
     objectId,
     searchText,
     pagination.current,
-    pagination.pageSize,
+    pagination.pageSize
   ]);
 
   useEffect(() => {
@@ -265,7 +256,7 @@ const Alert: React.FC = () => {
     timeValues,
     objectId,
     pagination.current,
-    pagination.pageSize,
+    pagination.pageSize
   ]);
 
   useEffect(() => {
@@ -289,7 +280,7 @@ const Alert: React.FC = () => {
     setActiveTab(val);
     const filtersConfig = {
       level: [],
-      state: [],
+      state: []
     };
     setFilters(filtersConfig);
     setSearchText('');
@@ -309,29 +300,32 @@ const Alert: React.FC = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.collector]) {
-        acc[item.collector] = {
-          title: item.collector || '--',
-          key: item.collector,
-          children: [],
-        };
-      }
-      acc[item.collector].children.push({
-        title: item.name || '--',
-        label: item.name || '--',
-        key: item.id,
-        children: [],
-      });
-      return acc;
-    }, {} as Record<string, TreeItem>);
+    const groupedData = data.reduce(
+      (acc, item) => {
+        if (!acc[item.collector]) {
+          acc[item.collector] = {
+            title: item.collector || '--',
+            key: item.collector,
+            children: []
+          };
+        }
+        acc[item.collector].children.push({
+          title: item.name || '--',
+          label: item.name || '--',
+          key: item.id,
+          children: []
+        });
+        return acc;
+      },
+      {} as Record<string, TreeItem>
+    );
     return [
       {
         title: t('common.all'),
         key: 'all',
-        children: [],
+        children: []
       },
-      ...Object.values(groupedData),
+      ...Object.values(groupedData)
     ];
   };
 
@@ -340,7 +334,7 @@ const Alert: React.FC = () => {
     try {
       await patchLogAlert({
         id,
-        status: 'closed',
+        status: 'closed'
       });
       message.success(t('log.event.successfullyClosed'));
       onRefresh();
@@ -365,7 +359,7 @@ const Alert: React.FC = () => {
       page: pagination.current,
       page_size: pagination.pageSize,
       end_event_time: isActive ? '' : dayjs(recentTimeRange[0]).toISOString(),
-      start_event_time: isActive ? '' : dayjs(recentTimeRange[1]).toISOString(),
+      start_event_time: isActive ? '' : dayjs(recentTimeRange[1]).toISOString()
     };
     return params;
   };
@@ -396,13 +390,13 @@ const Alert: React.FC = () => {
     try {
       setTableLoading(type !== 'timer');
       const data = await getLogAlert(params, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       if (currentRequestId !== alertRequestIdRef.current) return;
       setTableData(data.items || []);
       setPagination((pre) => ({
         ...pre,
-        total: data.count,
+        total: data.count
       }));
     } finally {
       if (currentRequestId === alertRequestIdRef.current) {
@@ -433,18 +427,18 @@ const Alert: React.FC = () => {
     try {
       setChartLoading(type !== 'timer');
       const data = await getLogAlertStats(chartParams, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       if (currentRequestId !== chartRequestIdRef.current) return;
       const chartList = (data.time_series || []).map((item: TableDataItem) => {
         const levels = {
           critical: 0,
           warning: 0,
-          error: 0,
+          error: 0
         };
         return {
           ...Object.assign(levels, item.levels),
-          time: convertToLocalizedTime(item.time_start),
+          time: convertToLocalizedTime(item.time_start)
         };
       });
       setChartData(chartList);
@@ -468,14 +462,14 @@ const Alert: React.FC = () => {
     detailRef.current?.showModal({
       title: t('log.event.alertDetail'),
       type: 'add',
-      form: row,
+      form: row
     });
   };
 
   const onTimeChange = (val: number[], originValue: number | null) => {
     setTimeValues({
       timeRange: val,
-      originValue,
+      originValue
     });
   };
 
@@ -576,7 +570,7 @@ const Alert: React.FC = () => {
                       className="absolute cursor-pointer"
                       style={{
                         top: '-4px',
-                        right: '-14px',
+                        right: '-14px'
                       }}
                     >
                       <Icon
@@ -604,7 +598,7 @@ const Alert: React.FC = () => {
             />
             <CustomTable
               className="w-full"
-              scroll={{ y: 'calc(100vh - 640px)', x: 'calc(100vw - 320px)' }}
+              scroll={{ y: 'calc(100vh - 640px)', x: 'max-content' }}
               columns={columns}
               dataSource={tableData}
               pagination={pagination}

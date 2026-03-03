@@ -1,21 +1,43 @@
 [[inputs.mysql]]
+    startup_error_behavior = "retry"
     servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/?tls=false"]
     metric_version = 2
     interval = "{{ interval }}s"
 
     fieldinclude = [
-        "aborted_clients",
-        "aborted_connects",
-        "access_denied_errors",
-        "aria_pagecache_blocks_unused",
-        "aria_pagecache_blocks_used",
-        "bytes_received",
-        "bytes_sent",
-        "com_select",
-        "com_insert",
-        "com_update",
-        "com_delete",
-        "threads_connected"
+      # 连接状态
+      "threads_connected",
+      "threads_running",
+      "aborted_connects",
+      "aborted_clients",
+
+      # 查询性能
+      "slow_queries",
+      "queries",
+      "com_select",
+      "com_insert",
+      "com_update",
+      "com_delete",
+
+      # InnoDB 性能
+      "innodb_row_lock_time_avg",
+      "innodb_row_lock_waits",
+      "innodb_buffer_pool_read_requests",
+      "innodb_buffer_pool_reads",
+      "innodb_buffer_pool_pages_dirty",
+      "innodb_buffer_pool_pages_total",
+
+      # 网络流量
+      "bytes_received",
+      "bytes_sent",
+
+      # 表缓存
+      "table_open_cache_hits",
+      "table_open_cache_misses",
+
+      # 临时表
+      "created_tmp_disk_tables",
+      "created_tmp_tables"
     ]
 
     [inputs.mysql.tags]

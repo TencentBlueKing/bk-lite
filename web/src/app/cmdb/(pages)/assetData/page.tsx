@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { KeepAlive } from 'react-activation';
+import { KeepAlive, useActivate } from 'react-activation';
 import {
   Button,
   Space,
@@ -14,23 +14,20 @@ import {
   Input,
   Empty,
 } from 'antd';
+import type { MenuProps } from 'antd';
+import { DownOutlined } from '@ant-design/icons';
+import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
-import SearchFilter from './list/searchFilter';
-import FilterBar from './list/FilterBar';
-import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
-import ImportInst from './list/importInst';
-import SelectInstance from './detail/relationships/selectInstance';
-import ExportModal from './components/exportModal';
-import { ExportModalRef } from '@/app/cmdb/types/assetData';
-import { DownOutlined } from '@ant-design/icons';
-import { useSearchParams } from 'next/navigation';
-import assetDataStyle from './index.module.scss';
-import FieldModal from './list/fieldModal';
+import PermissionWrapper from '@/components/permission';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
-const { confirm } = Modal;
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
+import { ensureCollectTaskMap } from '@/app/cmdb/utils/collectTask';
+import { useCommon } from '@/app/cmdb/context/common';
+import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
+import { useModelApi, useClassificationApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import {
   GroupItem,
   ModelItem,
@@ -39,26 +36,119 @@ import {
   AttrFieldType,
   RelationInstanceRef,
   AssoTypeItem,
+  FullInfoGroupItem,
 } from '@/app/cmdb/types/assetManage';
-import { useCommon } from '@/app/cmdb/context/common';
-import type { MenuProps } from 'antd';
-import { useRouter } from 'next/navigation';
-import PermissionWrapper from '@/components/permission';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import {
-  useModelApi,
-  useClassificationApi,
-  useInstanceApi,
-} from '@/app/cmdb/api';
+import { ExportModalRef } from '@/app/cmdb/types/assetData';
+import SearchFilter from './list/searchFilter';
+import FilterBar from './list/filterBar';
+import ImportInst from './list/importInst';
+import FieldModal from './list/fieldModal';
+import SelectInstance from './detail/relationships/selectInstance';
+import ExportModal from './components/exportModal';
+import assetDataStyle from './index.module.scss';
+
+const { confirm } = Modal;
+
+const GROUP_KEY_PREFIX = 'group:';
+const COPY_EXCLUDE_FIELDS = ['_id', 'inst_id', 'id', 'created_at', 'updated_at', 'created_by', 'updated_by'];
+
+const buildGroupKey = (classificationId: string) => `${GROUP_KEY_PREFIX}${classificationId}`;
+const isGroupKey = (key: string) => key.startsWith(GROUP_KEY_PREFIX);
+
+const parseUrlQueryList = (urlQueryList: string): FilterItem[] | null => {
+  if (!urlQueryList) return null;
+  try {
+    const parsed = JSON.parse(decodeURIComponent(urlQueryList));
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch {
+    console.error('Failed to parse query_list from URL');
+    return null;
+  }
+};
+
+const buildModelGroups = (groupData: GroupItem[], modelList: ModelItem[]): GroupItem[] => {
+  const groups = deepClone(groupData).map((item: GroupItem) => ({
+    ...item,
+    list: [],
+    count: 0,
+  }));
+  modelList.forEach((modelItem: ModelItem) => {
+    const target = groups.find((item: GroupItem) => item.classification_id === modelItem.classification_id);
+    if (target) {
+      target.list.push(modelItem);
+      target.count++;
+    }
+  });
+  return groups;
+};
+
+const buildTreeData = (
+  modelGroup: GroupItem[],
+  renderTitle: (name: string, id: string) => React.ReactNode
+) => {
+  return modelGroup.map((group) => ({
+    title: group.classification_name,
+    content: group.classification_name,
+    key: buildGroupKey(group.classification_id),
+    children: group.list.map((item) => ({
+      content: item.model_name,
+      title: renderTitle(item.model_name, item.model_id),
+      key: item.model_id,
+    })),
+  }));
+};
+
+const filterTreeNodes = (nodes: any[], searchText: string, renderTitle: (name: string, id: string) => React.ReactNode): any[] => {
+  if (!searchText) return nodes;
+  const lowerSearch = searchText.toLowerCase();
+
+  return nodes.reduce((filtered: any[], node) => {
+    const matchesSearch = node.content?.toLowerCase().includes(lowerSearch);
+
+    if (node.children) {
+      const filteredChildren = filterTreeNodes(node.children, searchText, renderTitle);
+      if (filteredChildren.length > 0 || matchesSearch) {
+        filtered.push({
+          ...node,
+          children: filteredChildren.map((child) => ({
+            ...child,
+            title: renderTitle(child.content, child.key),
+          })),
+        });
+      }
+    } else if (matchesSearch) {
+      filtered.push(node);
+    }
+    return filtered;
+  }, []);
+};
+
+const getAllTreeKeys = (nodes: any[]): string[] => {
+  return nodes.reduce((keys: string[], node) => {
+    keys.push(node.key);
+    if (node.children) keys.push(...getAllTreeKeys(node.children));
+    return keys;
+  }, []);
+};
 
 interface ModelTabs {
   key: string;
   label: string;
   icn: string;
 }
+
 interface FieldRef {
-  showModal: (config: FieldConfig) => void;
+  showModal: (config: {
+    type: string;
+    attrList: FullInfoGroupItem[];
+    formInfo: any;
+    subTitle: string;
+    title: string;
+    model_id: string;
+    list: Array<any>;
+  }) => void;
 }
+
 interface ImportRef {
   showModal: (config: {
     subTitle: string;
@@ -66,20 +156,11 @@ interface ImportRef {
     model_id: string;
   }) => void;
 }
-interface FieldConfig {
-  type: string;
-  attrList: AttrFieldType[];
-  formInfo: any;
-  subTitle: string;
-  title: string;
-  model_id: string;
-  list: Array<any>;
-}
 
 const AssetDataContent = () => {
   const { t } = useTranslation();
   const { selectedGroup } = useUserInfoContext();
-  const { getModelAssociationTypes, getModelAttrList } = useModelApi();
+  const { getModelAssociationTypes, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
     getInstanceProxys,
@@ -90,11 +171,14 @@ const AssetDataContent = () => {
     deleteInstance,
     batchDeleteInstances,
   } = useInstanceApi();
+  const { getCollectTaskNames } = useCollectApi();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const assetModelId: string = searchParams.get('modelId') || '';
   const assetClassificationId: string =
     searchParams.get('classificationId') || '';
+  const urlQueryList: string = searchParams.get('query_list') || '';
   const commonContext = useCommon();
   const users = useRef(commonContext?.userList || []);
   const userList: UserItem[] = users.current;
@@ -103,6 +187,9 @@ const AssetDataContent = () => {
   const importRef = useRef<ImportRef>(null);
   const instanceRef = useRef<RelationInstanceRef>(null);
   const exportRef = useRef<ExportModalRef>(null);
+  const topRowRef = useRef<HTMLDivElement | null>(null);
+  const leftActionsRef = useRef<HTMLDivElement | null>(null);
+  const actionSizerRef = useRef<HTMLDivElement | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Array<any>>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
@@ -111,12 +198,13 @@ const AssetDataContent = () => {
   const [groupId, setGroupId] = useState<string>('');
   const [modelId, setModelId] = useState<string>('');
   const [modelList, setModelList] = useState<ModelTabs[]>([]);
+  const [propertyListGroups, setPropertyListGroups] = useState<FullInfoGroupItem[]>([]);
   const [propertyList, setPropertyList] = useState<AttrFieldType[]>([]);
   const [displayFieldKeys, setDisplayFieldKeys] = useState<string[]>([]);
   const [columns, setColumns] = useState<ColumnItem[]>([]);
   const [currentColumns, setCurrentColumns] = useState<ColumnItem[]>([]);
   const [assoTypes, setAssoTypes] = useState<AssoTypeItem[]>([]);
-  const [queryList, setQueryList] = useState<unknown>(null);
+  const [queryList, setQueryList] = useState<FilterItem | FilterItem[] | null>(null);
   const [tableData, setTableData] = useState<any[]>([]);
   const [organization, setOrganization] = useState<number[]>([]);
   const [selectedTreeKeys, setSelectedTreeKeys] = useState<string[]>([]);
@@ -134,18 +222,77 @@ const AssetDataContent = () => {
   const [modelInstCount, setModelInstCount] = useState<Record<string, number>>(
     {}
   );
+  // 是否折叠操作栏
+  const [isActionsCollapsed, setIsActionsCollapsed] = useState(false);
+  const urlQueryInitialized = useRef(false);
+  const initialDataLoaded = useRef(false);
+
+  useActivate(() => {
+    const { needRefresh, setNeedRefresh } = useAssetDataStore.getState();
+    if (needRefresh && modelId) {
+      fetchData();
+      setNeedRefresh(false);
+    }
+  });
+
+  // 监听窗口大小变化，更新折叠状态
+  useEffect(() => {
+    const rowEl = topRowRef.current;
+    const leftEl = leftActionsRef.current;
+    const sizerEl = actionSizerRef.current;
+    if (!rowEl || !leftEl || !sizerEl) return;
+
+    let frameId: number | null = null;
+    const updateCollapseState = () => {
+      if (!rowEl || !leftEl || !sizerEl) return;
+      const rowWidth = rowEl.getBoundingClientRect().width;
+      const leftContentWidth = leftEl.scrollWidth;
+      const sizerWidth = sizerEl.getBoundingClientRect().width;
+      const recoveryBuffer = 30;
+      const shouldCollapse = leftContentWidth + sizerWidth > rowWidth + recoveryBuffer;
+      setIsActionsCollapsed((prev) => (prev === shouldCollapse ? prev : shouldCollapse));
+    };
+
+    // 创建一个观察器，当窗口大小变化时，更新折叠状态
+    const observer = new ResizeObserver(() => {
+      if (frameId) cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(updateCollapseState);
+    });
+
+    // 监听窗口大小变化
+    observer.observe(rowEl);
+    observer.observe(leftEl);
+    observer.observe(sizerEl);
+    updateCollapseState();  // 更新折叠状态
+
+    // 不要忘记清理内存
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
+    // 主页中当模型为host时，获取云区域选项test8.7
     if (modelId === 'host') {
       getInstanceProxys()
         .then((data: any[]) => {
           setProxyOptions(data || []);
+
+          // 保存云区域列表到前端store
+          useAssetDataStore.getState().setCloudList(data || []);
         })
         .catch(() => {
           setProxyOptions([]);
         });
     }
   }, [modelId]);
+
+  useEffect(() => {
+    ensureCollectTaskMap(getCollectTaskNames).catch(() => {
+      useAssetDataStore.getState().setCollectTaskMap({});
+    });
+  }, []);
 
   const handleExport = async (
     exportType: 'selected' | 'currentPage' | 'all'
@@ -187,14 +334,26 @@ const AssetDataContent = () => {
     });
   };
 
+  // 添加实例菜单项
   const addInstItems: MenuProps['items'] = [
     {
       key: '1',
-      label: <a onClick={() => showAttrModal('add')}>{t('common.add')}</a>,
+      label: (
+        <div
+          className={assetDataStyle.menuItemClickable}
+          onClick={() => showAttrModal('add')}
+        >
+          {t('common.add')}
+        </div>
+      ),
     },
     {
       key: '2',
-      label: <a onClick={showImportModal}>{t('import')}</a>,
+      label: (
+        <div className={assetDataStyle.menuItemClickable} onClick={showImportModal}>
+          {t('import')}
+        </div>
+      ),
     },
   ];
 
@@ -205,32 +364,25 @@ const AssetDataContent = () => {
   }, [modelListFromContext]);
 
   useEffect(() => {
-    if (modelId) {
+    if (modelId && initialDataLoaded.current) {
       setSelectedTreeKeys([modelId]);
       fetchData();
     }
   }, [pagination?.current, pagination?.pageSize, queryList, organization]);
 
   useEffect(() => {
-    setExpandedTreeKeys(
-      modelGroup.map((item) => `group:${item.classification_id}`)
-    );
+    setExpandedTreeKeys(modelGroup.map((item) => buildGroupKey(item.classification_id)));
   }, [modelGroup]);
 
   const fetchData = async () => {
     setTableLoading(true);
-    const params = getTableParams();
-    let caughtError: { name?: string } | null = null;
     try {
-      // console.log("test6:params", params);
-      const data = await searchInstances(params);
+      const data = await searchInstances(getTableParams());
       setTableData(data.insts);
-      pagination.total = data.count;
-      setPagination(pagination);
+      setPagination(prev => ({ ...prev, total: data.count }));
     } catch (error) {
-      caughtError = error as { name?: string } | null;
+      if ((error as { name?: string })?.name === 'CanceledError') return;
     } finally {
-      if (caughtError && caughtError?.name === "CanceledError") return;
       setTableLoading(false);
     }
   };
@@ -243,96 +395,96 @@ const AssetDataContent = () => {
         getModelAssociationTypes(),
         getModelInstanceCount(),
       ]);
+
+      const groups = buildModelGroups(groupData, modelListFromContext);
+      const defaultGroupId = assetClassificationId || groupData[0].classification_id;
+      const filteredModels = modelListFromContext
+        .filter((item: ModelItem) => item.classification_id === defaultGroupId)
+        .map((item: ModelItem) => ({ key: item.model_id, label: item.model_name, icn: item.icn }));
+      const defaultModelId = assetModelId || filteredModels[0].key;
+
       setModelInstCount(instCount);
-      const groups = deepClone(groupData).map((item: GroupItem) => ({
-        ...item,
-        list: [],
-        count: 0,
-      }));
-      modelListFromContext.forEach((modelItem: ModelItem) => {
-        const target = groups.find(
-          (item: GroupItem) =>
-            item.classification_id === modelItem.classification_id
-        );
-        if (target) {
-          target.list.push(modelItem);
-          target.count++;
-        }
-      });
-      const defaultGroupId =
-        assetClassificationId || groupData[0].classification_id;
       setGroupId(defaultGroupId);
       setModelGroup(groups);
-      const _modelList = modelListFromContext
-        .filter((item: any) => item.classification_id === defaultGroupId)
-        .map((item: any) => ({
-          key: item.model_id,
-          label: item.model_name,
-          icn: item.icn,
-        }));
-      const defaultModelId = assetModelId || _modelList[0].key;
       setOriginModels(modelListFromContext);
       setAssoTypes(assoType);
-      setModelList(_modelList);
+      setModelList(filteredModels);
       setModelId(defaultModelId);
       setSelectedTreeKeys([defaultModelId]);
-      getInitData(defaultModelId);
-      router.push(
-        `/cmdb/assetData?modelId=${defaultModelId}&classificationId=${defaultGroupId}`
-      );
+
+      const initialQueryList = parseUrlQueryList(urlQueryList);
+      if (initialQueryList) {
+        useAssetDataStore.getState().setQueryList(initialQueryList);
+      }
+      urlQueryInitialized.current = true;
+
+      getInitData(defaultModelId, initialQueryList);
+      updateUrl(defaultModelId, defaultGroupId, urlQueryList);
     } catch {
       setLoading(false);
     }
   };
 
-  const getTableParams = (overrideQueryList?: unknown) => {
-    const activeQueryList = overrideQueryList !== undefined
-      ? overrideQueryList
-      : queryList || null;
+  const updateUrl = (modelId: string, groupId: string, queryList?: string) => {
+    const urlParams = new URLSearchParams();
+    urlParams.set('modelId', modelId);
+    urlParams.set('classificationId', groupId);
+    if (queryList) urlParams.set('query_list', queryList);
+    router.replace(`/cmdb/assetData?${urlParams.toString()}`);
+  };
 
-    const conditions = organization?.length
+  const getTableParams = (overrideQueryList?: FilterItem | FilterItem[] | null) => {
+    const activeQueryList = overrideQueryList !== undefined ? overrideQueryList : queryList;
+    const orgCondition = organization?.length
       ? [{ field: 'organization', type: 'list[]', value: organization }]
       : [];
+    const caseSensitive = useAssetDataStore.getState().case_sensitive;
+
+    let finalQueryList: (FilterItem | { field: string; type: string; value: number[] })[] = [];
+    if (activeQueryList) {
+      finalQueryList = Array.isArray(activeQueryList)
+        ? [...activeQueryList, ...orgCondition]
+        : [activeQueryList, ...orgCondition];
+    } else {
+      finalQueryList = orgCondition;
+    }
+
     return {
-      query_list: activeQueryList
-        ? [activeQueryList, ...conditions]
-        : conditions,
+      query_list: finalQueryList,
       page: pagination.current,
       page_size: pagination.pageSize,
       order: '',
       model_id: modelId,
       role: '',
+      case_sensitive: caseSensitive,
     };
   };
 
-  const getInitData = (id: string, overrideQueryList?: unknown) => {
-    const tableParmas = getTableParams(overrideQueryList);
-    const getAttrList = getModelAttrList(id);
-    const getInstList = searchInstances({
-      ...tableParmas,
-      model_id: id,
-    });
-    const getDisplayFields = getInstanceShowFieldDetail(id);
+  const getInitData = (id: string, overrideQueryList?: FilterItem[] | null) => {
+    const tableParams = getTableParams(overrideQueryList);
+
+    getModelAttrGroupsFullInfo(id)
+      .then((res) => setPropertyListGroups(res.groups))
+      .catch(() => message.error(t('common.getFailed')));
+
     setLoading(true);
-    try {
-      Promise.all([getAttrList, getInstList, getDisplayFields])
-        .then((res) => {
-          pagination.total = res[1].count;
-          const tableList = res[1].insts;
-          const fieldKeys =
-            res[2]?.show_fields ||
-            res[0].map((item: AttrFieldType) => item.attr_id);
-          setDisplayFieldKeys(fieldKeys);
-          setPropertyList(res[0]);
-          setTableData(tableList);
-          setPagination(pagination);
-        })
-        .finally(() => {
-          setLoading(false);
+    Promise.all([
+      getModelAttrList(id),
+      searchInstances({ ...tableParams, model_id: id }),
+      getInstanceShowFieldDetail(id),
+    ])
+      .then(([attrList, instData, displayFields]) => {
+        const fieldKeys = displayFields?.show_fields || attrList.map((item: AttrFieldType) => item.attr_id);
+        setDisplayFieldKeys(fieldKeys);
+        setPropertyList(attrList);
+        setTableData(instData.insts);
+        setPagination(prev => ({ ...prev, total: instData.count }));
+        // 延迟到下一帧再设置
+        requestAnimationFrame(() => {
+          initialDataLoaded.current = true;
         });
-    } catch {
-      setLoading(false);
-    }
+      })
+      .finally(() => setLoading(false));
   };
 
   const onSelectChange = (selectedKeys: any) => {
@@ -349,98 +501,84 @@ const AssetDataContent = () => {
     try {
       await setInstanceShowFieldSettings(modelId, fields);
       message.success(t('successfulSetted'));
-      getInitData(modelId);
+      getInitData(modelId, queryList ? (Array.isArray(queryList) ? queryList : [queryList]) : null);
     } finally {
       setLoading(false);
     }
   };
 
-  const showDeleteConfirm = (row = { _id: '' }) => {
+  const handleDeleteWithConfirm = (deleteAction: () => Promise<void>) => {
     confirm({
       title: t('common.delConfirm'),
       content: t('common.delConfirmCxt'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
       centered: true,
-      onOk() {
-        return new Promise(async (resolve) => {
-          try {
-            await deleteInstance(row._id);
-            message.success(t('successfullyDeleted'));
-            if (pagination?.current) {
-              pagination.current > 1 &&
-                tableData.length === 1 &&
-                pagination.current--;
-            }
-            setSelectedRowKeys([]);
-            fetchData();
-          } finally {
-            resolve(true);
+      async onOk() {
+        try {
+          await deleteAction();
+          message.success(t('successfullyDeleted'));
+          if (pagination.current && pagination.current > 1 && tableData.length === 1) {
+            setPagination(prev => ({ ...prev, current: prev.current! - 1 }));
           }
-        });
+          setSelectedRowKeys([]);
+          fetchData();
+        } catch { /* API error handled by interceptor */ }
       },
     });
+  };
+
+  const showDeleteConfirm = (row: { _id: string }) => {
+    handleDeleteWithConfirm(() => deleteInstance(row._id));
   };
 
   const batchDeleteConfirm = () => {
-    confirm({
-      title: t('common.delConfirm'),
-      content: t('common.delConfirmCxt'),
-      okText: t('common.confirm'),
-      cancelText: t('common.cancel'),
-      centered: true,
-      onOk() {
-        return new Promise(async (resolve) => {
-          try {
-            const list = selectedRowKeys;
-            await batchDeleteInstances(list);
-            message.success(t('successfullyDeleted'));
-            if (pagination?.current) {
-              pagination.current > 1 &&
-                tableData.length === 1 &&
-                pagination.current--;
-            }
-            setSelectedRowKeys([]);
-            fetchData();
-          } finally {
-            resolve(true);
-          }
-        });
-      },
-    });
+    handleDeleteWithConfirm(() => batchDeleteInstances(selectedRowKeys));
   };
 
+  // 导出菜单项
   const exportItems: MenuProps['items'] = [
     {
       key: 'batchExport',
-      label: <a onClick={() => handleExport('selected')}>{t('selected')}</a>,
+      label: (
+        <div
+          className={assetDataStyle.menuItemClickable}
+          onClick={() => handleExport('selected')}
+        >
+          {t('selected')}
+        </div>
+      ),
       disabled: !selectedRowKeys.length,
     },
     {
       key: 'exportCurrentPage',
       label: (
-        <a onClick={() => handleExport('currentPage')}>{t('currentPage')}</a>
+        <div
+          className={assetDataStyle.menuItemClickable}
+          onClick={() => handleExport('currentPage')}
+        >
+          {t('currentPage')}
+        </div>
       ),
     },
     {
       key: 'exportAll',
-      label: <a onClick={() => handleExport('all')}>{t('all')}</a>,
+      label: (
+        <div
+          className={assetDataStyle.menuItemClickable}
+          onClick={() => handleExport('all')}
+        >
+          {t('all')}
+        </div>
+      ),
     },
   ];
 
   const updateFieldList = async (id?: string) => {
     await fetchData();
-    try {
-      const instCount = await getModelInstanceCount();
-      setModelInstCount(instCount);
-    } catch {
-      console.error('Failed to fetch model instance count');
-    }
-    if (id) {
-      showInstanceModal({
-        _id: id,
-      });
-    }
+    const instCount = await getModelInstanceCount().catch(() => null);
+    if (instCount) setModelInstCount(instCount);
+    if (id) showInstanceModal({ _id: id });
   };
 
   const showAttrModal = (type: string, row = {}) => {
@@ -448,7 +586,7 @@ const AssetDataContent = () => {
     fieldRef.current?.showModal({
       title,
       type,
-      attrList: propertyList,
+      attrList: propertyListGroups,
       formInfo: row,
       subTitle: '',
       model_id: modelId,
@@ -458,29 +596,17 @@ const AssetDataContent = () => {
 
   const showCopyModal = (record: any) => {
     const copyData = { ...record };
-    const excludeFields = [
-      '_id',
-      'inst_id',
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by',
-      'updated_by',
-    ];
-    excludeFields.forEach((field) => {
-      delete copyData[field];
-    });
+    COPY_EXCLUDE_FIELDS.forEach((field) => delete copyData[field]);
 
-    propertyList.forEach((attr) => {
-      if (attr.is_required && attr.is_only && copyData[attr.attr_id]) {
-        copyData[attr.attr_id] = `${copyData[attr.attr_id]}_copy`;
-      }
-    });
+    propertyListGroups
+      .flatMap((group) => group.attrs || [])
+      .filter((attr) => attr.is_required && attr.is_only && copyData[attr.attr_id])
+      .forEach((attr) => { copyData[attr.attr_id] = `${copyData[attr.attr_id]}_copy`; });
 
     fieldRef.current?.showModal({
       title: t('common.copy'),
       type: 'add',
-      attrList: propertyList,
+      attrList: propertyListGroups,
       formInfo: copyData,
       subTitle: '',
       model_id: modelId,
@@ -492,63 +618,55 @@ const AssetDataContent = () => {
     setPagination(pagination);
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleSearch = (condition: FilterItem | null, _searchValue?: any) => {
-    // console.log("test1", condition);
-
-    const addFilter = useAssetDataStore.getState().add;
-    const removeFilter = useAssetDataStore.getState().remove;
-    const updateFilter = useAssetDataStore.getState().update;
-    const currentList = useAssetDataStore.getState().query_list;
-
-    // 如果 condition 为 null 或没有 type 属性，说明要清除对应的筛选条件
-    const isClearCondition = !condition || !condition.type
+  const handleSearch = (condition: FilterItem | null) => {
+    const { add, remove, update, query_list: currentList } = useAssetDataStore.getState();
+    const isClearCondition = !condition || !condition.type;
 
     if (isClearCondition) {
-      const fieldToRemove = condition?.field;
-      if (fieldToRemove) {
-        // 找到对应字段的索引并删除
-        const indexToRemove = currentList.findIndex((item) => item.field === fieldToRemove);
-        if (indexToRemove !== -1) {
-          removeFilter(indexToRemove);
-        }
+      if (condition?.field) {
+        const index = currentList.findIndex((item) => item.field === condition.field);
+        if (index !== -1) remove(index);
       }
       return;
     }
 
-    // 检查是否已存在相同 field 的筛选条件
-    const existingIndex = currentList.findIndex(
-      (item) => item.field === condition.field
-    );
-
+    const existingIndex = currentList.findIndex((item) => item.field === condition.field);
     if (existingIndex !== -1) {
-      // 如果已存在，更新该条件
-      updateFilter(existingIndex, condition);
+      update(existingIndex, condition);
     } else {
-      // 如果不存在，添加新条件
-      addFilter(condition);
+      add(condition);
     }
   };
 
   const storeQueryList = useAssetDataStore((state) => state.query_list);
 
-  // 监听 store 的 query_list 变化，同步到 queryList 状态（用于查询）
   useEffect(() => {
-    if (storeQueryList.length === 0) {
-      setQueryList(null);
-    } else if (storeQueryList.length === 1) {
-      // 单个条件
-      setQueryList(storeQueryList[0]);
-    } else {
-      // console.log("test8:storeQueryList", storeQueryList);
-      // 多个条件
-      setQueryList(storeQueryList);
-    }
+    // 如果查询条件为空，则设置为 null，否则设置为查询条件
+    const newQueryList = storeQueryList.length === 0 ? null
+      : storeQueryList.length === 1
+        ? storeQueryList[0]
+        : storeQueryList;
+    setQueryList(newQueryList);
   }, [storeQueryList]);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleFilterBarChange = (_filters: FilterItem[]) => {
-  };
+  useEffect(() => {
+    if (!urlQueryInitialized.current || !modelId) return;
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (storeQueryList.length > 0) {
+      params.set('query_list', encodeURIComponent(JSON.stringify(storeQueryList)));
+    } else {
+      params.delete('query_list');
+    }
+
+    const newUrl = `${pathname}?${params.toString()}`;
+    const currentUrl = `${pathname}?${searchParams.toString()}`;
+    if (newUrl !== currentUrl) {
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [storeQueryList, modelId, pathname, searchParams, router]);
+
+  const handleFilterBarChange = useCallback(() => { }, []);
 
   const checkDetail = (row = { _id: '', inst_name: '', ip_addr: '' }) => {
     const modelItem = modelList.find((item) => item.key === modelId);
@@ -576,219 +694,103 @@ const AssetDataContent = () => {
   const renderModelTitle = useCallback(
     (modelName: string, modelId: string) => (
       <div className="flex items-center">
-        <EllipsisWithTooltip
-          text={modelName}
-          className={assetDataStyle.treeLabel}
-        />
-        <span className="ml-1 text-gray-400">
-          ({modelInstCount[modelId] || 0})
-        </span>
+        <EllipsisWithTooltip text={modelName} className={assetDataStyle.treeLabel} />
+        <span className="ml-1 text-gray-400">({modelInstCount[modelId] || 0})</span>
       </div>
     ),
     [modelInstCount]
   );
 
-  const filterTreeNodes = useCallback(
-    (nodes: any[], searchText: string) => {
-      if (!searchText) return nodes;
-
-      return nodes.reduce((filtered: any[], node) => {
-        const matchesSearch = node.content
-          .toLowerCase()
-          .includes(searchText.toLowerCase());
-
-        if (node.children) {
-          const filteredChildren = filterTreeNodes(node.children, searchText);
-          if (filteredChildren.length > 0 || matchesSearch) {
-            filtered.push({
-              ...node,
-              children: filteredChildren.map((child) => ({
-                ...child,
-                title: renderModelTitle(child.content, child.key),
-              })),
-            });
-          }
-        } else if (matchesSearch) {
-          filtered.push(node);
-        }
-
-        return filtered;
-      }, []);
-    },
-    [renderModelTitle]
-  );
-
   const handleTreeSearch = useCallback(
     (searchText: string) => {
       setTreeSearchText(searchText);
-
-      const treeData = modelGroup.map((group) => ({
-        title: group.classification_name,
-        content: group.classification_name,
-        key: `group:${group.classification_id}`,
-        children: group.list.map((item) => ({
-          content: item.model_name,
-          title: renderModelTitle(item.model_name, item.model_id),
-          key: item.model_id,
-        })),
-      }));
-
-      const filtered = filterTreeNodes(treeData, searchText);
+      const treeData = buildTreeData(modelGroup, renderModelTitle);
+      const filtered = filterTreeNodes(treeData, searchText, renderModelTitle);
       setFilteredTreeData(filtered);
 
-      if (searchText) {
-        const getAllKeys = (nodes: any[]): string[] => {
-          return nodes.reduce((keys: string[], node) => {
-            keys.push(node.key);
-            if (node.children) {
-              keys.push(...getAllKeys(node.children));
-            }
-            return keys;
-          }, []);
-        };
-        setExpandedTreeKeys(getAllKeys(filtered));
-      } else {
-        setExpandedTreeKeys(
-          modelGroup.map((item) => `group:${item.classification_id}`)
-        );
-      }
+      const expandedKeys = searchText
+        ? getAllTreeKeys(filtered)
+        : modelGroup.map((item) => buildGroupKey(item.classification_id));
+      setExpandedTreeKeys(expandedKeys);
     },
-    [modelGroup, filterTreeNodes]
+    [modelGroup, renderModelTitle]
   );
 
   useEffect(() => {
-    const treeData = modelGroup.map((group) => ({
-      title: group.classification_name,
-      key: `group:${group.classification_id}`,
-      children: group.list.map((item) => ({
-        content: item.model_name,
-        title: renderModelTitle(item.model_name, item.model_id),
-        key: item.model_id,
-      })),
-    }));
-    setFilteredTreeData(treeData);
+    setFilteredTreeData(buildTreeData(modelGroup, renderModelTitle));
   }, [modelGroup, renderModelTitle]);
 
   const onSelectUnified = (selectedKeys: React.Key[]) => {
-    // console.log("test7");
-    // 同时清理store中的query_list和searchAttr
     useAssetDataStore.getState().clear();
-    useAssetDataStore.setState((state) => ({
-      ...state,
-      searchAttr: "",
-    }));
+    useAssetDataStore.setState((state) => ({ ...state, searchAttr: '' }));
+    urlQueryInitialized.current = true;
 
     if (!selectedKeys.length) return;
     const key = selectedKeys[0] as string;
-    if (key === modelId) return;
-    if (key.startsWith('group:')) return;
+    if (key === modelId || isGroupKey(key)) return;
+
+    const targetGroup = modelGroup.find((group) => group.list.some((item) => item.model_id === key));
+    if (!targetGroup) return;
 
     setQueryList(null);
     setSelectedTreeKeys([key]);
     setModelId(key);
     setSelectedRowKeys([]);
-    setPagination({ ...pagination, current: 1 });
-    modelGroup.forEach((group) => {
-      if (group.list.some((item) => item.model_id === key)) {
-        setGroupId(group.classification_id);
-        const newModelList = group.list.map((item) => ({
-          key: item.model_id,
-          label: item.model_name,
-          icn: item.icn,
-        }));
-        setModelList(newModelList);
-        router.push(
-          `/cmdb/assetData?modelId=${key}&classificationId=${group.classification_id}`
-        );
-      }
-    });
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    setGroupId(targetGroup.classification_id);
+    setModelList(targetGroup.list.map((item) => ({ key: item.model_id, label: item.model_name, icn: item.icn })));
+    setPropertyListGroups([]);
+    setPropertyList([]);
+    router.push(`/cmdb/assetData?modelId=${key}&classificationId=${targetGroup.classification_id}`);
     getInitData(key, null);
   };
 
   useEffect(() => {
-    if (propertyList.length) {
-      const attrList = getAssetColumns({
-        attrList: propertyList,
-        userList,
-        t,
-      });
-      const tableColumns = [
-        ...attrList,
-        {
-          title: t('common.actions'),
-          key: 'action',
-          dataIndex: 'action',
-          width: 280,
-          fixed: 'right',
-          render: (_: unknown, record: any) => (
-            <>
-              <Button
-                type="link"
-                className="mr-[10px]"
-                onClick={() => checkDetail(record)}
-              >
-                {t('common.detail')}
-              </Button>
-              <PermissionWrapper
-                requiredPermissions={['Add Associate']}
-                instPermissions={record.permission}
-              >
-                <Button
-                  type="link"
-                  className="mr-[10px]"
-                  onClick={() => showInstanceModal(record)}
-                >
-                  {t('Model.association')}
-                </Button>
-              </PermissionWrapper>
-              <PermissionWrapper requiredPermissions={['Add']}>
-                <Button
-                  type="link"
-                  className="mr-[10px]"
-                  onClick={() => showCopyModal(record)}
-                >
-                  {t('common.copy')}
-                </Button>
-              </PermissionWrapper>
-              <PermissionWrapper
-                requiredPermissions={['Edit']}
-                instPermissions={record.permission}
-              >
-                <Button
-                  type="link"
-                  className="mr-[10px]"
-                  onClick={() => showAttrModal('edit', record)}
-                >
-                  {t('common.edit')}
-                </Button>
-              </PermissionWrapper>
-              <PermissionWrapper
-                requiredPermissions={['Delete']}
-                instPermissions={record.permission}
-              >
-                <Button type="link" onClick={() => showDeleteConfirm(record)}>
-                  {t('common.delete')}
-                </Button>
-              </PermissionWrapper>
-            </>
-          ),
-        },
-      ];
-      setColumns(tableColumns);
-      const actionCol = tableColumns.find((col) => col.key === 'action');
-      const ordered = [
-        ...tableColumns
-          .filter((col) => displayFieldKeys.includes(col.key as string))
-          .sort(
-            (a, b) =>
-              displayFieldKeys.indexOf(a.key as string) -
-              displayFieldKeys.indexOf(b.key as string)
-          ),
-        ...(actionCol ? [actionCol] : []),
-      ];
-      setCurrentColumns(ordered);
-    }
-  }, [propertyList, displayFieldKeys]);
+    if (!propertyList.length) return;
+
+    const attrList = getAssetColumns({ attrList: propertyList, userList, t });
+    const actionColumn: ColumnItem = {
+      title: t('common.actions'),
+      key: 'action',
+      dataIndex: 'action',
+      width: 280,
+      fixed: 'right',
+      render: (_: unknown, record: any) => (
+        <>
+          <Button type="link" className="mr-[10px]" onClick={() => checkDetail(record)}>
+            {t('common.detail')}
+          </Button>
+          <PermissionWrapper requiredPermissions={['Add Associate']} instPermissions={record.permission}>
+            <Button type="link" className="mr-[10px]" onClick={() => showInstanceModal(record)}>
+              {t('Model.association')}
+            </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button type="link" className="mr-[10px]" disabled={!propertyListGroups.length} onClick={() => showCopyModal(record)}>
+              {t('common.copy')}
+            </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={record.permission}>
+            <Button type="link" className="mr-[10px]" disabled={!propertyListGroups.length} onClick={() => showAttrModal('edit', record)}>
+              {t('common.edit')}
+            </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']} instPermissions={record.permission}>
+            <Button type="link" onClick={() => showDeleteConfirm(record)}>
+              {t('common.delete')}
+            </Button>
+          </PermissionWrapper>
+        </>
+      ),
+    };
+    const tableColumns = [...attrList, actionColumn];
+    setColumns(tableColumns);
+
+    const orderedColumns = tableColumns
+      .filter((col) => displayFieldKeys.includes(col.key as string))
+      .sort((a, b) => displayFieldKeys.indexOf(a.key as string) - displayFieldKeys.indexOf(b.key as string));
+    setCurrentColumns([...orderedColumns, actionColumn]);
+  }, [propertyList, displayFieldKeys, propertyListGroups]);
 
   const batchOperateItems: MenuProps['items'] = [
     {
@@ -804,7 +806,7 @@ const AssetDataContent = () => {
           </a>
         </PermissionWrapper>
       ),
-      disabled: !selectedRowKeys.length,
+      disabled: !selectedRowKeys.length || !propertyListGroups.length,
     },
     {
       key: 'batchDelete',
@@ -815,6 +817,41 @@ const AssetDataContent = () => {
       ),
       disabled: !selectedRowKeys.length,
     },
+  ];
+
+  // 添加实例菜单项，添加权限检查
+  const addInstItemsWithPermission: MenuProps['items'] = addInstItems.map(
+    (item) => {
+      if (!item || ('type' in item && item.type === 'divider') || !('label' in item)) {
+        return item;
+      }
+      return {
+        ...item,
+        label: (
+          <PermissionWrapper requiredPermissions={['Add']} fallback={item.label}>
+            {item.label}
+          </PermissionWrapper>
+        ),
+      };
+    }
+  );
+
+  const buildPrefixedItems = (items: MenuProps['items'], prefix: string) =>
+    items.map((item, index) => {
+      if (!item) return item;
+      const baseKey = 'key' in item && item.key ? item.key : `${prefix}-${index}`;
+      return {
+        ...item,
+        key: `${prefix}-${baseKey}`,
+      };
+    });
+
+  const collapsedMoreItems: MenuProps['items'] = [
+    ...buildPrefixedItems(addInstItemsWithPermission, 'add'),
+    { type: 'divider', key: 'divider-add-export' },
+    ...buildPrefixedItems(exportItems, 'export'),
+    { type: 'divider', key: 'divider-export-batch' },
+    ...buildPrefixedItems(batchOperateItems, 'batch'),
   ];
 
   return (
@@ -852,53 +889,69 @@ const AssetDataContent = () => {
             )}
           </div>
         </div>
+        {/* 右侧资产列表 */}
         <div className={assetDataStyle.assetList}>
-          {/* 搜索行 */}
-          <div className={`flex justify-between ${storeQueryList.length === 0 ? 'mb-4' : ''}`}>
+          <div
+            ref={topRowRef}
+            className={`flex justify-between ${storeQueryList.length === 0 ? 'mb-4' : ''}`}
+          >
+            {/* 左侧组织搜索框 */}
+            <div ref={leftActionsRef}>
+              <Space>
+                <GroupTreeSelector
+                  style={{
+                    width: '200px',
+                  }}
+                  placeholder={t('common.selectTip')}
+                  value={organization}
+                  onChange={selectOrganization}
+                  filterByRootId={
+                    selectedGroup?.id ? Number(selectedGroup.id) : undefined
+                  }
+                />
+                {/* 中间部分 */}
+                <SearchFilter
+                  key={modelId}
+                  proxyOptions={proxyOptions}
+                  userList={userList}
+                  modelId={modelId}
+                  attrList={propertyList.filter(
+                    (item) => item.attr_type !== 'organization'
+                  )}
+                  onSearch={handleSearch}
+                  onChange={handleFilterBarChange}
+                  onFilterChange={handleFilterBarChange}
+                />
+              </Space>
+            </div>
+            {/* 右侧操作按钮 */}
             <Space>
-              <GroupTreeSelector
-                style={{
-                  width: '200px',
-                }}
-                placeholder={t('common.selectTip')}
-                value={organization}
-                onChange={selectOrganization}
-                filterByRootId={
-                  selectedGroup?.id ? Number(selectedGroup.id) : undefined
-                }
-              />
-              <SearchFilter
-                key={modelId}
-                proxyOptions={proxyOptions}
-                userList={userList}
-                attrList={propertyList.filter(
-                  (item) => item.attr_type !== 'organization'
-                )}
-                onSearch={handleSearch}
-              />
-            </Space>
-            <Space>
-              <PermissionWrapper requiredPermissions={['Add']}>
-                <Dropdown menu={{ items: addInstItems }} placement="bottom">
-                  <Button type="primary">
+              <div
+                className={`${assetDataStyle.actionGroup} ${isActionsCollapsed ? assetDataStyle.actionGroupCollapsed : ''}`}
+                aria-hidden={isActionsCollapsed}
+              >
+                <PermissionWrapper requiredPermissions={['Add']}>
+                  <Dropdown menu={{ items: addInstItems }} placement="bottom">
+                    <Button type="primary">
+                      <Space>
+                        {t('common.addNew')}
+                        <DownOutlined />
+                      </Space>
+                    </Button>
+                  </Dropdown>
+                </PermissionWrapper>
+                <Dropdown menu={{ items: exportItems }} placement="bottom">
+                  <Button>
                     <Space>
-                      {t('common.addNew')}
+                      {t('export')}
                       <DownOutlined />
                     </Space>
                   </Button>
                 </Dropdown>
-              </PermissionWrapper>
-              <Dropdown menu={{ items: exportItems }} placement="bottom">
-                <Button>
-                  <Space>
-                    {t('export')}
-                    <DownOutlined />
-                  </Space>
-                </Button>
-              </Dropdown>
+              </div>
               <Dropdown
-                menu={{ items: batchOperateItems }}
-                disabled={!selectedRowKeys.length}
+                menu={{ items: isActionsCollapsed ? collapsedMoreItems : batchOperateItems }}
+                disabled={!isActionsCollapsed && !selectedRowKeys.length}
                 placement="bottom"
               >
                 <Button>
@@ -910,17 +963,40 @@ const AssetDataContent = () => {
               </Dropdown>
             </Space>
           </div>
-          {/* 筛选行 */}
+          <div ref={actionSizerRef} className={assetDataStyle.actionSizer}>
+            <Space>
+              <Button type="primary">
+                <Space>
+                  {t('common.addNew')}
+                  <DownOutlined />
+                </Space>
+              </Button>
+              <Button>
+                <Space>
+                  {t('export')}
+                  <DownOutlined />
+                </Space>
+              </Button>
+              <Button>
+                <Space>
+                  {t('more')}
+                  <DownOutlined />
+                </Space>
+              </Button>
+            </Space>
+          </div>
+
           <div className="w-full">
             <FilterBar
               attrList={propertyList}
               userList={userList}
               proxyOptions={proxyOptions}
+              modelId={modelId}
               onChange={handleFilterBarChange}
               onFilterChange={handleFilterBarChange}
             />
           </div>
-          {/* 表格 */}
+
           <CustomTable
             style={{ marginTop: '-1px' }}
             size="small"
@@ -929,7 +1005,12 @@ const AssetDataContent = () => {
             columns={currentColumns}
             pagination={pagination}
             loading={tableLoading}
-            scroll={{ x: 'calc(100vw - 400px)', y: 'calc(100vh - 380px)' }}
+            scroll={{
+              x: 'calc(100vw - 400px)',
+              y: storeQueryList.length > 0
+                ? 'calc(100vh - 320px)'
+                : 'calc(100vh - 300px)'
+            }}
             fieldSetting={{
               showSetting: true,
               displayFieldKeys,

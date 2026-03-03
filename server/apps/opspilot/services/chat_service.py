@@ -77,6 +77,7 @@ class ChatService:
                 "total_tokens": response.total_tokens,
                 "prompt_tokens": response.prompt_tokens,
                 "completion_tokens": response.completion_tokens,
+                "browser_steps": response.browser_steps,
             }
 
             # 处理内容（可选隐藏思考过程）
@@ -88,7 +89,7 @@ class ChatService:
 
         except Exception as e:
             # 记录详细的异常信息以便排查问题
-            logger.error(f"invoke_chat 执行失败: skill_type={skill_type}, error={str(e)}", exc_info=True)
+            logger.exception(f"invoke_chat 执行失败: skill_type={skill_type}, error={str(e)}")
 
             loader = LanguageLoader(app="opspilot", default_lang="en")
             message = loader.get("error.agent_execution_failed") or f"Agent execution failed: {str(e)}"
@@ -136,6 +137,7 @@ class ChatService:
             "naive_rag_request": naive_rag_request,
             "enable_suggest": kwargs.get("enable_suggest", False),
             "enable_query_rewrite": kwargs.get("enable_query_rewrite", False),
+            "locale": kwargs.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
         }
 
         if kwargs.get("thread_id"):

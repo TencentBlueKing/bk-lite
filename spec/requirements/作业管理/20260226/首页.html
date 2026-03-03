@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>首页 - Job</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Fira Sans', 'Fira Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            color: #1f2329;
+            line-height: 1.5;
+        }
+
+        /* 顶部导航栏 */
+        .top-header {
+            background: #fff;
+            height: 60px;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 8px;
+            margin-left: 48px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #646a73;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+        }
+
+        .nav-item:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .nav-item.active {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.1);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: #646a73;
+            font-size: 14px;
+        }
+
+        .header-right > span {
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .header-right > span:hover {
+            background: rgba(0, 0, 0, 0.04);
+            color: #0052d9;
+        }
+
+        /* 主内容区 */
+        .main-container {
+            padding: 24px 32px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .page-header {
+            margin-bottom: 24px;
+        }
+
+        .page-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2329;
+            margin-bottom: 8px;
+        }
+
+        .page-desc {
+            font-size: 14px;
+            color: #8f959e;
+        }
+
+        /* 执行入口卡片 */
+        .entry-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .entry-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+
+        .entry-card:hover {
+            box-shadow: 0 4px 12px rgba(0,82,217,0.08), 0 2px 4px rgba(0,0,0,0.04);
+            border-color: rgba(0, 82, 217, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+
+        .card-icon.blue {
+            background: linear-gradient(135deg, #e6f0ff 0%, #cce0ff 100%);
+        }
+
+        .card-icon.green {
+            background: linear-gradient(135deg, #e6fff2 0%, #ccffe6 100%);
+        }
+
+        .card-icon.orange {
+            background: linear-gradient(135deg, #fff4e6 0%, #ffe6cc 100%);
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2329;
+            margin-bottom: 8px;
+        }
+
+        .card-desc {
+            font-size: 13px;
+            color: #8f959e;
+            line-height: 1.6;
+            margin-bottom: 16px;
+            min-height: 42px;
+        }
+
+        .card-button {
+            width: 100%;
+            padding: 10px;
+            background: #0052d9;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .card-button:hover {
+            background: #0041ad;
+        }
+
+        /* 最近作业列表 */
+        .recent-jobs {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2329;
+        }
+
+        .view-all {
+            font-size: 14px;
+            color: #0052d9;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .view-all:hover {
+            color: #0041ad;
+        }
+
+        /* 表格样式 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: #f5f7fa;
+        }
+
+        th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            color: #646a73;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #f0f1f5;
+            transition: all 0.2s;
+        }
+
+        tbody tr:hover {
+            background: #f9fafb;
+        }
+
+        td {
+            padding: 16px;
+            font-size: 14px;
+            color: #1f2329;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-badge.success {
+            background: #e6fff2;
+            color: #00a870;
+        }
+
+        .status-badge.running {
+            background: #e6f0ff;
+            color: #0052d9;
+        }
+
+        .status-badge.failed {
+            background: #ffe6e6;
+            color: #ea3636;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .action-link {
+            color: #0052d9;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .action-link:hover {
+            color: #0041ad;
+        }
+
+        .job-type-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            background: #f5f7fa;
+            color: #646a73;
+        }
+        .source-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .source-badge.manual { background: #e6f0ff; color: #0052d9; }
+        .source-badge.scheduled { background: #fff4e6; color: #d46b08; }
+        .source-badge.api { background: #f0f1f5; color: #646a73; }
+    
+        /* ===== UI/UX ENHANCEMENTS ===== */
+        
+        /* Focus states for accessibility */
+        a:focus-visible, button:focus-visible, input:focus-visible, 
+        select:focus-visible, textarea:focus-visible, 
+        [tabindex]:focus-visible, .nav-item:focus-visible,
+        .sub-nav-item:focus-visible {
+            outline: 2px solid #0052d9;
+            outline-offset: 2px;
+        }
+
+        /* Enhanced table row hover */
+        tbody tr {
+            border-left: 3px solid transparent;
+        }
+        tbody tr:hover {
+            background: #f0f5ff !important;
+            border-left: 3px solid #0052d9;
+        }
+
+        /* Inline SVG icon alignment */
+        .nav-item svg, .sub-nav-item svg, .header-right svg {
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+    
+        /* Table responsive wrapper */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table-responsive table {
+            min-width: 100%;
+        }
+
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo">
+                <div class="logo-icon">BK</div>
+                <span>Job</span>
+            </div>
+            <nav class="header-nav">
+                <div class="nav-item active" onclick="location.href='首页.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>首页</span></div>
+                <div class="nav-item" onclick="location.href='快速执行.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></span><span>作业执行</span></div>
+                <div class="nav-item" onclick="location.href='脚本库.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span>作业模版</span></div>
+                <div class="nav-item" onclick="location.href='目标管理.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><span>目标管理</span></div>
+                <div class="nav-item" onclick="location.href='高危命令配置.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span>系统配置</span></div>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> 帮助文档</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 语言: 简体中文</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Admin</span>
+        </div>
+    </div>
+
+    <!-- 主内容区域 -->
+    <div class="main-container">
+        <!-- 页面标题 -->
+        <div class="page-header">
+            <h1 class="page-title">作业管理系统</h1>
+            <p class="page-desc">快速创建并执行作业，统一管理脚本执行、文件分发和定时任务</p>
+        </div>
+
+        <!-- 执行入口卡片 -->
+        <div class="entry-cards">
+            <div class="entry-card">
+                <div class="card-icon blue"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+                <div class="card-title">脚本执行</div>
+                <div class="card-desc">在目标主机上快速执行 Shell 或 Python 脚本，支持从脚本库选择或临时输入</div>
+                <button class="card-button" onclick="location.href='快速执行.html'">进入</button>
+            </div>
+
+            <div class="entry-card">
+                <div class="card-icon green"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
+                <div class="card-title">文件分发</div>
+                <div class="card-desc">将文件或目录批量分发到目标主机，支持覆盖策略和并发控制</div>
+                <button class="card-button" onclick="location.href='文件分发.html'">进入</button>
+            </div>
+
+            <div class="entry-card">
+                <div class="card-icon orange"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+                <div class="card-title">定时任务</div>
+                <div class="card-desc">创建和管理周期性执行的作业，支持 Cron 表达式和自定义执行策略</div>
+                <button class="card-button" onclick="location.href='定时任务.html'">进入</button>
+            </div>
+        </div>
+
+        <!-- 最近作业列表 -->
+        <div class="recent-jobs">
+            <div class="section-header">
+                <h2 class="section-title">最近作业</h2>
+                <span class="view-all" onclick="location.href='作业记录.html'">查看全部 →</span>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>作业名称</th>
+                        <th>作业类型</th>
+                        <th>触发来源</th>
+                        <th>执行状态</th>
+                        <th>开始时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>清理磁盘空间</td>
+                        <td><span class="job-type-badge">脚本执行</span></td>
+                        <td><span class="source-badge manual">手动执行</span></td>
+                        <td><span class="status-badge success"><span class="status-dot"></span>成功</span></td>
+                        <td>2026-01-20 14:23:15</td>
+                        <td><a href="作业详情.html" class="action-link">查看详情</a></td>
+                    </tr>
+                    <tr>
+                        <td>部署配置文件</td>
+                        <td><span class="job-type-badge">文件分发</span></td>
+                        <td><span class="source-badge manual">手动执行</span></td>
+                        <td><span class="status-badge running"><span class="status-dot"></span>执行中</span></td>
+                        <td>2026-01-20 14:18:42</td>
+                        <td><a href="作业详情-文件分发.html" class="action-link">查看详情</a></td>
+                    </tr>
+                    <tr>
+                        <td>数据库备份</td>
+                        <td><span class="job-type-badge">脚本执行</span></td>
+                        <td><span class="source-badge scheduled">定时任务</span></td>
+                        <td><span class="status-badge success"><span class="status-dot"></span>成功</span></td>
+                        <td>2026-01-20 14:00:00</td>
+                        <td><a href="作业详情.html" class="action-link">查看详情</a></td>
+                    </tr>
+                    <tr>
+                        <td>应用部署流水线</td>
+                        <td><span class="job-type-badge">Playbook</span></td>
+                        <td><span class="source-badge api">API 调用</span></td>
+                        <td><span class="status-badge success"><span class="status-dot"></span>成功</span></td>
+                        <td>2026-01-20 13:30:00</td>
+                        <td><a href="作业详情-Playbook.html" class="action-link">查看详情</a></td>
+                    </tr>
+                    <tr>
+                        <td>日志清理</td>
+                        <td><span class="job-type-badge">脚本执行</span></td>
+                        <td><span class="source-badge scheduled">定时任务</span></td>
+                        <td><span class="status-badge success"><span class="status-dot"></span>成功</span></td>
+                        <td>2026-01-20 12:00:00</td>
+                        <td><a href="作业详情.html" class="action-link">查看详情</a></td>
+                    </tr>
+                    <tr>
+                        <td>更新应用配置</td>
+                        <td><span class="job-type-badge">文件分发</span></td>
+                        <td><span class="source-badge api">API 调用</span></td>
+                        <td><span class="status-badge failed"><span class="status-dot"></span>失败</span></td>
+                        <td>2026-01-20 11:30:25</td>
+                        <td><a href="作业详情-文件分发.html" class="action-link">查看详情</a></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // 页面交互脚本
+        console.log('首页加载完成');
+    </script>
+
+</body>
+</html>

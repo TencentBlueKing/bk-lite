@@ -9,6 +9,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import useFetchConfigData from '@/app/opspilot/hooks/useFetchConfigData';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
+import { useKnowledge } from '@/app/opspilot/context/knowledgeContext';
 
 const { Option } = Select;
 
@@ -22,6 +23,7 @@ const SettingsPage: React.FC = () => {
   const { formData, configData, setFormData, setConfigData, loading, knowledgeBasePermissions } = useFetchConfigData(id);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const { updateKnowledgeSettings } = useKnowledgeApi();
+  const { refreshKnowledgeInfo } = useKnowledge();
 
   useEffect(() => {
     if (!groupsLoading && groups.length > 0) {
@@ -76,6 +78,7 @@ const SettingsPage: React.FC = () => {
         try {
           await updateKnowledgeSettings(id, params);
           message.success(t('common.updateSuccess'));
+          refreshKnowledgeInfo();
         } catch (error) {
           message.error(t('common.updateFailed'));
           console.error(error);
@@ -83,9 +86,7 @@ const SettingsPage: React.FC = () => {
           setConfirmLoading(false);
         }
       })
-      .catch(errorInfo => {
-        console.log(`${t('common.valFailed')}: ${errorInfo}`);
-      });
+      .catch(() => {});
   };
 
   const handleCancel = () => {

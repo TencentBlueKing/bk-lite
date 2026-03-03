@@ -7,6 +7,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import ChatApplication, WorkFlowConversationHistory
 from apps.opspilot.models.bot_mgmt import BotWorkFlow
 from apps.opspilot.models.model_provider_mgmt import LLMSkill
@@ -80,12 +81,15 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
         username = request.user.username
         domain = getattr(request.user, "domain", "")
         user_id = f"{username}@{domain}" if domain else username
+
         entry_type = request.GET.get("entry_type", "web_chat")
+        node_id = request.GET.get("node_id")
         # 构建查询条件
         filter_kwargs = {
             "user_id": user_id,
             "entry_type": entry_type,
             "conversation_role": "user",  # 只取用户输入作为标题
+            "node_id": node_id,
         }
 
         # 如果提供了 bot_id 参数，添加过滤条件
@@ -116,7 +120,13 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
                 if len(first_record.conversation_content) > 50:
                     title += "..."
 
-                result.append({"session_id": session_id, "title": title, "bot_id": first_record.bot_id})
+                result.append(
+                    {
+                        "session_id": session_id,
+                        "title": title,
+                        "bot_id": first_record.bot_id,
+                    }
+                )
 
         return Response(result)
 
@@ -154,10 +164,22 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
 
         # 查询该会话的所有对话记录
         messages = (
-            WorkFlowConversationHistory.objects.filter(user_id=user_id, session_id=session_id, entry_type__in=["web_chat", "mobile"])
+            WorkFlowConversationHistory.objects.filter(
+                user_id=user_id,
+                session_id=session_id,
+                entry_type__in=["web_chat", "mobile"],
+            )
             .order_by("conversation_time")
             .values(
-                "id", "bot_id", "node_id", "user_id", "conversation_role", "conversation_content", "conversation_time", "entry_type", "session_id"
+                "id",
+                "bot_id",
+                "node_id",
+                "user_id",
+                "conversation_role",
+                "conversation_content",
+                "conversation_time",
+                "entry_type",
+                "session_id",
             )
         )
         return_data = []
@@ -258,3 +280,34 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
 
         except Exception as e:
             return Response({"error": f"查询失败: {str(e)}"}, status=500)
+
+    @action(detail=False, methods=["POST"])
+    def delete_session_history(self, request):
+        """
+        删除指定会话的对话历史
+
+        Query Parameters:
+            node_id (str, required): 节点ID
+            session_id (str, required): 会话ID
+
+        仅删除当前用户的会话历史记录
+        """
+        node_id = request.data.get("node_id")
+        session_id = request.data.get("session_id")
+
+        if not node_id:
+            return Response({"result": False, "message": "node_id 参数是必填的"}, status=400)
+        if not session_id:
+            return Response({"result": False, "message": "session_id 参数是必填的"}, status=400)
+
+        # 拼接 user_id
+        username = request.user.username
+        domain = getattr(request.user, "domain", "")
+        user_id = f"{username}@{domain}" if domain else username
+
+        # 删除符合条件的会话历史
+        deleted_count, _ = WorkFlowConversationHistory.objects.filter(user_id=user_id, node_id=node_id, session_id=session_id).delete()
+
+        logger.info(f"Deleted {deleted_count} conversation history records for user={user_id}, node_id={node_id}, session_id={session_id}")
+
+        return Response({"result": True})

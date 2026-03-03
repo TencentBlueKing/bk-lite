@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='mysql'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["mysql_threads_running", "mysql_slow_queries_rate", "mysql_innodb_buffer_pool_disk_reads_rate"],
+  "supplementary_indicators": ["mysql_threads_running", "mysql_slow_queries_rate", "mysql_innodb_buffer_pool_reads_rate"],
   "metrics": [
     {
       "metric_group": "ConnStatus",
@@ -16,7 +16,7 @@
       "display_name": "Current Connections",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Number of currently open connections; new connections are rejected when approaching max_connections",
       "query": "mysql_threads_connected{__$labels__}"
@@ -27,7 +27,7 @@
       "display_name": "Running Threads",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Number of threads currently executing queries, reflecting concurrent processing capacity",
       "query": "mysql_threads_running{__$labels__}"
@@ -38,7 +38,7 @@
       "display_name": "Aborted Connections",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Number of failed connection attempts, possibly due to permissions, network, or configuration",
       "query": "mysql_aborted_connects{__$labels__}"
@@ -133,14 +133,14 @@
     },
     {
       "metric_group": "InnoDBPerf",
-      "name": "mysql_innodb_buffer_pool_disk_reads_rate",
+      "name": "mysql_innodb_buffer_pool_reads_rate",
       "display_name": "Buffer Pool Disk Reads Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
       "description": "Buffer pool disk reads; high values indicate insufficient memory",
-      "query": "rate(mysql_innodb_buffer_pool_disk_reads{__$labels__}[5m])"
+      "query": "rate(mysql_innodb_buffer_pool_reads{__$labels__}[5m])"
     },
     {
       "metric_group": "InnoDBPerf",
@@ -148,7 +148,7 @@
       "display_name": "Dirty Pages",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Number of dirty pages in buffer pool (not yet written to disk); indicates buffer pool utilization",
       "query": "mysql_innodb_buffer_pool_pages_dirty{__$labels__}"
@@ -159,7 +159,7 @@
       "display_name": "Total Buffer Pool Pages",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Total pages in buffer pool; used to calculate buffer pool utilization",
       "query": "mysql_innodb_buffer_pool_pages_total{__$labels__}"

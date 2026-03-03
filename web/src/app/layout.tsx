@@ -100,14 +100,14 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
-      {isAuthenticated && (
-        <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
-          <TopMenu hideMainMenu={hideTopMenu} />
-        </header>
-      )}
-      <main className={`flex-1 p-4 flex text-sm ${!isAuthenticated ? 'h-screen' : ''}`}>
-        <AntdRegistry>
+    <AntdRegistry>
+      <div className="flex flex-col min-h-screen">
+        {isAuthenticated && (
+          <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
+            <TopMenu hideMainMenu={hideTopMenu} />
+          </header>
+        )}
+        <main className={`flex-1 p-4 flex text-sm ${!isAuthenticated ? 'h-screen' : ''}`}>
           {shouldRenderMenu ? (
             <WithSideMenuLayout
               layoutType="segmented"
@@ -118,9 +118,9 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
           ) : (
             children
           )}
-        </AntdRegistry>
-      </main>
-    </div>
+        </main>
+      </div>
+    </AntdRegistry>
   );
 };
 

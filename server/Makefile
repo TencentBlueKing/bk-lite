@@ -25,7 +25,6 @@ server-init:
 	uv run python manage.py init_channel
 	uv run python manage.py init_llm
 	uv run python manage.py init_bk_login_settings
-	uv run python manage.py create_builtin_rules --update
 
 setup-dev-user:
 	DJANGO_SUPERUSER_USERNAME=admin DJANGO_SUPERUSER_EMAIL=admin@example.com DJANGO_SUPERUSER_PASSWORD=password uv run python manage.py createsuperuser --noinput

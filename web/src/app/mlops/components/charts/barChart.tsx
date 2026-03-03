@@ -34,7 +34,7 @@ const BarChart: React.FC<BarChartProps> = ({
 
   const chartKeys = useMemo(() => {
     const keys = getChartAreaKeys(data);
-    console.log(keys);
+    console.error(keys);
     return keys;
   }, [data, getChartAreaKeys]);
 

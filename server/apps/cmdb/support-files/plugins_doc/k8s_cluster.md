@@ -1,8 +1,8 @@
-## 说明
+### 说明
 本插件用于从 Kubernetes 集群按需拉取四类资源实例指标，统一整理为结构化实例数据：k8s_namespace、k8s_workload、k8s_pod、k8s_node。
 采集来源为指标采集插件，配置采集任务会从数据库中周期同步到CMDB中。
 
-## 前置要求
+### 前置要求
 ### 1. k8s集群接入
 *   [在线Kubernetes 集群接入指南](https://bklite.ai/docs/deploy/k8s-cluster-integration)
 *   [离线Kubernetes 集群接入指南-概要版](#K8S接入指南)
@@ -10,7 +10,7 @@
 *   集群接入时，在secret.env文件中配置了集群名称的参数：CLUSTER_NAME={your-cluster-name}，此集群名称为上报数据的核心维度
 *   采集任务需要选择对应的CMDB的k8s集群实例，这个k8s集群实例的实例名，需要与前面配置的{your-cluster-name}保持一致。
 
-## 采集内容
+### 采集内容
 | key | 含义 |
 | :-- | :-- |
 | k8s.namespace.inst\_name | 命名空间实例展示名：`{namespace}({cluster})` |

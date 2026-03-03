@@ -1,4 +1,5 @@
 [[inputs.prometheus]]
+    startup_error_behavior = "retry"
     urls = [
         "http://{{ host }}:{{ port }}/minio/v2/metrics/cluster",
         "http://{{ host }}:{{ port }}/minio/v2/metrics/bucket",

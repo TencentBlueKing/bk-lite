@@ -4,12 +4,12 @@
   "url": "/opspilot/studio",
   "icon": "opspilot",
   "tags": [
-    "智能体",
-    "知识库",
-    "智能机器人",
-    "工具管理"
+    "tag.agent",
+    "tag.knowledge_base",
+    "tag.smart_bot",
+    "tag.tool_management"
   ],
-  "description": "OpsPilot is an AI intelligence platform, based on cutting-edge artificial intelligence technology, integrating machine learning and large model capabilities, supporting diversified scenarios.",
+  "description": "app.opspilot",
   "menus": [
     {
       "name": "Studio",
@@ -194,29 +194,6 @@
           ]
         }
       ]
-    },
-    {
-      "name": "Setting",
-      "icon": "settings-fill",
-      "children": [
-        {
-          "id": "mange_quota",
-          "name": "Mange Quota",
-          "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
-          ]
-        },
-        {
-          "id": "my_quota",
-          "name": "My Quota",
-          "operation": [
-            "View"
-          ]
-        }
-      ]
     }
   ],
   "roles": [
@@ -238,7 +215,6 @@
         "knowledge_list-View",
         "knowledge_setting-View",
         "knowledge_testing-View",
-        "my_quota-View",
         "provide_list-View",
         "skill_api-View",
         "skill_list-View",

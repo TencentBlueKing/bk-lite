@@ -3,13 +3,13 @@
   "name": "Monitor",
   "url": "/monitor/view",
   "tags": [
-    "多对象接入",
-    "快速检索",
-    "监控仪表盘",
-    "监控策略",
-    "智能告警"
+    "tag.multi_object_access",
+    "tag.quick_search",
+    "tag.monitor_dashboard",
+    "tag.monitor_strategy",
+    "tag.smart_alert"
   ],
-  "description": "Real-time monitoring and management platform for system operation status, providing data visualization, alert notifications, performance analysis and other functions to help quickly identify problems and ensure business stability",
+  "description": "app.monitor",
   "icon": "monitor",
   "menus": [
     {

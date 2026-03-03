@@ -8,7 +8,7 @@ import {
   message,
   Spin,
   Segmented,
-  Empty,
+  Empty
 } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -22,16 +22,18 @@ import {
   GroupInfo,
   IntegrationItem,
   ObjectItem,
-  MetricItem,
+  MetricItem
 } from '@/app/monitor/types';
 import { MetricListItem, DimensionItem } from '@/app/monitor/types/integration';
 import Collapse from '@/components/collapse';
 import GroupModal from './groupModal';
 import MetricModal from './metricModal';
 import { useSearchParams } from 'next/navigation';
-import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
-import { NEED_TAGS_ENTRY_OBJECTS } from '@/app/monitor/constants/integration';
+import {
+  needsTagsEntry,
+  getObjectTypeByName
+} from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 
 const Configure = () => {
@@ -42,20 +44,20 @@ const Configure = () => {
     updateMetricsGroup,
     updateMonitorMetrics,
     deleteMonitorMetrics,
-    deleteMetricsGroup,
+    deleteMetricsGroup
   } = useIntegrationApi();
   const { t } = useTranslation();
-  const commonContext = useUserInfoContext();
-  const superRef = useRef(commonContext?.isSuperUser || false);
   const searchParams = useSearchParams();
   const groupName = searchParams.get('name') || '';
   const groupId = searchParams.get('id');
   const pluginID = searchParams.get('plugin_id') || '';
   const groupRef = useRef<ModalRef>(null);
   const metricRef = useRef<ModalRef>(null);
-  const isSuperUser = superRef?.current;
   const [searchText, setSearchText] = useState<string>('');
   const [metricData, setMetricData] = useState<MetricListItem[]>([]);
+  const [filteredMetricData, setFilteredMetricData] = useState<
+    MetricListItem[]
+  >([]);
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [groupList, setGroupList] = useState<MetricListItem[]>([]);
@@ -65,6 +67,7 @@ const Configure = () => {
   const [dragOverTargetId, setDragOverTargetId] = useState<string | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [groupConfirmLoading, setGroupConfirmLoading] = useState(false);
+  const [showTabs, setShowTabs] = useState<boolean>(false);
 
   const columns: ColumnItem[] = [
     {
@@ -72,14 +75,14 @@ const Configure = () => {
       dataIndex: 'name',
       width: 120,
       key: 'name',
-      ellipsis: true,
+      ellipsis: true
     },
     {
       title: t('common.name'),
       dataIndex: 'display_name',
       width: 120,
       key: 'display_name',
-      ellipsis: true,
+      ellipsis: true
     },
     {
       title: t('monitor.integrations.dimension'),
@@ -95,13 +98,13 @@ const Configure = () => {
               .join(',')
             : '--'}
         </>
-      ),
+      )
     },
     {
       title: t('monitor.integrations.dataType'),
       dataIndex: 'data_type',
       key: 'data_type',
-      width: 100,
+      width: 100
     },
     {
       title: t('common.unit'),
@@ -110,13 +113,13 @@ const Configure = () => {
       key: 'unit',
       render: (_, record) => (
         <>{record.data_type === 'Enum' ? '--' : record.unit || '--'}</>
-      ),
+      )
     },
     {
       title: t('common.descripition'),
       dataIndex: 'display_description',
       key: 'display_description',
-      width: 150,
+      width: 150
     },
     {
       title: t('common.action'),
@@ -132,7 +135,7 @@ const Configure = () => {
           >
             <Button
               type="link"
-              disabled={record.is_pre && !isSuperUser}
+              disabled={record.is_pre}
               onClick={() => openMetricModal('edit', record)}
             >
               {t('common.edit')}
@@ -147,14 +150,14 @@ const Configure = () => {
               okButtonProps={{ loading: confirmLoading }}
               onConfirm={() => handleDeleteConfirm(record as MetricItem)}
             >
-              <Button type="link" disabled={record.is_pre && !isSuperUser}>
+              <Button type="link" disabled={record.is_pre}>
                 {t('common.delete')}
               </Button>
             </Popconfirm>
           </Permission>
         </>
-      ),
-    },
+      )
+    }
   ];
 
   useEffect(() => {
@@ -166,24 +169,21 @@ const Configure = () => {
     setLoading(true);
     let _objId = '';
     try {
-      if (NEED_TAGS_ENTRY_OBJECTS.includes(groupName)) {
-        const typeMaps: Record<string, string> = {
-          Docker: 'Container Management',
-          Cluster: 'K8S',
-          vCenter: 'VMWare',
-          TCP: 'Tencent Cloud',
-        };
-        const data = await getMonitorObject();
+      const data = await getMonitorObject();
+      if (needsTagsEntry(groupName, data)) {
+        setShowTabs(true);
+        const objectType = getObjectTypeByName(groupName, data);
         const _items = data
-          .filter((item: ObjectItem) => item.type === typeMaps[groupName])
+          .filter((item: ObjectItem) => item.type === objectType)
           .sort((a: ObjectItem, b: ObjectItem) => a.id - b.id)
           .map((item: ObjectItem) => ({
             label: item.display_name,
-            value: item.id,
+            value: item.id
           }));
         _objId = _items[0]?.value;
         setItems(_items);
       } else {
+        setShowTabs(false);
         _objId = groupId || '';
       }
       setActiveTab(_objId);
@@ -198,7 +198,7 @@ const Configure = () => {
     try {
       await deleteMonitorMetrics(row.id);
       message.success(t('common.successfullyDeleted'));
-      getInitData();
+      getInitData(activeTab, true);
     } finally {
       setConfirmLoading(false);
     }
@@ -209,34 +209,41 @@ const Configure = () => {
     try {
       await deleteMetricsGroup(row.id);
       message.success(t('common.successfullyDeleted'));
-      getInitData();
+      getInitData(activeTab, true);
     } finally {
       setGroupConfirmLoading(false);
     }
   };
 
-  const getInitData = async (objId = activeTab) => {
+  const getInitData = async (objId = activeTab, preserveState = false) => {
     const params = {
       monitor_object_id: +objId,
-      monitor_plugin_id: +pluginID,
+      monitor_plugin_id: +pluginID
     };
-    const getGroupList = getMetricsGroup({
-      ...params,
-      name: searchText,
-    });
+    const getGroupList = getMetricsGroup(params);
 
     const getMetrics = getMonitorMetrics({
       ...params,
-      monitor_plugin_id: +pluginID,
+      monitor_plugin_id: +pluginID
     });
     setLoading(true);
+    const currentSearchText = preserveState ? searchText : '';
+    const currentOpenState = preserveState
+      ? new Map(filteredMetricData.map((g) => [g.id, g.isOpen]))
+      : null;
+
+    if (!preserveState) {
+      setSearchText('');
+    }
     try {
       Promise.all([getGroupList, getMetrics])
         .then((res) => {
           const groupData = res[0].map((item: GroupInfo, index: number) => ({
             ...item,
             child: [],
-            isOpen: !index,
+            isOpen: currentOpenState
+              ? (currentOpenState.get(item.id as string) ?? false)
+              : !index
           }));
           const metricData = res[1];
           setMetrics(res[1] || []);
@@ -250,6 +257,35 @@ const Configure = () => {
           });
           setGroupList(groupData);
           setMetricData(groupData);
+          if (preserveState && currentSearchText.trim()) {
+            const lowerSearchText = currentSearchText.toLowerCase();
+            const filtered = groupData
+              .map((group: MetricListItem) => {
+                const filteredChild = (group.child || []).filter(
+                  (metric: MetricItem) => {
+                    const name = metric.name?.toLowerCase() || '';
+                    const displayName =
+                      metric.display_name?.toLowerCase() || '';
+                    return (
+                      name.includes(lowerSearchText) ||
+                      displayName.includes(lowerSearchText)
+                    );
+                  }
+                );
+                if (filteredChild.length > 0) {
+                  return {
+                    ...group,
+                    child: filteredChild,
+                    isOpen: currentOpenState?.get(group.id) ?? true
+                  };
+                }
+                return null;
+              })
+              .filter(Boolean) as MetricListItem[];
+            setFilteredMetricData(filtered);
+          } else {
+            setFilteredMetricData(groupData);
+          }
         })
         .finally(() => {
           setLoading(false);
@@ -263,13 +299,48 @@ const Configure = () => {
     setSearchText(e.target.value);
   };
 
+  const filterMetricData = (text: string) => {
+    if (!text.trim()) {
+      const restored = metricData.map((group, index) => ({
+        ...group,
+        isOpen: !index
+      }));
+      setFilteredMetricData(restored);
+      return;
+    }
+    const lowerSearchText = text.toLowerCase();
+    const filtered = metricData
+      .map((group) => {
+        const filteredChild = (group.child || []).filter(
+          (metric: MetricItem) => {
+            const name = metric.name?.toLowerCase() || '';
+            const displayName = metric.display_name?.toLowerCase() || '';
+            return (
+              name.includes(lowerSearchText) ||
+              displayName.includes(lowerSearchText)
+            );
+          }
+        );
+        if (filteredChild.length > 0) {
+          return {
+            ...group,
+            child: filteredChild,
+            isOpen: true
+          };
+        }
+        return null;
+      })
+      .filter(Boolean) as MetricListItem[];
+    setFilteredMetricData(filtered);
+  };
+
   const onTxtPressEnter = () => {
-    getInitData();
+    filterMetricData(searchText);
   };
 
   const onTxtClear = () => {
     setSearchText('');
-    getInitData();
+    filterMetricData('');
   };
 
   const openGroupModal = (type: string, row = {}) => {
@@ -281,7 +352,7 @@ const Configure = () => {
     groupRef.current?.showModal({
       title,
       type,
-      form: row,
+      form: row
     });
   };
 
@@ -294,16 +365,16 @@ const Configure = () => {
     metricRef.current?.showModal({
       title,
       type,
-      form: row,
+      form: row
     });
   };
 
   const operateGroup = () => {
-    getInitData();
+    getInitData(activeTab, true);
   };
 
   const operateMtric = () => {
-    getInitData();
+    getInitData(activeTab, true);
   };
 
   const onTabChange = (val: string) => {
@@ -355,12 +426,12 @@ const Configure = () => {
           const updatedOrder = reorderedData.map(
             (item: MetricItem, index: number) => ({
               id: item.id,
-              sort_order: index,
+              sort_order: index
             })
           );
           await updateMetricsGroup(updatedOrder);
           message.success(t('common.updateSuccess'));
-          getInitData();
+          getInitData(activeTab, true);
         } catch {
           setLoading(false);
         }
@@ -378,13 +449,13 @@ const Configure = () => {
     });
     const updatedOrder = data.map((item: MetricItem, index: number) => ({
       id: item.id,
-      sort_order: index,
+      sort_order: index
     }));
 
     updateMonitorMetrics(updatedOrder)
       .then(() => {
         message.success(t('common.updateSuccess'));
-        getInitData();
+        getInitData(activeTab, true);
       })
       .catch(() => {
         setLoading(false);
@@ -395,11 +466,14 @@ const Configure = () => {
     setMetricData((prev) =>
       prev.map((item) => (item.id === id ? { ...item, isOpen } : item))
     );
+    setFilteredMetricData((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, isOpen } : item))
+    );
   };
 
   return (
     <div className={metricStyle.metric}>
-      {NEED_TAGS_ENTRY_OBJECTS.includes(groupName) && (
+      {showTabs && (
         <Segmented
           className="mb-[20px] custom-tabs"
           value={activeTab}
@@ -413,7 +487,7 @@ const Configure = () => {
       <div className="flex items-center justify-between mb-[15px]">
         <Input
           className="w-[400px]"
-          placeholder={t('common.searchPlaceHolder')}
+          placeholder={t('monitor.integrations.searchMetricPlaceholder')}
           value={searchText}
           allowClear
           onChange={onSearchTxtChange}
@@ -437,13 +511,11 @@ const Configure = () => {
         <div
           className={metricStyle.metricTable}
           style={{
-            height: NEED_TAGS_ENTRY_OBJECTS.includes(groupName)
-              ? 'calc(100vh - 396px)'
-              : 'calc(100vh - 346px)',
+            height: showTabs ? 'calc(100vh - 396px)' : 'calc(100vh - 346px)'
           }}
         >
-          {!!metricData.length ? (
-            metricData.map((metricItem) => (
+          {!!filteredMetricData.length ? (
+            filteredMetricData.map((metricItem) => (
               <Collapse
                 className={`mb-[10px] ${
                   dragOverTargetId === metricItem.id &&

@@ -13,7 +13,6 @@ from apps.opspilot.models import BotConversationHistory, ConversationTag, Knowle
 from apps.opspilot.serializers.history_serializer import HistorySerializer
 from apps.opspilot.tasks import invoke_document_to_es
 from apps.opspilot.utils.bot_utils import set_time_range
-from apps.opspilot.utils.knowledge_utils import KnowledgeDocumentUtils
 
 
 class HistoryViewSet(viewsets.ModelViewSet):
@@ -170,7 +169,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
         }
         with transaction.atomic():
             tag_obj = self.get_or_create_tag(kwargs)
-            new_doc = KnowledgeDocumentUtils.get_new_document(params, request.user.username, request.user.domain)
+            new_doc = KnowledgeDocument.create_new_document(params, request.user.username, request.user.domain)
             ManualKnowledge.objects.create(
                 knowledge_document_id=new_doc.id,
                 content=kwargs.get("content", ""),

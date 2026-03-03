@@ -1,4 +1,5 @@
 from typing import Any
+
 from langchain_openai import OpenAIEmbeddings
 from loguru import logger
 from singleton_decorator import singleton
@@ -11,17 +12,16 @@ class EmbedManager:
     # 默认配置
     DEFAULT_TIMEOUT = 300
 
-    def get_embed(self, protocol: str, model_name: str = '',
-                  model_api_key: str = '', model_base_url: str = '',
-                  cache_folder: str = './models') -> Any:
+    def get_embed(
+        self, protocol: str, model_name: str = "", model_api_key: str = "", model_base_url: str = "", cache_folder: str = "./models"
+    ) -> Any:
         """获取嵌入模型实例。"""
         if not protocol:
             raise ValueError("Protocol cannot be empty")
 
         # 远程模型参数校验
         if not model_name or not model_api_key:
-            raise ValueError(
-                "model_name and model_api_key are required for remote embedding")
+            raise ValueError("model_name and model_api_key are required for remote embedding")
 
         logger.info(f"Creating remote embed instance: {model_name}")
         return OpenAIEmbeddings(

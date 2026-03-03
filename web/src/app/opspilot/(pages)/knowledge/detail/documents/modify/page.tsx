@@ -13,6 +13,7 @@ import QAPairForm from './qaPairForm';
 import Icon from '@/components/icon'
 import { useTranslation } from '@/utils/i18n';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
+import TaskProgress from '@/app/opspilot/components/task-progress';
 import { 
   getDefaultExtractionMethod,
   getExtractionMethodMap,
@@ -624,6 +625,13 @@ const KnowledgeModifyPage = () => {
             </Button>
           )}
         </div>
+        {currentStep === steps.length - 1 && (
+          <div className="fixed bottom-0 left-0 w-[216px] h-[200px] z-40">
+            <div className="relative h-full">
+              <TaskProgress pageType="documents" />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

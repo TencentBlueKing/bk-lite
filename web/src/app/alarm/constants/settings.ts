@@ -9,7 +9,7 @@ export const initialConditionLists: Record<
     { name: 'not_contains', desc: '不包含' },
   ],
   source_id: [{ name: 'eq', desc: '等于' }],
-  level_id: [{ name: 'eq', desc: '等于' }],
+  level: [{ name: 'eq', desc: '等于' }],
   resource_type: [
     { name: 'eq', desc: '等于' },
     { name: 'contains', desc: '包含' },
@@ -37,7 +37,7 @@ export const ruleList = [
     name: 'source_id',
     verbose_name: '告警源',
   },
-  { name: 'level_id', verbose_name: '级别' },
+  { name: 'level', verbose_name: '级别' },
   { name: 'resource_type', verbose_name: '类型对象' },
   { name: 'resource_id', verbose_name: '对象实例' },
   { name: 'content', verbose_name: '内容' },

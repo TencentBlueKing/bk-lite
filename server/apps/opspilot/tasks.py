@@ -48,7 +48,7 @@ def retrain_all(knowledge_base_id, username, domain, delete_qa_pairs):
 
 def general_embed_by_document_list(document_list, is_show=False, username="", domain="", delete_qa_pairs=False):
     if is_show:
-        res, remote_docs = invoke_one_document(document_list[0], is_show)
+        res, remote_docs, _ = invoke_one_document(document_list[0], is_show)
         docs = [i["page_content"] for i in remote_docs][:10]
         return docs
     logger.info(f"document_list: {document_list}")
@@ -67,8 +67,8 @@ def general_embed_by_document_list(document_list, is_show=False, username="", do
     for index, document in tqdm(enumerate(document_list)):
         try:
             invoke_document_to_es(document=document, delete_qa_pairs=delete_qa_pairs)
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
+            logger.exception("Failed to invoke document to ES: document_id=%s", document.id)
         task_progress = task_obj.train_progress + train_progress
         task_obj.train_progress = round(task_progress, 2)
         task_obj.completed_count += 1
@@ -92,12 +92,14 @@ def invoke_document_to_es(document_id=0, document=None, delete_qa_pairs=False):
     logger.info(f"document {document.name} progress: {document.train_progress}")
     keep_qa = not delete_qa_pairs
     KnowledgeSearchService.delete_es_content(document.knowledge_index_name(), document.id, document.name, keep_qa)
-    res, knowledge_docs = invoke_one_document(document)
+    res, knowledge_docs, error_msg = invoke_one_document(document)
     if not res:
         document.train_status = DocumentStatus.ERROR
+        document.error_message = error_msg
         document.save()
         return
     document.train_status = DocumentStatus.READY
+    document.error_message = None
     document.save()
     logger.info(f"document {document.name} progress: {document.train_progress}")
 
@@ -115,6 +117,7 @@ def invoke_one_document(document, is_show=False):
 
     res = {"status": "fail"}
     knowledge_docs = []
+    error_msg = None
 
     try:
         if source_type == "file":
@@ -124,8 +127,9 @@ def invoke_one_document(document, is_show=False):
         elif source_type == "web_page":
             res = _handle_webpage_ingest(document, params, rag)
         else:
-            logger.error(f"不支持的文档类型: {source_type}")
-            return False, []
+            error_msg = f"不支持的文档类型: {source_type}"
+            logger.error(error_msg)
+            return False, [], error_msg
 
         # 处理返回结果
         if is_show:
@@ -133,13 +137,15 @@ def invoke_one_document(document, is_show=False):
         document.chunk_size = res.get("chunks_size", 0)
 
         if not document.chunk_size:
-            logger.error(f"获取不到文档，返回结果为： {res}")
+            error_msg = f"获取不到文档，返回结果为： {res}"
+            logger.error(error_msg)
 
     except Exception as e:
+        error_msg = str(e)
         logger.exception(f"文档处理失败: {e}")
-        res = {"status": "error", "message": str(e)}
+        res = {"status": "error", "message": error_msg}
 
-    return res.get("status") == "success", knowledge_docs
+    return res.get("status") == "success", knowledge_docs, error_msg
 
 
 def _prepare_ingest_params(document, is_preview=False):
@@ -284,8 +290,8 @@ def delete_and_update_old_data(web_page: WebPageKnowledge):
         )
         rag_client = PgvectorRag()
         rag_client.update_metadata(request)
-    except Exception as e:
-        logger.exception(e)
+    except Exception:
+        logger.exception("Failed to delete and update old data for web_page_id=%s", web_page.id)
 
 
 @shared_task
@@ -347,8 +353,8 @@ def create_qa_pairs(qa_pairs_id_list, only_question, delete_old_qa_pairs=False):
                 only_question,
                 task_obj,
             )
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
+            logger.exception("Failed to create QA pairs: qa_pairs_id=%s", qa_pairs_obj.id)
             qa_pairs_obj.status = "failed"
             qa_pairs_obj.save()
         else:
@@ -531,7 +537,12 @@ def _prepare_qa_ingest_params(knowledge_base):
 
 def _process_single_qa_pairs(qa_pairs, qa_json, params, rag, task_obj):
     """处理单个问答对集合"""
-    base_metadata = {"enabled": "true", "base_chunk_id": "", "qa_pairs_id": str(qa_pairs.id), "is_doc": "0"}
+    base_metadata = {
+        "enabled": "true",
+        "base_chunk_id": "",
+        "qa_pairs_id": str(qa_pairs.id),
+        "is_doc": "0",
+    }
     qa_pairs.status = "generating"
     qa_pairs.save()
 
@@ -577,7 +588,11 @@ def _create_single_qa_item(qa_item, index, base_params, base_metadata, rag):
 
     # 构建请求参数
     params = base_params.copy()
-    params["metadata"] = {**base_metadata, "qa_question": qa_item["instruction"], "qa_answer": qa_item["output"]}
+    params["metadata"] = {
+        **base_metadata,
+        "qa_question": qa_item["instruction"],
+        "qa_answer": qa_item["output"],
+    }
 
     # 尝试创建问答对，带重试机制
     return _ingest_qa_with_retry(qa_item["instruction"], params, rag, index)
@@ -641,8 +656,8 @@ def create_qa_pairs_by_custom(qa_pairs_id, content_list):
         success_count = ChunkHelper.create_qa_pairs(content_list, chunk_obj, es_index, embed_config, qa_pairs_id, task_obj)
         qa_pairs.generate_count = success_count
         qa_pairs.status = "completed"
-    except Exception as e:
-        logger.exception(e)
+    except Exception:
+        logger.exception("Failed to create QA pairs by custom: qa_pairs_id=%s", qa_pairs_id)
         qa_pairs.status = "failed"
     task_obj.delete()
     qa_pairs.save()
@@ -741,6 +756,25 @@ def chat_flow_celery_task(bot_id, node_id, message):
         logger.info(f"ChatFlow周期任务执行完成: bot_id={bot_id}, node_id={node_id}, 执行结果为{result}")
     except Exception as e:
         logger.error(f"ChatFlow周期任务执行失败: bot_id={bot_id}, node_id={node_id}, error={str(e)}")
+
+
+@shared_task
+def chat_flow_test_execute_task(workflow_id, node_id, input_data, entry_type, execution_id):
+    """ChatFlow测试异步任务"""
+    logger.info(f"开始执行ChatFlow测试异步任务: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
+    workflow = BotWorkFlow.objects.filter(id=workflow_id).first()
+    if not workflow:
+        logger.error(f"ChatFlow测试异步任务失败: workflow_id={workflow_id} 不存在")
+        return
+
+    try:
+        engine = create_chat_flow_engine(workflow, node_id, entry_type=entry_type, execution_id=execution_id)
+        if entry_type:
+            engine.entry_type = entry_type
+        engine.execute(input_data)
+        logger.info(f"ChatFlow测试异步任务完成: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
+    except Exception as e:
+        logger.error(f"ChatFlow测试异步任务失败: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}, error={str(e)}")
 
 
 @shared_task

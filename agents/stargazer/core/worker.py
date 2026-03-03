@@ -7,6 +7,7 @@ ARQ Worker 配置和任务处理
 2. Worker 配置（Redis、并发数、超时等）
 3. 任务完成后的清理工作（清除运行标记）
 """
+
 import os
 import time
 from typing import Dict, Any
@@ -16,8 +17,9 @@ from core.redis_config import REDIS_CONFIG
 from sanic.log import logger
 
 
-
-async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[str, Any]:
+async def collect_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str
+) -> Dict[str, Any]:
     """
     统一的任务入口函数
 
@@ -46,11 +48,29 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
         # 根据任务类型分发到对应的 handler
         if monitor_type == "vmware":
             from tasks.handlers.monitor_handler import collect_vmware_metrics_task
+
             result = await collect_vmware_metrics_task(ctx, params, task_id)
 
         elif monitor_type == "qcloud":
             from tasks.handlers.monitor_handler import collect_qcloud_metrics_task
+
             result = await collect_qcloud_metrics_task(ctx, params, task_id)
+
+        elif monitor_type == "sangforscp":
+            try:
+                from enterprise.tasks.handlers.sangforscp_handler import (
+                    collect_sangforscp_metrics_task,
+                )
+
+                result = await collect_sangforscp_metrics_task(ctx, params, task_id)
+            except ImportError:
+                logger.error(f"Enterprise module not available for task {task_id}")
+                result = {
+                    "task_id": task_id,
+                    "status": "failed",
+                    "error": "Enterprise module not available",
+                    "completed_at": int(time.time() * 1000),
+                }
 
         elif monitor_type == "test":
             # 测试任务 - 用于验证 Worker 是否正常工作
@@ -60,11 +80,12 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
                 "status": "success",
                 "message": "Test task executed successfully",
                 "params": params,
-                "completed_at": int(time.time() * 1000)
+                "completed_at": int(time.time() * 1000),
             }
 
         elif model_id:
             from tasks.handlers.plugin_handler import collect_plugin_task
+
             result = await collect_plugin_task(ctx, params, task_id)
 
         else:
@@ -73,7 +94,7 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
                 "task_id": task_id,
                 "status": "failed",
                 "error": "Unknown task type",
-                "completed_at": int(time.time() * 1000)
+                "completed_at": int(time.time() * 1000),
             }
 
         return result
@@ -89,6 +110,7 @@ async def _clear_running_flag(task_id: str):
 
     这是一个独立的辅助函数，确保无论任务成功或失败都会执行
     """
+    pool = None
     try:
         redis_settings = RedisSettings(
             host=REDIS_CONFIG["host"],
@@ -100,12 +122,15 @@ async def _clear_running_flag(task_id: str):
         pool = await create_pool(redis_settings)
         running_key = f"task:running:{task_id}"
         await pool.delete(running_key)
-        await pool.aclose()
 
         logger.info(f"Task {task_id} completed, cleared running flag")
 
     except Exception as e:
         logger.warning(f"Failed to clear running flag for {task_id}: {e}")
+    finally:
+        # 正确关闭Redis连接池
+        if pool:
+            await pool.close()
 
 
 class WorkerSettings:
@@ -134,6 +159,6 @@ class WorkerSettings:
 
     # Worker 运行配置
     max_jobs = int(os.getenv("TASK_MAX_JOBS", "10"))
-    job_timeout = int(os.getenv("TASK_JOB_TIMEOUT", "300"))
+    job_timeout = int(os.getenv("TASK_JOB_TIMEOUT", "600"))
     keep_result = int(os.getenv("TASK_KEEP_RESULT", "3600"))
     max_tries = int(os.getenv("TASK_MAX_TRIES", "3"))

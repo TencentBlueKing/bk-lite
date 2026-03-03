@@ -10,8 +10,8 @@ class Command(BaseCommand):
         logger.info("===开始初始化系统设置===")
         
         try:
-            from apps.alerts.init_constants import SYSTEM_SETTINGS
-            from apps.alerts.models import SystemSetting
+            from apps.alerts.constants.init_data import SYSTEM_SETTINGS
+            from apps.alerts.models.sys_setting import SystemSetting
             
             created_count = 0
             for data in SYSTEM_SETTINGS:

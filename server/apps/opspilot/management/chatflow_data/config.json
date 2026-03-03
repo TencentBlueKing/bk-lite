@@ -1,0 +1,35 @@
+[
+  {
+    "id": "k8s",
+    "name": "Kubernetes 助手",
+    "format_skill_name": "Kubernetes 数据汇总",
+    "description": "Kubernetes 助手",
+    "tools": [
+      "kubernetes"
+    ],
+    "check_skill_type": 3,
+    "format_skill_type": 2
+  },
+  {
+    "id": "pgsql",
+    "name": "Postgres DB 助手",
+    "format_skill_name": "Postgres DB 数据汇总",
+    "description": "Postgres DB 助手",
+    "tools": [
+      "postgres"
+    ],
+    "check_skill_type": 1,
+    "format_skill_type": 2
+  },
+  {
+    "id": "web_check",
+    "name": "Web 应用巡检助手",
+    "format_skill_name": "Web 应用数据汇总",
+    "description": "Web 应用巡检助手",
+    "tools": [
+      "jenkins"
+    ],
+    "check_skill_type": 1,
+    "format_skill_type": 2
+  }
+]

@@ -46,7 +46,8 @@ class NetworkNodeParams(BaseNodeParams):
             "integrity": self.credential.get("integrity", ""),  # 哈希算法
             "privacy": self.credential.get("privacy", ""),  # 加密算法
             "authkey": "${" + _authkey + "}",
-            "privkey": "${" + _privkey + "}"
+            "privkey": "${" + _privkey + "}",
+            "has_network_topo": self.has_network_topo
         }
         return credential_data
 
@@ -57,9 +58,3 @@ class NetworkNodeParams(BaseNodeParams):
             f"PASSWORD_community_{self._instance_id}": self.credential.get("community", ""),
         }
         return env_config
-
-
-class NetworkTopoNodeParams(NetworkNodeParams):
-    supported_model_id = "network_topo"
-    plugin_name = "snmp_facts"
-    interval = 300

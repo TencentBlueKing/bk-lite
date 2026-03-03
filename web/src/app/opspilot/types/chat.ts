@@ -1,6 +1,9 @@
 import { ReactNode } from 'react';
 import { ButtonProps } from 'antd';
-import { CustomChatMessage, Annotation } from '@/app/opspilot/types/global';
+import { CustomChatMessage, Annotation, BrowserStepAction, BrowserStepProgressData } from '@/app/opspilot/types/global';
+
+export type { BrowserStepAction, BrowserStepProgressData };
+export type BrowserStepProgressValue = BrowserStepProgressData;
 
 export interface CustomChatSSEProps {
   handleSendMessage?: (message: string, currentMessages?: any[]) => Promise<{ url: string; payload: any } | null>;
@@ -36,9 +39,8 @@ export interface SSEChunk {
   created: number;
 }
 
-// AG-UI Protocol Message Types
 export interface AGUIMessage {
-  type: 'RUN_STARTED' | 'TEXT_MESSAGE_START' | 'TEXT_MESSAGE_CONTENT' | 'TEXT_MESSAGE_END' | 'RUN_FINISHED' | 'TOOL_CALL_START' | 'TOOL_CALL_ARGS' | 'TOOL_CALL_END' | 'TOOL_CALL_RESULT' | 'ERROR' | 'RUN_ERROR';
+  type: 'RUN_STARTED' | 'TEXT_MESSAGE_START' | 'TEXT_MESSAGE_CONTENT' | 'TEXT_MESSAGE_END' | 'RUN_FINISHED' | 'TOOL_CALL_START' | 'TOOL_CALL_ARGS' | 'TOOL_CALL_END' | 'TOOL_CALL_RESULT' | 'ERROR' | 'RUN_ERROR' | 'CUSTOM';
   timestamp: number;
   threadId?: string;
   runId?: string;
@@ -52,6 +54,8 @@ export interface AGUIMessage {
   error?: string;
   message?: string;
   code?: string;
+  name?: string;
+  value?: BrowserStepProgressValue | Record<string, unknown>;
 }
 
 export interface ReferenceModalState {

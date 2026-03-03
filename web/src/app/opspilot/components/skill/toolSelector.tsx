@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Tooltip, Form, Input, Empty, InputNumber, Switch } from 'antd';
+
+const { TextArea } = Input;
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import SelectorOperateModal from './operateModal';
@@ -41,6 +43,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           id: tool.id,
           name: tool.display_name || tool.name,
           icon: tool.icon || 'gongjuji',
+          description: tool.description_tr || tool.description || '',
           kwargs: (tool.params.kwargs || [])
             .filter((kwarg: any) => kwarg.key)
             .map((kwarg: any) => ({
@@ -147,6 +150,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
         loading={loading}
         options={tools}
         isNeedGuide={false}
+        showToolDetail={true}
         selectedOptions={defaultTools.map((tool) => tool.id)}
         onOk={handleModalConfirm}
         onCancel={handleModalCancel}
@@ -176,6 +180,8 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
                     switch (fieldType) {
                       case 'text':
                         return <Input />;
+                      case 'textarea':
+                        return <TextArea rows={4} />;
                       case 'password':
                         return <EditablePasswordField />;
                       case 'number':

@@ -14,7 +14,7 @@ Example:
 
 Body parameters: {"user_message": "Help me check the server status"}
 
-RESTful API request URL: <http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=1&node_id=abcdef>
+RESTful API request URL: <http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/${bot_id}/${node_id}/>
 
 (The request URL for the trigger node can be viewed in the corresponding node after saving the canvas)
 
@@ -26,7 +26,7 @@ Example:
 
 Body parameters: {"user_message": "Help me check the server status"}
 
-OpenAI API request URL: <http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=1&node_id=abcdef>
+OpenAI API request URL: <http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/${bot_id}/${node_id}/>
 
 (The request URL for the trigger node can be viewed in the corresponding node after saving the canvas)
 
@@ -38,7 +38,7 @@ Example:
 
 Body parameters: {"user_message": "Help me check the server status"}
 
-AG-UI request URL: <http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=1&node_id=abcdef>
+AG-UI request URL: <http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/${bot_id}/${node_id}/>
 
 (The request URL for the trigger node can be viewed in the corresponding node after saving the canvas)
 

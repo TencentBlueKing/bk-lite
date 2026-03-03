@@ -1,55 +1,26 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import WithSideMenuLayout from '@/components/sub-layout';
 import OnelineEllipsisIntro from '@/app/opspilot/components/oneline-ellipsis-intro';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import TopSection from "@/components/top-section";
-import { useStudioApi } from '@/app/opspilot/api/studio';
 import { usePermissions } from '@/context/permissions';
 import { MenuItem } from '@/types/index';
+import { StudioProvider, useStudio } from '@/app/opspilot/context/studioContext';
 
-const KnowledgeDetailLayout = ({ children }: { children: React.ReactNode }) => {
+const LayoutContent = ({ children }: { children: React.ReactNode }) => {
   const { t } = useTranslation();
-  const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const id = searchParams ? searchParams.get('id') : null;
-  const name = searchParams ? searchParams.get('name') : null;
-  const desc = searchParams ? searchParams.get('desc') : null;
-  const { fetchBotDetail } = useStudioApi();
   const { menus } = usePermissions();
-  
-  const [botType, setBotType] = useState<number | null>(null);
-  const [isLoadingBotType, setIsLoadingBotType] = useState(true);
-
-  useEffect(() => {
-    if (!id) {
-      setIsLoadingBotType(false);
-      return;
-    }
-
-    const fetchBotData = async () => {
-      try {
-        setIsLoadingBotType(true);
-        const botData = await fetchBotDetail(id);
-        setBotType(botData.bot_type);
-      } catch (error) {
-        console.error('Failed to fetch bot data:', error);
-      } finally {
-        setIsLoadingBotType(false);
-      }
-    };
-
-    fetchBotData();
-  }, [id]);
+  const { botInfo, isLoading } = useStudio();
 
   const processedMenuItems = useMemo(() => {
     const getMenuItemsForPath = (menus: MenuItem[], currentPath: string): MenuItem[] => {
       const findMatchedMenu = (items: MenuItem[]): MenuItem | null => {
         for (const menu of items) {
-          // Skip isDirectory and search in children
           if (menu.isDirectory) {
             if (menu.children?.length) {
               const found = findMatchedMenu(menu.children);
@@ -82,12 +53,11 @@ const KnowledgeDetailLayout = ({ children }: { children: React.ReactNode }) => {
 
     const originalMenuItems = getMenuItemsForPath(menus, pathname ?? '');
 
-    // Prevent menu flashing while loading bot type
-    if (isLoadingBotType) {
+    if (isLoading) {
       return [originalMenuItems[0]];
     }
     
-    // Filter menu items based on bot type
+    const botType = botInfo.botType;
     if (botType === 2 && originalMenuItems.length > 0) {
       return originalMenuItems.filter(m => !['bot_channel', 'bot_api'].includes(m.name));
     }
@@ -97,83 +67,59 @@ const KnowledgeDetailLayout = ({ children }: { children: React.ReactNode }) => {
     }
     
     return originalMenuItems.filter(m => m.name !== 'bot_api');
-  }, [menus, pathname, botType, isLoadingBotType]);
+  }, [menus, pathname, botInfo.botType, isLoading]);
 
   const handleBackButtonClick = () => {
-    const pathSegments = pathname ? pathname.split('/').filter(Boolean) : [];
-    if (pathSegments.length >= 3) {
-      if (pathSegments.length === 3) {
-        router.push('/opspilot/studio');
-      } else if (pathSegments.length > 3) {
-        router.push(`/opspilot/studio/detail?id=${id}&name=${name}&desc=${desc}`);
-      }
-    }
-    else {
-      router.back();
-    }
+    router.push('/opspilot/studio');
   };
 
   const intro = (
-    <OnelineEllipsisIntro name={name} desc={desc}></OnelineEllipsisIntro>
+    <OnelineEllipsisIntro name={botInfo.name} desc={botInfo.introduction}></OnelineEllipsisIntro>
   );
 
   const getTopSectionContent = () => {
     switch (pathname) {
       case '/opspilot/studio/detail/settings':
         return (
-          <>
-            <TopSection
-              title={t('studio.settings.title')}
-              content={t('studio.settings.description')}
-            />
-          </>
+          <TopSection
+            title={t('studio.settings.title')}
+            content={t('studio.settings.description')}
+          />
         );
       case '/opspilot/studio/detail/channel':
         return (
-          <>
-            <TopSection
-              title={t('studio.channel.title')}
-              content={t('studio.channel.description')}
-            />
-          </>
+          <TopSection
+            title={t('studio.channel.title')}
+            content={t('studio.channel.description')}
+          />
         );
       case '/opspilot/studio/detail/logs':
         return (
-          <>
-            <TopSection
-              title={t('studio.logs.title')}
-              content={t('studio.logs.description')}
-            />
-          </>
+          <TopSection
+            title={t('studio.logs.title')}
+            content={t('studio.logs.description')}
+          />
         );
       case '/opspilot/studio/detail/statistics':
         return (
-          <>
-            <TopSection
-              title={t('studio.statistics.title')}
-              content={t('studio.statistics.description')}
-            />
-          </>
+          <TopSection
+            title={t('studio.statistics.title')}
+            content={t('studio.statistics.description')}
+          />
         );
       default:
         return (
-          <>
-            <TopSection
-              title={t('studio.settings.title')}
-              content={t('studio.settings.description')}
-            />
-          </>
+          <TopSection
+            title={t('studio.settings.title')}
+            content={t('studio.settings.description')}
+          />
         );
     }
   };
 
-  const topSection = (
-    getTopSectionContent()
-  );
-
   return (
     <WithSideMenuLayout
-      topSection={topSection}
+      topSection={getTopSectionContent()}
       intro={intro}
       showBackButton={true}
       onBackButtonClick={handleBackButtonClick}
@@ -184,4 +130,12 @@ const KnowledgeDetailLayout = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-export default KnowledgeDetailLayout;
+const StudioDetailLayout = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <StudioProvider>
+      <LayoutContent>{children}</LayoutContent>
+    </StudioProvider>
+  );
+};
+
+export default StudioDetailLayout;

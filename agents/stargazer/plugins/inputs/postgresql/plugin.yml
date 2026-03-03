@@ -1,0 +1,39 @@
+name: postgresql
+version: "2.0.0"
+category: database
+
+metadata:
+  display_name: "PostgreSQL 数据库"
+  description: "PostgreSQL 数据库协议采集插件"
+  author: "WeOps"
+  tags: [database, postgresql]
+  cloud_protocol: false
+  model_id: postgresql
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Job 类型（脚本采集）
+  job:
+    type: job
+    timeout: 60
+
+    scripts:
+      linux: plugins/inputs/pgsql/pgsql_default_discover.sh
+
+    collector:
+      module: plugins.script_executor
+      class: SSHPlugin
+
+    default_script: linux
+
+  # Protocol 类型（协议采集）
+  protocol:
+    type: protocol
+    timeout: 30
+    collector:
+      module: plugins.inputs.postgresql.postgresql_info
+      class: PostgresqlInfo
+
+default_executor: protocol

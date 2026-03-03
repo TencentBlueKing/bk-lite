@@ -1,6 +1,7 @@
 import useApiClient from '@/utils/request';
 import { AxiosRequestConfig } from 'axios';
 import { SearchParams } from '@/app/monitor/types/search';
+import { ViewInstanceSearchProps } from '@/app/monitor/types/view';
 import { InstanceParam } from '@/app/monitor/types';
 
 const useViewApi = () => {
@@ -44,10 +45,17 @@ const useViewApi = () => {
     );
   };
 
+  const getMetricsInstanceQuery = async (params: ViewInstanceSearchProps) => {
+    return await get(`/monitor/api/metrics_instance/query_by_instance/`, {
+      params,
+    });
+  };
+
   return {
     getInstanceQuery,
     getInstanceSearch,
     getInstanceQueryParams,
+    getMetricsInstanceQuery,
   };
 };
 

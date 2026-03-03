@@ -36,8 +36,19 @@
     color: var(--color-text-2);
 }
 
-.list :global(.ant-collapse-item) {
+.list :global(.ant-collapse) {
     background: var(--color-bg-1);
+}
+
+.list :global(.ant-collapse-item) {
+    background: var(--color-bg-1) !important;
+    border: none;
+
+    &:first-child {
+        :global(.ant-collapse-header) {
+            border-radius: 0 !important;
+        }
+    }
 }
 
 .list :global(.ant-descriptions-item-label) {
@@ -50,6 +61,10 @@
     padding: 0 !important;
 }
 
+.list :global(.ant-descriptions) {
+    margin-bottom: 18px;
+}
+
 .list :global(.ant-descriptions-item-content) {
     width: 300px !important;
     padding: 10px !important;
@@ -58,4 +73,8 @@
 .list :global(.ant-btn-link) {
     margin: 0 !important;
     padding: 0 !important;
+}
+
+.panelHeader {
+    border: none !important;
 }

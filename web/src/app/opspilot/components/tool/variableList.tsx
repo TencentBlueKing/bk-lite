@@ -42,6 +42,7 @@ const VariableList: React.FC<VariableListProps> = ({ value = [], onChange, disab
               disabled={disabled}
               options={[
                 { value: 'text', label: t('tool.text') },
+                { value: 'textarea', label: t('tool.textarea') },
                 { value: 'password', label: t('tool.password') },
                 { value: 'number', label: t('tool.number') },
                 { value: 'checkbox', label: t('tool.checkbox') },

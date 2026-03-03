@@ -11,7 +11,7 @@ MINIO_USE_HTTPS = os.getenv("MINIO_USE_HTTPS", "0") == "1"
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 MINIO_URL_EXPIRY_HOURS = timedelta(days=7)
-MINIO_CONSISTENCY_CHECK_ON_START = False
+MINIO_CONSISTENCY_CHECK_ON_START = True
 
 MINIO_PRIVATE_BUCKETS = [
     "rewind-private",

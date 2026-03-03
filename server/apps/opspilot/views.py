@@ -1,13 +1,12 @@
 import datetime
-import hashlib
 import json
 import time
+import uuid
+from typing import Any
 
-from django.conf import settings
 from django.db.models import Count
 from django.db.models.functions import TruncDate
-from django.http import FileResponse, HttpResponse, JsonResponse
-from django_minio_backend import MinioBackend
+from django.http import HttpResponse, JsonResponse
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
 
@@ -17,7 +16,8 @@ from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
 from apps.opspilot.services.chat_service import ChatService
-from apps.opspilot.services.skill_excute_service import SkillExecuteService
+from apps.opspilot.services.skill_execute_service import SkillExecuteService
+from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
@@ -26,6 +26,45 @@ from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 from apps.opspilot.viewsets.llm_view import LLMViewSet
 from apps.rpc.system_mgmt import SystemMgmt
+from apps.system_mgmt.models import User
+
+
+def parse_json_body(request, default=None):
+    if default is None:
+        default = {}
+    if not request.body:
+        return default, None
+    try:
+        return json.loads(request.body), None
+    except json.JSONDecodeError:
+        return None, "Invalid JSON payload"
+
+
+def extract_api_token(request) -> str:
+    auth_header = (request.META.get("HTTP_AUTHORIZATION") or "").strip()
+    if not auth_header:
+        return ""
+    if "TOKEN" in auth_header:
+        return auth_header.split("TOKEN", 1)[-1].strip()
+    if auth_header.startswith("Bearer "):
+        return auth_header.split("Bearer ", 1)[-1].strip()
+    return auth_header
+
+
+def pick_request_value(payload: dict[str, Any], key: str, fallback: Any) -> Any:
+    value = payload.get(key)
+    return fallback if value is None else value
+
+
+def safe_conversation_window_size(payload: dict[str, Any], fallback: int) -> int:
+    value = payload.get("conversation_window_size")
+    if value is None:
+        return fallback
+    try:
+        num = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return num if num > 0 else fallback
 
 
 def get_loader(request=None, default_lang="en"):
@@ -46,7 +85,7 @@ def get_loader(request=None, default_lang="en"):
 
 @api_exempt
 def get_bot_detail(request, bot_id):
-    api_token = request.META.get("HTTP_AUTHORIZATION").split("TOKEN")[-1].strip()
+    api_token = extract_api_token(request)
     if not api_token:
         return JsonResponse({})
     bot = Bot.objects.filter(id=bot_id, api_token=api_token).first()
@@ -65,31 +104,6 @@ def get_bot_detail(request, bot_id):
         ],
     }
     return JsonResponse(return_data)
-
-
-@api_exempt
-def model_download(request):
-    bot_id = request.GET.get("bot_id")
-    bot = Bot.objects.filter(id=bot_id).first()
-    if not bot:
-        return JsonResponse({})
-    rasa_model = bot.rasa_model
-    if not rasa_model:
-        return JsonResponse({})
-    storage = MinioBackend(bucket_name="munchkin-private")
-    file = storage.open(rasa_model.model_file.name, "rb")
-
-    # Calculate ETag
-    data = file.read()
-    etag = hashlib.md5(data).hexdigest()
-
-    # Reset file pointer to start
-    file.seek(0)
-
-    response = FileResponse(file)
-    response["ETag"] = etag
-
-    return response
 
 
 def validate_openai_token(token, team=None, is_mobile=False):
@@ -113,7 +127,34 @@ def validate_openai_token(token, team=None, is_mobile=False):
             domain=user_info["domain"],
             team=int(team),
         )
+        # Token 认证：从 verify_token 结果获取 locale
+        user.locale = user_info.get("locale", "en")
+    else:
+        # UserAPISecret 认证：查询用户信息获取 locale
+        user.locale = _get_user_locale(user.username, user.domain)
     return True, user
+
+
+def _get_user_locale(username: str, domain: str) -> str:
+    """获取用户语言设置
+
+    从 User 表查询用户的 locale 设置。
+
+    Args:
+        username: 用户名
+        domain: 域名
+
+    Returns:
+        用户语言设置，默认 "en"
+    """
+
+    try:
+        user_obj = User.objects.filter(username=username, domain=domain).first()
+        if user_obj:
+            return user_obj.locale or "en"
+    except Exception as e:
+        logger.warning(f"Failed to get user locale for {username}@{domain}: {e}")
+    return "en"
 
 
 def validate_header_token(token, bot_id):
@@ -139,6 +180,8 @@ def get_skill_and_params(kwargs, team, bot_id=None):
     """
     loader = LanguageLoader(app="opspilot", default_lang="en")
     skill_id = kwargs.get("model")
+    if not skill_id:
+        return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.skill_not_found", "No skill")}}]})
 
     # 尝试通过 name 或 instance_id 查询
     if not bot_id:
@@ -146,37 +189,32 @@ def get_skill_and_params(kwargs, team, bot_id=None):
         skill_obj = LLMSkill.objects.filter(name=skill_id, team__contains=int(team)).first()
         # 如果未找到，尝试按 instance_id 查询
         if not skill_obj:
-            try:
-                skill_obj = LLMSkill.objects.filter(instance_id=skill_id, team__contains=int(team)).first()
-            except Exception:
-                pass
+            skill_obj = LLMSkill.objects.filter(instance_id=skill_id, team__contains=int(team)).first()
     else:
         # 先尝试按 name 查询
         skill_obj = LLMSkill.objects.filter(name=skill_id, bot=bot_id).first()
         # 如果未找到，尝试按 instance_id 查询
         if not skill_obj:
-            try:
-                skill_obj = LLMSkill.objects.filter(instance_id=skill_id, bot=bot_id).first()
-            except Exception:
-                pass
+            skill_obj = LLMSkill.objects.filter(instance_id=skill_id, bot=bot_id).first()
 
     if not skill_obj:
-        return (
-            None,
-            None,
-            {"choices": [{"message": {"role": "assistant", "content": loader.get("error.skill_not_found", "No skill")}}]},
-        )
-    num = kwargs.get("conversation_window_size") or skill_obj.conversation_window_size
-    chat_history = [{"message": i["content"], "event": i["role"]} for i in kwargs.get("messages", [])[-1 * num :]]
+        return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.skill_not_found", "No skill")}}]})
+    messages = kwargs.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.message_required", "Message is required")}}]})
+    num = safe_conversation_window_size(kwargs, skill_obj.conversation_window_size)
+    chat_history = [{"message": i.get("content", ""), "event": i.get("role", "")} for i in messages[-1 * num :] if isinstance(i, dict)]
+    if not chat_history or not chat_history[-1]["message"]:
+        return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.message_required", "Message is required")}}]})
 
     params = {
         "llm_model": skill_obj.llm_model_id,
         "skill_prompt": kwargs.get("prompt", "") or kwargs.get("skill_prompt", "") or skill_obj.skill_prompt,
-        "temperature": kwargs.get("temperature") or skill_obj.temperature,
+        "temperature": pick_request_value(kwargs, "temperature", skill_obj.temperature),
         "chat_history": chat_history,
         "user_message": chat_history[-1]["message"],
-        "conversation_window_size": kwargs.get("conversation_window_size") or skill_obj.conversation_window_size,
-        "enable_rag": kwargs.get("enable_rag") or skill_obj.enable_rag,
+        "conversation_window_size": num,
+        "enable_rag": pick_request_value(kwargs, "enable_rag", skill_obj.enable_rag),
         "rag_score_threshold": [{"knowledge_base": int(key), "score": float(value)} for key, value in skill_obj.rag_score_threshold_map.items()],
         "enable_rag_knowledge_source": skill_obj.enable_rag_knowledge_source,
         "show_think": skill_obj.show_think,
@@ -196,10 +234,12 @@ def invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log
 def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
     """Format and append knowledge source references if enabled"""
     if skill_obj.enable_rag_knowledge_source:
-        knowledge_titles = {doc_map.get(k, {}).get("name") for k in title_map.keys()}
+        doc_map = doc_map or {}
+        title_map = title_map or {}
+        knowledge_titles = sorted({doc_map.get(k, {}).get("name") for k in title_map.keys() if doc_map.get(k, {}).get("name")})
         last_content = content.strip().split("\n")[-1]
         if "引用知识" not in last_content and knowledge_titles:
-            content += f'\n引用知识: {", ".join(knowledge_titles)}'
+            content += f"\n引用知识: {', '.join(knowledge_titles)}"
     return content
 
 
@@ -243,11 +283,16 @@ def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_lo
 @api_exempt
 def openai_completions(request):
     """Main entry point for OpenAI completions"""
-    kwargs = json.loads(request.body)
+    kwargs, parse_error = parse_json_body(request)
+    if parse_error:
+        return JsonResponse(
+            {"choices": [{"message": {"role": "assistant", "content": parse_error}}]},
+            status=400,
+        )
     current_ip, _ = get_client_ip(request)
 
     stream_mode = kwargs.get("stream", False)
-    token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
+    token = extract_api_token(request)
 
     is_valid, msg = validate_openai_token(token)
     if not is_valid:
@@ -284,12 +329,17 @@ def openai_completions(request):
 
 @api_exempt
 def lobe_skill_execute(request):
-    kwargs = json.loads(request.body)
+    kwargs, parse_error = parse_json_body(request)
+    if parse_error:
+        return JsonResponse(
+            {"choices": [{"message": {"role": "assistant", "content": parse_error}}]},
+            status=400,
+        )
     current_ip, _ = get_client_ip(request)
 
     stream_mode = kwargs.get("stream", False)
     # stream_mode = False
-    token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
+    token = extract_api_token(request)
     is_valid, msg = validate_header_token(token, int(kwargs["studio_id"]))
     if not is_valid:
         if stream_mode:
@@ -339,12 +389,24 @@ def lobe_skill_execute(request):
     )
     if not stream_mode:
         return invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log)
-    return stream_chat(params, skill_obj.name, kwargs, current_ip, user_message, history_log=history_log)
+    return stream_chat(
+        params,
+        skill_obj.name,
+        kwargs,
+        current_ip,
+        user_message,
+        history_log=history_log,
+    )
 
 
 @api_exempt
 def skill_execute(request):
-    kwargs = json.loads(request.body)
+    kwargs, parse_error = parse_json_body(request)
+    if parse_error:
+        return JsonResponse(
+            {"choices": [{"message": {"role": "assistant", "content": parse_error}}]},
+            status=400,
+        )
     logger.info(f"skill_execute kwargs: {kwargs}")
     skill_id = kwargs.get("skill_id")
     user_message = kwargs.get("user_message")
@@ -369,18 +431,18 @@ def skill_execute(request):
 
 def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sender_id, skill_id, user_message):
     loader = get_loader(request)
-    api_token = request.META.get("HTTP_AUTHORIZATION").split("TOKEN")[-1].strip()
+    api_token = extract_api_token(request)
     if not api_token:
         return {"content": loader.get("error.no_authorization", "No authorization")}
     bot = Bot.objects.filter(id=bot_id, api_token=api_token).first()
     if not bot:
-        logger.info(f"api_token: {api_token}")
+        logger.info(f"Bot not found for bot_id: {bot_id}")
         return {"content": loader.get("error.bot_not_found", "No bot found")}
     try:
         result = SkillExecuteService.execute_skill(bot, skill_id, user_message, chat_history, sender_id, channel)
-    except Exception as e:
-        logger.exception(e)
-        result = {"content": str(e)}
+    except Exception:
+        logger.exception("Skill execution failed: bot_id=%s, skill_id=%s", bot_id, skill_id)
+        result = {"content": "Skill execution error"}
     if getattr(request, "api_pass", False):
         current_ip, _ = get_client_ip(request)
         insert_skill_log(
@@ -429,11 +491,7 @@ def get_active_users_line_data(request):
     end_time_str = request.GET.get("end_time")
     end_time, start_time = set_time_range(end_time_str, start_time_str)
     queryset = (
-        BotConversationHistory.objects.filter(
-            created_at__range=[start_time, end_time],
-            bot_id=request.GET.get("bot_id"),
-            conversation_role="user",
-        )
+        BotConversationHistory.objects.filter(created_at__range=[start_time, end_time], bot_id=request.GET.get("bot_id"), conversation_role="user")
         .annotate(date=TruncDate("created_at"))
         .values("channel_user__channel_type", "date")
         .annotate(count=Count("channel_user", distinct=True))
@@ -460,6 +518,8 @@ def set_channel_type_line(end_time, queryset, start_time):
         channel_type = entry["channel_user__channel_type"]
         date = entry["date"].strftime("%Y-%m-%d")
         user_count = entry["count"]
+        if channel_type not in result_dict:
+            result_dict[channel_type] = formatted_dates.copy()
         result_dict[channel_type][date] = user_count
         total_user_count[date] += user_count
     # 转换为所需的输出格式
@@ -479,7 +539,9 @@ def execute_chat_flow(request, bot_id, node_id):
         return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
 
     # 读取请求体
-    kwargs = json.loads(request.body)
+    kwargs, parse_error = parse_json_body(request)
+    if parse_error:
+        return JsonResponse({"result": False, "message": parse_error}, status=400)
     message = kwargs.get("message", "") or kwargs.get("user_message", "")
     session_id = kwargs.get("session_id", "")
     is_test = kwargs.get("is_test", False)
@@ -489,7 +551,7 @@ def execute_chat_flow(request, bot_id, node_id):
     is_mobile = any(keyword in user_agent.lower() for keyword in ["android", "iphone", "ipad", "mobile", "windows phone", "tauri"])
 
     # 验证token
-    token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
+    token = extract_api_token(request)
     is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None, is_mobile)
     if not is_valid:
         return JsonResponse(msg)
@@ -512,19 +574,34 @@ def execute_chat_flow(request, bot_id, node_id):
     # 获取Bot的工作流配置
     bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
     if not bot_chat_flow:
-        return JsonResponse({"result": False, "message": loader.get("error.no_chat_flow_configured", "No chat flow configured for this bot.")})
+        return JsonResponse(
+            {
+                "result": False,
+                "message": loader.get(
+                    "error.no_chat_flow_configured",
+                    "No chat flow configured for this bot.",
+                ),
+            }
+        )
 
     # 检查工作流是否有配置数据
     if not bot_chat_flow.flow_json:
-        return JsonResponse({"result": False, "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty.")})
+        return JsonResponse(
+            {
+                "result": False,
+                "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty."),
+            }
+        )
 
     try:
         # 创建ChatFlow引擎 - 使用数据库中的工作流配置
         engine = create_chat_flow_engine(bot_chat_flow, node_id)
 
-        # 获取当前节点类型
+        # 获取当前节点类型并设置 entry_type
         node_obj = engine._get_node_by_id(node_id)
         node_type = node_obj.get("type") if node_obj else None
+        engine.entry_type = node_type  # 设置入口类型
+
         # 准备输入数据
         input_data = {
             "last_message": message,
@@ -532,9 +609,28 @@ def execute_chat_flow(request, bot_id, node_id):
             "bot_id": bot_id,
             "node_id": node_id,
             "session_id": session_id,
+            "locale": getattr(user, "locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
         }
 
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
+
+        if is_test:
+            execution_id = str(uuid.uuid4())
+            input_data["entry_type"] = node_type
+            input_data["execution_id"] = execution_id
+
+            async_task = chat_flow_test_execute_task.delay(bot_chat_flow.id, node_id, input_data, node_type, execution_id)
+            return JsonResponse(
+                {
+                    "result": True,
+                    "data": {
+                        "status": "accepted",
+                        "execution_id": execution_id,
+                        "task_id": async_task.id,
+                    },
+                },
+                status=202,
+            )
 
         # 区分流式响应节点类型：openai、agui、embedded_chat、mobile、web_chat
         stream_node_types = ["openai", "agui", "embedded_chat", "mobile", "web_chat"]
@@ -551,10 +647,9 @@ def execute_chat_flow(request, bot_id, node_id):
         return JsonResponse({"result": True, "data": {"content": result, "execution_time": time.time()}})
 
     except Exception as e:
-        logger.error(f"ChatFlow流程执行失败，bot_id: {bot_id}, node_id: {node_id}, 错误: {str(e)}")
-        logger.exception(e)
+        logger.exception("ChatFlow execution failed: bot_id=%s, node_id=%s", bot_id, node_id)
         # 流式错误响应，参考 llm_view.py
-        return LLMViewSet._create_error_stream_response(str(e))
+        return LLMViewSet.create_error_stream_response(str(e))
 
 
 @api_exempt
@@ -687,12 +782,3 @@ def execute_chat_flow_dingtalk(request, bot_id):
 
     # 5. 处理HTTP回调模式的消息
     return dingtalk_utils.handle_dingtalk_message(request, bot_chat_flow, dingtalk_config)
-
-
-@api_exempt
-def test(request):
-    ip, is_routable = get_client_ip(request)
-    kwargs = request.GET.dict()
-    data = json.loads(request.body) if request.body else {}
-    kwargs.update(data)
-    return JsonResponse({"result": True, "data": {"ip": ip, "is_routable": is_routable, "kwargs": kwargs}})

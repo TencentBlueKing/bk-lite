@@ -128,12 +128,9 @@ const IpInput: React.FC<IpInputProps> = ({ value = ['', ''], onChange }) => {
         const newBeginIp = beginIpAddress.map((item) => item.value).join('.');
         setEndIpAddress(updatedIpSegments);
 
-        if (!validateIpRange(newBeginIp, newEndIp)) {
-          setEndError(true);
-        } else {
-          setEndError(false);
-          onChange([newBeginIp, newEndIp]);
-        }
+        const isValidRange = validateIpRange(newBeginIp, newEndIp);
+        setEndError(!isValidRange);
+        onChange([newBeginIp, newEndIp]);
       }
     },
     [beginIpAddress, endIpAddress, onChange, formatIpSegment, validateIpRange]

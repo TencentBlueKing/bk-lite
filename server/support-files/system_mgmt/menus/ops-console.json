@@ -2,9 +2,8 @@
   "client_id": "ops-console",
   "name": "OpsConsole",
   "url": "/ops-console/home",
-  "description": "",
+  "description": "app.ops-console",
   "icon": "ops-console",
-  "description_cn": "",
   "menus": [],
   "roles": [
     {

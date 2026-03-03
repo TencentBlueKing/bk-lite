@@ -1,0 +1,58 @@
+{
+  "model": {
+    "type": "XGBoost",
+    "name": "text_classification_model"
+  },
+  
+  "hyperparams": {
+    "use_feature_engineering": true,
+    "random_state": 42,
+    "max_evals": 30,
+    "metric": "f1_weighted",
+    "search_space": {
+      "n_estimators": [50, 100, 200, 300],
+      "max_depth": [3, 5, 7, 10],
+      "learning_rate": [0.01, 0.05, 0.1, 0.2],
+      "subsample": [0.6, 0.8, 1.0],
+      "colsample_bytree": [0.6, 0.8, 1.0],
+      "min_child_weight": [1, 3, 5]
+    }
+  },
+  
+  "preprocessing": {
+    "jieba_mode": "precise",
+    "remove_stopwords": true,
+    "remove_punctuation": true,
+    "custom_stopwords": [],
+    "custom_dict": []
+  },
+  
+  "feature_engineering": {
+    "use_tfidf": true,
+    "use_statistical": true,
+    "tfidf": {
+      "max_features": 5000,
+      "min_df": 2,
+      "max_df": 0.8,
+      "ngram_range": [1, 2],
+      "sublinear_tf": true
+    },
+    "statistical_features": [
+      "text_length",
+      "word_count",
+      "avg_word_length",
+      "unique_word_ratio",
+      "punctuation_count",
+      "digit_count",
+      "chinese_char_count",
+      "english_char_count"
+    ]
+  },
+  
+  "mlflow": {
+    "_comment": "MLflow 实验跟踪配置",
+    
+    "experiment_name": "text_classification_training",
+    "_experiment_name_desc": "MLflow 实验名称。用于组织和管理训练运行。tracking_uri 通过环境变量 MLFLOW_TRACKING_URI 配置"
+  }
+}

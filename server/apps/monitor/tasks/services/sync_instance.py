@@ -2,11 +2,11 @@ from apps.core.logger import celery_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models.monitor_object import MonitorObject, MonitorInstance
+from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
 class SyncInstance:
-
     def __init__(self):
         self.monitor_map = self.get_monitor_map()
 
@@ -31,7 +31,12 @@ class SyncInstance:
             current_monitor_instance_count = 0
 
             for metric_info in metrics.get("data", {}).get("result", []):
-                instance_id = tuple([metric_info["metric"].get(i) for i in monitor_info["instance_id_keys"]])
+                instance_id = tuple(
+                    [
+                        metric_info["metric"].get(i)
+                        for i in monitor_info["instance_id_keys"]
+                    ]
+                )
                 instance_name = "__".join([str(i) for i in instance_id])
                 if not instance_id:
                     continue
@@ -62,7 +67,9 @@ class SyncInstance:
         all_existing_ids = set(MonitorInstance.objects.values_list("id", flat=True))
 
         # 只查询自动发现的实例（auto=True），用于后续的恢复和删除逻辑
-        all_instances_qs = MonitorInstance.objects.filter(auto=True).values("id", "is_deleted")
+        all_instances_qs = MonitorInstance.objects.filter(auto=True).values(
+            "id", "is_deleted"
+        )
         table_all = {i["id"] for i in all_instances_qs}
         table_deleted = {i["id"] for i in all_instances_qs if i["is_deleted"]}
         table_alive = table_all - table_deleted
@@ -75,11 +82,15 @@ class SyncInstance:
         # delete_set: 已删除的自动发现实例 且 不在VM中（可以物理删除）
         delete_set = table_deleted & (table_all - vm_all)
 
-        logger.info(f"监控实例同步 - 新增:{len(add_set)}, 恢复:{len(update_set)}, 物理删除:{len(delete_set)}")
+        logger.info(
+            f"监控实例同步 - 新增:{len(add_set)}, 恢复:{len(update_set)}, 物理删除:{len(delete_set)}"
+        )
 
-        # 执行物理删除（已删除的自动发现实例，且不在VM中）
         if delete_set:
-            deleted_count = MonitorInstance.objects.filter(id__in=delete_set, is_deleted=True, auto=True).delete()[0]
+            cleanup_policy_sources(delete_set)
+            deleted_count = MonitorInstance.objects.filter(
+                id__in=delete_set, is_deleted=True, auto=True
+            ).delete()[0]
             logger.info(f"物理删除已标记删除的自动发现实例: {deleted_count}")
 
         # 新增实例（完全不存在于数据库的）
@@ -88,15 +99,15 @@ class SyncInstance:
                 MonitorInstance(**metrics_instance_map[instance_id])
                 for instance_id in add_set
             ]
-            MonitorInstance.objects.bulk_create(create_instances, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            MonitorInstance.objects.bulk_create(
+                create_instances, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
+            )
             logger.info(f"新增自动发现实例: {len(create_instances)}")
 
         # 恢复已删除的自动发现实例（使用 filter().update() 而不是 bulk_update）
         if update_set:
             updated_count = MonitorInstance.objects.filter(
-                id__in=update_set,
-                is_deleted=True,
-                auto=True
+                id__in=update_set, is_deleted=True, auto=True
             ).update(is_deleted=False)
             logger.info(f"恢复已删除的自动发现实例: {updated_count}")
 
@@ -106,7 +117,9 @@ class SyncInstance:
 
         # 在更新状态之前，先查询上个周期已经不活跃的实例
         previous_inactive_ids = set(
-            MonitorInstance.objects.filter(is_active=False, auto=True).values_list("id", flat=True)
+            MonitorInstance.objects.filter(is_active=False, auto=True).values_list(
+                "id", flat=True
+            )
         )
 
         # 计算连续两个周期都不活跃的实例
@@ -115,21 +128,26 @@ class SyncInstance:
         # 更新活跃状态
         if no_alive_set:
             # 将本周期不在VM中的活跃自动发现实例标记为不活跃
-            updated_count = MonitorInstance.objects.filter(id__in=no_alive_set, auto=True).update(is_active=False)
+            updated_count = MonitorInstance.objects.filter(
+                id__in=no_alive_set, auto=True
+            ).update(is_active=False)
             logger.info(f"标记不活跃实例: {updated_count}")
 
         if vm_all:
             # 将本周期在VM中的自动发现实例标记为活跃（包括新增和恢复的）
-            updated_count = MonitorInstance.objects.filter(id__in=vm_all, auto=True).update(is_active=True)
+            updated_count = MonitorInstance.objects.filter(
+                id__in=vm_all, auto=True
+            ).update(is_active=True)
             logger.info(f"标记活跃实例: {updated_count}")
 
-        # 删除连续两个周期不活跃的实例
         if continuous_inactive_set:
-            deleted_count = MonitorInstance.objects.filter(id__in=continuous_inactive_set, auto=True).delete()[0]
+            cleanup_policy_sources(continuous_inactive_set)
+            deleted_count = MonitorInstance.objects.filter(
+                id__in=continuous_inactive_set, auto=True
+            ).delete()[0]
             logger.info(f"删除连续两周期不活跃的自动发现实例: {deleted_count}")
         else:
             logger.info("无连续不活跃实例需要删除")
-
 
     def run(self):
         """更新监控实例"""

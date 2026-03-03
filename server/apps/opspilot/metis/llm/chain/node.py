@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 
 import json_repair
 from deepagents import create_deep_agent
-from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -58,7 +58,8 @@ class BasicNode:
 
     def prompt_message_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
         system_message_prompt = TemplateLoader.render_template(
-            "prompts/graph/base_node_system_message", {"user_system_message": config["configurable"]["graph_request"].system_message_prompt}
+            "prompts/graph/base_node_system_message",
+            {"user_system_message": config["configurable"]["graph_request"].system_message_prompt},
         )
 
         state["messages"].append(SystemMessage(content=system_message_prompt))
@@ -84,7 +85,12 @@ class BasicNode:
                         if chat.message:
                             content.append({"type": "text", "text": chat.message})
                         else:
-                            content.append({"type": "text", "text": "describe the weather in this image"})
+                            content.append(
+                                {
+                                    "type": "text",
+                                    "text": "describe the weather in this image",
+                                }
+                            )
 
                         # 添加图片列表 (chat.image_data 是列表)
                         for image_url in chat.image_data:
@@ -203,7 +209,7 @@ class BasicNode:
             return self._process_graph_results(graph_result, rag_search_request.graph_rag_request.group_ids)
 
         except Exception as e:
-            logger.error(f"GraphRAG检索处理异常: {str(e)}")
+            logger.error("GraphRAG检索处理异常: %r", e)
             return []
 
     async def _perform_graph_search(self, rag_search_request, config: RunnableConfig) -> list:
@@ -212,7 +218,7 @@ class BasicNode:
         rag_search_request.graph_rag_request.search_query = rag_search_request.search_query
         graph_result = await graphiti.search(req=rag_search_request.graph_rag_request)
 
-        logger.debug(f"GraphRAG模式检索知识库: {rag_search_request.graph_rag_request.group_ids}, " f"结果数量: {len(graph_result)}")
+        logger.debug(f"GraphRAG模式检索知识库: {rag_search_request.graph_rag_request.group_ids}, 结果数量: {len(graph_result)}")
         return graph_result
 
     def _process_graph_results(self, graph_result: list, group_ids: list) -> list:
@@ -463,7 +469,7 @@ class BasicNode:
             return rewritten_query
 
         except Exception as e:
-            logger.error(f"问题改写过程中发生异常: {str(e)}")
+            logger.error("问题改写过程中发生异常: %r", e)
             raise
 
     def user_message_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
@@ -478,7 +484,7 @@ class BasicNode:
                     user_message = rewritten_message
                     self.log(config, f"问题改写完成: {request.user_message} -> {user_message}")
             except Exception as e:
-                logger.warning(f"问题改写失败，使用原始问题: {str(e)}")
+                logger.warning("问题改写失败，使用原始问题: %r", e)
                 user_message = request.user_message
 
         state["messages"].append(HumanMessage(content=user_message))
@@ -511,6 +517,27 @@ class ToolsNodes(BasicNode):
             return tools_info
         return ""
 
+    @staticmethod
+    def _resolve_remote_transport(server_url: str, transport: str = "") -> str:
+        """解析远程 MCP 传输协议（仅 HTTP/HTTPS）"""
+        explicit_transport = (transport or "").strip().lower()
+        if explicit_transport in {"sse", "streamable_http"}:
+            return explicit_transport
+
+        parsed_url = urlparse(server_url or "")
+        query_dict = parse_qs(parsed_url.query)
+        query_transport = (query_dict.get("transport", [""])[0] or "").strip().lower()
+        if query_transport in {"sse", "streamable_http"}:
+            return query_transport
+
+        normalized_path = (parsed_url.path or "").rstrip("/").lower()
+        if normalized_path.endswith("/sse"):
+            return "sse"
+        if normalized_path.endswith("/mcp") or normalized_path.endswith("/streamable_http"):
+            return "streamable_http"
+
+        return "sse"
+
     async def call_with_structured_output(self, llm, user_message: str, pydantic_model):
         """
         通用结构化输出调用方法
@@ -541,7 +568,10 @@ class ToolsNodes(BasicNode):
                 # stdio-mcp:name
                 self.mcp_config[server.name] = {"command": server.command, "args": server.args, "transport": "stdio"}
             else:
-                self.mcp_config[server.name] = {"url": server.url, "transport": "sse"}
+                self.mcp_config[server.name] = {
+                    "url": server.url,
+                    "transport": self._resolve_remote_transport(server.url, getattr(server, "transport", "")),
+                }
             if server.enable_auth:
                 self.mcp_config[server.name]["headers"] = {"Authorization": server.auth_token}
 
@@ -566,7 +596,7 @@ class ToolsNodes(BasicNode):
                 logger.debug("未找到可用工具，返回空工具节点")
                 return ToolNode([])
         except Exception as e:
-            logger.error(f"构建工具节点失败: {e}")
+            logger.error("构建工具节点失败: %r", e)
             return ToolNode([])
 
     # ========== 使用 LangGraph 标准 ReAct Agent 实现 ==========
@@ -579,45 +609,111 @@ class ToolsNodes(BasicNode):
         next_node: str = END,
         tools_node: Optional[ToolNode] = None,
     ) -> str:
-        """构建ReAct Agent节点"""
-        react_wrapper_name = f"{composite_node_name}_wrapper"
+        """构建 ReAct Agent 节点组合
 
-        async def react_wrapper_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
-            """ReAct Agent 包装节点 - 返回完整消息列表以支持实时 SSE 流式输出"""
+        使用 bind_tools + ToolNode + 条件边的方式构建 ReAct 循环，
+        使工具调用事件能够被外层 astream_events 捕获。
+
+        Args:
+            graph_builder: StateGraph 实例
+            composite_node_name: 节点名称前缀
+            additional_system_prompt: 附加系统提示词
+            next_node: ReAct 循环结束后转到的下一个节点名称（默认 END）
+            tools_node: 工具节点（可选，默认使用 self.tools）
+
+        Returns:
+            入口节点名称（wrapper 节点，用于连接外部边）
+        """
+        # 节点名称
+        agent_node_name = f"{composite_node_name}_agent"
+        tools_node_name = f"{composite_node_name}_tools"
+        wrapper_node_name = f"{composite_node_name}_wrapper"
+
+        # 保存引用供闭包使用
+        tools = self.tools
+        get_llm_client = self.get_llm_client
+
+        # ========== Agent 节点：调用 LLM 并决定是否使用工具 ==========
+        async def agent_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
+            """Agent 节点 - 调用绑定工具的 LLM"""
             graph_request = config["configurable"]["graph_request"]
 
-            # 创建系统提示
+            # 构建系统提示
             final_system_prompt = TemplateLoader.render_template(
                 "prompts/graph/react_agent_system_message",
                 {"user_system_message": graph_request.system_message_prompt, "additional_system_prompt": additional_system_prompt or ""},
             )
 
-            llm = self.get_llm_client(graph_request)
+            # 获取 LLM 并绑定工具
+            llm = get_llm_client(graph_request)
+            if tools:
+                llm_with_tools = llm.bind_tools(tools)
+            else:
+                llm_with_tools = llm
 
-            # 创建并调用 ReAct Agent
-            react_agent = create_agent(model=llm, tools=self.tools, system_prompt=final_system_prompt, checkpointer=None, debug=False)
+            # 准备消息列表
+            messages = state.get("messages", [])
 
-            result = await react_agent.ainvoke({"messages": state["messages"]}, config=config)
+            # 如果消息中没有系统提示，添加一个
+            if not any(isinstance(m, SystemMessage) for m in messages):
+                messages = [SystemMessage(content=final_system_prompt)] + list(messages)
 
-            # 获取完整的消息列表
-            final_messages = result.get("messages", [])
-            if not final_messages:
-                return {"messages": [AIMessage(content="ReAct Agent 未返回任何消息")]}
+            # 调用 LLM
+            response = await llm_with_tools.ainvoke(messages)
 
-            # 过滤掉输入消息，只保留 ReAct Agent 新增的消息
-            # 找到状态消息的最后一条，之后的都是新消息
-            input_message_count = len(state.get("messages", []))
-            new_messages = final_messages[input_message_count:]
+            return {"messages": [response]}
 
-            if not new_messages:
-                return {"messages": [AIMessage(content="ReAct Agent 未产生新的响应")]}
+        # ========== 工具节点：执行工具调用 ==========
+        tool_node = tools_node if tools_node else ToolNode(tools, handle_tool_errors=True)
 
-            # 直接返回新消息列表，让 agui_stream 逐个处理
-            # 这样可以实时发送：工具调用 -> 工具结果 -> 最终响应
-            return {"messages": new_messages}
+        # ========== 条件函数：判断是否继续调用工具 ==========
+        def should_continue(state: Dict[str, Any]) -> str:
+            """判断是否需要继续执行工具调用"""
+            messages = state.get("messages", [])
+            if not messages:
+                return "end"
 
-        graph_builder.add_node(react_wrapper_name, react_wrapper_node)
-        return react_wrapper_name
+            last_message = messages[-1]
+
+            # 如果最后一条消息有工具调用，继续执行工具
+            if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                return "continue"
+
+            # 否则结束
+            return "end"
+
+        # ========== Wrapper 节点：入口点，兼容现有 API ==========
+        async def wrapper_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
+            """Wrapper 节点 - 入口点，直接透传状态"""
+            # 不做任何处理，只是作为入口点
+            return {}
+
+        # ========== 添加节点到图 ==========
+        graph_builder.add_node(wrapper_node_name, wrapper_node)
+        graph_builder.add_node(agent_node_name, agent_node)
+        graph_builder.add_node(tools_node_name, tool_node)
+
+        # ========== 添加边 ==========
+        # wrapper -> agent
+        graph_builder.add_edge(wrapper_node_name, agent_node_name)
+
+        # agent -> 条件边 (tools 或 next_node)
+        # 当 ReAct 循环完成时，转到 next_node（可以是 END 或其他节点）
+        graph_builder.add_conditional_edges(
+            agent_node_name,
+            should_continue,
+            {
+                "continue": tools_node_name,
+                "end": next_node,  # 使用传入的 next_node 而不是硬编码 END
+            },
+        )
+
+        # tools -> agent (循环)
+        graph_builder.add_edge(tools_node_name, agent_node_name)
+
+        logger.debug(f"构建 ReAct 节点组合完成: {wrapper_node_name} -> {agent_node_name} <-> {tools_node_name} -> {next_node}")
+
+        return wrapper_node_name
 
     async def invoke_react_for_candidate(
         self, user_message: str, messages: List[BaseMessage], config: RunnableConfig, system_prompt: str
@@ -643,14 +739,18 @@ class ToolsNodes(BasicNode):
             )
 
             # 设置起始节点
+            # 注意：不需要额外添加 wrapper → END 的边，因为 build_react_nodes
+            # 已经通过 next_node 参数设置了 ReAct 循环结束后的去向
             temp_graph_builder.set_entry_point(react_entry_node)
-            temp_graph_builder.add_edge(react_entry_node, END)
 
             # 编译临时图
             temp_graph = temp_graph_builder.compile()
 
             # 调用 ReAct 节点
-            result = await temp_graph.ainvoke({"messages": messages[-3:] if len(messages) > 3 else messages}, config=config)
+            # result = await temp_graph.ainvoke({"messages": messages[-3:] if len(messages) > 3 else messages}, config=config)
+            result = await temp_graph.ainvoke(
+                {"messages": messages[-3:] if len(messages) > 3 else messages}, config={**config, "recursion_limit": 100}
+            )
 
             # 提取最后的 AI 消息
             result_messages = result.get("messages", [])
@@ -665,7 +765,7 @@ class ToolsNodes(BasicNode):
             return AIMessage(content=f"正在分析问题: {user_message}")
 
         except Exception as e:
-            logger.warning(f"ReAct 调用失败: {e}，使用降级方案")
+            logger.warning("ReAct 调用失败: %r，使用降级方案", e)
             return AIMessage(content=f"正在重新分析这个问题: {user_message}，寻找更好的解决方案...", tool_calls=[])
 
     def _get_current_tools(self, tools_node: Optional[ToolNode]) -> list:

@@ -1,10 +1,14 @@
 """Kubernetes基础资源查询工具"""
+
 import json
+
 import yaml
+from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from kubernetes import client
+
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
 
 
@@ -47,15 +51,18 @@ def get_kubernetes_namespaces(config: RunnableConfig):
         namespaces = core_v1.list_namespace()
         result = []
         for ns in namespaces.items:
-            result.append({
-                "name": ns.metadata.name,
-                "status": ns.status.phase,
-                "creation_time": ns.metadata.creation_timestamp.isoformat() if ns.metadata.creation_timestamp else None,
-                "labels": ns.metadata.labels if ns.metadata.labels else {},
-                "annotations": ns.metadata.annotations if ns.metadata.annotations else {}
-            })
+            result.append(
+                {
+                    "name": ns.metadata.name,
+                    "status": ns.status.phase,
+                    "creation_time": ns.metadata.creation_timestamp.isoformat() if ns.metadata.creation_timestamp else None,
+                    "labels": ns.metadata.labels if ns.metadata.labels else {},
+                    "annotations": ns.metadata.annotations if ns.metadata.annotations else {},
+                }
+            )
         return json.dumps(result)
     except Exception as e:
+        logger.exception(e)
         return json.dumps({"error": f"获取命名空间列表失败: {str(e)}"})
 
 
@@ -121,25 +128,29 @@ def list_kubernetes_pods(namespace=None, config: RunnableConfig = None):
             containers = []
             if pod.status.container_statuses:
                 for container in pod.status.container_statuses:
-                    containers.append({
-                        "name": container.name,
-                        "ready": container.ready,
-                        "restart_count": container.restart_count,
-                        "image": container.image,
-                        "state": str(container.state)
-                    })
+                    containers.append(
+                        {
+                            "name": container.name,
+                            "ready": container.ready,
+                            "restart_count": container.restart_count,
+                            "image": container.image,
+                            "state": str(container.state),
+                        }
+                    )
 
-            result.append({
-                "name": pod.metadata.name,
-                "namespace": pod.metadata.namespace,
-                "phase": pod.status.phase,
-                "ip": pod.status.pod_ip,
-                "node": pod.spec.node_name,
-                "containers": containers,
-                "creation_time": pod.metadata.creation_timestamp.isoformat() if pod.metadata.creation_timestamp else None,
-                "labels": pod.metadata.labels if pod.metadata.labels else {},
-                "restart_policy": pod.spec.restart_policy
-            })
+            result.append(
+                {
+                    "name": pod.metadata.name,
+                    "namespace": pod.metadata.namespace,
+                    "phase": pod.status.phase,
+                    "ip": pod.status.pod_ip,
+                    "node": pod.spec.node_name,
+                    "containers": containers,
+                    "creation_time": pod.metadata.creation_timestamp.isoformat() if pod.metadata.creation_timestamp else None,
+                    "labels": pod.metadata.labels if pod.metadata.labels else {},
+                    "restart_policy": pod.spec.restart_policy,
+                }
+            )
         return json.dumps(result)
     except ApiException as e:
         return json.dumps({"error": f"获取Pod列表失败: {str(e)}"})
@@ -157,31 +168,28 @@ def list_kubernetes_nodes(config: RunnableConfig):
             conditions = []
             if node.status.conditions:
                 for condition in node.status.conditions:
-                    conditions.append({
-                        "type": condition.type,
-                        "status": condition.status,
-                        "reason": condition.reason,
-                        "message": condition.message
-                    })
+                    conditions.append({"type": condition.type, "status": condition.status, "reason": condition.reason, "message": condition.message})
 
             allocatable = {}
             if node.status.allocatable:
                 allocatable = {
-                    "cpu": node.status.allocatable.get('cpu', ''),
-                    "memory": node.status.allocatable.get('memory', ''),
-                    "pods": node.status.allocatable.get('pods', '')
+                    "cpu": node.status.allocatable.get("cpu", ""),
+                    "memory": node.status.allocatable.get("memory", ""),
+                    "pods": node.status.allocatable.get("pods", ""),
                 }
 
-            result.append({
-                "name": node.metadata.name,
-                "status": "Ready" if any(c.type == "Ready" and c.status == "True" for c in node.status.conditions) else "NotReady",
-                "roles": list(node.metadata.labels.keys()) if node.metadata.labels else [],
-                "age": node.metadata.creation_timestamp.isoformat() if node.metadata.creation_timestamp else None,
-                "version": node.status.node_info.kubelet_version if node.status.node_info else "",
-                "conditions": conditions,
-                "allocatable": allocatable,
-                "addresses": [{"type": addr.type, "address": addr.address} for addr in (node.status.addresses or [])]
-            })
+            result.append(
+                {
+                    "name": node.metadata.name,
+                    "status": "Ready" if any(c.type == "Ready" and c.status == "True" for c in node.status.conditions) else "NotReady",
+                    "roles": list(node.metadata.labels.keys()) if node.metadata.labels else [],
+                    "age": node.metadata.creation_timestamp.isoformat() if node.metadata.creation_timestamp else None,
+                    "version": node.status.node_info.kubelet_version if node.status.node_info else "",
+                    "conditions": conditions,
+                    "allocatable": allocatable,
+                    "addresses": [{"type": addr.type, "address": addr.address} for addr in (node.status.addresses or [])],
+                }
+            )
         return json.dumps(result)
     except ApiException as e:
         return json.dumps({"error": f"获取节点列表失败: {str(e)}"})
@@ -206,17 +214,19 @@ def list_kubernetes_deployments(namespace=None, config: RunnableConfig = None):
 
         result = []
         for deployment in deployments.items:
-            result.append({
-                "name": deployment.metadata.name,
-                "namespace": deployment.metadata.namespace,
-                "replicas": deployment.spec.replicas,
-                "ready_replicas": deployment.status.ready_replicas or 0,
-                "available_replicas": deployment.status.available_replicas or 0,
-                "updated_replicas": deployment.status.updated_replicas or 0,
-                "creation_time": deployment.metadata.creation_timestamp.isoformat() if deployment.metadata.creation_timestamp else None,
-                "labels": deployment.metadata.labels if deployment.metadata.labels else {},
-                "selector": deployment.spec.selector.match_labels if deployment.spec.selector else {}
-            })
+            result.append(
+                {
+                    "name": deployment.metadata.name,
+                    "namespace": deployment.metadata.namespace,
+                    "replicas": deployment.spec.replicas,
+                    "ready_replicas": deployment.status.ready_replicas or 0,
+                    "available_replicas": deployment.status.available_replicas or 0,
+                    "updated_replicas": deployment.status.updated_replicas or 0,
+                    "creation_time": deployment.metadata.creation_timestamp.isoformat() if deployment.metadata.creation_timestamp else None,
+                    "labels": deployment.metadata.labels if deployment.metadata.labels else {},
+                    "selector": deployment.spec.selector.match_labels if deployment.spec.selector else {},
+                }
+            )
         return json.dumps(result)
     except ApiException as e:
         return json.dumps({"error": f"获取Deployment列表失败: {str(e)}"})
@@ -256,13 +266,15 @@ def list_kubernetes_services(namespace=None, config: RunnableConfig = None):
             ports = []
             if service.spec.ports:
                 for port in service.spec.ports:
-                    ports.append({
-                        "name": port.name,
-                        "port": port.port,
-                        "target_port": str(port.target_port) if port.target_port else None,
-                        "protocol": port.protocol,
-                        "node_port": port.node_port if hasattr(port, 'node_port') else None
-                    })
+                    ports.append(
+                        {
+                            "name": port.name,
+                            "port": port.port,
+                            "target_port": str(port.target_port) if port.target_port else None,
+                            "protocol": port.protocol,
+                            "node_port": port.node_port if hasattr(port, "node_port") else None,
+                        }
+                    )
 
             external_ips = []
             if service.status.load_balancer and service.status.load_balancer.ingress:
@@ -272,16 +284,18 @@ def list_kubernetes_services(namespace=None, config: RunnableConfig = None):
                     elif ingress.hostname:
                         external_ips.append(ingress.hostname)
 
-            result.append({
-                "name": service.metadata.name,
-                "namespace": service.metadata.namespace,
-                "type": service.spec.type,
-                "cluster_ip": service.spec.cluster_ip,
-                "external_ips": external_ips,
-                "ports": ports,
-                "selector": service.spec.selector if service.spec.selector else {},
-                "creation_time": service.metadata.creation_timestamp.isoformat() if service.metadata.creation_timestamp else None
-            })
+            result.append(
+                {
+                    "name": service.metadata.name,
+                    "namespace": service.metadata.namespace,
+                    "type": service.spec.type,
+                    "cluster_ip": service.spec.cluster_ip,
+                    "external_ips": external_ips,
+                    "ports": ports,
+                    "selector": service.spec.selector if service.spec.selector else {},
+                    "creation_time": service.metadata.creation_timestamp.isoformat() if service.metadata.creation_timestamp else None,
+                }
+            )
         return json.dumps(result)
     except ApiException as e:
         return json.dumps({"error": f"获取Service列表失败: {str(e)}"})
@@ -318,16 +332,18 @@ def list_kubernetes_events(namespace=None, config: RunnableConfig = None):
 
         result = []
         for event in events.items:
-            result.append({
-                "type": event.type,
-                "reason": event.reason,
-                "message": event.message,
-                "object": f"{event.involved_object.kind}/{event.involved_object.name}",
-                "namespace": event.namespace,
-                "count": event.count,
-                "first_time": event.first_timestamp.isoformat() if event.first_timestamp else None,
-                "last_time": event.last_timestamp.isoformat() if event.last_timestamp else None
-            })
+            result.append(
+                {
+                    "type": event.type,
+                    "reason": event.reason,
+                    "message": event.message,
+                    "object": f"{event.involved_object.kind}/{event.involved_object.name}",
+                    "namespace": getattr(event, "namespace", "") or getattr(event.metadata, "namespace", ""),
+                    "count": event.count,
+                    "first_time": event.first_timestamp.isoformat() if event.first_timestamp else None,
+                    "last_time": event.last_timestamp.isoformat() if event.last_timestamp else None,
+                }
+            )
         return json.dumps(result)
     except ApiException as e:
         return json.dumps({"error": f"获取事件列表失败: {str(e)}"})
@@ -365,23 +381,17 @@ def get_kubernetes_resource_yaml(namespace, resource_type, resource_name, config
         resource_data = None
 
         if resource_type == "pod":
-            resource_data = core_v1.read_namespaced_pod(
-                resource_name, namespace)
+            resource_data = core_v1.read_namespaced_pod(resource_name, namespace)
         elif resource_type == "deployment":
-            resource_data = apps_v1.read_namespaced_deployment(
-                resource_name, namespace)
+            resource_data = apps_v1.read_namespaced_deployment(resource_name, namespace)
         elif resource_type == "service":
-            resource_data = core_v1.read_namespaced_service(
-                resource_name, namespace)
+            resource_data = core_v1.read_namespaced_service(resource_name, namespace)
         elif resource_type == "configmap":
-            resource_data = core_v1.read_namespaced_config_map(
-                resource_name, namespace)
+            resource_data = core_v1.read_namespaced_config_map(resource_name, namespace)
         elif resource_type == "secret":
-            resource_data = core_v1.read_namespaced_secret(
-                resource_name, namespace)
+            resource_data = core_v1.read_namespaced_secret(resource_name, namespace)
         elif resource_type == "job":
-            resource_data = batch_v1.read_namespaced_job(
-                resource_name, namespace)
+            resource_data = batch_v1.read_namespaced_job(resource_name, namespace)
         else:
             return f"不支持的资源类型: {resource_type}。支持的类型: pod, deployment, service, configmap, secret, job"
 
@@ -476,13 +486,13 @@ def get_kubernetes_pod_logs(namespace, pod_name, container=None, lines=100, tail
             namespace=namespace,
             container=container,
             tail_lines=lines if tail else None,
-            limit_bytes=None if lines else 1024 * 1024  # 1MB limit if no line limit
+            limit_bytes=None if lines else 1024 * 1024,  # 1MB limit if no line limit
         )
 
         # 如果获取日志的开头部分，需要手动截取
         if not tail and logs:
-            log_lines = logs.split('\n')
-            logs = '\n'.join(log_lines[:lines])
+            log_lines = logs.split("\n")
+            logs = "\n".join(log_lines[:lines])
 
         # 返回日志内容或空日志提示
         if not logs:

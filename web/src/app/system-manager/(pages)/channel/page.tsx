@@ -22,6 +22,12 @@ const ChannelPage = () => {
       icon: 'qiwei2',
       description: t('system.channel.weComDesc')
     },
+    {
+      id: 'nats',
+      name: t('system.channel.nats'),
+      icon: 'dongzuo1',
+      description: t('system.channel.natsDesc')
+    },
   ]);
 
   const handleCardClick = (item: any) => {

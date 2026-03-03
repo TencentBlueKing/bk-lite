@@ -2,8 +2,8 @@
 # @File: notify_service.py
 # @Time: 2025/6/26 15:01
 # @Author: windyzhao
-from apps.alerts.constants import NotifyResultStatus
-from apps.alerts.models import NotifyResult
+from apps.alerts.constants.constants import NotifyResultStatus
+from apps.alerts.models.alert_operator import NotifyResult
 from apps.core.logger import alert_logger as logger
 
 

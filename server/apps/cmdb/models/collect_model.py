@@ -91,7 +91,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
 
     @property
     def is_network_topo(self):
-        return self.model_id == "network_topo"
+        return bool(self.params.get("has_network_topo"))
 
     @property
     def is_cloud(self):
@@ -144,7 +144,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
         try:
             crypto = PasswordCrypto(SECRET_KEY)
             return crypto.decrypt(encrypted_text)
-        except Exception:
+        except Exception:  # noqa: BLE001 - 解密失败时回退到明文密码
             # 如果解密失败，可能是明文密码，直接返回
             return password
 

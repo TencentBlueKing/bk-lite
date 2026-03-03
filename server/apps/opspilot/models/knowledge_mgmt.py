@@ -29,34 +29,16 @@ class KnowledgeBase(MaintainerInfo, TimeInfo):
     name = models.CharField(max_length=100, db_index=True)
     introduction = models.TextField(blank=True, null=True)
     team = models.JSONField(default=list)
-    embed_model = models.ForeignKey(
-        "EmbedProvider",
-        on_delete=models.CASCADE,
-        verbose_name=_("Embed Model"),
-        blank=True,
-        null=True,
-    )
+    embed_model = models.ForeignKey("EmbedProvider", on_delete=models.CASCADE, verbose_name=_("Embed Model"), blank=True, null=True)
     enable_rerank = models.BooleanField(default=True, verbose_name=_("Enable Rerank"))
     rerank_top_k = models.IntegerField(default=10, verbose_name=_("Rerank Top K"))
-    rerank_model = models.ForeignKey(
-        "RerankProvider",
-        on_delete=models.CASCADE,
-        verbose_name=_("Rerank Model"),
-        blank=True,
-        null=True,
-    )
-    search_type = models.CharField(
-        default="similarity_score_threshold",
-        verbose_name=_("Search Type"),
-        max_length=50,
-    )
+    rerank_model = models.ForeignKey("RerankProvider", on_delete=models.CASCADE, verbose_name=_("Rerank Model"), blank=True, null=True)
+    search_type = models.CharField(default="similarity_score_threshold", verbose_name=_("Search Type"), max_length=50)
     score_threshold = models.FloatField(default=0.7, verbose_name=_("Score threshold"))
     enable_naive_rag = models.BooleanField(default=True)
     enable_qa_rag = models.BooleanField(default=True)
     enable_graph_rag = models.BooleanField(default=False)
-
     rag_recall_mode = models.CharField(default="chunk", max_length=20)
-
     rag_size = models.IntegerField(default=50)
     qa_size = models.IntegerField(default=50, verbose_name=_("QA size"))
     graph_size = models.IntegerField(default=50, verbose_name=_("Graph size"))
@@ -80,24 +62,15 @@ class KnowledgeDocument(MaintainerInfo, TimeInfo):
     general_parse_chunk_size = models.IntegerField(default=256, verbose_name=_("general parse chunk size"))
     general_parse_chunk_overlap = models.IntegerField(default=32, verbose_name=_("general parse chunk overlap"))
     semantic_chunk_parse_embedding_model = models.ForeignKey(
-        "EmbedProvider",
-        blank=True,
-        null=True,
-        on_delete=models.CASCADE,
-        verbose_name=_("embedding model"),
+        "EmbedProvider", blank=True, null=True, on_delete=models.CASCADE, verbose_name=_("embedding model")
     )
     enable_ocr_parse = models.BooleanField(default=False, verbose_name=_("enable OCR parse"))
-    ocr_model = models.ForeignKey(
-        "OCRProvider",
-        blank=True,
-        null=True,
-        on_delete=models.CASCADE,
-        verbose_name=_("OCR model"),
-    )
+    ocr_model = models.ForeignKey("OCRProvider", blank=True, null=True, on_delete=models.CASCADE, verbose_name=_("OCR model"))
     mode = models.CharField(max_length=30, verbose_name=_("mode"), default="full")
     chunk_type = models.CharField(max_length=30, verbose_name=_("chunk type"), default="fixed_size")
     knowledge_source_type = models.CharField(max_length=20, verbose_name=_("source type"), default="file")
     instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name=_("Instance ID"), db_index=True)
+    error_message = models.TextField(blank=True, null=True, verbose_name=_("error message"))
 
     def __str__(self):
         return self.name
@@ -110,6 +83,30 @@ class KnowledgeDocument(MaintainerInfo, TimeInfo):
         if not self.instance_id:
             self.instance_id = str(uuid.uuid4())
         super().save(*args, **kwargs)
+
+    @classmethod
+    def create_new_document(cls, kwargs, username, domain="domain.com", ocr_model=None):
+        """创建新的知识文档
+
+        Args:
+            kwargs: 包含 knowledge_base_id, name, knowledge_source_type 的字典
+            username: 创建者用户名
+            domain: 域名，默认 domain.com
+            ocr_model: OCR 模型，可选
+
+        Returns:
+            KnowledgeDocument: 新创建的文档对象
+        """
+        return cls.objects.create(
+            knowledge_base_id=kwargs["knowledge_base_id"],
+            name=kwargs["name"],
+            knowledge_source_type=kwargs["knowledge_source_type"],
+            created_by=username,
+            train_status=DocumentStatus.PENDING,
+            enable_ocr_parse=True,
+            ocr_model=ocr_model,
+            domain=domain,
+        )
 
     # delete 方法已移除，使用 post_delete signal 处理 ES 内容清理
     # 见 apps.opspilot.signals.knowledge_signals.cleanup_knowledge_document_es_content
@@ -128,13 +125,7 @@ class FileKnowledge(models.Model):
         validators=[FileExtensionValidator(allowed_extensions=KNOWLEDGE_TYPES)],
     )
 
-    knowledge_document = models.ForeignKey(
-        "KnowledgeDocument",
-        verbose_name=_("Knowledge Document"),
-        blank=True,
-        null=True,
-        on_delete=models.CASCADE,
-    )
+    knowledge_document = models.ForeignKey("KnowledgeDocument", verbose_name=_("Knowledge Document"), blank=True, null=True, on_delete=models.CASCADE)
 
     def get_file_base64(self):
         return base64.b64encode(self.file.read()).decode("utf-8")
@@ -152,23 +143,15 @@ class FileKnowledge(models.Model):
         return super().delete(using, keep_parents)
 
     def to_dic(self):
-        return {
-            "name": self.knowledge_document.name,
-        }
+        return {"name": self.knowledge_document.name}
 
 
 class WebPageKnowledge(models.Model, PeriodicTaskUtils):
     url = models.URLField(verbose_name=_("URL"))
-    knowledge_document = models.ForeignKey(
-        "KnowledgeDocument",
-        verbose_name=_("Knowledge Document"),
-        blank=True,
-        null=True,
-        on_delete=models.CASCADE,
-    )
+    knowledge_document = models.ForeignKey("KnowledgeDocument", verbose_name=_("Knowledge Document"), blank=True, null=True, on_delete=models.CASCADE)
     max_depth = models.IntegerField(verbose_name=_("max depth"), default=1)
     sync_enabled = models.BooleanField(verbose_name=_("Sync Enabled"), default=False)
-    sync_time = models.CharField(verbose_name=_("Sync Time"), null=True, blank=True)
+    sync_time = models.CharField(max_length=20, verbose_name=_("Sync Time"), null=True, blank=True)
     last_run_time = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -177,12 +160,7 @@ class WebPageKnowledge(models.Model, PeriodicTaskUtils):
         db_table = "knowledge_mgmt_webpageknowledge"
 
     def to_dict(self):
-        return {
-            "url": self.url,
-            "max_depth": self.max_depth,
-            "sync_enabled": self.sync_enabled,
-            "sync_time": self.sync_time,
-        }
+        return {"url": self.url, "max_depth": self.max_depth, "sync_enabled": self.sync_enabled, "sync_time": self.sync_time}
 
     def create_sync_periodic_task(self):
         sync_time = self.sync_time or "00:00"
@@ -198,13 +176,7 @@ class WebPageKnowledge(models.Model, PeriodicTaskUtils):
 
 class ManualKnowledge(models.Model):
     content = models.TextField(verbose_name=_("content"))
-    knowledge_document = models.ForeignKey(
-        "KnowledgeDocument",
-        verbose_name=_("Knowledge Document"),
-        blank=True,
-        null=True,
-        on_delete=models.CASCADE,
-    )
+    knowledge_document = models.ForeignKey("KnowledgeDocument", verbose_name=_("Knowledge Document"), blank=True, null=True, on_delete=models.CASCADE)
 
     class Meta:
         verbose_name = _("Manual Knowledge")
@@ -227,13 +199,7 @@ class QAPairs(MaintainerInfo, TimeInfo):
     # 外键关系
     knowledge_base = models.ForeignKey("KnowledgeBase", on_delete=models.CASCADE)
     llm_model = models.ForeignKey("LLMModel", on_delete=models.CASCADE, null=True, blank=True)
-    answer_llm_model = models.ForeignKey(
-        "LLMModel",
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="answer_llm_model",
-    )
+    answer_llm_model = models.ForeignKey("LLMModel", on_delete=models.CASCADE, null=True, blank=True, related_name="answer_llm_model")
 
     # 问答对相关字段
     qa_count = models.IntegerField(default=0, verbose_name="问答对数量")

@@ -40,7 +40,7 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       title: t('alarms.level'),
       dataIndex: 'level',
       key: 'level',
-      width: 110,
+      width: 90,
       fixed: 'left',
       render: (_: any, { level }: AlarmTableDataItem) => {
         const target = levelList.find(
@@ -60,7 +60,7 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       title: t('alarms.firstEventTime'),
       dataIndex: 'first_event_time',
       key: 'first_event_time',
-      width: 190,
+      width: 180,
       render: (_: any, { first_event_time }: AlarmTableDataItem) =>
         first_event_time ? convertToLocalizedTime(first_event_time) : '--',
     },
@@ -68,7 +68,7 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       title: t('alarms.lastEventTime'),
       dataIndex: 'last_event_time',
       key: 'last_event_time',
-      width: 190,
+      width: 180,
       render: (_: any, { last_event_time }: AlarmTableDataItem) =>
         last_event_time ? convertToLocalizedTime(last_event_time) : '--',
     },
@@ -76,31 +76,31 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       title: t('alarms.alertName'),
       dataIndex: 'title',
       key: 'title',
-      width: 290,
+      width: 280,
     },
     {
       title: t('alarms.incidentName'),
       dataIndex: 'incident_name',
       key: 'incident_name',
-      width: 290,
+      width: 250,
     },
     {
       title: t('alarms.eventCount'),
       dataIndex: 'event_count',
       key: 'event_count',
-      width: 110,
+      width: 100,
       render: (_: any, record: AlarmTableDataItem) => (
         <Button type="link" onClick={() => onOpenDetail(record, 'event')}>
           <span className="text-blue-500">{record.event_count}</span>
         </Button>
       ),
     },
-    {
-      title: t('alarms.source'),
-      dataIndex: 'source_names',
-      key: 'source_names',
-      width: 130,
-    },
+    // {
+    //   title: t('alarms.source'),
+    //   dataIndex: 'source_names',
+    //   key: 'source_names',
+    //   width: 130,
+    // },
     {
       title: t('alarms.state'),
       dataIndex: 'status',
@@ -143,12 +143,12 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
         return <Tag color={color}>{text}</Tag>;
       },
     },
-    {
-      title: t('alarms.ruleId'),
-      dataIndex: 'rule_id',
-      key: 'rule_id',
-      width: 250,
-    },
+    // {
+    //   title: t('alarms.ruleId'),
+    //   dataIndex: 'rule_id',
+    //   key: 'rule_id',
+    //   width: 250,
+    // },
     {
       title: t('alarms.alertContent'),
       dataIndex: 'content',

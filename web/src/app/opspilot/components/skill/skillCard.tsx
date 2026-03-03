@@ -3,16 +3,16 @@
 import React from 'react';
 import { useTranslation } from '@/utils/i18n';
 import EntityCard from '@/app/opspilot/components/entity-card';
-import { Studio } from '@/app/opspilot/types/studio';
+import { Skill } from '@/app/opspilot/types/skill';
 
-interface StudioCardProps extends Studio {
+interface StudioCardProps extends Skill {
   index: number;
-  onMenuClick: (action: string, studio: Studio) => void;
+  onMenuClick: (action: string, studio: Skill) => void;
 }
 
 const StudioCard: React.FC<StudioCardProps> = (props) => {
   const { t } = useTranslation();
-  const { id, name, introduction, created_by, team_name, team, llm_model_name, skill_type, permissions, onMenuClick } = props;
+  const { id, name, introduction, created_by, team_name, team, llm_model_name, skill_type, is_pinned, permissions, onMenuClick } = props;
   const iconTypeMapping: [string, string] = ['jiqirenjiaohukapian', 'jiqiren'];
 
   const skillTypeMapping = {
@@ -31,9 +31,11 @@ const StudioCard: React.FC<StudioCardProps> = (props) => {
       created_by={created_by}
       team_name={team_name}
       team={team}
-      modelName={llm_model_name}
-      skill_type={skill_type}
+      modelName={llm_model_name as string}
+      skill_type={skill_type as number}
       skillType={skillType}
+      is_pinned={is_pinned}
+      showPinButton={true}
       permissions={permissions}
       onMenuClick={onMenuClick}
       redirectUrl="/opspilot/skill/detail"

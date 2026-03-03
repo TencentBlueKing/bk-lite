@@ -7,7 +7,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { Input, Button, Form, message, Select, Radio } from 'antd';
+import { Input, Button, Form, message, Select, Radio, Checkbox } from 'antd';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -20,6 +20,10 @@ import {
   AttrFieldType,
   EnumList,
   AttrGroup,
+  StrAttrOption,
+  TimeAttrOption,
+  IntAttrOption,
+  TableColumnSpec,
 } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
@@ -58,6 +62,8 @@ const SortableItem = ({
     transition,
     marginTop: index ? 10 : 0,
     display: 'flex',
+    width: '100%',
+    minWidth: 0,
   };
   return (
     <li ref={setNodeRef} style={style}>
@@ -82,6 +88,14 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
       {
         id: '',
         name: '',
+      },
+    ]);
+    const [tableColumnList, setTableColumnList] = useState<TableColumnSpec[]>([
+      {
+        column_id: '',
+        column_name: '',
+        column_type: 'str',
+        order: 1,
       },
     ]);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
@@ -124,8 +138,39 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               name: '',
             },
           ]);
+          setTableColumnList([
+            {
+              column_id: '',
+              column_name: '',
+              column_type: 'str',
+              order: 1,
+            },
+          ]);
         } else {
-          setEnumList(attrInfo.option || []);
+          const option = attrInfo.option;
+          if (attrInfo.attr_type === 'enum' && Array.isArray(option)) {
+            setEnumList(option.length > 0 ? option : [{ id: '', name: '' }]);
+          } else {
+            setEnumList([{ id: '', name: '' }]);
+          }
+          if (attrInfo.attr_type === 'table' && Array.isArray(option)) {
+            setTableColumnList(option.length > 0 ? option : [{ column_id: '', column_name: '', column_type: 'str', order: 1 }]);
+          } else {
+            setTableColumnList([{ column_id: '', column_name: '', column_type: 'str', order: 1 }]);
+          }
+          if (attrInfo.attr_type === 'str' && option && typeof option === 'object' && !Array.isArray(option)) {
+            const strOption = option as StrAttrOption;
+            attrInfo.validation_type = strOption.validation_type;
+            attrInfo.custom_regex = strOption.custom_regex;
+            attrInfo.widget_type = strOption.widget_type;
+          } else if (attrInfo.attr_type === 'time' && option && typeof option === 'object' && !Array.isArray(option)) {
+            const timeOption = option as TimeAttrOption;
+            attrInfo.display_format = timeOption.display_format;
+          } else if (attrInfo.attr_type === 'int' && option && typeof option === 'object' && !Array.isArray(option)) {
+            const intOption = option as IntAttrOption;
+            attrInfo.min_value = intOption.min_value;
+            attrInfo.max_value = intOption.max_value;
+          }
         }
         setAttrInfo(attrInfo);
       },
@@ -133,13 +178,48 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
 
     const handleSubmit = () => {
       formRef.current?.validateFields().then((values) => {
-        const flag = enumList.every((item) => !!item.id && !!item.name);
         const selectedGroup = groups.find(
-          (group) => group.id === values.group_id
+          (group) => group.id === values.group_id,
         );
+
+        let option: EnumList[] | StrAttrOption | TimeAttrOption | IntAttrOption | TableColumnSpec[] | Record<string, unknown> = {};
+
+        if (values.attr_type === 'enum') {
+          const enumArray = Array.isArray(enumList) ? enumList : [];
+          const flag = enumArray.every((item) => !!item.id && !!item.name);
+          option = flag ? enumArray : [];
+        } else if (values.attr_type === 'table') {
+          const tableArray = Array.isArray(tableColumnList) ? tableColumnList : [];
+          const flag = tableArray.every((item) => !!item.column_id && !!item.column_name);
+          option = flag ? tableArray.map((col, idx) => ({ ...col, order: idx + 1 })) : [];
+        } else if (values.attr_type === 'str') {
+          option = {
+            validation_type: values.validation_type || 'unrestricted',
+            custom_regex: values.custom_regex || '',
+            widget_type: values.widget_type || 'single_line',
+          } as StrAttrOption;
+        } else if (values.attr_type === 'time') {
+          option = {
+            display_format: values.display_format || 'datetime',
+          } as TimeAttrOption;
+        } else if (values.attr_type === 'int') {
+          option = {
+            min_value: values.min_value || '',
+            max_value: values.max_value || '',
+          } as IntAttrOption;
+        }
+
+        const restValues = { ...values };
+        delete restValues.validation_type;
+        delete restValues.custom_regex;
+        delete restValues.widget_type;
+        delete restValues.display_format;
+        delete restValues.min_value;
+        delete restValues.max_value;
+
         operateAttr({
-          ...values,
-          option: flag ? enumList : [],
+          ...restValues,
+          option,
           attr_group: selectedGroup?.group_name || '',
           model_id: modelId,
         });
@@ -148,7 +228,8 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
 
     // 自定义验证枚举列表
     const validateEnumList = async () => {
-      if (enumList.some((item) => !item.id || !item.name)) {
+      const enumArray = Array.isArray(enumList) ? enumList : [];
+      if (enumArray.some((item) => !item.id || !item.name)) {
         return Promise.reject(new Error(t('valueValidate')));
       }
       return Promise.resolve();
@@ -188,6 +269,59 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
       const enumTypeList = deepClone(enumList);
       enumTypeList[index].name = e.target.value;
       setEnumList(enumTypeList);
+    };
+
+    const validateTableColumns = async () => {
+      const columnArray = Array.isArray(tableColumnList) ? tableColumnList : [];
+      if (columnArray.some((item) => !item.column_id || !item.column_name)) {
+        return Promise.reject(new Error(t('required')));
+      }
+      const columnIds = columnArray.map(c => c.column_id);
+      if (new Set(columnIds).size !== columnIds.length) {
+        return Promise.reject(new Error(t('Model.columnIdsMustBeUnique')));
+      }
+      return Promise.resolve();
+    };
+
+    const addTableColumn = () => {
+      const columnList = deepClone(tableColumnList);
+      columnList.push({
+        column_id: '',
+        column_name: '',
+        column_type: 'str',
+        order: columnList.length + 1,
+      });
+      setTableColumnList(columnList);
+    };
+
+    const deleteTableColumn = (index: number) => {
+      const columnList = deepClone(tableColumnList);
+      columnList.splice(index, 1);
+      setTableColumnList(columnList);
+    };
+
+    const onTableColumnChange = (
+      field: keyof TableColumnSpec,
+      value: string,
+      index: number
+    ) => {
+      const columnList = deepClone(tableColumnList);
+      if (field === 'column_type') {
+        columnList[index][field] = value as 'str' | 'number';
+      } else {
+        columnList[index][field] = value as any;
+      }
+      setTableColumnList(columnList);
+    };
+
+    const onTableDragEnd = (event: any) => {
+      const { active, over } = event;
+      if (!over) return;
+      const oldIndex = parseInt(active.id as string, 10);
+      const newIndex = parseInt(over.id as string, 10);
+      if (oldIndex !== newIndex) {
+        setTableColumnList((items) => arrayMove(items, oldIndex, newIndex));
+      }
     };
 
     const sensors = useSensors(useSensor(PointerSensor));
@@ -264,12 +398,18 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
             <Form.Item<AttrFieldType>
               label={t('id')}
               name="attr_id"
-              rules={[{ required: true, message: t('required') }]}
+              rules={[
+                { required: true, message: t('required') },
+                {
+                  pattern: /^[A-Za-z][A-Za-z0-9_]*$/,
+                  message: t('Model.attrIdPattern'),
+                },
+              ]}
             >
               <Input disabled={type === 'edit'} />
             </Form.Item>
             <Form.Item<AttrFieldType>
-              label={t('Model.attrGroupName')}
+              label={t('Model.attrGroup')}
               name="group_id"
               rules={[{ required: true, message: t('required') }]}
             >
@@ -281,6 +421,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 ))}
               </Select>
             </Form.Item>
+            <div className="border-t border-[var(--color-border-1)] my-4" />
             <Form.Item<AttrFieldType>
               label={t('type')}
               name="attr_type"
@@ -305,87 +446,316 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               {({ getFieldValue }) =>
                 getFieldValue('attr_type') === 'enum' ? (
                   <Form.Item<AttrFieldType>
-                    label={t('value')}
+                    label=" "
+                    colon={false}
                     name="option"
                     rules={[{ validator: validateEnumList }]}
                   >
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={onDragEnd}
-                    >
-                      <SortableContext
-                        items={enumList.map((_, idx) => idx.toString())}
-                        strategy={verticalListSortingStrategy}
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
+                      <div className="text-sm text-[var(--color-text-secondary)] mb-3">
+                        {t('Model.validationRules')}
+                      </div>
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={onDragEnd}
                       >
-                        <ul className="bg-[var(--color-bg-hover)] p-[10px]">
-                          {enumList.map((enumItem, index) => (
-                            <SortableItem
-                              key={index}
-                              id={index.toString()}
-                              index={index}
-                            >
-                              <HolderOutlined className="mr-[4px]" />
-                              <Input
-                                placeholder={t('fieldKey')}
-                                className="mr-[10px] w-1/5"
-                                value={enumItem.id}
-                                onChange={(e) => onEnumKeyChange(e, index)}
-                              />
-                              <Input
-                                placeholder={t('fieldValue')}
-                                className="mr-[10px] w-3/5"
-                                value={enumItem.name}
-                                onChange={(e) => onEnumValChange(e, index)}
-                              />
-                              <PlusOutlined
-                                className="edit mr-[10px] cursor-pointer text-[var(--color-primary)]"
-                                onClick={addEnumItem}
-                              />
-                              {enumList.length > 1 && (
-                                <DeleteTwoTone
-                                  className="delete cursor-pointer"
-                                  onClick={() => deleteEnumItem(index)}
+                        <SortableContext
+                          items={enumList.map((_, idx) => idx.toString())}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <ul className="ml-6">
+                            <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
+                              <span className="mr-[4px] w-[14px]"></span>
+                              <span className="mr-[10px] w-2/5">
+                                {t('fieldValue')}
+                              </span>
+                              <span className="mr-[10px] w-2/5">
+                                {t('Model.display')}
+                              </span>
+                            </li>
+                            {enumList.map((enumItem, index) => (
+                              <SortableItem
+                                key={index}
+                                id={index.toString()}
+                                index={index}
+                              >
+                                <HolderOutlined className="mr-[4px]" />
+                                <Input
+                                  placeholder={
+                                    t('common.inputTip') + t('fieldValue')
+                                  }
+                                  className="mr-[10px] w-2/5"
+                                  value={enumItem.id}
+                                  onChange={(e) => onEnumKeyChange(e, index)}
                                 />
-                              )}
-                            </SortableItem>
-                          ))}
-                        </ul>
-                      </SortableContext>
-                    </DndContext>
+                                <Input
+                                  placeholder={
+                                    t('common.inputTip') + t('Model.display')
+                                  }
+                                  className="mr-[10px] w-2/5"
+                                  value={enumItem.name}
+                                  onChange={(e) => onEnumValChange(e, index)}
+                                />
+                                <PlusOutlined
+                                  className="edit mr-[10px] cursor-pointer text-[var(--color-primary)]"
+                                  onClick={addEnumItem}
+                                />
+                                {enumList.length > 1 && (
+                                  <DeleteTwoTone
+                                    className="delete cursor-pointer"
+                                    onClick={() => deleteEnumItem(index)}
+                                  />
+                                )}
+                              </SortableItem>
+                            ))}
+                          </ul>
+                        </SortableContext>
+                      </DndContext>
+                    </div>
+                  </Form.Item>
+                ) : getFieldValue('attr_type') === 'time' ? (
+                  <Form.Item label=" " colon={false}>
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
+                      <div className="text-sm text-[var(--color-text-secondary)] mb-3">
+                        {t('Model.validationRules')}
+                      </div>
+                      <Form.Item<AttrFieldType>
+                        name="display_format"
+                        initialValue="datetime"
+                        className="mb-0"
+                      >
+                        <Radio.Group>
+                          <Radio value="datetime">{t('Model.datetime')}</Radio>
+                          <Radio value="date">{t('Model.date')}</Radio>
+                        </Radio.Group>
+                      </Form.Item>
+                    </div>
+                  </Form.Item>
+                ) : getFieldValue('attr_type') === 'int' ? (
+                  <Form.Item label=" " colon={false}>
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
+                      <div className="text-sm text-[var(--color-text-secondary)] mb-3">
+                        {t('Model.validationRules')}
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <Form.Item<AttrFieldType>
+                          label={t('Model.min')}
+                          name="min_value"
+                          className="mb-0 flex-1"
+                        >
+                          <Input placeholder={t('Model.emptyMeansNoLimit')} />
+                        </Form.Item>
+                        <span>—</span>
+                        <Form.Item<AttrFieldType>
+                          label={t('Model.max')}
+                          name="max_value"
+                          className="mb-0 flex-1"
+                        >
+                          <Input placeholder={t('Model.emptyMeansNoLimit')} />
+                        </Form.Item>
+                      </div>
+                    </div>
+                  </Form.Item>
+                ) : getFieldValue('attr_type') === 'table' ? (
+                  <Form.Item<AttrFieldType>
+                    label=" "
+                    colon={false}
+                    name="option"
+                    rules={[{ validator: validateTableColumns }]}
+                  >
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
+                      <div className="text-sm text-[var(--color-text-secondary)] mb-3">
+                        {t('Model.validationRules')}
+                      </div>
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={onTableDragEnd}
+                      >
+                        <SortableContext
+                          items={tableColumnList.map((_, idx) => idx.toString())}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <ul className="ml-6">
+                            <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
+                              <span className="mr-[4px] w-[14px]"></span>
+                              <span style={{ width: 120, marginRight: 10, flexShrink: 0 }}>{t('Model.columnId')}</span>
+                              <span style={{ width: 120, marginRight: 10, flexShrink: 0 }}>{t('Model.columnName')}</span>
+                              <span style={{ width: 100, flexShrink: 0 }}>{t('type')}</span>
+                            </li>
+                            {tableColumnList.map((column, index) => (
+                              <SortableItem
+                                key={index}
+                                id={index.toString()}
+                                index={index}
+                              >
+                                <HolderOutlined className="mr-[4px]" />
+                                <Input
+                                  placeholder={t('Model.enterColumnId')}
+                                  style={{ width: 120, marginRight: 10, flexShrink: 0 }}
+                                  value={column.column_id}
+                                  onChange={(e) => onTableColumnChange('column_id', e.target.value, index)}
+                                />
+                                <Input
+                                  placeholder={t('Model.enterColumnName')}
+                                  style={{ width: 120, marginRight: 10, flexShrink: 0 }}
+                                  value={column.column_name}
+                                  onChange={(e) => onTableColumnChange('column_name', e.target.value, index)}
+                                />
+                                <Select
+                                  style={{ width: 100, marginRight: 10, flexShrink: 0 }}
+                                  value={column.column_type}
+                                  onChange={(value) => onTableColumnChange('column_type', value, index)}
+                                >
+                                  <Option value="str">{t('string')}</Option>
+                                  <Option value="number">{t('number')}</Option>
+                                </Select>
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  onClick={addTableColumn}
+                                  style={{ minWidth: 24, padding: '0 4px', color: 'var(--color-primary)' }}
+                                >
+                                  +
+                                </Button>
+                                {tableColumnList.length > 1 && (
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    danger
+                                    onClick={() => deleteTableColumn(index)}
+                                    style={{ minWidth: 24, padding: '0 4px' }}
+                                  >
+                                    −
+                                  </Button>
+                                )}
+                              </SortableItem>
+                            ))}
+                          </ul>
+                        </SortableContext>
+                      </DndContext>
+                    </div>
+                  </Form.Item>
+                ) : getFieldValue('attr_type') === 'str' ? (
+                  <Form.Item label=" " colon={false}>
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
+                      <div className="text-sm text-[var(--color-text-secondary)] mb-3">
+                        {t('Model.validationRules')}
+                      </div>
+                      <Form.Item<AttrFieldType>
+                        name="validation_type"
+                        initialValue="unrestricted"
+                        className="mb-3"
+                      >
+                        <Select>
+                          <Option value="unrestricted">
+                            {t('Model.unrestricted')}
+                          </Option>
+                          <Option value="ipv4">{t('Model.ipv4')}</Option>
+                          <Option value="ipv6">{t('Model.ipv6')}</Option>
+                          <Option value="email">{t('Model.email')}</Option>
+                          <Option value="mobile_phone">
+                            {t('Model.mobile_phone')}
+                          </Option>
+                          <Option value="url">{t('Model.url')}</Option>
+                          <Option value="json">{t('Model.json')}</Option>
+                          <Option value="custom">
+                            {t('Model.customRegex')}
+                          </Option>
+                        </Select>
+                      </Form.Item>
+                      <Form.Item
+                        noStyle
+                        shouldUpdate={(prevValues, currentValues) =>
+                          prevValues.validation_type !==
+                          currentValues.validation_type
+                        }
+                      >
+                        {({ getFieldValue: getFieldVal }) =>
+                          getFieldVal('validation_type') === 'custom' ? (
+                            <Form.Item<AttrFieldType>
+                              name="custom_regex"
+                              className="mb-3"
+                              rules={[
+                                {
+                                  required: true,
+                                  message: t('Model.customRegexRequired'),
+                                },
+                              ]}
+                            >
+                              <Input
+                                placeholder={t('Model.customRegexRequired')}
+                              />
+                            </Form.Item>
+                          ) : null
+                        }
+                      </Form.Item>
+                      <div className="text-sm text-[var(--color-text-secondary)] mb-2">
+                        {t('Model.widgetType')}
+                      </div>
+                      <Form.Item<AttrFieldType>
+                        name="widget_type"
+                        initialValue="single_line"
+                        className="mb-0"
+                      >
+                        <Radio.Group>
+                          <Radio value="single_line">
+                            {t('Model.singleLine')}
+                          </Radio>
+                          <Radio value="multi_line">{t('Model.multiLine')}</Radio>
+                        </Radio.Group>
+                      </Form.Item>
+                    </div>
                   </Form.Item>
                 ) : null
               }
             </Form.Item>
-            <Form.Item<AttrFieldType>
-              label={t('editable')}
-              name="editable"
-              rules={[{ required: true, message: t('required') }]}
+            <div className="border-t border-[var(--color-border-1)] mt-2 mb-4" />
+            <Form.Item
+              noStyle
+              shouldUpdate={(prevValues, currentValues) =>
+                prevValues.attr_type !== currentValues.attr_type
+              }
             >
-              <Radio.Group>
-                <Radio value={true}>{t('yes')}</Radio>
-                <Radio value={false}>{t('no')}</Radio>
-              </Radio.Group>
+              {({ getFieldValue }) => (
+                <Form.Item label=" " colon={false} className="ml-[-80px]">
+                  <div className="flex items-center gap-8">
+                    {getFieldValue('attr_type') !== 'enum' && (
+                      <Form.Item<AttrFieldType>
+                        name="is_only"
+                        valuePropName="checked"
+                        className="mb-0"
+                      >
+                        <Checkbox disabled={type === 'edit'}>{t('unique')}</Checkbox>
+                      </Form.Item>
+                    )}
+                    <Form.Item<AttrFieldType>
+                      name="is_required"
+                      valuePropName="checked"
+                      className="mb-0"
+                    >
+                      <Checkbox>{t('required')}</Checkbox>
             </Form.Item>
             <Form.Item<AttrFieldType>
-              label={t('unique')}
-              name="is_only"
-              rules={[{ required: true, message: t('required') }]}
-            >
-              <Radio.Group disabled={type === 'edit'}>
-                <Radio value={true}>{t('yes')}</Radio>
-                <Radio value={false}>{t('no')}</Radio>
-              </Radio.Group>
+                      name="editable"
+                      valuePropName="checked"
+                      className="mb-0"
+                    >
+                      <Checkbox>{t('editable')}</Checkbox>
+                    </Form.Item>
+                  </div>
+                </Form.Item>
+              )}
             </Form.Item>
             <Form.Item<AttrFieldType>
-              label={t('required')}
-              name="is_required"
-              rules={[{ required: true, message: t('required') }]}
+              label={t('Model.userPrompt')}
+              name="user_prompt"
             >
-              <Radio.Group>
-                <Radio value={true}>{t('yes')}</Radio>
-                <Radio value={false}>{t('no')}</Radio>
-              </Radio.Group>
+              <Input.TextArea
+                placeholder={t('Model.userPromptPlaceholder')}
+                rows={3}
+              />
             </Form.Item>
           </Form>
         </OperateModal>

@@ -8,7 +8,7 @@ export const useUnitTransform = () => {
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
 
-  const findUnitNameById = (value: unknown): string => {
+  const findUnitNameById = (value: unknown, displayUnit?: string): string => {
     const vacantUnits = ['short', 'none', 'counts'];
     if (
       !value ||
@@ -17,12 +17,21 @@ export const useUnitTransform = () => {
     ) {
       return '';
     }
-    const unit = unitList.find((item) => item.unit_id === value);
+    let unit: any = unitList.find((item) => item.unit_id === value);
+    if (displayUnit) {
+      unit = {
+        display_unit: displayUnit,
+      };
+    }
     const isVacantUnit = vacantUnits.includes(unit?.display_unit);
     return isVacantUnit ? '' : unit?.display_unit || value?.toString() || '';
   };
 
-  const getEnumValueUnit = (metric: MetricItem, id: number | string) => {
+  const getEnumValueUnit = (
+    metric: MetricItem,
+    id: number | string,
+    displayUnit?: string
+  ) => {
     const { unit: input = '', name } = metric || {};
     if (!id && id !== 0) return '--';
     if (isStringArray(input)) {
@@ -30,7 +39,7 @@ export const useUnitTransform = () => {
         JSON.parse(input).find((item: ListItem) => item.id === +id)?.name || id
       );
     }
-    const unit = findUnitNameById(input);
+    const unit = findUnitNameById(input, displayUnit);
     return isNaN(+id) || APPOINT_METRIC_IDS.includes(name)
       ? `${id} ${unit}`
       : `${(+id).toFixed(2)} ${unit}`;

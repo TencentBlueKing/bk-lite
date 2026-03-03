@@ -31,6 +31,7 @@ import SearchFilter from '../../list/searchFilter';
 import CustomTable from '@/components/custom-table';
 import { SelectInstanceProps } from '@/app/cmdb/types/assetData';
 import PermissionWrapper from '@/components/permission';
+import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
 const { Option } = Select;
 const { confirm } = Modal;
@@ -71,15 +72,10 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
     }, [pagination?.current, pagination?.pageSize, queryList]);
 
     useEffect(() => {
+      // 当点击关联+模型为host时，获取云区域选项test8.9
       if (modelId === 'host') {
-        instanceApi
-          .getInstanceProxys()
-          .then((data: any[]) => {
-            setProxyOptions(data || []);
-          })
-          .catch(() => {
-            setProxyOptions([]);
-          });
+        // 使用store中的云区域列表数据替代直接获取
+        setProxyOptions(useAssetDataStore.getState().cloud_list || []);
       }
     }, [modelId]);
 
@@ -140,10 +136,10 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
           Promise.all([
             getAssoModelList,
             needFetchAssoInstIds &&
-              instanceApi.getAssociationInstanceList(
-                model_id,
-                instId.toString()
-              ),
+            instanceApi.getAssociationInstanceList(
+              model_id,
+              instId.toString()
+            ),
           ])
             .then((res) => {
               const relationData = res[0].map((item: AssoFieldType) => {

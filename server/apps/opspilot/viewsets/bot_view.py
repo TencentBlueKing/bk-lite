@@ -13,6 +13,8 @@ from apps.opspilot.enum import BotTypeChoice, WorkFlowExecuteType
 from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, WorkFlowConversationHistory
 from apps.opspilot.serializers import BotSerializer
 from apps.opspilot.utils.bot_utils import set_time_range
+from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
+from apps.opspilot.utils.schedule_utils import get_crontab_next_runs
 
 
 class BotFilter(FilterSet):
@@ -32,6 +34,27 @@ class BotViewSet(AuthViewSet):
     queryset = Bot.objects.all()
     permission_key = "bot"
     filterset_class = BotFilter
+
+    def query_by_groups(self, request, queryset):
+        """重写排序逻辑：置顶优先，再按 ID 倒序"""
+        new_queryset = self.get_queryset_by_permission(request, queryset)
+        return self._list(new_queryset.order_by("-is_pinned", "-id"))
+
+    @action(methods=["POST"], detail=True)
+    @HasPermission("bot_settings-Edit")
+    def toggle_pin(self, request, pk=None):
+        """切换工作台置顶状态"""
+        instance = self.get_object()
+        if not request.user.is_superuser:
+            current_team = request.COOKIES.get("current_team", "0")
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
+            if not has_permission:
+                message = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
+                return JsonResponse({"result": False, "message": message})
+        instance.is_pinned = not instance.is_pinned
+        instance.save(update_fields=["is_pinned"])
+        return JsonResponse({"result": True, "data": {"is_pinned": instance.is_pinned}})
 
     @HasPermission("bot_list-Add")
     def create(self, request, *args, **kwargs):
@@ -57,14 +80,8 @@ class BotViewSet(AuthViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, obj, current_team, include_children=include_children)
             if not has_permission:
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": self.loader.get("error.no_bot_update_permission")
-                        if self.loader
-                        else "You do not have permission to update this bot.",
-                    }
-                )
+                msg = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
+                return JsonResponse({"result": False, "message": msg})
         data = request.data
         is_publish = data.pop("is_publish", False)
         channels = data.pop("channels", [])
@@ -99,7 +116,7 @@ class BotViewSet(AuthViewSet):
         obj.save()
         if is_publish:
             # 只有 CHAT_FLOW 类型,创建 Celery 任务
-            BotWorkFlow.create_celery_task(obj.id, workflow_data)
+            create_celery_task(obj.id, workflow_data)
             obj.online = is_publish
             obj.save()
 
@@ -113,13 +130,7 @@ class BotViewSet(AuthViewSet):
         return_data = []
         for i in channels:
             return_data.append(
-                {
-                    "id": i.id,
-                    "name": i.name,
-                    "channel_type": i.channel_type,
-                    "channel_config": i.format_channel_config(),
-                    "enabled": i.enabled,
-                }
+                {"id": i.id, "name": i.name, "channel_type": i.channel_type, "channel_config": i.format_channel_config(), "enabled": i.enabled}
             )
         return JsonResponse({"result": True, "data": return_data})
 
@@ -136,12 +147,7 @@ class BotViewSet(AuthViewSet):
             has_permission = self.get_has_permission(request.user, channel.bot, current_team, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": message,
-                    }
-                )
+                return JsonResponse({"result": False, "message": message})
 
         channel.enabled = enabled
         if channel_config is not None:
@@ -153,7 +159,7 @@ class BotViewSet(AuthViewSet):
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
         # 只有 CHAT_FLOW 类型,删除 Celery 任务
-        BotWorkFlow.delete_celery_task(obj.id)
+        delete_celery_task(obj.id)
         return super().destroy(request, *args, **kwargs)
 
     @action(methods=["POST"], detail=False)
@@ -167,12 +173,7 @@ class BotViewSet(AuthViewSet):
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("error.no_bot_start_permission") if self.loader else "You do not have permission to start this bot."
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": message,
-                    }
-                )
+                return JsonResponse({"result": False, "message": message})
         # 只有 CHAT_FLOW 类型
         for bot in bots:
             if not bot.api_token:
@@ -180,7 +181,7 @@ class BotViewSet(AuthViewSet):
             bot.save()
             workflow_data = BotWorkFlow.objects.filter(bot_id=bot.id).first()
             if workflow_data:
-                BotWorkFlow.create_celery_task(bot.id, workflow_data.web_json)
+                create_celery_task(bot.id, workflow_data.web_json)
             bot.online = True
             bot.save()
         return JsonResponse({"result": True})
@@ -196,16 +197,11 @@ class BotViewSet(AuthViewSet):
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("error.no_bot_stop_permission") if self.loader else "You do not have permission to stop this bot"
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": message,
-                    }
-                )
+                return JsonResponse({"result": False, "message": message})
 
         # 只有 CHAT_FLOW 类型
         for bot in bots:
-            BotWorkFlow.delete_celery_task(bot.id)
+            delete_celery_task(bot.id)
             bot.api_token = ""
             bot.online = False
             bot.save()
@@ -348,3 +344,31 @@ class BotViewSet(AuthViewSet):
                 }
             )
         return paginator, result
+
+    @action(methods=["POST"], detail=False)
+    def preview_crontab(self, request):
+        """
+        Preview next execution times for a crontab expression.
+
+        Request body:
+            crontab_expression: str - 5-field crontab expression (minute hour day month weekday)
+            count: int - Number of next executions to return (default: 6, max: 20)
+
+        Returns:
+            result: bool - Success flag
+            data: list - List of next execution times in "YYYY-MM-DD HH:MM:SS" format
+            message: str - Error message if failed
+        """
+        crontab_expression = request.data.get("crontab_expression", "")
+        count = min(int(request.data.get("count", 6)), 20)  # Max 20
+
+        if not crontab_expression:
+            message = self.loader.get("error.crontab_expression_required") if self.loader else "crontab_expression is required"
+            return JsonResponse({"result": False, "message": message})
+        try:
+            next_runs = get_crontab_next_runs(crontab_expression, count=count)
+            return JsonResponse({"result": True, "data": next_runs})
+        except ValueError:
+            template = self.loader.get("error.invalid_crontab_expression") if self.loader else "Invalid crontab expression: {expression}"
+            message = template.format(expression=crontab_expression)
+            return JsonResponse({"result": False, "message": message})

@@ -3,8 +3,8 @@ import logging
 from django.conf import settings
 from django.contrib import auth
 from django.utils.deprecation import MiddlewareMixin
-from django.utils.translation import gettext as _
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
 
 logger = logging.getLogger(__name__)
@@ -18,9 +18,12 @@ class AuthMiddleware(MiddlewareMixin):
         "/accounts/",
     ]
 
-    # 错误消息常量
-    TOKEN_REQUIRED_MSG = "please provide Token"
-    AUTH_FAILED_MSG = "Authentication failed"
+    def _get_loader(self, request=None) -> LanguageLoader:
+        """获取基于用户locale的LanguageLoader"""
+        locale = "en"
+        if request and hasattr(request, "user") and hasattr(request.user, "locale"):
+            locale = request.user.locale or "en"
+        return LanguageLoader(app="core", default_lang=locale)
 
     def process_view(self, request, view, args, kwargs):
         """处理视图请求的认证逻辑"""
@@ -34,16 +37,13 @@ class AuthMiddleware(MiddlewareMixin):
 
         except Exception as e:
             logger.error("Authentication error for %s: %s", request.path, str(e))
-            return WebUtils.response_401(_(self.AUTH_FAILED_MSG))
+            loader = self._get_loader(request)
+            return WebUtils.response_401(loader.get("error.auth_failed", "Authentication failed"))
 
     def _is_exempt(self, request, view):
         """检查请求是否豁免认证"""
         # 检查API和登录豁免标记
-        if (
-            getattr(view, "api_exempt", False)
-            or getattr(view, "login_exempt", False)
-            or getattr(request, "api_pass", False)
-        ):
+        if getattr(view, "api_exempt", False) or getattr(view, "login_exempt", False) or getattr(request, "api_pass", False):
             return True
 
         # 检查路径豁免
@@ -56,14 +56,16 @@ class AuthMiddleware(MiddlewareMixin):
         token = self._extract_token(request)
         if not token:
             logger.warning("Missing or invalid token for %s", request.path)
-            return WebUtils.response_401(_(self.TOKEN_REQUIRED_MSG))
+            loader = self._get_loader(request)
+            return WebUtils.response_401(loader.get("error.please_provide_token", "Please provide Token"))
 
         # 认证用户
         try:
             user = auth.authenticate(request=request, token=token)
             if not user:
                 logger.warning("Token authentication failed for %s", request.path)
-                return WebUtils.response_401(_(self.TOKEN_REQUIRED_MSG))
+                loader = self._get_loader(request)
+                return WebUtils.response_401(loader.get("error.please_provide_token", "Please provide Token"))
 
             # 登录用户并确保session有效
             auth.login(request, user)
@@ -74,7 +76,8 @@ class AuthMiddleware(MiddlewareMixin):
 
         except Exception as e:
             logger.error("Token authentication error for %s: %s", request.path, str(e))
-            return WebUtils.response_401(_(self.TOKEN_REQUIRED_MSG))
+            loader = self._get_loader(request)
+            return WebUtils.response_401(loader.get("error.please_provide_token", "Please provide Token"))
 
     @staticmethod
     def _extract_token(request):

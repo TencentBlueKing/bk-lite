@@ -20,6 +20,7 @@ __pycache__
 .pytest_cache
 *.hypothesis
 /models/
+worktree/
 .env
 .lh
 support-files/dev/conf/nats/certs/
@@ -31,3 +32,5 @@ agents/fusion-collector/agent/misc
 agents/fusion-collector/agent/collector-sidecar
 
 code-reviews/
+
+**/enterprise/

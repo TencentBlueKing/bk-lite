@@ -78,11 +78,12 @@ class SystemMgmt(object):
         return_data = self.client.run("verify_token", token=token)
         return return_data
 
-    def get_group_users(self, group):
+    def get_group_users(self, group, include_children=False):
         """
         :param group: 当前组的ID
+        :param include_children: 是否递归查子组
         """
-        return_data = self.client.run("get_group_users", group=group)
+        return_data = self.client.run("get_group_users", group=group, include_children=include_children)
         return return_data
 
     def get_all_users(self):
@@ -107,21 +108,34 @@ class SystemMgmt(object):
         return_data = self.client.run("get_all_groups")
         return return_data
 
-    def search_channel_list(self, channel_type):
+    def search_channel_list(self, channel_type, teams, include_children):
         """
         :param channel_type: str， 目前只有email、enterprise_wechat
+        :param teams: list, [1,2,3]
+        :param include_children: bool , True、False
         """
-        return_data = self.client.run("search_channel_list", channel_type=channel_type)
+        return_data = self.client.run("search_channel_list", channel_type=channel_type, teams=teams, include_children=include_children)
         return return_data
 
-    def send_msg_with_channel(self, channel_id, title, content, receivers):
+    def send_msg_with_channel(self, channel_id, title, content, receivers, attachments=None):
         """
+        通过指定通道发送消息
         :param channel_id: 1 通道id
         :param title: 邮件主题  企微传空字符串即可
-        :param content: 正文
+        :param content: 正文，如果是nats类型的，传入json即可，会原样调用nats接口
         :param receivers: [1,2,3,4] 用户的ID列表
+        :param attachments: 附件列表（仅email通道支持），格式为:
+            [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]
+            注意: 附件内容必须是base64编码的字符串，因为NATS使用JSON序列化传输
         """
-        return_data = self.client.run("send_msg_with_channel", channel_id=channel_id, title=title, content=content, receivers=receivers)
+        return_data = self.client.run(
+            "send_msg_with_channel",
+            channel_id=channel_id,
+            title=title,
+            content=content,
+            receivers=receivers,
+            attachments=attachments,
+        )
         return return_data
 
     def send_email_to_receiver(self, title, content, receiver):

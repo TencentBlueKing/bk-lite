@@ -2,21 +2,26 @@ from apps.rpc.system_mgmt import SystemMgmt
 
 
 class SystemMgmtUtils:
-
     @staticmethod
-    def get_user_all():
-        result = SystemMgmt().get_all_users()
+    def get_user_all(group=None, include_children=False):
+        result = SystemMgmt().get_group_users(
+            group=group, include_children=include_children
+        )
         return result["data"]
 
     @staticmethod
-    def search_channel_list(channel_type=""):
+    def search_channel_list(channel_type="", teams=None, include_children=False):
         """email、enterprise_wechat"""
-        result = SystemMgmt().search_channel_list(channel_type)
+        result = SystemMgmt().search_channel_list(
+            channel_type, teams=teams, include_children=include_children
+        )
         return result["data"]
 
     @staticmethod
     def send_msg_with_channel(channel_id, title, content, receivers):
-        result = SystemMgmt().send_msg_with_channel(channel_id, title, content, receivers)
+        result = SystemMgmt().send_msg_with_channel(
+            channel_id, title, content, receivers
+        )
         return result
 
     @staticmethod
@@ -42,7 +47,11 @@ class SystemMgmtUtils:
             # 去重权限
             instance_permission_map[instance_id] = list(set(permissions))
 
-        if "0" in instance_permission_map or "-1" in instance_permission_map or not instance_permission_map:
+        if (
+            "0" in instance_permission_map
+            or "-1" in instance_permission_map
+            or not instance_permission_map
+        ):
             return None
         return instance_permission_map
 

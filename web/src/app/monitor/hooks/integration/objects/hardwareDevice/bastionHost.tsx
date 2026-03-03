@@ -3,7 +3,7 @@ export const useBastionHostConfig = () => {
     instance_type: 'bastion_host',
     dashboardDisplay: [
       {
-        indexId: 'sysUpTime',
+        indexId: 'interface_ifOutDiscards',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
@@ -13,7 +13,7 @@ export const useBastionHostConfig = () => {
         },
       },
       {
-        indexId: 'iftotalInOctets',
+        indexId: 'interface_ifOperStatus',
         displayType: 'lineChart',
         sortIndex: 1,
         displayDimension: [],
@@ -23,7 +23,7 @@ export const useBastionHostConfig = () => {
         },
       },
       {
-        indexId: 'iftotalOutOctets',
+        indexId: 'interface_ifInErrors',
         displayType: 'lineChart',
         sortIndex: 2,
         displayDimension: [],
@@ -53,9 +53,9 @@ export const useBastionHostConfig = () => {
       },
     ],
     tableDiaplay: [
-      { type: 'value', key: 'iftotalInOctets' },
-      { type: 'value', key: 'iftotalOutOctets' },
-      { type: 'value', key: 'sysUpTime' },
+      { type: 'enum', key: 'ipmi_chassis_power_state' },
+      { type: 'value', key: 'ipmi_fan_speed_rpm' },
+      { type: 'value', key: 'ipmi_temperature_celsius' },
     ],
     groupIds: {},
     collectTypes: {

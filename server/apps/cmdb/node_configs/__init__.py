@@ -29,7 +29,7 @@ def _auto_register_node_params():
         try:
             # 动态导入模块以触发类定义和 __init_subclass__
             importlib.import_module(module_name)
-        except Exception:
+        except Exception:  # noqa: BLE001 - 模块导入失败不应阻塞其他模块注册
             # 忽略导入失败的模块,避免阻塞其他模块注册
             # 实际使用时如需调试可记录日志
             pass

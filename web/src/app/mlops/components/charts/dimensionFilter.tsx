@@ -38,7 +38,7 @@ const DimensionFilter: React.FC<DimensionFilterProps> = ({
 
   return (
     <div className={chartStyle.filterArea}>
-      <div className="bg-[var(--color-fill-2)] text-[14px] font-[800] p-[4px] text-center">
+      <div className="bg-(--color-fill-2) text-[14px] font-extrabold p-1 text-center">
         {t('monitor.intergrations.dimension')}
       </div>
       <ul className="text-[12px]">
@@ -47,13 +47,13 @@ const DimensionFilter: React.FC<DimensionFilterProps> = ({
             key={index}
             className={`cursor-pointer ${
               visibleAreas.includes(key)
-                ? 'text-[var(--color-text-2)]'
-                : 'text-[var(--ant-color-text-disabled)]'
+                ? 'text-(--color-text-2)'
+                : 'text-(--ant-color-text-disabled)'
             }`}
             onClick={() => onLegendClick(key)}
           >
             <span
-              className="w-[10px] h-[4px] mr-[10px]"
+              className="w-2.5 h-1 mr-2.5"
               style={{
                 background: visibleAreas.includes(key)
                   ? colors[index]

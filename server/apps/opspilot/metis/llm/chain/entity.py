@@ -10,6 +10,7 @@ class BasicLLMResponse(BaseModel):
     total_tokens: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    browser_steps: List[str] = []  # browser_use 步骤信息，格式: ["step1 xxx", "step2 xxx", ..., "最终结果: xxx"]
 
 
 class ChatHistory(BaseModel):
@@ -21,6 +22,7 @@ class ChatHistory(BaseModel):
 class ToolsServer(BaseModel):
     name: str
     url: str = ""
+    transport: str = ""
     command: str = ""
     args: list = []
     extra_param_prompt: dict = {}
@@ -53,3 +55,5 @@ class BasicLLMRequest(BaseModel):
     graph_user_message: Optional[str] = ""
 
     tools_servers: List[ToolsServer] = []
+
+    locale: str = "en"  # 用户语言设置，用于 browser-use 输出国际化

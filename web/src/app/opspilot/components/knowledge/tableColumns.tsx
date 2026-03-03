@@ -1,8 +1,17 @@
-import React from 'react';
+import React, { CSSProperties } from 'react';
 import { Tag, Button, Space, Tooltip } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { TableData, QAPairData } from '@/app/opspilot/types/knowledge';
 import PermissionWrapper from '@/components/permission';
+
+/**
+ * Custom CSS properties extending React.CSSProperties to include webkit-specific properties.
+ * [TS·strict] Eliminates `as any` type assertions for webkit CSS properties.
+ */
+interface WebkitCSSProperties extends CSSProperties {
+  WebkitLineClamp?: number;
+  WebkitBoxOrient?: 'horizontal' | 'vertical' | 'inline-axis' | 'block-axis';
+}
 
 interface RouterType {
   push: (url: string) => void;
@@ -50,11 +59,11 @@ export const getDocumentColumns = (
               style={{
                 display: '-webkit-box',
                 WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical' as any,
+                WebkitBoxOrient: 'vertical',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 wordBreak: 'break-all'
-              }}
+              } as WebkitCSSProperties}
             >
               {text}
             </span>
@@ -75,10 +84,16 @@ export const getDocumentColumns = (
     render: (text: string) => convertToLocalizedTime(text),
   },
   {
+    title: t('common.updatedTime'),
+    dataIndex: 'updated_at',
+    key: 'updated_at',
+    render: (text: string) => text ? convertToLocalizedTime(text) : '--',
+  },
+  {
     title: t('knowledge.documents.createdBy'),
     key: 'created_by',
     dataIndex: 'created_by',
-    render: (_: any, record: TableData) => (
+    render: (_: string, record: TableData) => (
       <div>
         <div
           className='inline-block text-center rounded-full text-white mr-2'
@@ -94,7 +109,7 @@ export const getDocumentColumns = (
     title: t('knowledge.documents.status'),
     key: 'train_status',
     dataIndex: 'train_status',
-    render: (_: any, record: TableData) => {
+    render: (_: number | undefined, record: TableData) => {
       const statusColors: { [key: string]: string } = {
         '0': 'orange',
         '1': 'green',
@@ -103,8 +118,16 @@ export const getDocumentColumns = (
 
       const color = statusColors[record.train_status?.toString()] || 'geekblue';
       const text = record.train_status_display || '--';
+      const isError = record.train_status === 2;
+      const errorMessage = record.error_message;
 
-      return <Tag color={color}>{text}</Tag>;
+      const tag = <Tag color={color}>{text}</Tag>;
+
+      if (isError && errorMessage) {
+        return <Tooltip title={errorMessage}>{tag}</Tooltip>;
+      }
+
+      return tag;
     },
   },
   ...(activeTabKey === 'web_page' ? [
@@ -118,7 +141,7 @@ export const getDocumentColumns = (
       title: t('knowledge.documents.syncEnabled'),
       key: 'sync_enabled',
       dataIndex: 'sync_enabled',
-      render: (_: any, record: TableData) => {
+      render: (_: boolean | undefined, record: TableData) => {
         const syncEnabled = record.sync_enabled;
         const syncTime = record.sync_time;
 
@@ -138,7 +161,7 @@ export const getDocumentColumns = (
     title: t('knowledge.documents.extractionMethod'),
     key: 'mode',
     dataIndex: 'mode',
-    render: (_: any, record: TableData) => {
+    render: (_: string | undefined, record: TableData) => {
       const mode = record.mode || 'full';
       const modeMap: { [key: string]: string } = {
         'full': t('knowledge.documents.fullTextExtraction'),
@@ -155,7 +178,7 @@ export const getDocumentColumns = (
     title: t('knowledge.documents.chunkingMethod'),
     key: 'chunk_type',
     dataIndex: 'chunk_type',
-    render: (_: any, record: TableData) => {
+    render: (_: string | undefined, record: TableData) => {
       const chunkType = record.chunk_type || 'fixed_size';
       const chunkMap: { [key: string]: string } = {
         'fixed_size': t('knowledge.documents.fixedChunk'),
@@ -171,7 +194,7 @@ export const getDocumentColumns = (
     title: t('knowledge.documents.actions'),
     key: 'action',
     width: 170,
-    render: (_: any, record: TableData) => (
+    render: (_: unknown, record: TableData) => (
       <ActionButtons
         record={record}
         isFile={activeTabKey === 'file'}
@@ -224,11 +247,11 @@ export const getQAPairColumns = (
               style={{
                 display: '-webkit-box',
                 WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical' as any,
+                WebkitBoxOrient: 'vertical',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 wordBreak: 'break-all'
-              }}
+              } as WebkitCSSProperties}
             >
               {text}
             </span>
@@ -263,10 +286,16 @@ export const getQAPairColumns = (
     render: (text: string) => convertToLocalizedTime(text),
   },
   {
+    title: t('common.updatedTime'),
+    dataIndex: 'updated_at',
+    key: 'updated_at',
+    render: (text: string) => text ? convertToLocalizedTime(text) : '--',
+  },
+  {
     title: t('knowledge.documents.createdBy'),
     key: 'created_by',
     dataIndex: 'created_by',
-    render: (_: any, record: QAPairData) => (
+    render: (_: string, record: QAPairData) => (
       <div>
         <div
           className='inline-block text-center rounded-full text-white mr-2'
@@ -282,7 +311,7 @@ export const getQAPairColumns = (
     title: t('knowledge.documents.status'),
     key: 'status',
     dataIndex: 'status',
-    render: (_: any, record: QAPairData) => {
+    render: (_: string | undefined, record: QAPairData) => {
       const statusColors: { [key: string]: string } = {
         'pending': 'processing',
         'generating': 'orange',
@@ -299,7 +328,7 @@ export const getQAPairColumns = (
   {
     title: t('knowledge.documents.actions'),
     key: 'action',
-    render: (_: any, record: QAPairData) => {
+    render: (_: unknown, record: QAPairData) => {
       const isProcessing = record.status === 'pending' || record.status === 'generating';
       const isDocumentGenerated = record.create_type === 'document';
       

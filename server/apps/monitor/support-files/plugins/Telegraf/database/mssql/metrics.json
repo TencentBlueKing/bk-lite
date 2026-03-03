@@ -100,58 +100,58 @@
     },
     {
       "metric_group": "Performance",
-      "name": "sqlserver_performance_batch_requests_rate",
+      "name": "sqlserver_performance_value_rate",
       "display_name": "Batch Requests Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
       "description": "Rate of batch requests processed by SQL Server, measuring overall database throughput and load pressure. High request rates indicate the database is processing a large volume of queries.",
-      "query": "rate(sqlserver_performance_value{counter_name=~\"Batch Requests/sec\", __$labels__}[5m])"
+      "query": "rate(sqlserver_performance_value{counter=~\"Batch Requests/sec\", __$labels__}[5m])"
     },
     {
       "metric_group": "Performance",
-      "name": "sqlserver_performance_page_life_expectancy",
+      "name": "sqlserver_page_life_expectancy",
       "display_name": "Page Life Expectancy",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "s",
       "dimensions": [],
       "description": "Average time data pages stay in the buffer pool, reflecting memory pressure. Low values suggest insufficient memory, potentially causing frequent physical I/O and impacting performance.",
-      "query": "sqlserver_performance_value{counter_name=\"Page Life Expectancy\", __$labels__}"
+      "query": "sqlserver_performance_value{counter=\"Page life expectancy\", __$labels__}"
     },
     {
       "metric_group": "Performance",
-      "name": "sqlserver_performance_buffer_cache_hit_ratio",
+      "name": "sqlserver_buffer_cache_hit_ratio",
       "display_name": "Buffer Cache Hit Ratio",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
       "description": "Percentage of data page reads satisfied from the buffer pool, reflecting memory efficiency. High hit ratios indicate most data requests are served from memory, suggesting good performance. Low hit ratios may indicate a need for more memory.",
-      "query": "sqlserver_performance_value{counter_name=\"Buffer cache hit ratio\", __$labels__}"
+      "query": "sqlserver_performance_value{counter=\"Buffer cache hit ratio\", __$labels__}"
     },
     {
       "metric_group": "Performance",
-      "name": "sqlserver_performance_user_connections_rate",
+      "name": "sqlserver_user_connections_rate",
       "display_name": "User Connections",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
       "description": "Number of users currently connected to the SQL Server instance, reflecting concurrent load and connection pool usage. Too many connections may lead to resource contention.",
-      "query": "rate(sqlserver_performance_value{counter_name=~\"User Connections\", __$labels__}[5m])"
+      "query": "rate(sqlserver_performance_value{counter=~\"User Connections\", __$labels__}[5m])"
     },
     {
       "metric_group": "Performance",
-      "name": "sqlserver_performance_lock_wait_time_rate",
+      "name": "sqlserver_lock_wait_time_rate",
       "display_name": "Lock Wait Time",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ms",
       "dimensions": [],
       "description": "Rate of lock wait time, reflecting concurrency contention. High values may indicate blocking or lock contention issues that require transaction design optimization.",
-      "query": "rate(sqlserver_performance_value{counter_name=~\"Lock Wait Time\", __$labels__}[5m])"
+      "query": "rate(sqlserver_performance_value{counter=~\"Lock Waits/sec\", __$labels__}[5m])"
     },
     {
       "metric_group": "Performance",

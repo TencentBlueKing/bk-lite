@@ -13,6 +13,7 @@ import { KnowledgeBase, RagScoreThresholdItem, KnowledgeBaseRagSource } from '@/
 import { SelectTool } from '@/app/opspilot/types/tool';
 import ToolSelector from '@/app/opspilot/components/skill/toolSelector';
 import { useSkillApi } from '@/app/opspilot/api/skill';
+import { useSkill } from '@/app/opspilot/context/skillContext';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -22,6 +23,7 @@ const SkillSettingsPage: React.FC = () => {
   const { groups, loading: groupsLoading } = useGroups();
   const { t } = useTranslation();
   const { fetchSkillDetail, fetchKnowledgeBases, fetchLlmModels, saveSkillDetail } = useSkillApi();
+  const { refreshSkillInfo } = useSkill();
   const searchParams = useSearchParams();
   const id = searchParams ? searchParams.get('id') : null;
 
@@ -85,12 +87,12 @@ const SkillSettingsPage: React.FC = () => {
 
         const initialSelectedKnowledgeBases = data.rag_score_threshold.map((item: RagScoreThresholdItem) => Number(item.knowledge_base));
         setSelectedKnowledgeBases(initialSelectedKnowledgeBases);
-        setSelectedTools(data.tools);
+        setSelectedTools(data.tools as SelectTool[]);
         setToolEnabled(!!data.tools.length);
 
         setSkillType(data.skill_type);
         setSkillPermissions(data.permissions || []);
-        
+
         setEnableKmRoute(data.enable_km_route !== undefined ? data.enable_km_route : true);
         setKmLlmModel(data.km_llm_model || data.llm_model);
       } catch (error) {
@@ -107,7 +109,7 @@ const SkillSettingsPage: React.FC = () => {
           fetchLlmModels(),
           fetchKnowledgeBases()
         ]);
-        setLlmModels(llmModelsData);
+        setLlmModels(llmModelsData as { id: number; name: string; enabled: boolean; llm_model_type: string; }[]);
         setKnowledgeBases(knowledgeBasesData);
         fetchFormData(knowledgeBasesData);
       } catch (error) {
@@ -129,7 +131,7 @@ const SkillSettingsPage: React.FC = () => {
         message.error(t('skill.ragKnowledgeBaseRequired'));
         return;
       }
-      if (showToolEnabled && selectedTools.length === 0) { 
+      if (showToolEnabled && selectedTools.length === 0) {
         message.error(t('skill.ragToolRequired'));
         return;
       }
@@ -166,6 +168,7 @@ const SkillSettingsPage: React.FC = () => {
       setSaveLoading(true);
       await saveSkillDetail(id, payload);
       message.success(t('common.saveSuccess'));
+      refreshSkillInfo();
     } catch (error) {
       console.error(t('common.saveFailed'), error);
     } finally {
@@ -176,28 +179,28 @@ const SkillSettingsPage: React.FC = () => {
   const handleSendMessage = async (userMessage: string, currentMessages: any[] = [], userMessageObj?: any): Promise<{ url: string; payload: any } | null> => {
     try {
       const values = await form.validateFields();
-      
+
       // Check if knowledge base is selected when RAG is enabled
       if (ragEnabled && ragSources.length === 0) {
         message.error(t('skill.ragKnowledgeBaseRequired'));
         return null;
       }
-      
+
       // Check if tool is selected when tool functionality is enabled
-      if (showToolEnabled && selectedTools.length === 0) { 
+      if (showToolEnabled && selectedTools.length === 0) {
         message.error(t('skill.ragToolRequired'));
         return null;
       }
-      
+
       const ragScoreThreshold = selectedKnowledgeBases.map(id => ({
         knowledge_base: id,
         score: ragSources.find(base => base.id === id)?.score || 0.7,
       }));
 
-      const chatHistory = chatHistoryEnabled && quantity 
-        ? currentMessages.slice(-quantity).map(msg => ({ 
-          message: msg.content, 
-          event: msg.role 
+      const chatHistory = chatHistoryEnabled && quantity
+        ? currentMessages.slice(-quantity).map(msg => ({
+          message: msg.content,
+          event: msg.role
         }))
         : [];
 
@@ -387,9 +390,14 @@ const SkillSettingsPage: React.FC = () => {
                     <Form.Item
                       label={t('skill.form.guide')}
                       name="guide"
-                      tooltip={t('skill.form.guideTip')}>
-                      <TextArea 
-                        rows={4} 
+                      tooltip={
+                        <>
+                          <div className="text-red-500 text-xs mt-1">{t('skill.form.guideNotSupportedInExternalApp')}</div>
+                          <div>{t('skill.form.guideTip')}</div>
+                        </>
+                      }>
+                      <TextArea
+                        rows={4}
                         onChange={(e) => setGuideValue(e.target.value)}
                       />
                     </Form.Item>
@@ -503,8 +511,8 @@ const SkillSettingsPage: React.FC = () => {
             </div>
           </div>
           <div className="w-1/2 space-y-4">
-            <CustomChatSSE 
-              handleSendMessage={handleSendMessage} 
+            <CustomChatSSE
+              handleSendMessage={handleSendMessage}
               guide={guideValue}
               useAGUIProtocol={true}
               initialMessages={initialMessages}

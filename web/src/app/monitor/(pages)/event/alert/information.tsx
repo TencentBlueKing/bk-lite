@@ -26,8 +26,7 @@ const Information: React.FC<InformationProps> = ({
   objects,
   userList,
   onClose,
-  trapData,
-  eventData = [],
+  trapData
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -50,7 +49,7 @@ const Information: React.FC<InformationProps> = ({
       icon: monitorItem?.icon || OBJECT_DEFAULT_ICON,
       instance_id: row.monitor_instance_id,
       instance_name: row.monitor_instance_name,
-      instance_id_values: row.instance_id_values,
+      instance_id_values: row.instance_id_values
     };
     const queryString = new URLSearchParams(params).toString();
     const url = `/monitor/view/detail?${queryString}`;
@@ -61,7 +60,7 @@ const Information: React.FC<InformationProps> = ({
     setConfirmLoading(true);
     try {
       await patchMonitorAlert(row.id as string, {
-        status: 'closed',
+        status: 'closed'
       });
       message.success(t('monitor.events.successfullyClosed'));
       onClose();
@@ -71,7 +70,8 @@ const Information: React.FC<InformationProps> = ({
   };
 
   const getUsers = (id: string) => {
-    return userList.find((item: UserItem) => item.id === id)?.username || '--';
+    const user = userList.find((item: UserItem) => item.id === id);
+    return user?.display_name || '--';
   };
 
   const showNotifiers = (row: TableDataItem) => {
@@ -96,12 +96,12 @@ const Information: React.FC<InformationProps> = ({
           <div
             className={informationStyle.level}
             style={{
-              borderLeft: `4px solid ${LEVEL_MAP[formData.level]}`,
+              borderLeft: `4px solid ${LEVEL_MAP[formData.level]}`
             }}
           >
             <span
               style={{
-                color: LEVEL_MAP[formData.level] as string,
+                color: LEVEL_MAP[formData.level] as string
               }}
             >
               {LEVEL_LIST.find((item) => item.value === formData.level)
@@ -123,11 +123,13 @@ const Information: React.FC<InformationProps> = ({
           )?.display_name || '--'}
         </Descriptions.Item>
         <Descriptions.Item label={t('monitor.asset')}>
-          <div className="flex justify-between">
-            {formData.monitor_instance_name || '--'}
+          <div className="flex justify-between items-center">
+            <span className="flex-1">
+              {formData.monitor_instance_name || '--'}
+            </span>
             <a
               href="#"
-              className="text-blue-500 w-[36px]"
+              className="text-blue-500 ml-2"
               onClick={() => checkDetail(formData)}
             >
               {t('common.more')}
@@ -197,8 +199,8 @@ const Information: React.FC<InformationProps> = ({
                     return (
                       <Descriptions.Item label={key} key={key}>
                         {Array.isArray(value)
-                          ? value[0]?.[1] ?? '--'
-                          : value ?? '--'}
+                          ? (value[0]?.[1] ?? '--')
+                          : (value ?? '--')}
                       </Descriptions.Item>
                     );
                   }
@@ -217,9 +219,12 @@ const Information: React.FC<InformationProps> = ({
             <div className="h-[250px]">
               <LineChart
                 allowSelect={false}
-                eventData={eventData}
                 data={chartData}
-                threshold={formData.policy?.threshold}
+                threshold={
+                  formData.alert_type === 'no_data'
+                    ? []
+                    : formData.policy?.threshold
+                }
                 unit={formData.metric?.unit}
                 metric={formData.metric}
               />

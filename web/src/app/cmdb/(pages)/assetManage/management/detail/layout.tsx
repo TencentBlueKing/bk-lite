@@ -8,7 +8,7 @@ import CopyModelModal from '../list/copyModelModal';
 import attrLayoutStyle from './layout.module.scss';
 import useApiClient from '@/utils/request';
 import PermissionWrapper from '@/components/permission';
-import { Card, Modal, message } from 'antd';
+import { Card, Modal, message, Tooltip } from 'antd';
 import { useRouter } from 'next/navigation';
 import { getIconUrl } from '@/app/cmdb/utils/common';
 import { EditTwoTone, DeleteTwoTone, CopyOutlined } from '@ant-design/icons';
@@ -190,12 +190,13 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
                     requiredPermissions={['Add Model']}
                     instPermissions={modelDetail.permission || []}
                   >
-                    <CopyOutlined
-                      className="copy text-[14px] cursor-pointer"
-                      style={{ color: 'var(--color-primary)' }}
-                      onClick={showCopyModelModal}
-                      title={t('Model.copy')}
-                    />
+                    <Tooltip title={t('Model.copyModel')}>
+                      <CopyOutlined
+                        className="copy text-[14px] cursor-pointer"
+                        style={{ color: 'var(--color-primary)' }}
+                        onClick={showCopyModelModal}
+                      />
+                    </Tooltip>
                   </PermissionWrapper>
                 </div>
               </div>

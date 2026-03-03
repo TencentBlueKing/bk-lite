@@ -55,12 +55,16 @@ def _create_ssl_context():
 NATS_OPTIONS = {
     # TLS 配置
     "tls": _create_ssl_context(),
-    "tls_hostname": os.getenv("NATS_TLS_HOSTNAME"),  # 证书验证主机名（通过IP连接域名证书时需要）
-
+    "tls_hostname": os.getenv(
+        "NATS_TLS_HOSTNAME"
+    ),  # 证书验证主机名（通过IP连接域名证书时需要）
     # 基础连接配置 - 移除 connect_timeout 避免与 nats.connect() 参数冲突
-    "reconnect_time_wait": int(os.getenv("NATS_RECONNECT_WAIT", "2")),  # 重连等待时间（秒）
-    "max_reconnect_attempts": int(os.getenv("NATS_MAX_RECONNECT", "60")),  # 最大重连次数
-
+    "reconnect_time_wait": int(
+        os.getenv("NATS_RECONNECT_WAIT", "2")
+    ),  # 重连等待时间（秒）
+    "max_reconnect_attempts": int(
+        os.getenv("NATS_MAX_RECONNECT", "60")
+    ),  # 最大重连次数
     # 认证配置（如果需要）
     "user": os.getenv("NATS_USER"),  # 用户名
     "password": os.getenv("NATS_PASSWORD"),  # 密码

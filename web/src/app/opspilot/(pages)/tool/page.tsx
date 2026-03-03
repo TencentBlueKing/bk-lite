@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Form, message, Button, Menu, Modal, Drawer, Switch } from 'antd';
+import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip } from 'antd';
 import { Store } from 'antd/lib/form/interface';
 import { useTranslation } from '@/utils/i18n';
 import EntityList from '@/components/entity-list';
@@ -8,7 +8,7 @@ import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
-import { Tool, TagOption } from '@/app/opspilot/types/tool';
+import { Tool, TagOption, ToolPayload } from '@/app/opspilot/types/tool';
 import PermissionWrapper from "@/components/permission";
 import styles from '@/app/opspilot/styles/common.module.scss';
 import { useToolApi } from '@/app/opspilot/api/tool';
@@ -76,12 +76,20 @@ const ToolListPage: React.FC = () => {
             <Icon type={getRandomIcon()} className="text-blue-500 text-2xl" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-[var(--text-color-2)] mb-1 truncate">
-              {tool.name}
-            </div>
-            <div className="text-xs text-[var(--text-color-3)] leading-relaxed line-clamp-2">
-              {tool.description || t('common.noData')}
-            </div>
+            <Tooltip title={tool.name} placement="topLeft" overlayStyle={{ maxWidth: 500 }}>
+              <div className="font-medium text-[var(--text-color-2)] mb-1 truncate">
+                {tool.name}
+              </div>
+            </Tooltip>
+            <Tooltip 
+              title={<div style={{ maxHeight: 300, overflowY: 'auto' }}>{tool.description || t('common.noData')}</div>} 
+              placement="topLeft" 
+              overlayStyle={{ maxWidth: 500 }}
+            >
+              <div className="text-xs text-[var(--text-color-3)] leading-relaxed line-clamp-2">
+                {tool.description || t('common.noData')}
+              </div>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -248,8 +256,9 @@ const ToolListPage: React.FC = () => {
             value: '',
           }));
           const { enable_auth, auth_token, ...restValues } = values;
-          const queryParams = {
+          const queryParams: ToolPayload = {
             ...restValues,
+            name: values.name,
             icon: 'gongjuji',
             params: {
               name: values.name,

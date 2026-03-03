@@ -1,25 +1,40 @@
-import React from 'react';
-import { Form, Select, InputNumber } from 'antd';
+import React, { useMemo } from 'react';
+import { Form, Select, InputNumber, Input } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ThresholdField } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
-import { useScheduleList } from '@/app/monitor/hooks/event';
-import { useLevelList } from '@/app/monitor/hooks';
 import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
-import SelectCards from './selectCard';
+import { isStringArray } from '@/app/monitor/utils/common';
 import ThresholdList from './thresholdList';
 
 const { Option } = Select;
 
+// 无数据告警级别选项
+const NO_DATA_ALERT_OPTIONS = [
+  { value: 'none', labelKey: 'noTriggerNoDataAlert' },
+  { value: 'critical', labelKey: 'triggerCriticalAlert' },
+  { value: 'error', labelKey: 'triggerErrorAlert' },
+  { value: 'warning', labelKey: 'triggerWarningAlert' }
+];
+
+interface EnumOption {
+  id: number;
+  name: string;
+  color?: string;
+}
+
 interface AlertConditionsFormProps {
   enableAlerts: string[];
   threshold: ThresholdField[];
-  calculationUnit: string;
+  calculationUnit: string | null;
   noDataAlert: number | null;
   nodataUnit: string;
   noDataRecovery: number | null;
   noDataRecoveryUnit: string;
+  noDataAlertLevel: string;
+  noDataAlertName: string;
+  metricUnit: string | null;
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
   onCalculationUnitChange: (val: string) => void;
@@ -27,108 +42,81 @@ interface AlertConditionsFormProps {
   onNoDataAlertChange: (e: number | null) => void;
   onNodataRecoveryUnitChange: (val: string) => void;
   onNoDataRecoveryChange: (e: number | null) => void;
+  onNoDataAlertLevelChange: (val: string) => void;
+  onNoDataAlertNameChange: (val: string) => void;
   isTrap: (getFieldValue: any) => boolean;
 }
 
 const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
-  enableAlerts,
   threshold,
   calculationUnit,
   noDataAlert,
   nodataUnit,
-  noDataRecovery,
-  noDataRecoveryUnit,
-  onEnableAlertsChange,
+  noDataAlertLevel,
+  noDataAlertName,
+  metricUnit,
   onThresholdChange,
   onCalculationUnitChange,
-  onNodataUnitChange,
   onNoDataAlertChange,
-  onNodataRecoveryUnitChange,
-  onNoDataRecoveryChange,
-  isTrap,
+  onNoDataAlertLevelChange,
+  onNoDataAlertNameChange,
+  isTrap
 }) => {
   const { t } = useTranslation();
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
-  const LEVEL_LIST = useLevelList();
-  const SCHEDULE_LIST = useScheduleList();
 
-  // 验证函数移到组件内部
-  const validateThreshold = async () => {
-    if (!enableAlerts.length) {
-      return Promise.reject(new Error(t('common.required')));
+  // 判断是否为枚举类型指标
+  const isEnumMetric = useMemo(() => {
+    return metricUnit ? isStringArray(metricUnit) : false;
+  }, [metricUnit]);
+
+  // 枚举类型的选项列表
+  const enumOptions = useMemo((): EnumOption[] => {
+    if (!isEnumMetric || !metricUnit) return [];
+    try {
+      return JSON.parse(metricUnit);
+    } catch {
+      return [];
     }
+  }, [isEnumMetric, metricUnit]);
+
+  // 根据指标单位过滤单位列表，只显示相同 system 的单位
+  const filteredUnitOptions = useMemo(() => {
+    // 枚举类型不需要单位选项
+    if (isEnumMetric) return [];
+    // 排除 none 和 short 单位
+    const baseFilteredList = unitList.filter(
+      (item) => !['none', 'short'].includes(item.unit_id)
+    );
+    const metricUnitItem = unitList.find((item) => item.unit_id === metricUnit);
+    if (!metricUnitItem || !metricUnit) {
+      return [];
+    }
+    const targetSystem = metricUnitItem.system;
+    // 过滤出相同 system 的单位
+    return baseFilteredList.filter((item) => item.system === targetSystem);
+  }, [unitList, metricUnit, isEnumMetric]);
+
+  // 验证阈值
+  const validateThreshold = async () => {
     if (
-      enableAlerts.includes('threshold') &&
       threshold.length &&
       (threshold.some((item) => {
         return !item.method;
       }) ||
-        !threshold.some((item) => {
-          return !!item.value || item.value === 0;
-        }) ||
-        !calculationUnit)
+        (!isEnumMetric && !calculationUnit))
     ) {
-      return Promise.reject(new Error(t('monitor.events.conditionValidate')));
+      return Promise.reject(new Error(t('monitor.events.thresholdValidate')));
     }
     return Promise.resolve();
   };
 
-  const validateNoDataAlert = async () => {
-    if (!noDataAlert || !nodataUnit) {
-      return Promise.reject(new Error(t('common.required')));
-    }
-    return Promise.resolve();
-  };
-
-  const validateNoDataRecoveryAlert = async () => {
-    if (!noDataRecovery || !noDataRecoveryUnit) {
-      return Promise.reject(new Error(t('common.required')));
-    }
-    return Promise.resolve();
-  };
+  // 是否显示无数据告警名称（选择了非"不触发"的选项时显示）
+  const showNoDataAlertName = noDataAlertLevel && noDataAlertLevel !== 'none';
 
   return (
     <>
-      <Form.Item<StrategyFields>
-        name="threshold"
-        label={
-          <span className="w-[100px]">{t('monitor.events.algorithm')}</span>
-        }
-        rules={[{ validator: validateThreshold, required: true }]}
-      >
-        <SelectCards
-          value={enableAlerts}
-          onChange={onEnableAlertsChange}
-          data={[
-            {
-              value: 'threshold',
-              icon: 'yuzhiguanli',
-              title: t('monitor.events.threshold'),
-              content: t('monitor.events.setThreshold'),
-            },
-            {
-              value: 'no_data',
-              icon: 'dengdeng',
-              title: t('monitor.events.nodata'),
-              content: t('monitor.events.setThreshold'),
-            },
-          ]}
-        />
-        <div>
-          {enableAlerts.includes('threshold') && (
-            <ThresholdList
-              data={threshold}
-              onChange={onThresholdChange}
-              calculationUnit={calculationUnit}
-              onUnitChange={onCalculationUnitChange}
-              unitOptions={unitList.filter(
-                (item) => !['none', 'short'].includes(item.unit_id)
-              )}
-            />
-          )}
-        </div>
-      </Form.Item>
       <Form.Item
         noStyle
         shouldUpdate={(prevValues, currentValues) =>
@@ -138,147 +126,116 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         {({ getFieldValue }) =>
           isTrap(getFieldValue) ? null : (
             <>
-              {enableAlerts.includes('threshold') && (
+              {/* 告警阈值 */}
+              <Form.Item<StrategyFields>
+                name="threshold"
+                label={
+                  <span className="w-[100px]">
+                    {t('monitor.events.alertThreshold')}
+                  </span>
+                }
+                rules={[{ validator: validateThreshold }]}
+              >
+                <ThresholdList
+                  data={threshold}
+                  onChange={onThresholdChange}
+                  calculationUnit={calculationUnit}
+                  onUnitChange={onCalculationUnitChange}
+                  unitOptions={filteredUnitOptions}
+                  isEnumMetric={isEnumMetric}
+                  enumOptions={enumOptions}
+                />
+              </Form.Item>
+
+              {/* 自动恢复 */}
+              <Form.Item<StrategyFields>
+                label={
+                  <span className="w-[100px]">
+                    {t('monitor.events.recovery')}
+                  </span>
+                }
+              >
+                {t('monitor.events.recoveryCondition')}
+                <Form.Item
+                  name="recovery_condition"
+                  noStyle
+                  rules={[
+                    {
+                      required: false,
+                      message: t('common.required')
+                    }
+                  ]}
+                >
+                  <InputNumber
+                    className="mx-[10px] w-[100px]"
+                    min={1}
+                    precision={0}
+                  />
+                </Form.Item>
+                {t('monitor.events.consecutivePeriods')}
+              </Form.Item>
+
+              {/* 无数据告警 */}
+              <Form.Item<StrategyFields>
+                name="no_data_level"
+                label={
+                  <span className="w-[100px]">
+                    {t('monitor.events.noDataAlertLevel')}
+                  </span>
+                }
+              >
+                <div className="flex items-center">
+                  <span>{t('monitor.events.noDataAlertCondition')}</span>
+                  <InputNumber
+                    className="mx-[10px]"
+                    style={{ width: '80px' }}
+                    min={SCHEDULE_UNIT_MAP[`${nodataUnit}Min`]}
+                    max={SCHEDULE_UNIT_MAP[`${nodataUnit}Max`]}
+                    value={noDataAlert}
+                    precision={0}
+                    onChange={onNoDataAlertChange}
+                  />
+                  <span className="mr-[10px]">
+                    {t('monitor.events.noDataAlertSuffix')}
+                  </span>
+                  <Select
+                    value={noDataAlertLevel}
+                    style={{ width: 180 }}
+                    onChange={onNoDataAlertLevelChange}
+                  >
+                    {NO_DATA_ALERT_OPTIONS.map((item) => (
+                      <Option key={item.value} value={item.value}>
+                        {t(`monitor.events.${item.labelKey}`)}
+                      </Option>
+                    ))}
+                  </Select>
+                </div>
+              </Form.Item>
+
+              {/* 无数据告警名称 - 条件显示 */}
+              {showNoDataAlertName && (
                 <Form.Item<StrategyFields>
+                  name="no_data_alert_name"
                   label={
                     <span className="w-[100px]">
-                      {t('monitor.events.recovery')}
+                      {t('monitor.events.noDataAlertName')}
                     </span>
                   }
+                  rules={[
+                    {
+                      required: true,
+                      message: t('common.required')
+                    }
+                  ]}
                 >
-                  {t('monitor.events.recoveryCondition')}
-                  <Form.Item
-                    name="recovery_condition"
-                    noStyle
-                    rules={[
-                      {
-                        required: false,
-                        message: t('common.required'),
-                      },
-                    ]}
-                  >
-                    <InputNumber
-                      className="mx-[10px] w-[100px]"
-                      min={1}
-                      precision={0}
-                    />
-                  </Form.Item>
-                  {t('monitor.events.consecutivePeriods')}
-                  <div className="text-[var(--color-text-3)] mt-[10px]">
-                    {t('monitor.events.setRecovery')}
-                  </div>
+                  <Input
+                    style={{ width: '100%' }}
+                    value={noDataAlertName}
+                    placeholder={t('monitor.events.noDataAlertName')}
+                    onChange={(e) => onNoDataAlertNameChange(e.target.value)}
+                    disabled
+                  />
                 </Form.Item>
-              )}
-              {enableAlerts.includes('no_data') && (
-                <>
-                  <Form.Item<StrategyFields>
-                    name="no_data_period"
-                    label={
-                      <span className="w-[100px]">
-                        {t('monitor.integrations.condition')}
-                      </span>
-                    }
-                    rules={[
-                      {
-                        required: true,
-                        validator: validateNoDataAlert,
-                      },
-                    ]}
-                  >
-                    <div className="flex items-center">
-                      {t('monitor.events.reportedFor')}
-                      <InputNumber
-                        className="mx-[10px]"
-                        min={SCHEDULE_UNIT_MAP[`${nodataUnit}Min`]}
-                        max={SCHEDULE_UNIT_MAP[`${nodataUnit}Max`]}
-                        value={noDataAlert}
-                        precision={0}
-                        addonAfter={
-                          <Select
-                            value={nodataUnit}
-                            style={{ width: 120 }}
-                            onChange={onNodataUnitChange}
-                          >
-                            {SCHEDULE_LIST.map((item) => (
-                              <Option key={item.value} value={item.value}>
-                                {item.label}
-                              </Option>
-                            ))}
-                          </Select>
-                        }
-                        onChange={onNoDataAlertChange}
-                      />
-                      {t('monitor.events.nodataPeriods')}
-                    </div>
-                  </Form.Item>
-                  <Form.Item<StrategyFields>
-                    name="no_data_level"
-                    label={
-                      <span className="w-[100px]">
-                        {t('monitor.events.alarmLevel')}
-                      </span>
-                    }
-                    rules={[
-                      {
-                        required: true,
-                        message: t('common.required'),
-                      },
-                    ]}
-                  >
-                    <Select
-                      style={{
-                        width: '100px',
-                      }}
-                      placeholder={t('monitor.events.level')}
-                    >
-                      {LEVEL_LIST.map((item) => (
-                        <Option value={item.value} key={item.value}>
-                          {item.label}
-                        </Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                  <Form.Item<StrategyFields>
-                    name="no_data_recovery_period"
-                    label={
-                      <span className="w-[100px]">
-                        {t('monitor.events.noDataRecovery')}
-                      </span>
-                    }
-                    rules={[
-                      {
-                        required: true,
-                        validator: validateNoDataRecoveryAlert,
-                      },
-                    ]}
-                  >
-                    <div className="flex items-center">
-                      {t('monitor.events.nodataRecoverCondition')}
-                      <InputNumber
-                        className="mx-[10px]"
-                        min={SCHEDULE_UNIT_MAP[`${noDataRecoveryUnit}Min`]}
-                        max={SCHEDULE_UNIT_MAP[`${noDataRecoveryUnit}Max`]}
-                        value={noDataRecovery}
-                        precision={0}
-                        addonAfter={
-                          <Select
-                            value={noDataRecoveryUnit}
-                            style={{ width: 120 }}
-                            onChange={onNodataRecoveryUnitChange}
-                          >
-                            {SCHEDULE_LIST.map((item) => (
-                              <Option key={item.value} value={item.value}>
-                                {item.label}
-                              </Option>
-                            ))}
-                          </Select>
-                        }
-                        onChange={onNoDataRecoveryChange}
-                      />
-                      {t('monitor.events.nodataRecover')}
-                    </div>
-                  </Form.Item>
-                </>
               )}
             </>
           )

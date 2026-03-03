@@ -38,8 +38,8 @@ class GraphUtils(ChunkHelper):
                     for task in pending:
                         task.cancel()
                     loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"清理异步任务时出现异常（可忽略）: {e}")
                 finally:
                     loop.close()
 

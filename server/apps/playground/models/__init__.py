@@ -1,2 +1,0 @@
-from apps.playground.models.playground_category import PlayGroundCategory
-from apps.playground.models.playground_capability import PlayGroundCapability

@@ -26,26 +26,6 @@ class ChannelInitService:
             },
         )
 
-        # ChannelUserGroup.objects.get_or_create(channel=obj, name="默认用户组", created_by=self.owner)
-
-        # logger.info("初始化企业微信机器人通道")
-        # obj, created = Channel.objects.get_or_create(
-        #     name=ChannelChoices.ENTERPRISE_WECHAT_BOT.value,
-        #     channel_type=ChannelChoices.ENTERPRISE_WECHAT_BOT,
-        #     created_by=self.owner,
-        #     defaults={
-        #         'channel_config': {
-        #             "channels.enterprise_wechat_bot_channel.EnterpriseWechatBotChannel": {
-        #                 "enterprise_bot_url": "",
-        #                 "secret_token": "",
-        #                 "enable_eventbus": False,
-        #             }
-        #         },
-        #     }
-        # )
-
-        # ChannelUserGroup.objects.get_or_create(channel=obj, name="默认用户组", created_by=self.owner)
-
         logger.info("初始化钉钉通道")
         Channel.objects.get_or_create(
             name=ChannelChoices.DING_TALK.value,
@@ -61,8 +41,6 @@ class ChannelInitService:
                 }
             },
         )
-
-        # ChannelUserGroup.objects.get_or_create(channel=obj, name="默认用户组", created_by=self.owner)
 
         logger.info("初始化Web通道")
         Channel.objects.get_or_create(
@@ -88,21 +66,3 @@ class ChannelInitService:
                 },
             },
         )
-        # ChannelUserGroup.objects.get_or_create(channel=obj, name="默认用户组", created_by=self.owner)
-
-        # logger.info("初始化Gitlab通道")
-        # obj, created = Channel.objects.get_or_create(
-        #     name=ChannelChoices.GITLAB.value, channel_type=ChannelChoices.GITLAB,
-        #     created_by=self.owner,
-        #     defaults={
-        #         'channel_config': {
-        #             "channels.gitlab_review_channel.GitlabReviewChannel": {
-        #                 "token": "",
-        #                 "gitlab_token": "",
-        #                 "gitlab_url": "",
-        #                 "secret_token": "",
-        #             }
-        #         }
-        #     }
-        # )
-        # ChannelUserGroup.objects.get_or_create(channel=obj, name="默认用户组", created_by=self.owner)

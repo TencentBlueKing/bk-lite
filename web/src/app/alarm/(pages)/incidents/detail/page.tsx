@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Icon from '@/components/icon';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import styles from './page.module.scss';
@@ -48,6 +48,7 @@ const IncidentDetail: React.FC = () => {
   const { t } = useTranslation();
   const { getLogList } = useSettingApi();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [timeLineData, setTimeLineData] = useState<TimeLineItem[]>([]);
   const [recordLoading, setRecordLoading] = useState<boolean>(false);
   const { levelListIncident, levelMapIncident, userList } = useCommon();
@@ -77,7 +78,7 @@ const IncidentDetail: React.FC = () => {
   const [preNote, setPreNote] = useState('');
   const [noteLoading, setNoteLoading] = useState(false);
 
-  const alarmAttrList = [
+  const alarmAttrList = useMemo(() => [
     {
       attr_id: 'alert_id',
       attr_name: t('alarms.alertId'),
@@ -96,12 +97,15 @@ const IncidentDetail: React.FC = () => {
       attr_type: 'str',
       option: [],
     },
-  ];
+  ], [t]);
 
   useEffect(() => {
     fetchAlarmList();
     fetchIncidentDetail();
     fetchTimeline();
+    return () => {
+      abortControllerRef.current?.abort();
+    };
   }, [rowDetailId]);
 
   const fetchIncidentDetail = async () => {
@@ -138,10 +142,10 @@ const IncidentDetail: React.FC = () => {
     }
   };
 
-  const userOptions = userList.map((u: UserItem) => ({
+  const userOptions = useMemo(() => userList.map((u: UserItem) => ({
     label: `${u.display_name} (${u.username})`,
     value: u.username,
-  }));
+  })), [userList]);
 
   useEffect(() => {
     if (incidentDetail?.operator_users) {
@@ -176,10 +180,10 @@ const IncidentDetail: React.FC = () => {
       setAssigneeLoading(false);
     }
   };
-  const cancelAssignee = () => {
+  const cancelAssignee = useCallback(() => {
     setSelectedAssignees(preAssignees);
     setEditingAssignee(false);
-  };
+  }, [preAssignees]);
 
   const confirmNote = async () => {
     setNoteLoading(true);
@@ -195,14 +199,14 @@ const IncidentDetail: React.FC = () => {
       setNoteLoading(false);
     }
   };
-  const cancelNote = () => {
+  const cancelNote = useCallback(() => {
     setNoteValue(preNote);
     setEditingNote(false);
-  };
+  }, [preNote]);
 
-  const onTabTableChange = () => {
+  const onTabTableChange = useCallback(() => {
     fetchAlarmList();
-  };
+  }, []);
 
   const handleUnlink = (keys?: React.Key[]) => {
     Modal.confirm({
@@ -239,9 +243,9 @@ const IncidentDetail: React.FC = () => {
     });
   };
 
-  const handleLink = () => {
+  const handleLink = useCallback(() => {
     setOperateVisible(true);
-  };
+  }, []);
 
   const handleLinkConfirm = async (selectedKeys: React.Key[]) => {
     setLinkingLoading(true);
@@ -262,11 +266,11 @@ const IncidentDetail: React.FC = () => {
     }
   };
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     fetchIncidentDetail();
     fetchAlarmList();
     fetchTimeline();
-  };
+  }, []);
 
   const fetchTimeline = async () => {
     if (!incidentId) return;
@@ -579,7 +583,7 @@ const IncidentDetail: React.FC = () => {
                     selectedRowKeys={selectedRowKeys}
                     onChange={onTabTableChange}
                     onSelectionChange={setSelectedRowKeys}
-                    onRefresh={() => fetchAlarmList()}
+                    onRefresh={onRefresh}
                     extraActions={(record) => (
                       <PermissionWrapper requiredPermissions={['Edit']}>
                         <Button

@@ -1,7 +1,7 @@
 """
 基础节点执行器 - 所有节点的抽象基类
 """
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from .variable_manager import VariableManager
 
@@ -52,25 +52,3 @@ class BaseNodeExecutor:
             NotImplementedError: 子类未实现此方法
         """
         raise NotImplementedError(f"节点 {node_id} 必须实现 execute 方法")
-
-    def resolve_node_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """解析节点参数中的模板变量
-
-        Args:
-            params: 节点参数字典
-
-        Returns:
-            解析后的参数字典
-        """
-        return self.variable_manager.resolve_template_dict(params)
-
-    def validate_params(self, params: Dict[str, Any]) -> List[str]:
-        """验证节点参数（可选实现）
-
-        Args:
-            params: 节点参数
-
-        Returns:
-            错误列表，空列表表示验证通过
-        """
-        return []

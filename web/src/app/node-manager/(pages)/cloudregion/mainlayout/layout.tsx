@@ -95,7 +95,7 @@ const CollectorLayout = ({
   };
 
   return (
-    <div>
+    <div className='w-full'>
       <SubLayout
         topSection={<Topsection></Topsection>}
         showBackButton={true}

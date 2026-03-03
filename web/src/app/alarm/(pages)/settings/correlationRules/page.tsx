@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import OperateModal from './components/operateModal';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
@@ -19,7 +19,6 @@ const CorrelationRulesPage: React.FC = () => {
   const [operateVisible, setOperateVisible] = useState<boolean>(false);
   const [searchKey, setSearchKey] = useState<string>('');
   const [dataList, setDataList] = useState<CorrelationRule[]>([]);
-  const [columns, setColumns] = useState<any[]>([]);
   const [currentRow, setCurrentRow] = useState<CorrelationRule | null>(null);
   const [pagination, setPagination] = useState({
     current: 1,
@@ -32,16 +31,16 @@ const CorrelationRulesPage: React.FC = () => {
     getTableList();
   }, []);
 
-  const handleEdit = (type: 'add' | 'edit', row?: CorrelationRule) => {
+  const handleEdit = useCallback((type: 'add' | 'edit', row?: CorrelationRule) => {
     if (type === 'edit' && row) {
       setCurrentRow(row);
     } else {
       setCurrentRow(null);
     }
     setOperateVisible(true);
-  };
+  }, []);
 
-  const handleDelete = async (row: CorrelationRule) => {
+  const handleDelete = useCallback((row: CorrelationRule) => {
     Modal.confirm({
       title: t('common.delConfirm'),
       content: t('common.delConfirmCxt'),
@@ -66,7 +65,7 @@ const CorrelationRulesPage: React.FC = () => {
         }
       },
     });
-  };
+  }, [t, deleteCorrelationRule, pagination.current, pagination.pageSize]);
 
   const getTableList = async (params: any = {}) => {
     try {
@@ -86,7 +85,7 @@ const CorrelationRulesPage: React.FC = () => {
         total: data.count || 0,
       }));
     } catch {
-      message.error('加载列表失败');
+      message.error(t('alarmCommon.operateFailed'));
       return { data: [], total: 0, success: false };
     } finally {
       setTableLoading(false);
@@ -119,89 +118,74 @@ const CorrelationRulesPage: React.FC = () => {
     });
   };
 
-  const buildColumns = () => {
-    return [
-      {
-        title: t('settings.name'),
-        dataIndex: 'name',
-        key: 'name',
-        width: 150,
+  const columns = useMemo(() => [
+    {
+      title: t('settings.name'),
+      dataIndex: 'name',
+      key: 'name',
+      width: 150,
+    },
+    {
+      title: t('settings.correlation.type'),
+      dataIndex: 'strategy_type',
+      key: 'strategy_type',
+      width: 150,
+      render: (text: string) => {
+        if (text === 'smart_denoise') return t('settings.correlation.noiseReduction');
+        if (text === 'missing_detection') return t('settings.correlation.missingDetection');
+        return text || '-';
       },
-      {
-        title: t('settings.correlation.type'),
-        dataIndex: 'rule_names',
-        key: 'rule_names',
-        width: 150,
+    },
+    {
+      title: t('settings.correlation.scope'),
+      dataIndex: 'match_rules',
+      key: 'scope',
+      width: 120,
+      render: (matchRules: any[]) => {
+        const hasRules = matchRules && matchRules.length > 0;
+        return hasRules ? t('settings.correlation.filter') : t('alarmCommon.all');
       },
-      {
-        title: t('settings.correlation.scope'),
-        dataIndex: 'scope',
-        key: 'scope',
-        width: 150,
-        render: (text: string) => {
-          return text === 'all' ? t('alarmCommon.all') : '';
-        },
-      },
-      {
-        title: t('settings.correlation.windowType'),
-        dataIndex: 'window_type',
-        key: 'window_type',
-        width: 150,
-        render: (text: string) => {
-          return text === 'sliding'
-            ? t('settings.correlation.slidingWindow')
-            : text === 'fixed'
-              ? t('settings.correlation.fixedWindow')
-              : text === 'session'
-                ? t('settings.correlation.sessionWindow')
-                : '';
-        },
-      },
-      {
-        title: t('settings.correlation.executionTime'),
-        dataIndex: 'exec_time',
-        key: 'exec_time',
-        width: 150,
-      },
-      {
-        title: t('settings.correlation.lastUpdateTime'),
-        dataIndex: 'updated_at',
-        key: 'updated_at',
-        width: 150,
-      },
-      {
-        title: t('settings.assignActions'),
-        key: 'operation',
-        width: 130,
-        render: (text: any, row: CorrelationRule) => (
-          <div className="flex gap-4">
-            <PermissionWrapper requiredPermissions={['Edit']}>
-              <Button
-                type="link"
-                size="small"
-                onClick={() => handleEdit('edit', row)}
-              >
-                {t('common.edit')}
-              </Button>
-            </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={['Delete']}>
-              <Button
-                type="link"
-                size="small"
-                onClick={() => handleDelete(row)}
-              >
-                {t('common.delete')}
-              </Button>
-            </PermissionWrapper>
-          </div>
-        ),
-      },
-    ];
-  };
-
-  useEffect(() => {
-    setColumns(buildColumns());
-  }, [searchKey, pagination]);
+    },
+    {
+      title: t('settings.correlation.executionTime'),
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 180,
+    },
+    {
+      title: t('settings.correlation.lastUpdateTime'),
+      dataIndex: 'updated_at',
+      key: 'updated_at',
+      width: 180,
+    },
+    {
+      title: t('settings.assignActions'),
+      key: 'operation',
+      width: 120,
+      render: (_: any, row: CorrelationRule) => (
+        <div className="flex gap-4">
+          <PermissionWrapper requiredPermissions={['Edit']}>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => handleEdit('edit', row)}
+            >
+              {t('settings.correlation.modify')}
+            </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']}>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => handleDelete(row)}
+            >
+              {t('common.delete')}
+            </Button>
+          </PermissionWrapper>
+        </div>
+      ),
+    },
+  ], [t, handleEdit, handleDelete]);
 
   return (
     <>

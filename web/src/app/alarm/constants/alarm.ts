@@ -19,6 +19,7 @@ const useStateMap = (): StateMap => {
       resolved: t('alarms.resolved'),
       shield: t('alarms.shield'),
       received: t('alarms.received'),
+      auto_recovery: t('alarms.auto_recovery'),
     }),
     [t]
   );

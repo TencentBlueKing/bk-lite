@@ -16,7 +16,7 @@ const { Option } = Select;
 const ConditionFilter: React.FC<ConditionFilterProps> = ({
   data = [],
   fields = [],
-  onChange,
+  onChange
 }) => {
   const { t } = useTranslation();
   const conditionList = useConditionList();
@@ -51,20 +51,20 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
   };
 
   return (
-    <Card className="w-[900px]">
+    <Card className="w-[800px]">
       {data.length ? (
         <ul className={groupingStyle.conditions}>
           {data.map((conditionItem, index) => (
             <li
               style={{
-                marginBottom: index + 1 === data.length ? 0 : 10,
+                marginBottom: index + 1 === data.length ? 0 : 10
               }}
               key={index}
             >
               <Select
                 style={{
-                  width: 200,
-                  marginRight: 10,
+                  width: 160,
+                  marginRight: 10
                 }}
                 placeholder={t('log.event.selectFunction')}
                 showSearch
@@ -73,7 +73,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                   handleConditionChange({
                     val,
                     index,
-                    field: 'func',
+                    field: 'func'
                   })
                 }
               >
@@ -85,8 +85,8 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
               </Select>
               <Select
                 style={{
-                  width: 200,
-                  marginRight: 10,
+                  width: 180,
+                  marginRight: 10
                 }}
                 placeholder={t('log.event.selectField')}
                 showSearch
@@ -95,7 +95,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                   handleConditionChange({
                     val,
                     index,
-                    field: 'field',
+                    field: 'field'
                   })
                 }
               >
@@ -107,8 +107,8 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
               </Select>
               <Select
                 style={{
-                  width: 128,
-                  marginRight: 10,
+                  width: 120,
+                  marginRight: 10
                 }}
                 placeholder={t('log.event.selectCriteria')}
                 value={conditionItem.op}
@@ -116,7 +116,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                   handleConditionChange({
                     val,
                     index,
-                    field: 'op',
+                    field: 'op'
                   })
                 }
               >
@@ -128,8 +128,8 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
               </Select>
               <Input
                 style={{
-                  width: 200,
-                  marginRight: 10,
+                  width: 160,
+                  marginRight: 10
                 }}
                 placeholder={t('log.event.enterThreshold')}
                 value={conditionItem.value}

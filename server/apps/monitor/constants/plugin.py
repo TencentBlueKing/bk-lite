@@ -3,6 +3,8 @@ class PluginConstants:
 
     # 插件目录
     DIRECTORY = "apps/monitor/support-files/plugins"
+    # 商业版插件目录
+    ENTERPRISE_DIRECTORY = "apps/monitor/enterprise/support-files/plugins"
 
     # 插件状态有正常和失联两种，后续可以根据需要扩展，默认用失联
     STATUS_NORMAL = "normal"

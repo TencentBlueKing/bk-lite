@@ -19,7 +19,7 @@ const { Search } = Input;
 const StudioLogsPage: React.FC = () => {
   const { t } = useTranslation();
   const { get, post } = useApiClient();
-  const { fetchLogs, fetchChannels, fetchBotDetail, fetchWorkflowTaskResult, fetchWorkflowLogs } = useStudioApi();
+  const { fetchLogs, fetchChannels, fetchBotDetail, fetchWorkflowTaskResult, fetchWorkflowLogs, fetchExecutionOutputData } = useStudioApi();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [searchText, setSearchText] = useState('');
   const [dates, setDates] = useState<number[]>([]);
@@ -31,6 +31,7 @@ const StudioLogsPage: React.FC = () => {
   const [conversationLoading, setConversationLoading] = useState(false);
   const [workflowDrawerVisible, setWorkflowDrawerVisible] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowTaskResult | null>(null);
+  const [workflowDetailLoading, setWorkflowDetailLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [pagination, setPagination] = useState({
     current: 1,
@@ -93,12 +94,12 @@ const StudioLogsPage: React.FC = () => {
   const fetchWorkflowData = useCallback(async (dates: number[] = [], page = 1, pageSize = 10) => {
     setLoading(true);
     try {
-      const params: any = { 
+      const params: any = {
         bot_id: botId,
-        page, 
-        page_size: pageSize 
+        page,
+        page_size: pageSize
       };
-      
+
       if (dates && dates[0] && dates[1]) {
         params.start_time = new Date(dates[0]).toISOString();
         params.end_time = new Date(dates[1]).toISOString();
@@ -118,6 +119,7 @@ const StudioLogsPage: React.FC = () => {
           bot_work_flow: item.bot_work_flow,
           execution_duration: item.execution_duration || 0,
           error_log: item.error_log || '',
+          execution_id: item.execution_id || '',
         };
       }));
       setTotal(res.count);
@@ -131,12 +133,12 @@ const StudioLogsPage: React.FC = () => {
   const fetchWorkflowLogsData = useCallback(async (dates: number[] = [], page = 1, pageSize = 10) => {
     setLoading(true);
     try {
-      const params: any = { 
+      const params: any = {
         bot_id: botId,
-        page, 
-        page_size: pageSize 
+        page,
+        page_size: pageSize
       };
-      
+
       if (dates && dates[0] && dates[1]) {
         params.start_time = new Date(dates[0]).toISOString();
         params.end_time = new Date(dates[1]).toISOString();
@@ -165,7 +167,7 @@ const StudioLogsPage: React.FC = () => {
       await fetchBotData();
       setInitialLoading(false);
     };
-    
+
     initializeComponent();
   }, [fetchBotData]);
 
@@ -179,7 +181,7 @@ const StudioLogsPage: React.FC = () => {
         }
       } else {
         fetchLogsData(searchText, dates, pagination.current, pagination.pageSize, selectedChannels);
-        
+
         const fetchChannelsData = async () => {
           try {
             const data = await fetchChannels(botId);
@@ -221,17 +223,64 @@ const StudioLogsPage: React.FC = () => {
     }
   };
 
-  const handleWorkflowDetailClick = (record: WorkflowTaskResult) => {
+  const handleWorkflowDetailClick = async (record: WorkflowTaskResult) => {
     setSelectedWorkflow(record);
     setWorkflowDrawerVisible(true);
+
+    // 如果有 execution_id，则从接口获取详情数据
+    if (record.execution_id) {
+      setWorkflowDetailLoading(true);
+      try {
+        const outputData = await fetchExecutionOutputData({
+          execution_id: record.execution_id,
+          id: record.id,
+        });
+        setSelectedWorkflow({
+          ...record,
+          output_data: outputData,
+        });
+      } catch (error) {
+        console.error('Failed to fetch workflow execution detail:', error);
+      } finally {
+        setWorkflowDetailLoading(false);
+      }
+    }
   };
 
   const renderJsonData = (data: any) => {
     if (!data) return '-';
     if (typeof data === 'object') {
-      return <pre className="bg-gray-50 p-2 rounded text-xs overflow-auto max-h-60">{JSON.stringify(data, null, 2)}</pre>;
+      return <pre className="bg-[var(--color-fill-1)] p-2 rounded text-xs overflow-auto max-h-60">{JSON.stringify(data, null, 2)}</pre>;
     }
     return String(data);
+  };
+
+  const parseJsonIfString = (value: any) => {
+    if (typeof value !== 'string') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  };
+
+  const getBrowserSteps = (value: any): string[] => {
+    const parsed = parseJsonIfString(value);
+    if (parsed && typeof parsed === 'object') {
+      const steps = (parsed as any).browser_steps || (parsed as any).browserSteps;
+      if (Array.isArray(steps)) return steps.map(step => String(step));
+    }
+    return [];
+  };
+
+  const stripBrowserSteps = (value: any) => {
+    const parsed = parseJsonIfString(value);
+    if (parsed && typeof parsed === 'object') {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { browser_steps, browserSteps, ...rest } = parsed as any;
+      return rest;
+    }
+    return value;
   };
 
   const renderWorkflowTimeline = () => {
@@ -251,27 +300,56 @@ const StudioLogsPage: React.FC = () => {
 
     return (
       <Timeline
-        items={nodes.map((node, idx) => ({
-          color: idx === nodes.length - 1 ? 'green' : 'blue',
-          children: (
-            <div className="pb-4">
-              <div className="font-medium text-base mb-2">
-                {node.name}
-                <Tag className="ml-2" color="blue">{node.type}</Tag>
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <div className="text-gray-500 text-sm mb-1">{t('studio.logs.inputData')}:</div>
-                  {renderJsonData(node.input_data)}
+        items={nodes.map((node, idx) => {
+          const browserSteps = getBrowserSteps(node.output);
+          const executionLabel = t('studio.logs.executionProcess');
+
+          return {
+            color: idx === nodes.length - 1 ? 'green' : 'blue',
+            children: (
+              <div className="pb-4">
+                <div className="font-medium text-base mb-2">
+                  {node.name}
+                  <Tag className="ml-2" color="blue">{node.type}</Tag>
                 </div>
-                <div>
-                  <div className="text-gray-500 text-sm mb-1">{t('studio.logs.outputData')}:</div>
-                  {renderJsonData(node.output)}
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-gray-500 text-sm mb-1">{t('studio.logs.inputData')}:</div>
+                    {renderJsonData(node.input_data)}
+                  </div>
+                  {browserSteps.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3 text-sm">
+                        <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                        </svg>
+                        {executionLabel.replace('{{count}}', String(browserSteps.length))}
+                      </div>
+                      <div className="space-y-2">
+                        {browserSteps.map((step, stepIndex) => (
+                          <div
+                            key={`${node.id}-step-${stepIndex}`}
+                            className={`rounded px-3 py-2 text-sm ${
+                              stepIndex % 2 === 0
+                                ? 'bg-[var(--color-fill-2)]'
+                                : 'bg-[var(--color-fill-1)]'
+                            }`}
+                          >
+                            {step}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-gray-500 text-sm mb-1">{t('studio.logs.outputData')}:</div>
+                    {renderJsonData(stripBrowserSteps(node.output))}
+                  </div>
                 </div>
               </div>
-            </div>
-          ),
-        }))}
+            )
+          };
+        })}
       />
     );
   };
@@ -282,7 +360,7 @@ const StudioLogsPage: React.FC = () => {
       pageSize: pageSize || pagination.pageSize,
     };
     setPagination(newPagination);
-    
+
     if (botType === 3 && activeTab === 'trigger') {
       fetchWorkflowData(dates, newPagination.current, newPagination.pageSize);
     } else {
@@ -324,7 +402,7 @@ const StudioLogsPage: React.FC = () => {
     setSelectedChannels([]);
     setPagination({ ...pagination, current: 1 });
     setWorkflowLogsPagination({ ...workflowLogsPagination, current: 1 });
-    
+
     if (botType === 3) {
       if (activeTab === 'trigger') {
         fetchWorkflowData(value, 1, pagination.pageSize);
@@ -422,22 +500,22 @@ const StudioLogsPage: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (status, record) => {
-        const statusText = status === 'success' 
-          ? t('studio.logs.table.statusSuccess') 
-          : status === 'failed' 
-            ? t('studio.logs.table.statusFailed') 
+        const statusText = status === 'success'
+          ? t('studio.logs.table.statusSuccess')
+          : (status === 'failed' || status === 'fail')
+            ? t('studio.logs.table.statusFailed')
             : t('studio.logs.table.statusRunning');
-        
-        const statusColor = status === 'success' ? 'green' : status === 'failed' ? 'red' : 'orange';
-        
-        if (status === 'failed' && record.error_log) {
+
+        const statusColor = status === 'success' ? 'green' : (status === 'failed' || status === 'fail') ? 'red' : 'orange';
+
+        if ((status === 'failed' || status === 'fail') && record.error_log) {
           return (
             <Tooltip title={<pre className="max-w-md whitespace-pre-wrap">{record.error_log}</pre>}>
               <Tag color={statusColor}>{statusText}</Tag>
             </Tooltip>
           );
         }
-        
+
         return <Tag color={statusColor}>{statusText}</Tag>;
       },
     },
@@ -460,7 +538,7 @@ const StudioLogsPage: React.FC = () => {
 
   return (
     <div className='h-full flex flex-col'>
-      <div className='mb-[20px]'>
+      <div className='mb-5'>
         <div className='flex justify-between items-center'>
           {botType === 3 && (
             <Segmented
@@ -481,7 +559,7 @@ const StudioLogsPage: React.FC = () => {
               enterButton
               className='w-60'
             />
-            <Tooltip className='mr-[8px]' title={t('common.refresh')}>
+            <Tooltip className='mr-2' title={t('common.refresh')}>
               <Button icon={<SyncOutlined />} onClick={handleRefresh} />
             </Tooltip>
             <TimeSelector
@@ -495,7 +573,7 @@ const StudioLogsPage: React.FC = () => {
           </div>
         </div>
       </div>
-      <div className='flex-grow'>
+      <div className='grow'>
         {initialLoading || loading ? (
           <div className='w-full flex items-center justify-center min-h-72'>
             <Spin size="large" />
@@ -587,9 +665,15 @@ const StudioLogsPage: React.FC = () => {
         onClose={() => setWorkflowDrawerVisible(false)}
         width={720}
       >
-        <div>
-          {renderWorkflowTimeline()}
-        </div>
+        {workflowDetailLoading ? (
+          <div className='flex justify-center items-center w-full h-full min-h-48'>
+            <Spin />
+          </div>
+        ) : (
+          <div>
+            {renderWorkflowTimeline()}
+          </div>
+        )}
       </Drawer>
     </div>
   );

@@ -38,7 +38,9 @@ class Migration(migrations.Migration):
                 "ordering": ["id"],
                 "indexes": [
                     models.Index(fields=["bot", "app_type"], name="bot_mgmt_ch_bot_id_2d9ae0_idx"),
-                    models.Index(fields=["node_id"], name="bot_mgmt_ch_node_id_448b49_idx"),
+                    # node_id 已在字段定义中通过 db_index=True 创建索引，
+                    # 此处重复创建会导致达梦等数据库报错 CODE:-3236
+                    # models.Index(fields=["node_id"], name="bot_mgmt_ch_node_id_448b49_idx"),
                 ],
                 "unique_together": {("bot", "node_id")},
             },

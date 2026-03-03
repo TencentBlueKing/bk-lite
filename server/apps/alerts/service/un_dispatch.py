@@ -3,8 +3,9 @@
 # @Time: 2025/6/26 18:45
 # @Author: windyzhao
 from apps.alerts.common.notify.base import NotifyParamsFormat
-from apps.alerts.constants import AlertStatus
-from apps.alerts.models import SystemSetting, Alert
+from apps.alerts.constants.constants import AlertStatus
+from apps.alerts.models.sys_setting import SystemSetting
+from apps.alerts.models.models import  Alert
 
 
 class UnDispatchService:

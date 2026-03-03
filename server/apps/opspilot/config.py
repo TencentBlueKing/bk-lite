@@ -12,9 +12,8 @@ CONVERSATION_MQ_USER = os.getenv("CONVERSATION_MQ_USER", "admin")
 CONVERSATION_MQ_PASSWORD = os.getenv("CONVERSATION_MQ_PASSWORD", "password")
 CONVERSATION_DOCKER_NETWORK = os.getenv("CONVERSATION_DOCKER_NETWORK", "bklite-prod")
 
-# MINIO 配置
-MINIO_PRIVATE_BUCKETS = ["munchkin-private"]
-MINIO_PUBLIC_BUCKETS = ["munchkin-public"]
+# MINIO 配置 - 注意：不要覆盖全局配置，桶配置统一在 config/components/minio.py 中管理
+# 如需添加 opspilot 专用桶，请在 config/components/minio.py 中添加
 
 
 KUBE_CONFIG_FILE = os.getenv("KUBE_CONFIG_FILE", "")

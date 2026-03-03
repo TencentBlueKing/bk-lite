@@ -9,3 +9,7 @@ class OCRProviderSerializer(AuthSerializer, CustomProviderSerializer):
     class Meta:
         model = OCRProvider
         fields = "__all__"
+
+    def create(self, validated_data):
+        validated_data["is_build_in"] = False
+        return super().create(validated_data)

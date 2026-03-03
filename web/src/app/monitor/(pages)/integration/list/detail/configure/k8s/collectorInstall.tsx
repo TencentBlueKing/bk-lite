@@ -12,7 +12,7 @@ import { CollectorInstallProps } from '@/app/monitor/types/integration';
 const CollectorInstall: React.FC<CollectorInstallProps> = ({
   onNext,
   onPrev,
-  commandData,
+  commandData
 }) => {
   const { t } = useTranslation();
   const drawerRef = useRef<any>(null);
@@ -29,7 +29,7 @@ const CollectorInstall: React.FC<CollectorInstallProps> = ({
       setIsVerifying(true);
       const result = await checkCollectStatus({
         instance_id: commandData?.instance_id,
-        monitor_object_id: commandData?.monitor_object_id,
+        monitor_object_id: commandData?.monitor_object_id
       });
       if (result?.success) {
         setVerificationStatus('success');
@@ -73,7 +73,7 @@ const CollectorInstall: React.FC<CollectorInstallProps> = ({
             height="120px"
             readOnly
             value={installCommand}
-            showCopy
+            headerOptions={{ copy: true }}
           />
         </div>
       </div>

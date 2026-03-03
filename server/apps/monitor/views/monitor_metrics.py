@@ -12,7 +12,7 @@ from apps.monitor.models.monitor_metrics import MetricGroup, Metric
 from config.drf.pagination import CustomPageNumberPagination
 
 
-class MetricGroupVieSet(viewsets.ModelViewSet):
+class MetricGroupViewSet(viewsets.ModelViewSet):
     queryset = MetricGroup.objects.all().order_by("sort_order")
     serializer_class = MetricGroupSerializer
     filterset_class = MetricGroupFilter
@@ -44,21 +44,6 @@ class MetricGroupVieSet(viewsets.ModelViewSet):
 
         return WebUtils.response_success(results)
 
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
-
-    def partial_update(self, request, *args, **kwargs):
-        return super().partial_update(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
-
     @action(detail=False, methods=["post"])
     def set_order(self, request, *args, **kwargs):
         updates = [
@@ -72,7 +57,7 @@ class MetricGroupVieSet(viewsets.ModelViewSet):
         return WebUtils.response_success()
 
 
-class MetricVieSet(viewsets.ModelViewSet):
+class MetricViewSet(viewsets.ModelViewSet):
     queryset = Metric.objects.select_related('monitor_object').all().order_by("sort_order")
     serializer_class = MetricSerializer
     filterset_class = MetricFilter
@@ -104,21 +89,6 @@ class MetricVieSet(viewsets.ModelViewSet):
             result["display_description"] = lan.get(f"{lan_key}.desc") or result["description"]
 
         return WebUtils.response_success(results)
-
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
-
-    def partial_update(self, request, *args, **kwargs):
-        return super().partial_update(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=["post"])
     def set_order(self, request, *args, **kwargs):

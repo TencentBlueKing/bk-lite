@@ -59,6 +59,10 @@ class TencentCloudManager:
         self.timeout = int(params.get("timeout", 60))
         ssl = params.get("ssl", "false")
         self.protocol = "https" if ssl.lower() == "true" else "http"
+        
+        # 🆕 支持自定义endpoint（私有云场景）
+        # 从host参数读取endpoint，如: cvm.private-cloud.example.com
+        self.custom_endpoint = params.get("host")
 
     def get_tencent_client(self, region="ap-guangzhou") -> TencentClientProxy:
         """
@@ -69,6 +73,11 @@ class TencentCloudManager:
         httpProfile = HttpProfile()
         httpProfile.protocol = self.protocol
         httpProfile.reqTimeout = self.timeout
+        
+        # 🆕 如果有自定义endpoint，优先使用
+        if self.custom_endpoint:
+            httpProfile.endpoint = self.custom_endpoint
+        
         client_profile = ClientProfile()
         client_profile.httpProfile = httpProfile
         cred = self.get_credentials()
@@ -80,7 +89,7 @@ class TencentCloudManager:
     def get_credentials(self) -> credential.Credential:
         return credential.Credential(self.secret_id, self.secret_key)
 
-    def get_qcloud_region(self) -> List[Dict]:
+    def list_regions(self) -> List[Dict]:
         """获取腾讯云区域信息"""
         return self.get_tencent_client(region="").cvm.call_json("DescribeRegions", {}).get("Response", {}).get(
             "RegionSet", [])
@@ -468,7 +477,7 @@ class TencentCloudManager:
         : return  True if connection is successful, False otherwise
         """
         try:
-            self.get_qcloud_region()
+            self.list_regions()
             return True
         except Exception as err:
             import traceback

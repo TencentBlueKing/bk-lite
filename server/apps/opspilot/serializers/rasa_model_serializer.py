@@ -1,8 +1,8 @@
-from apps.core.utils.serializers import I18nSerializer
+from apps.core.utils.serializers import UsernameSerializer
 from apps.opspilot.models import RasaModel
 
 
-class RasaModelSerializer(I18nSerializer):
+class RasaModelSerializer(UsernameSerializer):
     class Meta:
         model = RasaModel
         fields = "__all__"

@@ -4,7 +4,7 @@ import React, {
   useState,
   useRef,
   useCallback,
-  useMemo,
+  useMemo
 } from 'react';
 import { Button, Form, Select, Segmented } from 'antd';
 import useApiClient from '@/utils/request';
@@ -51,7 +51,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       username: 'root',
       auth_type: 'password',
       password: null,
-      node_name: null,
+      node_name: null
     }),
     [commonContext.selectedGroup?.id]
   );
@@ -63,7 +63,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const name = searchParams.get('name') || '';
   const groupList = (commonContext?.groups || []).map((item) => ({
     label: item.name,
-    value: item.id,
+    value: item.id
   }));
   const batchEditModalRef = useRef<any>(null);
   const excelImportModalRef = useRef<any>(null);
@@ -96,7 +96,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         const index = data.findIndex((item) => item.key === row.key);
         data.splice(index + 1, 0, {
           ...cloneDeep(INFO_ITEM),
-          key: uuidv4(),
+          key: uuidv4()
         });
         return data;
       });
@@ -114,6 +114,8 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       }
       return data;
     });
+    // 同步清理已删除行的选中状态
+    setSelectedRowKeys((prev) => prev.filter((k) => k !== row.key));
   }, []);
 
   const tableColumns = useMemo(() => {
@@ -131,7 +133,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     addInfoItem,
     deleteInfoItem,
     renderTableColumn,
-    renderActionColumn,
+    renderActionColumn
   ]);
 
   const isRemote = useMemo(() => {
@@ -161,13 +163,13 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   useEffect(() => {
     if (os) {
       form.setFieldsValue({
-        sidecar_package: null,
+        sidecar_package: null
       });
       // Windows 系统自动切换到手动安装
       if (os === 'windows') {
         setInstallMethod('manualInstall');
         form.setFieldsValue({
-          install: 'manualInstall',
+          install: 'manualInstall'
         });
       }
       // 恢复表格到初始状态
@@ -187,7 +189,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     batchEditModalRef.current?.showModal({
       columns: tableConfig,
       selectedRows,
-      groupList,
+      groupList
     });
   };
 
@@ -196,7 +198,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       if (selectedRowKeys.includes(item.key as string)) {
         return {
           ...item,
-          ...editedFields,
+          ...editedFields
         };
       }
       return item;
@@ -220,7 +222,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           setTableData(updatedData);
         }
         setSelectedRowKeys([]);
-      },
+      }
     });
   };
 
@@ -228,14 +230,14 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     excelImportModalRef.current?.showModal({
       title: t('node-manager.cloudregion.integrations.importData'),
       columns: tableConfig,
-      groupList,
+      groupList
     });
   };
 
   const handleImportSuccess = (importedData: any[]) => {
     const newRows = importedData.map((row) => ({
       ...row,
-      key: uuidv4(),
+      key: uuidv4()
     }));
     setTableData([...tableData, ...newRows]);
   };
@@ -243,13 +245,13 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const batchMenuItems: MenuProps['items'] = [
     {
       key: 'batchEdit',
-      label: t('common.batchEdit'),
+      label: t('common.batchEdit')
     },
     {
       key: 'batchDelete',
       label: t('common.batchDelete'),
-      disabled: selectedRowKeys.length === 1 && tableData.length === 1,
-    },
+      disabled: tableData.length === 1
+    }
   ];
 
   const handleBatchMenuClick: MenuProps['onClick'] = (e) => {
@@ -270,7 +272,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         const { name } = column;
         newData[index] = {
           ...newData[index],
-          [`${name}_error`]: null,
+          [`${name}_error`]: null
         };
       });
     });
@@ -315,7 +317,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           hasError = true;
           newData[index] = {
             ...newData[index],
-            [`${name}_error`]: errorMsg,
+            [`${name}_error`]: errorMsg
           };
         }
       });
@@ -332,7 +334,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     selectedRowKeys,
     onChange: (newSelectedRowKeys: React.Key[]) => {
       setSelectedRowKeys(newSelectedRowKeys);
-    },
+    }
   };
 
   const changeCollectType = (id: string) => {
@@ -364,7 +366,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       const params: any = {
         cloud_region_id: cloudId,
         work_node: name,
-        package_id: values.sidecar_package || '',
+        package_id: values.sidecar_package || ''
       };
       if (isRemote) {
         params.nodes = tableData.map((item) => ({
@@ -375,14 +377,14 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           username: item.username,
           password: item.private_key ? '' : item.password,
           private_key: item.private_key || '',
-          node_name: item.node_name,
+          node_name: item.node_name
         }));
       } else {
         params.nodes = tableData.map((item) => ({
           ip: item.ip,
           organizations: item.organizations,
           node_name: item.node_name,
-          node_id: item.key,
+          node_id: item.key
         }));
         params.os = os;
       }
@@ -399,13 +401,13 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             ip: item.ip,
             node_name: item.node_name,
             organizations: item.organizations,
-            node_id: item.key as string,
-          })),
+            node_id: item.key as string
+          }))
         };
         result = await manualInstallController(manualParams);
         manualTaskList = (result || []).map((item: any) => ({
           ...item,
-          os,
+          os
         }));
       }
       message.success(t('common.operationSuccessful'));
@@ -417,7 +419,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         os,
         nodes,
         manualTaskList, // 手动安装时传递任务列表
-        packageId: values.sidecar_package || '',
+        packageId: values.sidecar_package || ''
       });
     } finally {
       setConfirmLoading(false);
@@ -462,7 +464,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           >
             <Select
               style={{
-                width: 300,
+                width: 300
               }}
               showSearch
               allowClear
@@ -475,7 +477,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
               }
               options={filteredSidecarVersionList.map((item) => ({
                 value: item.id,
-                label: item.version,
+                label: item.version
               }))}
             />
           </Form.Item>
@@ -504,7 +506,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             <Dropdown
               menu={{
                 items: batchMenuItems,
-                onClick: handleBatchMenuClick,
+                onClick: handleBatchMenuClick
               }}
               disabled={!selectedRowKeys.length}
             >
@@ -525,8 +527,8 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
                   return Promise.reject(new Error(t('common.required')));
                 }
                 return Promise.resolve();
-              },
-            },
+              }
+            }
           ]}
         >
           <CustomTable

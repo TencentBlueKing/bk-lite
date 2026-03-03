@@ -32,7 +32,7 @@ export interface GroupConfig {
 
 export interface ModelConfig {
   type: string;
-  modelForm: any;
+  modelForm?: Partial<ModelItem>;
   subTitle: string;
   title: string;
 }
@@ -66,10 +66,11 @@ export interface AttrFieldType {
   is_only?: boolean;
   is_required: boolean;
   editable: boolean;
-  option: Array<EnumList>;
+  option: AttrOption;
   attr_group?: string;
   isEdit?: boolean;
   children?: AttrFieldType[];
+  user_prompt?: string;
   [key: string]: unknown;
 }
 
@@ -135,6 +136,43 @@ export interface EnumList {
   id: string | number;
   name: string;
 }
+
+// 字符串类型的 option
+export interface StrAttrOption {
+  validation_type: 'unrestricted' | 'ipv4' | 'ipv6' | 'email' | 'mobile_phone' | 'url' | 'json' | 'custom';
+  custom_regex: string;
+  widget_type: 'single_line' | 'multi_line';
+}
+
+// 时间类型的 option
+export interface TimeAttrOption {
+  display_format: 'datetime' | 'date';
+}
+
+// 数字类型的 option
+export interface IntAttrOption {
+  min_value: string | number;
+  max_value: string | number;
+}
+
+export interface TableColumnSpec {
+  column_id: string;
+  column_name: string;
+  column_type: 'str' | 'number';
+  order: number;
+}
+
+export type TableAttrOption = TableColumnSpec[];
+
+// 属性字段最小结构（用于工具函数）
+export interface AttrLike {
+  attr_type: string;
+  option: unknown;
+  is_required?: boolean;
+}
+
+// 属性 option 联合类型
+export type AttrOption = EnumList[] | StrAttrOption | TimeAttrOption | IntAttrOption | TableAttrOption | Record<string, unknown>;
 
 export interface CredentialListItem {
   classification_name: string;
@@ -209,17 +247,17 @@ export interface RelationInstanceRef {
 }
 
 export interface FieldConfig {
-    type: string;
-    attrList: AttrFieldType[];
-    formInfo: any;
-    subTitle: string;
-    title: string;
-    model_id: string;
-    list: Array<any>;
+  type: string;
+  attrList: FullInfoGroupItem[]; // 属性列表，分组数据
+  formInfo: any;
+  subTitle: string;
+  title: string;
+  model_id: string;
+  list: Array<any>;
 }
 
 export interface FieldModalRef {
-    showModal: (config: FieldConfig) => void;
+  showModal: (config: FieldConfig) => void;
 }
 
 // 属性分组相关类型
@@ -252,12 +290,14 @@ export interface FullInfoAttrItem {
   attr_id: string;
   attr_name: string;
   attr_type: string;
-  option: string;
+  option: AttrOption;
   attr_group: string;
   is_only: boolean;
   editable: boolean;
   is_required: boolean;
   is_pre: boolean;
+  user_prompt?: string;
+  [key: string]: unknown;
 }
 
 export interface FullInfoGroupItem {
@@ -286,5 +326,3 @@ export interface ModelFullInfoResponse {
   result: boolean;
   message: string;
 }
-
-

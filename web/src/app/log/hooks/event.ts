@@ -1,6 +1,7 @@
 import { ListItem } from '@/app/log/types';
 import { useMemo } from 'react';
 import { useTranslation } from '@/utils/i18n';
+import { CardItem } from '@/app/log/types/event';
 
 export const useConditionList = (): ListItem[] => {
   const { t } = useTranslation();
@@ -11,13 +12,13 @@ export const useConditionList = (): ListItem[] => {
       { id: '>', name: t('log.moreThan') },
       { id: '<', name: t('log.lessThan') },
       { id: 'in', name: t('log.include') },
-      { id: 'nin', name: t('log.exclude') },
+      { id: 'nin', name: t('log.exclude') }
     ],
     [t]
   );
 };
 
-export const useAlgorithmList = (): ListItem[] => {
+export const useAlgorithmList = (): CardItem[] => {
   const { t } = useTranslation();
   return useMemo(
     () => [
@@ -25,14 +26,14 @@ export const useAlgorithmList = (): ListItem[] => {
         value: 'keyword',
         icon: 'yuzhiguanli',
         title: t('log.event.keywordAlert'),
-        content: t('log.event.keywordAlertDes'),
+        description: t('log.event.keywordAlertDes')
       },
       {
         value: 'aggregate',
         icon: 'yuzhiguanli',
         title: t('log.event.aggregationAlert'),
-        content: t('log.event.aggregationAlertDes'),
-      },
+        description: t('log.event.aggregationAlertDes')
+      }
     ],
     [t]
   );
@@ -44,7 +45,7 @@ export const useScheduleList = (): ListItem[] => {
     () => [
       { label: t('log.event.minutes'), value: 'min' },
       { label: t('log.event.hours'), value: 'hour' },
-      { label: t('log.event.days'), value: 'day' },
+      { label: t('log.event.days'), value: 'day' }
     ],
     [t]
   );
@@ -56,7 +57,7 @@ export const useLevelList = (): ListItem[] => {
     () => [
       { label: t('log.event.critical'), value: 'critical' },
       { label: t('log.event.error'), value: 'error' },
-      { label: t('log.event.warning'), value: 'warning' },
+      { label: t('log.event.warning'), value: 'warning' }
     ],
     [t]
   );
@@ -67,12 +68,12 @@ export const useAlarmTabs = () => {
   return [
     {
       label: t('log.event.activeAlarms'),
-      key: 'activeAlarms',
+      key: 'activeAlarms'
     },
     {
       label: t('log.event.historicalAlarms'),
-      key: 'historicalAlarms',
-    },
+      key: 'historicalAlarms'
+    }
   ];
 };
 
@@ -81,16 +82,16 @@ export const useStateList = () => {
   return [
     {
       label: t('log.event.new'),
-      value: 'new',
+      value: 'new'
     },
     {
       label: t('log.event.recovery'),
-      value: 'recovered',
+      value: 'recovered'
     },
     {
       label: t('log.event.closed'),
-      value: 'closed',
-    },
+      value: 'closed'
+    }
   ];
 };
 
@@ -100,7 +101,7 @@ export const useStateMap = (): Record<string, string> => {
     () => ({
       new: t('log.event.new'),
       recovered: t('log.event.recovery'),
-      closed: t('log.event.closed'),
+      closed: t('log.event.closed')
     }),
     [t]
   );
@@ -111,11 +112,11 @@ export const useAlertDetailTabs = () => {
   return [
     {
       label: t('common.detail'),
-      key: 'information',
+      key: 'information'
     },
     {
       label: t('log.event.event'),
-      key: 'event',
-    },
+      key: 'event'
+    }
   ];
 };

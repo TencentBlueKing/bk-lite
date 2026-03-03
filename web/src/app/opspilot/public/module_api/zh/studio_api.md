@@ -14,7 +14,7 @@ RESTful API 允许将工作流（Chatflow）**发布为一个标准的 API 接�
 
 body传递参数：{"user_message": "帮我检查下服务器状态"}
 
-RESTful API请求地址：<http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=1&node_id=abcdef>
+RESTful API请求地址：<http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/${bot_id}/${node_id}/>
 
 （触发节点的请求地址，请在画布保存后在对应节点查看）
 
@@ -26,7 +26,7 @@ OpenAI API本质上是将 Chatflow 直接挂载到 **OpenAI 的模型生态系�
 
 body传递参数：{"user_message": "帮我检查下服务器状态"}
 
-OpenAI API请求地址：<http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=1&node_id=abcdef>
+OpenAI API请求地址：<http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/${bot_id}/${node_id}/>
 
 （触发节点的请求地址，请在画布保存后在对应节点查看）
 
@@ -38,7 +38,7 @@ AG-UI（Agent User Interface）触发方式是专为智能体对话界面设计�
 
 body传递参数：{"user_message": "帮我检查下服务器状态"}
 
-AG-UI请求地址：<http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=1&node_id=abcdef>
+AG-UI请求地址：<http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/${bot_id}/${node_id}/>
 
 （触发节点的请求地址，请在画布保存后在对应节点查看）
 

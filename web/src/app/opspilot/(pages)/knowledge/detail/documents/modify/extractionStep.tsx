@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Button, Select, Switch, Form, message, Image } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Button, Select, Switch, Form, message, Image, Alert } from 'antd';
+import { WarningOutlined } from '@ant-design/icons';
+import Link from 'next/link';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
 import styles from './modify.module.scss';
-import { ModelOption } from '@/app/opspilot/types/knowledge';
+import { OcrModel } from '@/app/opspilot/types/knowledge';
 import fullTextImg from '@/app/opspilot/img/full_text_extraction.png';
 import chapterImg from '@/app/opspilot/img/chapter_extraction.png';
 import worksheetImg from '@/app/opspilot/img/worksheet_extraction.png';
@@ -37,9 +39,13 @@ const ExtractionStep: React.FC<{
   const [selectedDocument, setSelectedDocument] = useState<any>(null);
   const [selectedMethod, setSelectedMethod] = useState<keyof typeof extractionMethods | null>(null);
   const [ocrEnabled, setOcrEnabled] = useState<boolean>(false);
-  const [ocrModels, setOcrModels] = useState<ModelOption[]>([]);
+  const [ocrModels, setOcrModels] = useState<OcrModel[]>([]);
   const [loadingOcrModels, setLoadingOcrModels] = useState<boolean>(true);
   const [selectedOcrModel, setSelectedOcrModel] = useState<string | null>(null);
+
+  const allOcrModelsDisabled = useMemo(() => {
+    return ocrModels.length > 0 && ocrModels.every((model) => !model.enabled);
+  }, [ocrModels]);
 
   // Extraction methods configuration
   const extractionMethods = {
@@ -266,16 +272,17 @@ const ExtractionStep: React.FC<{
     setOcrEnabled(
       (documentConfig?.enable_ocr_parse ?? extractionMethods[availableMethods.default as keyof typeof extractionMethods]?.defaultOCR) || false
     );
-    setSelectedOcrModel(documentConfig?.ocr_model || (defaultModel ? defaultModel.id : null));
-
+    
+    let ocrModelToSelect = documentConfig?.ocr_model;
     if (extractionConfig && extractionConfig.knowledge_document_list) {
       const doc = extractionConfig.knowledge_document_list.find((d) => d.id === record.key);
       if (doc) {
         setSelectedMethod((doc.parse_type as any) || availableMethods.default);
         setOcrEnabled(doc.enable_ocr_parse);
-        setSelectedOcrModel(doc.ocr_model);
+        ocrModelToSelect = doc.ocr_model;
       }
     }
+    setSelectedOcrModel(ocrModelToSelect || (defaultModel ? defaultModel.id : null));
 
     setModalVisible(true);
   };
@@ -369,8 +376,9 @@ const ExtractionStep: React.FC<{
                       style={{ width: '100%' }}
                       disabled={!ocrEnabled}
                       loading={loadingOcrModels}
-                      value={selectedOcrModel}
+                      value={allOcrModelsDisabled ? undefined : selectedOcrModel}
                       onChange={(value) => setSelectedOcrModel(value)}
+                      placeholder={allOcrModelsDisabled ? t('knowledge.documents.ocrModelNotConfigured') : undefined}
                     >
                       {ocrModels.map((model) => (
                         <Option key={model.id} value={model.id} disabled={!model.enabled}>
@@ -378,6 +386,22 @@ const ExtractionStep: React.FC<{
                         </Option>
                       ))}
                     </Select>
+                    {allOcrModelsDisabled && (
+                      <Alert
+                        className="mt-2"
+                        type="warning"
+                        showIcon
+                        icon={<WarningOutlined />}
+                        message={
+                          <span>
+                            {t('knowledge.documents.ocrModelNotConfiguredTip')}{' '}
+                            <Link href="/opspilot/provider?tab=4" className="text-[var(--color-primary)]">
+                              {t('knowledge.documents.modelConfig')}
+                            </Link>
+                          </span>
+                        }
+                      />
+                    )}
                   </Form.Item>
                 )}
               </div>

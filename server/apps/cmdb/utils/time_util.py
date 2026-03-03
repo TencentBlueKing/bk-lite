@@ -10,7 +10,7 @@ try:
     # 只有安装了 python-dateutil 才能用，若项目已依赖可以解开注释做更智能的解析
     from dateutil import parser as date_parser
     HAS_DATEUTIL = True
-except Exception:
+except ImportError:
     HAS_DATEUTIL = False
 
 
@@ -60,7 +60,7 @@ def parse_cmdb_time(value: Any) -> str:
         try:
             # 支持 "2025-11-27T10:31:44.338913+00:00" 或 "2025-11-27 10:31:44"
             dt = datetime.fromisoformat(text.replace(" ", "T"))
-        except Exception:
+        except ValueError:
             dt = None
 
         # 4\.2 常见格式尝试
@@ -79,14 +79,14 @@ def parse_cmdb_time(value: Any) -> str:
                 try:
                     dt = datetime.strptime(text, fmt)
                     break
-                except Exception:
+                except ValueError:
                     continue
 
         # 4\.3 若安装了 dateutil，做更智能的解析
         if dt is None and HAS_DATEUTIL:
             try:
                 dt = date_parser.parse(text)
-            except Exception:
+            except (ValueError, TypeError):
                 dt = None
 
         if dt is None:

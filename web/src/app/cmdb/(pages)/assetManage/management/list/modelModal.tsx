@@ -66,6 +66,7 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
 
     useImperativeHandle(ref, () => ({
       showModal: ({ type, modelForm, subTitle, title }) => {
+        const resolvedForm = modelForm || {};
         // 开启弹窗的交互
         setModelVisible(true);
         setSubTitle(subTitle);
@@ -73,11 +74,14 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
         setTitle(title);
         let icon = getIconUrl({ model_id: '', icn: '' });
         if (type === 'edit') {
-          icon = getIconUrl(modelForm);
+          icon = getIconUrl({
+            model_id: resolvedForm.model_id,
+            icn: resolvedForm.icn,
+          });
         }
         setModelIcon(icon);
-        setIconId(modelForm.icn || 'icon-cc-host');
-        setModelInfo(modelForm);
+        setIconId(resolvedForm.icn || 'icon-cc-host');
+        setModelInfo(resolvedForm);
       },
     }));
 
@@ -223,7 +227,13 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
             <Form.Item<ModelItem>
               label={t('id')}
               name="model_id"
-              rules={[{ required: true, message: t('required') }]}
+              rules={[
+                { required: true, message: t('required') },
+                {
+                  pattern: /^[A-Za-z][A-Za-z0-9_]*$/,
+                  message: t('Model.attrIdPattern'),
+                },
+              ]}
             >
               <Input
                 disabled={type === 'edit'}

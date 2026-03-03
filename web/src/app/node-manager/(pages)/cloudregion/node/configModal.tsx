@@ -4,7 +4,7 @@ import React, {
   useRef,
   forwardRef,
   useImperativeHandle,
-  useEffect,
+  useEffect
 } from 'react';
 import { Input, Form, Select, Button, message } from 'antd';
 import CustomTable from '@/components/custom-table';
@@ -13,14 +13,14 @@ import type { FormInstance } from 'antd';
 import {
   ModalSuccess,
   TableDataItem,
-  ModalRef,
+  ModalRef
 } from '@/app/node-manager/types';
 import { useTranslation } from '@/utils/i18n';
 import useNodeManagerApi from '@/app/node-manager/api';
 import {
   VarSourceItem,
   VarResItem,
-  ConfigParams,
+  ConfigParams
 } from '@/app/node-manager/types/cloudregion';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import CodeEditor from '@/app/node-manager/components/codeEditor';
@@ -50,14 +50,14 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
         const _form = cloneDeep(form) as TableDataItem;
         const formdata = {
           ..._form,
-          configInfo: _form.content || _form.configInfo || '',
+          configInfo: _form.content || _form.configInfo || ''
         };
         setConfigVisible(true);
         setType(type);
         setEditConfigId(_form?.key);
         setConfigForm(formdata);
         initializeVarForm();
-      },
+      }
     }));
 
     //初始化表单的数据
@@ -74,12 +74,12 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
       try {
         setTableLoading(true);
         const res = await getVariableList({
-          cloud_region_id: cloudId,
+          cloud_region_id: cloudId
         });
         const tempdata = res.map((item: VarResItem) => ({
           key: item.id,
           name: item.key,
-          description: item.description || '--',
+          description: item.description || '--'
         }));
         setvarDataSource(tempdata);
       } finally {
@@ -122,7 +122,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
           collect_type,
           config_type,
           collector_config,
-          content: configInfo,
+          content: configInfo
         });
         handleSuccess();
         message.success(t(`common.${isAdd ? 'addSuccess' : 'updateSuccess'}`));
@@ -139,7 +139,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
           const params: ConfigParams = {
             name,
             collector_id: collector,
-            config_template: configInfo,
+            config_template: configInfo
           };
           if (type === 'add') {
             params.cloud_region_id = cloudId;
@@ -155,7 +155,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
       value,
       varDataSource,
       columns,
-      onChange,
+      onChange
     }: {
       value: string;
       varDataSource: VarSourceItem[];
@@ -172,6 +172,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
           {/* 左侧输入区域 */}
           <CodeEditor
             value={value}
+            headerOptions={{ copy: true, fullscreen: true }}
             onChange={handleEditorChange}
             className="mr-4"
             width="400px"
@@ -216,8 +217,8 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
                 rules={[
                   {
                     required: true,
-                    message: t('common.inputMsg'),
-                  },
+                    message: t('common.inputMsg')
+                  }
                 ]}
               >
                 <Input disabled placeholder={t('common.inputMsg')} />
@@ -230,8 +231,8 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
                 rules={[
                   {
                     required: true,
-                    message: t('common.inputMsg'),
-                  },
+                    message: t('common.inputMsg')
+                  }
                 ]}
               >
                 <Input disabled placeholder={t('common.inputMsg')} />
@@ -245,8 +246,8 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
                 rules={[
                   {
                     required: true,
-                    message: t('common.inputMsg'),
-                  },
+                    message: t('common.inputMsg')
+                  }
                 ]}
               >
                 <Input placeholder={t('common.inputMsg')} />
@@ -257,8 +258,8 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
                 rules={[
                   {
                     required: true,
-                    message: t('common.selectMsg'),
-                  },
+                    message: t('common.selectMsg')
+                  }
                 ]}
               >
                 <Select
@@ -267,7 +268,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
                   placeholder={t('common.selectMsg')}
                   onChange={() =>
                     configFormRef.current?.setFieldsValue({
-                      collector_id: null,
+                      collector_id: null
                     })
                   }
                 />
@@ -293,8 +294,8 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
                       rules={[
                         {
                           required: true,
-                          message: t('common.selectMsg'),
-                        },
+                          message: t('common.selectMsg')
+                        }
                       ]}
                     >
                       <Select
@@ -320,8 +321,8 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
             rules={[
               {
                 required: true,
-                message: t('common.inputMsg'),
-              },
+                message: t('common.inputMsg')
+              }
             ]}
           >
             {
@@ -343,7 +344,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
         open={configVisible}
         onCancel={handleCancel}
         width={800}
-        zIndex={999999}
+        zIndex={2000}
         footer={
           <div>
             <Button

@@ -220,7 +220,7 @@ class FieldGroupViewSet(viewsets.ModelViewSet):
         model_info = ModelManage.search_model_info(model_id)
 
         if not model_info:
-            return WebUtils.response_error("模型不存在！", status_code=status.HTTP_404_NOT_FOUND)
+            return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request,
                                                                              model_id=model_info["model_id"],

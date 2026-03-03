@@ -382,7 +382,7 @@ def get_wal_metrics(config: RunnableConfig = None):
             wal_stats["wal_size"] = format_size(wal_stats["wal_bytes"])
             wal_stats["stats_reset"] = str(
                 wal_stats["stats_reset"]) if wal_stats["stats_reset"] else "Never"
-        except:
+        except Exception:
             wal_stats = {"note": "pg_stat_wal需要PostgreSQL 14+"}
 
         return safe_json_dumps({

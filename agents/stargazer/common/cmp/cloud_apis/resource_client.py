@@ -1,13 +1,42 @@
 # -*- coding: UTF-8 -*-
-"""
-调用方法：
-client = ResourceClient(account, password, region, resourcetype, host="", **kwargs)
-vm_info = client.cw.get_vms(**kwargs)
-"""
 import importlib
+import logging
 from functools import partial, wraps
+from pathlib import Path
 
 from .collection import RESOURCE_COLLECTIONS
+
+logger = logging.getLogger(__name__)
+
+
+def _load_enterprise_plugins():
+    """
+    Scan and load enterprise CMP plugins from enterprise/cmp_plugins directory.
+    This triggers the @register decorator to register plugins into ResourceClient.
+    """
+    base_dir = Path(__file__).parent.parent.parent.parent
+    enterprise_plugins_dir = base_dir / "enterprise" / "cmp_plugins"
+
+    if not enterprise_plugins_dir.exists():
+        return
+
+    for plugin_dir in enterprise_plugins_dir.iterdir():
+        if not plugin_dir.is_dir() or plugin_dir.name.startswith(("_", ".")):
+            continue
+
+        resource_apis_dir = plugin_dir / "resource_apis"
+        if not resource_apis_dir.exists():
+            continue
+
+        for py_file in resource_apis_dir.glob("cw_*.py"):
+            module_name = (
+                f"enterprise.cmp_plugins.{plugin_dir.name}.resource_apis.{py_file.stem}"
+            )
+            try:
+                importlib.import_module(module_name)
+                logger.debug(f"Loaded enterprise plugin: {module_name}")
+            except Exception as e:
+                logger.warning(f"Failed to load enterprise plugin {module_name}: {e}")
 
 
 class ResourceClient(object):
@@ -41,8 +70,12 @@ class ResourceClient(object):
             _module = importlib.import_module(module_name)
             cls = getattr(_module, class_name)
             if not cls:
-                raise AttributeError(f"Cloud:{self.cloud_type} not define method `{item}`")
-            return cls(self.account, self.password, self.region, host=self.host, **self.kwargs)
+                raise AttributeError(
+                    f"Cloud:{self.cloud_type} not define method `{item}`"
+                )
+            return cls(
+                self.account, self.password, self.region, host=self.host, **self.kwargs
+            )
 
 
 ResourceClient.set_component(RESOURCE_COLLECTIONS)
@@ -60,3 +93,6 @@ def register(func=None, key="", **kwargs):
         return func(*args, **kwargs)
 
     return inner
+
+
+_load_enterprise_plugins()

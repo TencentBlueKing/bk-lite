@@ -1,0 +1,720 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bk-lite-collector
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cadvisor
+  namespace: bk-lite-collector
+  annotations:
+    seccomp.security.alpha.kubernetes.io/pod: 'docker/default'
+spec:
+  selector:
+    matchLabels:
+      name: cadvisor
+  template:
+    metadata:
+      labels:
+        name: cadvisor
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8080'
+        prometheus.io/path: '/metrics'
+    spec:
+      serviceAccountName: cadvisor
+      containers:
+      - name: cadvisor
+        image: gcr.io/cadvisor/cadvisor:latest
+        resources:
+          requests:
+            memory: 400Mi
+            cpu: 400m
+          limits:
+            memory: 2000Mi
+            cpu: 800m
+        args:
+          - --housekeeping_interval=10s
+          - --docker_only
+          - --store_container_labels=false
+          - --whitelisted_container_labels=io.kubernetes.container.name,io.kubernetes.pod.name,io.kubernetes.pod.namespace
+        volumeMounts:
+          - name: rootfs
+            mountPath: /rootfs
+            readOnly: true
+          - name: var-run
+            mountPath: /var/run
+            readOnly: true
+          - name: sys
+            mountPath: /sys
+            readOnly: true
+          - name: docker
+            mountPath: /var/lib/docker
+            readOnly: true
+          - name: disk
+            mountPath: /dev/disk
+            readOnly: true
+        ports:
+          - name: http
+            containerPort: 8080
+            protocol: TCP
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: rootfs
+        hostPath:
+          path: /
+      - name: var-run
+        hostPath:
+          path: /var/run
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: docker
+        hostPath:
+          path: /var/lib/docker
+      - name: disk
+        hostPath:
+          path: /dev/disk
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: telegraf-daemonset
+  namespace: bk-lite-collector
+spec:
+  selector:
+    matchLabels:
+      app: telegraf-daemonset
+  template:
+    metadata:
+      labels:
+        app: telegraf-daemonset
+    spec:
+      containers:
+        - name: telegraf
+          image: telegraf:1.29.4
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          envFrom:
+            - secretRef:
+                name: bk-lite-monitor-config-secret
+          env:
+            - name: HOST_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: telegraf-config-volume
+              mountPath: /etc/telegraf/telegraf.conf
+              subPath: telegraf.conf
+            - name: nats-ca-cert
+              mountPath: /etc/nats_ca.crt
+              subPath: ca.crt
+      volumes:
+        - name: telegraf-config-volume
+          configMap:
+            name: telegraf-daemonset-config
+        - name: nats-ca-cert
+          secret:
+            secretName: bk-lite-monitor-config-secret
+            items:
+              - key: ca.crt
+                path: ca.crt
+              
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+  labels:
+    app.kubernetes.io/component: exporter
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/version: 2.13.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: exporter
+        app.kubernetes.io/name: kube-state-metrics
+        app.kubernetes.io/version: 2.13.0
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8080'
+        prometheus.io/path: '/metrics'        
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - name: kube-state-metrics
+        image: bitnamilegacy/kube-state-metrics:2.13.0
+        resources:
+          requests:
+            memory: 64Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 200m
+        args:
+          - '--metric-labels-allowlist=*=[*]'
+          - '--metric-annotations-allowlist=*=[*]'
+          - '--metric-labels-allowlist=namespaces=[*]'
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: http-metrics
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        ports:
+        - containerPort: 8080
+          name: http-metrics
+        - containerPort: 8081
+          name: telemetry
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: telemetry
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          seccompProfile:
+            type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/os: linux
+      serviceAccountName: kube-state-metrics
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telegraf-deployment
+  namespace: bk-lite-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telegraf
+  template:
+    metadata:
+      labels:
+        app: telegraf
+    spec:    
+      containers:
+        - name: telegraf
+          image: telegraf:1.29.4
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          envFrom:
+            - secretRef:
+                name: bk-lite-monitor-config-secret
+          env: 
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName      
+          ports:
+            - containerPort: 9090                      
+          volumeMounts:
+            - name: telegraf-config-volume
+              mountPath: /etc/telegraf/telegraf.conf
+              subPath: telegraf.conf
+            - name: nats-ca-cert
+              mountPath: /etc/nats_ca.crt
+              subPath: ca.crt
+      volumes:
+        - name: telegraf-config-volume
+          configMap:
+            name: telegraf-config
+        - name: nats-ca-cert
+          secret:
+            secretName: bk-lite-monitor-config-secret
+            items:
+              - key: ca.crt
+                path: ca.crt
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vmagent
+  namespace: bk-lite-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vmagent
+  template:
+    metadata:
+      labels:
+        app: vmagent
+    spec:
+      serviceAccountName: vmagent    
+      containers:
+        - name: vmagent
+          image: victoriametrics/vmagent
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          args:
+            - "--promscrape.config=/etc/prometheus/prometheus.yml"
+            - "--remoteWrite.url=http://telegraf:9090/receive"
+          envFrom:
+            - secretRef:
+                name: bk-lite-monitor-config-secret
+          volumeMounts:
+            - name: vmagent-config-volume
+              mountPath: /etc/prometheus/prometheus.yml
+              subPath: prometheus.yml        
+      volumes:
+        - name: vmagent-config-volume
+          configMap:
+            name: vmagent-config
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+  labels:
+    app.kubernetes.io/component: exporter
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/version: 2.13.0
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-state-metrics
+subjects:
+- kind: ServiceAccount
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+  labels:
+    app.kubernetes.io/component: exporter
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/version: 2.13.0
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - secrets
+  - nodes
+  - pods
+  - services
+  - serviceaccounts
+  - resourcequotas
+  - replicationcontrollers
+  - limitranges
+  - persistentvolumeclaims
+  - persistentvolumes
+  - namespaces
+  - endpoints
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  - daemonsets
+  - deployments
+  - replicasets
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  - jobs
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+- apiGroups:
+  - policy
+  resources:
+  - poddisruptionbudgets
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - storageclasses
+  - volumeattachments
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  - ingressclasses
+  - ingresses
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolebindings
+  - clusterroles
+  - rolebindings
+  - roles
+  verbs:
+  - list
+  - watch
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+  labels:
+    app.kubernetes.io/component: exporter
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/version: 2.13.0
+automountServiceAccountToken: false
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vmagent
+  namespace: bk-lite-collector
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vmagent-role
+  namespace: bk-lite-collector
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - services
+  - endpoints
+  - pods
+  - namespaces
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vmagent-role-binding
+  namespace: bk-lite-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vmagent-role
+subjects:
+- kind: ServiceAccount
+  name: vmagent
+  namespace: bk-lite-collector
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cadvisor
+  namespace: bk-lite-collector
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+  labels:
+    app.kubernetes.io/component: exporter
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/version: 2.13.0
+spec:
+  clusterIP: None
+  ports:
+  - name: http-metrics
+    port: 8080
+    targetPort: http-metrics
+  - name: telemetry
+    port: 8081
+    targetPort: telemetry
+  selector:
+    app.kubernetes.io/name: kube-state-metrics
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telegraf
+  namespace: bk-lite-collector
+spec:
+  selector:
+    app: telegraf
+  ports:
+    - protocol: TCP
+      port: 9090
+      targetPort: 9090
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cadvisor
+  namespace: bk-lite-collector
+spec:
+  selector:
+    name: cadvisor
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telegraf-config
+  namespace: bk-lite-collector
+data:
+  telegraf.conf: |
+    [global_tags]
+
+    [agent]
+      interval = "10s"
+      round_interval = true
+      metric_buffer_limit = 100000
+      flush_buffer_when_full = true
+      collection_jitter = "0s"
+      flush_interval = "5s"
+      flush_jitter = "0s"
+      debug = false
+      quiet = false
+      hostname = "${CLUSTER_NAME:-k8s-bklite-cluster}"
+
+    [[inputs.http_listener_v2]]
+      service_address = ":9090"
+      paths = ["/receive"]
+      data_format = "prometheusremotewrite"
+      
+    [[outputs.nats]]
+      servers = ["${NATS_URL:-nats://nats:4222}"]
+      username = "${NATS_USERNAME:-username}"
+      password = "${NATS_PASSWORD:-password}"
+      subject = "metrics.cloud"
+      data_format = "influx"
+      secure = true
+      insecure_skip_verify = false
+      tls_ca = "/etc/nats_ca.crt"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vmagent-config
+  namespace: bk-lite-collector
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 60s
+    scrape_configs:
+      - job_name: 'kubernetes-cadvisor'
+        kubernetes_sd_configs:
+        - role: pod
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_name]
+          action: keep
+          regex: cadvisor
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          target_label: __address__
+          regex: ([^:]+)(?::\d+)?;(\\d+)
+          replacement: $1:$2
+        - source_labels: [__meta_kubernetes_pod_node_name]
+          action: replace
+          target_label: node
+        - target_label: instance_id
+          replacement: "%{CLUSTER_NAME}"
+        - target_label: instance_type
+          replacement: k8s
+        - target_label: instance_name
+          replacement: "%{CLUSTER_NAME}"
+        - source_labels: [container_label_io_kubernetes_pod_name]
+          target_label: pod
+          action: replace
+      - job_name: 'kubernetes-kube-state-metrics'
+        kubernetes_sd_configs:
+        - role: pod
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+          action: keep
+          regex: kube-state-metrics
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          target_label: __address__
+          regex: ([^:]+)(?::\d+)?;(\\d+)
+          replacement: $1:$2
+        - target_label: instance_id
+          replacement: "%{CLUSTER_NAME}"
+        - target_label: instance_type
+          replacement: k8s
+        - target_label: instance_name
+          replacement: "%{CLUSTER_NAME}"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telegraf-daemonset-config
+  namespace: bk-lite-collector
+data:
+  telegraf.conf: |
+    [global_tags]
+      agent_id="$HOST_NODE_NAME"
+      instance_id="$HOST_NODE_NAME"
+  
+    [agent]
+      interval = "10s"
+      round_interval = true
+      metric_batch_size = 1000
+      metric_buffer_limit = 10000
+      collection_jitter = "0s"
+      flush_interval = "30s"
+      flush_jitter = "0s"
+      precision = "0s"
+      hostname = "$HOST_NODE_NAME"
+      omit_hostname = false
+      
+
+    [[outputs.http]]
+    url = "http://telegraf:9090/receive"
+    method = "POST"
+    data_format = "prometheusremotewrite"
+    [outputs.http.headers]
+      Content-Type  = "application/x-protobuf"
+      Content-Encoding = "snappy"
+      X-Prometheus-Remote-Write-Version = "0.1.0"
+
+    [[inputs.cpu]]
+      percpu = true
+      totalcpu = true
+      collect_cpu_time = false
+      report_active = false
+      core_tags = false
+      tags = { "instance_name"="$HOST_NODE_NAME","node"="$HOST_NODE_NAME","instance_type"="k8s","instance_id"="${CLUSTER_NAME:-k8s-lite-cluster}"  }
+
+    [[inputs.disk]]
+      ignore_fs = ["tmpfs", "devtmpfs", "devfs", "iso9660", "overlay", "aufs", "squashfs"]
+      tags = { "instance_name"="$HOST_NODE_NAME","node"="$HOST_NODE_NAME","instance_type"="k8s","instance_id"="${CLUSTER_NAME:-k8s-lite-cluster}"  }
+
+    [[inputs.diskio]]
+      tags = { "instance_name"="$HOST_NODE_NAME","node"="$HOST_NODE_NAME","instance_type"="k8s","instance_id"="${CLUSTER_NAME:-k8s-lite-cluster}"  }
+
+    [[inputs.mem]]
+      tags = { "instance_name"="$HOST_NODE_NAME","node"="$HOST_NODE_NAME","instance_type"="k8s","instance_id"="${CLUSTER_NAME:-k8s-lite-cluster}"  }
+
+    [[inputs.net]]
+      tags = { "instance_name"="$HOST_NODE_NAME","node"="$HOST_NODE_NAME","instance_type"="k8s","instance_id"="${CLUSTER_NAME:-k8s-lite-cluster}"  }
+
+    [[inputs.processes]]
+      tags = { "instance_name"="$HOST_NODE_NAME","node"="$HOST_NODE_NAME","instance_type"="k8s","instance_id"="${CLUSTER_NAME:-k8s-lite-cluster}"  }
+
+    [[inputs.system]]
+      tags = { "instance_name"="$HOST_NODE_NAME","node"="$HOST_NODE_NAME","instance_type"="k8s","instance_id"="${CLUSTER_NAME:-k8s-lite-cluster}"  }  

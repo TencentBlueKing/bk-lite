@@ -21,7 +21,7 @@ class FieldGroupService:
 
     @staticmethod
     def create_group(
-            model_id: str, group_name: str, created_by: str, **kwargs
+        model_id: str, group_name: str, created_by: str, **kwargs
     ) -> FieldGroup:
         """
         创建字段分组
@@ -48,15 +48,17 @@ class FieldGroupService:
             raise BaseAppException("模型不存在")
 
         # 3. 检查分组名称是否已存在
-        if FieldGroup.objects.filter(model_id=model_id, group_name=group_name.strip()).exists():
+        if FieldGroup.objects.filter(
+            model_id=model_id, group_name=group_name.strip()
+        ).exists():
             raise BaseAppException(f"分组名称'{group_name}'已存在")
 
         # 4. 获取当前最大order值
         max_order = (
-                FieldGroup.objects.filter(model_id=model_id).aggregate(
-                    max_order=Max("order")
-                )["max_order"]
-                or 0
+            FieldGroup.objects.filter(model_id=model_id).aggregate(
+                max_order=Max("order")
+            )["max_order"]
+            or 0
         )
 
         # 5. 创建分组
@@ -101,7 +103,9 @@ class FieldGroupService:
 
             # 检查新名称是否已存在
             if new_group_name != old_name:
-                if FieldGroup.objects.filter(model_id=model_id, group_name=new_group_name).exists():
+                if FieldGroup.objects.filter(
+                    model_id=model_id, group_name=new_group_name
+                ).exists():
                     raise BaseAppException(f"分组名称'{new_group_name}'已存在")
 
                 need_update_falkordb = True
@@ -172,13 +176,19 @@ class FieldGroupService:
             raise BaseAppException("模型不存在")
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
-        attrs_in_group = [attr for attr in attrs if attr.get("attr_group") == group_name]
+        attrs_in_group = [
+            attr for attr in attrs if attr.get("attr_group") == group_name
+        ]
 
         # 5. 执行删除
         with transaction.atomic():
             if attrs_in_group:
                 # 获取第一个分组（迁移目标）
-                first_group = FieldGroup.objects.filter(model_id=model_id).order_by("order").first()
+                first_group = (
+                    FieldGroup.objects.filter(model_id=model_id)
+                    .order_by("order")
+                    .first()
+                )
                 target_group_name = first_group.group_name
 
                 # 迁移属性到第一个分组
@@ -342,13 +352,18 @@ class FieldGroupService:
         groups_data = []
         for idx, group in enumerate(groups):
             group_attrs = [
-                attr for attr in attrs if attr.get("attr_group") == group.group_name and not attr.get("is_display_field")
+                attr
+                for attr in attrs
+                if attr.get("attr_group") == group.group_name
+                and not attr.get("is_display_field")
             ]
 
             # 按FieldGroup中存储的attr_orders排序分组内的属性
             if group.attr_orders:
                 # 创建排序映射
-                order_map = {attr_id: order for order, attr_id in enumerate(group.attr_orders)}
+                order_map = {
+                    attr_id: order for order, attr_id in enumerate(group.attr_orders)
+                }
                 # 排序：在attr_orders中的排在前面，不在的排在后面
                 group_attrs.sort(key=lambda x: order_map.get(x.get("attr_id"), 9999))
 
@@ -450,10 +465,19 @@ class FieldGroupService:
                 MODEL, [model_info["_id"]], {"attrs": json.dumps(attrs)}, {}, [], False
             )
 
+        # 更新模型属性缓存
+        from apps.cmdb.display_field import ExcludeFieldsCache
+
+        ExcludeFieldsCache.update_on_model_change(model_id)
+
         # 6. 更新各个分组的attr_orders（添加新属性到末尾）
         for group_name in unique_group_names:
             group = FieldGroup.objects.get(model_id=model_id, group_name=group_name)
-            group_attr_ids = [attr.get("attr_id") for attr in attrs if attr.get("attr_group") == group_name]
+            group_attr_ids = [
+                attr.get("attr_id")
+                for attr in attrs
+                if attr.get("attr_group") == group_name
+            ]
 
             # 保留原有顺序，添加新的到末尾
             existing_orders = group.attr_orders or []
@@ -472,7 +496,9 @@ class FieldGroupService:
         }
 
     @staticmethod
-    def update_attr_group(model_id: str, attr_id: str, new_group_name: str, order_id: int = None) -> Dict:
+    def update_attr_group(
+        model_id: str, attr_id: str, new_group_name: str, order_id: int = None
+    ) -> Dict:
         """
         修改单个属性的分组（支持跨分组移动）
 
@@ -524,11 +550,18 @@ class FieldGroupService:
                 MODEL, [model_info["_id"]], {"attrs": json.dumps(attrs)}, {}, [], False
             )
 
+        # 更新模型属性缓存
+        from apps.cmdb.display_field import ExcludeFieldsCache
+
+        ExcludeFieldsCache.update_on_model_change(model_id)
+
         # 6. 更新分组的attr_orders
         # 从旧分组移除
         if old_group:
             try:
-                old_group_obj = FieldGroup.objects.get(model_id=model_id, group_name=old_group)
+                old_group_obj = FieldGroup.objects.get(
+                    model_id=model_id, group_name=old_group
+                )
                 if old_group_obj.attr_orders and attr_id in old_group_obj.attr_orders:
                     old_group_obj.attr_orders.remove(attr_id)
                     old_group_obj.save(update_fields=["attr_orders"])
@@ -536,14 +569,16 @@ class FieldGroupService:
                 pass
 
         # 添加到新分组的指定位置
-        new_group_obj = FieldGroup.objects.get(model_id=model_id, group_name=new_group_name)
+        new_group_obj = FieldGroup.objects.get(
+            model_id=model_id, group_name=new_group_name
+        )
         if not new_group_obj.attr_orders:
             new_group_obj.attr_orders = []
-        
+
         # 如果属性已存在,先移除(避免重复)
         if attr_id in new_group_obj.attr_orders:
             new_group_obj.attr_orders.remove(attr_id)
-        
+
         # 插入到指定位置
         if order_id is None:
             # 未指定位置,插入到末尾
@@ -567,7 +602,9 @@ class FieldGroupService:
         }
 
     @staticmethod
-    def reorder_group_attrs(model_id: str, group_name: str, attr_orders: List[str]) -> Dict:
+    def reorder_group_attrs(
+        model_id: str, group_name: str, attr_orders: List[str]
+    ) -> Dict:
         """
         调整分组内属性的顺序
 
@@ -600,7 +637,11 @@ class FieldGroupService:
 
         # 3. 解析属性，获取该分组下的所有属性
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
-        group_attr_ids = {attr.get("attr_id") for attr in attrs if attr.get("attr_group") == group_name}
+        group_attr_ids = {
+            attr.get("attr_id")
+            for attr in attrs
+            if attr.get("attr_group") == group_name
+        }
 
         # 4. 校验：attr_orders中的属性必须都属于该分组
         for attr_id in attr_orders:
@@ -608,7 +649,9 @@ class FieldGroupService:
                 raise BaseAppException(f"属性'{attr_id}'不属于分组'{group_name}'")
 
         # 5. 校验：attr_orders必须包含该分组的所有属性
-        if set(attr_orders) != group_attr_ids:
+        if set(attr_orders) != set(
+            i for i in group_attr_ids if not i.endswith("_display")
+        ):
             missing = group_attr_ids - set(attr_orders)
             raise BaseAppException(f"缺少属性：{', '.join(missing)}")
 
