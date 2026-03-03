@@ -123,6 +123,12 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     if (fieldAttr?.attr_type === 'organization' && value != null) {
       value = Array.isArray(value) ? value : [value];
     }
+    if (fieldAttr?.attr_type === 'table' && Array.isArray(value)) {
+      const filtered = value.filter((row: any) =>
+        Object.values(row).some((v) => v !== '' && v !== null && v !== undefined)
+      );
+      value = filtered.length > 0 ? filtered : undefined;
+    }
     if (fieldKey === 'cloud') {
       return String(value);
     }
@@ -131,7 +137,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     }
     return value;
   };
-
   const getAttrById = (id: string) =>
     attrList.flatMap((group: any) => group.attrs || []).find(
       (item: any) => item.attr_id === id
@@ -253,9 +258,9 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           >
             <div
               key={item.key}
-              className={`flex items-center justify-between ${informationList.formItem}`}
+              className={`flex items-center ${informationList.formItem}`}
             >
-              <div className="flex items-center w-full">
+              <div className="flex items-center flex-1 min-w-0">
                 {item.isEdit ? (
                   <Form.Item
                     name={item.key}
@@ -292,7 +297,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                   </>
                 )}
               </div>
-              <div className={`flex items-center ${informationList.operateBtn}`}>
+              <div className={`flex items-center flex-shrink-0 ${informationList.operateBtn}`}>
                 {item.isEdit ? (
                   <>
                     {!isBatchEdit && (

@@ -2,13 +2,13 @@ import { BUILD_IN_MODEL, CREDENTIAL_LIST } from '@/app/cmdb/constants/asset';
 import { getSvgIcon } from './utils';
 import dayjs from 'dayjs';
 import { AttrFieldType } from '@/app/cmdb/types/assetManage';
-import { Tag, Select, Input, InputNumber, DatePicker, Tooltip, Button, Table, Popover } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Tag, Select, Input, InputNumber, DatePicker, Tooltip, Button, Table, Popover, Space } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
 import UserAvatar from '@/components/user-avatar';
 import React, { useState } from 'react';
+import { useTranslation } from '@/utils/i18n';
 import {
   ModelIconItem,
   ColumnItem,
@@ -341,7 +341,7 @@ export const getAssetColumns = (config: {
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
-            const enumOptions = Array.isArray(item.option) ? item.option : [];
+            const enumOptions = Array.isArray(item.option) ? (item.option as EnumList[]) : [];
             return (
               <>
                 {enumOptions.find((opt: EnumList) => opt.id === record[attrId])
@@ -394,16 +394,27 @@ export const getAssetColumns = (config: {
             );
             
             return (
-              <div className="flex items-center gap-1 flex-wrap">
-                {displayValues.map((val, idx) => (
-                  <Tag key={idx}>{String(val)}</Tag>
-                ))}
-                {remainingCount > 0 && (
-                  <Popover content={fullTableContent} trigger="hover">
-                    <Tag className="cursor-pointer">+{remainingCount}</Tag>
-                  </Popover>
-                )}
-              </div>
+              <Popover
+                content={fullTableContent}
+                trigger="hover"
+                placement="bottomLeft"
+              >
+                <div className="flex items-center gap-1 flex-wrap cursor-pointer">
+                  {displayValues.map((val, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-block px-2 py-0.5 text-xs rounded bg-[var(--color-bg-4)] text-[var(--color-text-1)]"
+                    >
+                      {String(val)}
+                    </span>
+                  ))}
+                  {remainingCount > 0 && (
+                    <span className="ml-2 text-xs text-[var(--color-primary)]">
+                      +{remainingCount}
+                    </span>
+                  )}
+                </div>
+              </Popover>
             );
           },
         };
@@ -479,35 +490,56 @@ const TableFieldEditor = ({ columns, disabled, value, onChange }: {
   value?: any;
   onChange?: (value: any) => void;
 }) => {
+  const { t } = useTranslation();
+  const createEmptyRow = () => {
+    const newRow: any = {};
+    columns.forEach(col => {
+      newRow[col.column_id] = '';
+    });
+    return newRow;
+  };
+
+  const initializedRef = React.useRef(false);
+
   const parseValue = (val: any): any[] => {
-    if (!val) return [];
+    if (!val) return [createEmptyRow()];
     if (typeof val === 'string') {
       try {
-        return JSON.parse(val);
+        const parsed = JSON.parse(val);
+        return parsed.length > 0 ? parsed : [createEmptyRow()];
       } catch {
-        return [];
+        return [createEmptyRow()];
       }
     }
-    return Array.isArray(val) ? val : [];
+    return Array.isArray(val) && val.length > 0 ? val : [createEmptyRow()];
   };
 
   const [dataSource, setDataSource] = useState<any[]>(() => parseValue(value));
 
   React.useEffect(() => {
-    setDataSource(parseValue(value));
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      setDataSource(parseValue(value));
+    }
   }, [value]);
+
+  const isRowEmpty = (row: any) => {
+    return columns.every(col => {
+      const val = row[col.column_id];
+      return val === '' || val === null || val === undefined;
+    });
+  };
 
   const handleChange = (newData: any[]) => {
     setDataSource(newData);
-    onChange?.(newData);
+    const nonEmptyRows = newData.filter(row => !isRowEmpty(row));
+    onChange?.(nonEmptyRows.length > 0 ? nonEmptyRows : undefined);
   };
 
-  const handleAddRow = () => {
-    const newRow: any = {};
-    columns.forEach(col => {
-      newRow[col.column_id] = '';
-    });
-    handleChange([...dataSource, newRow]);
+  const handleAddRow = (index: number) => {
+    const newData = [...dataSource];
+    newData.splice(index + 1, 0, createEmptyRow());
+    handleChange(newData);
   };
 
   const handleDeleteRow = (index: number) => {
@@ -523,10 +555,18 @@ const TableFieldEditor = ({ columns, disabled, value, onChange }: {
 
   const sortedColumns = [...columns].sort((a, b) => a.order - b.order);
 
-  const tableColumns = sortedColumns.map(col => ({
+  const tableColumns: Array<{
+    title: string;
+    dataIndex: string;
+    key: string;
+    align?: 'center';
+    width?: number;
+    render: (_: any, record: any, index: number) => React.ReactNode;
+  }> = sortedColumns.map(col => ({
     title: col.column_name,
     dataIndex: col.column_id,
     key: col.column_id,
+    align: 'center' as const,
     render: (_: any, record: any, index: number) => {
       if (col.column_type === 'number') {
         return (
@@ -549,39 +589,54 @@ const TableFieldEditor = ({ columns, disabled, value, onChange }: {
   }));
 
   tableColumns.push({
-    title: 'Action',
+    title: t('common.actions'),
     key: 'action',
     dataIndex: 'action',
+    width: 70,
     render: (_: any, __: any, index: number) => (
-      <Button
-        type="link"
-        danger
-        icon={<DeleteOutlined />}
-        onClick={() => handleDeleteRow(index)}
-        disabled={disabled || dataSource.length === 0}
-      />
+      <Space size={2}>
+        <Button
+          type="text"
+          size="small"
+          onClick={() => handleAddRow(index)}
+          disabled={disabled}
+          style={{
+            minWidth: 20,
+            padding: '0 4px',
+            color: 'var(--color-primary)',
+          }}
+        >
+          +
+        </Button>
+        {dataSource.length > 0 && (
+          <Button
+            type="text"
+            size="small"
+            onClick={() => handleDeleteRow(index)}
+            disabled={disabled}
+            style={{
+              minWidth: 24,
+              padding: '0 4px',
+              color: 'var(--color-primary)',
+            }}
+          >
+            −
+          </Button>
+        )}
+      </Space>
     ),
   });
 
   return (
-    <div>
-      <Table
-        dataSource={dataSource}
-        columns={tableColumns}
-        pagination={false}
-        size="small"
-        rowKey={(_, index) => String(index)}
-      />
-      <Button
-        type="dashed"
-        onClick={handleAddRow}
-        icon={<PlusOutlined />}
-        disabled={disabled}
-        style={{ marginTop: 8, width: '100%' }}
-      >
-        Add Row
-      </Button>
-    </div>
+    <Table
+      dataSource={dataSource}
+      columns={tableColumns}
+      pagination={false}
+      size="small"
+      tableLayout="fixed"
+      style={{ width: '100%' }}
+      rowKey={(_, index) => String(index)}
+    />
   );
 };
 
@@ -714,7 +769,7 @@ export const getFieldItem = (config: {
     case 'bool':
       return config.value ? 'Yes' : 'No';
     case 'enum':
-      const enumOptions = Array.isArray(config.fieldItem.option) ? config.fieldItem.option : [];
+      const enumOptions = Array.isArray(config.fieldItem.option) ? (config.fieldItem.option as EnumList[]) : [];
       if (Array.isArray(config.value)) {
         if (config.value.length === 0) return '--';
         const enumNames = config.value
@@ -767,6 +822,8 @@ export const getFieldItem = (config: {
           columns={tableCols}
           pagination={false}
           size="small"
+          tableLayout="fixed"
+          style={{ width: '100%' }}
           rowKey={(_, index) => String(index)}
         />
       );

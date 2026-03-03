@@ -62,6 +62,8 @@ const SortableItem = ({
     transition,
     marginTop: index ? 10 : 0,
     display: 'flex',
+    width: '100%',
+    minWidth: 0,
   };
   return (
     <li ref={setNodeRef} style={style}>
@@ -272,11 +274,11 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     const validateTableColumns = async () => {
       const columnArray = Array.isArray(tableColumnList) ? tableColumnList : [];
       if (columnArray.some((item) => !item.column_id || !item.column_name)) {
-        return Promise.reject(new Error('All columns must have ID and name'));
+        return Promise.reject(new Error(t('required')));
       }
       const columnIds = columnArray.map(c => c.column_id);
       if (new Set(columnIds).size !== columnIds.length) {
-        return Promise.reject(new Error('Column IDs must be unique'));
+        return Promise.reject(new Error(t('Model.columnIdsMustBeUnique')));
       }
       return Promise.resolve();
     };
@@ -578,9 +580,9 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                           <ul className="ml-6">
                             <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
                               <span className="mr-[4px] w-[14px]"></span>
-                              <span className="mr-[10px] w-1/4">Column ID</span>
-                              <span className="mr-[10px] w-1/4">Column Name</span>
-                              <span className="mr-[10px] w-1/5">Type</span>
+                              <span style={{ width: 120, marginRight: 10, flexShrink: 0 }}>{t('Model.columnId')}</span>
+                              <span style={{ width: 120, marginRight: 10, flexShrink: 0 }}>{t('Model.columnName')}</span>
+                              <span style={{ width: 100, flexShrink: 0 }}>{t('type')}</span>
                             </li>
                             {tableColumnList.map((column, index) => (
                               <SortableItem
@@ -590,34 +592,43 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                               >
                                 <HolderOutlined className="mr-[4px]" />
                                 <Input
-                                  placeholder="Enter column ID"
-                                  className="mr-[10px] w-1/4"
+                                  placeholder={t('Model.enterColumnId')}
+                                  style={{ width: 120, marginRight: 10, flexShrink: 0 }}
                                   value={column.column_id}
                                   onChange={(e) => onTableColumnChange('column_id', e.target.value, index)}
                                 />
                                 <Input
-                                  placeholder="Enter column name"
-                                  className="mr-[10px] w-1/4"
+                                  placeholder={t('Model.enterColumnName')}
+                                  style={{ width: 120, marginRight: 10, flexShrink: 0 }}
                                   value={column.column_name}
                                   onChange={(e) => onTableColumnChange('column_name', e.target.value, index)}
                                 />
                                 <Select
-                                  className="mr-[10px] w-1/5"
+                                  style={{ width: 100, marginRight: 10, flexShrink: 0 }}
                                   value={column.column_type}
                                   onChange={(value) => onTableColumnChange('column_type', value, index)}
                                 >
-                                  <Option value="str">String</Option>
-                                  <Option value="number">Number</Option>
+                                  <Option value="str">{t('string')}</Option>
+                                  <Option value="number">{t('number')}</Option>
                                 </Select>
-                                <PlusOutlined
-                                  className="edit mr-[10px] cursor-pointer text-[var(--color-primary)]"
+                                <Button
+                                  type="text"
+                                  size="small"
                                   onClick={addTableColumn}
-                                />
+                                  style={{ minWidth: 24, padding: '0 4px', color: 'var(--color-primary)' }}
+                                >
+                                  +
+                                </Button>
                                 {tableColumnList.length > 1 && (
-                                  <DeleteTwoTone
-                                    className="delete cursor-pointer"
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    danger
                                     onClick={() => deleteTableColumn(index)}
-                                  />
+                                    style={{ minWidth: 24, padding: '0 4px' }}
+                                  >
+                                    −
+                                  </Button>
                                 )}
                               </SortableItem>
                             ))}
