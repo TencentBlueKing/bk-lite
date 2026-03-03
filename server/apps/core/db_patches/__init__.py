@@ -20,7 +20,7 @@ _ENGINE_PATCH_MAP = {
     "dameng": "apps.core.db_patches.dameng",
     "goldendb": "apps.core.db_patches.goldendb",
     "oceanbase": "apps.core.db_patches.oceanbase",
-    # "gaussdb": "apps.core.db_patches.gaussdb",
+    "gaussdb": "apps.core.db_patches.gaussdb",
     # "mysql": "apps.core.db_patches.mysql",
 }
 

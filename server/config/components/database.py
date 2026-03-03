@@ -105,6 +105,26 @@ elif db_engine == "gaussdb":
         }
     }
 
+    # ============================================================
+    # GaussDB 数据库 Migration 补丁说明
+    # ============================================================
+    # Migration 补丁通过 cw_cornerstone.migrate_patch 自动加载
+    # 补丁文件位于: migrate_patch/patches/gaussdb/{app_label}/{migration_name}.py
+    # 补丁机制: 在 pre_migrate 信号时替换原始 migration 的 operations
+    #
+    # GaussDB ustore 不支持的操作及解决方案:
+    #   1. GIN 索引 (gin index is not supported for ustore)
+    #      - GinIndex 使用 FakeAddIndex 跳过
+    #   2. jsonb 列 ubtree 索引 (data type jsonb has no default operator class for access method "ubtree")
+    #      - JSONField 上的普通 Index 使用 FakeAddIndex 跳过
+    #   3. BTreeIndex on datetime (db_index=True 已创建索引)
+    #      - 使用 FakeAddIndex 跳过避免重复
+    #
+    # 当前已有补丁:
+    #   - alerts/0001_initial.py (跳过 GinIndex/BTreeIndex)
+    #   - alerts/0005_*.py (跳过重复 ForeignKey 索引 + FakeAlterField)
+    #   - alerts/0010_*.py (跳过 RemoveIndex/AddIndex on JSONField)
+
 elif db_engine == "goldendb":
     DATABASES = {
         "default": {
