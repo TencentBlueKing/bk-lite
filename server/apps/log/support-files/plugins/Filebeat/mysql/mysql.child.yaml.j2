@@ -1,0 +1,29 @@
+# ================================== MySQL Module 配置 ==================================
+- module: mysql
+
+  # ================================== Error Log 配置 ==================================
+  error:
+    enabled: {{ error_enabled | default(true) | lower }}
+    {% if error_paths %}
+    var.paths:
+      {% for path in error_paths %}
+      - "{{ path }}"
+      {% endfor %}
+    {% endif %}
+
+  # ================================== Slow Log 配置 ==================================
+  slowlog:
+    enabled: {{ slowlog_enabled | default(true) | lower }}
+    {% if slowlog_paths %}
+    var.paths:
+      {% for path in slowlog_paths %}
+      - "{{ path }}"
+      {% endfor %}
+    {% endif %}
+
+  # ================================== 字段标识配置 ==================================
+  fields:
+    collector: "Filebeat"
+    collect_type: "mysql"
+    instance_id: "{{ instance_id }}"
+  fields_under_root: {{ fields_under_root | default(true) | lower }}

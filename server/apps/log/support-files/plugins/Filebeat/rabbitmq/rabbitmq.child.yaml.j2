@@ -1,0 +1,14 @@
+- module: rabbitmq
+  log:
+    enabled: {{ log_enabled | default(true) | lower }}
+    {% if log_paths %}
+    var.paths:
+      {% for path in log_paths %}
+      - "{{ path }}"
+      {% endfor %}
+    {% endif %}
+  fields:
+    collector: "Filebeat"
+    collect_type: "rabbitmq"
+    instance_id: "{{ instance_id }}"
+  fields_under_root: {{ fields_under_root | default(true) | lower }}
