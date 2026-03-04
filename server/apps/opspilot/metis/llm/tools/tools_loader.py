@@ -4,7 +4,7 @@ import inspect
 from loguru import logger
 
 # 静态导入所有工具模块
-from apps.opspilot.metis.llm.tools import browser_use, date, fetch, github, jenkins, kubernetes, mssql, postgres, python, search, shell, ssh
+from apps.opspilot.metis.llm.tools import browser_use, cmdb, date, fetch, github, jenkins, kubernetes, mssql, postgres, python, search, shell, ssh
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
 
