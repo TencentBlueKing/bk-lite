@@ -359,6 +359,12 @@ ATTR:
     max_conn: 最大连接数
     collect_time: 上次更新时间
     install_path: bin路径
+    redis_topology_mode: 拓扑模式
+    redis_cluster_uuid: 集群UUID
+    master_group_list: 主从组列表
+    master_group_name: 主从组名
+    slave_set: 从节点集合
+    master_ref: 主节点引用
   mongodb:
     inst_name: 实例名
     organization: 组织

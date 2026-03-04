@@ -8,6 +8,21 @@ from apps.cmdb.collection.constants import DB_COLLECT_METRIC_MAP
 import codecs
 import json
 from apps.core.logger import cmdb_logger as logger
+
+
+def _redis_json_field(item, short_key, long_key):
+    """拓扑字段：优先精简名，兼容长名；list/dict 转为 JSON 字符串落库"""
+    v = item.get(short_key) or item.get(long_key)
+    if v is None or v == "":
+        return ""
+    if isinstance(v, (list, dict)):
+        try:
+            return json.dumps(v, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return ""
+    return str(v)
+
+
 class DBCollectCollectMetrics(CollectBase):
     """数据库 采集指标"""
 
@@ -68,6 +83,10 @@ class DBCollectCollectMetrics(CollectBase):
                 "max_conn": "max_conn",
                 "max_mem": "max_mem",
                 "database_role": "database_role",
+                "topo_mode": lambda x: x.get("topo_mode") or x.get("redis_topology_mode") or "",
+                "cluster_uuid": lambda x: x.get("cluster_uuid") or x.get("redis_cluster_uuid") or "",
+                "slaves": lambda x: _redis_json_field(x, "slaves", "slave_set"),
+                "master": lambda x: _redis_json_field(x, "master", "master_ref"),
             },
             "mongodb": {
                 "inst_name": self.get_inst_name,

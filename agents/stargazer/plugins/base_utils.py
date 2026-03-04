@@ -2,11 +2,18 @@
 # @File: base_utils.py
 # @Time: 2025/3/10 18:29
 # @Author: windyzhao
+import json
 import time
 import datetime
 import ipaddress
 
 import pytz
+
+# Prometheus 标签值长度上限，超长则截断（避免写入失败）
+PROMETHEUS_LABEL_VALUE_MAX = 1024
+
+# CMDB 查询的 Redis 指标名
+REDIS_INFO_GAUGE = "redis_info_gauge"
 
 
 def convert_to_prometheus_format(data):
@@ -39,17 +46,29 @@ def convert_to_prometheus_format(data):
     # 遍历每个模型，例如：vmware_vc、vmware_ds、vmware_vm、vmware_esxi
     for model_id, items in data.items():
         for item in items:
-            # 构造标签字典：过滤掉列表和字典类型，并且值不为None
-            labels = {
-                k: escape_value(v)
-                for k, v in item.items()
-                if v and not isinstance(v, (list, dict))
-            }
+            # 标量直接作为标签；list/dict 序列化为 JSON 字符串后写入（便于 Redis 等拓扑字段进 Prometheus）
+            labels = {}
+            for k, v in item.items():
+                if v is None:
+                    continue
+                if isinstance(v, (list, dict)):
+                    try:
+                        raw = json.dumps(v, ensure_ascii=False)
+                        if len(raw) > PROMETHEUS_LABEL_VALUE_MAX:
+                            raw = raw[:PROMETHEUS_LABEL_VALUE_MAX - 4] + "..."
+                        labels[k] = escape_value(raw)
+                    except (TypeError, ValueError):
+                        continue
+                else:
+                    labels[k] = escape_value(v)
             labels['model_id'] = model_id
             # 按键排序生成标签字符串
             label_str = ",".join(f'{k}="{v}"' for k, v in sorted(labels.items()))
-            # 生成info指标，值固定为1，包含所有维度
-            info_metric = f"{model_id}_info"
+            # 生成 info 指标：Redis 与 CMDB 约定使用 redis_info_gauge
+            if model_id == "redis":
+                info_metric = REDIS_INFO_GAUGE
+            else:
+                info_metric = f"{model_id}_info"
             info_line = f'{info_metric}{{{label_str}}} 1 {timestamp}'
             metrics.setdefault(info_metric, []).append(info_line)
 
