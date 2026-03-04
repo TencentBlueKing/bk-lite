@@ -76,3 +76,23 @@ def get_mlflow_tracking_uri() -> str:
     if not mlflow_tracking_uri:
         raise ConfigurationError("MLflow tracking URI not configured")
     return mlflow_tracking_uri
+
+
+def get_host_ip() -> str:
+    """
+    从 DEFAULT_ZONE_VAR_NODE_SERVER_URL 环境变量中解析宿主机 IP
+
+    该环境变量由部署脚本注入，格式为 https://{HOST_IP}:{PORT}
+    例如: https://10.10.41.149:443 -> 10.10.41.149
+
+    Returns:
+        str: 宿主机 IP 地址，未配置时返回空字符串
+    """
+    from urllib.parse import urlparse
+
+    node_server_url = os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", "")
+    if node_server_url:
+        parsed = urlparse(node_server_url)
+        if parsed.hostname:
+            return parsed.hostname
+    return ""

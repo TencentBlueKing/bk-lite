@@ -82,7 +82,7 @@ const ServingPage = () => {
       title: t(`mlops-common.containerStatus`),
       dataIndex: 'container_info',
       key: 'container_info',
-      width: 120,
+      // width: 120,
       render: (_, record) => {
         const { status, state, detail } = record.container_info;
         const isSuccess = status === 'success';
@@ -99,7 +99,7 @@ const ServingPage = () => {
       title: t(`mlops-common.port`),
       dataIndex: 'port',
       key: 'port',
-      width: 100,
+      // width: 100,
       render: (_, record) => {
         const port = record.container_info?.port || '';
         return port ? <span>{port}</span> : <span>--</span>;

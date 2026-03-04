@@ -59,22 +59,13 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     if (!formRef.current) return;
     formRef.current.resetFields();
 
-    // if (type === 'add') {
-    //   // const defaultValues: Record<string, any> = {
-    //   //   // model_version: 'latest',
-    //   //   // status: true
-    //   // };
-
-    //   // formRef.current.setFieldsValue(defaultValues);
-    // } else
-
     if (type === 'edit') {
       const editValues: Record<string, any> = {
         ...formData,
         port: formData.port || undefined // port 为 null 时设置为 undefined，让表单为空
       };
-      getModelVersionListWithTrainJob(formData.train_job, tagName as DatasetType);
       formRef.current.setFieldsValue(editValues);
+      getModelVersionListWithTrainJob(formData.train_job, tagName as DatasetType);
     }
   };
 
@@ -128,7 +119,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
       const ready_versions = data.versions?.filter((item: any) => item.status === 'READY') || [];
       const options = ready_versions.map((item: any) => ({
         label: `Version_${item?.version}`,
-        value: item?.version
+        value: String(item?.version)
       }));
       // options.unshift({ label: 'latest', value: 'latest' });
       setVersionOptions(options);
