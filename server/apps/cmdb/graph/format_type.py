@@ -111,6 +111,19 @@ def format_list_any(param):
     return f"({' OR '.join(conditions)})"
 
 
+def compile_tag_exact_match_query(field: str, selected_values: list[str]) -> list[dict]:
+    if not selected_values:
+        return []
+    return [
+        {
+            "field": field,
+            "type": "list_any[]",
+            "value": [str(item) for item in selected_values if str(item).strip()],
+            "accurate": True,
+        }
+    ]
+
+
 def id_in(param):
     value = param["value"]
     return f"id(n) IN {value}"

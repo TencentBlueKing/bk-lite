@@ -1,5 +1,6 @@
 import ast
 import json
+import re
 
 import openpyxl
 
@@ -15,10 +16,29 @@ from apps.cmdb.constants.constants import (
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models import CREATE_INST_ASST
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.validators.field_validator import (
+    TAG_ATTR_ID,
+    TAG_MODE_FREE,
+    normalize_tag_field_option,
+    normalize_tag_input_values,
+    validate_tag_values,
+)
 from apps.cmdb.utils.change_record import create_change_record_by_asso
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.system_mgmt.models import Group
+
+
+def parse_tag_cell(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if str(item).strip()]
+    value = str(raw).strip()
+    if not value:
+        return []
+    tokens = re.split(r"[,，\n\r]+", value)
+    return [token.strip() for token in tokens if token.strip()]
 
 
 class Import:
@@ -204,6 +224,7 @@ class Import:
 
         need_val_to_id_field_map, need_update_type_field_map, org_user_map = {}, {}, {}
         table_field_set = set()
+        tag_field_set = set()
         # 创建属性名称映射，用于错误提示
         attr_name_map = {
             attr_info["attr_id"]: attr_info["attr_name"] for attr_info in self.attrs
@@ -218,6 +239,10 @@ class Import:
 
             if attr_info["attr_type"] == "table":
                 table_field_set.add(attr_info["attr_id"])
+                continue
+
+            if attr_info["attr_type"] == "tag":
+                tag_field_set.add(attr_info["attr_id"])
                 continue
 
             if attr_info["attr_type"] in {ORGANIZATION, USER, ENUM}:
@@ -307,6 +332,15 @@ class Import:
                         item[keys[i]] = parsed_value
                     except (json.JSONDecodeError, TypeError) as e:
                         error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的表格数据JSON格式错误"
+                        self.validation_errors.append(error_msg)
+                        logger.warning(error_msg)
+                    continue
+
+                if keys[i] in tag_field_set:
+                    try:
+                        item[keys[i]] = parse_tag_cell(value)
+                    except Exception:
+                        error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'标签格式解析失败"
                         self.validation_errors.append(error_msg)
                         logger.warning(error_msg)
                     continue
@@ -411,15 +445,15 @@ class Import:
     def get_check_attr_map(self):
         check_attr_map = dict(is_only={}, is_required={}, editable={})
         for attr in self.attrs:
-            if attr[ModelConstraintKey.unique.value]:
+            if attr.get(ModelConstraintKey.unique.value, False):
                 check_attr_map[ModelConstraintKey.unique.value][attr["attr_id"]] = attr[
                     "attr_name"
                 ]
-            if attr[ModelConstraintKey.required.value]:
+            if attr.get(ModelConstraintKey.required.value, False):
                 check_attr_map[ModelConstraintKey.required.value][attr["attr_id"]] = (
                     attr["attr_name"]
                 )
-            if attr[ModelConstraintKey.editable.value]:
+            if attr.get(ModelConstraintKey.editable.value, True):
                 check_attr_map[ModelConstraintKey.editable.value][attr["attr_id"]] = (
                     attr["attr_name"]
                 )
@@ -429,6 +463,8 @@ class Import:
         """实例列表保存"""
         from apps.cmdb.validators import FieldValidator
         from apps.cmdb.display_field import DisplayFieldHandler
+
+        inst_list = self._normalize_and_merge_tag_records(inst_list)
 
         # 对每个实例进行字段校验和 _display 字段生成
         processed_inst_list = []
@@ -467,6 +503,8 @@ class Import:
         from apps.cmdb.validators import FieldValidator
         from apps.cmdb.display_field import DisplayFieldHandler
 
+        inst_list = self._normalize_and_merge_tag_records(inst_list)
+
         # 对每个实例进行字段校验和 _display 字段生成
         processed_inst_list = []
         for inst_data in inst_list:
@@ -498,6 +536,46 @@ class Import:
                 self.attrs,
             )
         return add_results, update_results
+
+    def _normalize_and_merge_tag_records(self, records: list[dict]) -> list[dict]:
+        tag_attr = next(
+            (
+                attr
+                for attr in self.attrs
+                if attr.get("attr_id") == TAG_ATTR_ID and attr.get("attr_type") == "tag"
+            ),
+            None,
+        )
+        if not tag_attr:
+            return records
+
+        config = normalize_tag_field_option(tag_attr.get("option") or {})
+        merged_values: set[str] = set()
+        normalized_records: list[dict] = []
+
+        for record in records:
+            data = dict(record)
+            if TAG_ATTR_ID in data:
+                try:
+                    values = normalize_tag_input_values(data.get(TAG_ATTR_ID))
+                    result = validate_tag_values(values, config)
+                    if result.errors:
+                        raise BaseAppException("; ".join(result.errors))
+                    normalized_values = [item.raw for item in result.normalized_values]
+                    data[TAG_ATTR_ID] = normalized_values
+                    merged_values.update(normalized_values)
+                except Exception as err:
+                    error_msg = f"实例 {data.get('inst_name', '未命名')}，字段 '标签'：{getattr(err, 'message', str(err))}"
+                    self.validation_errors.append(error_msg)
+                    logger.warning(error_msg)
+                    continue
+
+            normalized_records.append(data)
+
+        if config.mode == TAG_MODE_FREE and merged_values:
+            ModelManage.merge_tag_options_from_values(self.model_id, list(merged_values))
+
+        return normalized_records
 
     def import_inst_list(self, file_stream: bytes):
         """将excel主机数据导入"""

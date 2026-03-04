@@ -16,6 +16,12 @@ from apps.cmdb.constants.constants import (
 from apps.cmdb.services.model import ModelManage
 
 
+def serialize_tag_values_for_export(values: list[str]) -> str:
+    if not values:
+        return ""
+    return ",".join([str(value).strip() for value in values if str(value).strip()])
+
+
 class Export:
     def __init__(self, attrs, model_id: str = "", association: list = None):
         self.attrs = attrs
@@ -237,6 +243,16 @@ class Export:
                         sheet_data.append(
                             str(enum_field_dict[attr["attr_id"]].get(attr_id_value))
                         )
+                    continue
+
+                if attr["attr_type"] == "tag":
+                    tag_values = inst_info.get(attr["attr_id"], [])
+                    if isinstance(tag_values, list):
+                        sheet_data.append(serialize_tag_values_for_export(tag_values))
+                    elif isinstance(tag_values, str):
+                        sheet_data.append(tag_values)
+                    else:
+                        sheet_data.append("")
                     continue
 
                 _value = inst_info.get(attr["attr_id"])
