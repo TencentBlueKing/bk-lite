@@ -300,11 +300,22 @@
         "deleteConfirm": "Are you sure you want to delete this channel?",
         "namespace": "Namespace",
         "method_name": "Method Name",
-        "timeout": "Timeout (seconds)"
+        "timeout": "Timeout (seconds)",
+        "sign_secret": "Sign Secret",
+        "sub_type": "Type",
+        "request_method": "HTTP Method",
+        "headers": "Headers",
+        "body_template": "Request Body",
+        "bodyTemplateHint": "In the custom request body, '{{content}}' is a placeholder parameter for notification content. The system will automatically replace it with the actual notification content.",
+        "subTypeEnterpriseWechat": "WeCom",
+        "subTypeFeishu": "Feishu",
+        "subTypeDingtalk": "DingTalk",
+        "subTypeCustom": "Custom"
       },
       "table": {
         "description": "DESCRIPTION",
-        "name": "NAME"
+        "name": "NAME",
+        "type": "TYPE"
       },
       "emailDesc": "The email channel supports sending email notifications via SMTP service.",
       "template": {
@@ -314,10 +325,14 @@
         "name": "NAME"
       },
       "email": "Email",
-      "weComDesc": "The Chat Group Helper channel supports sending notifications to WeCom groups via Webhook.",
+      "weComDesc": "The Chat Group Helper channel supports sending notifications to WeCom, Feishu, DingTalk and other platforms via Webhook.",
       "weCom": "Chat Group Helper",
       "nats": "NATS Channel",
-      "natsDesc": "The NATS channel supports notification push through NATS message queue."
+      "natsDesc": "The NATS channel supports notification push through NATS message queue.",
+      "feishu": "Feishu Bot",
+      "feishuDesc": "The Feishu Bot channel supports sending notifications to Feishu groups via Webhook.",
+      "dingtalk": "DingTalk Bot",
+      "dingtalkDesc": "The DingTalk Bot channel supports sending notifications to DingTalk groups via Webhook."
     },
     "modules": {
       "llm_model": "LLM Model",

@@ -75,3 +75,34 @@
     }
   }
 }
+
+.customTable :global(.react-resizable) {
+  position: relative;
+}
+
+.customTable :global(.react-resizable-handle) {
+  position: absolute;
+  right: -5px;
+  bottom: 0;
+  z-index: 1;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.customTable :global(.react-resizable-handle)::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 1.4em;
+  background: var(--color-border);
+  transition: background 0.2s;
+}
+
+.customTable :global(.react-resizable-handle):hover::after {
+  background: var(--color-primary);
+}

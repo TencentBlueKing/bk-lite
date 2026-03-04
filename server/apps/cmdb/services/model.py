@@ -442,7 +442,7 @@ class ModelManage(object):
         language: str = "en",
         order_type: str = "ASC",
         order: str = "id",
-        permissions_map: dict = {},
+        permissions_map: dict | None = None,
         classification_ids: list = None,
         creator: str = "",
     ):
@@ -457,6 +457,7 @@ class ModelManage(object):
             creator: 创建人，可选，用于过滤特定创建人的模型
         """
 
+        permissions_map = permissions_map or {}
         format_permission_dict = {}
 
         for organization_id, organization_permission_data in permissions_map.items():
@@ -593,6 +594,11 @@ class ModelManage(object):
             )
 
         attrs = ModelManage.parse_attrs(result[0].get("attrs", "[]"))
+
+        # 更新排除字段缓存
+        from apps.cmdb.display_field import ExcludeFieldsCache
+
+        ExcludeFieldsCache.update_on_model_change(model_id)
 
         attr = None
         for attr in attrs:

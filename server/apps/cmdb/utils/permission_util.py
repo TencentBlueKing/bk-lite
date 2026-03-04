@@ -1,5 +1,5 @@
 from apps.cmdb.constants.constants import OPERATE, VIEW, PERMISSION_INSTANCES, APP_NAME
-from apps.cmdb.utils.base import format_groups_params, get_organization_and_children_ids
+from apps.cmdb.utils.base import format_groups_params, get_organization_and_children_ids, get_current_team_from_request
 from apps.core.utils.permission_utils import get_permission_rules
 
 
@@ -132,12 +132,23 @@ class CmdbRulesFormatUtil:
         :return: 格式化后的权限映射
         """
 
-        current_team = int(request.COOKIES.get("current_team"))
+        current_team = get_current_team_from_request(request)
         include_children = request.COOKIES.get("include_children") == "1"
-        user_teams = get_organization_and_children_ids(tree_data=request.user.group_tree, target_id=current_team)
+        user_teams = get_organization_and_children_ids(
+            tree_data=request.user.group_tree, target_id=current_team
+        )
+        if not user_teams:
+            user_teams = [current_team]
         permission_key = f"{permission_type}.{model_id}" if model_id else permission_type
-        permission_rules = get_permission_rules(user=request.user, current_team=current_team, app_name=APP_NAME,
-                                                permission_key=permission_key, include_children=include_children)
+        permission_rules = get_permission_rules(
+            user=request.user,
+            current_team=current_team,
+            app_name=APP_NAME,
+            permission_key=permission_key,
+            include_children=include_children,
+        )
+        if not isinstance(permission_rules, dict):
+            permission_rules = {}
 
         teams = permission_rules.get("team", [])
         instance = permission_rules.get("instance", [])

@@ -100,6 +100,17 @@ def format_list_in(param):
     return f"({' AND '.join(conditions)})"
 
 
+def format_list_any(param):
+    field = param["field"]
+    value = param["value"]
+
+    if not value or not isinstance(value, list):
+        return "false"
+
+    conditions = [f"{v} IN n.{field}" for v in value]
+    return f"({' OR '.join(conditions)})"
+
+
 def id_in(param):
     value = param["value"]
     return f"id(n) IN {value}"
@@ -139,6 +150,7 @@ FORMAT_TYPE = {
     "id=": format_id_eq,  # 修改为使用ID()函数
     "id[]": format_id_in,  # 修改为使用ID()函数
     "list[]": format_list_in,
+    "list_any[]": format_list_any,
 }
 
 
@@ -342,6 +354,15 @@ def format_list_in_params(param, collector):
     return f"ALL(x IN {param_name} WHERE x IN n.{field})"
 
 
+def format_list_any_params(param, collector):
+    from apps.cmdb.graph.validators import CQLValidator
+
+    field = CQLValidator.validate_field(param["field"])
+    value = param["value"]
+    param_name = collector.add_param(value, prefix="list")
+    return f"ANY(x IN {param_name} WHERE x IN n.{field})"
+
+
 # 参数化格式映射表
 FORMAT_TYPE_PARAMS = {
     "bool": format_bool_params,
@@ -359,4 +380,5 @@ FORMAT_TYPE_PARAMS = {
     "id=": format_id_eq_params,
     "id[]": format_id_in_params,
     "list[]": format_list_in_params,
+    "list_any[]": format_list_any_params,
 }

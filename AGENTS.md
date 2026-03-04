@@ -10,6 +10,7 @@
 - Mobile（`mobile/`）：Next.js 15 + Tauri 2 + TypeScript（`mobile/package.json`、`mobile/src-tauri/tauri.conf.json`）
 - WebChat（`webchat/`）：npm monorepo（core/ui/demo），demo 为 Next.js 14（`webchat/package.json`、`webchat/packages/*/package.json`）
 - Stargazer（`agents/stargazer/`）：Python 3.12 + Sanic（`agents/stargazer/pyproject.toml`、`agents/stargazer/Makefile`）
+- Algorithms（`algorithms/`）：Python 多算法服务（BentoML 形态，`uv` 管理依赖，子服务按 `make serving` / `uv run pytest` 运行）（`algorithms/AGENTS.md`、`algorithms/classify_*_server/`）
 
 ### 仓库目录（默认优先级）
 - `server/`：Django 主后端
@@ -17,6 +18,7 @@
 - `mobile/`：移动端（Next.js + Tauri）
 - `webchat/`：聊天组件库与 demo
 - `agents/stargazer/`：云资源采集代理
+- `algorithms/`：算法服务集合（异常检测/时序/日志/文本/图像/目标检测）
 - `deploy/dist/bk-lite-kubernetes-collector/`：K8s 采集器部署模板
 
 ### 默认工作目录与选择规则
@@ -52,6 +54,11 @@
 - 测试：`cd agents/stargazer && make lint`
 - 构建：`cd agents/stargazer && make build`
 
+### Algorithms
+- 开发：`cd algorithms/<service> && make install && make serving`
+- 测试：`cd algorithms/<service> && uv run pytest`
+- 构建：`cd algorithms/<service> && docker build -t bklite/<service> -f support-files/release/Dockerfile .`
+
 ## 环境与配置
 
 ### 版本与依赖管理
@@ -66,6 +73,7 @@
 - Server 模块模板：`server/support-files/env/.env.cmdb.example`、`.env.opspilot.example`、`.env.system_mgmt.example`
 - Web 模板：`web/.env.example`
 - Stargazer 模板：`agents/stargazer/.env.example`
+- Algorithms 模板：`algorithms/classify_*_server/.env.example`
 - K8s 采集器模板：`deploy/dist/bk-lite-kubernetes-collector/secret.env.template`、`secret.yaml.template`
 
 ### Secrets 与配置策略（强制）
@@ -191,6 +199,7 @@
 - 影响 `mobile/`：`cd mobile && pnpm lint && pnpm type-check`
 - 影响 `agents/stargazer/`：`cd agents/stargazer && make lint`
 - 影响 `webchat/`：`cd webchat && npm run build && npm run test`
+- 影响 `algorithms/classify_*_server/`：`cd algorithms/<service> && uv run pytest`
 
 ### 自动门禁（仓库已有）
 - Git Hook：`.husky/pre-commit` 对 `web/`、`mobile/` 的 staged 变更自动执行 lint/type-check。
@@ -223,5 +232,5 @@
 
 - TODO: 根仓库统一 CI/CD 流程未发现。确认位置：仓库根 `.github/workflows/`、组织级 CI 平台配置。
 - TODO: `Readme.md` 引用的 `docs/CONTRIBUTING.md` 与 `deploy/docker-compose/Readme.md` 在仓库中未找到。确认位置：`docs/` 与 `deploy/` 目录维护规范。
-- TODO: `docs/overview/*.md`、`docs/changelog/release.md`、`docs/db/README.md` 当前为空。确认位置：文档负责模块与发布流程。
+- TODO: `docs/overview/source_compile.md`、`docs/overview/installation.md`、`docs/changelog/release.md`、`docs/db/README.md` 当前为空。确认位置：文档负责模块与发布流程。
 - TODO: Web 多模块镜像入口在 `web/Makefile` 中指向 `web/support-files/release/*/Dockerfile`，该目录当前不存在。确认位置：`web/Makefile` 对应发布脚本来源。

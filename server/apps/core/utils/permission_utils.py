@@ -2,11 +2,16 @@ from django.db.models import Q
 
 from apps.core.constants import DEFAULT_PERMISSION
 from apps.core.logger import nats_logger as logger
-from apps.core.utils.permission_cache import get_cached_permission_rules, set_cached_permission_rules
+from apps.core.utils.permission_cache import (
+    get_cached_permission_rules,
+    set_cached_permission_rules,
+)
 from apps.rpc.system_mgmt import SystemMgmt
 
 
-def get_permission_rules(user, current_team, app_name, permission_key, include_children=False):
+def get_permission_rules(
+    user, current_team, app_name, permission_key, include_children=False
+):
     """获取某app某类权限的某个对象的规则"""
     # 尝试从缓存获取
     cached = get_cached_permission_rules(
@@ -21,7 +26,9 @@ def get_permission_rules(user, current_team, app_name, permission_key, include_c
         return cached
 
     # 缓存未命中，发起 RPC 调用
-    app, child_module, client, module = set_rules_module_params(app_name, permission_key)
+    app, child_module, client, module = set_rules_module_params(
+        app_name, permission_key
+    )
     try:
         permission_data = client.get_user_rules_by_app(
             int(current_team),
@@ -67,7 +74,9 @@ def set_rules_module_params(app_name, permission_key):
     return app_name, child_module, client, module
 
 
-def get_permissions_rules(user, current_team, app_name, permission_key, include_children=False):
+def get_permissions_rules(
+    user, current_team, app_name, permission_key, include_children=False
+):
     """获取某app某类权限规则"""
     app_name_map = {
         "system_mgmt": "system-manager",
@@ -109,7 +118,7 @@ def permission_filter(model, permission, team_key="teams__id__in", id_key="id__i
     per_team_ids = permission.get("team", [])
 
     if not per_instance_ids and not per_team_ids:
-        return qs
+        return qs.none()
 
     # 实例权限过滤
     if per_team_ids and not per_instance_ids:
@@ -123,12 +132,16 @@ def permission_filter(model, permission, team_key="teams__id__in", id_key="id__i
 
 
 def delete_instance_rules(app_name, permission_key, instance_id, group_ids):
-    app, child_module, client, module = set_rules_module_params(app_name, permission_key)
+    app, child_module, client, module = set_rules_module_params(
+        app_name, permission_key
+    )
     result = client.delete_rules(group_ids, instance_id, app, module, child_module)
     return result
 
 
-def check_instance_permission(object_type_id, instance_id, teams, permissions, cur_team):
+def check_instance_permission(
+    object_type_id, instance_id, teams, permissions, cur_team
+):
     """
     通用实例权限检查逻辑
 
@@ -157,27 +170,31 @@ def check_instance_permission(object_type_id, instance_id, teams, permissions, c
 
     cur_team = set(cur_team)
 
-    # 普通用户权限检查 - 未设置实例权限时，根据当前组判断
+    # 未设置该对象类型的权限规则时，检查实例组织是否在用户团队中
     permission = permissions.get(str(object_type_id))
     if not permission:
         if cur_team & teams:
-            # 此实例组织在当前组中，有权限
             return True
         else:
-            # 此实例组织不在当前组，无权限
             return False
 
     # 安全获取实例权限，确保类型正确
     instance_data = permission.get("instance", [])
     if isinstance(instance_data, list):
-        inst_permission = {i["id"] for i in instance_data if isinstance(i, dict) and "id" in i}
+        inst_permission = {
+            i["id"] for i in instance_data if isinstance(i, dict) and "id" in i
+        }
     else:
         inst_permission = set()
 
     # 安全获取团队权限，确保类型正确
     team_data = permission.get("team", [])
     if isinstance(team_data, list):
-        team_permission = {i["id"] if isinstance(i, dict) and "id" in i else i for i in team_data if i is not None}
+        team_permission = {
+            i["id"] if isinstance(i, dict) and "id" in i else i
+            for i in team_data
+            if i is not None
+        }
     else:
         team_permission = set()
 
@@ -197,7 +214,9 @@ def check_instance_permission(object_type_id, instance_id, teams, permissions, c
     return False
 
 
-def filter_instances_with_permissions(instances_result, policy_permissions, current_teams):
+def filter_instances_with_permissions(
+    instances_result, policy_permissions, current_teams
+):
     """
     过滤实例并返回权限映射
 

@@ -2,6 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
@@ -15,6 +16,7 @@ from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
 from apps.monitor.services.metrics import Metrics as MetricsService
+from apps.monitor.utils.pagination import parse_page_params
 from apps.rpc.node_mgmt import NodeMgmt
 
 
@@ -34,27 +36,40 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
     def monitor_instance_list(self, request, monitor_object_id):
         """非特殊对象的通用列表接口"""
         include_children = request.COOKIES.get("include_children", "0") == "1"
+        current_team = request.COOKIES.get("current_team")
+
         permission = get_permission_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            current_team,
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
             include_children=include_children,
         )
+
         qs = permission_filter(
             MonitorInstance,
             permission,
             team_key="monitorinstanceorganization__organization__in",
             id_key="id__in",
         )
-        page, page_size = request.GET.get("page", 1), request.GET.get("page_size", 10)
+        page, page_size = parse_page_params(
+            request.GET,
+            default_page=1,
+            default_page_size=10,
+            allow_page_size_all=True,
+        )
+        add_metrics = str(request.GET.get("add_metrics", "")).lower() in (
+            "1",
+            "true",
+            "yes",
+        )
         data = MonitorObjectService.get_monitor_instance(
             int(monitor_object_id),
-            int(page),
-            int(page_size),
+            page,
+            page_size,
             request.GET.get("name"),
             qs,
-            bool(request.GET.get("add_metrics", False)),
+            add_metrics,
         )
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {
@@ -68,7 +83,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             else:
                 instance_info["permission"] = PermissionConstants.DEFAULT_PERMISSION
 
-        if request.GET.get("add_metrics"):
+        if add_metrics:
             MetricsService.convert_instance_list_metrics(
                 int(monitor_object_id), data["results"]
             )

@@ -28,6 +28,9 @@ export const NotificationNodeConfig: React.FC<NotificationNodeConfigProps> = ({
         }}>
           <Radio value="email">{t('chatflow.email')}</Radio>
           <Radio value="enterprise_wechat_bot">{t('chatflow.enterpriseWechatBot')}</Radio>
+          <Radio value="feishu_bot">{t('chatflow.feishuBot')}</Radio>
+          <Radio value="dingtalk_bot">{t('chatflow.dingtalkBot')}</Radio>
+          <Radio value="custom_webhook">{t('chatflow.customWebhook')}</Radio>
         </Radio.Group>
       </Form.Item>
       <Form.Item name="notificationMethod" label={

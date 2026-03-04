@@ -2,12 +2,13 @@ import { BUILD_IN_MODEL, CREDENTIAL_LIST } from '@/app/cmdb/constants/asset';
 import { getSvgIcon } from './utils';
 import dayjs from 'dayjs';
 import { AttrFieldType } from '@/app/cmdb/types/assetManage';
-import { Tag, Select, Input, InputNumber, DatePicker, Tooltip } from 'antd';
+import { Tag, Select, Input, InputNumber, DatePicker, Tooltip, Button, Table, Popover, Space } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
 import UserAvatar from '@/components/user-avatar';
-import React from 'react';
+import React, { useState } from 'react';
+import { useTranslation } from '@/utils/i18n';
 import {
   ModelIconItem,
   ColumnItem,
@@ -20,8 +21,10 @@ import {
   StrAttrOption,
   IntAttrOption,
   AttrLike,
+  TableColumnSpec,
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
+import { formatCollectTaskDisplay } from '@/app/cmdb/utils/collectTask';
 
 type UserDisplayContext = 'table' | 'detail';
 
@@ -338,7 +341,7 @@ export const getAssetColumns = (config: {
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
-            const enumOptions = Array.isArray(item.option) ? item.option : [];
+            const enumOptions = Array.isArray(item.option) ? (item.option as EnumList[]) : [];
             return (
               <>
                 {enumOptions.find((opt: EnumList) => opt.id === record[attrId])
@@ -347,6 +350,75 @@ export const getAssetColumns = (config: {
             );
           },
         };
+      case 'table': {
+        return {
+          ...columnItem,
+          render: (_: unknown, record: any) => {
+            const parseTableValue = (val: any): any[] => {
+              if (!val) return [];
+              if (typeof val === 'string') {
+                try {
+                  return JSON.parse(val);
+                } catch {
+                  return [];
+                }
+              }
+              return Array.isArray(val) ? val : [];
+            };
+            
+            const tableData = parseTableValue(record[attrId]);
+            const tableColumns = (item.option as TableColumnSpec[]) || [];
+            
+            if (!tableData.length || !tableColumns.length) return <>--</>;
+            
+            const sortedCols = [...tableColumns].sort((a, b) => a.order - b.order);
+            const firstColId = sortedCols[0]?.column_id;
+            
+            if (!firstColId) return <>--</>;
+            
+            const firstColValues = tableData.map(row => row[firstColId]).filter(v => v !== undefined && v !== '');
+            const displayValues = firstColValues.slice(0, 2);
+            const remainingCount = firstColValues.length - 2;
+            
+            const fullTableContent = (
+              <Table
+                dataSource={tableData}
+                columns={sortedCols.map(col => ({
+                  title: col.column_name,
+                  dataIndex: col.column_id,
+                  key: col.column_id,
+                }))}
+                pagination={false}
+                size="small"
+              />
+            );
+            
+            return (
+              <Popover
+                content={fullTableContent}
+                trigger="hover"
+                placement="bottomLeft"
+              >
+                <div className="flex items-center gap-1 flex-wrap cursor-pointer">
+                  {displayValues.map((val, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-block px-2 py-0.5 text-xs rounded bg-[var(--color-bg-4)] text-[var(--color-text-1)]"
+                    >
+                      {String(val)}
+                    </span>
+                  ))}
+                  {remainingCount > 0 && (
+                    <span className="ml-2 text-xs text-[var(--color-primary)]">
+                      +{remainingCount}
+                    </span>
+                  )}
+                </div>
+              </Popover>
+            );
+          },
+        };
+      }
       case 'time': {
         const timeOption = item.option as TimeAttrOption | undefined;
         const dateFormat = timeOption?.display_format === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM-DD HH:mm:ss';
@@ -373,6 +445,7 @@ export const getAssetColumns = (config: {
           ...columnItem,
           render: (_: unknown, record: any) => {
             const cloudOptions = useAssetDataStore.getState().cloud_list;
+            const collectTaskMap = useAssetDataStore.getState().collectTaskMap;
 
             const modelId = record.model_id;
             if (attrId === 'cloud' && modelId === 'host') {
@@ -386,7 +459,17 @@ export const getAssetColumns = (config: {
                   className="whitespace-nowrap overflow-hidden text-ellipsis"
                   text={displayText as string}
                 ></EllipsisWithTooltip>
-              )
+              );
+            }
+
+            if (attrId === 'collect_task') {
+              const displayText = formatCollectTaskDisplay(record[attrId], collectTaskMap);
+              return (
+                <EllipsisWithTooltip
+                  className="whitespace-nowrap overflow-hidden text-ellipsis"
+                  text={displayText}
+                ></EllipsisWithTooltip>
+              );
             }
 
             return (
@@ -394,11 +477,167 @@ export const getAssetColumns = (config: {
                 className="whitespace-nowrap overflow-hidden text-ellipsis"
                 text={record[attrId] || '--'}
               ></EllipsisWithTooltip>
-            )
+            );
           },
         };
     }
   });
+};
+
+const TableFieldEditor = ({ columns, disabled, value, onChange }: {
+  columns: TableColumnSpec[];
+  disabled?: boolean;
+  value?: any;
+  onChange?: (value: any) => void;
+}) => {
+  const { t } = useTranslation();
+  const createEmptyRow = () => {
+    const newRow: any = {};
+    columns.forEach(col => {
+      newRow[col.column_id] = '';
+    });
+    return newRow;
+  };
+
+  const initializedRef = React.useRef(false);
+
+  const parseValue = (val: any): any[] => {
+    if (!val) return [createEmptyRow()];
+    if (typeof val === 'string') {
+      try {
+        const parsed = JSON.parse(val);
+        return parsed.length > 0 ? parsed : [createEmptyRow()];
+      } catch {
+        return [createEmptyRow()];
+      }
+    }
+    return Array.isArray(val) && val.length > 0 ? val : [createEmptyRow()];
+  };
+
+  const [dataSource, setDataSource] = useState<any[]>(() => parseValue(value));
+
+  React.useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      setDataSource(parseValue(value));
+    }
+  }, [value]);
+
+  const isRowEmpty = (row: any) => {
+    return columns.every(col => {
+      const val = row[col.column_id];
+      return val === '' || val === null || val === undefined;
+    });
+  };
+
+  const handleChange = (newData: any[]) => {
+    setDataSource(newData);
+    const nonEmptyRows = newData.filter(row => !isRowEmpty(row));
+    onChange?.(nonEmptyRows.length > 0 ? nonEmptyRows : undefined);
+  };
+
+  const handleAddRow = (index: number) => {
+    const newData = [...dataSource];
+    newData.splice(index + 1, 0, createEmptyRow());
+    handleChange(newData);
+  };
+
+  const handleDeleteRow = (index: number) => {
+    const newData = dataSource.filter((_, idx) => idx !== index);
+    handleChange(newData);
+  };
+
+  const handleCellChange = (index: number, columnId: string, val: any) => {
+    const newData = [...dataSource];
+    newData[index] = { ...newData[index], [columnId]: val };
+    handleChange(newData);
+  };
+
+  const sortedColumns = [...columns].sort((a, b) => a.order - b.order);
+
+  const tableColumns: Array<{
+    title: string;
+    dataIndex: string;
+    key: string;
+    align?: 'center';
+    width?: number;
+    render: (_: any, record: any, index: number) => React.ReactNode;
+  }> = sortedColumns.map(col => ({
+    title: col.column_name,
+    dataIndex: col.column_id,
+    key: col.column_id,
+    align: 'center' as const,
+    render: (_: any, record: any, index: number) => {
+      if (col.column_type === 'number') {
+        return (
+          <InputNumber
+            value={record[col.column_id]}
+            onChange={(val) => handleCellChange(index, col.column_id, val)}
+            disabled={disabled}
+            style={{ width: '100%' }}
+          />
+        );
+      }
+      return (
+        <Input
+          value={record[col.column_id]}
+          onChange={(e) => handleCellChange(index, col.column_id, e.target.value)}
+          disabled={disabled}
+        />
+      );
+    },
+  }));
+
+  tableColumns.push({
+    title: t('common.actions'),
+    key: 'action',
+    dataIndex: 'action',
+    width: 70,
+    render: (_: any, __: any, index: number) => (
+      <Space size={2}>
+        <Button
+          type="text"
+          size="small"
+          onClick={() => handleAddRow(index)}
+          disabled={disabled}
+          style={{
+            minWidth: 20,
+            padding: '0 4px',
+            color: 'var(--color-primary)',
+          }}
+        >
+          +
+        </Button>
+        {dataSource.length > 0 && (
+          <Button
+            type="text"
+            size="small"
+            onClick={() => handleDeleteRow(index)}
+            disabled={disabled}
+            style={{
+              minWidth: 24,
+              padding: '0 4px',
+              color: 'var(--color-primary)',
+            }}
+          >
+            −
+          </Button>
+        )}
+      </Space>
+    ),
+  });
+
+  return (
+    <Table
+      dataSource={dataSource}
+      columns={tableColumns}
+      pagination={false}
+      size="small"
+      tableLayout="fixed"
+      style={{ width: '100%' }}
+      rowKey={(_, index) => String(index)}
+    />
+  );
 };
 
 export const getFieldItem = (config: {
@@ -497,6 +736,8 @@ export const getFieldItem = (config: {
             max={intOption?.max_value !== '' ? Number(intOption?.max_value) : undefined}
           />
         );
+      case 'table':
+        return <TableFieldEditor columns={config.fieldItem.option as TableColumnSpec[]} disabled={disabled} />;
       default:
         if (config.fieldItem.attr_type === 'str') {
           const strOption = config.fieldItem.option as StrAttrOption;
@@ -528,7 +769,7 @@ export const getFieldItem = (config: {
     case 'bool':
       return config.value ? 'Yes' : 'No';
     case 'enum':
-      const enumOptions = Array.isArray(config.fieldItem.option) ? config.fieldItem.option : [];
+      const enumOptions = Array.isArray(config.fieldItem.option) ? (config.fieldItem.option as EnumList[]) : [];
       if (Array.isArray(config.value)) {
         if (config.value.length === 0) return '--';
         const enumNames = config.value
@@ -545,6 +786,46 @@ export const getFieldItem = (config: {
         enumOptions.find(
           (item: EnumList) => item.id === config.value,
         )?.name || '--'
+      );
+    case 'str':
+      if (config.fieldItem.attr_id === 'collect_task') {
+        const taskMap = useAssetDataStore.getState().collectTaskMap;
+        return formatCollectTaskDisplay(config.value, taskMap);
+      }
+      return config.value || '--';
+    case 'table':
+      const parseTableValue = (val: any): any[] => {
+        if (!val) return [];
+        if (typeof val === 'string') {
+          try {
+            return JSON.parse(val);
+          } catch {
+            return [];
+          }
+        }
+        return Array.isArray(val) ? val : [];
+      };
+      const tableData = parseTableValue(config.value);
+      const tableColumns = config.fieldItem.option as TableColumnSpec[];
+      if (!tableData.length || !tableColumns?.length) return '--';
+      
+      const sortedCols = [...tableColumns].sort((a, b) => a.order - b.order);
+      const tableCols = sortedCols.map(col => ({
+        title: col.column_name,
+        dataIndex: col.column_id,
+        key: col.column_id,
+      }));
+      
+      return (
+        <Table
+          dataSource={tableData}
+          columns={tableCols}
+          pagination={false}
+          size="small"
+          tableLayout="fixed"
+          style={{ width: '100%' }}
+          rowKey={(_, index) => String(index)}
+        />
       );
     default:
       if (config.fieldItem.attr_type === 'time' && config.value) {

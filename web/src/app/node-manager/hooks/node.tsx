@@ -8,6 +8,7 @@ import {
   StopOutlined,
   LoadingOutlined,
   WarningOutlined,
+  PauseCircleOutlined
 } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -28,7 +29,7 @@ interface HookParams {
 const useColumns = ({
   checkConfig,
   deleteNode,
-  editNode,
+  editNode
 }: HookParams): TableColumnsType<TableDataItem> => {
   const { showGroupNames } = useGroupNames();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -40,13 +41,13 @@ const useColumns = ({
         title: t('node-manager.cloudregion.node.ip'),
         dataIndex: 'ip',
         key: 'ip',
-        width: 120,
+        width: 120
       },
       {
         title: t('node-manager.cloudregion.node.nodeName'),
         dataIndex: 'name',
         key: 'name',
-        width: 120,
+        width: 120
       },
       {
         title: t('node-manager.cloudregion.node.group'),
@@ -58,7 +59,7 @@ const useColumns = ({
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
             text={showGroupNames(organization)}
           />
-        ),
+        )
       },
       {
         title: t('node-manager.cloudregion.node.lastReportTime'),
@@ -67,7 +68,7 @@ const useColumns = ({
         width: 160,
         render: (text: string) => {
           return text ? convertToLocalizedTime(text) : '--';
-        },
+        }
       },
       {
         title: t('common.actions'),
@@ -104,8 +105,8 @@ const useColumns = ({
               </Popconfirm>
             </Permission>
           </>
-        ),
-      },
+        )
+      }
     ],
     [checkConfig, deleteNode, editNode, t]
   );
@@ -123,7 +124,7 @@ const useGroupNames = () => {
     return groupNames.filter((item) => !!item).join(',') || '--';
   };
   return {
-    showGroupNames,
+    showGroupNames
   };
 };
 
@@ -145,11 +146,11 @@ const useTelegrafMap = (): Record<string, Record<string, any>> => {
               style={{
                 color: '#b2b5bd',
                 fontWeight: 'bold',
-                fontSize: '12px',
+                fontSize: '12px'
               }}
             />
           </div>
-        ),
+        )
       },
       0: {
         tagColor: 'success',
@@ -165,11 +166,11 @@ const useTelegrafMap = (): Record<string, Record<string, any>> => {
               style={{
                 color: '#52c41a',
                 fontWeight: 'bold',
-                fontSize: '12px',
+                fontSize: '12px'
               }}
             />
           </div>
-        ),
+        )
       },
       2: {
         tagColor: 'error',
@@ -185,11 +186,31 @@ const useTelegrafMap = (): Record<string, Record<string, any>> => {
               style={{
                 color: '#ff4d4f',
                 fontWeight: 'bold',
-                fontSize: '12px',
+                fontSize: '12px'
               }}
             />
           </div>
-        ),
+        )
+      },
+      3: {
+        tagColor: 'warning',
+        color: '#fa8c16',
+        text: t('node-manager.cloudregion.node.stopped'),
+        engText: 'Stopped',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(250, 140, 22, 0.1)' }}
+          >
+            <PauseCircleOutlined
+              style={{
+                color: '#fa8c16',
+                fontWeight: 'bold',
+                fontSize: '12px'
+              }}
+            />
+          </div>
+        )
       },
       4: {
         tagColor: '',
@@ -205,11 +226,11 @@ const useTelegrafMap = (): Record<string, Record<string, any>> => {
               style={{
                 color: '#000000',
                 fontWeight: 'bold',
-                fontSize: '12px',
+                fontSize: '12px'
               }}
             />
           </div>
-        ),
+        )
       },
       10: {
         tagColor: 'processing',
@@ -225,11 +246,11 @@ const useTelegrafMap = (): Record<string, Record<string, any>> => {
               style={{
                 color: '#1677ff',
                 fontWeight: 'bold',
-                fontSize: '12px',
+                fontSize: '12px'
               }}
             />
           </div>
-        ),
+        )
       },
       11: {
         tagColor: '',
@@ -245,11 +266,11 @@ const useTelegrafMap = (): Record<string, Record<string, any>> => {
               style={{
                 color: '#000000',
                 fontWeight: 'bold',
-                fontSize: '12px',
+                fontSize: '12px'
               }}
             />
           </div>
-        ),
+        )
       },
       12: {
         tagColor: 'warning',
@@ -265,12 +286,12 @@ const useTelegrafMap = (): Record<string, Record<string, any>> => {
               style={{
                 color: '#faad14',
                 fontWeight: 'bold',
-                fontSize: '12px',
+                fontSize: '12px'
               }}
             />
           </div>
-        ),
-      },
+        )
+      }
     }),
     [t]
   );
@@ -282,12 +303,12 @@ const useInstallWays = (): SegmentedItem[] => {
     () => [
       {
         label: t('node-manager.cloudregion.node.remoteInstall'),
-        value: 'remoteInstall',
+        value: 'remoteInstall'
       },
       {
         label: t('node-manager.cloudregion.node.manualInstall'),
-        value: 'manualInstall',
-      },
+        value: 'manualInstall'
+      }
     ],
     [t]
   );
@@ -299,28 +320,28 @@ const useInstallMap = (): Record<string, Record<string, string>> => {
     () => ({
       waiting: {
         color: 'var(--color-primary)',
-        text: t('node-manager.cloudregion.node.installing'),
+        text: t('node-manager.cloudregion.node.installing')
       },
       waitingUninstall: {
         color: 'var(--color-primary)',
-        text: t('node-manager.cloudregion.node.uninstalling'),
+        text: t('node-manager.cloudregion.node.uninstalling')
       },
       success: {
         color: '#52c41a',
-        text: t('node-manager.cloudregion.node.successInstall'),
+        text: t('node-manager.cloudregion.node.successInstall')
       },
       successUninstall: {
         color: '#52c41a',
-        text: t('node-manager.cloudregion.node.successInstall'),
+        text: t('node-manager.cloudregion.node.successUninstall')
       },
       error: {
         color: '#ff4d4f',
-        text: t('node-manager.cloudregion.node.failInstall'),
+        text: t('node-manager.cloudregion.node.failInstall')
       },
       errorUninstall: {
         color: '#ff4d4f',
-        text: t('node-manager.cloudregion.node.failUninstall'),
-      },
+        text: t('node-manager.cloudregion.node.failUninstall')
+      }
     }),
     [t]
   );
@@ -339,7 +360,7 @@ const useCollectorItems = (): MenuProps['items'] => {
             {t('node-manager.cloudregion.node.installCollector')}
           </PermissionWrapper>
         ),
-        key: 'installCollector',
+        key: 'installCollector'
       },
       {
         label: (
@@ -350,7 +371,7 @@ const useCollectorItems = (): MenuProps['items'] => {
             {t('node-manager.cloudregion.node.startCollector')}
           </PermissionWrapper>
         ),
-        key: 'startCollector',
+        key: 'startCollector'
       },
       {
         label: (
@@ -361,7 +382,7 @@ const useCollectorItems = (): MenuProps['items'] => {
             {t('node-manager.cloudregion.node.restartCollector')}
           </PermissionWrapper>
         ),
-        key: 'restartCollector',
+        key: 'restartCollector'
       },
       {
         label: (
@@ -372,8 +393,8 @@ const useCollectorItems = (): MenuProps['items'] => {
             {t('node-manager.cloudregion.node.stopCollector')}
           </PermissionWrapper>
         ),
-        key: 'stopCollector',
-      },
+        key: 'stopCollector'
+      }
     ],
     [t]
   );
@@ -389,11 +410,11 @@ const useSidecarItems = (): MenuProps['items'] => {
             className="customMenuItem"
             requiredPermissions={['UninstallController']}
           >
-            {t('node-manager.cloudregion.node.uninstallSidecar')}
+            {t('node-manager.cloudregion.node.uninstallController')}
           </PermissionWrapper>
         ),
-        key: 'uninstallSidecar',
-      },
+        key: 'uninstallController'
+      }
     ],
     [t]
   );
@@ -409,8 +430,8 @@ const useMenuItem = () => {
         title: 'edit',
         config: {
           title: 'editform',
-          type: 'edit',
-        },
+          type: 'edit'
+        }
       },
       {
         key: 'delete',
@@ -418,9 +439,9 @@ const useMenuItem = () => {
         title: 'delete',
         config: {
           title: 'deleteform',
-          type: 'delete',
-        },
-      },
+          type: 'delete'
+        }
+      }
     ],
     [t]
   );
@@ -431,11 +452,11 @@ const useInstallMethodMap = (): Record<string, { text: string }> => {
   return useMemo(
     () => ({
       auto: {
-        text: t('node-manager.cloudregion.node.auto'),
+        text: t('node-manager.cloudregion.node.auto')
       },
       manual: {
-        text: t('node-manager.cloudregion.node.manual'),
-      },
+        text: t('node-manager.cloudregion.node.manual')
+      }
     }),
     [t]
   );
@@ -450,12 +471,12 @@ const useFieldConfigs = (): FieldConfig[] => {
       {
         name: 'name',
         label: t('node-manager.cloudregion.node.nodeName'),
-        lookup_expr: 'icontains',
+        lookup_expr: 'icontains'
       },
       {
         name: 'ip',
         label: t('node-manager.cloudregion.node.ip'),
-        lookup_expr: 'icontains',
+        lookup_expr: 'icontains'
       },
       {
         name: 'operating_system',
@@ -463,8 +484,8 @@ const useFieldConfigs = (): FieldConfig[] => {
         lookup_expr: 'in',
         options: OPERATE_SYSTEMS.map((item) => ({
           id: item.value,
-          name: item.label,
-        })),
+          name: item.label
+        }))
       },
       {
         name: 'install_method',
@@ -472,8 +493,8 @@ const useFieldConfigs = (): FieldConfig[] => {
         lookup_expr: 'in',
         options: [
           { id: 'auto', name: installMethodMap['auto']?.text || 'Auto' },
-          { id: 'manual', name: installMethodMap['manual']?.text || 'Manual' },
-        ],
+          { id: 'manual', name: installMethodMap['manual']?.text || 'Manual' }
+        ]
       },
       {
         name: 'upgradeable',
@@ -481,9 +502,9 @@ const useFieldConfigs = (): FieldConfig[] => {
         lookup_expr: 'bool',
         options: [
           { id: 'true', name: t('common.yes') },
-          { id: 'false', name: t('common.no') },
-        ],
-      },
+          { id: 'false', name: t('common.no') }
+        ]
+      }
     ],
     [t, installMethodMap]
   );
@@ -499,5 +520,5 @@ export {
   useCollectorItems,
   useMenuItem,
   useInstallMethodMap,
-  useFieldConfigs,
+  useFieldConfigs
 };

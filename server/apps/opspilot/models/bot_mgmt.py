@@ -274,12 +274,49 @@ class BotWorkFlow(models.Model):
 
 class WorkFlowTaskResult(models.Model):
     bot_work_flow = models.ForeignKey(BotWorkFlow, on_delete=models.CASCADE, verbose_name="机器人工作流")
+    execution_id = models.CharField(max_length=36, default="", blank=True, db_index=True, verbose_name="执行实例ID")
     run_time = models.DateTimeField(auto_now_add=True, verbose_name="运行时间")
     status = models.CharField(max_length=50, verbose_name="状态")
     input_data = models.TextField(verbose_name="输入数据")
     output_data = models.JSONField(verbose_name="输出数据", default=dict)
     last_output = models.TextField(verbose_name="最后输出", blank=True, null=True)
     execute_type = models.CharField(max_length=50, default="restful")
+
+
+class WorkFlowTaskNodeResult(models.Model):
+    task_result = models.ForeignKey(
+        WorkFlowTaskResult,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        verbose_name="执行主记录",
+        related_name="node_results",
+    )
+    execution_id = models.CharField(max_length=36, db_index=True, verbose_name="执行实例ID")
+    node_id = models.CharField(max_length=100, verbose_name="节点ID")
+    node_name = models.CharField(max_length=255, default="", blank=True, verbose_name="节点名称")
+    node_type = models.CharField(max_length=100, default="", blank=True, verbose_name="节点类型")
+    node_index = models.IntegerField(null=True, blank=True, verbose_name="节点执行顺序")
+    status = models.CharField(max_length=20, verbose_name="执行状态")
+    input_data = models.JSONField(default=dict, verbose_name="节点输入")
+    output_data = models.JSONField(default=dict, verbose_name="节点输出")
+    error_message = models.TextField(blank=True, null=True, verbose_name="错误信息")
+    start_time = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
+    end_time = models.DateTimeField(null=True, blank=True, verbose_name="结束时间")
+    duration_ms = models.BigIntegerField(null=True, blank=True, verbose_name="耗时毫秒")
+
+    class Meta:
+        verbose_name = "WorkFlow节点执行明细"
+        verbose_name_plural = verbose_name
+        db_table = "bot_mgmt_workflowtasknoderesult"
+        constraints = [
+            models.UniqueConstraint(fields=["execution_id", "node_id"], name="uniq_workflow_node_execution"),
+        ]
+        indexes = [
+            models.Index(fields=["task_result", "node_index"]),
+            models.Index(fields=["status", "end_time"]),
+            models.Index(fields=["execution_id"]),
+        ]
 
 
 class WorkFlowConversationHistory(models.Model):
@@ -311,6 +348,7 @@ class WorkFlowConversationHistory(models.Model):
         help_text="对话入口类型：openai/restful/enterprise_wechat/wechat_official/dingtalk，celery定时触发不记录",
     )
     session_id = models.CharField(max_length=100, default="")
+    execution_id = models.CharField(max_length=36, default="", blank=True, db_index=True, verbose_name="执行实例ID")
 
     class Meta:
         verbose_name = "WorkFlow对话历史"

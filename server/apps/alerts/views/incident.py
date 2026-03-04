@@ -24,6 +24,7 @@ class IncidentModelViewSet(ModelViewSet):
     """
     事故视图集
     """
+
     queryset = Incident.objects.all()
     serializer_class = IncidentModelSerializer
     ordering_fields = ["created_at", "id"]  # 允许按创建时间和ID排序 ?ordering=-id
@@ -33,8 +34,8 @@ class IncidentModelViewSet(ModelViewSet):
 
     def get_queryset(self):
         queryset = Incident.objects.annotate(
-            alert_count=Count('alert')
-        ).prefetch_related('alert')
+            alert_count=Count("alert")
+        ).prefetch_related("alert")
         return queryset
 
     @HasPermission("Incidents-View")
@@ -50,21 +51,26 @@ class IncidentModelViewSet(ModelViewSet):
         if not data["alert"]:
             return Response(
                 {"detail": "must provide at least one alert to create an incident."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
         else:
-            not_incident_alert_ids = list(
-                Alert.objects.filter(id__in=data["alert"], incident__isnull=False).values_list('id', flat=True))
-            has_incident_alert_ids = set(data["alert"]) - set(not_incident_alert_ids)
-            data["alert"] = list(has_incident_alert_ids)
-            if not has_incident_alert_ids:
+            has_incident_alert_ids = list(
+                Alert.objects.filter(
+                    id__in=data["alert"], incident__isnull=False
+                ).values_list("id", flat=True)
+            )
+            not_incident_alert_ids = set(data["alert"]) - set(has_incident_alert_ids)
+            data["alert"] = list(not_incident_alert_ids)
+            if not not_incident_alert_ids:
                 logger.warning(
                     f"Some alerts {has_incident_alert_ids} are already associated with an incident. "
                     "They will not be included in the new incident."
                 )
                 return Response(
-                    {"detail": "Some alerts are already associated with an incident and will not be included."},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {
+                        "detail": "Some alerts are already associated with an incident and will not be included."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
         if not data["operator"]:
             data["operator"] = self.request.user.username
@@ -79,23 +85,25 @@ class IncidentModelViewSet(ModelViewSet):
             "operator": request.user.username,
             "operator_object": "事故-创建",
             "target_id": serializer.data["incident_id"],
-            "overview": f"手动创建事故[{serializer.data['title']}]"
+            "overview": f"手动创建事故[{serializer.data['title']}]",
         }
         OperatorLog.objects.create(**log_data)
 
         headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        return Response(
+            serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
 
     @HasPermission("Incidents-Edit")
     @transaction.atomic
     def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
+        partial = kwargs.pop("partial", False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
 
-        if getattr(instance, '_prefetched_objects_cache', None):
+        if getattr(instance, "_prefetched_objects_cache", None):
             # If 'prefetch_related' has been applied to a queryset, we need to
             # forcibly invalidate the prefetch cache on the instance.
             instance._prefetched_objects_cache = {}
@@ -106,7 +114,7 @@ class IncidentModelViewSet(ModelViewSet):
             "operator": request.user.username,
             "operator_object": "事故-更新",
             "target_id": instance.incident_id,
-            "overview": f"手动修改事故[{instance.title}]"
+            "overview": f"手动修改事故[{instance.title}]",
         }
         OperatorLog.objects.create(**log_data)
 
@@ -124,13 +132,18 @@ class IncidentModelViewSet(ModelViewSet):
             "operator": request.user.username,
             "operator_object": "事故-删除",
             "target_id": instance.incident_id,
-            "overview": f"手动删除事故[{instance.title}]"
+            "overview": f"手动删除事故[{instance.title}]",
         }
         OperatorLog.objects.create(**log_data)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @HasPermission("Incidents-Edit")
-    @action(methods=['post'], detail=False, url_path='operator/(?P<operator_action>[^/.]+)', url_name='operator')
+    @action(
+        methods=["post"],
+        detail=False,
+        url_path="operator/(?P<operator_action>[^/.]+)",
+        url_name="operator",
+    )
     @transaction.atomic
     def operator(self, request, operator_action, *args, **kwargs):
         """
@@ -145,7 +158,9 @@ class IncidentModelViewSet(ModelViewSet):
         status_list = []
 
         for incident_id in incident_id_list:
-            result = operator.operate(action=operator_action, incident_id=incident_id, data=request.data)
+            result = operator.operate(
+                action=operator_action, incident_id=incident_id, data=request.data
+            )
             result_list[incident_id] = result
             status_list.append(result["result"])
 
@@ -155,7 +170,9 @@ class IncidentModelViewSet(ModelViewSet):
             return WebUtils.response_error(
                 response_data=result_list,
                 error_message="操作失败，请检查日志!",
-                status_code=500
+                status_code=500,
             )
         else:
-            return WebUtils.response_success(response_data=result_list, message="部分操作成功")
+            return WebUtils.response_success(
+                response_data=result_list, message="部分操作成功"
+            )

@@ -15,7 +15,7 @@ import logging
 from dotenv import load_dotenv
 
 # 加载环境变量（必须在导入其他模块之前）
-load_dotenv()
+load_dotenv(".env")
 
 # 配置日志
 logging.basicConfig(

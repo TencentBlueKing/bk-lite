@@ -740,6 +740,53 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 
 ---
 
+## 2.6 transform_on_create（Auto 模式数据转换）
+
+**仅在 auto 模式有效**，用于在新建提交时将表单值转换为 API 所需的格式。
+
+### 基本结构
+
+```json
+{
+  "name": "ENV_SASL_ENABLED",
+  "label": "启用认证",
+  "type": "switch",
+  "default_value": false,
+  "transform_on_create": {
+    "mapping": {
+      "true": "--sasl.enabled",
+      "false": ""
+    }
+  }
+}
+```
+
+### mapping（值映射转换）
+
+`mapping` 用于将表单值转换为后端 API 期望的格式：
+
+```json
+"transform_on_create": {
+  "mapping": {
+    "true": "--sasl.enabled",    // 表单值 true → API 值 "--sasl.enabled"
+    "false": ""                   // 表单值 false → API 值 ""
+  }
+}
+```
+
+**使用说明：**
+- 左侧为源表单值（字符串 "true"/"false" 会自动与布尔值匹配）
+- 右侧为目标 API 值
+- 转换在数据提交时自动进行，无需前端额外处理
+
+**应用场景：**
+- 布尔值转换为字符串参数（如 `--sasl.enabled`）
+- 数字值转换为特定格式
+- 枚举值的映射转换
+
+---
+
+
 ## 三、transform_on_edit（数据转换）
 
 **仅在 edit 模式有效**，用于定义字段在 **API 数据** 和 **表单数据** 之间的转换规则。
@@ -814,6 +861,20 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 }
 ```
 
+**mapping（值映射转换）：**
+```json
+"to_form": {
+  "mapping": {
+    "true": ["--sasl.enabled"],   // API 值 "--sasl.enabled" → 表单值 true
+    "false": ["", null]           // API 值 "" 或 null → 表单值 false
+  }
+}
+```
+- `mapping` 用于 API 值到表单值的映射转换
+- 左侧为目标表单值（字符串 "true"/"false" 会自动转换为布尔值）
+- 右侧为 API 源值数组，支持多个值匹配同一个目标值
+
+
 ### 3.2 to_api（提交转换）
 
 将表单数据转换为 API 所需的格式。
@@ -858,6 +919,20 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 ```json
 "to_api": {}  // 表示该字段需要提交，但不做任何转换
 ```
+
+**mapping（值映射转换）：**
+```json
+"to_api": {
+  "mapping": {
+    "true": "--sasl.enabled",    // 表单值 true → API 值 "--sasl.enabled"
+    "false": ""                   // 表单值 false → API 值 ""
+  }
+}
+```
+- `mapping` 用于表单值到 API 值的映射转换
+- 左侧为源表单值（字符串 "true"/"false" 会自动与布尔值匹配）
+- 右侧为目标 API 值
+
 
 ### 3.3 完整示例
 

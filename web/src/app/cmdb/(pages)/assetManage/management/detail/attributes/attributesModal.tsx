@@ -23,6 +23,7 @@ import {
   StrAttrOption,
   TimeAttrOption,
   IntAttrOption,
+  TableColumnSpec,
 } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
@@ -61,6 +62,8 @@ const SortableItem = ({
     transition,
     marginTop: index ? 10 : 0,
     display: 'flex',
+    width: '100%',
+    minWidth: 0,
   };
   return (
     <li ref={setNodeRef} style={style}>
@@ -85,6 +88,14 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
       {
         id: '',
         name: '',
+      },
+    ]);
+    const [tableColumnList, setTableColumnList] = useState<TableColumnSpec[]>([
+      {
+        column_id: '',
+        column_name: '',
+        column_type: 'str',
+        order: 1,
       },
     ]);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
@@ -127,12 +138,25 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               name: '',
             },
           ]);
+          setTableColumnList([
+            {
+              column_id: '',
+              column_name: '',
+              column_type: 'str',
+              order: 1,
+            },
+          ]);
         } else {
           const option = attrInfo.option;
           if (attrInfo.attr_type === 'enum' && Array.isArray(option)) {
             setEnumList(option.length > 0 ? option : [{ id: '', name: '' }]);
           } else {
             setEnumList([{ id: '', name: '' }]);
+          }
+          if (attrInfo.attr_type === 'table' && Array.isArray(option)) {
+            setTableColumnList(option.length > 0 ? option : [{ column_id: '', column_name: '', column_type: 'str', order: 1 }]);
+          } else {
+            setTableColumnList([{ column_id: '', column_name: '', column_type: 'str', order: 1 }]);
           }
           if (attrInfo.attr_type === 'str' && option && typeof option === 'object' && !Array.isArray(option)) {
             const strOption = option as StrAttrOption;
@@ -158,12 +182,16 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           (group) => group.id === values.group_id,
         );
 
-        let option: EnumList[] | StrAttrOption | TimeAttrOption | IntAttrOption | Record<string, unknown> = {};
+        let option: EnumList[] | StrAttrOption | TimeAttrOption | IntAttrOption | TableColumnSpec[] | Record<string, unknown> = {};
 
         if (values.attr_type === 'enum') {
           const enumArray = Array.isArray(enumList) ? enumList : [];
           const flag = enumArray.every((item) => !!item.id && !!item.name);
           option = flag ? enumArray : [];
+        } else if (values.attr_type === 'table') {
+          const tableArray = Array.isArray(tableColumnList) ? tableColumnList : [];
+          const flag = tableArray.every((item) => !!item.column_id && !!item.column_name);
+          option = flag ? tableArray.map((col, idx) => ({ ...col, order: idx + 1 })) : [];
         } else if (values.attr_type === 'str') {
           option = {
             validation_type: values.validation_type || 'unrestricted',
@@ -241,6 +269,59 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
       const enumTypeList = deepClone(enumList);
       enumTypeList[index].name = e.target.value;
       setEnumList(enumTypeList);
+    };
+
+    const validateTableColumns = async () => {
+      const columnArray = Array.isArray(tableColumnList) ? tableColumnList : [];
+      if (columnArray.some((item) => !item.column_id || !item.column_name)) {
+        return Promise.reject(new Error(t('required')));
+      }
+      const columnIds = columnArray.map(c => c.column_id);
+      if (new Set(columnIds).size !== columnIds.length) {
+        return Promise.reject(new Error(t('Model.columnIdsMustBeUnique')));
+      }
+      return Promise.resolve();
+    };
+
+    const addTableColumn = () => {
+      const columnList = deepClone(tableColumnList);
+      columnList.push({
+        column_id: '',
+        column_name: '',
+        column_type: 'str',
+        order: columnList.length + 1,
+      });
+      setTableColumnList(columnList);
+    };
+
+    const deleteTableColumn = (index: number) => {
+      const columnList = deepClone(tableColumnList);
+      columnList.splice(index, 1);
+      setTableColumnList(columnList);
+    };
+
+    const onTableColumnChange = (
+      field: keyof TableColumnSpec,
+      value: string,
+      index: number
+    ) => {
+      const columnList = deepClone(tableColumnList);
+      if (field === 'column_type') {
+        columnList[index][field] = value as 'str' | 'number';
+      } else {
+        columnList[index][field] = value as any;
+      }
+      setTableColumnList(columnList);
+    };
+
+    const onTableDragEnd = (event: any) => {
+      const { active, over } = event;
+      if (!over) return;
+      const oldIndex = parseInt(active.id as string, 10);
+      const newIndex = parseInt(over.id as string, 10);
+      if (oldIndex !== newIndex) {
+        setTableColumnList((items) => arrayMove(items, oldIndex, newIndex));
+      }
     };
 
     const sensors = useSensors(useSensor(PointerSensor));
@@ -370,7 +451,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                     name="option"
                     rules={[{ validator: validateEnumList }]}
                   >
-                    <div className="bg-[var(--color-bg-hover)] p-4 rounded">
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
                       </div>
@@ -435,7 +516,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'time' ? (
                   <Form.Item label=" " colon={false}>
-                    <div className="bg-[var(--color-bg-hover)] p-4 rounded">
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
                       </div>
@@ -453,7 +534,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'int' ? (
                   <Form.Item label=" " colon={false}>
-                    <div className="bg-[var(--color-bg-hover)] p-4 rounded">
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
                       </div>
@@ -476,9 +557,89 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                       </div>
                     </div>
                   </Form.Item>
+                ) : getFieldValue('attr_type') === 'table' ? (
+                  <Form.Item<AttrFieldType>
+                    label=" "
+                    colon={false}
+                    name="option"
+                    rules={[{ validator: validateTableColumns }]}
+                  >
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
+                      <div className="text-sm text-[var(--color-text-secondary)] mb-3">
+                        {t('Model.validationRules')}
+                      </div>
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={onTableDragEnd}
+                      >
+                        <SortableContext
+                          items={tableColumnList.map((_, idx) => idx.toString())}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <ul className="ml-6">
+                            <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
+                              <span className="mr-[4px] w-[14px]"></span>
+                              <span style={{ width: 120, marginRight: 10, flexShrink: 0 }}>{t('Model.columnId')}</span>
+                              <span style={{ width: 120, marginRight: 10, flexShrink: 0 }}>{t('Model.columnName')}</span>
+                              <span style={{ width: 100, flexShrink: 0 }}>{t('type')}</span>
+                            </li>
+                            {tableColumnList.map((column, index) => (
+                              <SortableItem
+                                key={index}
+                                id={index.toString()}
+                                index={index}
+                              >
+                                <HolderOutlined className="mr-[4px]" />
+                                <Input
+                                  placeholder={t('Model.enterColumnId')}
+                                  style={{ width: 120, marginRight: 10, flexShrink: 0 }}
+                                  value={column.column_id}
+                                  onChange={(e) => onTableColumnChange('column_id', e.target.value, index)}
+                                />
+                                <Input
+                                  placeholder={t('Model.enterColumnName')}
+                                  style={{ width: 120, marginRight: 10, flexShrink: 0 }}
+                                  value={column.column_name}
+                                  onChange={(e) => onTableColumnChange('column_name', e.target.value, index)}
+                                />
+                                <Select
+                                  style={{ width: 100, marginRight: 10, flexShrink: 0 }}
+                                  value={column.column_type}
+                                  onChange={(value) => onTableColumnChange('column_type', value, index)}
+                                >
+                                  <Option value="str">{t('string')}</Option>
+                                  <Option value="number">{t('number')}</Option>
+                                </Select>
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  onClick={addTableColumn}
+                                  style={{ minWidth: 24, padding: '0 4px', color: 'var(--color-primary)' }}
+                                >
+                                  +
+                                </Button>
+                                {tableColumnList.length > 1 && (
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    danger
+                                    onClick={() => deleteTableColumn(index)}
+                                    style={{ minWidth: 24, padding: '0 4px' }}
+                                  >
+                                    −
+                                  </Button>
+                                )}
+                              </SortableItem>
+                            ))}
+                          </ul>
+                        </SortableContext>
+                      </DndContext>
+                    </div>
+                  </Form.Item>
                 ) : getFieldValue('attr_type') === 'str' ? (
                   <Form.Item label=" " colon={false}>
-                    <div className="bg-[var(--color-bg-hover)] p-4 rounded">
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
                       </div>

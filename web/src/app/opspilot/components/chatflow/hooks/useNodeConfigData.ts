@@ -25,7 +25,9 @@ export const useNodeConfigData = () => {
     try {
       setLoadingSkills(true);
       const data = await fetchSkill({ is_template: 0 });
-      setSkills(data || []);
+      // 处理两种返回格式：分页格式 { count, items } 或直接返回列表
+      const items = Array.isArray(data) ? data : (data?.items || []);
+      setSkills(items);
       setSkillsLoaded(true);
     } catch (error) {
       console.error('Failed to load skills:', error);

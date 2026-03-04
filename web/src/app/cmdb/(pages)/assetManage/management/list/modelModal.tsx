@@ -227,7 +227,13 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
             <Form.Item<ModelItem>
               label={t('id')}
               name="model_id"
-              rules={[{ required: true, message: t('required') }]}
+              rules={[
+                { required: true, message: t('required') },
+                {
+                  pattern: /^[A-Za-z][A-Za-z0-9_]*$/,
+                  message: t('Model.attrIdPattern'),
+                },
+              ]}
             >
               <Input
                 disabled={type === 'edit'}

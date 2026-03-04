@@ -8,7 +8,7 @@ export interface ChannelTemplate {
   channelObj: number;
 }
 
-export type ChannelType = 'email' | 'enterprise_wechat_bot' | 'nats';
+export type ChannelType = 'email' | 'enterprise_wechat_bot' | 'feishu_bot' | 'dingtalk_bot' | 'custom_webhook' | 'nats';
 
 export interface Channel {
   id: string;

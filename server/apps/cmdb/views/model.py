@@ -12,7 +12,7 @@ from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.models import DELETE_INST, UPDATE_INST, FieldGroup
 from apps.cmdb.services.model import ModelManage
-from apps.cmdb.utils.base import get_default_group_id
+from apps.cmdb.utils.base import get_default_group_id, get_current_team_from_request
 from apps.cmdb.utils.change_record import create_change_record
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.views.mixins import CmdbPermissionMixin
@@ -120,7 +120,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
             request, model_id="", permission_type=PERMISSION_MODEL
         )
-        current_team = int(request.COOKIES.get("current_team"))
+        current_team = get_current_team_from_request(request)
         # 默认的组织模型 全部人都可以查看
         # TODO 默认组织的权限，默认组织应该全部都有VIEW权限，但是操作权限就需要看组织了，组织全选或者配置了组织权限的，就再补充操作权限
         default_group_id = self.default_group_id

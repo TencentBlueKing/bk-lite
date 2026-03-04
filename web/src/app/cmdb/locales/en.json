@@ -175,7 +175,12 @@
         "singleLine": "Single Line",
         "multiLine": "Multi-Line",
         "display": "Display",
-        "attrIdPattern": "Attribute ID must start with a letter and contain only letters, numbers, or underscores"
+        "attrIdPattern": "Attribute ID must start with a letter and contain only letters, numbers, or underscores",
+        "columnId": "Column ID",
+        "columnName": "Column Name",
+        "enterColumnId": "Enter column ID",
+        "enterColumnName": "Enter column name",
+        "columnIdsMustBeUnique": "Column IDs must be unique"
     },
     "Collection": {
         "cycleDeprecated": "The functions of scheduled execution and one-time execution have been taken offline. Please adjust the configuration to periodic execution.",

@@ -200,7 +200,6 @@ export const usePluginFromJson = () => {
             return formValues;
           },
           getParams: (formData: any, configForm: any) => {
-            console.log(configForm);
             // 兼容两种格式：有 base 和没有 base
             const result: any = {
               ...configForm,

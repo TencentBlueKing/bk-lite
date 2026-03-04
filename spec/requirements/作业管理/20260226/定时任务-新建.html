@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新建定时任务 - Job</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Fira Sans', 'Fira Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            color: #1f2329;
+            line-height: 1.5;
+        }
+        .top-header {
+            background: #fff;
+            height: 60px;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-left { display: flex; align-items: center; gap: 8px; }
+        .logo { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 18px; }
+        .logo-icon {
+            width: 32px; height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+        .header-nav { display: flex; gap: 8px; margin-left: 48px; }
+        .nav-item {
+            display: flex; align-items: center; gap: 8px; color: #646a73; cursor: pointer;
+            font-size: 14px; padding: 8px 16px; border-radius: 8px; transition: all 0.3s; font-weight: 500;
+        }
+        .nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.1); }
+        .header-right { display: flex; align-items: center; gap: 20px; color: #646a73; font-size: 14px; }
+        .header-right > span { cursor: pointer; padding: 6px 12px; border-radius: 6px; transition: all 0.3s; }
+        .header-right > span:hover { background: rgba(0, 0, 0, 0.04); color: #0052d9; }
+        .sub-header {
+            background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px);
+            height: 52px; border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            display: flex; align-items: center; padding: 0 32px;
+        }
+        .sub-nav { display: flex; gap: 4px; }
+        .sub-nav-item { padding: 10px 20px; cursor: pointer; font-size: 14px; color: #646a73; border-radius: 8px; transition: all 0.3s; font-weight: 500; }
+        .sub-nav-item:hover { color: #0052d9; background: rgba(0, 82, 217, 0.06); }
+        .sub-nav-item.active { color: #0052d9; background: rgba(0, 82, 217, 0.12); }
+        .main-container { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+        
+        /* 页面介绍区 */
+        .page-intro { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; border: 1px solid #e5e7eb; }
+        .intro-title { font-size: 16px; font-weight: 600; color: #1f2329; margin-bottom: 8px; }
+        .intro-desc { font-size: 14px; color: #646a73; line-height: 1.6; margin: 0; }
+        
+        .form-main { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06); }
+        .form-group { margin-bottom: 24px; }
+        .form-label { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 500; color: #1f2329; margin-bottom: 8px; }
+        .required { color: #ea3636; }
+        .form-input {
+            width: 100%; padding: 10px 12px; border: 1px solid #dcdee0; border-radius: 6px;
+            font-size: 14px; transition: all 0.3s;
+        }
+        .form-input:focus { outline: none; border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        .radio-group { display: flex; gap: 16px; }
+        .radio-item { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+        .radio-item input[type="radio"] { width: 16px; height: 16px; cursor: pointer; }
+        .form-select { width: 100%; padding: 10px 12px; border: 1px solid #dcdee0; border-radius: 6px; font-size: 14px; background: white; cursor: pointer; }
+        .action-footer { display: flex; gap: 12px; margin-top: 24px; padding-top: 24px; border-top: 1px solid #f0f1f5; }
+        .btn { padding: 10px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.3s; border: none; }
+        .btn-primary { background: #0052d9; color: white; }
+        .btn-primary:hover { background: #0041ad; }
+        .btn-default { background: white; color: #646a73; border: 1px solid #dcdee0; }
+        .btn-default:hover { border-color: #0052d9; color: #0052d9; }
+        .form-tip { font-size: 12px; color: #8f959e; margin-top: 4px; }
+        
+        /* 添加按钮 */
+        .btn-add {
+            background: white;
+            color: #0052d9;
+            border: 1px dashed #0052d9;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-add:hover { background: rgba(0, 82, 217, 0.06); }
+        
+        /* Segmented Control */
+        .segmented-control {
+            display: inline-flex;
+            background: #f0f1f5;
+            border-radius: 6px;
+            padding: 3px;
+        }
+        .segment {
+            padding: 6px 16px;
+            font-size: 13px;
+            color: #646a73;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .segment:hover { color: #1f2329; }
+        .segment.active {
+            background: #fff;
+            color: #0052d9;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .hidden { display: none !important; }
+        
+        /* 执行策略样式 */
+        .strategy-panel { margin-top: 8px; }
+        .simple-options { display: flex; flex-direction: column; gap: 16px; }
+        .simple-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #1f2329;
+        }
+        .simple-option input[type="radio"] { width: 16px; height: 16px; cursor: pointer; accent-color: #0052d9; }
+        .option-text { white-space: nowrap; }
+        .option-disabled { color: #0052d9; }
+        .time-input, .datetime-input {
+            padding: 6px 10px;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #1f2329;
+        }
+        .time-input:focus, .datetime-input:focus {
+            outline: none;
+            border-color: #0052d9;
+            box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1);
+        }
+        .interval-select {
+            padding: 6px 10px;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            min-width: 60px;
+        }
+        .interval-select:focus { outline: none; border-color: #0052d9; }
+        .minute-input {
+            width: 60px;
+            padding: 6px 10px;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            font-size: 14px;
+            text-align: center;
+        }
+        .minute-input:focus { outline: none; border-color: #0052d9; box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1); }
+        
+        /* Cron 编辑器样式 */
+        .cron-editor { background: #f5f7fa; border-radius: 8px; padding: 20px; }
+        .cron-fields {
+            display: flex;
+            gap: 8px;
+            background: white;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .cron-field { flex: 1; text-align: center; }
+        .cron-field-label {
+            padding: 8px;
+            font-size: 12px;
+            color: #8f959e;
+            background: #f5f7fa;
+            border-bottom: 1px solid #dcdee0;
+        }
+        .cron-field-input {
+            width: 100%;
+            padding: 12px 8px;
+            border: none;
+            text-align: center;
+            font-size: 16px;
+            font-family: 'Fira Code', 'Monaco', 'Menlo', monospace;
+            color: #1f2329;
+        }
+        .cron-field-input:focus { outline: none; background: #f0f7ff; }
+        .cron-field:not(:last-child) { border-right: 1px solid #dcdee0; }
+        .cron-description {
+            text-align: center;
+            margin-top: 12px;
+            font-size: 14px;
+            color: #646a73;
+        }
+        .cron-next-run {
+            text-align: center;
+            margin-top: 8px;
+            font-size: 13px;
+            color: #8f959e;
+        }
+        .next-run-toggle { cursor: pointer; margin-left: 4px; }
+        
+        /* 模态框样式 */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+        .modal.hidden { display: none; }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            width: 90%;
+            max-width: 800px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        .modal-header {
+            padding: 16px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .modal-title { font-size: 18px; font-weight: 600; color: #1f2329; }
+        .modal-close {
+            cursor: pointer;
+            font-size: 18px;
+            color: #646a73;
+            transition: color 0.3s;
+        }
+        .modal-close:hover { color: #0052d9; }
+        .modal-body {
+            padding: 16px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        .modal-footer {
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        /* 主机工具条 */
+        .host-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .host-search { flex: 1; }
+        .host-search input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .host-search input:focus {
+            outline: none;
+            border-color: #0052d9;
+            box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1);
+        }
+        .host-toolbar .btn-mini {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #dcdee0;
+            background: #fff;
+            color: #646a73;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .host-toolbar .btn-mini:hover {
+            border-color: #0052d9;
+            color: #0052d9;
+        }
+        
+        /* 主机选择表格样式 */
+        .host-selector {
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .host-table { width: 100%; border-collapse: collapse; }
+        .host-table thead {
+            background: #f5f7fa;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .host-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            color: #646a73;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .host-table th:first-child { width: 50px; text-align: center; }
+        .host-table tbody tr {
+            border-bottom: 1px solid #f0f1f5;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .host-table tbody tr:hover { background: #f9fafb; }
+        .host-table tbody tr.selected { background: #e6f4ff; }
+        .host-table tbody tr.disabled { opacity: 0.5; cursor: not-allowed; }
+        .host-table tbody tr.disabled:hover { background: transparent; }
+        .host-table td { padding: 12px 16px; font-size: 14px; color: #1f2329; }
+        .host-table td:first-child { text-align: center; }
+        .host-table input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+        
+        .driver-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .driver-badge.nats { background: #f0f9ff; color: #1677ff; }
+        .driver-badge.ssh { background: #fff7e6; color: #d46b08; }
+        .driver-badge.ansible { background: #f6ffed; color: #52c41a; }
+        .os-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            background: #f5f7fa;
+            color: #646a73;
+        }
+        .driver-tip { margin-left: 6px; cursor: help; }
+    
+        /* ===== UI/UX ENHANCEMENTS ===== */
+        
+        /* Focus states for accessibility */
+        a:focus-visible, button:focus-visible, input:focus-visible, 
+        select:focus-visible, textarea:focus-visible, 
+        [tabindex]:focus-visible, .nav-item:focus-visible,
+        .sub-nav-item:focus-visible {
+            outline: 2px solid #0052d9;
+            outline-offset: 2px;
+        }
+
+        /* Enhanced table row hover */
+        tbody tr {
+            border-left: 3px solid transparent;
+        }
+        tbody tr:hover {
+            background: #f0f5ff !important;
+            border-left: 3px solid #0052d9;
+        }
+
+        /* Inline SVG icon alignment */
+        .nav-item svg, .sub-nav-item svg, .header-right svg {
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+    
+        /* Table responsive wrapper */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table-responsive table {
+            min-width: 100%;
+        }
+
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo"><div class="logo-icon">BK</div><span>Job</span></div>
+            <nav class="header-nav">
+                <div class="nav-item" onclick="location.href='首页.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>首页</span></div>
+                <div class="nav-item active" onclick="location.href='快速执行.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></span><span>作业执行</span></div>
+                <div class="nav-item" onclick="location.href='脚本库.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span>作业模版</span></div>
+                <div class="nav-item" onclick="location.href='目标管理.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><span>目标管理</span></div>
+                <div class="nav-item" onclick="location.href='高危命令配置.html'"><span style="display:inline-flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span>系统配置</span></div>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> 帮助文档</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 语言: 简体中文</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Admin</span>
+        </div>
+    </div>
+
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <div class="sub-nav-item" onclick="location.href='快速执行.html'">快速执行</div>
+            <div class="sub-nav-item" onclick="location.href='文件分发.html'">文件分发</div>
+            <div class="sub-nav-item active">定时任务</div>
+            <div class="sub-nav-item" onclick="location.href='作业记录.html'">作业记录</div>
+        </nav>
+    </div>
+
+    <div class="main-container">
+        <div class="page-intro">
+            <h2 class="intro-title">新建定时任务</h2>
+            <p class="intro-desc">创建新的定时任务，配置执行策略和执行内容。支持简单策略快速配置，或使用复杂策略自定义 Cron 表达式。</p>
+        </div>
+
+        <div class="form-main">
+            <div class="form-group">
+                <label class="form-label"><span class="required">*</span>任务名称</label>
+                <input type="text" class="form-input" placeholder="请输入任务名称" />
+            </div>
+
+            <!-- 目标主机 -->
+            <div class="form-group">
+                <label class="form-label"><span class="required">*</span>目标主机</label>
+                <button type="button" class="btn-add" onclick="openHostSelector()">
+                    <span>+</span>
+                    <span>添加目标主机</span>
+                </button>
+                <div class="form-tip" id="hostSelectedTip" style="margin-top: 12px;">已选择 0 台主机</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label"><span class="required">*</span>作业类型</label>
+                <div class="radio-group">
+                    <label class="radio-item">
+                        <input type="radio" name="job-type" value="script" checked />
+                        <span>脚本执行</span>
+                    </label>
+                    <label class="radio-item">
+                        <input type="radio" name="job-type" value="file" />
+                        <span>文件分发</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 选择模版 with Segmented Control -->
+            <div class="form-group" id="scriptSelectGroup">
+                <label class="form-label"><span class="required">*</span>选择模版</label>
+                <div class="segmented-control">
+                    <button type="button" class="segment active" data-type="script" onclick="switchTemplateType('script')">脚本库</button>
+                    <button type="button" class="segment" data-type="playbook" onclick="switchTemplateType('playbook')">Playbook</button>
+                </div>
+                <select class="form-select" id="scriptSelect" style="margin-top: 8px;">
+                    <option value="">请选择脚本</option>
+                    <option value="1">清理磁盘空间.sh</option>
+                    <option value="2">日志轮转.sh</option>
+                    <option value="3">数据库备份.sh</option>
+                </select>
+                <select class="form-select hidden" id="playbookSelect" style="margin-top: 8px;">
+                    <option value="">请选择 Playbook</option>
+                    <option value="p1">deploy-nginx.yml</option>
+                    <option value="p2">setup-docker.yml</option>
+                    <option value="p3">configure-firewall.yml</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label"><span class="required">*</span>执行策略</label>
+                <div class="segmented-control" style="margin-bottom: 16px;">
+                    <button type="button" class="segment active" data-strategy="simple" onclick="switchStrategy('simple')">简单策略</button>
+                    <button type="button" class="segment" data-strategy="advanced" onclick="switchStrategy('advanced')">复杂策略</button>
+                </div>
+                
+                <!-- 简单策略 -->
+                <div id="simpleStrategy" class="strategy-panel">
+                    <div class="simple-options">
+                        <label class="simple-option">
+                            <input type="radio" name="simple-schedule" value="daily" checked onchange="updateSimpleSchedule()" />
+                            <span class="option-text">每天一次，在</span>
+                            <input type="time" id="dailyTime" class="time-input" value="02:00" onchange="updateSimpleSchedule()" />
+                        </label>
+                        <label class="simple-option">
+                            <input type="radio" name="simple-schedule" value="hourly" onchange="updateSimpleSchedule()" />
+                            <span class="option-text">每</span>
+                            <select id="hourlyInterval" class="interval-select" onchange="updateSimpleSchedule()">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="6">6</option>
+                                <option value="8">8</option>
+                                <option value="12">12</option>
+                            </select>
+                            <span class="option-text">小时一次，在</span>
+                            <input type="number" id="hourlyMinute" class="minute-input" value="0" min="0" max="59" onchange="updateSimpleSchedule()" />
+                            <span class="option-text">分</span>
+                        </label>
+                        <label class="simple-option">
+                            <input type="radio" name="simple-schedule" value="once" onchange="updateSimpleSchedule()" />
+                            <span class="option-text">只执行一次，在</span>
+                            <input type="datetime-local" id="onceDateTime" class="datetime-input" onchange="updateSimpleSchedule()" />
+                        </label>
+                        <label class="simple-option">
+                            <input type="radio" name="simple-schedule" value="disabled" onchange="updateSimpleSchedule()" />
+                            <span class="option-text option-disabled">不开启定时任务</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- 复杂策略 (Cron) -->
+                <div id="advancedStrategy" class="strategy-panel hidden">
+                    <div class="cron-editor">
+                        <div class="cron-fields">
+                            <div class="cron-field">
+                                <div class="cron-field-label">分</div>
+                                <input type="text" class="cron-field-input" id="cronMinute" value="*" oninput="updateCronExpression()" />
+                            </div>
+                            <div class="cron-field">
+                                <div class="cron-field-label">时</div>
+                                <input type="text" class="cron-field-input" id="cronHour" value="*" oninput="updateCronExpression()" />
+                            </div>
+                            <div class="cron-field">
+                                <div class="cron-field-label">日</div>
+                                <input type="text" class="cron-field-input" id="cronDay" value="*" oninput="updateCronExpression()" />
+                            </div>
+                            <div class="cron-field">
+                                <div class="cron-field-label">月</div>
+                                <input type="text" class="cron-field-input" id="cronMonth" value="*" oninput="updateCronExpression()" />
+                            </div>
+                            <div class="cron-field">
+                                <div class="cron-field-label">周</div>
+                                <input type="text" class="cron-field-input" id="cronWeek" value="*" oninput="updateCronExpression()" />
+                            </div>
+                        </div>
+                        <div class="cron-description" id="cronDescription">每分钟</div>
+                        <div class="cron-next-run">下次：<span id="cronNextRun">2026-02-10 13:51:00</span> <span class="next-run-toggle">∨</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">并发策略</label>
+                <select class="form-select">
+                    <option value="skip">跳过（上次未完成则跳过本次）</option>
+                    <option value="run">运行（无论上次是否完成）</option>
+                    <option value="queue">排队（等待上次完成后执行）</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">超时时间（秒）</label>
+                <input type="number" class="form-input" value="300" placeholder="300" />
+            </div>
+
+            <div class="action-footer">
+                <button class="btn btn-primary">保存并启用</button>
+                <button class="btn btn-default">仅保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主机选择弹窗 -->
+    <div id="hostSelectorModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">选择目标主机</h2>
+                <span class="modal-close" onclick="closeHostSelector()">×</span>
+            </div>
+            <div class="modal-body">
+                <div class="host-toolbar">
+                    <div class="host-search">
+                        <input id="hostSearch" type="text" placeholder="搜索主机名或IP，支持模糊匹配" />
+                    </div>
+                    <button type="button" class="btn-mini" onclick="selectAllFiltered(true)">全选当前</button>
+                    <button type="button" class="btn-mini" onclick="selectAllFiltered(false)">取消全选</button>
+                </div>
+
+                <div class="host-selector">
+                    <table class="host-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="selectAllCheckbox" onclick="toggleSelectAll(this)" /></th>
+                                <th>目标名称</th>
+                                <th>IP 地址</th>
+                                <th>云区域</th>
+                                <th>操作系统</th>
+                                <th>当前驱动</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hostList">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" onclick="closeHostSelector()">取消</button>
+                <button type="button" class="btn btn-primary" onclick="confirmHostSelection()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 目标主机数据与渲染 ---
+        const hostData = [
+            { id: 'host1', name: 'web-server-01', ip: '192.168.1.101', cloudArea: '默认区域', os: 'Linux', driver: 'nats-executor', checked: false },
+            { id: 'host2', name: 'web-server-02', ip: '192.168.1.102', cloudArea: '默认区域', os: 'Linux', driver: 'ansible', checked: false },
+            { id: 'host3', name: 'db-primary-01', ip: '192.168.1.201', cloudArea: '默认区域', os: 'Linux', driver: 'ssh', checked: false },
+            { id: 'host4', name: 'db-server-02', ip: '192.168.1.202', cloudArea: '杭州', os: 'Linux', driver: 'ansible', checked: false },
+            { id: 'host5', name: 'k8s-node-master', ip: '10.0.1.10', cloudArea: '杭州', os: 'Linux', driver: 'nats-executor', checked: false },
+            { id: 'host6', name: 'app-server-01', ip: '172.16.10.50', cloudArea: '上海', os: 'Linux', driver: 'ansible', checked: false },
+            { id: 'host7', name: 'cache-redis-01', ip: '192.168.2.88', cloudArea: '北京', os: 'Linux', driver: 'ssh', checked: false },
+        ];
+
+        let currentTemplateType = 'script';
+
+        function getDriverBadgeClass(driver) {
+            if (driver === 'nats-executor') return 'nats';
+            if (driver === 'ssh') return 'ssh';
+            if (driver === 'ansible') return 'ansible';
+            return '';
+        }
+
+        function renderHostList(filter = '') {
+            const listEl = document.getElementById('hostList');
+            listEl.innerHTML = '';
+            const keyword = filter.trim().toLowerCase();
+            const isPlaybook = currentTemplateType === 'playbook';
+            
+            const filtered = hostData.filter(h =>
+                !keyword ||
+                h.name.toLowerCase().includes(keyword) ||
+                h.ip.toLowerCase().includes(keyword) ||
+                h.cloudArea.toLowerCase().includes(keyword)
+            );
+            
+            filtered.forEach(h => {
+                const isDisabled = isPlaybook && h.driver !== 'ansible';
+                const row = document.createElement('tr');
+                row.className = h.checked ? 'selected' : '';
+                if (isDisabled) row.classList.add('disabled');
+                
+                row.innerHTML = `
+                    <td><input type="checkbox" id="${h.id}" ${h.checked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} /></td>
+                    <td>${h.name}</td>
+                    <td>${h.ip}</td>
+                    <td>${h.cloudArea}</td>
+                    <td><span class="os-badge">${h.os}</span></td>
+                    <td>
+                        <span class="driver-badge ${getDriverBadgeClass(h.driver)}">${h.driver}</span>
+                        ${isDisabled ? '<span class="driver-tip" title="该驱动不支持执行 Playbook"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>' : ''}
+                    </td>
+                `;
+                
+                if (!isDisabled) {
+                    row.addEventListener('click', (e) => {
+                        if (e.target.type !== 'checkbox') {
+                            const checkbox = row.querySelector('input[type="checkbox"]');
+                            checkbox.checked = !checkbox.checked;
+                            h.checked = checkbox.checked;
+                            row.classList.toggle('selected', h.checked);
+                            updateHostSelectedTip();
+                            updateSelectAllCheckbox();
+                        }
+                    });
+                    
+                    row.querySelector('input').addEventListener('change', (e) => {
+                        e.stopPropagation();
+                        h.checked = e.target.checked;
+                        row.classList.toggle('selected', h.checked);
+                        updateHostSelectedTip();
+                        updateSelectAllCheckbox();
+                    });
+                }
+                
+                listEl.appendChild(row);
+            });
+            
+            updateHostSelectedTip();
+            updateSelectAllCheckbox();
+        }
+
+        function updateHostSelectedTip() {
+            const checkedHosts = hostData.filter(h => h.checked);
+            const totalChecked = checkedHosts.length;
+            const tipEl = document.getElementById('hostSelectedTip');
+            
+            if (currentTemplateType === 'playbook') {
+                const incompatibleCount = checkedHosts.filter(h => h.driver !== 'ansible').length;
+                if (incompatibleCount > 0) {
+                    tipEl.innerHTML = `已选择 ${totalChecked} 台主机 <span style="color: #d46b08;">（${incompatibleCount} 台不支持 Playbook）</span>`;
+                } else {
+                    tipEl.textContent = `已选择 ${totalChecked} 台主机`;
+                }
+            } else {
+                tipEl.textContent = `已选择 ${totalChecked} 台主机`;
+            }
+        }
+
+        function updateSelectAllCheckbox() {
+            const keyword = document.getElementById('hostSearch').value.trim().toLowerCase();
+            const isPlaybook = currentTemplateType === 'playbook';
+            
+            const filtered = hostData.filter(h => {
+                const matchesFilter = !keyword ||
+                    h.name.toLowerCase().includes(keyword) ||
+                    h.ip.toLowerCase().includes(keyword) ||
+                    h.cloudArea.toLowerCase().includes(keyword);
+                const isCompatible = !isPlaybook || h.driver === 'ansible';
+                return matchesFilter && isCompatible;
+            });
+            
+            const allChecked = filtered.length > 0 && filtered.every(h => h.checked);
+            const someChecked = filtered.some(h => h.checked);
+            
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            selectAllCheckbox.checked = allChecked;
+            selectAllCheckbox.indeterminate = someChecked && !allChecked;
+        }
+
+        function selectAllFiltered(checked) {
+            const keyword = document.getElementById('hostSearch').value.trim().toLowerCase();
+            const isPlaybook = currentTemplateType === 'playbook';
+            
+            hostData.forEach(h => {
+                const matchesFilter = !keyword ||
+                    h.name.toLowerCase().includes(keyword) ||
+                    h.ip.toLowerCase().includes(keyword) ||
+                    h.cloudArea.toLowerCase().includes(keyword);
+                const isCompatible = !isPlaybook || h.driver === 'ansible';
+                
+                if (matchesFilter && isCompatible) {
+                    h.checked = checked;
+                }
+            });
+            renderHostList(keyword);
+        }
+
+        function toggleSelectAll(checkbox) {
+            selectAllFiltered(checkbox.checked);
+        }
+
+        function openHostSelector() {
+            document.getElementById('hostSelectorModal').classList.remove('hidden');
+            renderHostList();
+        }
+
+        function closeHostSelector() {
+            document.getElementById('hostSelectorModal').classList.add('hidden');
+        }
+
+        function confirmHostSelection() {
+            updateHostSelectedTip();
+            closeHostSelector();
+        }
+
+        function switchTemplateType(type) {
+            currentTemplateType = type;
+            
+            document.querySelectorAll('.segment').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.type === type);
+            });
+            document.getElementById('scriptSelect').classList.toggle('hidden', type !== 'script');
+            document.getElementById('playbookSelect').classList.toggle('hidden', type !== 'playbook');
+            
+            if (type === 'script') {
+                document.getElementById('scriptSelect').value = '';
+            } else {
+                document.getElementById('playbookSelect').value = '';
+            }
+            
+            updateHostSelectedTip();
+        }
+
+        // 搜索输入监听
+        document.addEventListener('DOMContentLoaded', () => {
+            const search = document.getElementById('hostSearch');
+            search.addEventListener('input', () => {
+                renderHostList(search.value);
+            });
+            
+            // 初始化执行策略
+            updateSimpleSchedule();
+            updateCronExpression();
+            
+            // 设置默认的一次性执行时间
+            const now = new Date();
+            now.setHours(now.getHours() + 1);
+            now.setMinutes(0);
+            const dateStr = now.toISOString().slice(0, 16);
+            document.getElementById('onceDateTime').value = dateStr;
+        });
+        
+        // --- 执行策略切换 ---
+        function switchStrategy(type) {
+            document.querySelectorAll('.segment[data-strategy]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.strategy === type);
+            });
+            document.getElementById('simpleStrategy').classList.toggle('hidden', type !== 'simple');
+            document.getElementById('advancedStrategy').classList.toggle('hidden', type !== 'advanced');
+        }
+        
+        // --- 简单策略更新 ---
+        function updateSimpleSchedule() {
+            const selected = document.querySelector('input[name="simple-schedule"]:checked');
+            if (!selected) return;
+            
+            const dailyTime = document.getElementById('dailyTime');
+            const hourlyInterval = document.getElementById('hourlyInterval');
+            const hourlyMinute = document.getElementById('hourlyMinute');
+            const onceDateTime = document.getElementById('onceDateTime');
+            
+            dailyTime.disabled = selected.value !== 'daily';
+            hourlyInterval.disabled = selected.value !== 'hourly';
+            hourlyMinute.disabled = selected.value !== 'hourly';
+            onceDateTime.disabled = selected.value !== 'once';
+            
+            dailyTime.style.opacity = selected.value === 'daily' ? '1' : '0.5';
+            hourlyInterval.style.opacity = selected.value === 'hourly' ? '1' : '0.5';
+            hourlyMinute.style.opacity = selected.value === 'hourly' ? '1' : '0.5';
+            onceDateTime.style.opacity = selected.value === 'once' ? '1' : '0.5';
+        }
+        
+        // --- Cron 表达式解析 ---
+        function updateCronExpression() {
+            const minute = document.getElementById('cronMinute').value.trim() || '*';
+            const hour = document.getElementById('cronHour').value.trim() || '*';
+            const day = document.getElementById('cronDay').value.trim() || '*';
+            const month = document.getElementById('cronMonth').value.trim() || '*';
+            const week = document.getElementById('cronWeek').value.trim() || '*';
+            
+            const description = describeCron(minute, hour, day, month, week);
+            document.getElementById('cronDescription').textContent = description;
+            
+            // 更新下次执行时间（模拟）
+            const nextRun = calculateNextRun(minute, hour, day, month, week);
+            document.getElementById('cronNextRun').textContent = nextRun;
+        }
+        
+        function describeCron(minute, hour, day, month, week) {
+            // 简单的 Cron 描述生成
+            if (minute === '*' && hour === '*' && day === '*' && month === '*' && week === '*') {
+                return '每分钟';
+            }
+            if (minute === '0' && hour === '*' && day === '*' && month === '*' && week === '*') {
+                return '每小时整点';
+            }
+            if (minute === '0' && hour === '0' && day === '*' && month === '*' && week === '*') {
+                return '每天 00:00';
+            }
+            if (minute.startsWith('*/') && hour === '*') {
+                const interval = minute.slice(2);
+                return `每 ${interval} 分钟`;
+            }
+            if (minute === '0' && hour.startsWith('*/')) {
+                const interval = hour.slice(2);
+                return `每 ${interval} 小时`;
+            }
+            if (minute !== '*' && hour !== '*' && day === '*' && month === '*' && week === '*') {
+                return `每天 ${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+            }
+            if (week !== '*' && day === '*') {
+                const weekNames = ['日', '一', '二', '三', '四', '五', '六'];
+                const weekDay = weekNames[parseInt(week)] || week;
+                return `每周${weekDay} ${hour}:${minute.padStart(2, '0')}`;
+            }
+            return `${minute} ${hour} ${day} ${month} ${week}`;
+        }
+        
+        function calculateNextRun(minute, hour, day, month, week) {
+            const now = new Date();
+            let next = new Date(now);
+            
+            // 简单模拟下次执行时间
+            if (minute === '*' && hour === '*') {
+                next.setMinutes(next.getMinutes() + 1);
+                next.setSeconds(0);
+            } else if (hour === '*' && minute !== '*') {
+                const m = parseInt(minute) || 0;
+                if (now.getMinutes() >= m) {
+                    next.setHours(next.getHours() + 1);
+                }
+                next.setMinutes(m);
+                next.setSeconds(0);
+            } else {
+                const h = parseInt(hour) || 0;
+                const m = parseInt(minute) || 0;
+                next.setHours(h);
+                next.setMinutes(m);
+                next.setSeconds(0);
+                if (next <= now) {
+                    next.setDate(next.getDate() + 1);
+                }
+            }
+            
+            const pad = n => String(n).padStart(2, '0');
+            return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())} ${pad(next.getHours())}:${pad(next.getMinutes())}:00`;
+        }
+    </script>
+</body>
+</html>

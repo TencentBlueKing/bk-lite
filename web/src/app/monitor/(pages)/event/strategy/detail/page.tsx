@@ -112,17 +112,17 @@ const StrategyOperation = () => {
   const [threshold, setThreshold] = useState<ThresholdField[]>([
     {
       level: 'critical',
-      method: '=',
+      method: '>',
       value: null
     },
     {
       level: 'error',
-      method: '=',
+      method: '>',
       value: null
     },
     {
       level: 'warning',
-      method: '=',
+      method: '>',
       value: null
     }
   ]);
@@ -197,10 +197,19 @@ const StrategyOperation = () => {
             const _labels = (target?.dimensions || []).map((item) => item.name);
             setLabels(_labels);
             setCalculationUnit(filterInvalidUnit(target?.unit));
+            // 计算完整的分组维度选项列表并设置为所有选项
+            const fixedList =
+              getGroupIds(monitorName as string)?.list || defaultGroup;
+            const allGroupByOptions = [...new Set([...fixedList, ..._labels])];
+            setGroupBy(allGroupByOptions);
           }
         }
       } else if (!_metricId) {
         setMetric(null);
+        // 新增模式下没有指标时，设置分组维度为固定列表（全选）
+        const fixedList =
+          getGroupIds(monitorName as string)?.list || defaultGroup;
+        setGroupBy(fixedList);
       }
       const instanceIdStr = searchParams.get('instanceId');
       let instanceIds: string[] = [];
@@ -338,6 +347,23 @@ const StrategyOperation = () => {
         setMetric(_metrics?.name || '');
         setLabels(_labels);
         setConditions(query_condition?.filter || []);
+        const isEnumMetric = isStringArray(_metrics?.unit || '');
+        const comparisonMethods = isEnumMetric
+          ? ENUM_COMPARISON_METHOD
+          : COMPARISON_METHOD;
+        const defaultMethod = comparisonMethods[0].value;
+        // 更新阈值：对于未填写的项，如果当前操作符不在当前指标类型的操作符列表中，则设置为默认值
+        setThreshold((prevThreshold: any) =>
+          prevThreshold.map((item) => {
+            const methodExists = comparisonMethods.some(
+              (m) => m.value === item.method
+            );
+            if (item.value === null && !methodExists) {
+              return { ...item, method: defaultMethod };
+            }
+            return item;
+          })
+        );
       }
     }
   };
@@ -378,10 +404,11 @@ const StrategyOperation = () => {
     const target = metrics.find((item) => item.name === val);
     const _labels = (target?.dimensions || []).map((item) => item.name);
     setLabels(_labels);
-    // 重置分组维度为默认值、清空条件维度
-    const defaultGroupBy =
-      getGroupIds(monitorName as string)?.default || defaultGroup;
-    setGroupBy(defaultGroupBy);
+    // 计算完整的分组维度选项列表（固定列表 + 标签列表，去重）
+    const fixedList = getGroupIds(monitorName as string)?.list || defaultGroup;
+    const allGroupByOptions = [...new Set([...fixedList, ..._labels])];
+    // 设置分组维度为所有可用选项（如果没有则为空数组）
+    setGroupBy(allGroupByOptions);
     setConditions([]);
 
     // 判断新指标是否为枚举类型，并处理阈值的操作符和值
@@ -390,14 +417,11 @@ const StrategyOperation = () => {
       ? ENUM_COMPARISON_METHOD
       : COMPARISON_METHOD;
 
-    // 重置阈值：如果操作符不在新列表中则取第一个，并清空值（因为不同指标的枚举选项/单位不同）
+    // 重置阈值：切换指标时，操作符选中下拉列表的第一个值，并清空值
     const newThreshold = threshold.map((item) => {
-      const methodExists = newComparisonMethods.some(
-        (m) => m.value === item.method
-      );
       return {
         ...item,
-        method: methodExists ? item.method : newComparisonMethods[0].value,
+        method: newComparisonMethods[0].value,
         value: null // 切换指标时清空值
       };
     });

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { KeepAlive } from 'react-activation';
+import { KeepAlive, useActivate } from 'react-activation';
 import {
   Button,
   Space,
@@ -24,9 +24,10 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
+import { ensureCollectTaskMap } from '@/app/cmdb/utils/collectTask';
 import { useCommon } from '@/app/cmdb/context/common';
 import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
-import { useModelApi, useClassificationApi, useInstanceApi } from '@/app/cmdb/api';
+import { useModelApi, useClassificationApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import {
   GroupItem,
   ModelItem,
@@ -170,6 +171,7 @@ const AssetDataContent = () => {
     deleteInstance,
     batchDeleteInstances,
   } = useInstanceApi();
+  const { getCollectTaskNames } = useCollectApi();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -225,6 +227,14 @@ const AssetDataContent = () => {
   const urlQueryInitialized = useRef(false);
   const initialDataLoaded = useRef(false);
 
+  useActivate(() => {
+    const { needRefresh, setNeedRefresh } = useAssetDataStore.getState();
+    if (needRefresh && modelId) {
+      fetchData();
+      setNeedRefresh(false);
+    }
+  });
+
   // 监听窗口大小变化，更新折叠状态
   useEffect(() => {
     const rowEl = topRowRef.current;
@@ -277,6 +287,12 @@ const AssetDataContent = () => {
         });
     }
   }, [modelId]);
+
+  useEffect(() => {
+    ensureCollectTaskMap(getCollectTaskNames).catch(() => {
+      useAssetDataStore.getState().setCollectTaskMap({});
+    });
+  }, []);
 
   const handleExport = async (
     exportType: 'selected' | 'currentPage' | 'all'
@@ -463,7 +479,10 @@ const AssetDataContent = () => {
         setPropertyList(attrList);
         setTableData(instData.insts);
         setPagination(prev => ({ ...prev, total: instData.count }));
-        initialDataLoaded.current = true;
+        // 延迟到下一帧再设置
+        requestAnimationFrame(() => {
+          initialDataLoaded.current = true;
+        });
       })
       .finally(() => setLoading(false));
   };

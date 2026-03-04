@@ -478,7 +478,7 @@ const SearchView: React.FC = () => {
               showTitle: true
             }
           }));
-        const _columns: any = cloneDeep(tableColumns);
+        const _columns: ColumnItem[] = cloneDeep(tableColumns);
         if (_columns[0]) _columns[0].fixed = 'left';
         setColumns(_columns);
         setTableData(_tableData);
