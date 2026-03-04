@@ -36,12 +36,12 @@ BASE_FIELDS = [
 ]
 
 REL_FIELDS = [
-    "redis_topology_mode",
-    "redis_cluster_uuid",
+    "topo_mode",
+    "cluster_uuid",
     "master_group_list",
     "master_group_name",
-    "slave_set",
-    "master_ref",
+    "slaves",
+    "master",
 ]
 
 OUTPUT_FIELDS = BASE_FIELDS + REL_FIELDS
@@ -305,20 +305,20 @@ def apply_relations(instances: List[Dict[str, Any]], sentinel: Optional[Dict[str
         port = str(inst.get("port", ""))
         run_id = str(inst.get("_run_id", ""))
 
-        inst["redis_topology_mode"] = mode
-        inst["redis_cluster_uuid"] = ""
+        inst["topo_mode"] = mode
+        inst["cluster_uuid"] = ""
         inst["master_group_list"] = []
         inst["master_group_name"] = ""
-        inst["slave_set"] = []
-        inst["master_ref"] = {}
+        inst["slaves"] = []
+        inst["master"] = {}
 
         if mode == "sentinel":
-            inst["redis_cluster_uuid"] = s_uuid
+            inst["cluster_uuid"] = s_uuid
             # 哨兵模式下不输出 master_group_list / master_group_name，保持为 [] 和 ""
             continue
 
         if mode == "cluster":
-            inst["redis_cluster_uuid"] = c_uuid
+            inst["cluster_uuid"] = c_uuid
             inst["master_group_list"] = c_groups
             candidates = c_by_port.get(port, [])
             node = candidates[0] if len(candidates) == 1 else None
@@ -328,16 +328,16 @@ def apply_relations(instances: List[Dict[str, Any]], sentinel: Optional[Dict[str
             flags = str(node.get("flags", ""))
             if "master" in flags:
                 inst["master_group_name"] = nid
-                inst["slave_set"] = c_slave_set_by_master.get(nid, [])
+                inst["slaves"] = c_slave_set_by_master.get(nid, [])
             elif "slave" in flags:
                 mid = str(node.get("master_id", ""))
                 inst["master_group_name"] = mid
                 mnode = c_node_by_id.get(mid, {})
-                inst["master_ref"] = {"ip": str(mnode.get("_host", "")), "port": str(mnode.get("_port", "")), "node_id_or_runid": mid}
+                inst["master"] = {"ip": str(mnode.get("_host", "")), "port": str(mnode.get("_port", "")), "node_id_or_runid": mid}
             continue
 
         if s_uuid:
-            inst["redis_cluster_uuid"] = s_uuid
+            inst["cluster_uuid"] = s_uuid
             inst["master_group_list"] = s_groups
             group = s_groups[0] if len(s_groups) == 1 else ""
             if not group and run_id:
@@ -355,24 +355,24 @@ def apply_relations(instances: List[Dict[str, Any]], sentinel: Optional[Dict[str
             inst["master_group_name"] = group
             m = s_master_by_group.get(group, {})
             if role == "master":
-                inst["slave_set"] = s_slave_set_by_group.get(group, [])
+                inst["slaves"] = s_slave_set_by_group.get(group, [])
             elif role == "slave":
-                inst["master_ref"] = {"ip": str(m.get("ip", "")), "port": str(m.get("port", "")), "node_id_or_runid": str(m.get("runid", ""))}
+                inst["master"] = {"ip": str(m.get("ip", "")), "port": str(m.get("port", "")), "node_id_or_runid": str(m.get("runid", ""))}
 
 
 def sanitize(instances: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for inst in instances:
         row: Dict[str, Any] = {}
-        mode = inst.get("redis_topology_mode", "")
+        mode = inst.get("topo_mode", "")
         for k in OUTPUT_FIELDS:
             if mode == "sentinel" and k in ("master_group_list", "master_group_name"):
                 continue  # 哨兵模式下不输出这两项
             if k == "master_group_list":
                 row[k] = inst.get(k, [])
-            elif k in {"slave_set"}:
+            elif k in {"slaves"}:
                 row[k] = inst.get(k, [])
-            elif k in {"master_ref"}:
+            elif k in {"master"}:
                 row[k] = inst.get(k, {})
             else:
                 row[k] = inst.get(k, "")
