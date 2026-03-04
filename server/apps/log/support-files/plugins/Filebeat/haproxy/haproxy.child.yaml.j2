@@ -1,0 +1,23 @@
+- module: haproxy
+  log:
+    enabled: {{ log_enabled | default(true) | lower }}
+    {% if input_type %}
+    var.input: "{{ input_type }}"
+    {% endif %}
+    {% if log_paths %}
+    var.paths:
+      {% for path in log_paths %}
+      - "{{ path }}"
+      {% endfor %}
+    {% endif %}
+    {% if syslog_host %}
+    var.syslog_host: "{{ syslog_host }}"
+    {% endif %}
+    {% if syslog_port %}
+    var.syslog_port: {{ syslog_port }}
+    {% endif %}
+  fields:
+    collector: "Filebeat"
+    collect_type: "haproxy"
+    instance_id: "{{ instance_id }}"
+  fields_under_root: {{ fields_under_root | default(true) | lower }}
