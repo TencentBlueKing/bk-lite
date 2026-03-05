@@ -1,0 +1,32 @@
+{
+  "name": "apache",
+  "collector": "Filebeat",
+  "config_section": "module",
+  "icon": "apache",
+  "description": "Collects and parses Apache HTTP server access and error logs using Filebeat module",
+  "default_query": "collect_type: apache | last 1 by (_time) partition by (instance_id)",
+  "attrs": [
+    "collect_type",
+    "collector",
+    "instance_id",
+    "apache.access.remote_ip",
+    "apache.access.user_name",
+    "apache.access.method",
+    "apache.access.url",
+    "apache.access.http_version",
+    "apache.access.response_code",
+    "apache.access.body_sent.bytes",
+    "apache.access.referrer",
+    "apache.access.agent",
+    "apache.access.geoip.country_name",
+    "apache.access.geoip.city_name",
+    "apache.error.level",
+    "apache.error.message",
+    "apache.error.pid",
+    "apache.error.tid",
+    "apache.error.client",
+    "event.dataset",
+    "event.module",
+    "fileset.name"
+  ]
+}

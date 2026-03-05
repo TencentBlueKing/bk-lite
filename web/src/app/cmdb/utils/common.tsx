@@ -2,13 +2,13 @@ import { BUILD_IN_MODEL, CREDENTIAL_LIST } from '@/app/cmdb/constants/asset';
 import { getSvgIcon } from './utils';
 import dayjs from 'dayjs';
 import { AttrFieldType } from '@/app/cmdb/types/assetManage';
-import { Tag, Select, Input, InputNumber, DatePicker, Tooltip, Button, Table, Popover } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Tag, Select, Input, InputNumber, DatePicker, Tooltip, Button, Table, Popover, Space, Cascader, message } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
 import UserAvatar from '@/components/user-avatar';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useTranslation } from '@/utils/i18n';
 import {
   ModelIconItem,
   ColumnItem,
@@ -22,6 +22,7 @@ import {
   IntAttrOption,
   AttrLike,
   TableColumnSpec,
+  TagAttrOption,
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { formatCollectTaskDisplay } from '@/app/cmdb/utils/collectTask';
@@ -341,7 +342,7 @@ export const getAssetColumns = (config: {
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
-            const enumOptions = Array.isArray(item.option) ? item.option : [];
+            const enumOptions = Array.isArray(item.option) ? (item.option as EnumList[]) : [];
             return (
               <>
                 {enumOptions.find((opt: EnumList) => opt.id === record[attrId])
@@ -394,20 +395,45 @@ export const getAssetColumns = (config: {
             );
             
             return (
-              <div className="flex items-center gap-1 flex-wrap">
-                {displayValues.map((val, idx) => (
-                  <Tag key={idx}>{String(val)}</Tag>
-                ))}
-                {remainingCount > 0 && (
-                  <Popover content={fullTableContent} trigger="hover">
-                    <Tag className="cursor-pointer">+{remainingCount}</Tag>
-                  </Popover>
-                )}
-              </div>
+              <Popover
+                content={fullTableContent}
+                trigger="hover"
+                placement="bottomLeft"
+              >
+                <div className="flex items-center gap-1 flex-wrap cursor-pointer">
+                  {displayValues.map((val, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-block px-2 py-0.5 text-xs rounded bg-[var(--color-bg-4)] text-[var(--color-text-1)]"
+                    >
+                      {String(val)}
+                    </span>
+                  ))}
+                  {remainingCount > 0 && (
+                    <span className="ml-2 text-xs text-[var(--color-primary)]">
+                      +{remainingCount}
+                    </span>
+                  )}
+                </div>
+              </Popover>
             );
           },
         };
       }
+      case 'tag':
+        return {
+          ...columnItem,
+          render: (_: unknown, record: any) => {
+            const values = Array.isArray(record[attrId]) ? record[attrId] : [];
+            const text = values.length ? values.join('，') : '--';
+            return (
+              <EllipsisWithTooltip
+                className="whitespace-nowrap overflow-hidden text-ellipsis"
+                text={text}
+              />
+            );
+          },
+        };
       case 'time': {
         const timeOption = item.option as TimeAttrOption | undefined;
         const dateFormat = timeOption?.display_format === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM-DD HH:mm:ss';
@@ -479,35 +505,56 @@ const TableFieldEditor = ({ columns, disabled, value, onChange }: {
   value?: any;
   onChange?: (value: any) => void;
 }) => {
+  const { t } = useTranslation();
+  const createEmptyRow = () => {
+    const newRow: any = {};
+    columns.forEach(col => {
+      newRow[col.column_id] = '';
+    });
+    return newRow;
+  };
+
+  const initializedRef = React.useRef(false);
+
   const parseValue = (val: any): any[] => {
-    if (!val) return [];
+    if (!val) return [createEmptyRow()];
     if (typeof val === 'string') {
       try {
-        return JSON.parse(val);
+        const parsed = JSON.parse(val);
+        return parsed.length > 0 ? parsed : [createEmptyRow()];
       } catch {
-        return [];
+        return [createEmptyRow()];
       }
     }
-    return Array.isArray(val) ? val : [];
+    return Array.isArray(val) && val.length > 0 ? val : [createEmptyRow()];
   };
 
   const [dataSource, setDataSource] = useState<any[]>(() => parseValue(value));
 
   React.useEffect(() => {
-    setDataSource(parseValue(value));
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      setDataSource(parseValue(value));
+    }
   }, [value]);
+
+  const isRowEmpty = (row: any) => {
+    return columns.every(col => {
+      const val = row[col.column_id];
+      return val === '' || val === null || val === undefined;
+    });
+  };
 
   const handleChange = (newData: any[]) => {
     setDataSource(newData);
-    onChange?.(newData);
+    const nonEmptyRows = newData.filter(row => !isRowEmpty(row));
+    onChange?.(nonEmptyRows.length > 0 ? nonEmptyRows : undefined);
   };
 
-  const handleAddRow = () => {
-    const newRow: any = {};
-    columns.forEach(col => {
-      newRow[col.column_id] = '';
-    });
-    handleChange([...dataSource, newRow]);
+  const handleAddRow = (index: number) => {
+    const newData = [...dataSource];
+    newData.splice(index + 1, 0, createEmptyRow());
+    handleChange(newData);
   };
 
   const handleDeleteRow = (index: number) => {
@@ -523,10 +570,18 @@ const TableFieldEditor = ({ columns, disabled, value, onChange }: {
 
   const sortedColumns = [...columns].sort((a, b) => a.order - b.order);
 
-  const tableColumns = sortedColumns.map(col => ({
+  const tableColumns: Array<{
+    title: string;
+    dataIndex: string;
+    key: string;
+    align?: 'center';
+    width?: number;
+    render: (_: any, record: any, index: number) => React.ReactNode;
+  }> = sortedColumns.map(col => ({
     title: col.column_name,
     dataIndex: col.column_id,
     key: col.column_id,
+    align: 'center' as const,
     render: (_: any, record: any, index: number) => {
       if (col.column_type === 'number') {
         return (
@@ -549,38 +604,183 @@ const TableFieldEditor = ({ columns, disabled, value, onChange }: {
   }));
 
   tableColumns.push({
-    title: 'Action',
+    title: t('common.actions'),
     key: 'action',
     dataIndex: 'action',
+    width: 70,
     render: (_: any, __: any, index: number) => (
-      <Button
-        type="link"
-        danger
-        icon={<DeleteOutlined />}
-        onClick={() => handleDeleteRow(index)}
-        disabled={disabled || dataSource.length === 0}
-      />
+      <Space size={2}>
+        <Button
+          type="text"
+          size="small"
+          onClick={() => handleAddRow(index)}
+          disabled={disabled}
+          style={{
+            minWidth: 20,
+            padding: '0 4px',
+            color: 'var(--color-primary)',
+          }}
+        >
+          +
+        </Button>
+        {dataSource.length > 0 && (
+          <Button
+            type="text"
+            size="small"
+            onClick={() => handleDeleteRow(index)}
+            disabled={disabled}
+            style={{
+              minWidth: 24,
+              padding: '0 4px',
+              color: 'var(--color-primary)',
+            }}
+          >
+            −
+          </Button>
+        )}
+      </Space>
     ),
   });
 
   return (
+    <Table
+      dataSource={dataSource}
+      columns={tableColumns}
+      pagination={false}
+      size="small"
+      tableLayout="fixed"
+      style={{ width: '100%' }}
+      rowKey={(_, index) => String(index)}
+    />
+  );
+};
+
+const TagCascaderEditor = ({ option, value, onChange, disabled, placeholder }: {
+  option?: TagAttrOption;
+  value?: string[];
+  onChange?: (value: string[]) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) => {
+  const { t } = useTranslation();
+  const [customKey, setCustomKey] = useState('');
+  const [customValue, setCustomValue] = useState('');
+
+  const mode = option?.mode || 'free';
+  const isFreeMode = mode === 'free';
+  const configured = Array.isArray(option?.options) ? option!.options : [];
+
+  const selectedPairs = useMemo(() => {
+    const raw = Array.isArray(value) ? value : [];
+    return raw
+      .filter((item) => typeof item === 'string' && item.includes(':'))
+      .map((item) => {
+        const [key, ...rest] = item.split(':');
+        return { key: (key || '').trim(), value: rest.join(':').trim() };
+      })
+      .filter((item) => item.key && item.value);
+  }, [value]);
+
+  const optionMap = useMemo(() => {
+    const map: Record<string, Set<string>> = {};
+
+    configured.forEach((item) => {
+      const key = (item?.key || '').trim();
+      const val = (item?.value || '').trim();
+      if (!key || !val) return;
+      if (!map[key]) map[key] = new Set<string>();
+      map[key].add(val);
+    });
+
+    if (isFreeMode) {
+      selectedPairs.forEach((item) => {
+        if (!map[item.key]) map[item.key] = new Set<string>();
+        map[item.key].add(item.value);
+      });
+    }
+
+    return map;
+  }, [configured, selectedPairs, isFreeMode]);
+
+  const cascaderOptions = useMemo(() => {
+    return Object.keys(optionMap).map((key) => ({
+      value: key,
+      label: key,
+      children: Array.from(optionMap[key]).map((val) => ({
+        value: val,
+        label: val,
+      })),
+    }));
+  }, [optionMap]);
+
+  const cascaderValue = useMemo<string[][]>(() => {
+    return selectedPairs.map((item) => [item.key, item.value]);
+  }, [selectedPairs]);
+
+  const emitPairs = (pairs: Array<{ key: string; value: string }>) => {
+    const unique = new Set<string>();
+    pairs.forEach((item) => {
+      const key = (item.key || '').trim();
+      const val = (item.value || '').trim();
+      if (!key || !val) return;
+      unique.add(`${key}:${val}`);
+    });
+    onChange?.(Array.from(unique));
+  };
+
+  const handleCascaderChange = (paths: string[][]) => {
+    const pairs = (paths || [])
+      .filter((path) => Array.isArray(path) && path.length >= 2)
+      .map((path) => ({ key: String(path[0]), value: String(path[1]) }));
+    emitPairs(pairs);
+  };
+
+  const handleAddCustom = () => {
+    const key = customKey.trim();
+    const val = customValue.trim();
+    if (!key || !val) {
+      message.warning(t('required'));
+      return;
+    }
+    if (/[:\n\r]/.test(key) || /[:\n\r]/.test(val)) {
+      message.warning(t('Model.tagBatchFormatError'));
+      return;
+    }
+    emitPairs([...selectedPairs, { key, value: val }]);
+    setCustomKey('');
+    setCustomValue('');
+  };
+
+  return (
     <div>
-      <Table
-        dataSource={dataSource}
-        columns={tableColumns}
-        pagination={false}
-        size="small"
-        rowKey={(_, index) => String(index)}
-      />
-      <Button
-        type="dashed"
-        onClick={handleAddRow}
-        icon={<PlusOutlined />}
+      <Cascader
+        multiple
+        showSearch
+        maxTagCount="responsive"
         disabled={disabled}
-        style={{ marginTop: 8, width: '100%' }}
-      >
-        Add Row
-      </Button>
+        options={cascaderOptions}
+        value={cascaderValue}
+        onChange={handleCascaderChange}
+        placeholder={placeholder}
+        style={{ width: '100%' }}
+      />
+      {isFreeMode && !disabled && (
+        <div className="mt-2 flex items-center gap-2">
+          <Input
+            value={customKey}
+            onChange={(e) => setCustomKey(e.target.value)}
+            placeholder="key"
+          />
+          <Input
+            value={customValue}
+            onChange={(e) => setCustomValue(e.target.value)}
+            placeholder="value"
+          />
+          <Button type="link" className="px-0" onClick={handleAddCustom}>
+            {t('common.add')}
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
@@ -683,6 +883,16 @@ export const getFieldItem = (config: {
         );
       case 'table':
         return <TableFieldEditor columns={config.fieldItem.option as TableColumnSpec[]} disabled={disabled} />;
+      case 'tag': {
+        const tagOption = (config.fieldItem.option || {}) as TagAttrOption;
+        return (
+          <TagCascaderEditor
+            option={tagOption}
+            disabled={disabled}
+            placeholder={placeholder}
+          />
+        );
+      }
       default:
         if (config.fieldItem.attr_type === 'str') {
           const strOption = config.fieldItem.option as StrAttrOption;
@@ -714,7 +924,7 @@ export const getFieldItem = (config: {
     case 'bool':
       return config.value ? 'Yes' : 'No';
     case 'enum':
-      const enumOptions = Array.isArray(config.fieldItem.option) ? config.fieldItem.option : [];
+      const enumOptions = Array.isArray(config.fieldItem.option) ? (config.fieldItem.option as EnumList[]) : [];
       if (Array.isArray(config.value)) {
         if (config.value.length === 0) return '--';
         const enumNames = config.value
@@ -767,9 +977,16 @@ export const getFieldItem = (config: {
           columns={tableCols}
           pagination={false}
           size="small"
+          tableLayout="fixed"
+          style={{ width: '100%' }}
           rowKey={(_, index) => String(index)}
         />
       );
+    case 'tag':
+      if (Array.isArray(config.value)) {
+        return config.value.length ? config.value.join('，') : '--';
+      }
+      return config.value || '--';
     default:
       if (config.fieldItem.attr_type === 'time' && config.value) {
         const timeOpt = config.fieldItem.option as TimeAttrOption;

@@ -42,7 +42,8 @@ CMDB 字段校验器
 
 import re
 import json
-from typing import Any, Dict
+from dataclasses import dataclass, field
+from typing import Any, Dict, Literal
 
 from apps.cmdb.constants.field_constraints import (
     IDENTIFIER_PATTERN,
@@ -54,6 +55,127 @@ from apps.cmdb.constants.field_constraints import (
 )
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
+
+
+TAG_ATTR_ID = "tag"
+TAG_MODE_FREE = "free"
+TAG_MODE_STRICT = "strict"
+TAG_MAX_PAIRS = 20
+
+
+@dataclass(frozen=True)
+class TagOption:
+    key: str
+    value: str
+
+
+@dataclass
+class TagFieldConfig:
+    mode: Literal["free", "strict"] = TAG_MODE_FREE
+    options: list[TagOption] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class TagValueItem:
+    raw: str
+
+
+@dataclass
+class TagValidationResult:
+    normalized_values: list[TagValueItem]
+    errors: list[str]
+
+
+def _validate_tag_key_value(key: str, value: str) -> str | None:
+    if not key:
+        return "标签 key 不能为空"
+    if not value:
+        return "标签 value 不能为空"
+    if any(ch in value for ch in (" ", ":", "\n", "\r")):
+        return "标签 value 不能包含空格、冒号或换行符"
+    return None
+
+
+def normalize_tag_field_option(option: dict | None) -> TagFieldConfig:
+    if option is None:
+        return TagFieldConfig()
+    if not isinstance(option, dict):
+        raise BaseAppException("tag 字段 option 必须是对象")
+
+    mode = option.get("mode", TAG_MODE_FREE)
+    if mode not in {TAG_MODE_FREE, TAG_MODE_STRICT}:
+        raise BaseAppException("tag 字段 mode 仅支持 free 或 strict")
+
+    options = option.get("options", [])
+    if not isinstance(options, list):
+        raise BaseAppException("tag 字段 options 必须是数组")
+
+    normalized_options: list[TagOption] = []
+    option_keys: set[tuple[str, str]] = set()
+    for idx, item in enumerate(options):
+        if not isinstance(item, dict):
+            raise BaseAppException(f"tag 字段 options 第{idx + 1}项必须是对象")
+        key = str(item.get("key", "")).strip()
+        value = str(item.get("value", "")).strip()
+        error = _validate_tag_key_value(key, value)
+        if error:
+            raise BaseAppException(f"tag 字段 options 第{idx + 1}项错误: {error}")
+        dedupe_key = (key, value)
+        if dedupe_key in option_keys:
+            continue
+        option_keys.add(dedupe_key)
+        normalized_options.append(TagOption(key=key, value=value))
+
+    return TagFieldConfig(mode=mode, options=normalized_options)
+
+
+def validate_tag_values(values: list[str], config: TagFieldConfig) -> TagValidationResult:
+    errors: list[str] = []
+    if not isinstance(values, list):
+        return TagValidationResult(normalized_values=[], errors=["标签值必须是数组"])
+
+    normalized_values: list[TagValueItem] = []
+    seen: set[str] = set()
+    candidate_set = {f"{item.key}:{item.value}" for item in config.options}
+
+    for idx, raw_item in enumerate(values):
+        value_str = str(raw_item).strip()
+        if not value_str:
+            continue
+        if value_str.count(":") != 1:
+            errors.append(f"第{idx + 1}个标签格式错误，必须为 key:value")
+            continue
+        key, value = [part.strip() for part in value_str.split(":", 1)]
+        error = _validate_tag_key_value(key, value)
+        if error:
+            errors.append(f"第{idx + 1}个标签不合法: {error}")
+            continue
+        normalized_raw = f"{key}:{value}"
+        if config.mode == TAG_MODE_STRICT and normalized_raw not in candidate_set:
+            errors.append(f"第{idx + 1}个标签不在候选范围内: {normalized_raw}")
+            continue
+        if normalized_raw in seen:
+            continue
+        seen.add(normalized_raw)
+        normalized_values.append(TagValueItem(raw=normalized_raw))
+
+    if len(normalized_values) > TAG_MAX_PAIRS:
+        errors.append(f"单实例最多允许 {TAG_MAX_PAIRS} 个标签")
+
+    return TagValidationResult(normalized_values=normalized_values, errors=errors)
+
+
+def normalize_tag_input_values(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        return [raw]
+    raise BaseAppException("标签字段值必须是字符串或字符串数组")
 
 
 class ValidationTimeoutError(Exception):
@@ -466,6 +588,13 @@ class FieldValidator:
                     FieldValidator.validate_table_value(
                         value, option, attr.get("attr_id", "table")
                     )
+
+            elif attr_type == "tag":
+                tag_config = normalize_tag_field_option(option)
+                normalized_values = normalize_tag_input_values(value)
+                result = validate_tag_values(normalized_values, tag_config)
+                if result.errors:
+                    raise BaseAppException("; ".join(result.errors))
 
             # 其他类型暂不处理(password/user/organization/bool/enum/time等)
             # 这些类型由现有逻辑处理或不需要额外校验

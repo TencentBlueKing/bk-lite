@@ -1,0 +1,28 @@
+{
+  "name": "postgresql",
+  "collector": "Filebeat",
+  "config_section": "module",
+  "icon": "postgresql",
+  "description": "Collects and parses PostgreSQL logs using Filebeat module",
+  "default_query": "collect_type: postgresql | last 1 by (_time) partition by (instance_id)",
+  "attrs": [
+    "collect_type",
+    "collector",
+    "instance_id",
+    "postgresql.log.message",
+    "postgresql.log.level",
+    "postgresql.log.database",
+    "postgresql.log.user",
+    "postgresql.log.query",
+    "postgresql.log.duration",
+    "postgresql.log.client_addr",
+    "postgresql.log.session_id",
+    "postgresql.log.session_line_num",
+    "postgresql.log.command_tag",
+    "postgresql.log.virtual_transaction_id",
+    "postgresql.log.transaction_id",
+    "event.dataset",
+    "event.module",
+    "fileset.name"
+  ]
+}

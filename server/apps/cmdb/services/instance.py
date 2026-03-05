@@ -29,8 +29,91 @@ from apps.cmdb.utils.change_record import (
 from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
 from apps.cmdb.permissions.instance_permission import PermissionManage
+from apps.cmdb.validators.field_validator import (
+    TAG_ATTR_ID,
+    TAG_MODE_FREE,
+    TagFieldConfig,
+    normalize_tag_input_values,
+    normalize_tag_field_option,
+    validate_tag_values,
+)
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
+
+
+def apply_tag_validation_for_instance(
+    instance_data: dict, attrs: list[dict], model_id: str | None = None
+) -> dict:
+    data = dict(instance_data)
+    tag_attr = next(
+        (
+            attr
+            for attr in attrs
+            if attr.get("attr_type") == "tag" and attr.get("attr_id") == TAG_ATTR_ID
+        ),
+        None,
+    )
+
+    if not tag_attr:
+        data.pop(TAG_ATTR_ID, None)
+        return data
+
+    if TAG_ATTR_ID not in data:
+        return data
+
+    raw_values = normalize_tag_input_values(data.get(TAG_ATTR_ID))
+    tag_config: TagFieldConfig = normalize_tag_field_option(tag_attr.get("option") or {})
+    validation_result = validate_tag_values(raw_values, tag_config)
+    if validation_result.errors:
+        raise BaseAppException("; ".join(validation_result.errors))
+
+    normalized_values = [item.raw for item in validation_result.normalized_values]
+    data[TAG_ATTR_ID] = normalized_values
+
+    if model_id and tag_config.mode == TAG_MODE_FREE and normalized_values:
+        ModelManage.merge_tag_options_from_values(model_id, normalized_values)
+
+    return data
+
+
+def apply_tag_validation_for_batch(
+    records: list[dict], attrs: list[dict], model_id: str | None = None
+) -> list[dict]:
+    tag_attr = next(
+        (
+            attr
+            for attr in attrs
+            if attr.get("attr_type") == "tag" and attr.get("attr_id") == TAG_ATTR_ID
+        ),
+        None,
+    )
+    if not tag_attr:
+        return [dict({k: v for k, v in record.items() if k != TAG_ATTR_ID}) for record in records]
+
+    tag_config: TagFieldConfig = normalize_tag_field_option(tag_attr.get("option") or {})
+    merged_values: set[str] = set()
+    normalized_records: list[dict] = []
+
+    for record in records:
+        data = dict(record)
+        if TAG_ATTR_ID not in data:
+            normalized_records.append(data)
+            continue
+
+        raw_values = normalize_tag_input_values(data.get(TAG_ATTR_ID))
+        validation_result = validate_tag_values(raw_values, tag_config)
+        if validation_result.errors:
+            raise BaseAppException("; ".join(validation_result.errors))
+
+        normalized_values = [item.raw for item in validation_result.normalized_values]
+        data[TAG_ATTR_ID] = normalized_values
+        merged_values.update(normalized_values)
+        normalized_records.append(data)
+
+    if model_id and tag_config.mode == TAG_MODE_FREE and merged_values:
+        ModelManage.merge_tag_options_from_values(model_id, list(merged_values))
+
+    return normalized_records
 
 
 class InstanceManage(object):
@@ -186,6 +269,7 @@ class InstanceManage(object):
         """创建实例"""
         instance_info.update(model_id=model_id)
         attrs = ModelManage.search_model_attr(model_id)
+        instance_info = apply_tag_validation_for_instance(instance_info, attrs, model_id)
         check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=False)
 
         # 为 organization/user/enum 字段生成 _display 冗余字段
@@ -235,6 +319,9 @@ class InstanceManage(object):
         )
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        update_attr = apply_tag_validation_for_instance(
+            update_attr, attrs, inst_info["model_id"]
+        )
         check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=True)
 
         InstanceManage._apply_display_fields_to_update(attrs, update_attr)
@@ -288,6 +375,9 @@ class InstanceManage(object):
         )
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        update_attr = apply_tag_validation_for_instance(
+            update_attr, attrs, model_info["model_id"]
+        )
         check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=True)
 
         InstanceManage._apply_display_fields_to_update(attrs, update_attr)
@@ -722,6 +812,9 @@ class InstanceManage(object):
             add_mgs += f"{key_map[_key]}: 成功{success_count}个，失败{fail_count}个:{message}\n"
             if fail_count > 0:
                 res_status = False
+
+        if res_status:
+            add_mgs = ""
         return res_status, add_mgs
 
     @staticmethod

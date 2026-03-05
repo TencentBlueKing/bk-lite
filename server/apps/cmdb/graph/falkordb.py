@@ -166,27 +166,15 @@ class FalkorDBClient:
         if result_list and result_list[0].get("model_id"):
             try:
                 model_id = result_list[0].get("model_id")
-                if self.ENABLE_PARAMETERIZATION:
-                    query = "MATCH (n:model) WHERE n.model_id = $model_id RETURN n"
-                    params = {"model_id": model_id}
-                    model_result = self._execute_query(query, params=params)
-                else:
-                    query = f"MATCH (n:model) WHERE n.model_id = '{model_id}' RETURN n"
-                    model_result = self._execute_query(query)
 
-                if model_result:
-                    _format = FormatDBResult(model_result)
-                    model_data = _format.to_list_of_dicts()
-                    if model_data:
-                        attrs_json = model_data[0].get("attrs", "[]")
-                        attrs = (
-                            json.loads(attrs_json)
-                            if isinstance(attrs_json, str)
-                            else attrs_json
-                        )
-                        result_list = self._deserialize_table_fields_in_result_list(
-                            result_list, attrs
-                        )
+                from apps.cmdb.display_field.cache import ExcludeFieldsCache
+
+                attrs = ExcludeFieldsCache.get_model_attrs(model_id)
+
+                if attrs:
+                    result_list = self._deserialize_table_fields_in_result_list(
+                        result_list, attrs
+                    )
             except Exception as e:
                 logger.warning(f"[entity_to_list] 表格字段反序列化失败: {e}")
 

@@ -29,11 +29,11 @@ class Management:
         attrs = ModelManage.search_model_attr(self.model_id)
         check_attr_map = dict(is_only={}, is_required={}, editable={})
         for attr in attrs:
-            if attr["is_only"]:
+            if attr.get("is_only", False):
                 check_attr_map["is_only"][attr["attr_id"]] = attr["attr_name"]
-            if attr["is_required"]:
+            if attr.get("is_required", False):
                 check_attr_map["is_required"][attr["attr_id"]] = attr["attr_name"]
-            if attr["editable"]:
+            if attr.get("editable", True):
                 check_attr_map["editable"][attr["attr_id"]] = attr["attr_name"]
 
         return check_attr_map
