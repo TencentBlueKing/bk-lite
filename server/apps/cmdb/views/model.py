@@ -29,7 +29,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
     @staticmethod
     def model_add_permission(
-        model_list, permission_instances_map: dict, default_group=None
+            model_list, permission_instances_map: dict, default_group=None
     ):
         # 默认group为default的判断 全部人都可以查看
         group_instances_map = CmdbRulesFormatUtil.format_organizations_instances_map(
@@ -588,12 +588,6 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 "抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN
             )
 
-        if attr_id == TAG_ATTR_ID and str(request.query_params.get("confirm", "")).lower() != "true":
-            return WebUtils.response_error(
-                "删除标签字段需要二次确认，请携带 confirm=true",
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
-
         result = ModelManage.delete_model_attr(
             model_id, attr_id, username=request.user.username
         )
@@ -752,7 +746,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 {
                     "asst_id": asso["asst_id"],
                     "asst_name": lan.get_val("ASSOCIATION_TYPE", asso["asst_id"])
-                    or asso["asst_name"],
+                                 or asso["asst_name"],
                     "is_pre": asso["is_pre"],
                 }
             )
