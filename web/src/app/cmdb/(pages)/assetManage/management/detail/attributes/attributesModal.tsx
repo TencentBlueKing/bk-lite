@@ -13,7 +13,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
-import { PlusOutlined, DeleteTwoTone, HolderOutlined } from '@ant-design/icons';
+import { PlusOutlined, MinusOutlined, HolderOutlined } from '@ant-design/icons';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -105,6 +105,8 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     ]);
     const [isTagBatchEdit, setIsTagBatchEdit] = useState<boolean>(false);
     const [tagBatchText, setTagBatchText] = useState<string>('');
+    const [tagBatchError, setTagBatchError] = useState<string>('');
+    const [tagErrors, setTagErrors] = useState<Record<number, { key?: boolean; value?: boolean }>>({});
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const formRef = useRef<FormInstance>(null);
     const searchParams = useSearchParams();
@@ -334,21 +336,32 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     };
 
     const validateTagList = async () => {
+      if (isTagBatchEdit) return Promise.resolve();
       const list = Array.isArray(tagList) ? tagList : [];
       const seen = new Set<string>();
-      for (const item of list) {
+      const errors: Record<number, { key?: boolean; value?: boolean }> = {};
+      let firstErr: string | null = null;
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
         const key = (item.key || '').trim();
         const value = (item.value || '').trim();
-        const err = validateSingleTagItem(key, value);
-        if (err) {
-          return Promise.reject(new Error(err));
+        if (!key || !value) {
+          errors[i] = { key: !key, value: !value };
+          if (!firstErr) firstErr = t('required');
+        } else if (!tagValueReg.test(value)) {
+          if (!firstErr) firstErr = t('Model.tagValueFormatError');
         }
         const pair = `${key}:${value}`;
         if (seen.has(pair)) {
-          return Promise.reject(new Error(t('Model.tagDuplicateError')));
+          if (!firstErr) firstErr = t('Model.tagDuplicateError');
         }
         seen.add(pair);
       }
+      if (firstErr) {
+        setTagErrors(errors);
+        return Promise.reject(new Error(firstErr));
+      }
+      setTagErrors({});
       return Promise.resolve();
     };
 
@@ -400,6 +413,8 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
 
     const onOpenTagBatchEdit = () => {
       setTagBatchText(serializeTagList(tagList));
+      setTagBatchError('');
+      formRef.current?.setFields([{ name: 'option', errors: [] }]);
       setIsTagBatchEdit(true);
     };
 
@@ -407,15 +422,21 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
       try {
         const parsed = parseTagBatchText(tagBatchText);
         setTagList(parsed);
+        setTagBatchError('');
         setIsTagBatchEdit(false);
       } catch (error) {
-        message.error(error instanceof Error ? error.message : t('Model.tagBatchFormatError'));
+        setTagBatchError(
+          error instanceof Error
+            ? error.message
+            : t('Model.tagBatchFormatError'),
+        );
       }
     };
 
     const onCancelTagBatchEdit = () => {
       setIsTagBatchEdit(false);
       setTagBatchText('');
+      setTagBatchError('');
     };
 
     const deleteTagItem = (index: number) => {
@@ -428,6 +449,15 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
       const list = deepClone(tagList);
       list[index][field] = value;
       setTagList(list);
+      if (tagErrors[index]?.[field]) {
+        setTagErrors((prev) => {
+          const next = { ...prev };
+          if (next[index]) {
+            next[index] = { ...next[index], [field]: false };
+          }
+          return next;
+        });
+      }
     };
 
     const addTableColumn = () => {
@@ -543,7 +573,13 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                   is_only: false,
                   tag_mode: 'free',
                 });
-              } else if (Object.prototype.hasOwnProperty.call(changedValues, 'attr_type') && type === 'add') {
+              } else if (
+                Object.prototype.hasOwnProperty.call(
+                  changedValues,
+                  'attr_type',
+                ) &&
+                type === 'add'
+              ) {
                 const currentAttrId = formRef.current?.getFieldValue('attr_id');
                 if (currentAttrId === 'tag') {
                   formRef.current?.setFieldsValue({ attr_id: '' });
@@ -578,7 +614,11 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                     },
                   ]}
                 >
-                  <Input disabled={type === 'edit' || getFieldValue('attr_type') === 'tag'} />
+                  <Input
+                    disabled={
+                      type === 'edit' || getFieldValue('attr_type') === 'tag'
+                    }
+                  />
                 </Form.Item>
               )}
             </Form.Item>
@@ -607,7 +647,9 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                     <Option
                       value={item.id}
                       key={item.id}
-                      disabled={item.id === 'tag' && type === 'add' && hasTagAttr}
+                      disabled={
+                        item.id === 'tag' && type === 'add' && hasTagAttr
+                      }
                     >
                       {item.name}
                     </Option>
@@ -680,8 +722,8 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                   onClick={addEnumItem}
                                 />
                                 {enumList.length > 1 && (
-                                  <DeleteTwoTone
-                                    className="delete cursor-pointer"
+                                  <MinusOutlined
+                                    className="delete cursor-pointer text-[var(--color-primary)]"
                                     onClick={() => deleteEnumItem(index)}
                                   />
                                 )}
@@ -758,9 +800,27 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                           <ul className="ml-6">
                             <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
                               <span className="mr-[4px] w-[14px]"></span>
-                              <span style={{ width: 120, marginRight: 10, flexShrink: 0 }}>{t('Model.columnId')}</span>
-                              <span style={{ width: 120, marginRight: 10, flexShrink: 0 }}>{t('Model.columnName')}</span>
-                              <span style={{ width: 100, flexShrink: 0 }}>{t('type')}</span>
+                              <span
+                                style={{
+                                  width: 120,
+                                  marginRight: 10,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {t('Model.columnId')}
+                              </span>
+                              <span
+                                style={{
+                                  width: 120,
+                                  marginRight: 10,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {t('Model.columnName')}
+                              </span>
+                              <span style={{ width: 100, flexShrink: 0 }}>
+                                {t('type')}
+                              </span>
                             </li>
                             {tableColumnList.map((column, index) => (
                               <SortableItem
@@ -771,20 +831,50 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                 <HolderOutlined className="mr-[4px]" />
                                 <Input
                                   placeholder={t('Model.enterColumnId')}
-                                  style={{ width: 120, marginRight: 10, flexShrink: 0 }}
+                                  style={{
+                                    width: 120,
+                                    marginRight: 10,
+                                    flexShrink: 0,
+                                  }}
                                   value={column.column_id}
-                                  onChange={(e) => onTableColumnChange('column_id', e.target.value, index)}
+                                  onChange={(e) =>
+                                    onTableColumnChange(
+                                      'column_id',
+                                      e.target.value,
+                                      index,
+                                    )
+                                  }
                                 />
                                 <Input
                                   placeholder={t('Model.enterColumnName')}
-                                  style={{ width: 120, marginRight: 10, flexShrink: 0 }}
+                                  style={{
+                                    width: 120,
+                                    marginRight: 10,
+                                    flexShrink: 0,
+                                  }}
                                   value={column.column_name}
-                                  onChange={(e) => onTableColumnChange('column_name', e.target.value, index)}
+                                  onChange={(e) =>
+                                    onTableColumnChange(
+                                      'column_name',
+                                      e.target.value,
+                                      index,
+                                    )
+                                  }
                                 />
                                 <Select
-                                  style={{ width: 100, marginRight: 10, flexShrink: 0 }}
+                                  style={{
+                                    width: 100,
+                                    marginRight: 10,
+                                    flexShrink: 0,
+                                  }}
                                   value={column.column_type}
-                                  onChange={(value) => onTableColumnChange('column_type', value, index)}
+                                  onChange={(value) =>
+                                    onTableColumnChange(
+                                      'column_type',
+                                      value,
+                                      index,
+                                    )
+                                  }
                                 >
                                   <Option value="str">{t('string')}</Option>
                                   <Option value="number">{t('number')}</Option>
@@ -793,7 +883,11 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                   type="text"
                                   size="small"
                                   onClick={addTableColumn}
-                                  style={{ minWidth: 24, padding: '0 4px', color: 'var(--color-primary)' }}
+                                  style={{
+                                    minWidth: 24,
+                                    padding: '0 4px',
+                                    color: 'var(--color-primary)',
+                                  }}
                                 >
                                   +
                                 </Button>
@@ -881,7 +975,9 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                           <Radio value="single_line">
                             {t('Model.singleLine')}
                           </Radio>
-                          <Radio value="multi_line">{t('Model.multiLine')}</Radio>
+                          <Radio value="multi_line">
+                            {t('Model.multiLine')}
+                          </Radio>
                         </Radio.Group>
                       </Form.Item>
                     </div>
@@ -894,38 +990,91 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                     rules={[{ validator: validateTagList }]}
                   >
                     <div className="bg-[var(--color-fill-1)] p-4 rounded">
-                      <div className="text-sm text-[var(--color-text-secondary)] mb-3">
+                      <div className="text-sm font-medium text-[var(--color-text-primary)] mb-3">
                         {t('Model.validationRules')}
                       </div>
-                      <Form.Item name="tag_mode" initialValue="free" className="mb-3">
-                        <Radio.Group>
-                          <Radio value="free">{t('Model.freeMode')}</Radio>
-                          <Radio value="strict">{t('Model.strictMode')}</Radio>
-                        </Radio.Group>
-                      </Form.Item>
-                      <div className="ml-6 mb-2">
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className="text-sm text-[var(--color-text-secondary)] shrink-0">
+                          {t('Model.tagMode')}：
+                        </span>
+                        <Form.Item
+                          name="tag_mode"
+                          initialValue="free"
+                          className="mb-0"
+                        >
+                          <Radio.Group>
+                            <Radio value="free">{t('Model.freeMode')}</Radio>
+                            <Radio value="strict">
+                              {t('Model.strictMode')}
+                            </Radio>
+                          </Radio.Group>
+                        </Form.Item>
+                      </div>
+                      <div className="border-t border-[var(--color-border-1)] mb-3" />
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-[var(--color-text-secondary)]">
+                          {t('Model.tagOptions')}
+                        </span>
                         <div className="flex items-center gap-3">
-                          <Button
-                            type="link"
-                            className="p-0"
-                            onClick={isTagBatchEdit ? onApplyTagBatchEdit : onOpenTagBatchEdit}
-                          >
-                            {isTagBatchEdit ? t('Model.applyTagBatch') : t('Model.batchModifyTag')}
-                          </Button>
-                          {isTagBatchEdit && (
-                            <Button type="link" className="p-0" onClick={onCancelTagBatchEdit}>
-                              {t('common.cancel')}
+                          {isTagBatchEdit ? (
+                            <>
+                              <Button
+                                type="link"
+                                className="p-0"
+                                onClick={onApplyTagBatchEdit}
+                              >
+                                {t('Model.applyTagBatch')}
+                              </Button>
+                              <Button
+                                type="link"
+                                className="p-0"
+                                onClick={onCancelTagBatchEdit}
+                              >
+                                {t('common.cancel')}
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              type="link"
+                              className="p-0"
+                              onClick={onOpenTagBatchEdit}
+                            >
+                              {t('Model.batchModifyTag')}
                             </Button>
                           )}
                         </div>
                       </div>
+                      {/* 标签内容区 */}
                       {isTagBatchEdit ? (
-                        <Input.TextArea
-                          rows={8}
-                          value={tagBatchText}
-                          onChange={(e) => setTagBatchText(e.target.value)}
-                          placeholder={t('Model.tagBatchPlaceholder')}
-                        />
+                        <div>
+                          <Input.TextArea
+                            rows={6}
+                            value={tagBatchText}
+                            onChange={(e) => {
+                              setTagBatchText(e.target.value);
+                              setTagBatchError('');
+                            }}
+                            onBlur={() => {
+                              if (!tagBatchText.trim()) return;
+                              try {
+                                parseTagBatchText(tagBatchText);
+                                setTagBatchError('');
+                              } catch (error) {
+                                setTagBatchError(
+                                  error instanceof Error
+                                    ? error.message
+                                    : t('Model.tagBatchFormatError'),
+                                );
+                              }
+                            }}
+                            placeholder={t('Model.tagBatchPlaceholder')}
+                          />
+                          {tagBatchError && (
+                            <div className="text-red-500 text-xs mt-1">
+                              {tagBatchError}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <ul className="ml-6">
                           {tagList.map((tag, index) => (
@@ -934,21 +1083,27 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                 placeholder="key"
                                 className="mr-[10px] w-2/5"
                                 value={tag.key}
-                                onChange={(e) => onTagChange('key', e.target.value, index)}
+                                status={tagErrors[index]?.key ? 'error' : ''}
+                                onChange={(e) =>
+                                  onTagChange('key', e.target.value, index)
+                                }
                               />
                               <Input
                                 placeholder="value"
-                                className="mr-[10px] w-2/5"
+                                className="mr-[12px] w-2/5"
                                 value={tag.value}
-                                onChange={(e) => onTagChange('value', e.target.value, index)}
+                                status={tagErrors[index]?.value ? 'error' : ''}
+                                onChange={(e) =>
+                                  onTagChange('value', e.target.value, index)
+                                }
                               />
                               <PlusOutlined
                                 className="edit mr-[10px] cursor-pointer text-[var(--color-primary)]"
                                 onClick={addTagItem}
                               />
                               {tagList.length > 1 && (
-                                <DeleteTwoTone
-                                  className="delete cursor-pointer"
+                                <MinusOutlined
+                                  className="delete cursor-pointer text-[var(--color-primary)]"
                                   onClick={() => deleteTagItem(index)}
                                 />
                               )}
@@ -971,28 +1126,35 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               {({ getFieldValue }) => (
                 <Form.Item label=" " colon={false} className="ml-[-80px]">
                   <div className="flex items-center gap-8">
-                    {getFieldValue('attr_type') !== 'enum' && getFieldValue('attr_type') !== 'tag' && (
-                      <Form.Item<AttrFieldType>
-                        name="is_only"
-                        valuePropName="checked"
-                        className="mb-0"
-                      >
-                        <Checkbox disabled={type === 'edit'}>{t('unique')}</Checkbox>
-                      </Form.Item>
+                    {getFieldValue('attr_type') !== 'enum' &&
+                      getFieldValue('attr_type') !== 'tag' && (
+                        <Form.Item<AttrFieldType>
+                          name="is_only"
+                          valuePropName="checked"
+                          className="mb-0"
+                        >
+                          <Checkbox disabled={type === 'edit'}>
+                            {t('unique')}
+                          </Checkbox>
+                        </Form.Item>
                     )}
                     <Form.Item<AttrFieldType>
                       name="is_required"
                       valuePropName="checked"
                       className="mb-0"
                     >
-                      <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>{t('required')}</Checkbox>
-            </Form.Item>
-            <Form.Item<AttrFieldType>
+                      <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
+                        {t('required')}
+                      </Checkbox>
+                    </Form.Item>
+                    <Form.Item<AttrFieldType>
                       name="editable"
                       valuePropName="checked"
                       className="mb-0"
                     >
-                      <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>{t('editable')}</Checkbox>
+                      <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
+                        {t('editable')}
+                      </Checkbox>
                     </Form.Item>
                   </div>
                 </Form.Item>

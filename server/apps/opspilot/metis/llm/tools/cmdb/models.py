@@ -35,7 +35,24 @@ def cmdb_list_models(
             model_id="",
         )
         models = ModelManage.search_model(language=user.locale, permissions_map=permissions_map)
-        return wrap_success(models)
+
+        grouped_models: Dict[str, list] = {}
+        for model in models:
+            category = str(model.get("classification_id") or "")
+            model_id = str(model.get("model_id") or "")
+            model_name = str(model.get("model_name") or "")
+            if not category or not model_id:
+                continue
+
+            grouped_models.setdefault(category, []).append({"id": model_id, "name": model_name})
+
+        compact_models = {
+            "model_categories": [
+                {"category": category, "models": model_list}
+                for category, model_list in grouped_models.items()
+            ]
+        }
+        return wrap_success(compact_models)
     except Exception as e:
         logger.exception("cmdb_list_models failed: %s", e)
         logger.exception(config)
