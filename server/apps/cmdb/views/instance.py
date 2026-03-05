@@ -73,6 +73,17 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 )
                 return
 
+            if item.get("accurate") is True:
+                normalized.append(
+                    {
+                        "field": field,
+                        "type": _type,
+                        "value": item.get("value"),
+                        "accurate": True,
+                    }
+                )
+                return
+
             if "value" not in item:
                 return
 

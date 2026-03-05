@@ -424,6 +424,10 @@ export const ATTR_TYPE_LIST = [
     name: 'enumeration',
   },
   {
+    id: 'tag',
+    name: 'tag',
+  },
+  {
     id: 'time',
     name: 'time',
   },
