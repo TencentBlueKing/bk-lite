@@ -1,0 +1,27 @@
+{
+  "name": "mysql",
+  "collector": "Filebeat",
+  "config_section": "module",
+  "icon": "mysql",
+  "description": "Collects and parses MySQL slow logs and error logs using Filebeat module",
+  "default_query": "collect_type: mysql | last 1 by (_time) partition by (instance_id)",
+  "attrs": [
+    "collect_type",
+    "collector",
+    "instance_id",
+    "mysql.error.message",
+    "mysql.error.level",
+    "mysql.error.thread_id",
+    "mysql.slowlog.query",
+    "mysql.slowlog.query_time.sec",
+    "mysql.slowlog.lock_time.sec",
+    "mysql.slowlog.rows_sent",
+    "mysql.slowlog.rows_examined",
+    "mysql.slowlog.user",
+    "mysql.slowlog.host",
+    "mysql.slowlog.id",
+    "event.dataset",
+    "event.module",
+    "fileset.name"
+  ]
+}

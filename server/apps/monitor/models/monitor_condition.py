@@ -2,7 +2,6 @@ from django.db import models
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.monitor.models.monitor_object import MonitorObject
 
 
 class MonitorCondition(TimeInfo, MaintainerInfo):
@@ -12,9 +11,6 @@ class MonitorCondition(TimeInfo, MaintainerInfo):
     description = models.TextField(blank=True, default="", verbose_name="条件描述")
     condition = models.JSONField(default=dict, verbose_name="条件配置")
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
-    monitor_object = models.ForeignKey(
-        MonitorObject, on_delete=models.CASCADE, verbose_name="监控对象", null=True
-    )
 
     class Meta:
         verbose_name = "监控条件"

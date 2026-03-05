@@ -20,6 +20,7 @@ import {
   AttrFieldType,
   EnumList,
   AttrGroup,
+  TagAttrOption,
   StrAttrOption,
   TimeAttrOption,
   IntAttrOption,
@@ -33,6 +34,7 @@ interface AttrModalProps {
   onSuccess: (type?: unknown) => void;
   attrTypeList: Array<{ id: string; name: string }>;
   groups: AttrGroup[];
+  hasTagAttr: boolean;
 }
 
 interface AttrConfig {
@@ -78,7 +80,7 @@ const SortableItem = ({
 
 const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
   (props, ref) => {
-    const { onSuccess, attrTypeList, groups } = props;
+    const { onSuccess, attrTypeList, groups, hasTagAttr } = props;
     const [modelVisible, setModelVisible] = useState<boolean>(false);
     const [subTitle, setSubTitle] = useState<string>('');
     const [title, setTitle] = useState<string>('');
@@ -98,6 +100,11 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         order: 1,
       },
     ]);
+    const [tagList, setTagList] = useState<Array<{ key: string; value: string }>>([
+      { key: '', value: '' },
+    ]);
+    const [isTagBatchEdit, setIsTagBatchEdit] = useState<boolean>(false);
+    const [tagBatchText, setTagBatchText] = useState<string>('');
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const formRef = useRef<FormInstance>(null);
     const searchParams = useSearchParams();
@@ -106,6 +113,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
 
     const modelId: string = searchParams.get('model_id') || '';
     const { t } = useTranslation();
+    const tagValueReg = /^[^\s:\n\r]+$/;
 
     useEffect(() => {
       if (modelVisible) {
@@ -146,6 +154,9 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               order: 1,
             },
           ]);
+          setTagList([{ key: '', value: '' }]);
+          setIsTagBatchEdit(false);
+          setTagBatchText('');
         } else {
           const option = attrInfo.option;
           if (attrInfo.attr_type === 'enum' && Array.isArray(option)) {
@@ -158,6 +169,16 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           } else {
             setTableColumnList([{ column_id: '', column_name: '', column_type: 'str', order: 1 }]);
           }
+          if (attrInfo.attr_type === 'tag' && option && typeof option === 'object' && !Array.isArray(option)) {
+            const tagOption = option as TagAttrOption;
+            const opt = Array.isArray(tagOption.options) ? tagOption.options : [];
+            setTagList(opt.length > 0 ? opt : [{ key: '', value: '' }]);
+            attrInfo.tag_mode = tagOption.mode || 'free';
+          } else {
+            setTagList([{ key: '', value: '' }]);
+          }
+          setIsTagBatchEdit(false);
+          setTagBatchText('');
           if (attrInfo.attr_type === 'str' && option && typeof option === 'object' && !Array.isArray(option)) {
             const strOption = option as StrAttrOption;
             attrInfo.validation_type = strOption.validation_type;
@@ -182,7 +203,14 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           (group) => group.id === values.group_id,
         );
 
-        let option: EnumList[] | StrAttrOption | TimeAttrOption | IntAttrOption | TableColumnSpec[] | Record<string, unknown> = {};
+        let option:
+          | EnumList[]
+          | StrAttrOption
+          | TimeAttrOption
+          | IntAttrOption
+          | TableColumnSpec[]
+          | TagAttrOption
+          | Record<string, unknown> = {};
 
         if (values.attr_type === 'enum') {
           const enumArray = Array.isArray(enumList) ? enumList : [];
@@ -207,6 +235,17 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
             min_value: values.min_value || '',
             max_value: values.max_value || '',
           } as IntAttrOption;
+        } else if (values.attr_type === 'tag') {
+          option = {
+            mode: values.tag_mode || 'free',
+            options: (Array.isArray(tagList) ? tagList : [])
+              .filter((item) => item.key && item.value)
+              .map((item) => ({ key: item.key.trim(), value: item.value.trim() })),
+          } as TagAttrOption;
+          values.attr_id = 'tag';
+          values.is_required = false;
+          values.editable = true;
+          values.is_only = false;
         }
 
         const restValues = { ...values };
@@ -216,6 +255,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         delete restValues.display_format;
         delete restValues.min_value;
         delete restValues.max_value;
+        delete restValues.tag_mode;
 
         operateAttr({
           ...restValues,
@@ -281,6 +321,113 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         return Promise.reject(new Error(t('Model.columnIdsMustBeUnique')));
       }
       return Promise.resolve();
+    };
+
+    const validateSingleTagItem = (key: string, value: string): string | null => {
+      if (!key || !value) {
+        return t('required');
+      }
+      if (!tagValueReg.test(value)) {
+        return t('Model.tagValueFormatError');
+      }
+      return null;
+    };
+
+    const validateTagList = async () => {
+      const list = Array.isArray(tagList) ? tagList : [];
+      const seen = new Set<string>();
+      for (const item of list) {
+        const key = (item.key || '').trim();
+        const value = (item.value || '').trim();
+        const err = validateSingleTagItem(key, value);
+        if (err) {
+          return Promise.reject(new Error(err));
+        }
+        const pair = `${key}:${value}`;
+        if (seen.has(pair)) {
+          return Promise.reject(new Error(t('Model.tagDuplicateError')));
+        }
+        seen.add(pair);
+      }
+      return Promise.resolve();
+    };
+
+    const addTagItem = () => {
+      const list = deepClone(tagList);
+      list.push({ key: '', value: '' });
+      setTagList(list);
+    };
+
+    const serializeTagList = (list: Array<{ key: string; value: string }>) => {
+      return (Array.isArray(list) ? list : [])
+        .filter((item) => item.key || item.value)
+        .map((item) => `${(item.key || '').trim()}:${(item.value || '').trim()}`)
+        .join('\n');
+    };
+
+    const parseTagBatchText = (text: string) => {
+      const lines = (text || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      if (lines.length === 0) {
+        return [{ key: '', value: '' }];
+      }
+
+      const parsed: Array<{ key: string; value: string }> = [];
+      const seen = new Set<string>();
+      for (const line of lines) {
+        const splitIndex = line.indexOf(':');
+        if (splitIndex <= 0 || splitIndex === line.length - 1) {
+          throw new Error(t('Model.tagBatchFormatError'));
+        }
+        const key = line.slice(0, splitIndex).trim();
+        const value = line.slice(splitIndex + 1).trim();
+        const err = validateSingleTagItem(key, value);
+        if (err) {
+          throw new Error(err);
+        }
+        const pair = `${key}:${value}`;
+        if (seen.has(pair)) {
+          throw new Error(t('Model.tagDuplicateError'));
+        }
+        seen.add(pair);
+        parsed.push({ key, value });
+      }
+      return parsed;
+    };
+
+    const onOpenTagBatchEdit = () => {
+      setTagBatchText(serializeTagList(tagList));
+      setIsTagBatchEdit(true);
+    };
+
+    const onApplyTagBatchEdit = () => {
+      try {
+        const parsed = parseTagBatchText(tagBatchText);
+        setTagList(parsed);
+        setIsTagBatchEdit(false);
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : t('Model.tagBatchFormatError'));
+      }
+    };
+
+    const onCancelTagBatchEdit = () => {
+      setIsTagBatchEdit(false);
+      setTagBatchText('');
+    };
+
+    const deleteTagItem = (index: number) => {
+      const list = deepClone(tagList);
+      list.splice(index, 1);
+      setTagList(list.length ? list : [{ key: '', value: '' }]);
+    };
+
+    const onTagChange = (field: 'key' | 'value', value: string, index: number) => {
+      const list = deepClone(tagList);
+      list[index][field] = value;
+      setTagList(list);
     };
 
     const addTableColumn = () => {
@@ -387,6 +534,24 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
             name="basic"
             labelCol={{ span: 4 }}
             wrapperCol={{ span: 20 }}
+            onValuesChange={(changedValues) => {
+              if (changedValues.attr_type === 'tag') {
+                formRef.current?.setFieldsValue({
+                  attr_id: 'tag',
+                  is_required: false,
+                  editable: true,
+                  is_only: false,
+                  tag_mode: 'free',
+                });
+              } else if (Object.prototype.hasOwnProperty.call(changedValues, 'attr_type') && type === 'add') {
+                const currentAttrId = formRef.current?.getFieldValue('attr_id');
+                if (currentAttrId === 'tag') {
+                  formRef.current?.setFieldsValue({ attr_id: '' });
+                }
+                setIsTagBatchEdit(false);
+                setTagBatchText('');
+              }
+            }}
           >
             <Form.Item<AttrFieldType>
               label={t('name')}
@@ -395,18 +560,27 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
             >
               <Input />
             </Form.Item>
-            <Form.Item<AttrFieldType>
-              label={t('id')}
-              name="attr_id"
-              rules={[
-                { required: true, message: t('required') },
-                {
-                  pattern: /^[A-Za-z][A-Za-z0-9_]*$/,
-                  message: t('Model.attrIdPattern'),
-                },
-              ]}
+            <Form.Item
+              noStyle
+              shouldUpdate={(prevValues, currentValues) =>
+                prevValues.attr_type !== currentValues.attr_type
+              }
             >
-              <Input disabled={type === 'edit'} />
+              {({ getFieldValue }) => (
+                <Form.Item<AttrFieldType>
+                  label={t('id')}
+                  name="attr_id"
+                  rules={[
+                    { required: true, message: t('required') },
+                    {
+                      pattern: /^[A-Za-z][A-Za-z0-9_]*$/,
+                      message: t('Model.attrIdPattern'),
+                    },
+                  ]}
+                >
+                  <Input disabled={type === 'edit' || getFieldValue('attr_type') === 'tag'} />
+                </Form.Item>
+              )}
             </Form.Item>
             <Form.Item<AttrFieldType>
               label={t('Model.attrGroup')}
@@ -430,7 +604,11 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               <Select disabled={type === 'edit'}>
                 {attrTypeList.map((item) => {
                   return (
-                    <Option value={item.id} key={item.id}>
+                    <Option
+                      value={item.id}
+                      key={item.id}
+                      disabled={item.id === 'tag' && type === 'add' && hasTagAttr}
+                    >
                       {item.name}
                     </Option>
                   );
@@ -708,6 +886,78 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                       </Form.Item>
                     </div>
                   </Form.Item>
+                ) : getFieldValue('attr_type') === 'tag' ? (
+                  <Form.Item<AttrFieldType>
+                    label=" "
+                    colon={false}
+                    name="option"
+                    rules={[{ validator: validateTagList }]}
+                  >
+                    <div className="bg-[var(--color-fill-1)] p-4 rounded">
+                      <div className="text-sm text-[var(--color-text-secondary)] mb-3">
+                        {t('Model.validationRules')}
+                      </div>
+                      <Form.Item name="tag_mode" initialValue="free" className="mb-3">
+                        <Radio.Group>
+                          <Radio value="free">{t('Model.freeMode')}</Radio>
+                          <Radio value="strict">{t('Model.strictMode')}</Radio>
+                        </Radio.Group>
+                      </Form.Item>
+                      <div className="ml-6 mb-2">
+                        <div className="flex items-center gap-3">
+                          <Button
+                            type="link"
+                            className="p-0"
+                            onClick={isTagBatchEdit ? onApplyTagBatchEdit : onOpenTagBatchEdit}
+                          >
+                            {isTagBatchEdit ? t('Model.applyTagBatch') : t('Model.batchModifyTag')}
+                          </Button>
+                          {isTagBatchEdit && (
+                            <Button type="link" className="p-0" onClick={onCancelTagBatchEdit}>
+                              {t('common.cancel')}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      {isTagBatchEdit ? (
+                        <Input.TextArea
+                          rows={8}
+                          value={tagBatchText}
+                          onChange={(e) => setTagBatchText(e.target.value)}
+                          placeholder={t('Model.tagBatchPlaceholder')}
+                        />
+                      ) : (
+                        <ul className="ml-6">
+                          {tagList.map((tag, index) => (
+                            <li key={index} className="flex items-center mt-2">
+                              <Input
+                                placeholder="key"
+                                className="mr-[10px] w-2/5"
+                                value={tag.key}
+                                onChange={(e) => onTagChange('key', e.target.value, index)}
+                              />
+                              <Input
+                                placeholder="value"
+                                className="mr-[10px] w-2/5"
+                                value={tag.value}
+                                onChange={(e) => onTagChange('value', e.target.value, index)}
+                              />
+                              <PlusOutlined
+                                className="edit mr-[10px] cursor-pointer text-[var(--color-primary)]"
+                                onClick={addTagItem}
+                              />
+                              {tagList.length > 1 && (
+                                <DeleteTwoTone
+                                  className="delete cursor-pointer"
+                                  onClick={() => deleteTagItem(index)}
+                                />
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </Form.Item>
                 ) : null
               }
             </Form.Item>
@@ -721,7 +971,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               {({ getFieldValue }) => (
                 <Form.Item label=" " colon={false} className="ml-[-80px]">
                   <div className="flex items-center gap-8">
-                    {getFieldValue('attr_type') !== 'enum' && (
+                    {getFieldValue('attr_type') !== 'enum' && getFieldValue('attr_type') !== 'tag' && (
                       <Form.Item<AttrFieldType>
                         name="is_only"
                         valuePropName="checked"
@@ -735,14 +985,14 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                       valuePropName="checked"
                       className="mb-0"
                     >
-                      <Checkbox>{t('required')}</Checkbox>
+                      <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>{t('required')}</Checkbox>
             </Form.Item>
             <Form.Item<AttrFieldType>
                       name="editable"
                       valuePropName="checked"
                       className="mb-0"
                     >
-                      <Checkbox>{t('editable')}</Checkbox>
+                      <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>{t('editable')}</Checkbox>
                     </Form.Item>
                   </div>
                 </Form.Item>

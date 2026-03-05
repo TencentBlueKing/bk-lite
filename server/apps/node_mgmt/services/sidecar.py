@@ -51,7 +51,9 @@ class Sidecar:
                 return hashlib.md5(encrypted_content.encode("utf-8")).hexdigest()
             except Exception as e:
                 # 加密失败，记录警告日志并回退到明文内容，使用 Django JSON 编码器处理 datetime
-                logger.warning(f"Failed to encrypt response data for ETag generation: {e}")
+                logger.warning(
+                    f"Failed to encrypt response data for ETag generation: {e}"
+                )
                 json_content = json.dumps(
                     data, ensure_ascii=False, cls=DjangoJSONEncoder
                 )
@@ -297,14 +299,52 @@ class Sidecar:
 
         # 合并子配置内容到模板
         merged_template = configuration.config_template
-        for child_config in configuration.childconfig_set.all():
-            # 假设子配置的 `content` 是纯文本格式，直接追加
-            merged_template += (
-                f"\n# {child_config.collect_type} - {child_config.config_type}\n"
-            )
-            merged_template += Sidecar.render_template(
-                child_config.content, child_config.env_config
-            )
+
+        collector = configuration.collector
+        section_headers = {}
+        if collector.default_config:
+            section_headers = collector.default_config.get("config_section", {})
+
+        child_configs = list(configuration.childconfig_set.all())
+
+        if child_configs and section_headers:
+            grouped_configs = {}
+            ungrouped_configs = []
+            for child_config in child_configs:
+                if child_config.config_section:
+                    grouped_configs.setdefault(child_config.config_section, []).append(
+                        child_config
+                    )
+                else:
+                    ungrouped_configs.append(child_config)
+
+            for section_key in section_headers.keys():
+                configs = grouped_configs.get(section_key, [])
+                if configs:
+                    header = section_headers.get(section_key, "")
+                    if header:
+                        merged_template += header
+                    for child_config in configs:
+                        merged_template += f"\n# {child_config.collect_type} - {child_config.config_type}\n"
+                        merged_template += Sidecar.render_template(
+                            child_config.content, child_config.env_config
+                        )
+
+            for child_config in ungrouped_configs:
+                merged_template += (
+                    f"\n# {child_config.collect_type} - {child_config.config_type}\n"
+                )
+                merged_template += Sidecar.render_template(
+                    child_config.content, child_config.env_config
+                )
+        else:
+            for child_config in child_configs:
+                merged_template += (
+                    f"\n# {child_config.collect_type} - {child_config.config_type}\n"
+                )
+                merged_template += Sidecar.render_template(
+                    child_config.content, child_config.env_config
+                )
 
         configuration_data = dict(
             id=configuration.id,

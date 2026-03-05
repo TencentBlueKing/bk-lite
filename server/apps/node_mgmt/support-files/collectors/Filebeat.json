@@ -12,7 +12,11 @@
     "default_template": "",
     "introduction": "Filebeat is a lightweight shipper for forwarding and centralizing log data using official Logstash protocol.",
     "default_config": {
-      "nats": "# ================================== General ===================================\nname: \"filebeat-${node.ip}-${node.cloud_region}\"\ntags: [\"bk-lite\", \"logstash\"]\n\n# ================================== Logging ===================================\nlogging.level: info\nlogging.to_files: true\nlogging.files:\n  path: /opt/fusion-collectors/log/filebeat\n  name: filebeat\n  keepfiles: 7\n  permissions: 0600\n\n# ================================== Outputs ===================================\noutput.logstash:\n  hosts: [\"localhost:15044\"]\n  worker: 1\n  bulk_max_size: 2048\n  timeout: 30s\n  max_retries: 3\n\n# ================================== Inputs ===================================\nfilebeat.inputs:\n"
+      "nats": "# ================================== General ===================================\nname: \"filebeat-${node.ip}-${node.cloud_region}\"\ntags: [\"bk-lite\", \"logstash\"]\n\n# ================================== Logging ===================================\nlogging.level: info\nlogging.to_files: true\nlogging.files:\n  path: /opt/fusion-collectors/log/filebeat\n  name: filebeat\n  keepfiles: 7\n  permissions: 0600\n\n# ================================== Outputs ===================================\noutput.logstash:\n  hosts: [\"localhost:15044\"]\n  worker: 1\n  bulk_max_size: 2048\n  timeout: 30s\n  max_retries: 3\n",
+      "config_section": {
+        "input": "\n# ================================== Inputs ===================================\nfilebeat.inputs:\n",
+        "module": "\n# ================================== Modules ==================================\nfilebeat.modules:\n"
+      }
     },
     "tags": ["linux", "beat", "log"],
     "package_name": "filebeat"

@@ -21,14 +21,12 @@ class MonitorConditionViewSet(viewsets.ModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def list(self, request, *args, **kwargs):
-        monitor_object_id = request.query_params.get("monitor_object_id", None)
-
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
             request.COOKIES.get("current_team"),
             "monitor",
-            f"{PermissionConstants.CONDITION_MODULE}.{monitor_object_id}",
+            PermissionConstants.CONDITION_MODULE,
             include_children=include_children,
         )
         qs = permission_filter(
@@ -41,23 +39,18 @@ class MonitorConditionViewSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(qs)
         queryset = queryset.distinct()
 
-        # 获取分页参数
         page, page_size = parse_page_params(
             request.GET, default_page=1, default_page_size=10
         )
 
-        # 计算分页的起始位置
         start = (page - 1) * page_size
         end = start + page_size
 
-        # 获取当前页的数据
         page_data = queryset[start:end]
 
-        # 执行序列化
         serializer = self.get_serializer(page_data, many=True)
         results = serializer.data
 
-        # 如果有权限规则，则添加到数据中
         inst_permission_map = {
             i["id"]: i["permission"] for i in permission.get("instance", [])
         }

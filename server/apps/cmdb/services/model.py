@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from apps.cmdb.constants.constants import (
     CLASSIFICATION,
@@ -14,6 +15,11 @@ from apps.cmdb.constants.constants import (
     OPERATOR_MODEL,
     DISPLAY_FIELD_CONFIG,
 )
+from apps.cmdb.validators.field_validator import (
+    TAG_ATTR_ID,
+    TAG_MODE_FREE,
+    normalize_tag_field_option as normalize_tag_field_option_config,
+)
 from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFIX
 from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -26,8 +32,108 @@ from apps.core.services.user_group import UserGroup
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.core.logger import cmdb_logger as logger
 
+FIELD_GROUP_MANAGER: Any = getattr(FieldGroup, "objects")
+
 
 class ModelManage(object):
+    @staticmethod
+    def _normalize_attr_constraints(attrs: list[dict]) -> list[dict]:
+        normalized: list[dict] = []
+        for attr in attrs:
+            item = dict(attr)
+            item.setdefault("is_only", False)
+            item.setdefault("is_required", False)
+            item.setdefault("editable", True)
+            item.setdefault("option", {})
+            item.setdefault("user_prompt", "")
+            normalized.append(item)
+        return normalized
+
+    @staticmethod
+    def _is_tag_attr(attr: dict) -> bool:
+        return attr.get("attr_type") == "tag" or attr.get("attr_id") == TAG_ATTR_ID
+
+    @staticmethod
+    def validate_tag_attr_definition(attrs: list[dict], incoming_attr: dict) -> None:
+        attr_type = incoming_attr.get("attr_type")
+        incoming_attr_id = incoming_attr.get("attr_id")
+
+        if attr_type == "tag" and incoming_attr_id != TAG_ATTR_ID:
+            raise BaseAppException("tag 字段 attr_id 必须固定为 tag")
+
+        if incoming_attr_id == TAG_ATTR_ID and attr_type != "tag":
+            raise BaseAppException("attr_id 为 tag 的字段类型必须为 tag")
+
+        if attr_type != "tag":
+            return
+
+        tag_count = sum(1 for attr in attrs if ModelManage._is_tag_attr(attr))
+        if tag_count >= 1:
+            raise BaseAppException("单模型最多允许一个 tag 字段")
+
+    @staticmethod
+    def normalize_tag_field_option(option: dict | list[Any] | None) -> dict:
+        if isinstance(option, list):
+            option = {"mode": TAG_MODE_FREE, "options": option}
+        config = normalize_tag_field_option_config(option)
+        return {
+            "mode": config.mode,
+            "options": [{"key": item.key, "value": item.value} for item in config.options],
+        }
+
+    @staticmethod
+    def merge_tag_options_from_values(model_id: str, values: list[str]) -> None:
+        if not values:
+            return
+        model_info = ModelManage.search_model_info(model_id)
+        if not model_info:
+            return
+        attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        tag_attr = next((attr for attr in attrs if ModelManage._is_tag_attr(attr)), None)
+        if not tag_attr:
+            return
+
+        option = ModelManage.normalize_tag_field_option(tag_attr.get("option") or {})
+        if option.get("mode") != TAG_MODE_FREE:
+            return
+
+        existing = {
+            (str(item.get("key", "")).strip(), str(item.get("value", "")).strip())
+            for item in option.get("options", [])
+            if isinstance(item, dict)
+        }
+        changed = False
+        for raw in values:
+            if not isinstance(raw, str) or raw.count(":") != 1:
+                continue
+            key, value = [part.strip() for part in raw.split(":", 1)]
+            if not key or not value:
+                continue
+            pair = (key, value)
+            if pair in existing:
+                continue
+            existing.add(pair)
+            option["options"].append({"key": key, "value": value})
+            changed = True
+
+        if not changed:
+            return
+
+        for attr in attrs:
+            if ModelManage._is_tag_attr(attr):
+                attr["option"] = option
+                break
+
+        with GraphClient() as ag:
+            ag.set_entity_properties(
+                MODEL,
+                [model_info["_id"]],
+                {"attrs": json.dumps(attrs, ensure_ascii=False)},
+                {},
+                [],
+                False,
+            )
+
     @staticmethod
     def _validate_attr_id(attr_id: str):
         if not IdentifierValidator.is_valid(attr_id):
@@ -154,11 +260,12 @@ class ModelManage(object):
         """
 
         attrs = list(INST_NAME_INFOS)  # 复制默认字段列表
+        model_id = str(data.get("model_id", ""))
 
         # 为默认字段中的目标类型添加 _display 字段定义
         for attr in list(attrs):  # 使用 list() 避免迭代时修改列表
             ModelManage._add_display_field_to_attrs(
-                attrs, attr, data.get("model_id"), is_pre=True
+                attrs, attr, model_id, is_pre=True
             )
 
         data.update(attrs=json.dumps(attrs))
@@ -188,7 +295,7 @@ class ModelManage(object):
         ExcludeFieldsCache.update_on_model_change(data["model_id"])
 
         # 为新建模型创建默认字段分组
-        FieldGroup.objects.create(
+        FIELD_GROUP_MANAGER.create(
             model_id=data["model_id"],
             group_name="default",
             order=1,
@@ -218,9 +325,9 @@ class ModelManage(object):
         src_model_id: str,
         new_model_id: str,
         new_model_name: str,
-        classification_id: str = None,
-        group: list = None,
-        icn: str = None,
+        classification_id: str | None = None,
+        group: list | None = None,
+        icn: str | None = None,
         copy_attributes: bool = False,
         copy_relationships: bool = False,
         username="admin",
@@ -309,11 +416,11 @@ class ModelManage(object):
             # 处理字段分组复制
             if copy_attributes:
                 # 复制源模型的字段分组配置
-                src_field_groups = FieldGroup.objects.filter(
+                src_field_groups = FIELD_GROUP_MANAGER.filter(
                     model_id=src_model_id
                 ).order_by("order")
                 for src_group in src_field_groups:
-                    FieldGroup.objects.create(
+                    FIELD_GROUP_MANAGER.create(
                         model_id=new_model_id,
                         group_name=src_group.group_name,
                         attr_orders=src_group.attr_orders or [],
@@ -321,7 +428,7 @@ class ModelManage(object):
                     )
             else:
                 # 不复制属性时，为新模型创建默认分组
-                FieldGroup.objects.create(
+                FIELD_GROUP_MANAGER.create(
                     model_id=new_model_id,
                     group_name="default",
                     order=1,
@@ -443,7 +550,7 @@ class ModelManage(object):
         order_type: str = "ASC",
         order: str = "id",
         permissions_map: dict | None = None,
-        classification_ids: list = None,
+        classification_ids: list | None = None,
         creator: str = "",
     ):
         """
@@ -517,6 +624,15 @@ class ModelManage(object):
         创建模型属性
         """
         with GraphClient() as ag:
+            if attr_info.get("attr_type") == "tag":
+                attr_info["attr_id"] = TAG_ATTR_ID
+                attr_info["editable"] = True
+                attr_info["is_only"] = False
+                attr_info["is_required"] = False
+                attr_info["option"] = ModelManage.normalize_tag_field_option(
+                    attr_info.get("option") or {}
+                )
+
             ModelManage._validate_attr_id(attr_info["attr_id"])
             model_query = {"field": "model_id", "type": "str=", "value": model_id}
             models, _ = ag.query_entity(MODEL, [model_query])
@@ -525,6 +641,7 @@ class ModelManage(object):
                 raise BaseAppException("model not present")
             model_info = models[0]
             attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+            ModelManage.validate_tag_attr_definition(attrs, attr_info)
             if attr_info["attr_id"] in {i["attr_id"] for i in attrs}:
                 raise BaseAppException("model attr repetition")
             attrs.append(attr_info)
@@ -577,14 +694,34 @@ class ModelManage(object):
             attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
             if attr_info["attr_id"] not in {i["attr_id"] for i in attrs}:
                 raise BaseAppException("model attr not present")
+
+            current_attr = next(
+                (attr for attr in attrs if attr["attr_id"] == attr_info["attr_id"]),
+                None,
+            )
+            if not current_attr:
+                raise BaseAppException("model attr not present")
+
+            is_tag_attr = ModelManage._is_tag_attr(current_attr)
+            if is_tag_attr:
+                if attr_info.get("attr_id") != TAG_ATTR_ID:
+                    raise BaseAppException("tag 字段 attr_id 不允许修改")
+                attr_info["attr_type"] = "tag"
+                attr_info["editable"] = True
+                attr_info["is_only"] = False
+                attr_info["is_required"] = False
+                attr_info["option"] = ModelManage.normalize_tag_field_option(
+                    attr_info.get("option") or current_attr.get("option") or {}
+                )
+
             for attr in attrs:
                 if attr_info["attr_id"] != attr["attr_id"]:
                     continue
                 attr.update(
                     attr_group=attr_info["attr_group"],
                     attr_name=attr_info["attr_name"],
-                    is_required=attr_info["is_required"],
-                    editable=attr_info["editable"],
+                    is_required=False if is_tag_attr else attr_info["is_required"],
+                    editable=True if is_tag_attr else attr_info["editable"],
                     option=attr_info["option"],
                     user_prompt=attr_info["user_prompt"],
                 )
@@ -785,7 +922,9 @@ class ModelManage(object):
         查询模型属性
         """
         model_info = ModelManage.search_model_info(model_id)
-        attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        attrs = ModelManage._normalize_attr_constraints(
+            ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        )
         # TODO 语言包
         # lan = SettingLanguage(language)
         # model_attr = lan.get_val("ATTR", model_id)
@@ -802,7 +941,9 @@ class ModelManage(object):
         查询模型属性
         """
         model_info = ModelManage.search_model_info(model_id)
-        attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        attrs = ModelManage._normalize_attr_constraints(
+            ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        )
         attr_types = {attr["attr_type"] for attr in attrs}
         system_mgmt_client = SystemMgmt()
 

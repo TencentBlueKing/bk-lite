@@ -465,6 +465,7 @@ const Attributes: React.FC = () => {
   };
 
   const groupedAttrs = getGroupedAttrs();
+  const hasTagAttr = tableData.some((attr) => attr.attr_type === 'tag');
 
   return (
     <div className="h-full flex flex-col">
@@ -614,6 +615,7 @@ const Attributes: React.FC = () => {
         ref={attrRef}
         attrTypeList={ATTR_TYPE_LIST}
         groups={groups}
+        hasTagAttr={hasTagAttr}
         onSuccess={updateAttrList}
       />
 
