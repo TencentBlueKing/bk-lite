@@ -237,6 +237,28 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             passphrase = aes_obj.decode(node_obj.passphrase)
 
         try:
+            # 准备远程目录步骤（兼容 OpenSSH 9.0+ 的 SFTP 协议行为）
+            _add_step(
+                steps,
+                "prepare",
+                "running",
+                "Preparing remote directory",
+            )
+            remote_target_dir = f"{controller_install_dir}/{unzip_name}"
+            exec_command_to_remote(
+                task_obj.work_node,
+                node_obj.ip,
+                node_obj.username,
+                password,
+                f"mkdir -p {remote_target_dir}",
+                node_obj.port,
+                private_key=private_key,
+                passphrase=passphrase,
+            )
+            _update_step_status(
+                steps, "success", "Remote directory prepared successfully"
+            )
+
             # 文件传输步骤
             _add_step(
                 steps,
