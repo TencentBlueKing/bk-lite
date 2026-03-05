@@ -240,6 +240,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         isEdit: true,
         disabled: fieldDisabled,
         placeholder,
+        inModal: true,
       });
     };
 
@@ -409,7 +410,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
                   <div className={styles.groupOther}>{group.group_name}</div>
                   <Row gutter={24}>
                     {otherAttrs.map((item) => (
-                      <Col span={12} key={item.attr_id}>
+                      <Col span={item.attr_type === 'table' ? 24 : 12} key={item.attr_id}>
                         <Form.Item
                           className="mb-4"
                           name={item.attr_id}

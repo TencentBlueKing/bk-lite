@@ -217,9 +217,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   };
 
   const initData = (list: any) => {
-    list.forEach((item: any) => {
-      const itemList = item.attrs;
-
+    list.forEach((group: any) => {
+      const itemList = group.attrs;
       itemList.forEach((item: any) => {
         const originalValue = item.value || instDetail[item.attr_id];
         item.value = originalValue;
@@ -346,6 +345,9 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
             </div>
           </Form>
         );
+        if (item.attr_type === 'table') {
+          item.span = 2;
+        }
       });
     })
 
@@ -432,7 +434,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       value,
       hideUserAvatar: true,
       flatGroups,
-    });
+    }) as string;
     navigator.clipboard.writeText(copyVal);
     message.success(t('successfulCopied'));
   };
