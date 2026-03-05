@@ -1,0 +1,149 @@
+"""作业管理模块常量定义"""
+
+
+class TargetSource:
+    """目标来源"""
+
+    SYNC = "sync"  # 从 Node 同步，使用 execute_local / download_to_local
+    MANUAL = "manual"  # 手动新增，使用 execute_ssh / download_to_remote
+
+    CHOICES = (
+        (SYNC, "同步"),
+        (MANUAL, "手动"),
+    )
+
+
+class OSType:
+    """操作系统类型"""
+
+    LINUX = "linux"
+    WINDOWS = "windows"
+
+    CHOICES = (
+        (LINUX, "Linux"),
+        (WINDOWS, "Windows"),
+    )
+
+
+class ScriptType:
+    """脚本类型"""
+
+    SHELL = "shell"
+    BASH = "bash"
+    PYTHON = "python"
+    POWERSHELL = "powershell"
+    BAT = "bat"
+
+    CHOICES = (
+        (SHELL, "Shell"),
+        (BASH, "Bash"),
+        (PYTHON, "Python"),
+        (POWERSHELL, "PowerShell"),
+        (BAT, "Batch"),
+    )
+
+    # 映射到 Executor.execute_local 的 shell 参数
+    SHELL_MAPPING = {
+        SHELL: "sh",
+        BASH: "bash",
+        PYTHON: "python",
+        POWERSHELL: "powershell",
+        BAT: "cmd",
+    }
+
+
+class JobType:
+    """作业类型"""
+
+    SCRIPT = "script"
+    FILE_DISTRIBUTION = "file_distribution"
+    PLAYBOOK = "playbook"
+
+    CHOICES = (
+        (SCRIPT, "脚本执行"),
+        (FILE_DISTRIBUTION, "文件分发"),
+        (PLAYBOOK, "Playbook"),
+    )
+
+
+class ExecutionStatus:
+    """执行状态"""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+    TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
+
+    CHOICES = (
+        (PENDING, "等待中"),
+        (RUNNING, "执行中"),
+        (SUCCESS, "成功"),
+        (FAILED, "失败"),
+        (TIMEOUT, "超时"),
+        (CANCELLED, "已取消"),
+    )
+
+    # 终态
+    TERMINAL_STATES = (SUCCESS, FAILED, TIMEOUT, CANCELLED)
+
+
+class ScheduleType:
+    """定时任务类型"""
+
+    ONCE = "once"
+    CRON = "cron"
+
+    CHOICES = (
+        (ONCE, "单次执行"),
+        (CRON, "周期执行"),
+    )
+
+
+class DangerousLevel:
+    """危险等级/处理策略"""
+
+    CONFIRM = "confirm"  # 二次确认
+    FORBIDDEN = "forbidden"  # 禁止分发
+
+    CHOICES = (
+        (CONFIRM, "二次确认"),
+        (FORBIDDEN, "禁止分发"),
+    )
+
+
+class ExecutorDriver:
+    """执行驱动类型"""
+
+    ANSIBLE = "ansible"
+    SIDECAR = "sidecar"
+
+    CHOICES = (
+        (ANSIBLE, "Ansible"),
+        (SIDECAR, "Sidecar"),
+    )
+
+
+class CredentialSource:
+    """凭据来源"""
+
+    MANUAL = "manual"  # 手动录入
+    CREDENTIAL = "credential"  # 凭据管理
+
+    CHOICES = (
+        (MANUAL, "手动录入"),
+        (CREDENTIAL, "凭据管理"),
+    )
+
+
+class SSHCredentialType:
+    """SSH凭据类型"""
+
+    PASSWORD = "password"  # 密码
+    KEY = "key"  # 密钥
+
+    CHOICES = (
+        (PASSWORD, "密码"),
+        (KEY, "密钥"),
+    )
