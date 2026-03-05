@@ -212,17 +212,15 @@ const SearchView: React.FC = () => {
         const chartData = renderChart(data, list);
         const duration = Date.now() - startTime;
         setChartItems((prev) =>
-          prev.map((item, i) =>
-            i === index
-              ? {
-                ...item,
-                data: chartData,
-                unit: displayUnit,
-                loading: false,
-                duration
-              }
-              : item
-          )
+          prev.map((item, i) => {
+            if (i === index) {
+              item.data = chartData;
+              item.unit = displayUnit;
+              item.loading = false;
+              item.duration = duration;
+            }
+            return item;
+          })
         );
       } catch {
         const duration = Date.now() - startTime;
@@ -345,6 +343,7 @@ const SearchView: React.FC = () => {
                       data={item.data}
                       unit={item.unit}
                       showDimensionTable={layoutMode === 'single'}
+                      key={layoutMode}
                       onXRangeChange={onXRangeChange}
                     />
                   </div>
