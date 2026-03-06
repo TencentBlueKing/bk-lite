@@ -23,7 +23,7 @@ const TableFieldEditor: React.FC<TableFieldEditorProps> = ({
   const { t } = useTranslation();
   const createEmptyRow = () => {
     const newRow: any = {};
-    columns.forEach((col) => {
+    (Array.isArray(columns) ? columns : []).forEach((col) => {
       newRow[col.column_id] = '';
     });
     return newRow;
@@ -75,8 +75,7 @@ const TableFieldEditor: React.FC<TableFieldEditorProps> = ({
     newData[index] = { ...newData[index], [columnId]: val };
     handleChange(newData);
   };
-
-  const sortedColumns = [...columns].sort((a, b) => a.order - b.order);
+  const sortedColumns = [...(Array.isArray(columns) ? columns : [])].sort((a, b) => a.order - b.order);
 
   const tableColumns: Array<{
     title: string;
