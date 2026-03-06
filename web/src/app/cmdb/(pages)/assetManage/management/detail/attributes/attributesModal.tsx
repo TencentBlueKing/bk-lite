@@ -879,28 +879,15 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                   <Option value="str">{t('string')}</Option>
                                   <Option value="number">{t('number')}</Option>
                                 </Select>
-                                <Button
-                                  type="text"
-                                  size="small"
+                                <PlusOutlined
+                                  className="mr-[10px] cursor-pointer text-[var(--color-primary)]"
                                   onClick={addTableColumn}
-                                  style={{
-                                    minWidth: 24,
-                                    padding: '0 4px',
-                                    color: 'var(--color-primary)',
-                                  }}
-                                >
-                                  +
-                                </Button>
+                                />
                                 {tableColumnList.length > 1 && (
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    danger
+                                  <MinusOutlined
+                                    className="cursor-pointer text-[var(--color-primary)]"
                                     onClick={() => deleteTableColumn(index)}
-                                    style={{ minWidth: 24, padding: '0 4px' }}
-                                  >
-                                    −
-                                  </Button>
+                                  />
                                 )}
                               </SortableItem>
                             ))}
