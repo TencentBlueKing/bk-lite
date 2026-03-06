@@ -465,7 +465,7 @@ const AssetDataContent = () => {
 
     getModelAttrGroupsFullInfo(id)
       .then((res) => setPropertyListGroups(res.groups))
-      .catch(() => message.error(t('common.getFailed')));
+      .catch(() => message.error('Failed to load attribute groups'));
 
     setLoading(true);
     Promise.all([

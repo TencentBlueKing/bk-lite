@@ -612,13 +612,13 @@ export const getFieldItem = (config: {
             disabled={disabled}
             placeholder={placeholder}
             min={
-              intOption?.min_value !== ''
-                ? Number(intOption?.min_value)
+              ![undefined, '', null].includes(intOption?.min_value as string)
+                ? Number(intOption.min_value)
                 : undefined
             }
             max={
-              intOption?.max_value !== ''
-                ? Number(intOption?.max_value)
+              ![undefined, '', null].includes(intOption?.max_value as string)
+                ? Number(intOption.max_value)
                 : undefined
             }
           />
@@ -843,12 +843,12 @@ export const getStringValidationRule = (item: AttrLike, t: (key: string) => stri
 
 export const getNumberRangeRule = (item: AttrLike, t: (key: string) => string) => {
   const intOption = item.option as IntAttrOption;
-  const hasMin = intOption?.min_value !== undefined && intOption?.min_value !== '' && intOption?.min_value !== null;
-  const hasMax = intOption?.max_value !== undefined && intOption?.max_value !== '' && intOption?.max_value !== null;
+  const hasMin = ![undefined, '', null].includes(intOption?.min_value as string);
+  const hasMax = ![undefined, '', null].includes(intOption?.max_value as string);
   if (!hasMin && !hasMax) return null;
   return {
     validator: (_: unknown, value: unknown) => {
-      if (value === undefined || value === null || value === '') {
+      if ([undefined, null, ''].includes(value as string)) {
         return Promise.resolve();
       }
       const numValue = Number(value);
