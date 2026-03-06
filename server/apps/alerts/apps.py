@@ -19,7 +19,7 @@ class AlertsConfig(AppConfig):
         if not is_running_migrations:
             # 注册告警源适配器
             adapters()
-            import apps.alerts.nats  # noqa
+            import apps.alerts.nats.nats # noqa
 
 
 def adapters():
