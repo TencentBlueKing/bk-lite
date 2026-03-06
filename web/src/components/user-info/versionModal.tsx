@@ -8,11 +8,11 @@ import { getClientIdFromRoute } from '@/utils/route';
 const { TabPane } = Tabs;
 
 interface VersionModalProps {
-  visible: boolean;
+  open: boolean;
   onClose: () => void;
 }
 
-const VersionModal: React.FC<VersionModalProps> = ({ visible, onClose }) => {
+const VersionModal: React.FC<VersionModalProps> = ({ open, onClose }) => {
   const { t } = useTranslation();
   const [activeKey, setActiveKey] = useState<string>('');
   const [versionFiles, setVersionFiles] = useState<string[]>([]);
@@ -21,7 +21,7 @@ const VersionModal: React.FC<VersionModalProps> = ({ visible, onClose }) => {
   const locale = typeof window !== 'undefined' && localStorage.getItem('locale');
 
   useEffect(() => {
-    if (visible) {
+    if (open) {
       const routeClientId = getClientIdFromRoute();
       fetch(`/api/versions?locale=${locale}&clientId=${routeClientId}`)
         .then(res => res.json())
@@ -38,7 +38,7 @@ const VersionModal: React.FC<VersionModalProps> = ({ visible, onClose }) => {
           setLoading(false);
         });
     }
-  }, [visible]);
+  }, [open]);
 
   const handleTabChange = (key: string) => {
     setActiveKey(key);
@@ -46,7 +46,7 @@ const VersionModal: React.FC<VersionModalProps> = ({ visible, onClose }) => {
 
   return (
     <OperateModal
-      visible={visible}
+      open={open}
       title={t('common.version')}
       footer={null}
       onCancel={onClose}
