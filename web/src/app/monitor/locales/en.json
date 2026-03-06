@@ -547,7 +547,12 @@
       "saveTime": "Save Time",
       "loadSuccess": "Query conditions loaded",
       "queryNamePlaceholder": "Please enter query name",
-      "loadInto": "Load"
+      "loadInto": "Load",
+      "identifier": "Identifier",
+      "min": "Min",
+      "max": "Max",
+      "avg": "Avg",
+      "clearQuery": "Clear Query"
     },
     "object": "Object",
     "selectObject": "Select Object",

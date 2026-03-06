@@ -201,13 +201,16 @@ export const useFormatTime = () => {
 
 // 柱形图或者折线图单条线时，获取其最大值、最小值、平均值和最新值
 export const calculateMetrics = (
-  data: Record<string, number>[],
+  data: Record<string, number | null | undefined>[],
   key = 'value1'
 ) => {
   if (!data || data.length === 0) return {};
   const values = data
     .map((item) => item[key])
-    .filter((val): val is number => typeof val === 'number');
+    .filter(
+      (val): val is number =>
+        typeof val === 'number' && !isNaN(val) && val !== null
+    );
   if (values.length === 0) return {};
 
   const maxValue = Math.max(...values);

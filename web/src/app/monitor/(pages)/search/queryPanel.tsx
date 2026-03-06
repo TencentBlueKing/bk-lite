@@ -917,7 +917,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                   onClick={handleOpenLoadDrawer}
                 />
               </Tooltip>
-              <Tooltip title={t('common.clear')}>
+              <Tooltip title={t('monitor.search.clearQuery')}>
                 <Button
                   type="text"
                   icon={<ClearOutlined />}
