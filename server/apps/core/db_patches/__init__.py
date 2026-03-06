@@ -21,7 +21,7 @@ _ENGINE_PATCH_MAP = {
     "goldendb": "apps.core.db_patches.goldendb",
     "oceanbase": "apps.core.db_patches.oceanbase",
     "gaussdb": "apps.core.db_patches.gaussdb",
-    # "mysql": "apps.core.db_patches.mysql",
+    "mysql": "apps.core.db_patches.mysql",
 }
 
 
