@@ -27,6 +27,7 @@ import {
 import { useInstanceApi } from '@/app/cmdb/api';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { useUserInfoContext } from '@/context/userInfo';
+import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
 
 const { Panel } = Collapse;
 const InfoList: React.FC<AssetDataFieldProps> = ({
@@ -287,12 +288,16 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                   </Form.Item>
                 ) : (
                   <>
-                    {getFieldItem({
-                      fieldItem: item,
-                      userList,
-                      isEdit: false,
-                      value: item.value,
-                    })}
+                    {item.attr_type === 'tag' ? (
+                      <TagCapsuleGroup value={item.value} maxVisible={2} />
+                    ) : (
+                      getFieldItem({
+                        fieldItem: item,
+                        userList,
+                        isEdit: false,
+                        value: item.value,
+                      })
+                    )}
                   </>
                 )}
               </div>
