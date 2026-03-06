@@ -39,6 +39,35 @@ class TargetViewSet(AuthViewSet):
         return TargetSerializer
 
     def create(self, request, *args, **kwargs):
+        """
+        创建目标（手动新增）
+
+        根据 os_type 决定使用 SSH (Linux) 或 WinRM (Windows) 凭据。
+
+        请求体:
+        {
+            "name": "目标名称",
+            "ip": "192.168.1.100",
+            "os_type": "linux",  // linux 或 windows
+            "cloud_region_id": "region-1",
+            "driver": "ansible",
+            "credential_source": "manual",  // manual 或 credential
+            "credential_id": "",  // 凭据管理时必填
+            // Linux SSH 字段 (os_type=linux 时必填)
+            "ssh_port": 22,
+            "ssh_user": "root",
+            "ssh_credential_type": "password",  // password 或 key
+            "ssh_password": "xxx",  // 密码方式必填
+            "ssh_key_file": <file>,  // 密钥方式必填
+            // Windows WinRM 字段 (os_type=windows 时必填)
+            "winrm_port": 5986,
+            "winrm_scheme": "https",  // http 或 https
+            "winrm_user": "Administrator",
+            "winrm_password": "xxx",
+            "winrm_cert_validation": true,  // 是否验证证书
+            "team": [1, 2]
+        }
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -89,20 +118,30 @@ class TargetViewSet(AuthViewSet):
     @action(detail=False, methods=["post"])
     def test_connection(self, request):
         """
-        测试 SSH 连接
+        测试连接
+
+        根据 os_type 决定使用 SSH (Linux) 或 WinRM (Windows) 连接。
 
         请求体:
         {
             "ip": "192.168.1.100",
+            "os_type": "linux",  // linux 或 windows，默认 linux
             "cloud_region_id": "region-1",
             "driver": "ansible",
             "credential_source": "manual",
             "credential_id": "",  // 凭据管理时必填
+            // Linux SSH 字段
             "ssh_port": 22,
             "ssh_user": "root",
             "ssh_credential_type": "password",
             "ssh_password": "xxx",  // 密码方式必填
-            "ssh_key_file": <file>  // 密钥方式必填
+            "ssh_key_file": <file>,  // 密钥方式必填
+            // Windows WinRM 字段
+            "winrm_port": 5986,
+            "winrm_scheme": "https",  // http 或 https
+            "winrm_user": "Administrator",
+            "winrm_password": "xxx",
+            "winrm_cert_validation": true  // 是否验证证书
         }
 
         返回:
@@ -117,19 +156,27 @@ class TargetViewSet(AuthViewSet):
 
         # TODO: 实际连接测试逻辑
         # 当前返回模拟结果，后续对接执行器 (rpc/executor.py)
-        # 需要根据 driver 类型和凭据信息执行 SSH 连接测试
+        # 需要根据 os_type 和凭据信息执行 SSH 或 WinRM 连接测试
 
         ip = validated_data.get("ip")
-        ssh_user = validated_data.get("ssh_user", "")
-        ssh_port = validated_data.get("ssh_port", 22)
+        os_type = validated_data.get("os_type", "linux")
 
-        logger.info(f"Test connection request: {ssh_user}@{ip}:{ssh_port}")
+        if os_type == "linux":
+            user = validated_data.get("ssh_user", "")
+            port = validated_data.get("ssh_port", 22)
+            logger.info(f"Test SSH connection: {user}@{ip}:{port}")
+            message = f"连接测试功能待实现（SSH {user}@{ip}:{port}）"
+        else:
+            user = validated_data.get("winrm_user", "")
+            port = validated_data.get("winrm_port", 5986)
+            scheme = validated_data.get("winrm_scheme", "https")
+            logger.info(f"Test WinRM connection: {user}@{ip}:{port} ({scheme})")
+            message = f"连接测试功能待实现（WinRM {user}@{ip}:{port} {scheme}）"
 
-        # 模拟连接测试结果
         return Response(
             {
                 "success": True,
-                "message": f"连接测试功能待实现（{ssh_user}@{ip}:{ssh_port}）",
+                "message": message,
             },
             status=status.HTTP_200_OK,
         )

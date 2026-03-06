@@ -1,5 +1,6 @@
 """Playbook视图"""
 
+from django.http import FileResponse
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,35 +8,75 @@ from rest_framework.response import Response
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.filters.playbook import PlaybookFilter
 from apps.job_mgmt.models import Playbook
-from apps.job_mgmt.serializers.playbook import PlaybookBatchDeleteSerializer, PlaybookCreateSerializer, PlaybookSerializer, PlaybookUpdateSerializer
+from apps.job_mgmt.serializers.playbook import (
+    PlaybookBatchDeleteSerializer,
+    PlaybookCreateSerializer,
+    PlaybookDetailSerializer,
+    PlaybookListSerializer,
+    PlaybookUpdateSerializer,
+    PlaybookUpgradeSerializer,
+)
 
 
 class PlaybookViewSet(AuthViewSet):
     """Playbook视图集"""
 
     queryset = Playbook.objects.all()
-    serializer_class = PlaybookSerializer
+    serializer_class = PlaybookDetailSerializer
     filterset_class = PlaybookFilter
-    search_fields = ["name", "description"]
+    search_fields = ["name", "version"]
     ORGANIZATION_FIELD = "team"
 
     def get_serializer_class(self):
-        if self.action == "create":
+        if self.action == "list":
+            return PlaybookListSerializer
+        elif self.action == "retrieve":
+            return PlaybookDetailSerializer
+        elif self.action == "create":
             return PlaybookCreateSerializer
         elif self.action in ["update", "partial_update"]:
             return PlaybookUpdateSerializer
+        elif self.action == "upgrade":
+            return PlaybookUpgradeSerializer
         elif self.action == "batch_delete":
             return PlaybookBatchDeleteSerializer
-        return PlaybookSerializer
+        return PlaybookDetailSerializer
 
     def create(self, request, *args, **kwargs):
+        """
+        创建 Playbook（文件上传）
+
+        上传 ZIP 文件，后端自动提取文件名作为 Playbook 名称。
+
+        请求体 (multipart/form-data):
+        {
+            "file": <ZIP 文件>,  // 必填，支持 .zip, .tar.gz, .tgz
+            "version": "v1.0.0",  // 可选，默认 v1.0.0
+            "team": [1, 2]  // 可选，团队 ID 列表
+        }
+
+        返回:
+        {
+            "id": 1,
+            "name": "my-playbook",  // 从文件名自动提取
+            "version": "v1.0.0",
+            "file_name": "my-playbook.zip",
+            "file_key": "playbooks/2026/03/05/my-playbook.zip",
+            "bucket_name": "job-mgmt-private",
+            "file_size": 12345,
+            "team": [1, 2],
+            "created_by": "admin",
+            "created_at": "2026-03-05T12:00:00Z",
+            "updated_by": "admin",
+            "updated_at": "2026-03-05T12:00:00Z"
+        }
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
+        instance = serializer.save()
 
         # 返回完整的对象信息
-        instance = Playbook.objects.get(pk=serializer.instance.pk)
-        response_serializer = PlaybookSerializer(instance)
+        response_serializer = PlaybookDetailSerializer(instance, context={"request": request})
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["post"])
@@ -50,3 +91,41 @@ class PlaybookViewSet(AuthViewSet):
         deleted_count, _ = queryset.filter(id__in=ids).delete()
 
         return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"])
+    def upgrade(self, request, pk=None):
+        """
+        更新 Playbook 版本
+
+        上传新的 ZIP 文件，可选填写新版本号。
+        不填写版本号则自动在当前版本上 +0.0.1。
+
+        请求体 (multipart/form-data):
+        {
+            "file": <ZIP 文件>,  // 必填
+            "version": "v1.1.0"  // 可选，不填则自动 +0.0.1
+        }
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.update(instance, serializer.validated_data)
+
+        response_serializer = PlaybookDetailSerializer(instance, context={"request": request})
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"])
+    def download(self, request, pk=None):
+        """
+        下载 Playbook 文件
+
+        返回 Playbook 压缩包文件流
+        """
+        instance = self.get_object()
+
+        if not instance.file:
+            return Response({"detail": "文件不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        file_handle = instance.file.open("rb")
+        response = FileResponse(file_handle, as_attachment=True, filename=instance.file_name)
+        return response

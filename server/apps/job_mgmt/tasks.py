@@ -13,7 +13,6 @@ from typing import Optional
 
 from celery import shared_task
 from django.utils import timezone
-from jinja2 import Template
 
 from apps.job_mgmt.constants import ExecutionStatus, ScriptType, TargetSource
 from apps.job_mgmt.models import JobExecution, JobExecutionTarget
@@ -72,18 +71,6 @@ def _update_target_status(
         target_detail.finished_at = finished_at
 
     target_detail.save()
-
-
-def _render_script(script_content: str, params: dict) -> str:
-    """渲染脚本模板（支持 Jinja2 语法）"""
-    if not params:
-        return script_content
-    try:
-        template = Template(script_content)
-        return template.render(**params)
-    except Exception as e:
-        logger.warning(f"脚本模板渲染失败: {e}，使用原始内容")
-        return script_content
 
 
 def _get_shell_type(script_type: str) -> str:
@@ -181,8 +168,12 @@ def execute_script_task(self, execution_id: int):
     script_content = execution.script_content
     script_type = execution.script_type
 
-    # 渲染脚本参数
-    script_content = _render_script(script_content, execution.params)
+    # 准备执行参数
+    params = execution.params  # 字符串格式的命令行参数
+
+    # 如果有命令行参数，附加到脚本内容末尾
+    if params:
+        script_content = f"{script_content} {params}"
 
     # 获取所有待执行目标
     target_details = list(execution.execution_targets.filter(status=ExecutionStatus.PENDING))
@@ -226,7 +217,7 @@ def execute_script_task(self, execution_id: int):
     logger.info(f"[execute_script_task] 脚本任务完成: execution_id={execution_id}, status={final_status}")
 
 
-def _distribute_file_to_target(target_detail: JobExecutionTarget, files: list, target_path: str, timeout: int) -> dict:
+def _distribute_file_to_target(target_detail: JobExecutionTarget, files: list, target_path: str, timeout: int, overwrite: bool = True) -> dict:
     """分发文件到单个目标"""
     target = target_detail.target
     result = {
@@ -257,6 +248,7 @@ def _distribute_file_to_target(target_detail: JobExecutionTarget, files: list, t
                         file_name=file_item.get("name", ""),
                         target_path=target_path,
                         timeout=timeout,
+                        overwrite=overwrite,
                     )
                 else:
                     # 手动来源：使用 download_to_remote
@@ -272,6 +264,7 @@ def _distribute_file_to_target(target_detail: JobExecutionTarget, files: list, t
                         private_key=target.ssh_key if target.ssh_key else None,
                         timeout=timeout,
                         port=target.ssh_port,
+                        overwrite=overwrite,
                     )
 
                 # 检查结果
@@ -338,10 +331,10 @@ def distribute_files_task(self, execution_id: int):
     started_at = timezone.now()
     _update_execution_status(execution, ExecutionStatus.RUNNING, started_at=started_at)
 
-    # 获取文件列表和目标路径
+    # 获取文件列表、目标路径和覆盖策略
     files = execution.files
     target_path = execution.target_path
-
+    overwrite = execution.overwrite_strategy == "overwrite"
     if not files:
         logger.warning(f"[distribute_files_task] 无文件需要分发: execution_id={execution_id}")
         _update_execution_status(execution, ExecutionStatus.SUCCESS, finished_at=timezone.now())
@@ -357,7 +350,7 @@ def distribute_files_task(self, execution_id: int):
 
     # 并发执行
     with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(target_details))) as executor:
-        futures = {executor.submit(_distribute_file_to_target, td, files, target_path, execution.timeout): td for td in target_details}
+        futures = {executor.submit(_distribute_file_to_target, td, files, target_path, execution.timeout, overwrite): td for td in target_details}
 
         for future in as_completed(futures):
             target_detail = futures[future]
@@ -389,11 +382,11 @@ def distribute_files_task(self, execution_id: int):
     logger.info(f"[distribute_files_task] 文件分发任务完成: execution_id={execution_id}, status={final_status}")
 
 
-def _execute_playbook_on_target(target_detail: JobExecutionTarget, playbook_content: str, entry_file: str, params: dict, timeout: int) -> dict:
+def _execute_playbook_on_target(target_detail: JobExecutionTarget, timeout: int) -> dict:
     """在单个目标上执行 Playbook
 
-    注意：Playbook 执行通常是在控制节点执行 ansible-playbook 命令，
-    将目标主机作为 inventory。这里简化实现，直接在目标上执行。
+    Playbook 简化设计：直接执行 playbook.yml，无需额外参数
+    注意：实际实现需要先下载 Playbook 压缩包到目标并解压
     """
     target = target_detail.target
     result = {
@@ -412,9 +405,8 @@ def _execute_playbook_on_target(target_detail: JobExecutionTarget, playbook_cont
         # 构建 ansible-playbook 命令
         # 注意：实际实现需要先下载 playbook 到本地，生成 inventory，然后执行
         # 这里为简化实现，假设 playbook 已在目标可访问的位置
-
-        extra_vars = " ".join([f"-e {k}={v}" for k, v in params.items()]) if params else ""
-        command = f"ansible-playbook {entry_file} -i localhost, -c local {extra_vars}"
+        # 固定入口文件为 playbook.yml
+        command = "ansible-playbook playbook.yml -i localhost, -c local"
 
         if target.source == TargetSource.SYNC:
             executor = Executor(target.node_id)
@@ -510,9 +502,6 @@ def execute_playbook_task(self, execution_id: int):
             executor.submit(
                 _execute_playbook_on_target,
                 td,
-                "",  # playbook_content - 简化实现暂不使用
-                playbook.entry_file,
-                execution.params,
                 execution.timeout,
             ): td
             for td in target_details

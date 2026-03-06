@@ -5,7 +5,7 @@ from django_minio_backend import MinioBackend
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.job_mgmt.constants import CredentialSource, ExecutorDriver, OSType, SSHCredentialType, TargetSource
+from apps.job_mgmt.constants import CredentialSource, ExecutorDriver, OSType, SSHCredentialType, TargetSource, WinRMScheme
 
 # SSH 密钥文件存储 bucket
 SSH_KEY_BUCKET = "job-mgmt-private"
@@ -67,6 +67,13 @@ class Target(TimeInfo, MaintainerInfo):
         blank=True,
         null=True,
     )
+
+    # 手动录入时的 WinRM 凭据 (Windows)
+    winrm_port = models.IntegerField(default=5986, verbose_name="WinRM端口")
+    winrm_scheme = models.CharField(max_length=16, choices=WinRMScheme.CHOICES, default=WinRMScheme.HTTPS, verbose_name="WinRM协议")
+    winrm_user = models.CharField(max_length=64, blank=True, default="", verbose_name="WinRM用户名")
+    winrm_password = models.CharField(max_length=256, blank=True, default="", verbose_name="WinRM密码")
+    winrm_cert_validation = models.BooleanField(default=True, verbose_name="WinRM证书验证")
 
     # 组织归属（多组织）
     team = models.JSONField(default=list, verbose_name="团队ID列表")

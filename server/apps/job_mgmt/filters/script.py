@@ -11,8 +11,8 @@ class ScriptFilter(filters.FilterSet):
     name = filters.CharFilter(field_name="name", lookup_expr="icontains")
     script_type = filters.CharFilter(field_name="script_type", lookup_expr="exact")
     os_type = filters.CharFilter(field_name="os_type", lookup_expr="exact")
-    is_preset = filters.BooleanFilter(field_name="is_preset")
+    is_built_in = filters.BooleanFilter(field_name="is_built_in")
 
     class Meta:
         model = Script
-        fields = ["name", "script_type", "os_type", "is_preset"]
+        fields = ["name", "script_type", "is_built_in"]

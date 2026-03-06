@@ -9,8 +9,8 @@ class PlaybookFilter(filters.FilterSet):
     """Playbook过滤器"""
 
     name = filters.CharFilter(field_name="name", lookup_expr="icontains")
-    is_preset = filters.BooleanFilter(field_name="is_preset")
+    version = filters.CharFilter(field_name="version", lookup_expr="icontains")
 
     class Meta:
         model = Playbook
-        fields = ["name", "is_preset"]
+        fields = ["name", "version"]

@@ -27,6 +27,7 @@ class ScheduledTaskListSerializer(serializers.ModelSerializer):
             "cron_expression",
             "scheduled_time",
             "is_enabled",
+            "concurrency_policy",
             "last_run_at",
             "run_count",
             "target_count",
@@ -74,6 +75,7 @@ class ScheduledTaskDetailSerializer(serializers.ModelSerializer):
             "target_path",
             "timeout",
             "is_enabled",
+            "concurrency_policy",
             "periodic_task_id",
             "last_run_at",
             "run_count",
@@ -110,6 +112,7 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
             "target_path",
             "timeout",
             "is_enabled",
+            "concurrency_policy",
             "team",
         ]
 
@@ -195,6 +198,7 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
             "target_path",
             "timeout",
             "is_enabled",
+            "concurrency_policy",
             "team",
         ]
 

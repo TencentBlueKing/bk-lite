@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from apps.job_mgmt.constants import CredentialSource, SSHCredentialType, TargetSource
+from apps.job_mgmt.constants import CredentialSource, OSType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import Target
 
 
@@ -15,6 +15,7 @@ class TargetSerializer(serializers.ModelSerializer):
     credential_source_display = serializers.CharField(source="get_credential_source_display", read_only=True)
     ssh_credential_type_display = serializers.CharField(source="get_ssh_credential_type_display", read_only=True)
     ssh_key_file_name = serializers.CharField(read_only=True)
+    winrm_scheme_display = serializers.CharField(source="get_winrm_scheme_display", read_only=True)
 
     class Meta:
         model = Target
@@ -40,6 +41,11 @@ class TargetSerializer(serializers.ModelSerializer):
             "ssh_credential_type_display",
             "ssh_key_file",
             "ssh_key_file_name",
+            "winrm_port",
+            "winrm_scheme",
+            "winrm_scheme_display",
+            "winrm_user",
+            "winrm_cert_validation",
             "team",
             "created_by",
             "created_at",
@@ -67,31 +73,41 @@ class TargetCreateSerializer(serializers.ModelSerializer):
             "ssh_credential_type",
             "ssh_password",
             "ssh_key_file",
+            "winrm_port",
+            "winrm_scheme",
+            "winrm_user",
+            "winrm_password",
+            "winrm_cert_validation",
             "team",
         ]
 
     def validate(self, attrs):
         """验证手动新增目标"""
+        os_type = attrs.get("os_type", OSType.LINUX)
         credential_source = attrs.get("credential_source", CredentialSource.MANUAL)
 
         if credential_source == CredentialSource.MANUAL:
-            # 手动录入凭据时，ssh_user 必填
-            if not attrs.get("ssh_user"):
-                raise serializers.ValidationError({"ssh_user": "手动录入凭据时，SSH用户名必填"})
+            if os_type == OSType.LINUX:
+                # Linux: SSH 凭据验证
+                if not attrs.get("ssh_user"):
+                    raise serializers.ValidationError({"ssh_user": "Linux目标必须提供SSH用户名"})
 
-            ssh_credential_type = attrs.get("ssh_credential_type", SSHCredentialType.PASSWORD)
+                ssh_credential_type = attrs.get("ssh_credential_type", SSHCredentialType.PASSWORD)
 
-            if ssh_credential_type == SSHCredentialType.PASSWORD:
-                # 密码方式
-                if not attrs.get("ssh_password"):
-                    raise serializers.ValidationError({"ssh_password": "密码认证方式必须提供SSH密码"})
+                if ssh_credential_type == SSHCredentialType.PASSWORD:
+                    if not attrs.get("ssh_password"):
+                        raise serializers.ValidationError({"ssh_password": "密码认证方式必须提供SSH密码"})
+                else:
+                    if not attrs.get("ssh_key_file"):
+                        raise serializers.ValidationError({"ssh_key_file": "密钥认证方式必须上传SSH密钥文件"})
             else:
-                # 密钥方式
-                if not attrs.get("ssh_key_file"):
-                    raise serializers.ValidationError({"ssh_key_file": "密钥认证方式必须上传SSH密钥文件"})
+                # Windows: WinRM 凭据验证
+                if not attrs.get("winrm_user"):
+                    raise serializers.ValidationError({"winrm_user": "Windows目标必须提供WinRM用户名"})
+                if not attrs.get("winrm_password"):
+                    raise serializers.ValidationError({"winrm_password": "Windows目标必须提供WinRM密码"})
 
         elif credential_source == CredentialSource.CREDENTIAL:
-            # 凭据管理方式，credential_id 必填
             if not attrs.get("credential_id"):
                 raise serializers.ValidationError({"credential_id": "凭据管理方式必须选择凭据"})
 
@@ -124,6 +140,11 @@ class TargetUpdateSerializer(serializers.ModelSerializer):
             "ssh_credential_type",
             "ssh_password",
             "ssh_key_file",
+            "winrm_port",
+            "winrm_scheme",
+            "winrm_user",
+            "winrm_password",
+            "winrm_cert_validation",
             "team",
         ]
 
@@ -151,32 +172,49 @@ class TargetTestConnectionSerializer(serializers.Serializer):
     """测试连接序列化器"""
 
     ip = serializers.IPAddressField(required=True)
+    os_type = serializers.CharField(required=False, default="linux")
     cloud_region_id = serializers.CharField(required=True)
     driver = serializers.CharField(required=False, default="ansible")
     credential_source = serializers.CharField(required=False, default="manual")
     credential_id = serializers.CharField(required=False, allow_blank=True, default="")
+    # SSH (Linux)
     ssh_port = serializers.IntegerField(required=False, default=22)
     ssh_user = serializers.CharField(required=False, allow_blank=True, default="")
     ssh_credential_type = serializers.CharField(required=False, default="password")
     ssh_password = serializers.CharField(required=False, allow_blank=True, default="")
     ssh_key_file = serializers.FileField(required=False, allow_null=True)
+    # WinRM (Windows)
+    winrm_port = serializers.IntegerField(required=False, default=5986)
+    winrm_scheme = serializers.CharField(required=False, default="https")
+    winrm_user = serializers.CharField(required=False, allow_blank=True, default="")
+    winrm_password = serializers.CharField(required=False, allow_blank=True, default="")
+    winrm_cert_validation = serializers.BooleanField(required=False, default=True)
 
     def validate(self, attrs):
         """验证测试连接参数"""
+        os_type = attrs.get("os_type", OSType.LINUX)
         credential_source = attrs.get("credential_source", CredentialSource.MANUAL)
 
         if credential_source == CredentialSource.MANUAL:
-            if not attrs.get("ssh_user"):
-                raise serializers.ValidationError({"ssh_user": "手动录入凭据时，SSH用户名必填"})
+            if os_type == OSType.LINUX:
+                # Linux: SSH 凭据验证
+                if not attrs.get("ssh_user"):
+                    raise serializers.ValidationError({"ssh_user": "Linux目标必须提供SSH用户名"})
 
-            ssh_credential_type = attrs.get("ssh_credential_type", SSHCredentialType.PASSWORD)
+                ssh_credential_type = attrs.get("ssh_credential_type", SSHCredentialType.PASSWORD)
 
-            if ssh_credential_type == SSHCredentialType.PASSWORD:
-                if not attrs.get("ssh_password"):
-                    raise serializers.ValidationError({"ssh_password": "密码认证方式必须提供SSH密码"})
+                if ssh_credential_type == SSHCredentialType.PASSWORD:
+                    if not attrs.get("ssh_password"):
+                        raise serializers.ValidationError({"ssh_password": "密码认证方式必须提供SSH密码"})
+                else:
+                    if not attrs.get("ssh_key_file"):
+                        raise serializers.ValidationError({"ssh_key_file": "密钥认证方式必须提供SSH密钥文件"})
             else:
-                if not attrs.get("ssh_key_file"):
-                    raise serializers.ValidationError({"ssh_key_file": "密钥认证方式必须提供SSH密钥文件"})
+                # Windows: WinRM 凭据验证
+                if not attrs.get("winrm_user"):
+                    raise serializers.ValidationError({"winrm_user": "Windows目标必须提供WinRM用户名"})
+                if not attrs.get("winrm_password"):
+                    raise serializers.ValidationError({"winrm_password": "Windows目标必须提供WinRM密码"})
 
         elif credential_source == CredentialSource.CREDENTIAL:
             if not attrs.get("credential_id"):

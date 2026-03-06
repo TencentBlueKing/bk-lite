@@ -29,14 +29,12 @@ class ScriptType:
     """脚本类型"""
 
     SHELL = "shell"
-    BASH = "bash"
     PYTHON = "python"
     POWERSHELL = "powershell"
     BAT = "bat"
 
     CHOICES = (
         (SHELL, "Shell"),
-        (BASH, "Bash"),
         (PYTHON, "Python"),
         (POWERSHELL, "PowerShell"),
         (BAT, "Batch"),
@@ -45,7 +43,6 @@ class ScriptType:
     # 映射到 Executor.execute_local 的 shell 参数
     SHELL_MAPPING = {
         SHELL: "sh",
-        BASH: "bash",
         PYTHON: "python",
         POWERSHELL: "powershell",
         BAT: "cmd",
@@ -146,4 +143,56 @@ class SSHCredentialType:
     CHOICES = (
         (PASSWORD, "密码"),
         (KEY, "密钥"),
+    )
+
+
+class OverwriteStrategy:
+    """覆盖策略"""
+
+    OVERWRITE = "overwrite"  # 覆盖已存在文件
+    SKIP = "skip"  # 跳过已存在文件
+
+    CHOICES = (
+        (OVERWRITE, "覆盖已存在文件"),
+        (SKIP, "跳过已存在文件"),
+    )
+
+
+class ConcurrencyPolicy:
+    """并发策略"""
+
+    SKIP = "skip"  # 跳过（上次未完成则跳过本次）
+    RUN = "run"  # 运行（无论上次是否完成）
+    QUEUE = "queue"  # 排队（等待上次完成后执行）
+
+    CHOICES = (
+        (SKIP, "跳过（上次未完成则跳过本次）"),
+        (RUN, "运行（无论上次是否完成）"),
+        (QUEUE, "排队（等待上次完成后执行）"),
+    )
+
+
+class TriggerSource:
+    """触发来源"""
+
+    MANUAL = "manual"  # 手动执行
+    SCHEDULED = "scheduled"  # 定时任务
+    API = "api"  # API 调用
+
+    CHOICES = (
+        (MANUAL, "手动执行"),
+        (SCHEDULED, "定时任务"),
+        (API, "API调用"),
+    )
+
+
+class WinRMScheme:
+    """WinRM 连接协议"""
+
+    HTTP = "http"
+    HTTPS = "https"
+
+    CHOICES = (
+        (HTTP, "HTTP"),
+        (HTTPS, "HTTPS"),
     )

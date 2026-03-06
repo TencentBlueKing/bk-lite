@@ -4,7 +4,7 @@ from django.db import models
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.job_mgmt.constants import JobType, ScheduleType, ScriptType
+from apps.job_mgmt.constants import ConcurrencyPolicy, JobType, ScheduleType, ScriptType
 from apps.job_mgmt.models.playbook import Playbook
 from apps.job_mgmt.models.script import Script
 from apps.job_mgmt.models.target import Target
@@ -48,7 +48,10 @@ class ScheduledTask(TimeInfo, MaintainerInfo):
     target_path = models.CharField(max_length=512, blank=True, default="", verbose_name="目标路径")
 
     # 超时设置
-    timeout = models.IntegerField(default=60, verbose_name="超时时间")
+    timeout = models.IntegerField(default=300, verbose_name="超时时间")
+
+    # 并发策略
+    concurrency_policy = models.CharField(max_length=32, choices=ConcurrencyPolicy.CHOICES, default=ConcurrencyPolicy.SKIP, verbose_name="并发策略")
 
     # 任务状态
     is_enabled = models.BooleanField(default=True, verbose_name="是否启用")

@@ -13,13 +13,13 @@ class Executor(object):
         :param instance_id: 执行器实例ID
         """
         self.instance_id = instance_id
-        self.local_client = ExecutorRpcClient('local.execute')
-        self.ssh_client = ExecutorRpcClient('ssh.execute')
-        self.download_to_local_client = ExecutorRpcClient('download.local')
-        self.download_to_remote_client = ExecutorRpcClient('download.remote')
-        self.transfer_file_to_remote_client = ExecutorRpcClient('upload.remote')
-        self.unzip_local_client = ExecutorRpcClient('unzip.local')
-        self.health_check_client = ExecutorRpcClient('health.check')
+        self.local_client = ExecutorRpcClient("local.execute")
+        self.ssh_client = ExecutorRpcClient("ssh.execute")
+        self.download_to_local_client = ExecutorRpcClient("download.local")
+        self.download_to_remote_client = ExecutorRpcClient("download.remote")
+        self.transfer_file_to_remote_client = ExecutorRpcClient("upload.remote")
+        self.unzip_local_client = ExecutorRpcClient("unzip.local")
+        self.health_check_client = ExecutorRpcClient("health.check")
 
     def health_check(self, timeout=5):
         """
@@ -71,7 +71,7 @@ class Executor(object):
         return_data = self.ssh_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
-    def download_to_local(self, bucket_name, file_key, file_name, target_path, timeout=60):
+    def download_to_local(self, bucket_name, file_key, file_name, target_path, timeout=60, overwrite=True):
         """
         下载文件
         :param bucket_name: 存储桶名称
@@ -79,6 +79,7 @@ class Executor(object):
         :param file_name: 文件名称
         :param target_path: 本地目标路径
         :param timeout: 执行超时时间(秒)
+        :param overwrite: 是否覆盖已存在文件，默认True
         :return: 下载结果
         """
         request_data = {
@@ -87,12 +88,25 @@ class Executor(object):
             "file_name": file_name,
             "target_path": target_path,
             "execute_timeout": timeout,
+            "overwrite": overwrite,
         }
         return_data = self.download_to_local_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
     def download_to_remote(
-        self, bucket_name, file_key, file_name, target_path, host, username, password=None, private_key=None, passphrase=None, timeout=60, port=22
+        self,
+        bucket_name,
+        file_key,
+        file_name,
+        target_path,
+        host,
+        username,
+        password=None,
+        private_key=None,
+        passphrase=None,
+        timeout=60,
+        port=22,
+        overwrite=True,
     ):
         """
         下载文件到远程
@@ -107,6 +121,7 @@ class Executor(object):
         :param private_key: SSH私钥内容(PEM格式，可选)
         :param passphrase: 私钥密码短语(可选)
         :param timeout: 执行超时时间(秒)
+        :param overwrite: 是否覆盖已存在文件，默认True
         :return: 下载结果
         """
         request_data = {
@@ -118,6 +133,7 @@ class Executor(object):
             "port": port,
             "user": username,
             "execute_timeout": timeout,
+            "overwrite": overwrite,
         }
         # 添加可选参数
         if password:
@@ -143,7 +159,9 @@ class Executor(object):
         return_data = self.unzip_local_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
-    def transfer_file_to_remote(self, source_path, target_path, host, username, password=None, private_key=None, passphrase=None, timeout=60, port=22):
+    def transfer_file_to_remote(
+        self, source_path, target_path, host, username, password=None, private_key=None, passphrase=None, timeout=60, port=22
+    ):
         """
         传递文件到远程主机
         :param source_path: 要传递的文件路径
