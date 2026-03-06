@@ -651,7 +651,12 @@ const LineChart: React.FC<LineChartProps> = memo(
               />
             )}
             {showDimensionTable && hasDimension && (
-              <DimensionTable data={data} colors={colors} details={details} />
+              <DimensionTable
+                data={data}
+                colors={colors}
+                details={details}
+                unit={unit}
+              />
             )}
 
             {/* 自定义阈值tooltip */}
