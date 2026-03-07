@@ -27,6 +27,8 @@ import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/cmdb/context/common';
 import { deepClone, getFieldItem } from '@/app/cmdb/utils/common';
 import { useModelApi, useInstanceApi } from '@/app/cmdb/api';
+import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
+import { normalizeTagValues } from '@/app/cmdb/utils/tag';
 const { Search } = Input;
 
 const AssetSearch = () => {
@@ -233,10 +235,16 @@ const AssetSearch = () => {
                             value: list.children,
                             hideUserAvatar: true,
                           }) || '--';
+                        const isTagField = fieldItem.attr_type === 'tag';
+                        const tagValues = isTagField ? normalizeTagValues(list.children) : [];
+                        const isTagMatch = isTagField
+                          ? tagValues.some((tag) => tag.includes(searchText))
+                          : false;
                         const isStrField =
                           typeof fieldVal === 'string' &&
                           fieldVal.includes(searchText);
                         return isStrField ||
+                          isTagMatch ||
                           ['inst_name', 'organization'].includes(list.key) ? (
                           <li key={list.key}>
                             <span>{list.label}</span>：
@@ -245,7 +253,7 @@ const AssetSearch = () => {
                                 isStrField ? 'text-[var(--color-primary)]' : ''
                               }
                             >
-                              {fieldVal}
+                              {isTagField ? <TagCapsuleGroup value={tagValues} maxVisible={2} compact /> : fieldVal}
                             </span>
                           </li>
                           ) : null;
@@ -308,6 +316,8 @@ const AssetSearch = () => {
                       value: list.children,
                       hideUserAvatar: true,
                     }) || '--';
+                  const isTagField = fieldItem.attr_type === 'tag';
+                  const tagValues = isTagField ? normalizeTagValues(list.children) : [];
                   const isStrField =
                     typeof fieldVal === 'string' &&
                     fieldVal.includes(searchText);
@@ -325,14 +335,20 @@ const AssetSearch = () => {
                         </span>
                         <span className={assetSearchStyle.labelColon}>：</span>
                       </span>
-                      <span
-                        title={fieldVal}
-                        className={`${
-                          isStrField ? 'text-[var(--color-primary)]' : ''
-                        } ${assetSearchStyle.listItemValue}`}
-                      >
-                        {fieldVal}
-                      </span>
+                      {isTagField ? (
+                        <span className={assetSearchStyle.listItemTagValue}>
+                          <TagCapsuleGroup value={tagValues} maxVisible={2} compact />
+                        </span>
+                      ) : (
+                        <span
+                          title={fieldVal}
+                          className={`${
+                            isStrField ? 'text-[var(--color-primary)]' : ''
+                          } ${assetSearchStyle.listItemValue}`}
+                        >
+                          {fieldVal}
+                        </span>
+                      )}
                     </li>
                   );
                 })}

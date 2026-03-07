@@ -36,6 +36,8 @@ import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { formatCollectTaskDisplay } from '@/app/cmdb/utils/collectTask';
 import TableFieldEditor from './tableFieldEditor';
 import TagCascaderEditor from './tagCascaderEditor';
+import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
+import { getTagDisplayText } from '@/app/cmdb/utils/tag';
 
 // 解析表格字段值（支持 JSON 字符串或数组）
 export const parseTableValue = (val: any): any[] => {
@@ -432,14 +434,7 @@ export const getAssetColumns = (config: {
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
-            const values = Array.isArray(record[attrId]) ? record[attrId] : [];
-            const text = values.length ? values.join('，') : '--';
-            return (
-              <EllipsisWithTooltip
-                className="whitespace-nowrap overflow-hidden text-ellipsis"
-                text={text}
-              />
-            );
+            return <TagCapsuleGroup value={record[attrId]} maxVisible={2} compact />;
           },
         };
       case 'time': {
@@ -727,10 +722,7 @@ export const getFieldItem = (config: {
         />
       );
     case 'tag':
-      if (Array.isArray(config.value)) {
-        return config.value.length ? config.value.join('，') : '--';
-      }
-      return config.value || '--';
+      return getTagDisplayText(config.value);
     default:
       if (config.fieldItem.attr_type === 'time' && config.value) {
         const timeOpt = config.fieldItem.option as TimeAttrOption;
