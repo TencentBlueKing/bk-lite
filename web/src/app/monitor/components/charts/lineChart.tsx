@@ -48,6 +48,7 @@ interface LineChartProps {
   showDimensionFilter?: boolean;
   showDimensionTable?: boolean;
   allowSelect?: boolean;
+  syncId?: string;
   onXRangeChange?: (arr: [Dayjs, Dayjs]) => void;
 }
 
@@ -79,6 +80,7 @@ const LineChart: React.FC<LineChartProps> = memo(
     eventData = [],
     allowSelect = true,
     showDimensionTable = false,
+    syncId,
     onXRangeChange
   }) => {
     const { formatTime } = useFormatTime();
@@ -458,6 +460,7 @@ const LineChart: React.FC<LineChartProps> = memo(
             <ResponsiveContainer className={chartLineStyle.chart}>
               <AreaChart
                 data={data}
+                syncId={syncId}
                 margin={{
                   top: 10,
                   right: rightMargin,
