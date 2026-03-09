@@ -1,5 +1,6 @@
 import React from 'react';
 import { Input, Select, Button, Tooltip } from 'antd';
+import { ExclamationCircleFilled } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { TableDataItem } from '@/app/log/types';
 import { IntegrationLogInstance } from '@/app/log/types/integration';
@@ -29,6 +30,8 @@ const useCommonColumns = () => {
       const handleFilterNodeChange = (val: string, index: number) => {
         const _dataSource = cloneDeep(config.dataSource);
         _dataSource[index].node_ids = val;
+        // Clear error when value is set, set error when empty
+        _dataSource[index].node_ids_error = !val ? t('common.required') : null;
         config.onTableDataChange(_dataSource);
       };
 
@@ -41,12 +44,19 @@ const useCommonColumns = () => {
       ) => {
         const _dataSource = cloneDeep(config.dataSource);
         _dataSource[extra.index][extra.field] = e.target.value;
+        // Clear error when value is set, set error when empty
+        _dataSource[extra.index][`${extra.field}_error`] = !e.target.value
+          ? t('common.required')
+          : null;
         config.onTableDataChange(_dataSource);
       };
 
       const handleGroupChange = (val: number[], index: number) => {
         const _dataSource = cloneDeep(config.dataSource);
         _dataSource[index].group_ids = val;
+        // Clear error when value is set, set error when empty
+        _dataSource[index].group_ids_error =
+          !val || val.length === 0 ? t('common.required') : null;
         config.onTableDataChange(_dataSource);
       };
 
@@ -110,39 +120,71 @@ const useCommonColumns = () => {
           dataIndex: 'node_ids',
           key: 'node_ids',
           width: 200,
-          render: (_: unknown, record: TableDataItem, index: number) => (
-            <Select
-              showSearch
-              value={record.node_ids}
-              onChange={(val) => handleFilterNodeChange(val, index)}
-              filterOption={(input, option) =>
-                (option?.label || '')
-                  .toLowerCase()
-                  .includes(input.toLowerCase())
-              }
-              options={getFilterNodes(record.node_ids).map((item) => ({
-                value: item.id,
-                label: `${item.name}（${item.ip}）`
-              }))}
-            ></Select>
-          )
+          render: (_: unknown, record: TableDataItem, index: number) => {
+            const errorMsg = record.node_ids_error;
+            return (
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <Select
+                  showSearch
+                  value={record.node_ids}
+                  onChange={(val) => handleFilterNodeChange(val, index)}
+                  filterOption={(input, option) =>
+                    (option?.label || '')
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
+                  }
+                  options={getFilterNodes(record.node_ids).map((item) => ({
+                    value: item.id,
+                    label: `${item.name}（${item.ip}）`
+                  }))}
+                  status={errorMsg ? 'error' : ''}
+                  style={{ flex: 1 }}
+                />
+                {errorMsg && (
+                  <Tooltip title={errorMsg}>
+                    <ExclamationCircleFilled
+                      style={{ color: 'var(--color-fail)', fontSize: '14px' }}
+                    />
+                  </Tooltip>
+                )}
+              </div>
+            );
+          }
         },
         {
           title: t('log.integration.instanceName'),
           dataIndex: 'instance_name',
           key: 'instance_name',
           width: 200,
-          render: (_: unknown, record: TableDataItem, index: number) => (
-            <Input
-              value={record.instance_name}
-              onChange={(e) =>
-                handleInputChange(e, {
-                  index,
-                  field: 'instance_name'
-                })
-              }
-            />
-          )
+          render: (_: unknown, record: TableDataItem, index: number) => {
+            const errorMsg = record.instance_name_error;
+            return (
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <Input
+                  value={record.instance_name}
+                  onChange={(e) =>
+                    handleInputChange(e, {
+                      index,
+                      field: 'instance_name'
+                    })
+                  }
+                  status={errorMsg ? 'error' : ''}
+                  style={{ flex: 1 }}
+                />
+                {errorMsg && (
+                  <Tooltip title={errorMsg}>
+                    <ExclamationCircleFilled
+                      style={{ color: 'var(--color-fail)', fontSize: '14px' }}
+                    />
+                  </Tooltip>
+                )}
+              </div>
+            );
+          }
         },
         {
           title: (
@@ -160,12 +202,42 @@ const useCommonColumns = () => {
           dataIndex: 'group_ids',
           key: 'group_ids',
           width: 200,
-          render: (_: unknown, record: TableDataItem, index: number) => (
-            <GroupTreeSelector
-              value={record.group_ids}
-              onChange={(val) => handleGroupChange(val as number[], index)}
-            />
-          )
+          render: (_: unknown, record: TableDataItem, index: number) => {
+            const errorMsg = record.group_ids_error;
+            return (
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <div
+                  style={{
+                    flex: 1,
+                    ...(errorMsg
+                      ? ({
+                        '--group-border-color': 'var(--color-fail)'
+                      } as React.CSSProperties)
+                      : {})
+                  }}
+                  className={
+                    errorMsg ? '[&>div>div]:!border-[var(--color-fail)]' : ''
+                  }
+                >
+                  <GroupTreeSelector
+                    value={record.group_ids}
+                    onChange={(val) =>
+                      handleGroupChange(val as number[], index)
+                    }
+                  />
+                </div>
+                {errorMsg && (
+                  <Tooltip title={errorMsg}>
+                    <ExclamationCircleFilled
+                      style={{ color: 'var(--color-fail)', fontSize: '14px' }}
+                    />
+                  </Tooltip>
+                )}
+              </div>
+            );
+          }
         },
         {
           title: t('common.action'),
