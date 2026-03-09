@@ -1,4 +1,5 @@
 import copy
+import importlib
 import inspect
 
 from loguru import logger
@@ -31,6 +32,7 @@ class ToolsLoader:
     # 静态定义所有工具模块映射
     TOOL_MODULES = {
         "browser_use": (browser_use, False),
+        # "cmdb": ("apps.opspilot.metis.llm.tools.cmdb", False),  # 临时关闭 CMDB tools
         "current_time": (date, False),
         "duckduckgo": (search, False),
         "fetch": (fetch, False),
@@ -54,7 +56,10 @@ class ToolsLoader:
         """
         tools_map = {}
 
-        for tool_category, (module, enable_extra_prompt) in ToolsLoader.TOOL_MODULES.items():
+        for tool_category, (module_or_path, enable_extra_prompt) in ToolsLoader.TOOL_MODULES.items():
+            module = ToolsLoader._resolve_tool_module(tool_category, module_or_path)
+            if module is None:
+                continue
             tool_functions = ToolsLoader._extract_tools_from_module(module, enable_extra_prompt)
 
             if tool_functions:
@@ -83,6 +88,21 @@ class ToolsLoader:
                 tool_functions.append({"func": obj, "enable_extra_prompt": enable_extra_prompt})
 
         return tool_functions
+
+    @staticmethod
+    def _resolve_tool_module(tool_category, module_or_path):
+        if hasattr(module_or_path, "__name__"):
+            return module_or_path
+
+        if not isinstance(module_or_path, str):
+            logger.warning(f"工具类别 '{tool_category}' 的模块配置无效")
+            return None
+
+        try:
+            return importlib.import_module(module_or_path)
+        except (ModuleNotFoundError, ImportError) as e:
+            logger.warning(f"工具类别 '{tool_category}' 加载失败，已跳过: {e}")
+            return None
 
     @staticmethod
     def load_tools(tool_server_url: str, extra_tools_prompt: str = "", extra_param_prompt: dict = {}):
@@ -166,7 +186,10 @@ class ToolsLoader:
             logger.warning(f"未找到工具类别 '{tool_category}'")
             return []
 
-        module, enable_extra_prompt = ToolsLoader.TOOL_MODULES[tool_category]
+        module_or_path, enable_extra_prompt = ToolsLoader.TOOL_MODULES[tool_category]
+        module = ToolsLoader._resolve_tool_module(tool_category, module_or_path)
+        if module is None:
+            return []
         tool_functions = ToolsLoader._extract_tools_from_module(module, enable_extra_prompt)
 
         if tool_functions:
@@ -223,7 +246,10 @@ class ToolsLoader:
         logger.info("开始提取所有工具的元数据")
         metadata_list = []
 
-        for tool_category, (module, enable_extra_prompt) in ToolsLoader.TOOL_MODULES.items():
+        for tool_category, (module_or_path, enable_extra_prompt) in ToolsLoader.TOOL_MODULES.items():
+            module = ToolsLoader._resolve_tool_module(tool_category, module_or_path)
+            if module is None:
+                continue
             tool_functions = ToolsLoader._extract_tools_from_module(module, enable_extra_prompt)
 
             if not tool_functions:
