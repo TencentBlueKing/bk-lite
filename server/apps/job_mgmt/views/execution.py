@@ -1,7 +1,11 @@
 """作业执行视图"""
 
+from datetime import datetime
+
+from django_minio_backend import MinioBackend
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from apps.core.utils.viewset_utils import AuthViewSet
@@ -14,7 +18,12 @@ from apps.job_mgmt.serializers.execution import (
     JobExecutionListSerializer,
     QuickExecuteSerializer,
 )
+from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
+
+# 文件分发存储 bucket
+FILE_DISTRIBUTION_BUCKET = "job-mgmt-private"
 
 
 class JobExecutionViewSet(AuthViewSet):
@@ -60,8 +69,14 @@ class JobExecutionViewSet(AuthViewSet):
         name = data["name"]
         timeout = data.get("timeout", 600)
         team = data.get("team", [])
-        params = data.get("params", "")
+        params = data.get("params", [])
 
+        # 处理新格式参数：解析 is_modified=False 的参数
+        script = None
+        if data.get("script_id"):
+            script = Script.objects.filter(id=data["script_id"]).first()
+        resolved_params = ScriptParamsService.resolve_params(params, script=script)
+        params_str = ScriptParamsService.params_to_string(resolved_params)
         # 根据模式创建执行记录
         if data.get("playbook_id"):
             # Playbook 模式
@@ -71,7 +86,7 @@ class JobExecutionViewSet(AuthViewSet):
                 job_type=JobType.PLAYBOOK,
                 status=ExecutionStatus.PENDING,
                 playbook=playbook,
-                params=params,
+                params=params_str,
                 timeout=timeout,
                 total_count=len(target_ids),
                 team=team,
@@ -81,7 +96,6 @@ class JobExecutionViewSet(AuthViewSet):
             task_func = execute_playbook_task
         else:
             # 脚本模式（脚本库 或 临时输入）
-            script = None
             script_content = data.get("script_content", "")
             script_type = data.get("script_type", "")
 
@@ -90,12 +104,21 @@ class JobExecutionViewSet(AuthViewSet):
                 script_content = script.content
                 script_type = script.script_type
 
+            # 高危命令检测
+            check_result = DangerousChecker.check_command(script_content, team)
+            if not check_result.can_execute:
+                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+                return Response(
+                    {"error": f"脚本包含高危命令，禁止执行: {', '.join(forbidden_rules)}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             execution = JobExecution.objects.create(
                 name=name,
                 job_type=JobType.SCRIPT,
                 status=ExecutionStatus.PENDING,
                 script=script,
-                params=params,
+                params=params_str,
                 script_type=script_type,
                 script_content=script_content,
                 timeout=timeout,
@@ -122,12 +145,23 @@ class JobExecutionViewSet(AuthViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @action(detail=False, methods=["post"])
+    @action(detail=False, methods=["post"], parser_classes=[MultiPartParser])
     def file_distribution(self, request):
         """
         文件分发
 
-        将文件分发到指定目标
+        使用 multipart/form-data 上传文件并分发到指定目标。
+
+        请求体 (multipart/form-data):
+        {
+            "name": "部署配置文件",
+            "files": [<文件1>, <文件2>, ...],
+            "target_ids": [1, 2, 3],
+            "target_path": "/etc/nginx/",
+            "overwrite_strategy": "overwrite",
+            "timeout": 600,
+            "team": [1]
+        }
         """
         serializer = FileDistributionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -141,12 +175,40 @@ class JobExecutionViewSet(AuthViewSet):
 
         username = request.user.username if request.user else ""
 
+        target_path = data["target_path"]
+        team = data.get("team", [])
+
+        # 高危路径检测
+        check_result = DangerousChecker.check_path(target_path, team)
+        if not check_result.can_execute:
+            forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+            return Response(
+                {"error": f"目标路径为高危路径，禁止分发: {', '.join(forbidden_rules)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 上传文件到 MinIO，构建 files 列表
+        storage = MinioBackend(bucket_name=FILE_DISTRIBUTION_BUCKET)
+        files_info = []
+        for file in data["files"]:
+            now = datetime.now()
+            file_path = f"files/{now.year}/{now.month:02d}/{now.day:02d}/{file.name}"
+            saved_path = storage.save(file_path, file)
+            files_info.append(
+                {
+                    "name": file.name,
+                    "file_key": saved_path,
+                    "bucket_name": FILE_DISTRIBUTION_BUCKET,
+                    "size": file.size,
+                }
+            )
+
         # 创建执行记录
         execution = JobExecution.objects.create(
             name=data["name"],
             job_type=JobType.FILE_DISTRIBUTION,
             status=ExecutionStatus.PENDING,
-            files=data["files"],
+            files=files_info,
             target_path=data["target_path"],
             overwrite_strategy=data.get("overwrite_strategy", "overwrite"),
             timeout=data.get("timeout", 600),

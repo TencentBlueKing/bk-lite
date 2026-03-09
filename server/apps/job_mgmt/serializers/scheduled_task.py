@@ -152,6 +152,13 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
         if targets.count() != len(target_ids):
             raise serializers.ValidationError({"target_ids": "部分目标不存在"})
 
+        # 验证 params 格式
+        params = attrs.get("params")
+        if params:
+            from apps.job_mgmt.services.script_params_service import ScriptParamsService
+
+            ScriptParamsService.validate_params_format(params)
+
         return attrs
 
     def create(self, validated_data):
@@ -244,6 +251,13 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
             targets = Target.objects.filter(id__in=target_ids)
             if targets.count() != len(target_ids):
                 raise serializers.ValidationError({"target_ids": "部分目标不存在"})
+
+        # 验证 params 格式
+        params = attrs.get("params")
+        if params:
+            from apps.job_mgmt.services.script_params_service import ScriptParamsService
+
+            ScriptParamsService.validate_params_format(params)
 
         return attrs
 

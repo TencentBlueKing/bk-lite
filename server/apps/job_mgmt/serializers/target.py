@@ -2,11 +2,13 @@
 
 from rest_framework import serializers
 
+from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.constants import CredentialSource, OSType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import Target
+from apps.node_mgmt.models import CloudRegion
 
 
-class TargetSerializer(serializers.ModelSerializer):
+class TargetSerializer(TeamSerializer):
     """目标序列化器"""
 
     source_display = serializers.CharField(source="get_source_display", read_only=True)
@@ -16,6 +18,19 @@ class TargetSerializer(serializers.ModelSerializer):
     ssh_credential_type_display = serializers.CharField(source="get_ssh_credential_type_display", read_only=True)
     ssh_key_file_name = serializers.CharField(read_only=True)
     winrm_scheme_display = serializers.CharField(source="get_winrm_scheme_display", read_only=True)
+    cloud_region_name = serializers.SerializerMethodField()
+
+    def __init__(self, instance=None, data=None, **kwargs):
+        super().__init__(instance=instance, data=data, **kwargs)
+        # 批量查询云区域名称映射
+        cloud_regions = CloudRegion.objects.all().values("id", "name")
+        self.cloud_region_map = {cr["id"]: cr["name"] for cr in cloud_regions}
+
+    def get_cloud_region_name(self, instance):
+        """获取云区域名称"""
+        if instance.cloud_region_id:
+            return self.cloud_region_map.get(instance.cloud_region_id)
+        return None
 
     class Meta:
         model = Target
@@ -26,6 +41,7 @@ class TargetSerializer(serializers.ModelSerializer):
             "os_type",
             "os_type_display",
             "cloud_region_id",
+            "cloud_region_name",
             "driver",
             "driver_display",
             "node_id",
@@ -47,6 +63,7 @@ class TargetSerializer(serializers.ModelSerializer):
             "winrm_user",
             "winrm_cert_validation",
             "team",
+            "team_name",
             "created_by",
             "created_at",
             "updated_by",
@@ -173,7 +190,7 @@ class TargetTestConnectionSerializer(serializers.Serializer):
 
     ip = serializers.IPAddressField(required=True)
     os_type = serializers.CharField(required=False, default="linux")
-    cloud_region_id = serializers.CharField(required=True)
+    cloud_region_id = serializers.IntegerField(required=True)
     driver = serializers.CharField(required=False, default="ansible")
     credential_source = serializers.CharField(required=False, default="manual")
     credential_id = serializers.CharField(required=False, allow_blank=True, default="")

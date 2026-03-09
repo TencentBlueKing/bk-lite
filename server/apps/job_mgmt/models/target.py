@@ -33,7 +33,7 @@ class Target(TimeInfo, MaintainerInfo):
     os_type = models.CharField(max_length=32, choices=OSType.CHOICES, default=OSType.LINUX, verbose_name="操作系统")
 
     # 云区域（关联 node_mgmt.CloudRegion，不使用外键）
-    cloud_region_id = models.CharField(max_length=64, blank=True, default="", verbose_name="云区域ID")
+    cloud_region_id = models.BigIntegerField(null=True, blank=True, verbose_name="云区域ID")
 
     # 执行器标识（sync 来源时为 Node.id）
     node_id = models.CharField(max_length=64, blank=True, default="", verbose_name="节点ID")

@@ -14,7 +14,7 @@ class TargetFilter(filters.FilterSet):
     driver = filters.CharFilter(field_name="driver", lookup_expr="exact")
     source = filters.CharFilter(field_name="source", lookup_expr="exact")
     node_id = filters.CharFilter(field_name="node_id", lookup_expr="exact")
-    cloud_region_id = filters.CharFilter(field_name="cloud_region_id", lookup_expr="exact")
+    cloud_region_id = filters.NumberFilter(field_name="cloud_region_id", lookup_expr="exact")
     credential_source = filters.CharFilter(field_name="credential_source", lookup_expr="exact")
     ssh_credential_type = filters.CharFilter(field_name="ssh_credential_type", lookup_expr="exact")
 

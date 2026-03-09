@@ -17,6 +17,7 @@ from apps.job_mgmt.serializers.scheduled_task import (
     ScheduledTaskUpdateSerializer,
 )
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
+from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
 
 
@@ -96,6 +97,11 @@ class ScheduledTaskViewSet(AuthViewSet):
         if not targets:
             return Response({"error": "没有配置执行目标"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 处理参数：解析 is_modified=False 的参数并转换为字符串
+        params = instance.params if isinstance(instance.params, list) else []
+        resolved_params = ScriptParamsService.resolve_params(params, script=instance.script)
+        params_str = ScriptParamsService.params_to_string(resolved_params)
+
         # 根据作业类型创建执行记录
         execution = JobExecution.objects.create(
             name=f"[手动触发] {instance.name}",
@@ -103,7 +109,7 @@ class ScheduledTaskViewSet(AuthViewSet):
             status=ExecutionStatus.PENDING,
             script=instance.script,
             playbook=instance.playbook,
-            params=instance.params,
+            params=params_str,
             script_type=instance.script_type,
             script_content=instance.script_content,
             files=instance.files,

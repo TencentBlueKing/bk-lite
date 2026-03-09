@@ -139,8 +139,9 @@ class QuickExecuteSerializer(serializers.Serializer):
     script_type = serializers.ChoiceField(choices=["shell", "bash", "python", "powershell", "bat"], required=False, help_text="脚本类型（临时输入模式必填）")
     script_content = serializers.CharField(required=False, help_text="脚本内容（临时输入模式）")
 
-    # 执行参数
-    params = serializers.CharField(required=False, allow_blank=True, default="", help_text="执行参数，如: ./test.sh xxxx xxx")
+    # 执行参数（新格式）
+    # [{"key": "param1", "value": "value1", "is_modified": True}, ...]
+    params = serializers.ListField(child=serializers.DictField(), required=False, default=list, help_text="执行参数列表，格式: [{key, value, is_modified}]")
 
     # 超时时间
     timeout = serializers.IntegerField(required=False, default=600, min_value=1, max_value=86400, help_text="超时时间（秒）")
@@ -178,14 +179,35 @@ class QuickExecuteSerializer(serializers.Serializer):
             if not Playbook.objects.filter(id=playbook_id).exists():
                 raise serializers.ValidationError({"playbook_id": "Playbook不存在"})
 
+        # 验证 params 格式
+        params = attrs.get("params", [])
+        if params:
+            from apps.job_mgmt.services.script_params_service import ScriptParamsService
+
+            ScriptParamsService.validate_params_format(params)
+
         return attrs
 
 
 class FileDistributionSerializer(serializers.Serializer):
-    """文件分发序列化器"""
+    """文件分发序列化器
+
+    使用 multipart/form-data 上传文件，后端自动处理文件存储到 MinIO。
+
+    请求体 (multipart/form-data):
+    {
+        "name": "部署配置文件",
+        "files": [<文件1>, <文件2>, ...],  // 多文件上传
+        "target_ids": [1, 2, 3],
+        "target_path": "/etc/nginx/",
+        "overwrite_strategy": "overwrite",  // overwrite 或 skip
+        "timeout": 600,
+        "team": [1]
+    }
+    """
 
     name = serializers.CharField(max_length=256, help_text="作业名称")
-    files = serializers.ListField(child=serializers.DictField(), min_length=1, help_text="文件列表，每项包含 name, file_key, bucket_name, size")
+    files = serializers.ListField(child=serializers.FileField(), min_length=1, help_text="文件列表（支持多文件上传）")
     target_ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, help_text="目标ID列表")
     target_path = serializers.CharField(max_length=512, help_text="目标路径")
     overwrite_strategy = serializers.ChoiceField(choices=["overwrite", "skip"], default="overwrite", help_text="覆盖策略：overwrite=覆盖已存在文件, skip=跳过已存在文件")
@@ -193,10 +215,9 @@ class FileDistributionSerializer(serializers.Serializer):
     team = serializers.ListField(child=serializers.IntegerField(), required=False, default=list, help_text="团队ID列表")
 
     def validate_files(self, value):
-        """验证文件列表格式"""
-        required_keys = {"name", "file_key", "bucket_name"}
-        for i, file_item in enumerate(value):
-            missing_keys = required_keys - set(file_item.keys())
-            if missing_keys:
-                raise serializers.ValidationError(f"第 {i + 1} 个文件缺少字段: {missing_keys}")
+        """验证文件"""
+        max_size = 500 * 1024 * 1024  # 500MB
+        for file in value:
+            if file.size > max_size:
+                raise serializers.ValidationError(f"文件 {file.name} 超过 500MB 限制")
         return value

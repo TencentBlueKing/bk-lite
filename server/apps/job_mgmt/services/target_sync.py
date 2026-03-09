@@ -22,11 +22,7 @@ class TargetSyncService:
     def __init__(self):
         self.node_mgmt = NodeMgmt()
 
-    def sync_nodes(
-        self,
-        node_ids: Optional[list] = None,
-        team: Optional[list] = None,
-    ) -> dict:
+    def sync_nodes(self, node_ids: Optional[list] = None, team: Optional[list] = None) -> dict:
         """
         同步 Node 到 Target
 
@@ -40,10 +36,7 @@ class TargetSyncService:
         team = team or []
 
         # 通过 RPC 接口查询 Node
-        query_data = {
-            "page": 1,
-            "page_size": -1,  # 获取全部
-        }
+        query_data = {"page": 1, "page_size": -1}  # 获取全部
         if team:
             query_data["organization_ids"] = team
 
@@ -71,15 +64,10 @@ class TargetSyncService:
                 else:
                     skipped_count += 1
             except Exception as e:
-                logger.error(f"同步 Node {node.get('id')} 失败: {e}")
+                logger.exception(f"同步 Node {node.get('id')} 失败: {e}")
                 skipped_count += 1
 
-        return {
-            "synced": created_count + updated_count,
-            "created": created_count,
-            "updated": updated_count,
-            "skipped": skipped_count,
-        }
+        return {"synced": created_count + updated_count, "created": created_count, "updated": updated_count, "skipped": skipped_count}
 
     def _sync_single_node(self, node: dict, team: list) -> str:
         """
@@ -96,31 +84,28 @@ class TargetSyncService:
         node_name = node.get("name", "")
         node_ip = node.get("ip", "")
         operating_system = node.get("operating_system", "linux")
+        cloud_region_id = node.get("cloud_region")  # 整数类型，可能为 None
 
         # 映射操作系统
         os_type = self.OS_MAPPING.get(operating_system, OSType.LINUX)
 
         # 查找已存在的同步目标
-        existing = Target.objects.filter(
-            source=TargetSource.SYNC,
-            source_id=node_id,
-        ).first()
+        existing = Target.objects.filter(source=TargetSource.SYNC, source_id=node_id).first()
 
         if existing:
             # 更新已存在的目标
             changed = False
-            if existing.name != node_name:
-                existing.name = node_name
-                changed = True
-            if existing.ip != node_ip:
-                existing.ip = node_ip
-                changed = True
-            if existing.os != os_type:
-                existing.os = os_type
-                changed = True
-            if existing.node_id != node_id:
-                existing.node_id = node_id
-                changed = True
+            field_updates = {
+                "name": node_name,
+                "ip": node_ip,
+                "os_type": os_type,
+                "node_id": node_id,
+                "cloud_region_id": cloud_region_id,
+            }
+            for field, value in field_updates.items():
+                if getattr(existing, field) != value:
+                    setattr(existing, field, value)
+                    changed = True
 
             # 合并 team（保留已有，添加新的）
             current_team = set(existing.team or [])
@@ -139,8 +124,9 @@ class TargetSyncService:
         Target.objects.create(
             name=node_name,
             ip=node_ip,
-            os=os_type,
+            os_type=os_type,
             node_id=node_id,
+            cloud_region_id=cloud_region_id,
             source=TargetSource.SYNC,
             source_id=node_id,
             driver=ExecutorDriver.SIDECAR,  # 同步来源默认使用 sidecar 驱动

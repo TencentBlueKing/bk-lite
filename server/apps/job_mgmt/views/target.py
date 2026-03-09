@@ -6,6 +6,7 @@ from rest_framework.response import Response
 
 from apps.core.logger import logger
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.job_mgmt.constants import TargetSource
 from apps.job_mgmt.filters.target import TargetFilter
 from apps.job_mgmt.models import Target
 from apps.job_mgmt.serializers.target import (
@@ -15,7 +16,8 @@ from apps.job_mgmt.serializers.target import (
     TargetTestConnectionSerializer,
     TargetUpdateSerializer,
 )
-from apps.job_mgmt.services.target_sync import TargetSyncService
+from apps.job_mgmt.tasks import sync_targets_from_nodes_task
+from apps.rpc.executor import Executor
 
 
 class TargetViewSet(AuthViewSet):
@@ -110,10 +112,9 @@ class TargetViewSet(AuthViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        service = TargetSyncService()
-        result = service.sync_nodes(node_ids=node_ids, team=team)
+        sync_targets_from_nodes_task.delay(node_ids=node_ids, team=team)
 
-        return Response(result, status=status.HTTP_200_OK)
+        return Response({"message": "同步任务已提交，后台执行中"}, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=False, methods=["post"])
     def test_connection(self, request):
@@ -173,10 +174,61 @@ class TargetViewSet(AuthViewSet):
             logger.info(f"Test WinRM connection: {user}@{ip}:{port} ({scheme})")
             message = f"连接测试功能待实现（WinRM {user}@{ip}:{port} {scheme}）"
 
-        return Response(
-            {
-                "success": True,
-                "message": message,
-            },
-            status=status.HTTP_200_OK,
-        )
+        return Response({"success": True, "message": message}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"])
+    def test_target_connection(self, request, pk=None):
+        """
+        测试已有目标的连接
+
+        对于同步来源的目标，通过 node 执行简单脚本测试连接
+        """
+        target = self.get_object()
+
+        # 目前只支持同步来源的目标
+        if target.source != TargetSource.SYNC:
+            return Response(
+                {"success": False, "message": "当前仅支持同步来源的目标连接测试"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not target.node_id:
+            return Response(
+                {"success": False, "message": "目标缺少 node_id，无法测试连接"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            executor = Executor(target.node_id)
+            # 根据操作系统选择测试命令
+            if target.os_type == "windows":
+                test_command = "echo yes"
+                shell = "cmd"
+            else:
+                test_command = "echo yes"
+                shell = "sh"
+
+            result = executor.execute_local(test_command, timeout=30, shell=shell)
+
+            exit_code = result.get("exit_code", result.get("code", -1))
+            stdout = result.get("stdout", "").strip()
+
+            if exit_code == 0 and "yes" in stdout:
+                logger.info(f"Target {target.name}({target.ip}) connection test passed")
+                return Response(
+                    {"success": True, "message": "连接测试成功"},
+                    status=status.HTTP_200_OK,
+                )
+            else:
+                logger.warning(f"Target {target.name}({target.ip}) connection test failed: exit_code={exit_code}, stdout={stdout}")
+                return Response(
+                    {"success": False, "message": f"连接测试失败: exit_code={exit_code}"},
+                    status=status.HTTP_200_OK,
+                )
+
+        except Exception as e:
+            logger.exception(f"Target {target.name}({target.ip}) connection test error: {e}")
+            return Response(
+                {"success": False, "message": f"连接测试异常: {str(e)}"},
+                status=status.HTTP_200_OK,
+            )

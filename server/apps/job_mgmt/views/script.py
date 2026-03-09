@@ -8,6 +8,7 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.filters.script import ScriptFilter
 from apps.job_mgmt.models import Script
 from apps.job_mgmt.serializers.script import ScriptBatchDeleteSerializer, ScriptCreateSerializer, ScriptSerializer, ScriptUpdateSerializer
+from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 
 
 class ScriptViewSet(AuthViewSet):
@@ -31,12 +32,46 @@ class ScriptViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # 高危命令检测
+        script_content = data.get("content", "")
+        team = data.get("team", [])
+        check_result = DangerousChecker.check_command(script_content, team)
+        if not check_result.can_execute:
+            forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+            return Response(
+                {"error": f"脚本包含高危命令，禁止创建: {', '.join(forbidden_rules)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         self.perform_create(serializer)
 
         # 返回完整的对象信息
         instance = Script.objects.get(pk=serializer.instance.pk)
         response_serializer = ScriptSerializer(instance)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # 高危命令检测（仅当修改了脚本内容时）
+        script_content = data.get("content", instance.content)
+        team = data.get("team", instance.team)
+        check_result = DangerousChecker.check_command(script_content, team)
+        if not check_result.can_execute:
+            forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+            return Response(
+                {"error": f"脚本包含高危命令，禁止修改: {', '.join(forbidden_rules)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        self.perform_update(serializer)
+        return Response(ScriptSerializer(instance).data)
 
     @action(detail=False, methods=["post"])
     def batch_delete(self, request):
