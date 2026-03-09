@@ -64,3 +64,23 @@ collect_type:
       name: Filestream
       description: Collects and forwards log data from various sources for centralized
         logging and analysis.
+
+display_category:
+  general:
+    name: General
+    description: General file stream, syslog and basic collection
+  database:
+    name: Database
+    description: RDBMS, NoSQL, cache and data storage system logs
+  middleware:
+    name: Middleware
+    description: Web servers, message queues, application servers logs
+  network:
+    name: Network
+    description: Network protocol analysis and connection monitoring
+  container:
+    name: Container
+    description: Container runtime log collection
+  security:
+    name: Security & Audit
+    description: System audit, file integrity, security event monitoring

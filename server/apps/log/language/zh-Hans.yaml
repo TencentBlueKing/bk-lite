@@ -52,3 +52,23 @@ collect_type:
     filestream:
       name: 文件流采集
       description: 从各种来源采集和转发日志数据，用于集中式日志记录和分析。
+
+display_category:
+  general:
+    name: 通用
+    description: 通用文件流、系统日志等基础采集
+  database:
+    name: 数据库
+    description: 关系型数据库、NoSQL、缓存等数据存储系统日志
+  middleware:
+    name: 中间件
+    description: Web服务器、消息队列、应用服务器日志
+  network:
+    name: 网络
+    description: 网络协议流量分析、连接监控
+  container:
+    name: 容器
+    description: 容器运行时日志采集
+  security:
+    name: 安全与审计
+    description: 系统审计、文件完整性、安全事件监控
