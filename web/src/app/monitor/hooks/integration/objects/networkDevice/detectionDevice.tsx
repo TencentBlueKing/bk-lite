@@ -3,34 +3,34 @@ export const useDetectionDeviceConfig = () => {
     instance_type: 'detection_device',
     dashboardDisplay: [
       {
-        indexId: 'interface_ifOutDiscards',
+        indexId: 'device_total_outgoing_traffic',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '15%',
-        },
+          width: '15%'
+        }
       },
       {
-        indexId: 'interface_ifOperStatus',
+        indexId: 'snmp_uptime',
         displayType: 'lineChart',
         sortIndex: 1,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '40%',
-        },
+          width: '40%'
+        }
       },
       {
-        indexId: 'interface_ifInErrors',
+        indexId: 'device_total_incoming_traffic',
         displayType: 'lineChart',
         sortIndex: 2,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '40%',
-        },
+          width: '40%'
+        }
       },
       {
         indexId: 'interfaces',
@@ -44,22 +44,22 @@ export const useDetectionDeviceConfig = () => {
           'ifInUcastPkts',
           'ifOutUcastPkts',
           'ifInOctets',
-          'ifOutOctets',
+          'ifOutOctets'
         ],
         style: {
           height: '400px',
-          width: '100%',
-        },
-      },
+          width: '100%'
+        }
+      }
     ],
     tableDiaplay: [
-      { type: 'value', key: 'interface_ifOperStatus' },
-      { type: 'value', key: 'interface_ifInErrors' },
-      { type: 'value', key: 'interface_ifOutDiscards' },
+      { type: 'value', key: 'snmp_uptime' },
+      { type: 'value', key: 'device_total_incoming_traffic' },
+      { type: 'value', key: 'device_total_outgoing_traffic' }
     ],
     groupIds: {},
     collectTypes: {
-      'Detection Device SNMP General': 'snmp',
-    },
+      'Detection Device SNMP General': 'snmp'
+    }
   };
 };

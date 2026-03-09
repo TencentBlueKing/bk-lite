@@ -72,6 +72,9 @@ const FilterBar: React.FC<FilterBarProps> = ({
     // 如果有 attrList，优先使用
     const fieldInfo = getFieldInfo(filter.field);
     if (fieldInfo?.attr_type) {
+      if (filter.type === 'list_any[]' && fieldInfo.attr_type === 'tag') {
+        return 'tag';
+      }
       // 如果 type 是 list 且字段类型是 user，返回 user
       if (filter.type === 'list[]' && fieldInfo.attr_type === 'user') {
         return 'user';
@@ -95,6 +98,9 @@ const FilterBar: React.FC<FilterBarProps> = ({
     }
     if (filter.type.includes('bool') || typeof filter.value === 'boolean') {
       return 'bool';
+    }
+    if (filter.type === 'list_any[]') {
+      return 'tag';
     }
     return 'str';
   };
@@ -187,7 +193,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
           value: [dayjs(filter.start), dayjs(filter.end)],
         });
       }
-    } else if (fieldType === 'user' || filter.type === 'list[]' || filter.type === 'user[]') {
+    } else if (fieldType === 'user' || filter.type === 'list[]' || filter.type === 'user[]' || fieldType === 'tag') {
       // 处理 user 类型：支持 type 为 'list' 或 'user[]'（兼容旧代码）
       const fieldInfo = getFieldInfo(filter.field);
       if (fieldType === 'user' || fieldInfo?.attr_type === 'user' || filter.type === 'user[]') {
@@ -266,6 +272,10 @@ const FilterBar: React.FC<FilterBarProps> = ({
       } else if (fieldType === 'str') {
         updatedFilter.value = String(values.value || '');
         updatedFilter.type = values.isExact ? 'str=' : 'str*';
+      } else if (fieldType === 'tag') {
+        updatedFilter.value = Array.isArray(values.value) ? values.value : values.value ? [values.value] : [];
+        updatedFilter.type = 'list_any[]';
+        (updatedFilter as any).accurate = true;
       }
 
       const newFilters = update(editingIndex, updatedFilter);
@@ -448,6 +458,35 @@ const FilterBar: React.FC<FilterBarProps> = ({
         );
       case 'str':
       default:
+        if (fieldType === 'tag') {
+          const fieldInfo = getFieldInfo(editingFilter.field);
+          const tagOption = fieldInfo?.option as any;
+          const options = Array.isArray(tagOption?.options) ? tagOption.options : [];
+          const grouped = options.reduce((acc: Record<string, string[]>, item: any) => {
+            const key = String(item.key || '').trim();
+            const val = String(item.value || '').trim();
+            if (!key || !val) return acc;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(val);
+            return acc;
+          }, {});
+
+          return (
+            <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectValue') }]}> 
+              <Select
+                mode="multiple"
+                placeholder={t('FilterBar.pleaseSelect')}
+                allowClear
+                showSearch
+                style={{ width: '100%' }}
+                options={Object.keys(grouped).map((key) => ({
+                  label: key,
+                  options: grouped[key].map((v) => ({ label: `${key}:${v}`, value: `${key}:${v}` })),
+                }))}
+              />
+            </Form.Item>
+          );
+        }
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
             <Form.Item

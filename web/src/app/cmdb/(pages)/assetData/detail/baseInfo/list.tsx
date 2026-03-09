@@ -27,6 +27,7 @@ import {
 import { useInstanceApi } from '@/app/cmdb/api';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { useUserInfoContext } from '@/context/userInfo';
+import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
 
 const { Panel } = Collapse;
 const InfoList: React.FC<AssetDataFieldProps> = ({
@@ -217,9 +218,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   };
 
   const initData = (list: any) => {
-    list.forEach((item: any) => {
-      const itemList = item.attrs;
-
+    list.forEach((group: any) => {
+      const itemList = group.attrs;
       itemList.forEach((item: any) => {
         const originalValue = item.value || instDetail[item.attr_id];
         item.value = originalValue;
@@ -288,12 +288,16 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                   </Form.Item>
                 ) : (
                   <>
-                    {getFieldItem({
-                      fieldItem: item,
-                      userList,
-                      isEdit: false,
-                      value: item.value,
-                    })}
+                    {item.attr_type === 'tag' ? (
+                      <TagCapsuleGroup value={item.value} maxVisible={2} />
+                    ) : (
+                      getFieldItem({
+                        fieldItem: item,
+                        userList,
+                        isEdit: false,
+                        value: item.value,
+                      })
+                    )}
                   </>
                 )}
               </div>
@@ -346,6 +350,9 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
             </div>
           </Form>
         );
+        if (item.attr_type === 'table') {
+          item.span = 2;
+        }
       });
     })
 
@@ -432,7 +439,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       value,
       hideUserAvatar: true,
       flatGroups,
-    });
+    }) as string;
     navigator.clipboard.writeText(copyVal);
     message.success(t('successfulCopied'));
   };

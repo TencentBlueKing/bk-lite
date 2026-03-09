@@ -41,6 +41,16 @@ RUN apt-get update -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Install Microsoft ODBC Driver 18 for SQL Server (required for pyodbc compilation)
+# Installation may fail in restricted networks, but won't block the build
+RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg && \
+    curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list | tee /etc/apt/sources.list.d/mssql-release.list && \
+    apt-get update && \
+    ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* || \
+    echo "Warning: MSSQL ODBC driver installation failed, MSSQL tools will not be available"
+
 ADD ./support-files/release/supervisor/app.conf  /etc/supervisor/conf.d/app.conf
 ADD ./support-files/release/supervisor/nats.conf  /etc/supervisor/conf.d/nats.conf
 ADD ./support-files/release/supervisor/beat.conf  /etc/supervisor/conf.d/beat.conf

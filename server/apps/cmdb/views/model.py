@@ -8,6 +8,7 @@ from apps.cmdb.constants.constants import (
     OPERATE,
     VIEW,
 )
+from apps.cmdb.validators.field_validator import TAG_ATTR_ID
 from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.models import DELETE_INST, UPDATE_INST, FieldGroup
@@ -28,7 +29,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
     @staticmethod
     def model_add_permission(
-        model_list, permission_instances_map: dict, default_group=None
+            model_list, permission_instances_map: dict, default_group=None
     ):
         # 默认group为default的判断 全部人都可以查看
         group_instances_map = CmdbRulesFormatUtil.format_organizations_instances_map(
@@ -745,7 +746,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 {
                     "asst_id": asso["asst_id"],
                     "asst_name": lan.get_val("ASSOCIATION_TYPE", asso["asst_id"])
-                    or asso["asst_name"],
+                                 or asso["asst_name"],
                     "is_pre": asso["is_pre"],
                 }
             )
