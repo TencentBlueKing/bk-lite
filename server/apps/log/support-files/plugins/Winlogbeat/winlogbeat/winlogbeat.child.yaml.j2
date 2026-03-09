@@ -1,39 +1,90 @@
 # ================================== Windows Event Log Configuration ==================================
-{% for channel in event_channels %}
-- name: {{ channel }}
-
+# Security - 安全日志（身份验证、授权、审计）
+{% if security_enabled | default(true) %}
+- name: Security
   {% if ignore_older %}
-  # Ignore events older than specified duration (e.g., 72h, 24h, 7d)
   ignore_older: {{ ignore_older }}
   {% endif %}
+  {% if security_level %}
+  level: {{ security_level }}
+  {% endif %}
+  {% if security_event_id %}
+  event_id: {{ security_event_id }}
+  {% endif %}
+{% endif %}
 
-  {% if event_ids %}
-  # Filter specific event IDs
-  event_id: {{ event_ids | tojson }}
+# System - 系统日志（硬件、驱动程序、系统服务）
+{% if system_enabled | default(true) %}
+- name: System
+  {% if ignore_older %}
+  ignore_older: {{ ignore_older }}
+  {% endif %}
+  {% if system_level %}
+  level: {{ system_level }}
+  {% endif %}
+{% endif %}
+
+# Application - 应用程序日志
+{% if application_enabled | default(true) %}
+- name: Application
+  {% if ignore_older %}
+  ignore_older: {{ ignore_older }}
+  {% endif %}
+  {% if application_level %}
+  level: {{ application_level }}
+  {% endif %}
+{% endif %}
+
+# Sysmon - 系统监控（进程、网络、文件活动）
+{% if sysmon_enabled | default(false) %}
+- name: Microsoft-Windows-Sysmon/Operational
+  {% if ignore_older %}
+  ignore_older: {{ ignore_older }}
+  {% endif %}
+  {% if sysmon_level %}
+  level: {{ sysmon_level }}
+  {% endif %}
+{% endif %}
+
+# PowerShell Operational - PowerShell 操作日志
+{% if powershell_enabled | default(false) %}
+- name: Microsoft-Windows-PowerShell/Operational
+  {% if ignore_older %}
+  ignore_older: {{ ignore_older }}
+  {% endif %}
+  {% if powershell_level %}
+  level: {{ powershell_level }}
   {% endif %}
 
-  {% if level %}
-  # Filter by event level (critical, error, warning, information, verbose)
-  level: {{ level }}
+- name: Windows PowerShell
+  {% if ignore_older %}
+  ignore_older: {{ ignore_older }}
   {% endif %}
-
-  {% if providers %}
-  # Filter by event providers
-  providers: {{ providers | tojson }}
+  {% if powershell_level %}
+  level: {{ powershell_level }}
   {% endif %}
+{% endif %}
 
-{% endfor %}
+# Windows Defender - 防病毒日志
+{% if defender_enabled | default(false) %}
+- name: Microsoft-Windows-Windows Defender/Operational
+  {% if ignore_older %}
+  ignore_older: {{ ignore_older }}
+  {% endif %}
+  {% if defender_level %}
+  level: {{ defender_level }}
+  {% endif %}
+{% endif %}
 
-{% if exclude_event_ids %}
-# Processors for excluding specific event IDs
-processors:
-  - drop_event:
-      when:
-        or:
-          {% for eid in exclude_event_ids %}
-          - equals:
-              winlog.event_id: {{ eid }}
-          {% endfor %}
+# Task Scheduler - 计划任务日志
+{% if task_scheduler_enabled | default(false) %}
+- name: Microsoft-Windows-TaskScheduler/Operational
+  {% if ignore_older %}
+  ignore_older: {{ ignore_older }}
+  {% endif %}
+  {% if task_scheduler_level %}
+  level: {{ task_scheduler_level }}
+  {% endif %}
 {% endif %}
 
 fields:
