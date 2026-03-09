@@ -15,5 +15,6 @@
     "icmp.response.message",
     "icmp.response.type",
     "icmp.response.code"
-  ]
+  ],
+  "display_category": "network"
 }

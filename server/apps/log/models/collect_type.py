@@ -17,6 +17,11 @@ class CollectType(TimeInfo, MaintainerInfo):
         default="",
         verbose_name="配置段",
     )
+    display_category = models.CharField(
+        max_length=50,
+        default="",
+        verbose_name="展示分类",
+    )
 
     class Meta:
         verbose_name = "采集方式"
