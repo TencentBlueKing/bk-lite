@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Tooltip, Card, Empty, Segmented } from 'antd';
 import {
   AppstoreOutlined,
@@ -8,10 +8,12 @@ import {
 } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import TimeSelector from '@/components/time-selector';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import LineChart from '@/app/monitor/components/charts/lineChart';
 import { TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import { Dayjs } from 'dayjs';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import {
   SearchParams,
   SearchPayload,
@@ -30,6 +32,7 @@ import QueryPanel from './queryPanel';
 const SearchView: React.FC = () => {
   const { get } = useApiClient();
   const { t } = useTranslation();
+  const { findUnitNameById } = useUnitTransform();
   const queryPanelRef = useRef<QueryPanelRef>(null);
   const [layoutMode, setLayoutMode] = useState<'single' | 'double'>('single');
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
@@ -260,6 +263,14 @@ const SearchView: React.FC = () => {
     handleSearch('refresh', timeRange);
   };
 
+  const getUnit = useCallback(
+    (unit: string) => {
+      const unitName = findUnitNameById(unit);
+      return unitName ? `（${unitName}）` : '';
+    },
+    [findUnitNameById]
+  );
+
   return (
     <div
       className="flex h-full"
@@ -310,19 +321,26 @@ const SearchView: React.FC = () => {
                   size="small"
                   style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
                   title={
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">
-                        {item.aggregation}({item.objectName}-
-                        {item.metric?.display_name || '--'})
+                    <div className="flex items-center">
+                      <EllipsisWithTooltip
+                        text={`${item.aggregation}(${item.objectName}-${item.metric?.display_name || '--'})`}
+                        className="font-medium truncate max-w-[calc(100%-150px)]"
+                      />
+                      <span className="font-medium flex-shrink-0">
+                        <span className="text-[var(--color-text-3)] text-[12px]">
+                          {getUnit(item.unit)}
+                        </span>
                         {item.metric?.display_description && (
                           <Tooltip title={item.metric.display_description}>
-                            <QuestionCircleFilled className="cursor-help text-xs align-super ml-0.5 text-[var(--color-text-3)]" />
+                            <QuestionCircleFilled
+                              className={`cursor-help text-xs align-super ${getUnit(item.unit) ? 'ml-[-6px]' : ''} text-[var(--color-text-3)]`}
+                            />
                           </Tooltip>
                         )}
                       </span>
                       {!item.loading && item.duration > 0 && (
-                        <span className="text-xs text-[var(--color-text-3)] font-normal">
-                          {t('monitor.search.duration')} {item.duration}{' '}
+                        <span className="text-xs text-[var(--color-text-3)] font-normal flex-shrink-0 whitespace-nowrap ml-[10px]">
+                          {t('monitor.search.duration')} {item.duration}
                           {t('monitor.search.ms')}
                         </span>
                       )}
@@ -344,6 +362,7 @@ const SearchView: React.FC = () => {
                       unit={item.unit}
                       showDimensionTable={layoutMode === 'single'}
                       key={layoutMode}
+                      syncId="monitor-search-charts"
                       onXRangeChange={onXRangeChange}
                     />
                   </div>

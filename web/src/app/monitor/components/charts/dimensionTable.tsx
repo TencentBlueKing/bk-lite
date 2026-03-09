@@ -1,14 +1,18 @@
-import React, { useEffect, useState, memo, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, memo, useMemo, useRef } from 'react';
 import chartStyle from './index.module.scss';
 import CustomTable from '@/components/custom-table';
 import { calculateMetrics } from '@/app/monitor/utils/common';
 import { ListItem } from '@/types';
 import { ColumnItem, TableDataItem } from '@/app/monitor/types';
+import { useTranslation } from '@/utils/i18n';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 interface DimensionTableProps {
   data: any[];
   colors: string[];
   details: any;
+  unit?: string;
 }
 
 const getChartAreaKeys = (arr: any[]) => {
@@ -24,13 +28,27 @@ const getChartAreaKeys = (arr: any[]) => {
 };
 
 const DimensionTable: React.FC<DimensionTableProps> = memo(
-  ({ data, colors, details }) => {
+  ({ data, colors, details, unit = '' }) => {
+    const { t } = useTranslation();
+    const { findUnitNameById } = useUnitTransform();
     const [tableData, setTableData] = useState<TableDataItem[]>([]);
     const [columns, setColumns] = useState<ColumnItem[]>([]);
 
     const chartAreaKeys = useMemo(() => getChartAreaKeys(data), [data]);
 
-    const getTableData = useCallback(() => {
+    const unitName = useMemo(() => findUnitNameById(unit), [unit]);
+
+    const unitNameRef = useRef(unitName);
+    unitNameRef.current = unitName;
+
+    const formatValueWithUnit = (value: number | undefined | null) => {
+      const formattedValue = (value ?? 0).toFixed(2);
+      return unitNameRef.current
+        ? `${formattedValue} ${unitNameRef.current}`
+        : formattedValue;
+    };
+
+    const getTableData = () => {
       const _data = chartAreaKeys.map((item, index) => {
         const detailItem = details[item as string].reduce(
           (pre: ListItem, cur: ListItem) => {
@@ -40,55 +58,70 @@ const DimensionTable: React.FC<DimensionTableProps> = memo(
           },
           {}
         );
+        const identifierParts = (details[item as string] || [])
+          .map((detail: ListItem) =>
+            detail.label ? `${detail.label}: ${detail.value}` : detail.value
+          )
+          .filter(Boolean);
+        const identifier = identifierParts.join('-');
         return {
           id: item,
           color: colors[index],
+          identifier,
           ...calculateMetrics(data, item as string),
-          ...detailItem,
+          ...detailItem
         };
       });
       return _data;
-    }, [chartAreaKeys, colors, data, details]);
+    };
 
     const tableColumns = useMemo(() => {
       const _columns: ColumnItem[] = [
         {
-          title: 'Min',
+          title: t('monitor.search.min'),
           dataIndex: 'minValue',
           key: 'minValue',
           width: 70,
-          ellipsis: true,
-          render: (_, { minValue }) => <>{(minValue || 0).toFixed(2)}</>,
+          render: (_, { minValue }) => (
+            <EllipsisWithTooltip
+              className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+              text={formatValueWithUnit(minValue)}
+            />
+          )
         },
         {
-          title: 'Max',
+          title: t('monitor.search.max'),
           dataIndex: 'maxValue',
           key: 'maxValue',
           width: 70,
-          ellipsis: true,
-          render: (_, { maxValue }) => <>{(maxValue || 0).toFixed(2)}</>,
+          render: (_, { maxValue }) => (
+            <EllipsisWithTooltip
+              className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+              text={formatValueWithUnit(maxValue)}
+            />
+          )
         },
         {
-          title: 'Last',
-          dataIndex: 'latestValue',
-          key: 'latestValue',
+          title: t('monitor.search.avg'),
+          dataIndex: 'avgValue',
+          key: 'avgValue',
           width: 70,
-          ellipsis: true,
-          render: (_, { latestValue }) => <>{(latestValue || 0).toFixed(2)}</>,
-        },
+          render: (_, { avgValue }) => (
+            <EllipsisWithTooltip
+              className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+              text={formatValueWithUnit(avgValue)}
+            />
+          )
+        }
       ];
-
       if (!details?.value1) return _columns;
-
-      const detailColumns = details.value1.map((item: ListItem) => ({
-        title: item.label,
-        dataIndex: item.name,
-        key: item.name,
-        width: 100,
-        ellipsis: true,
-        fixed: 'left',
-      }));
-
+      const identifierColumn: ColumnItem = {
+        title: t('monitor.search.identifier'),
+        dataIndex: 'identifier',
+        key: 'identifier',
+        width: 90,
+        fixed: 'left'
+      };
       return [
         {
           title: '',
@@ -100,15 +133,15 @@ const DimensionTable: React.FC<DimensionTableProps> = memo(
             <div
               className="w-[10px] h-[4px]"
               style={{
-                background: row.color,
+                background: row.color
               }}
             ></div>
-          ),
+          )
         },
-        ...detailColumns,
-        ..._columns,
+        identifierColumn,
+        ..._columns
       ];
-    }, [details]);
+    }, [details, unit, t]);
 
     useEffect(() => {
       if (data?.length && colors?.length && details?.value1) {
@@ -121,7 +154,7 @@ const DimensionTable: React.FC<DimensionTableProps> = memo(
           setColumns([]);
         }
       }
-    }, [data, colors, details, getTableData, tableColumns]);
+    }, [data, colors, details, unit]);
 
     return (
       <div className={chartStyle.tableArea}>
@@ -129,7 +162,7 @@ const DimensionTable: React.FC<DimensionTableProps> = memo(
           className="w-full"
           rowKey="id"
           size="small"
-          scroll={{ x: 340, y: 'calc(100vh - 450px)' }}
+          scroll={{ y: 240 }}
           dataSource={tableData}
           columns={columns}
         />

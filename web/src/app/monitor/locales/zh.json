@@ -547,7 +547,12 @@
       "saveTime": "保存时间",
       "loadSuccess": "查询条件已加载",
       "queryNamePlaceholder": "请输入查询名称",
-      "loadInto": "载入"
+      "loadInto": "载入",
+      "identifier": "标识",
+      "min": "最小值",
+      "max": "最大值",
+      "avg": "平均值",
+      "clearQuery": "清空查询"
     },
     "object": "对象",
     "selectObject": "选择对象",

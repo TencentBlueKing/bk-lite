@@ -1,0 +1,44 @@
+# ================================== Windows Event Log Configuration ==================================
+{% for channel in event_channels %}
+- name: {{ channel }}
+
+  {% if ignore_older %}
+  # Ignore events older than specified duration (e.g., 72h, 24h, 7d)
+  ignore_older: {{ ignore_older }}
+  {% endif %}
+
+  {% if event_ids %}
+  # Filter specific event IDs
+  event_id: {{ event_ids | tojson }}
+  {% endif %}
+
+  {% if level %}
+  # Filter by event level (critical, error, warning, information, verbose)
+  level: {{ level }}
+  {% endif %}
+
+  {% if providers %}
+  # Filter by event providers
+  providers: {{ providers | tojson }}
+  {% endif %}
+
+{% endfor %}
+
+{% if exclude_event_ids %}
+# Processors for excluding specific event IDs
+processors:
+  - drop_event:
+      when:
+        or:
+          {% for eid in exclude_event_ids %}
+          - equals:
+              winlog.event_id: {{ eid }}
+          {% endfor %}
+{% endif %}
+
+fields:
+  collector: "Winlogbeat"
+  collect_type: "winlogbeat"
+  instance_id: "{{ instance_id | default('default') }}"
+  _msg: ""
+fields_under_root: true

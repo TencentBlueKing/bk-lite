@@ -1,8 +1,6 @@
 from apps.opspilot.metis.llm.tools.cmdb.associations import (
     cmdb_create_instance_association,
-    cmdb_create_model_association,
     cmdb_delete_instance_association,
-    cmdb_delete_model_association,
     cmdb_list_associated_instances,
     cmdb_list_instance_associations,
     cmdb_list_model_associations,
@@ -19,15 +17,9 @@ from apps.opspilot.metis.llm.tools.cmdb.instances import (
     cmdb_update_instance,
 )
 from apps.opspilot.metis.llm.tools.cmdb.models import (
-    cmdb_create_model,
-    cmdb_create_model_attr,
-    cmdb_delete_model,
-    cmdb_delete_model_attr,
     cmdb_get_model_info,
     cmdb_list_model_attrs,
     cmdb_list_models,
-    cmdb_update_model,
-    cmdb_update_model_attr,
 )
 from apps.opspilot.metis.llm.tools.cmdb.search import (
     cmdb_fulltext_search,
@@ -67,12 +59,6 @@ __all__ = [
     "cmdb_list_models",
     "cmdb_get_model_info",
     "cmdb_list_model_attrs",
-    "cmdb_create_model",
-    "cmdb_update_model",
-    "cmdb_delete_model",
-    "cmdb_create_model_attr",
-    "cmdb_update_model_attr",
-    "cmdb_delete_model_attr",
     "cmdb_search_instances",
     "cmdb_get_instance",
     "cmdb_create_instance",
@@ -83,8 +69,6 @@ __all__ = [
     "cmdb_topo_search",
     "cmdb_topo_expand",
     "cmdb_list_model_associations",
-    "cmdb_create_model_association",
-    "cmdb_delete_model_association",
     "cmdb_list_instance_associations",
     "cmdb_list_associated_instances",
     "cmdb_create_instance_association",
