@@ -41,17 +41,14 @@ collect_type:
     icmp:
       name: ICMP 协议
       description: 监控 ICMP 流量，用于网络诊断和性能分析。
-  Metricbeat:
-    docker:
-      description: 从 Docker 容器收集指标，监控容器性能和资源利用率。
-      name: Docker 容器
-    system:
-      name: 系统指标
-      description: 收集系统级指标，如 CPU、内存和磁盘使用情况，用于性能监控和资源管理。
   Filebeat:
     filestream:
       name: 文件流采集
       description: 从各种来源采集和转发日志数据，用于集中式日志记录和分析。
+  Winlogbeat:
+    winlogbeat:
+      name: Windows 事件日志
+      description: 采集 Windows 事件日志，包括安全、系统、应用程序、Sysmon、PowerShell、Defender 和计划任务等日志。
 
 display_category:
   general:
