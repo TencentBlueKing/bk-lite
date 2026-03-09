@@ -43,5 +43,6 @@
     "geoip.city_name",
     "geoip.region_name",
     "geoip.location"
-  ]
+  ],
+  "display_category": "security"
 }

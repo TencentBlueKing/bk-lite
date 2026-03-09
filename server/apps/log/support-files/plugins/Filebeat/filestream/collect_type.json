@@ -9,5 +9,6 @@
     "collect_type",
     "collector",
     "instance_id"
-  ]
+  ],
+  "display_category": "general"
 }
