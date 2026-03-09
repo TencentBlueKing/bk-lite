@@ -28,6 +28,7 @@ from apps.cmdb.display_field.constants import (
     FIELD_TYPE_USER,
     FIELD_TYPE_ENUM,
     FIELD_TYPE_TAG,
+    FIELD_TYPE_TABLE,
     DISPLAY_VALUES_SEPARATOR,
     USER_DISPLAY_FORMAT,
 )
@@ -160,21 +161,40 @@ class DisplayFieldConverter:
             [str(value).strip() for value in tag_values if str(value).strip()]
         )
 
-        # 查找匹配的枚举选项
-        for option in options:
-            option_id = option.get("id")
-            option_name = option.get("name")
+    @staticmethod
+    def convert_table(table_value) -> str:
+        """
+        将表格值转换为可搜索的显示字符串
 
-            if str(option_id) == str(enum_id):
-                display_value = option_name or enum_id
-                logger.debug(
-                    f"[DisplayFieldConverter] 枚举ID转换: {enum_id} → '{display_value}'"
+        Args:
+            table_value: 表格值，格式为 [{"col1": "val1", "col2": "val2"}, ...]
+
+        Returns:
+            逗号分隔的所有单元格值字符串，用于全文检索
+        """
+        import json
+
+        if not table_value:
+            return ""
+
+        if isinstance(table_value, str):
+            try:
+                rows = json.loads(table_value)
+            except (json.JSONDecodeError, TypeError):
+                return str(table_value)
+        elif isinstance(table_value, list):
+            rows = table_value
+        else:
+            return str(table_value)
+
+        cell_values = []
+        for row in rows:
+            if isinstance(row, dict):
+                cell_values.extend(
+                    str(v) for v in row.values() if v is not None and v != ""
                 )
-                return display_value
 
-        # 未找到匹配项，返回原始值
-        logger.debug(f"[DisplayFieldConverter] 未找到枚举值 {enum_id}，使用原始值")
-        return str(enum_id)
+        return DISPLAY_VALUES_SEPARATOR.join(cell_values)
 
 
 class DisplayFieldHandler:
@@ -266,6 +286,8 @@ class DisplayFieldHandler:
                     )
                 elif attr_type == FIELD_TYPE_TAG:
                     display_value = DisplayFieldConverter.convert_tag(original_value)
+                elif attr_type == FIELD_TYPE_TABLE:
+                    display_value = DisplayFieldConverter.convert_table(original_value)
                 else:
                     logger.warning(f"[DisplayFieldHandler] 未知字段类型: {attr_type}")
                     continue
@@ -376,6 +398,11 @@ class DisplayFieldHandler:
     def _convert_tag_to_display(tag_values: List[str]) -> str:
         """委托给 DisplayFieldConverter（保持向后兼容）"""
         return DisplayFieldConverter.convert_tag(tag_values)
+
+    @staticmethod
+    def _convert_table_to_display(table_value) -> str:
+        """委托给 DisplayFieldConverter（保持向后兼容）"""
+        return DisplayFieldConverter.convert_table(table_value)
 
     @classmethod
     def get_all_exclude_fields(cls) -> List[str]:

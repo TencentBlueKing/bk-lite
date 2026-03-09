@@ -3,12 +3,15 @@ from apps.cmdb.constants.constants import (
     INSTANCE_ASSOCIATION,
     OPERATOR_INSTANCE,
 )
+from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.display_field.constants import (
     DISPLAY_FIELD_TYPES,
     DISPLAY_SUFFIX,
     FIELD_TYPE_ORGANIZATION,
     FIELD_TYPE_USER,
     FIELD_TYPE_ENUM,
+    FIELD_TYPE_TAG,
+    FIELD_TYPE_TABLE,
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.graph.format_type import ParameterCollector
@@ -30,8 +33,6 @@ from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
 from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.cmdb.validators.field_validator import (
-    TAG_ATTR_ID,
-    TAG_MODE_FREE,
     TagFieldConfig,
     normalize_tag_input_values,
     normalize_tag_field_option,
@@ -62,7 +63,9 @@ def apply_tag_validation_for_instance(
         return data
 
     raw_values = normalize_tag_input_values(data.get(TAG_ATTR_ID))
-    tag_config: TagFieldConfig = normalize_tag_field_option(tag_attr.get("option") or {})
+    tag_config: TagFieldConfig = normalize_tag_field_option(
+        tag_attr.get("option") or {}
+    )
     validation_result = validate_tag_values(raw_values, tag_config)
     if validation_result.errors:
         raise BaseAppException("; ".join(validation_result.errors))
@@ -88,9 +91,14 @@ def apply_tag_validation_for_batch(
         None,
     )
     if not tag_attr:
-        return [dict({k: v for k, v in record.items() if k != TAG_ATTR_ID}) for record in records]
+        return [
+            dict({k: v for k, v in record.items() if k != TAG_ATTR_ID})
+            for record in records
+        ]
 
-    tag_config: TagFieldConfig = normalize_tag_field_option(tag_attr.get("option") or {})
+    tag_config: TagFieldConfig = normalize_tag_field_option(
+        tag_attr.get("option") or {}
+    )
     merged_values: set[str] = set()
     normalized_records: list[dict] = []
 
@@ -167,13 +175,19 @@ class InstanceManage(object):
             original_value = update_attr[attr_id]
 
             if attr_type == FIELD_TYPE_ORGANIZATION:
-                display_value = DisplayFieldConverter.convert_organization(original_value)
+                display_value = DisplayFieldConverter.convert_organization(
+                    original_value
+                )
             elif attr_type == FIELD_TYPE_USER:
                 display_value = DisplayFieldConverter.convert_user(original_value)
             elif attr_type == FIELD_TYPE_ENUM:
                 display_value = DisplayFieldConverter.convert_enum(
                     original_value, attr.get("option", [])
                 )
+            elif attr_type == FIELD_TYPE_TAG:
+                display_value = DisplayFieldConverter.convert_tag(original_value)
+            elif attr_type == FIELD_TYPE_TABLE:
+                display_value = DisplayFieldConverter.convert_table(original_value)
             else:
                 continue
 
@@ -202,10 +216,10 @@ class InstanceManage(object):
 
     @staticmethod
     def check_instances_permission(
-            instances: list,
-            model_id: str,
-            user_groups: list = None,
-            roles: list = None,
+        instances: list,
+        model_id: str,
+        user_groups: list = None,
+        roles: list = None,
     ):
         """实例权限校验，用于操作之前"""
         permission_params = InstanceManage.get_permission_params(
@@ -233,20 +247,22 @@ class InstanceManage(object):
 
     @staticmethod
     def instance_list(
-            model_id: str,
-            params: list,
-            page: int,
-            page_size: int,
-            order: str,
-            permission_map: dict,
-            creator: str = None,
-            case_sensitive: bool = True,
+        model_id: str,
+        params: list,
+        page: int,
+        page_size: int,
+        order: str,
+        permission_map: dict,
+        creator: str = None,
+        case_sensitive: bool = True,
     ):
         """实例列表"""
 
         params.append({"field": "model_id", "type": "str=", "value": model_id})
 
-        format_permission_dict = InstanceManage._build_format_permission_dict(permission_map, creator)
+        format_permission_dict = InstanceManage._build_format_permission_dict(
+            permission_map, creator
+        )
 
         _page = dict(skip=(page - 1) * page_size, limit=page_size)
         if order and order.startswith("-"):
@@ -269,7 +285,9 @@ class InstanceManage(object):
         """创建实例"""
         instance_info.update(model_id=model_id)
         attrs = ModelManage.search_model_attr(model_id)
-        instance_info = apply_tag_validation_for_instance(instance_info, attrs, model_id)
+        instance_info = apply_tag_validation_for_instance(
+            instance_info, attrs, model_id
+        )
         check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=False)
 
         # 为 organization/user/enum 字段生成 _display 冗余字段
@@ -301,7 +319,7 @@ class InstanceManage(object):
 
     @staticmethod
     def instance_update(
-            user_groups: list, roles: list, inst_id: int, update_attr: dict, operator: str
+        user_groups: list, roles: list, inst_id: int, update_attr: dict, operator: str
     ):
         """修改实例属性"""
         inst_info = InstanceManage.query_entity_by_id(inst_id)
@@ -333,7 +351,12 @@ class InstanceManage(object):
             )
             exist_items = [i for i in exist_items if i["_id"] != inst_id]
             result = ag.set_entity_properties(
-                INSTANCE, [inst_id], update_attr, check_attr_map, exist_items, attrs=attrs
+                INSTANCE,
+                [inst_id],
+                update_attr,
+                check_attr_map,
+                exist_items,
+                attrs=attrs,
             )
 
         create_change_record(
@@ -352,11 +375,11 @@ class InstanceManage(object):
 
     @staticmethod
     def batch_instance_update(
-            user_groups: list,
-            roles: list,
-            inst_ids: list,
-            update_attr: dict,
-            operator: str,
+        user_groups: list,
+        roles: list,
+        inst_ids: list,
+        update_attr: dict,
+        operator: str,
     ):
         """批量修改实例属性"""
 
@@ -395,7 +418,12 @@ class InstanceManage(object):
             )
             exist_items = [i for i in exist_items if i["_id"] not in inst_ids]
             result = ag.set_entity_properties(
-                INSTANCE, inst_ids, update_attr, check_attr_map, exist_items, attrs=attrs
+                INSTANCE,
+                inst_ids,
+                update_attr,
+                check_attr_map,
+                exist_items,
+                attrs=attrs,
             )
 
         after_dict = {i["_id"]: i for i in result}
@@ -418,7 +446,7 @@ class InstanceManage(object):
 
     @staticmethod
     def instance_batch_delete(
-            user_groups: list, roles: list, inst_ids: list, operator: str
+        user_groups: list, roles: list, inst_ids: list, operator: str
     ):
         """批量删除实例"""
         inst_list = InstanceManage.query_entity_by_ids(inst_ids)
@@ -728,11 +756,11 @@ class InstanceManage(object):
         return results
 
     def inst_import_support_edit(
-            self,
-            model_id: str,
-            file_stream: bytes,
-            operator: str,
-            allowed_org_ids: list = None,
+        self,
+        model_id: str,
+        file_stream: bytes,
+        operator: str,
+        allowed_org_ids: list = None,
     ):
         """实例导入-支持编辑"""
         attrs = ModelManage.search_model_attr_v2(model_id)
@@ -835,13 +863,13 @@ class InstanceManage(object):
 
     @staticmethod
     def inst_export(
-            model_id: str,
-            ids: list,
-            permissions_map: dict = {},
-            created: str = "",
-            creator: str = "",
-            attr_list: list = [],
-            association_list: list = [],
+        model_id: str,
+        ids: list,
+        permissions_map: dict = {},
+        created: str = "",
+        creator: str = "",
+        attr_list: list = [],
+        association_list: list = [],
     ):
         """实例导出"""
         attrs = ModelManage.search_model_attr_v2(model_id)
@@ -956,7 +984,9 @@ class InstanceManage(object):
 
     @classmethod
     def model_inst_count(cls, permissions_map: dict, creator: str = ""):
-        format_permission_dict = cls._build_format_permission_dict(permissions_map, creator)
+        format_permission_dict = cls._build_format_permission_dict(
+            permissions_map, creator
+        )
 
         with GraphClient() as ag:
             data = ag.entity_count(
@@ -1034,11 +1064,11 @@ class InstanceManage(object):
 
     @classmethod
     def fulltext_search(
-            cls,
-            search: str,
-            permission_map: dict,
-            creator: str = "",
-            case_sensitive: bool = False,
+        cls,
+        search: str,
+        permission_map: dict,
+        creator: str = "",
+        case_sensitive: bool = False,
     ):
         """
         全文检索（兼容旧接口）
@@ -1074,11 +1104,11 @@ class InstanceManage(object):
 
     @classmethod
     def fulltext_search_stats(
-            cls,
-            search: str,
-            permission_map: dict,
-            creator: str = "",
-            case_sensitive: bool = False,
+        cls,
+        search: str,
+        permission_map: dict,
+        creator: str = "",
+        case_sensitive: bool = False,
     ):
         """
         全文检索 - 模型统计接口
@@ -1124,14 +1154,14 @@ class InstanceManage(object):
 
     @classmethod
     def fulltext_search_by_model(
-            cls,
-            search: str,
-            model_id: str,
-            permission_map: dict,
-            creator: str = "",
-            page: int = 1,
-            page_size: int = 10,
-            case_sensitive: bool = False,
+        cls,
+        search: str,
+        model_id: str,
+        permission_map: dict,
+        creator: str = "",
+        page: int = 1,
+        page_size: int = 10,
+        case_sensitive: bool = False,
     ):
         """
         全文检索 - 模型数据查询接口
