@@ -1,14 +1,12 @@
 """定时任务 Celery Beat 集成服务"""
 
 import json
-import logging
 from typing import Optional
 
 from django_celery_beat.models import ClockedSchedule, CrontabSchedule, PeriodicTask
 
+from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ScheduleType
-
-logger = logging.getLogger(__name__)
 
 
 class ScheduledTaskService:

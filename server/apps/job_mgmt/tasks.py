@@ -5,7 +5,6 @@
 - source=manual: 使用 execute_ssh / download_to_remote（通过 SSH 凭据连接）
 """
 
-import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional, Tuple
@@ -13,13 +12,12 @@ from typing import Optional, Tuple
 from celery import shared_task
 from django.utils import timezone
 
+from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus, ScriptType, TargetSource
 from apps.job_mgmt.models import JobExecution, JobExecutionTarget
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.rpc.executor import Executor
-
-logger = logging.getLogger(__name__)
 
 # 最大并发执行数
 MAX_WORKERS = 10

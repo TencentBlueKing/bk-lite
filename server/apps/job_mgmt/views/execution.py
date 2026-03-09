@@ -8,6 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import ExecutionStatus, JobType
 from apps.job_mgmt.filters.execution import JobExecutionFilter
@@ -34,6 +35,7 @@ class JobExecutionViewSet(AuthViewSet):
     filterset_class = JobExecutionFilter
     search_fields = ["name"]
     ORGANIZATION_FIELD = "team"
+    permission_key = "job"
     http_method_names = ["get", "post"]  # 只允许查看和创建，不允许修改删除
 
     def get_serializer_class(self):
@@ -45,7 +47,16 @@ class JobExecutionViewSet(AuthViewSet):
             return FileDistributionSerializer
         return JobExecutionListSerializer
 
+    @HasPermission("job_record-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("job_record-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
     @action(detail=False, methods=["post"])
+    @HasPermission("quick_exec-Add")
     def quick_execute(self, request):
         """
         快速执行（统一入口）
@@ -146,6 +157,7 @@ class JobExecutionViewSet(AuthViewSet):
         )
 
     @action(detail=False, methods=["post"], parser_classes=[MultiPartParser])
+    @HasPermission("file_dist-Add")
     def file_distribution(self, request):
         """
         文件分发
@@ -235,6 +247,7 @@ class JobExecutionViewSet(AuthViewSet):
         )
 
     @action(detail=True, methods=["get"])
+    @HasPermission("job_record-View")
     def targets(self, request, pk=None):
         """
         获取执行目标明细列表
@@ -247,6 +260,7 @@ class JobExecutionViewSet(AuthViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
+    @HasPermission("job_record-Edit")
     def cancel(self, request, pk=None):
         """
         取消执行（仅限等待中或执行中的任务）

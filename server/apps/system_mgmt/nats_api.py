@@ -201,12 +201,15 @@ def get_client(client_id="", username="", domain="domain.com"):
         user = User.objects.filter(username=username, domain=domain).first()
         if not user:
             return {"result": False, "message": "User not found"}
-
         # 获取用户所有角色（个人角色 + 组角色）
         all_role_ids = get_user_all_roles(user)
-        app_name_list = list(Role.objects.filter(id__in=all_role_ids).values_list("app", flat=True).distinct())
-        if "" not in app_name_list:
-            app_list = app_list.filter(name__in=app_name_list)
+        role_list = Role.objects.filter(id__in=all_role_ids)
+        role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
+        is_superuser = "admin" in role_names or "system-manager--admin" in role_names
+        if not is_superuser:
+            app_name_list = list(Role.objects.filter(id__in=all_role_ids).values_list("app", flat=True).distinct())
+            if "" not in app_name_list:
+                app_list = app_list.filter(name__in=app_name_list)
     return_data = list(app_list.order_by("id").values())
     return {"result": True, "data": return_data}
 

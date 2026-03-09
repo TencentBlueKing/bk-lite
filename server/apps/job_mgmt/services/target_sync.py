@@ -1,13 +1,11 @@
 """目标同步服务"""
 
-import logging
 from typing import Optional
 
+from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutorDriver, OSType, TargetSource
 from apps.job_mgmt.models import Target
 from apps.rpc.node_mgmt import NodeMgmt
-
-logger = logging.getLogger(__name__)
 
 
 class TargetSyncService:

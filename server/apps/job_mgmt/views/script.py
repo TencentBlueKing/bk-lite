@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.filters.script import ScriptFilter
 from apps.job_mgmt.models import Script
@@ -19,6 +20,7 @@ class ScriptViewSet(AuthViewSet):
     filterset_class = ScriptFilter
     search_fields = ["name", "description"]
     ORGANIZATION_FIELD = "team"
+    permission_key = "job"
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -29,6 +31,15 @@ class ScriptViewSet(AuthViewSet):
             return ScriptBatchDeleteSerializer
         return ScriptSerializer
 
+    @HasPermission("script_library-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("script_library-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("script_library-Add")
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -52,6 +63,7 @@ class ScriptViewSet(AuthViewSet):
         response_serializer = ScriptSerializer(instance)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
+    @HasPermission("script_library-Edit")
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
@@ -74,6 +86,7 @@ class ScriptViewSet(AuthViewSet):
         return Response(ScriptSerializer(instance).data)
 
     @action(detail=False, methods=["post"])
+    @HasPermission("script_library-Delete")
     def batch_delete(self, request):
         """批量删除脚本"""
         serializer = ScriptBatchDeleteSerializer(data=request.data)

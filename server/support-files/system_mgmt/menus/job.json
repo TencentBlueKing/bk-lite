@@ -1,0 +1,163 @@
+{
+  "client_id": "job",
+  "name": "Job",
+  "url": "/job/home",
+  "icon": "job",
+  "tags": [
+    "tag.job_execution",
+    "tag.script_management",
+    "tag.file_distribution",
+    "tag.scheduled_task"
+  ],
+  "description": "app.job",
+  "menus": [
+    {
+      "name": "Home",
+      "children": [
+        {
+          "id": "home",
+          "name": "Home",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Execution",
+      "children": [
+        {
+          "id": "quick_exec",
+          "name": "Quick Execution",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "file_dist",
+          "name": "File Distribution",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "cron_task",
+          "name": "Scheduled Task",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "job_record",
+          "name": "Job Records",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Template",
+      "children": [
+        {
+          "id": "script_library",
+          "name": "Script Library",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "playbook_library",
+          "name": "Playbook Library",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Target",
+      "children": [
+        {
+          "id": "target",
+          "name": "Target",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "children": [
+        {
+          "id": "dangerous_command",
+          "name": "Dangerous Commands",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "dangerous_path",
+          "name": "Dangerous Paths",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "admin",
+      "role_name": "job_admin",
+      "menus": []
+    },
+    {
+      "name": "normal",
+      "role_name": "job_normal",
+      "menus": [
+        "home-View",
+        "quick_exec-View",
+        "file_dist-View",
+        "cron_task-View",
+        "job_record-View",
+        "script_library-View",
+        "playbook_library-View",
+        "target-View",
+        "dangerous_command-View",
+        "dangerous_path-View"
+      ]
+    }
+  ]
+}

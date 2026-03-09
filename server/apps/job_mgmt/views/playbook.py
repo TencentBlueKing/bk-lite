@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.filters.playbook import PlaybookFilter
 from apps.job_mgmt.models import Playbook
@@ -26,6 +27,7 @@ class PlaybookViewSet(AuthViewSet):
     filterset_class = PlaybookFilter
     search_fields = ["name", "version"]
     ORGANIZATION_FIELD = "team"
+    permission_key = "job"
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -42,6 +44,15 @@ class PlaybookViewSet(AuthViewSet):
             return PlaybookBatchDeleteSerializer
         return PlaybookDetailSerializer
 
+    @HasPermission("playbook_library-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("playbook_library-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("playbook_library-Add")
     def create(self, request, *args, **kwargs):
         """
         创建 Playbook（文件上传）
@@ -80,6 +91,7 @@ class PlaybookViewSet(AuthViewSet):
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["post"])
+    @HasPermission("playbook_library-Delete")
     def batch_delete(self, request):
         """批量删除Playbook"""
         serializer = PlaybookBatchDeleteSerializer(data=request.data)
@@ -93,6 +105,7 @@ class PlaybookViewSet(AuthViewSet):
         return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
+    @HasPermission("playbook_library-Edit")
     def upgrade(self, request, pk=None):
         """
         更新 Playbook 版本
@@ -115,6 +128,7 @@ class PlaybookViewSet(AuthViewSet):
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
+    @HasPermission("playbook_library-View")
     def download(self, request, pk=None):
         """
         下载 Playbook 文件

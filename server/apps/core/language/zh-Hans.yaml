@@ -33,6 +33,7 @@ app:
   system-manager: 涵盖用户和组织角色权限管理，通过精细化权限控制，确保资源访问安全，同时提升操作效率。提供灵活的配置和管理，满足不同业务需求
   node: 用于集中管理各个云区域下的节点，为各个节点安装各类探针，以便进行监控数据、配置信息、日志等信息的采集
   ops-console: 统一运维控制台，用于管理和监控所有运维活动
+  job: 快速创建并执行作业，统一管理脚本执行、文件分发和定时任务
 
 # 标签翻译 (内置应用标签)
 tag:
@@ -79,3 +80,8 @@ tag:
   dashboard: 仪表盘
   canvas: 画布
   data_integration: 数据整合
+  # job
+  job_execution: 作业执行
+  script_management: 脚本管理
+  file_distribution: 文件分发
+  scheduled_task: 定时任务

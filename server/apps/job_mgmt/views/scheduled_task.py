@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import ExecutionStatus, JobType
 from apps.job_mgmt.filters.scheduled_task import ScheduledTaskFilter
@@ -29,6 +30,7 @@ class ScheduledTaskViewSet(AuthViewSet):
     filterset_class = ScheduledTaskFilter
     search_fields = ["name", "description"]
     ORGANIZATION_FIELD = "team"
+    permission_key = "job"
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -43,6 +45,15 @@ class ScheduledTaskViewSet(AuthViewSet):
             return ScheduledTaskBatchDeleteSerializer
         return ScheduledTaskListSerializer
 
+    @HasPermission("cron_task-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("cron_task-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("cron_task-Add")
     def create(self, request, *args, **kwargs):
         serializer = ScheduledTaskCreateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
@@ -52,6 +63,7 @@ class ScheduledTaskViewSet(AuthViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @HasPermission("cron_task-Edit")
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
@@ -61,6 +73,7 @@ class ScheduledTaskViewSet(AuthViewSet):
         return Response(ScheduledTaskDetailSerializer(instance).data)
 
     @action(detail=True, methods=["post"])
+    @HasPermission("cron_task-Edit")
     def toggle(self, request, pk=None):
         """
         启用/禁用定时任务
@@ -84,6 +97,7 @@ class ScheduledTaskViewSet(AuthViewSet):
         )
 
     @action(detail=True, methods=["post"])
+    @HasPermission("cron_task-Edit")
     def run_now(self, request, pk=None):
         """
         立即执行（手动触发一次）
@@ -144,6 +158,7 @@ class ScheduledTaskViewSet(AuthViewSet):
             }
         )
 
+    @HasPermission("cron_task-Delete")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
 
@@ -154,6 +169,7 @@ class ScheduledTaskViewSet(AuthViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["post"])
+    @HasPermission("cron_task-Delete")
     def batch_delete(self, request):
         """
         批量删除定时任务

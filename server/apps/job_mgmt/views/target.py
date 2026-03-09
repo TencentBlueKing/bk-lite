@@ -4,7 +4,8 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.core.logger import logger
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import job_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import TargetSource
 from apps.job_mgmt.filters.target import TargetFilter
@@ -28,6 +29,7 @@ class TargetViewSet(AuthViewSet):
     filterset_class = TargetFilter
     search_fields = ["name", "ip"]
     ORGANIZATION_FIELD = "team"
+    permission_key = "job"
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -40,6 +42,15 @@ class TargetViewSet(AuthViewSet):
             return TargetTestConnectionSerializer
         return TargetSerializer
 
+    @HasPermission("target-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("target-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("target-Add")
     def create(self, request, *args, **kwargs):
         """
         创建目标（手动新增）
@@ -80,6 +91,7 @@ class TargetViewSet(AuthViewSet):
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["post"])
+    @HasPermission("target-Delete")
     def batch_delete(self, request):
         """批量删除目标"""
         serializer = TargetBatchDeleteSerializer(data=request.data)
@@ -93,6 +105,7 @@ class TargetViewSet(AuthViewSet):
         return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"])
+    @HasPermission("target-Add")
     def sync_from_nodes(self, request):
         """
         从 Node 同步目标
@@ -117,6 +130,7 @@ class TargetViewSet(AuthViewSet):
         return Response({"message": "同步任务已提交，后台执行中"}, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=False, methods=["post"])
+    @HasPermission("target-View")
     def test_connection(self, request):
         """
         测试连接
@@ -177,6 +191,7 @@ class TargetViewSet(AuthViewSet):
         return Response({"success": True, "message": message}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
+    @HasPermission("target-View")
     def test_target_connection(self, request, pk=None):
         """
         测试已有目标的连接

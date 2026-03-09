@@ -126,7 +126,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
             "log": Log,
             "cmdb": CMDB,
             "ops-analysis": OperationAnalysisRPC,
-            "job-mgmt": JobMgmt,
+            "job": JobMgmt,
         }
         app = params.pop("app")
         if app not in client_map.keys():

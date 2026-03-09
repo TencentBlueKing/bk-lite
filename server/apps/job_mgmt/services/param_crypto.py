@@ -6,11 +6,7 @@
 - 执行时：解密参数值
 """
 
-import logging
-
 from apps.core.mixinx import EncryptMixin
-
-logger = logging.getLogger(__name__)
 
 
 class ParamCrypto:

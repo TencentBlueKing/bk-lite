@@ -1,13 +1,11 @@
 """危险规则检查服务"""
 
-import logging
 import re
 from typing import List
 
+from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import DangerousLevel
 from apps.job_mgmt.models import DangerousPath, DangerousRule
-
-logger = logging.getLogger(__name__)
 
 
 class DangerousCheckResult:
