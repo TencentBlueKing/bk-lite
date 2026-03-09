@@ -362,6 +362,7 @@ const SearchView: React.FC = () => {
                       unit={item.unit}
                       showDimensionTable={layoutMode === 'single'}
                       key={layoutMode}
+                      syncId="monitor-search-charts"
                       onXRangeChange={onXRangeChange}
                     />
                   </div>
