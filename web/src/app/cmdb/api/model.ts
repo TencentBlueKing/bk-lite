@@ -99,6 +99,36 @@ export const useModelApi = () => {
   const copyModel = (modelId: string, params: any) =>
     post(`/cmdb/api/model/${modelId}/copy/`, params);
 
+  // ========== 公共枚举库 API ==========
+  // 获取公共枚举库列表
+  const getPublicEnumLibraries = () =>
+    get('/cmdb/api/public_enum_libraries/');
+
+  // 创建公共枚举库
+  const createPublicEnumLibrary = (params: {
+    name: string;
+    team: (string | number)[];
+    options: { id: string; name: string }[];
+  }) => post('/cmdb/api/public_enum_libraries/', params);
+
+  // 更新公共枚举库
+  const updatePublicEnumLibrary = (
+    libraryId: string,
+    params: {
+      name?: string;
+      team?: (string | number)[];
+      options?: { id: string; name: string }[];
+    }
+  ) => put(`/cmdb/api/public_enum_libraries/${libraryId}/`, params);
+
+  // 删除公共枚举库
+  const deletePublicEnumLibrary = (libraryId: string) =>
+    del(`/cmdb/api/public_enum_libraries/${libraryId}/`);
+
+  // 获取公共枚举库引用列表
+  const getPublicEnumLibraryReferences = (libraryId: string) =>
+    get(`/cmdb/api/public_enum_libraries/${libraryId}/references/`);
+
   return {
     getModelList,
     createModel,
@@ -121,6 +151,11 @@ export const useModelApi = () => {
     moveModelAttrGroup,
     reorderGroupAttrs,
     moveAttrToGroup,
-    copyModel
+    copyModel,
+    getPublicEnumLibraries,
+    createPublicEnumLibrary,
+    updatePublicEnumLibrary,
+    deletePublicEnumLibrary,
+    getPublicEnumLibraryReferences
   };
 };

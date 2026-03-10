@@ -148,6 +148,131 @@ class ModelManage(object):
             raise BaseAppException(IdentifierValidator.get_error_message("模型ID"))
 
     @staticmethod
+    def normalize_enum_public_binding(
+        attr_info: dict, current_attr: dict | None = None
+    ) -> dict:
+        """
+        规范化 enum 公共选项库绑定信息并回填 option 快照。
+
+        处理逻辑：
+        1. 若 attr_type != enum，直接返回原 attr_info，不做处理。
+        2. enum_rule_type 默认为 custom。
+        3. 若 enum_rule_type == public_library：
+           - 校验 public_library_id 必填
+           - 从公共库拉取最新 options 并写入 option 字段（快照）
+        4. 若 enum_rule_type == custom：
+           - 清空 public_library_id
+           - 保持 option 不变
+
+        Args:
+            attr_info: 前端传入的属性配置
+            current_attr: 当前已存在的属性（更新场景下传入）
+
+        Returns:
+            dict: 规范化后的 attr_info（原地修改并返回）
+
+        Raises:
+            BaseAppException: 公共库不存在或配置不合法时抛出
+        """
+        if attr_info.get("attr_type") != "enum":
+            return attr_info
+
+        enum_rule_type = attr_info.get("enum_rule_type", "custom")
+        attr_info["enum_rule_type"] = enum_rule_type
+
+        if enum_rule_type == "public_library":
+            public_library_id = attr_info.get("public_library_id")
+            if not public_library_id:
+                raise BaseAppException("绑定公共选项库时 public_library_id 必填")
+
+            from apps.cmdb.services.public_enum_library import get_library_or_raise
+
+            library = get_library_or_raise(public_library_id)
+            attr_info["option"] = library.options
+            attr_info["public_library_id"] = public_library_id
+
+            logger.info(
+                f"[EnumPublicBinding] normalized attr_id={attr_info.get('attr_id')}, "
+                f"enum_rule_type={enum_rule_type}, public_library_id={public_library_id}"
+            )
+        else:
+            attr_info["enum_rule_type"] = "custom"
+            attr_info["public_library_id"] = None
+
+        return attr_info
+
+    @staticmethod
+    def validate_enum_rule_immutable(current_attr: dict, incoming_attr: dict) -> None:
+        """
+        校验字段创建后 enum_rule_type 不可切换。
+
+        规则：
+        - 仅对 attr_type == enum 的字段生效
+        - 创建时：任意 enum_rule_type（custom / public_library）均可
+        - 更新时：不允许从 custom 切换到 public_library，或反之
+
+        Args:
+            current_attr: 当前已存储的属性定义
+            incoming_attr: 本次请求传入的属性定义
+
+        Raises:
+            BaseAppException: 规则类型切换时抛出
+        """
+        if current_attr.get("attr_type") != "enum":
+            return
+        if incoming_attr.get("attr_type") != "enum":
+            return
+
+        current_rule = current_attr.get("enum_rule_type", "custom")
+        incoming_rule = incoming_attr.get("enum_rule_type", "custom")
+
+        if current_rule != incoming_rule:
+            raise BaseAppException(
+                f"枚举字段创建后规则类型不可切换（当前: {current_rule}）"
+            )
+
+    @staticmethod
+    def resolve_runtime_enum_options(attr: dict) -> list[dict]:
+        """
+        运行时解析枚举选项。
+
+        口径：
+        - 若 enum_rule_type == public_library，优先从公共库实时拉取
+        - 若公共库不存在或查询失败，回退到字段快照（attr.option）
+        - 若 enum_rule_type == custom，直接返回 attr.option
+
+        Args:
+            attr: 字段属性定义
+
+        Returns:
+            list[dict]: 枚举选项列表 [{"id": str, "name": str}, ...]
+        """
+        if attr.get("attr_type") != "enum":
+            return []
+
+        enum_rule_type = attr.get("enum_rule_type", "custom")
+        option = attr.get("option", [])
+
+        if enum_rule_type != "public_library":
+            return option if isinstance(option, list) else []
+
+        public_library_id = attr.get("public_library_id")
+        if not public_library_id:
+            return option if isinstance(option, list) else []
+
+        try:
+            from apps.cmdb.services.public_enum_library import get_library_or_raise
+
+            library = get_library_or_raise(public_library_id)
+            return list(library.options)
+        except Exception as e:
+            logger.warning(
+                f"[EnumPublicBinding] resolve_runtime_enum_options fallback to snapshot, "
+                f"public_library_id={public_library_id}, error={e}"
+            )
+            return option if isinstance(option, list) else []
+
+    @staticmethod
     def _add_display_field_to_attrs(
         attrs: list, attr_info: dict, model_id: str, is_pre: bool = False
     ):
@@ -634,6 +759,9 @@ class ModelManage(object):
                     attr_info.get("option") or {}
                 )
 
+            if attr_info.get("attr_type") == "enum":
+                ModelManage.normalize_enum_public_binding(attr_info)
+
             ModelManage._validate_attr_id(attr_info["attr_id"])
             model_query = {"field": "model_id", "type": "str=", "value": model_id}
             models, _ = ag.query_entity(MODEL, [model_query])
@@ -647,7 +775,6 @@ class ModelManage(object):
                 raise BaseAppException("model attr repetition")
             attrs.append(attr_info)
 
-            # 如果新增字段是 organization/user/enum 类型,自动添加 _display 字段定义
             ModelManage._add_display_field_to_attrs(attrs, attr_info, model_id)
 
             result = ag.set_entity_properties(
@@ -715,6 +842,11 @@ class ModelManage(object):
                     attr_info.get("option") or current_attr.get("option") or {}
                 )
 
+            is_enum_attr = current_attr.get("attr_type") == "enum"
+            if is_enum_attr:
+                ModelManage.validate_enum_rule_immutable(current_attr, attr_info)
+                ModelManage.normalize_enum_public_binding(attr_info, current_attr)
+
             for attr in attrs:
                 if attr_info["attr_id"] != attr["attr_id"]:
                     continue
@@ -726,6 +858,9 @@ class ModelManage(object):
                     option=attr_info["option"],
                     user_prompt=attr_info["user_prompt"],
                 )
+                if is_enum_attr:
+                    attr["enum_rule_type"] = attr_info.get("enum_rule_type", "custom")
+                    attr["public_library_id"] = attr_info.get("public_library_id")
 
             result = ag.set_entity_properties(
                 MODEL, [model_info["_id"]], dict(attrs=json.dumps(attrs)), {}, [], False

@@ -546,6 +546,44 @@ class FieldValidator:
                         )
 
     @staticmethod
+    def validate_enum_value(value: Any, attr: Dict) -> None:
+        if value is None or value == "":
+            return
+
+        enum_rule_type = attr.get("enum_rule_type", "custom")
+
+        if enum_rule_type == "public_library":
+            public_library_id = attr.get("public_library_id")
+            if public_library_id:
+                try:
+                    from apps.cmdb.services.public_enum_library import (
+                        get_library_or_raise,
+                    )
+
+                    library = get_library_or_raise(public_library_id)
+                    valid_ids = {opt.get("id") for opt in library.options}
+                except Exception:
+                    valid_ids = {opt.get("id") for opt in attr.get("option", []) if opt}
+            else:
+                valid_ids = {opt.get("id") for opt in attr.get("option", []) if opt}
+        else:
+            valid_ids = {opt.get("id") for opt in attr.get("option", []) if opt}
+
+        if isinstance(value, list):
+            for v in value:
+                if v and str(v) not in valid_ids:
+                    raise BaseAppException(
+                        f"枚举值 '{v}' 不在有效选项范围内",
+                        data={"error_code": "CMDB_ENUM_VALUE_NOT_IN_LIBRARY"},
+                    )
+        else:
+            if str(value) not in valid_ids:
+                raise BaseAppException(
+                    f"枚举值 '{value}' 不在有效选项范围内",
+                    data={"error_code": "CMDB_ENUM_VALUE_NOT_IN_LIBRARY"},
+                )
+
+    @staticmethod
     def validate_field_by_attr(value: Any, attr: Dict) -> None:
         """
         根据属性定义自动选择合适的校验方法
@@ -613,8 +651,9 @@ class FieldValidator:
                 if result.errors:
                     raise BaseAppException("; ".join(result.errors))
 
-            # 其他类型暂不处理(password/user/organization/bool/enum/time等)
-            # 这些类型由现有逻辑处理或不需要额外校验
+            elif attr_type == "enum":
+                FieldValidator.validate_enum_value(value, attr)
+
         except Exception as e:
             # 捕获意外异常,记录日志并抛出通用错误
             attr_id = attr.get("attr_id", "unknown")
