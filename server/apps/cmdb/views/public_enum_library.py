@@ -84,7 +84,8 @@ class PublicEnumLibraryViewSet(AuthViewSet):
                 )
             if e.data and "references" in e.data:
                 return WebUtils.response_error(
-                    e.message,
+                    response_data="",
+                    error_message=e.message,
                     status_code=status.HTTP_409_CONFLICT,
                 )
             return WebUtils.response_error(
