@@ -59,6 +59,11 @@ from apps.cmdb.constants.field_constraints import (
     TABLE_MAX_ROWS,
     TABLE_MAX_CELL_LENGTH,
 )
+from apps.cmdb.constants.constants import (
+    ENUM_SELECT_MODE_SINGLE,
+    ENUM_SELECT_MODE_MULTIPLE,
+    ENUM_SELECT_MODE_DEFAULT,
+)
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
@@ -179,6 +184,49 @@ def normalize_tag_input_values(value: Any) -> list[str]:
         tokens = re.split(r"[,，\n\r]+", raw)
         return [t.strip() for t in tokens if t.strip()]
     raise BaseAppException("标签字段值必须是字符串或字符串数组")
+
+
+def normalize_enum_values(raw: str | list | None) -> list[str]:
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, list):
+        return [
+            str(item).strip() for item in raw if item is not None and str(item).strip()
+        ]
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return []
+        tokens = re.split(r"[,，\n\r]+", raw)
+        return [t.strip() for t in tokens if t.strip()]
+    return [str(raw)]
+
+
+def validate_enum_values(
+    values: list[str],
+    mode: str,
+    option_ids: set[str],
+    required: bool,
+    attr_id: str = "enum",
+) -> None:
+    if required and len(values) == 0:
+        raise BaseAppException(
+            f"字段 {attr_id} 为必填项，不能为空",
+            data={"error_code": "EMPTY_NOT_ALLOWED"},
+        )
+
+    if mode == ENUM_SELECT_MODE_SINGLE and len(values) > 1:
+        raise BaseAppException(
+            f"字段 {attr_id} 为单选模式，只能选择一个值",
+            data={"error_code": "SINGLE_MODE_TOO_MANY_VALUES"},
+        )
+
+    for v in values:
+        if v and str(v) not in option_ids:
+            raise BaseAppException(
+                f"枚举值 '{v}' 不在有效选项范围内",
+                data={"error_code": "INVALID_ENUM_OPTION"},
+            )
 
 
 class ValidationTimeoutError(Exception):

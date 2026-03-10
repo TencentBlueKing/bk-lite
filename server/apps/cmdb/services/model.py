@@ -14,6 +14,7 @@ from apps.cmdb.constants.constants import (
     USER,
     OPERATOR_MODEL,
     DISPLAY_FIELD_CONFIG,
+    ENUM_SELECT_MODE_DEFAULT,
 )
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.validators.field_validator import (
@@ -229,6 +230,61 @@ class ModelManage(object):
         if current_rule != incoming_rule:
             raise BaseAppException(
                 f"枚举字段创建后规则类型不可切换（当前: {current_rule}）"
+            )
+
+    @staticmethod
+    def ensure_enum_select_mode(attr_info: dict) -> dict:
+        """
+        确保枚举字段具有 enum_select_mode 属性。
+
+        规则：
+        - 仅对 attr_type == enum 的字段生效
+        - 若未提供 enum_select_mode，则默认设置为 single
+
+        Args:
+            attr_info: 属性配置字典
+
+        Returns:
+            dict: 规范化后的 attr_info（原地修改并返回）
+        """
+        if attr_info.get("attr_type") != "enum":
+            return attr_info
+
+        if "enum_select_mode" not in attr_info:
+            attr_info["enum_select_mode"] = ENUM_SELECT_MODE_DEFAULT
+
+        return attr_info
+
+    @staticmethod
+    def validate_enum_select_mode_immutable(
+        current_attr: dict, incoming_attr: dict
+    ) -> None:
+        """
+        校验字段创建后 enum_select_mode 不可切换。
+
+        规则：
+        - 仅对 attr_type == enum 的字段生效
+        - 创建时：任意 enum_select_mode（single / multiple）均可
+        - 更新时：不允许从 single 切换到 multiple，或反之
+
+        Args:
+            current_attr: 当前已存储的属性定义
+            incoming_attr: 本次请求传入的属性定义
+
+        Raises:
+            BaseAppException: 选择模式切换时抛出
+        """
+        if current_attr.get("attr_type") != "enum":
+            return
+        if incoming_attr.get("attr_type") != "enum":
+            return
+
+        current_mode = current_attr.get("enum_select_mode", ENUM_SELECT_MODE_DEFAULT)
+        incoming_mode = incoming_attr.get("enum_select_mode", current_mode)
+
+        if current_mode != incoming_mode:
+            raise BaseAppException(
+                f"枚举字段创建后选择模式不可切换（当前: {current_mode}）"
             )
 
     @staticmethod
@@ -761,6 +817,7 @@ class ModelManage(object):
 
             if attr_info.get("attr_type") == "enum":
                 ModelManage.normalize_enum_public_binding(attr_info)
+                ModelManage.ensure_enum_select_mode(attr_info)
 
             ModelManage._validate_attr_id(attr_info["attr_id"])
             model_query = {"field": "model_id", "type": "str=", "value": model_id}
@@ -845,6 +902,7 @@ class ModelManage(object):
             is_enum_attr = current_attr.get("attr_type") == "enum"
             if is_enum_attr:
                 ModelManage.validate_enum_rule_immutable(current_attr, attr_info)
+                ModelManage.validate_enum_select_mode_immutable(current_attr, attr_info)
                 ModelManage.normalize_enum_public_binding(attr_info, current_attr)
 
             for attr in attrs:
@@ -861,6 +919,9 @@ class ModelManage(object):
                 if is_enum_attr:
                     attr["enum_rule_type"] = attr_info.get("enum_rule_type", "custom")
                     attr["public_library_id"] = attr_info.get("public_library_id")
+                    attr["enum_select_mode"] = current_attr.get(
+                        "enum_select_mode", ENUM_SELECT_MODE_DEFAULT
+                    )
 
             result = ag.set_entity_properties(
                 MODEL, [model_info["_id"]], dict(attrs=json.dumps(attrs)), {}, [], False
