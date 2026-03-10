@@ -2,6 +2,7 @@ from apps.cmdb.constants.constants import (
     INSTANCE,
     INSTANCE_ASSOCIATION,
     OPERATOR_INSTANCE,
+    ENUM_SELECT_MODE_DEFAULT,
 )
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.display_field.constants import (
@@ -37,6 +38,8 @@ from apps.cmdb.validators.field_validator import (
     normalize_tag_input_values,
     normalize_tag_field_option,
     validate_tag_values,
+    normalize_enum_values,
+    validate_enum_values,
 )
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
@@ -122,6 +125,57 @@ def apply_tag_validation_for_batch(
         ModelManage.merge_tag_options_from_values(model_id, list(merged_values))
 
     return normalized_records
+
+
+def apply_enum_validation_for_instance(instance_data: dict, attrs: list[dict]) -> dict:
+    """
+    校验并规范化实例数据中的枚举字段值
+
+    功能:
+    1. 遍历所有 enum 类型字段
+    2. 根据 enum_select_mode 校验值的数量
+    3. 校验值是否在有效选项范围内
+    4. 统一将值存储为列表格式
+
+    Args:
+        instance_data: 实例数据字典
+        attrs: 模型字段定义列表
+
+    Returns:
+        规范化后的实例数据（原对象被修改）
+
+    Raises:
+        BaseAppException: 校验失败时抛出
+    """
+    data = dict(instance_data)
+
+    for attr in attrs:
+        if attr.get("attr_type") != "enum":
+            continue
+
+        attr_id = attr.get("attr_id", "")
+        if not attr_id or attr_id not in data:
+            continue
+
+        mode = str(attr.get("enum_select_mode") or ENUM_SELECT_MODE_DEFAULT)
+        required = attr.get("is_required", False)
+        options = attr.get("option") or []
+        option_ids = {str(opt.get("id")) for opt in options if opt}
+
+        raw_value = data.get(attr_id)
+        normalized_values = normalize_enum_values(raw_value)
+
+        validate_enum_values(
+            values=normalized_values,
+            mode=mode,
+            option_ids=option_ids,
+            required=required,
+            attr_id=attr_id,
+        )
+
+        data[attr_id] = normalized_values
+
+    return data
 
 
 class InstanceManage(object):
@@ -288,6 +342,7 @@ class InstanceManage(object):
         instance_info = apply_tag_validation_for_instance(
             instance_info, attrs, model_id
         )
+        instance_info = apply_enum_validation_for_instance(instance_info, attrs)
         check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=False)
 
         # 为 organization/user/enum 字段生成 _display 冗余字段
@@ -340,6 +395,7 @@ class InstanceManage(object):
         update_attr = apply_tag_validation_for_instance(
             update_attr, attrs, inst_info["model_id"]
         )
+        update_attr = apply_enum_validation_for_instance(update_attr, attrs)
         check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=True)
 
         InstanceManage._apply_display_fields_to_update(attrs, update_attr)
@@ -401,6 +457,7 @@ class InstanceManage(object):
         update_attr = apply_tag_validation_for_instance(
             update_attr, attrs, model_info["model_id"]
         )
+        update_attr = apply_enum_validation_for_instance(update_attr, attrs)
         check_attr_map = InstanceManage._build_check_attr_map(attrs, for_update=True)
 
         InstanceManage._apply_display_fields_to_update(attrs, update_attr)

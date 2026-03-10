@@ -12,6 +12,8 @@ from apps.cmdb.constants.constants import (
     ENUM,
     INSTANCE_ASSOCIATION,
     ModelConstraintKey,
+    ENUM_SELECT_MODE_MULTIPLE,
+    ENUM_SELECT_MODE_DEFAULT,
 )
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -212,6 +214,8 @@ class Import:
         need_val_to_id_field_map, need_update_type_field_map, org_user_map = {}, {}, {}
         table_field_set = set()
         tag_field_set = set()
+        # 枚举字段多选模式映射：attr_id -> enum_select_mode
+        enum_select_mode_map = {}
         # 创建属性名称映射，用于错误提示
         attr_name_map = {
             attr_info["attr_id"]: attr_info["attr_name"] for attr_info in self.attrs
@@ -238,6 +242,11 @@ class Import:
                 }
                 if attr_info["attr_type"] in {ORGANIZATION, USER}:
                     org_user_map[attr_info["attr_id"]] = attr_info["attr_type"]
+                # 记录枚举字段的选择模式
+                if attr_info["attr_type"] == ENUM:
+                    enum_select_mode_map[attr_info["attr_id"]] = attr_info.get(
+                        "enum_select_mode", ENUM_SELECT_MODE_DEFAULT
+                    )
         # 读取临时文件
         wb = openpyxl.load_workbook(excel_meta)
         # 获取第一个工作表
@@ -408,13 +417,57 @@ class Import:
                         if enum_id and not invalid_values:
                             item[keys[i]] = enum_id
                     else:
-                        enum_id = need_val_to_id_field_map[keys[i]].get(value)
-                        if enum_id is not None:
-                            item[keys[i]] = enum_id
+                        # ENUM 字段处理：根据 enum_select_mode 区分单选/多选
+                        select_mode = enum_select_mode_map.get(
+                            keys[i], ENUM_SELECT_MODE_DEFAULT
+                        )
+                        if select_mode == ENUM_SELECT_MODE_MULTIPLE:
+                            # 多选枚举：解析逗号分隔的多个值
+                            if isinstance(value, list):
+                                value_list = value
+                            elif isinstance(value, str):
+                                if "," in value:
+                                    value_list = [
+                                        v.strip() for v in value.split(",") if v.strip()
+                                    ]
+                                elif "，" in value:
+                                    value_list = [
+                                        v.strip()
+                                        for v in value.split("，")
+                                        if v.strip()
+                                    ]
+                                else:
+                                    value_list = (
+                                        [value.strip()] if value.strip() else []
+                                    )
+                            else:
+                                value_list = [str(value)] if value else []
+
+                            enum_ids = []
+                            invalid_enum_values = []
+                            for val in value_list:
+                                mapped_id = need_val_to_id_field_map[keys[i]].get(val)
+                                if mapped_id is not None:
+                                    enum_ids.append(mapped_id)
+                                else:
+                                    invalid_enum_values.append(val)
+
+                            if invalid_enum_values:
+                                error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{invalid_enum_values}'无效"
+                                self.validation_errors.append(error_msg)
+                                logger.warning(error_msg)
+
+                            if enum_ids and not invalid_enum_values:
+                                item[keys[i]] = enum_ids
                         else:
-                            error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{value}'无效"
-                            self.validation_errors.append(error_msg)
-                            logger.warning(error_msg)
+                            # 单选枚举：保持原有逻辑
+                            enum_id = need_val_to_id_field_map[keys[i]].get(value)
+                            if enum_id is not None:
+                                item[keys[i]] = [enum_id]
+                            else:
+                                error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{value}'无效"
+                                self.validation_errors.append(error_msg)
+                                logger.warning(error_msg)
                     continue
 
                 # 将键和值存入字典

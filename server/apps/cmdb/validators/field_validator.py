@@ -59,6 +59,11 @@ from apps.cmdb.constants.field_constraints import (
     TABLE_MAX_ROWS,
     TABLE_MAX_CELL_LENGTH,
 )
+from apps.cmdb.constants.constants import (
+    ENUM_SELECT_MODE_SINGLE,
+    ENUM_SELECT_MODE_MULTIPLE,
+    ENUM_SELECT_MODE_DEFAULT,
+)
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
@@ -179,6 +184,49 @@ def normalize_tag_input_values(value: Any) -> list[str]:
         tokens = re.split(r"[,，\n\r]+", raw)
         return [t.strip() for t in tokens if t.strip()]
     raise BaseAppException("标签字段值必须是字符串或字符串数组")
+
+
+def normalize_enum_values(raw: str | list | None) -> list[str]:
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, list):
+        return [
+            str(item).strip() for item in raw if item is not None and str(item).strip()
+        ]
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return []
+        tokens = re.split(r"[,，\n\r]+", raw)
+        return [t.strip() for t in tokens if t.strip()]
+    return [str(raw)]
+
+
+def validate_enum_values(
+    values: list[str],
+    mode: str,
+    option_ids: set[str],
+    required: bool,
+    attr_id: str = "enum",
+) -> None:
+    if required and len(values) == 0:
+        raise BaseAppException(
+            f"字段 {attr_id} 为必填项，不能为空",
+            data={"error_code": "EMPTY_NOT_ALLOWED"},
+        )
+
+    if mode == ENUM_SELECT_MODE_SINGLE and len(values) > 1:
+        raise BaseAppException(
+            f"字段 {attr_id} 为单选模式，只能选择一个值",
+            data={"error_code": "SINGLE_MODE_TOO_MANY_VALUES"},
+        )
+
+    for v in values:
+        if v and str(v) not in option_ids:
+            raise BaseAppException(
+                f"枚举值 '{v}' 不在有效选项范围内",
+                data={"error_code": "INVALID_ENUM_OPTION"},
+            )
 
 
 class ValidationTimeoutError(Exception):
@@ -546,6 +594,44 @@ class FieldValidator:
                         )
 
     @staticmethod
+    def validate_enum_value(value: Any, attr: Dict) -> None:
+        if value is None or value == "":
+            return
+
+        enum_rule_type = attr.get("enum_rule_type", "custom")
+
+        if enum_rule_type == "public_library":
+            public_library_id = attr.get("public_library_id")
+            if public_library_id:
+                try:
+                    from apps.cmdb.services.public_enum_library import (
+                        get_library_or_raise,
+                    )
+
+                    library = get_library_or_raise(public_library_id)
+                    valid_ids = {opt.get("id") for opt in library.options}
+                except Exception:
+                    valid_ids = {opt.get("id") for opt in attr.get("option", []) if opt}
+            else:
+                valid_ids = {opt.get("id") for opt in attr.get("option", []) if opt}
+        else:
+            valid_ids = {opt.get("id") for opt in attr.get("option", []) if opt}
+
+        if isinstance(value, list):
+            for v in value:
+                if v and str(v) not in valid_ids:
+                    raise BaseAppException(
+                        f"枚举值 '{v}' 不在有效选项范围内",
+                        data={"error_code": "CMDB_ENUM_VALUE_NOT_IN_LIBRARY"},
+                    )
+        else:
+            if str(value) not in valid_ids:
+                raise BaseAppException(
+                    f"枚举值 '{value}' 不在有效选项范围内",
+                    data={"error_code": "CMDB_ENUM_VALUE_NOT_IN_LIBRARY"},
+                )
+
+    @staticmethod
     def validate_field_by_attr(value: Any, attr: Dict) -> None:
         """
         根据属性定义自动选择合适的校验方法
@@ -613,8 +699,9 @@ class FieldValidator:
                 if result.errors:
                     raise BaseAppException("; ".join(result.errors))
 
-            # 其他类型暂不处理(password/user/organization/bool/enum/time等)
-            # 这些类型由现有逻辑处理或不需要额外校验
+            elif attr_type == "enum":
+                FieldValidator.validate_enum_value(value, attr)
+
         except Exception as e:
             # 捕获意外异常,记录日志并抛出通用错误
             attr_id = attr.get("attr_id", "unknown")

@@ -109,7 +109,13 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
       } else {
         switch (selectedAttr?.attr_type) {
           case 'enum':
-            condition.type = typeof value === 'number' ? 'int=' : 'str=';
+            // 多选枚举使用 list_any[] 类型，实现"字段内 OR"语义
+            if (selectedAttr?.enum_select_mode === 'multiple' && Array.isArray(value)) {
+              condition.type = 'list_any[]';
+              condition.value = value;
+            } else {
+              condition.type = typeof value === 'number' ? 'int=' : 'str=';
+            }
             break;
           case 'str':
             condition.type = isExact ? 'str=' : 'str*';
@@ -284,6 +290,37 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
         );
       case 'enum':
         const enumOpts = Array.isArray(selectedAttr.option) ? selectedAttr.option : [];
+        const isMultipleEnum = selectedAttr.enum_select_mode === 'multiple';
+        if (isMultipleEnum) {
+          return (
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              className="value"
+              style={{ minWidth: 200 }}
+              value={Array.isArray(searchValue) ? searchValue : searchValue ? [searchValue] : []}
+              onChange={(e) => onSearchValueChange(e, isExactSearch)}
+              onClear={() => onSearchValueChange([], isExactSearch)}
+              maxTagCount={2}
+              maxTagPlaceholder={(omittedValues) => `+${omittedValues.length}`}
+              filterOption={(input, opt: any) => {
+                if (typeof opt?.children === 'string') {
+                  return opt?.children
+                    ?.toLowerCase()
+                    .includes(input.toLowerCase());
+                }
+                return true;
+              }}
+            >
+              {enumOpts.map((opt) => (
+                <Select.Option key={opt.id} value={opt.id}>
+                  {opt.name}
+                </Select.Option>
+              ))}
+            </Select>
+          );
+        }
         return (
           <Select
             allowClear

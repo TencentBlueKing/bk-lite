@@ -548,8 +548,10 @@ export const getFieldItem = (config: {
         const enumOpts = Array.isArray(config.fieldItem.option)
           ? config.fieldItem.option
           : [];
+        const isMultipleEnum = config.fieldItem.enum_select_mode === 'multiple';
         return (
           <Select
+            mode={isMultipleEnum ? 'multiple' : undefined}
             showSearch
             disabled={disabled}
             placeholder={placeholder}
