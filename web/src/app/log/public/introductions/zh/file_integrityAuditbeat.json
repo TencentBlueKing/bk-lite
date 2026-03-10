@@ -1,0 +1,83 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "文件完整性监控（File Integrity Monitoring, FIM）是一种安全技术，用于检测关键文件的未授权修改。本集成使用 Elastic Auditbeat 的 file_integrity 模块，定期扫描指定路径的文件变更。",
+      "通过计算文件哈希值并与基线进行对比，可以发现文件内容、权限、所有者等属性的任何变化，帮助及时发现潜在的安全威胁。"
+    ]
+  },
+  "features": {
+    "title": "核心功能",
+    "items": [
+      {
+        "icon": "🔍",
+        "title": "文件变更检测",
+        "description": "实时检测文件的创建、修改、删除操作"
+      },
+      {
+        "icon": "🔐",
+        "title": "哈希值验证",
+        "description": "通过 SHA-256 等算法验证文件内容完整性"
+      },
+      {
+        "icon": "📄",
+        "title": "属性监控",
+        "description": "跟踪文件权限、所有者、修改时间等属性变化"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "日志字段说明",
+      "columns": [
+        { "key": "field", "title": "字段", "width": "200px" },
+        { "key": "description", "title": "说明", "width": "120px" },
+        { "key": "example", "title": "示例" }
+      ],
+      "data": [
+        {
+          "field": "event.action",
+          "description": "变更类型",
+          "example": "created, updated, deleted, attributes_modified"
+        },
+        {
+          "field": "file.path",
+          "description": "文件完整路径",
+          "example": "/etc/passwd"
+        },
+        {
+          "field": "file.hash.sha256",
+          "description": "文件内容哈希值",
+          "example": "e3b0c44298fc1c149afbf4c8996fb924..."
+        },
+        {
+          "field": "file.owner",
+          "description": "文件所有者",
+          "example": "root"
+        },
+        {
+          "field": "file.group",
+          "description": "文件所属组",
+          "example": "root"
+        },
+        { "field": "file.mode", "description": "文件权限", "example": "0644" },
+        {
+          "field": "file.mtime",
+          "description": "最后修改时间",
+          "example": "2024-01-15T10:30:00Z"
+        }
+      ]
+    }
+  ],
+  "bestPractices": {
+    "title": "最佳实践",
+    "items": [
+      "监控关键配置文件：优先监控 /etc/passwd、/etc/shadow、/etc/sudoers 等敏感文件",
+      "监控应用配置：将业务应用的配置文件纳入监控范围",
+      "合理设置扫描频率：生产环境建议 5-15 分钟扫描一次，避免过于频繁",
+      "排除临时文件：排除日志文件、缓存目录等频繁变化的路径",
+      "使用 SHA-256 哈希：相比 MD5 和 SHA-1，SHA-256 更安全可靠",
+      "建立基线：首次部署后记录正常状态，便于后续对比分析"
+    ]
+  }
+}

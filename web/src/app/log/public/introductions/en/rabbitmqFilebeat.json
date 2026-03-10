@@ -1,0 +1,106 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "RabbitMQ integration uses the Filebeat RabbitMQ module to automatically collect and parse RabbitMQ message queue server logs. It helps you monitor RabbitMQ cluster health, track connection and channel events, and analyze message delivery and queue status."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "🔗",
+        "title": "Connection Monitoring",
+        "description": "Track client connect/disconnect, auth failures, channel create/close"
+      },
+      {
+        "icon": "📥",
+        "title": "Queue Tracking",
+        "description": "Monitor queue create/delete, message backlog, consumer changes"
+      },
+      {
+        "icon": "🔍",
+        "title": "Error Analysis",
+        "description": "Quickly locate connection rejections, permission issues, resource exhaustion"
+      },
+      {
+        "icon": "❤️",
+        "title": "Cluster Health",
+        "description": "Monitor node join/leave, network partitions, mirror sync status"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "RabbitMQ server logs will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "220px" },
+        { "key": "type", "title": "Type", "width": "100px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Log timestamp"
+        },
+        {
+          "field": "rabbitmq.log.level",
+          "type": "keyword",
+          "description": "Log level (debug/info/warning/error)"
+        },
+        {
+          "field": "rabbitmq.log.pid",
+          "type": "keyword",
+          "description": "Erlang process ID"
+        },
+        {
+          "field": "rabbitmq.log.message",
+          "type": "text",
+          "description": "Log message content"
+        },
+        {
+          "field": "rabbitmq.log.node",
+          "type": "keyword",
+          "description": "RabbitMQ node name"
+        }
+      ]
+    },
+    {
+      "title": "Connection Related Fields",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "220px" },
+        { "key": "type", "title": "Type", "width": "100px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "rabbitmq.connection.name",
+          "type": "keyword",
+          "description": "Connection name"
+        },
+        {
+          "field": "rabbitmq.connection.user",
+          "type": "keyword",
+          "description": "Connection username"
+        },
+        {
+          "field": "rabbitmq.connection.vhost",
+          "type": "keyword",
+          "description": "Virtual host"
+        },
+        {
+          "field": "rabbitmq.connection.peer_host",
+          "type": "ip",
+          "description": "Client IP address"
+        },
+        {
+          "field": "rabbitmq.connection.peer_port",
+          "type": "long",
+          "description": "Client port"
+        }
+      ]
+    }
+  ]
+}

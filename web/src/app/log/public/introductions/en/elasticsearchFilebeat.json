@@ -1,0 +1,107 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "Elasticsearch integration uses the Filebeat Elasticsearch module to automatically collect and parse Elasticsearch cluster logs. Supports server logs, slow query logs, deprecation logs, and audit logs, helping you monitor cluster health, optimize query performance, and troubleshoot issues."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "📋",
+        "title": "Multi-type Logs",
+        "description": "Supports server logs, slow query logs, deprecation logs, GC logs"
+      },
+      {
+        "icon": "🐢",
+        "title": "Slow Query Analysis",
+        "description": "Capture slow search and indexing operations to optimize performance"
+      },
+      {
+        "icon": "♻️",
+        "title": "Deprecation Alerts",
+        "description": "Track deprecated APIs and configuration usage"
+      },
+      {
+        "icon": "🔗",
+        "title": "Cluster Health",
+        "description": "Monitor node status, shard allocation, master elections"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Server Log Fields",
+      "description": "Elasticsearch server logs will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "220px" },
+        { "key": "type", "title": "Type", "width": "100px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Log timestamp"
+        },
+        {
+          "field": "log.level",
+          "type": "keyword",
+          "description": "Log level (INFO, WARN, ERROR, DEBUG)"
+        },
+        {
+          "field": "elasticsearch.node.name",
+          "type": "keyword",
+          "description": "Node name"
+        },
+        {
+          "field": "elasticsearch.cluster.name",
+          "type": "keyword",
+          "description": "Cluster name"
+        },
+        {
+          "field": "elasticsearch.component",
+          "type": "keyword",
+          "description": "Component name"
+        },
+        { "field": "message", "type": "text", "description": "Log content" }
+      ]
+    },
+    {
+      "title": "Slow Log Fields",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "220px" },
+        { "key": "type", "title": "Type", "width": "100px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "elasticsearch.slowlog.type",
+          "type": "keyword",
+          "description": "Slow log type (index/search)"
+        },
+        {
+          "field": "elasticsearch.slowlog.took",
+          "type": "keyword",
+          "description": "Execution time"
+        },
+        {
+          "field": "elasticsearch.index.name",
+          "type": "keyword",
+          "description": "Index name"
+        },
+        {
+          "field": "elasticsearch.shard.id",
+          "type": "keyword",
+          "description": "Shard ID"
+        },
+        {
+          "field": "elasticsearch.slowlog.source",
+          "type": "text",
+          "description": "Query/document content"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "RabbitMQ 集成使用 Filebeat 的 RabbitMQ 模块，自动采集和解析 RabbitMQ 消息队列的服务日志。帮助您监控 RabbitMQ 集群健康状态、追踪连接和通道事件、分析消息投递和队列状态。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "🔗",
+        "title": "连接监控",
+        "description": "跟踪客户端连接/断开、认证失败、通道创建/关闭"
+      },
+      {
+        "icon": "📥",
+        "title": "队列追踪",
+        "description": "监控队列创建/删除、消息积压、消费者变化"
+      },
+      {
+        "icon": "🔍",
+        "title": "错误分析",
+        "description": "快速定位连接拒绝、权限问题、资源耗尽等异常"
+      },
+      {
+        "icon": "❤️",
+        "title": "集群健康",
+        "description": "监控节点加入/离开、网络分区、镜像同步状态"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "解析字段",
+      "description": "RabbitMQ 服务日志将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "220px" },
+        { "key": "type", "title": "类型", "width": "100px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        { "field": "@timestamp", "type": "date", "description": "日志时间戳" },
+        {
+          "field": "rabbitmq.log.level",
+          "type": "keyword",
+          "description": "日志级别 (debug/info/warning/error)"
+        },
+        {
+          "field": "rabbitmq.log.pid",
+          "type": "keyword",
+          "description": "Erlang 进程 ID"
+        },
+        {
+          "field": "rabbitmq.log.message",
+          "type": "text",
+          "description": "日志消息内容"
+        },
+        {
+          "field": "rabbitmq.log.node",
+          "type": "keyword",
+          "description": "RabbitMQ 节点名称"
+        }
+      ]
+    },
+    {
+      "title": "连接相关字段",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "220px" },
+        { "key": "type", "title": "类型", "width": "100px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        {
+          "field": "rabbitmq.connection.name",
+          "type": "keyword",
+          "description": "连接名称"
+        },
+        {
+          "field": "rabbitmq.connection.user",
+          "type": "keyword",
+          "description": "连接用户名"
+        },
+        {
+          "field": "rabbitmq.connection.vhost",
+          "type": "keyword",
+          "description": "虚拟主机"
+        },
+        {
+          "field": "rabbitmq.connection.peer_host",
+          "type": "ip",
+          "description": "客户端 IP 地址"
+        },
+        {
+          "field": "rabbitmq.connection.peer_port",
+          "type": "long",
+          "description": "客户端端口"
+        }
+      ]
+    }
+  ]
+}

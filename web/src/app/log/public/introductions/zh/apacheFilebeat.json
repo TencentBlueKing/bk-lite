@@ -1,0 +1,117 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "Apache 集成使用 Filebeat 的 Apache 模块，自动采集和解析 Apache HTTP Server 的访问日志和错误日志。支持标准的 combined/common 日志格式以及自定义格式，帮助您监控网站流量、分析用户行为、排查服务器错误。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "流量分析",
+        "description": "统计请求量、带宽、状态码分布等关键指标"
+      },
+      {
+        "icon": "⏱️",
+        "title": "性能监控",
+        "description": "追踪响应时间，识别慢请求和性能瓶颈"
+      },
+      {
+        "icon": "🔍",
+        "title": "错误追踪",
+        "description": "分析 4xx/5xx 错误，定位配置和模块问题"
+      },
+      {
+        "icon": "🌍",
+        "title": "地理分析",
+        "description": "结合 GeoIP 分析用户地理分布和访问来源"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "访问日志字段",
+      "description": "Apache 访问日志将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": 220 },
+        { "key": "type", "title": "类型", "width": 100 },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        { "field": "@timestamp", "type": "date", "description": "请求时间戳" },
+        {
+          "field": "apache.access.remote_ip",
+          "type": "ip",
+          "description": "客户端 IP 地址"
+        },
+        {
+          "field": "apache.access.method",
+          "type": "keyword",
+          "description": "HTTP 请求方法 (GET/POST/PUT 等)"
+        },
+        {
+          "field": "apache.access.url",
+          "type": "keyword",
+          "description": "请求 URL 路径"
+        },
+        {
+          "field": "apache.access.response_code",
+          "type": "long",
+          "description": "HTTP 响应状态码"
+        },
+        {
+          "field": "apache.access.body_sent.bytes",
+          "type": "long",
+          "description": "响应体大小 (字节)"
+        },
+        {
+          "field": "apache.access.user_agent",
+          "type": "text",
+          "description": "客户端 User-Agent"
+        },
+        {
+          "field": "apache.access.referrer",
+          "type": "keyword",
+          "description": "请求来源页面"
+        }
+      ]
+    },
+    {
+      "title": "错误日志字段",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": 220 },
+        { "key": "type", "title": "类型", "width": 100 },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        {
+          "field": "apache.error.level",
+          "type": "keyword",
+          "description": "错误级别 (emerg/alert/crit/error/warn/notice/info/debug)"
+        },
+        {
+          "field": "apache.error.pid",
+          "type": "long",
+          "description": "进程 ID"
+        },
+        {
+          "field": "apache.error.tid",
+          "type": "long",
+          "description": "线程 ID"
+        },
+        {
+          "field": "apache.error.module",
+          "type": "keyword",
+          "description": "产生错误的 Apache 模块"
+        },
+        {
+          "field": "apache.error.message",
+          "type": "text",
+          "description": "错误消息内容"
+        }
+      ]
+    }
+  ]
+}

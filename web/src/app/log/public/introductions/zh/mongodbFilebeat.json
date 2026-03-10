@@ -1,0 +1,73 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "MongoDB 集成使用 Filebeat 的 MongoDB 模块，自动采集和解析 MongoDB 数据库的服务日志。支持 MongoDB 4.4+ 的 JSON 结构化日志格式，帮助您监控数据库性能、识别慢操作、追踪复制集状态。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "📋",
+        "title": "JSON 格式支持",
+        "description": "原生解析 MongoDB 4.4+ 结构化 JSON 日志"
+      },
+      {
+        "icon": "🐢",
+        "title": "慢操作检测",
+        "description": "自动识别超时操作，提取执行耗时"
+      },
+      {
+        "icon": "🔄",
+        "title": "复制集监控",
+        "description": "追踪主从切换、同步延迟等复制事件"
+      },
+      {
+        "icon": "🏷️",
+        "title": "组件分类",
+        "description": "按 COMMAND/STORAGE/NETWORK 等组件筛选"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "解析字段",
+      "description": "MongoDB 服务日志将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "200px" },
+        { "key": "type", "title": "类型", "width": "120px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        { "field": "@timestamp", "type": "date", "description": "日志时间戳" },
+        {
+          "field": "mongodb.log.severity",
+          "type": "keyword",
+          "description": "严重级别 (F/E/W/I/D)"
+        },
+        {
+          "field": "mongodb.log.component",
+          "type": "keyword",
+          "description": "组件名 (COMMAND/STORAGE/NETWORK 等)"
+        },
+        {
+          "field": "mongodb.log.context",
+          "type": "keyword",
+          "description": "执行上下文 (conn/initandlisten 等)"
+        },
+        {
+          "field": "mongodb.log.message",
+          "type": "text",
+          "description": "日志消息内容"
+        },
+        {
+          "field": "mongodb.log.duration_ms",
+          "type": "long",
+          "description": "操作执行时间 (毫秒)"
+        },
+        { "field": "mongodb.log.id", "type": "long", "description": "日志 ID" }
+      ]
+    }
+  ]
+}
