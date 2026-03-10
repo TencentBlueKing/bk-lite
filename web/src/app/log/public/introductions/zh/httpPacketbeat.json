@@ -1,0 +1,88 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "HTTP 流量分析集成使用 Packetbeat 进行网络抓包，实时捕获和解析 HTTP 协议流量。无需修改应用代码，即可获取完整的请求/响应详情，帮助您进行 API 性能分析、错误排查和安全审计。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "API 性能分析",
+        "description": "统计各接口响应时间、吞吐量、错误率"
+      },
+      {
+        "icon": "🔍",
+        "title": "请求追踪",
+        "description": "捕获完整请求/响应内容，快速定位问题"
+      },
+      {
+        "icon": "⚠️",
+        "title": "异常检测",
+        "description": "识别慢请求、4xx/5xx 错误、超时等异常"
+      },
+      {
+        "icon": "🛡️",
+        "title": "安全审计",
+        "description": "记录所有 HTTP 交互，满足合规审计需求"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "解析字段",
+      "description": "HTTP 流量将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "220px" },
+        { "key": "type", "title": "类型", "width": "100px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        { "field": "@timestamp", "type": "date", "description": "请求时间戳" },
+        {
+          "field": "http.request.method",
+          "type": "keyword",
+          "description": "HTTP 请求方法 (GET/POST/PUT 等)"
+        },
+        {
+          "field": "url.full",
+          "type": "keyword",
+          "description": "完整请求 URL"
+        },
+        {
+          "field": "url.path",
+          "type": "keyword",
+          "description": "URL 路径部分"
+        },
+        {
+          "field": "http.response.status_code",
+          "type": "long",
+          "description": "HTTP 响应状态码"
+        },
+        {
+          "field": "http.response.body.bytes",
+          "type": "long",
+          "description": "响应体大小 (字节)"
+        },
+        {
+          "field": "event.duration",
+          "type": "long",
+          "description": "请求耗时 (纳秒)"
+        },
+        { "field": "source.ip", "type": "ip", "description": "客户端 IP 地址" },
+        {
+          "field": "destination.ip",
+          "type": "ip",
+          "description": "服务端 IP 地址"
+        },
+        {
+          "field": "user_agent.original",
+          "type": "text",
+          "description": "客户端 User-Agent"
+        }
+      ]
+    }
+  ]
+}

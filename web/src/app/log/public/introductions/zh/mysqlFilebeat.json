@@ -1,0 +1,106 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "MySQL 集成使用 Filebeat 的 MySQL 模块，自动采集和解析 MySQL 数据库的错误日志和慢查询日志。通过结构化的日志数据，帮助您快速定位数据库问题、优化查询性能。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "自动解析",
+        "description": "内置 MySQL 日志解析规则，自动提取结构化字段"
+      },
+      {
+        "icon": "⚡",
+        "title": "实时采集",
+        "description": "增量采集日志，低延迟传输，支持断点续传"
+      },
+      {
+        "icon": "🔍",
+        "title": "慢查询分析",
+        "description": "解析查询时间、锁等待时间、扫描行数等性能指标"
+      },
+      {
+        "icon": "🚨",
+        "title": "错误追踪",
+        "description": "快速识别数据库错误、警告，支持按错误码筛选"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "错误日志字段",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "200px" },
+        { "key": "type", "title": "类型", "width": "120px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        { "field": "@timestamp", "type": "date", "description": "日志时间戳" },
+        {
+          "field": "mysql.error.level",
+          "type": "keyword",
+          "description": "日志级别（Note/Warning/Error）"
+        },
+        {
+          "field": "mysql.error.code",
+          "type": "long",
+          "description": "MySQL 错误码"
+        },
+        {
+          "field": "mysql.error.message",
+          "type": "text",
+          "description": "错误消息内容"
+        }
+      ]
+    },
+    {
+      "title": "慢查询日志字段",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "200px" },
+        { "key": "type", "title": "类型", "width": "120px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        {
+          "field": "mysql.slowlog.query_time.sec",
+          "type": "float",
+          "description": "查询执行时间（秒）"
+        },
+        {
+          "field": "mysql.slowlog.lock_time.sec",
+          "type": "float",
+          "description": "锁等待时间（秒）"
+        },
+        {
+          "field": "mysql.slowlog.rows_examined",
+          "type": "long",
+          "description": "扫描行数"
+        },
+        {
+          "field": "mysql.slowlog.rows_sent",
+          "type": "long",
+          "description": "返回行数"
+        },
+        {
+          "field": "mysql.slowlog.query",
+          "type": "text",
+          "description": "SQL 语句"
+        },
+        {
+          "field": "mysql.slowlog.user",
+          "type": "keyword",
+          "description": "执行用户"
+        },
+        {
+          "field": "mysql.slowlog.host",
+          "type": "keyword",
+          "description": "客户端主机"
+        }
+      ]
+    }
+  ]
+}
