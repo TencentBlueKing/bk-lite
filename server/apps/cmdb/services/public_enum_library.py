@@ -167,7 +167,7 @@ def find_library_references(library_id: str) -> list[dict]:
     references = []
 
     with GraphClient() as client:
-        models = client.search_entity(MODEL, [])
+        models, _ = client.query_entity(MODEL, [])
 
     for model in models:
         model_id = model.get("model_id", "")
