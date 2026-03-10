@@ -7,6 +7,10 @@ from rest_framework.decorators import action
 
 from apps.cmdb.models.public_enum_library import PublicEnumLibrary
 from apps.cmdb.services import public_enum_library as library_service
+from apps.cmdb.utils.base import (
+    get_current_team_from_request,
+    get_organization_and_children_ids,
+)
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.viewset_utils import AuthViewSet
@@ -22,7 +26,20 @@ class PublicEnumLibraryViewSet(AuthViewSet):
 
     @HasPermission("model_management-View")
     def list(self, request):
-        team = self._get_user_team(request)
+        current_team = get_current_team_from_request(request, required=False)
+        include_children = request.COOKIES.get("include_children") == "1"
+
+        if current_team and include_children:
+            team = get_organization_and_children_ids(
+                tree_data=request.user.group_tree, target_id=current_team
+            )
+            if not team:
+                team = [current_team]
+        elif current_team:
+            team = [current_team]
+        else:
+            team = self._get_user_team(request)
+
         libraries = library_service.list_libraries(team=team)
         return WebUtils.response_success(libraries)
 
