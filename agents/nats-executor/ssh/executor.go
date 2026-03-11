@@ -34,10 +34,10 @@ func buildSCPCommand(user, host, password, privateKey string, port uint, sourceP
 		}
 
 		if isUpload {
-			scpCommand = fmt.Sprintf("scp -i %s -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
+			scpCommand = fmt.Sprintf("scp -i %s -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedAlgorithms=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
 				keyFile, port, sourcePath, user, host, targetPath)
 		} else {
-			scpCommand = fmt.Sprintf("scp -i %s -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
+			scpCommand = fmt.Sprintf("scp -i %s -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedAlgorithms=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
 				keyFile, port, sourcePath, user, host, targetPath)
 		}
 
@@ -46,10 +46,10 @@ func buildSCPCommand(user, host, password, privateKey string, port uint, sourceP
 		cleanup = func() {}
 
 		if isUpload {
-			scpCommand = fmt.Sprintf("sshpass -p '%s' scp -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
+			scpCommand = fmt.Sprintf("sshpass -p '%s' scp -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedAlgorithms=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
 				password, port, sourcePath, user, host, targetPath)
 		} else {
-			scpCommand = fmt.Sprintf("sshpass -p '%s' scp -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
+			scpCommand = fmt.Sprintf("sshpass -p '%s' scp -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedAlgorithms=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
 				password, port, sourcePath, user, host, targetPath)
 		}
 
@@ -87,7 +87,7 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 				Error:      errMsg,
 			}
 		}
-		authMethods = append(authMethods, ssh.PublicKeys(signer))
+		authMethods = append(authMethods, buildPublicKeyAuthMethod(signer))
 		logger.Debugf("[SSH Execute] Instance: %s, Using public key authentication", instanceId)
 	}
 
@@ -108,22 +108,11 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	}
 
 	sshConfig := &ssh.ClientConfig{
-		User:            req.User,
-		Auth:            authMethods,
-		Timeout:         30 * time.Second,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		HostKeyAlgorithms: []string{
-			ssh.KeyAlgoRSA,
-			ssh.KeyAlgoDSA,
-			ssh.KeyAlgoECDSA256,
-			ssh.KeyAlgoECDSA384,
-			ssh.KeyAlgoECDSA521,
-			ssh.KeyAlgoED25519,
-			"ssh-rsa",
-			"ssh-dss",
-			"rsa-sha2-256",
-			"rsa-sha2-512",
-		},
+		User:              req.User,
+		Auth:              authMethods,
+		Timeout:           30 * time.Second,
+		HostKeyCallback:   ssh.InsecureIgnoreHostKey(),
+		HostKeyAlgorithms: []string{ssh.KeyAlgoED25519, ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA},
 	}
 
 	addr := fmt.Sprintf("%s:%d", req.Host, req.Port)
@@ -213,6 +202,24 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 			Success:    true,
 		}
 	}
+}
+
+func buildPublicKeyAuthMethod(signer ssh.Signer) ssh.AuthMethod {
+	if signer.PublicKey().Type() != ssh.KeyAlgoRSA {
+		return ssh.PublicKeys(signer)
+	}
+
+	algorithmSigner, ok := signer.(ssh.AlgorithmSigner)
+	if !ok {
+		return ssh.PublicKeys(signer)
+	}
+
+	rsaSigner, err := ssh.NewSignerWithAlgorithms(algorithmSigner, []string{ssh.KeyAlgoRSA, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512})
+	if err != nil {
+		return ssh.PublicKeys(signer)
+	}
+
+	return ssh.PublicKeys(rsaSigner)
 }
 
 func SubscribeSSHExecutor(nc *nats.Conn, instanceId *string) {
