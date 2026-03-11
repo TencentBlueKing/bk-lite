@@ -12,6 +12,7 @@ import {
   HolderOutlined,
   CopyOutlined,
   PlusOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import Image from 'next/image';
 import assetManageStyle from './index.module.scss';
@@ -253,7 +254,7 @@ const AssetManage = () => {
                 {t('Model.addGroup')}
               </Button>
             </PermissionWrapper>
-            <Button className="ml-[8px]" onClick={showPublicEnumLibraryModal}>
+            <Button className="ml-[8px]" icon={<SettingOutlined />} onClick={showPublicEnumLibraryModal}>
               {t('PublicEnumLibrary.manage')}
             </Button>
           </div>

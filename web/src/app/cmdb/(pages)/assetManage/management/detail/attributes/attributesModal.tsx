@@ -7,13 +7,28 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { Input, Button, Form, message, Select, Radio, Checkbox } from 'antd';
+import {
+  Input,
+  Button,
+  Form,
+  message,
+  Select,
+  Radio,
+  Checkbox,
+  Table,
+  Tooltip,
+} from 'antd';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import OperateModal from '@/components/operate-modal';
+import SortableItem from '@/app/cmdb/components/sortable-item';
 import type { FormInstance } from 'antd';
-import { PlusOutlined, MinusOutlined, HolderOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  MinusOutlined,
+  HolderOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -32,11 +47,14 @@ import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
 const { Option } = Select;
 
+const TAG_VALUE_REGEX = /^[^\s:\n\r]+$/;
+
 interface AttrModalProps {
   onSuccess: (type?: unknown) => void;
   attrTypeList: Array<{ id: string; name: string }>;
   groups: AttrGroup[];
   hasTagAttr: boolean;
+  onManagePublicLibrary?: (libraryId?: string) => void;
 }
 
 interface AttrConfig {
@@ -48,41 +66,18 @@ interface AttrConfig {
 
 export interface AttrModalRef {
   showModal: (info: AttrConfig) => void;
+  refreshPublicLibraries: () => void;
 }
-
-const SortableItem = ({
-  id,
-  index,
-  children,
-}: {
-  id: string;
-  index: number;
-  children: React.ReactNode;
-}) => {
-  const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    marginTop: index ? 10 : 0,
-    display: 'flex',
-    width: '100%',
-    minWidth: 0,
-  };
-  return (
-    <li ref={setNodeRef} style={style}>
-      {React.Children.map(children, (child, idx) =>
-        idx === 0 && React.isValidElement(child)
-          ? React.cloneElement(child, { ...attributes, ...listeners })
-          : child
-      )}
-    </li>
-  );
-};
 
 const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
   (props, ref) => {
-    const { onSuccess, attrTypeList, groups, hasTagAttr } = props;
+    const {
+      onSuccess,
+      attrTypeList,
+      groups,
+      hasTagAttr,
+      onManagePublicLibrary,
+    } = props;
     const [modelVisible, setModelVisible] = useState<boolean>(false);
     const [subTitle, setSubTitle] = useState<string>('');
     const [title, setTitle] = useState<string>('');
@@ -121,7 +116,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
 
     const modelId: string = searchParams.get('model_id') || '';
     const { t } = useTranslation();
-    const tagValueReg = /^[^\s:\n\r]+$/;
+
 
     useEffect(() => {
       if (modelVisible) {
@@ -225,6 +220,13 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           }
         }
         setAttrInfo(attrInfo);
+      },
+      refreshPublicLibraries: () => {
+        getPublicEnumLibraries().then((res: any) => {
+          setPublicLibraries(res || []);
+        }).catch(() => {
+          setPublicLibraries([]);
+        });
       },
     }));
 
@@ -378,7 +380,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
       if (!key || !value) {
         return t('required');
       }
-      if (!tagValueReg.test(value)) {
+      if (!TAG_VALUE_REGEX.test(value)) {
         return t('Model.tagValueFormatError');
       }
       return null;
@@ -397,7 +399,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         if (!key || !value) {
           errors[i] = { key: !key, value: !value };
           if (!firstErr) firstErr = t('required');
-        } else if (!tagValueReg.test(value)) {
+        } else if (!TAG_VALUE_REGEX.test(value)) {
           if (!firstErr) firstErr = t('Model.tagValueFormatError');
         }
         const pair = `${key}:${value}`;
@@ -724,6 +726,19 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
                       </div>
+                      <div className="flex items-center gap-3 mb-5">
+                        <span className="text-sm text-[var(--color-text-secondary)] shrink-0">
+                          {t('Model.enumSelectMode')}：
+                        </span>
+                        <Radio.Group
+                          value={enumSelectMode}
+                          onChange={(e) => setEnumSelectMode(e.target.value)}
+                          disabled={type === 'edit'}
+                        >
+                          <Radio value="single">{t('Model.singleSelect')}</Radio>
+                          <Radio value="multiple">{t('Model.multipleSelect')}</Radio>
+                        </Radio.Group>
+                      </div>
                       <div className="flex items-center gap-3 mb-3">
                         <span className="text-sm text-[var(--color-text-secondary)] shrink-0">
                           {t('PublicEnumLibrary.enumRuleType')}：
@@ -741,39 +756,78 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                           <Radio value="custom">{t('PublicEnumLibrary.enumRuleTypeCustom')}</Radio>
                           <Radio value="public_library">{t('PublicEnumLibrary.enumRuleTypePublicLibrary')}</Radio>
                         </Radio.Group>
-                        {type === 'edit' && (
-                          <span className="text-xs text-[var(--color-text-tertiary)]">
-                            ({t('PublicEnumLibrary.enumRuleTypeCannotChange')})
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 mb-3">
-                        <span className="text-sm text-[var(--color-text-secondary)] shrink-0">
-                          {t('Model.enumSelectMode')}：
-                        </span>
-                        <Radio.Group
-                          value={enumSelectMode}
-                          onChange={(e) => setEnumSelectMode(e.target.value)}
-                        >
-                          <Radio value="single">{t('Model.singleSelect')}</Radio>
-                          <Radio value="multiple">{t('Model.multipleSelect')}</Radio>
-                        </Radio.Group>
                       </div>
                       {enumRuleType === 'public_library' ? (
                         <div className="pl-[72px]">
-                          <Select
-                            value={publicLibraryId || undefined}
-                            onChange={(value) => setPublicLibraryId(value)}
-                            placeholder={t('PublicEnumLibrary.selectPublicLibraryPlaceholder')}
-                            className="w-full"
-                            allowClear
-                          >
-                            {publicLibraries.map((lib) => (
-                              <Option key={lib.library_id} value={lib.library_id}>
-                                {lib.name} ({lib.options.length} {t('PublicEnumLibrary.optionsCount')})
-                              </Option>
-                            ))}
-                          </Select>
+                          <div className="flex items-center gap-2 mb-3">
+                            <Select
+                              value={publicLibraryId || undefined}
+                            onChange={(value) => {
+                              setPublicLibraryId(value);
+                              formRef.current?.validateFields(['option']);
+                            }}
+                              placeholder={t(
+                                'PublicEnumLibrary.selectPublicLibraryPlaceholder',
+                              )}
+                              className="flex-1"
+                              allowClear
+                            >
+                              {publicLibraries.map((lib) => (
+                                <Option
+                                  key={lib.library_id}
+                                  value={lib.library_id}
+                                >
+                                  {lib.name}
+                                </Option>
+                              ))}
+                            </Select>
+                            {onManagePublicLibrary && (
+                              <Tooltip title={t('PublicEnumLibrary.managePublicLibrary')}>
+                                <Button
+                                  type="text"
+                                  icon={<SettingOutlined />}
+                                  onClick={() => onManagePublicLibrary?.(publicLibraryId)}
+                                  className="shrink-0"
+                                />
+                              </Tooltip>
+                            )}
+                          </div>
+                          {publicLibraryId &&
+                            (() => {
+                              const selectedLib = publicLibraries.find(
+                                (lib) => lib.library_id === publicLibraryId,
+                              );
+                              if (!selectedLib) return null;
+                              if (selectedLib.options.length === 0) {
+                                return (
+                                  <div className="mt-2 text-sm text-[var(--color-text-tertiary)]">
+                                    {t('PublicEnumLibrary.noOptions')}
+                                  </div>
+                                );
+                              }
+                              return (
+                                <Table
+                                  size="small"
+                                  bordered
+                                  dataSource={selectedLib.options}
+                                  rowKey="id"
+                                  pagination={false}
+                                  className="mt-3 [&_.ant-table-cell]:!py-1.5" style={{ width: 'calc(100% - 40px)' }}
+                                  columns={[
+                                    {
+                                      title: t('fieldValue'),
+                                      dataIndex: 'id',
+                                      key: 'id',
+                                    },
+                                    {
+                                      title: t('Model.display'),
+                                      dataIndex: 'name',
+                                      key: 'name',
+                                    },
+                                  ]}
+                                />
+                              );
+                            })()}
                         </div>
                       ) : (
                         <DndContext
