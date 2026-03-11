@@ -109,19 +109,13 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
       } else {
         switch (selectedAttr?.attr_type) {
           case 'enum':
-            // 多选枚举使用 list_any[] 类型，实现"字段内 OR"语义
-            if (selectedAttr?.enum_select_mode === 'multiple' && Array.isArray(value)) {
-              condition.type = 'list_any[]';
-              condition.value = value;
-            } else {
-              condition.type = typeof value === 'number' ? 'int=' : 'str=';
-            }
+            condition.type = 'list_any[]';
+            condition.value = Array.isArray(value) ? value : [value];
             break;
           case 'str':
             condition.type = isExact ? 'str=' : 'str*';
             break;
           case 'user':
-          // test4.5:如果为用户字段user，则类型为list（operator 字段的数据类型转换）
             condition.type = 'list[]';
             condition.value = Array.isArray(value) ? value : [value];
             break;
