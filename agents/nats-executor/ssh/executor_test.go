@@ -15,6 +15,7 @@ func TestBuildSCPCommandWithPassword(t *testing.T) {
 		"/local/file",
 		"/remote/path",
 		true,
+		profileModern,
 	)
 
 	if err != nil {
@@ -32,6 +33,10 @@ func TestBuildSCPCommandWithPassword(t *testing.T) {
 	// 检查命令包含 sshpass
 	if !contains(cmd, "sshpass") {
 		t.Error("command should contain 'sshpass' for password authentication")
+	}
+
+	if contains(cmd, "PubkeyAcceptedAlgorithms=+ssh-rsa") {
+		t.Error("modern profile command should not include legacy ssh-rsa options by default")
 	}
 
 	t.Logf("Generated SCP command (password): %s", cmd)
@@ -53,6 +58,7 @@ MIIEpAIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyz
 		"/local/file",
 		"/remote/path",
 		true,
+		profileModern,
 	)
 
 	if err != nil {
@@ -78,6 +84,10 @@ MIIEpAIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyz
 		t.Error("command should not contain 'sshpass' when using key authentication")
 	}
 
+	if contains(cmd, "PubkeyAcceptedAlgorithms=+ssh-rsa") {
+		t.Error("modern profile command should not include legacy ssh-rsa options by default")
+	}
+
 	t.Logf("Generated SCP command (private key): %s", cmd)
 }
 
@@ -92,6 +102,7 @@ func TestBuildSCPCommandNoAuth(t *testing.T) {
 		"/local/file",
 		"/remote/path",
 		true,
+		profileModern,
 	)
 
 	if err == nil {
@@ -116,6 +127,7 @@ MIIEpAIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyz
 		"/local/file",
 		"/remote/path",
 		true,
+		profileModern,
 	)
 
 	if err != nil {
@@ -158,7 +170,59 @@ MIIEpAIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyz
 		t.Error("Password should be empty when using key auth")
 	}
 
+	if req.Command != "ls -la" {
+		t.Error("Command should be set correctly")
+	}
+
+	if req.ExecuteTimeout != 10 {
+		t.Error("ExecuteTimeout should be set correctly")
+	}
+
+	if req.Host != "test-host" || req.Port != 22 || req.User != "testuser" {
+		t.Error("host/port/user should be set correctly")
+	}
+
 	t.Logf("ExecuteRequest with private key created successfully")
+}
+
+func TestBuildSCPCommandWithLegacyProfile(t *testing.T) {
+	cmd, cleanup, err := buildSCPCommand(
+		"testuser",
+		"192.168.1.100",
+		"testpass",
+		"",
+		22,
+		"/local/file",
+		"/remote/path",
+		true,
+		profileLegacy,
+	)
+
+	if err != nil {
+		t.Fatalf("buildSCPCommand failed: %v", err)
+	}
+	defer cleanup()
+
+	if !contains(cmd, "PubkeyAcceptedAlgorithms=+ssh-rsa") {
+		t.Error("legacy profile should include PubkeyAcceptedAlgorithms=+ssh-rsa")
+	}
+
+	if !contains(cmd, "HostKeyAlgorithms=+ssh-rsa") {
+		t.Error("legacy profile should include HostKeyAlgorithms=+ssh-rsa")
+	}
+}
+
+func TestAddLegacySCPOptions(t *testing.T) {
+	command := "scp -o StrictHostKeyChecking=no -P 22 -r /tmp/a user@host:/tmp/b"
+	updated := addLegacySCPOptions(command)
+
+	if !contains(updated, "HostKeyAlgorithms=+ssh-rsa") {
+		t.Error("legacy host key option should be added")
+	}
+
+	if !contains(updated, "PubkeyAcceptedAlgorithms=+ssh-rsa") {
+		t.Error("legacy pubkey option should be added")
+	}
 }
 
 // 辅助函数：检查字符串包含
