@@ -52,15 +52,15 @@ from apps.cmdb.constants.field_constraints import (
     DEFAULT_STRING_CONSTRAINT,
     DEFAULT_NUMBER_CONSTRAINT,
     MAX_CUSTOM_REGEX_LENGTH,
+    TAG_ATTR_ID,
+    TAG_MODE_FREE,
+    TAG_MODE_STRICT,
+    TAG_MAX_PAIRS,
+    TABLE_MAX_ROWS,
+    TABLE_MAX_CELL_LENGTH,
 )
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
-
-
-TAG_ATTR_ID = "tag"
-TAG_MODE_FREE = "free"
-TAG_MODE_STRICT = "strict"
-TAG_MAX_PAIRS = 20
 
 
 @dataclass(frozen=True)
@@ -129,7 +129,9 @@ def normalize_tag_field_option(option: dict | None) -> TagFieldConfig:
     return TagFieldConfig(mode=mode, options=normalized_options)
 
 
-def validate_tag_values(values: list[str], config: TagFieldConfig) -> TagValidationResult:
+def validate_tag_values(
+    values: list[str], config: TagFieldConfig
+) -> TagValidationResult:
     errors: list[str] = []
     if not isinstance(values, list):
         return TagValidationResult(normalized_values=[], errors=["标签值必须是数组"])
@@ -174,7 +176,8 @@ def normalize_tag_input_values(value: Any) -> list[str]:
         raw = value.strip()
         if not raw:
             return []
-        return [raw]
+        tokens = re.split(r"[,，\n\r]+", raw)
+        return [t.strip() for t in tokens if t.strip()]
     raise BaseAppException("标签字段值必须是字符串或字符串数组")
 
 
@@ -492,6 +495,11 @@ class FieldValidator:
         if not isinstance(rows, list):
             raise BaseAppException("table 字段值解析后必须是数组")
 
+        if len(rows) > TABLE_MAX_ROWS:
+            raise BaseAppException(
+                f"表格数据最多允许 {TABLE_MAX_ROWS} 行，当前 {len(rows)} 行"
+            )
+
         # 构建列ID到类型的映射
         column_map = {col["column_id"]: col["column_type"] for col in option}
 
@@ -519,6 +527,15 @@ class FieldValidator:
                 # 空值允许
                 if cell_value is None or cell_value == "":
                     continue
+
+                # 单元格长度校验
+                if (
+                    isinstance(cell_value, str)
+                    and len(cell_value) > TABLE_MAX_CELL_LENGTH
+                ):
+                    raise BaseAppException(
+                        f"第{row_idx + 1}行，列 '{col_id}' 的值超过最大长度 {TABLE_MAX_CELL_LENGTH}"
+                    )
 
                 if col_type == "number":
                     try:

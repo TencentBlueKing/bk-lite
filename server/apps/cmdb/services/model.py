@@ -15,9 +15,8 @@ from apps.cmdb.constants.constants import (
     OPERATOR_MODEL,
     DISPLAY_FIELD_CONFIG,
 )
+from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.validators.field_validator import (
-    TAG_ATTR_ID,
-    TAG_MODE_FREE,
     normalize_tag_field_option as normalize_tag_field_option_config,
 )
 from apps.cmdb.validators import IdentifierValidator
@@ -78,7 +77,9 @@ class ModelManage(object):
         config = normalize_tag_field_option_config(option)
         return {
             "mode": config.mode,
-            "options": [{"key": item.key, "value": item.value} for item in config.options],
+            "options": [
+                {"key": item.key, "value": item.value} for item in config.options
+            ],
         }
 
     @staticmethod
@@ -89,7 +90,9 @@ class ModelManage(object):
         if not model_info:
             return
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
-        tag_attr = next((attr for attr in attrs if ModelManage._is_tag_attr(attr)), None)
+        tag_attr = next(
+            (attr for attr in attrs if ModelManage._is_tag_attr(attr)), None
+        )
         if not tag_attr:
             return
 
@@ -264,9 +267,7 @@ class ModelManage(object):
 
         # 为默认字段中的目标类型添加 _display 字段定义
         for attr in list(attrs):  # 使用 list() 避免迭代时修改列表
-            ModelManage._add_display_field_to_attrs(
-                attrs, attr, model_id, is_pre=True
-            )
+            ModelManage._add_display_field_to_attrs(attrs, attr, model_id, is_pre=True)
 
         data.update(attrs=json.dumps(attrs))
 

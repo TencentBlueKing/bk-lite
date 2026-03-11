@@ -13,12 +13,11 @@ from apps.cmdb.constants.constants import (
     INSTANCE_ASSOCIATION,
     ModelConstraintKey,
 )
+from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models import CREATE_INST_ASST
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.validators.field_validator import (
-    TAG_ATTR_ID,
-    TAG_MODE_FREE,
     normalize_tag_field_option,
     normalize_tag_input_values,
     validate_tag_values,
@@ -27,18 +26,6 @@ from apps.cmdb.utils.change_record import create_change_record_by_asso
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.system_mgmt.models import Group
-
-
-def parse_tag_cell(raw: object) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, list):
-        return [str(item).strip() for item in raw if str(item).strip()]
-    value = str(raw).strip()
-    if not value:
-        return []
-    tokens = re.split(r"[,，\n\r]+", value)
-    return [token.strip() for token in tokens if token.strip()]
 
 
 class Import:
@@ -338,7 +325,7 @@ class Import:
 
                 if keys[i] in tag_field_set:
                     try:
-                        item[keys[i]] = parse_tag_cell(value)
+                        item[keys[i]] = normalize_tag_input_values(value)
                     except Exception:
                         error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'标签格式解析失败"
                         self.validation_errors.append(error_msg)
@@ -573,7 +560,9 @@ class Import:
             normalized_records.append(data)
 
         if config.mode == TAG_MODE_FREE and merged_values:
-            ModelManage.merge_tag_options_from_values(self.model_id, list(merged_values))
+            ModelManage.merge_tag_options_from_values(
+                self.model_id, list(merged_values)
+            )
 
         return normalized_records
 
