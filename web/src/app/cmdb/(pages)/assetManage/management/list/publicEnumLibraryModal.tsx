@@ -1,5 +1,3 @@
-'use client';
-
 import React, {
   useState,
   useEffect,
@@ -7,61 +5,40 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { Input, Button, Form, message, Space, Popconfirm, Empty } from 'antd';
+import { Input, Button, Form, message, Empty, Modal } from 'antd';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelector from '@/components/group-tree-select';
+import SortableItem from '@/app/cmdb/components/sortable-item';
 import type { FormInstance } from 'antd';
-import { PlusOutlined, MinusOutlined, HolderOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { deepClone } from '@/app/cmdb/utils/common';
+import {
+  PlusOutlined,
+  MinusOutlined,
+  HolderOutlined,
+  EditOutlined,
+  DeleteOutlined,
+} from '@ant-design/icons';
+import { deepClone, getOrganizationDisplayText } from '@/app/cmdb/utils/common';
 import { PublicEnumLibraryItem, PublicEnumOption } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
+import { useUserInfoContext } from '@/context/userInfo';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 export interface PublicEnumLibraryModalRef {
-  showModal: () => void;
+  showModal: (initialLibraryId?: string) => void;
 }
 
 interface PublicEnumLibraryModalProps {
   onSuccess?: () => void;
 }
 
-const SortableItem = ({
-  id,
-  index,
-  children,
-}: {
-  id: string;
-  index: number;
-  children: React.ReactNode;
-}) => {
-  const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    marginTop: index ? 10 : 0,
-    display: 'flex',
-    width: '100%',
-    minWidth: 0,
-  };
-  return (
-    <li ref={setNodeRef} style={style}>
-      {React.Children.map(children, (child, idx) =>
-        idx === 0 && React.isValidElement(child)
-          ? React.cloneElement(child, { ...attributes, ...listeners } as React.HTMLAttributes<HTMLElement>)
-          : child
-      )}
-    </li>
-  );
-};
-
 const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumLibraryModalProps>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
-    const formRef = useRef<FormInstance>(null);
+    const { flatGroups } = useUserInfoContext();
+    const libraryFormRef = useRef<FormInstance>(null);
     const {
       getPublicEnumLibraries,
       createPublicEnumLibrary,
@@ -73,31 +50,65 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
     const [loading, setLoading] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [libraries, setLibraries] = useState<PublicEnumLibraryItem[]>([]);
-    const [selectedLibrary, setSelectedLibrary] = useState<PublicEnumLibraryItem | null>(null);
-    const [isEditing, setIsEditing] = useState<boolean>(false);
-    const [isAdding, setIsAdding] = useState<boolean>(false);
-    const [optionList, setOptionList] = useState<PublicEnumOption[]>([{ id: '', name: '' }]);
+    const [selectedLibrary, setSelectedLibrary] =
+      useState<PublicEnumLibraryItem | null>(null);
+    const [optionList, setOptionList] = useState<PublicEnumOption[]>([
+      { id: '', name: '' },
+    ]);
+    const [hoveredLibraryId, setHoveredLibraryId] = useState<string | null>(
+      null,
+    );
+    const [optionsSaving, setOptionsSaving] = useState<boolean>(false);
+
+    const [libraryModalVisible, setLibraryModalVisible] =
+      useState<boolean>(false);
+    const [libraryModalMode, setLibraryModalMode] = useState<'add' | 'edit'>(
+      'add',
+    );
+    const [editingLibrary, setEditingLibrary] =
+      useState<PublicEnumLibraryItem | null>(null);
+
+    const [isEditingOptions, setIsEditingOptions] = useState<boolean>(false);
 
     const sensors = useSensors(useSensor(PointerSensor));
 
     useImperativeHandle(ref, () => ({
-      showModal: () => {
+      showModal: (initialLibraryId?: string) => {
         setVisible(true);
-        setIsEditing(false);
-        setIsAdding(false);
-        setSelectedLibrary(null);
-        loadLibraries();
+        setIsEditingOptions(false);
+        loadLibraries(false, initialLibraryId);
       },
     }));
 
-    const loadLibraries = async () => {
+    const loadLibraries = async (preserveSelection = false, initialLibraryId?: string) => {
+      const currentLibraryId = selectedLibrary?.library_id;
       setLoading(true);
       try {
         const res = await getPublicEnumLibraries();
         const list = res || [];
         setLibraries(list);
-        if (list.length > 0 && !selectedLibrary) {
+        if (list.length > 0) {
+          if (initialLibraryId) {
+            const targetLib = list.find((lib: PublicEnumLibraryItem) => lib.library_id === initialLibraryId);
+            if (targetLib) {
+              setSelectedLibrary(targetLib);
+              setOptionList(deepClone(targetLib.options));
+              return;
+            }
+          }
+          if (preserveSelection && currentLibraryId) {
+            const current = list.find((lib: PublicEnumLibraryItem) => lib.library_id === currentLibraryId);
+            if (current) {
+              setSelectedLibrary(current);
+              setOptionList(deepClone(current.options));
+              return;
+            }
+          }
           setSelectedLibrary(list[0]);
+          setOptionList(deepClone(list[0].options));
+        } else {
+          setSelectedLibrary(null);
+          setOptionList([]);
         }
       } finally {
         setLoading(false);
@@ -105,105 +116,162 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
     };
 
     useEffect(() => {
-      if (isEditing && formRef.current && selectedLibrary) {
-        formRef.current.resetFields();
-        formRef.current.setFieldsValue({
-          name: selectedLibrary.name,
-          team: selectedLibrary.team,
-        });
-        setOptionList(selectedLibrary.options.length > 0 
-          ? selectedLibrary.options 
-          : [{ id: '', name: '' }]);
-      } else if (isAdding && formRef.current) {
-        formRef.current.resetFields();
-        setOptionList([{ id: '', name: '' }]);
+      if (libraryModalVisible) {
+        setTimeout(() => {
+          if (libraryModalMode === 'edit' && editingLibrary) {
+            libraryFormRef.current?.setFieldsValue({
+              name: editingLibrary.name,
+              team: editingLibrary.team,
+            });
+          } else {
+            libraryFormRef.current?.resetFields();
+          }
+        }, 100);
       }
-    }, [isEditing, isAdding, selectedLibrary]);
+    }, [libraryModalVisible, libraryModalMode, editingLibrary]);
+
+    useEffect(() => {
+      if (selectedLibrary) {
+        setOptionList(deepClone(selectedLibrary.options));
+        setIsEditingOptions(false);
+      }
+    }, [selectedLibrary]);
 
     const handleClose = () => {
       setVisible(false);
     };
 
     const handleSelectLibrary = (library: PublicEnumLibraryItem) => {
-      if (isEditing || isAdding) return;
       setSelectedLibrary(library);
     };
 
-    const handleAddNew = () => {
-      setIsAdding(true);
-      setIsEditing(false);
-      setSelectedLibrary(null);
+    const handleAddNewLibrary = () => {
+      setLibraryModalMode('add');
+      setEditingLibrary(null);
+      setLibraryModalVisible(true);
     };
 
-    const handleEdit = () => {
-      setIsEditing(true);
-      setIsAdding(false);
+    const handleEditLibrary = (
+      library: PublicEnumLibraryItem,
+      e: React.MouseEvent,
+    ) => {
+      e.stopPropagation();
+      setLibraryModalMode('edit');
+      setEditingLibrary(library);
+      setLibraryModalVisible(true);
     };
 
-    const handleCancel = () => {
-      setIsEditing(false);
-      setIsAdding(false);
-      if (isAdding && libraries.length > 0) {
-        setSelectedLibrary(libraries[0]);
-      }
+    const handleLibraryModalCancel = () => {
+      setLibraryModalVisible(false);
+      setEditingLibrary(null);
     };
 
-    const handleDelete = async () => {
-      if (!selectedLibrary) return;
+    const handleDeleteLibrary = (
+      library: PublicEnumLibraryItem,
+      e: React.MouseEvent,
+    ) => {
+      e.stopPropagation();
+      Modal.confirm({
+        title: t('common.delConfirm'),
+        content: t('common.delConfirmCxt'),
+        okText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        centered: true,
+        onOk: async () => {
+          try {
+            await deletePublicEnumLibrary(library.library_id);
+            message.success(t('successfullyDeleted'));
+            const newLibraries = libraries.filter(
+              (l) => l.library_id !== library.library_id,
+            );
+            setLibraries(newLibraries);
+            if (selectedLibrary?.library_id === library.library_id) {
+              setSelectedLibrary(newLibraries.length > 0 ? newLibraries[0] : null);
+            }
+            onSuccess?.();
+          } catch (error: any) {
+            const errorMsg = error?.response?.data?.message || error?.message;
+            if (errorMsg) {
+              message.error(errorMsg);
+            }
+          }
+        },
+      });
+    };
+
+    const handleSubmitLibrary = async () => {
       try {
-        await deletePublicEnumLibrary(selectedLibrary.library_id);
-        message.success(t('successfullyDeleted'));
-        const newLibraries = libraries.filter(l => l.library_id !== selectedLibrary.library_id);
-        setLibraries(newLibraries);
-        setSelectedLibrary(newLibraries.length > 0 ? newLibraries[0] : null);
-        onSuccess?.();
-      } catch (error: any) {
-        const errorMsg = error?.response?.data?.message || error?.message;
-        if (errorMsg) {
-          message.error(errorMsg);
-        }
-      }
-    };
-
-    const handleSubmit = async () => {
-      try {
-        const values = await formRef.current?.validateFields();
-        const validOptions = optionList.filter(opt => opt.id && opt.name);
-        
-        if (validOptions.length === 0) {
-          message.error(t('PublicEnumLibrary.optionIdRequired'));
-          return;
-        }
-
-        const ids = validOptions.map(o => o.id);
-        if (new Set(ids).size !== ids.length) {
-          message.error(t('PublicEnumLibrary.optionIdDuplicate'));
-          return;
-        }
+        const values = await libraryFormRef.current?.validateFields();
 
         setConfirmLoading(true);
         const params = {
           name: values.name,
           team: Array.isArray(values.team) ? values.team : [values.team],
-          options: validOptions,
+          options:
+            libraryModalMode === 'add' ? [] : editingLibrary?.options || [],
         };
 
-        if (isAdding) {
+        if (libraryModalMode === 'add') {
           await createPublicEnumLibrary(params);
           message.success(t('successfullyAdded'));
-        } else if (isEditing && selectedLibrary) {
-          await updatePublicEnumLibrary(selectedLibrary.library_id, params);
+        } else if (editingLibrary) {
+          await updatePublicEnumLibrary(editingLibrary.library_id, params);
           message.success(t('successfullyModified'));
         }
 
-        setIsEditing(false);
-        setIsAdding(false);
+        setLibraryModalVisible(false);
+        setEditingLibrary(null);
         await loadLibraries();
         onSuccess?.();
       } catch (error) {
         console.error(error);
       } finally {
         setConfirmLoading(false);
+      }
+    };
+
+    const handleStartEditOptions = () => {
+      if (optionList.length === 0) {
+        setOptionList([{ id: '', name: '' }]);
+      }
+      setIsEditingOptions(true);
+    };
+
+    const handleCancelEditOptions = () => {
+      if (selectedLibrary) {
+        setOptionList(deepClone(selectedLibrary.options));
+      }
+      setIsEditingOptions(false);
+    };
+
+    const handleSaveOptions = async () => {
+      if (!selectedLibrary) return;
+
+      const validOptions = optionList.filter((opt) => opt.id && opt.name);
+
+
+      const ids = validOptions.map((o) => o.id);
+      if (new Set(ids).size !== ids.length) {
+        message.error(t('PublicEnumLibrary.optionIdDuplicate'));
+        return;
+      }
+
+      setOptionsSaving(true);
+      try {
+        const params = {
+          name: selectedLibrary.name,
+          team: selectedLibrary.team,
+          options: validOptions,
+        };
+        await updatePublicEnumLibrary(selectedLibrary.library_id, params);
+        message.success(t('successfullyModified'));
+        setIsEditingOptions(false);
+        await loadLibraries(true);
+        onSuccess?.();
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setOptionsSaving(false);
       }
     };
 
@@ -214,10 +282,14 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
     const deleteOption = (index: number) => {
       const newList = deepClone(optionList);
       newList.splice(index, 1);
-      setOptionList(newList.length > 0 ? newList : [{ id: '', name: '' }]);
+      setOptionList(newList);
     };
 
-    const onOptionChange = (field: 'id' | 'name', value: string, index: number) => {
+    const onOptionChange = (
+      field: 'id' | 'name',
+      value: string,
+      index: number,
+    ) => {
       const newList = deepClone(optionList);
       newList[index][field] = value;
       setOptionList(newList);
@@ -235,14 +307,14 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
 
     const renderLeftPanel = () => (
       <div className="w-[200px] border-r border-[var(--color-border)] pr-4 flex flex-col h-full">
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />} 
-          onClick={handleAddNew}
-          disabled={isEditing || isAdding}
+        <Button
+          type="primary"
+          ghost
+          icon={<PlusOutlined />}
+          onClick={handleAddNewLibrary}
           className="mb-4"
         >
-          {t('PublicEnumLibrary.addLibrary')}
+          {t('common.add')}
         </Button>
         <div className="flex-1 overflow-y-auto">
           {libraries.length === 0 && !loading ? (
@@ -255,13 +327,27 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
                 <li
                   key={lib.library_id}
                   onClick={() => handleSelectLibrary(lib)}
-                  className={`px-3 py-2 rounded cursor-pointer transition-colors ${
+                  onMouseEnter={() => setHoveredLibraryId(lib.library_id)}
+                  onMouseLeave={() => setHoveredLibraryId(null)}
+                  className={`group px-3 py-2 rounded cursor-pointer transition-colors flex items-center justify-between ${
                     selectedLibrary?.library_id === lib.library_id
-                      ? 'bg-[var(--color-primary-bg)] text-[var(--color-primary)]'
+                      ? 'bg-blue-50 text-[var(--color-primary)]'
                       : 'hover:bg-[var(--color-fill-2)]'
-                  } ${(isEditing || isAdding) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  }`}
                 >
-                  {lib.name}
+                  <EllipsisWithTooltip text={lib.name} className="truncate flex-1" />
+                  {lib.editable && hoveredLibraryId === lib.library_id && (
+                    <span className="flex items-center gap-2 ml-1">
+                      <EditOutlined
+                        className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)]"
+                        onClick={(e) => handleEditLibrary(lib, e)}
+                      />
+                      <DeleteOutlined
+                        className="text-red-500 hover:text-red-600"
+                        onClick={(e) => handleDeleteLibrary(lib, e)}
+                      />
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -270,7 +356,7 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
       </div>
     );
 
-    const renderViewMode = () => {
+    const renderOptionsPanel = () => {
       if (!selectedLibrary) {
         return (
           <div className="flex-1 flex items-center justify-center">
@@ -281,157 +367,218 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
 
       return (
         <div className="flex-1 pl-4 flex flex-col">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium">{selectedLibrary.name}</h3>
-            {selectedLibrary.editable && (
-              <Space>
-                <Button type="primary" icon={<EditOutlined />} onClick={handleEdit}>
+          <div className="mb-4 flex items-start justify-between">
+            <div>
+              <h3 className="text-lg font-medium mb-1">
+                {selectedLibrary.name}
+              </h3>
+              <div className="text-sm text-[var(--color-text-quaternary)]">
+                {t('PublicEnumLibrary.team')}：
+                {getOrganizationDisplayText(selectedLibrary.team, flatGroups)}
+              </div>
+            </div>
+          </div>
+          {selectedLibrary.editable && (isEditingOptions || optionList.length > 0) && (
+            <div className="flex justify-end gap-2 mb-3">
+              {isEditingOptions ? (
+                <>
+                  <Button size="small" onClick={handleCancelEditOptions}>
+                    {t('common.cancel')}
+                  </Button>
+                  <Button
+                    type="primary"
+                    size="small"
+                    loading={optionsSaving}
+                    onClick={handleSaveOptions}
+                  >
+                    {t('common.save')}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={handleStartEditOptions}
+                  className="p-0"
+                >
                   {t('common.edit')}
                 </Button>
-                <Popconfirm
-                  title={t('PublicEnumLibrary.deleteConfirm')}
-                  onConfirm={handleDelete}
-                  okText={t('common.confirm')}
-                  cancelText={t('common.cancel')}
-                >
-                  <Button danger icon={<DeleteOutlined />}>
-                    {t('common.delete')}
-                  </Button>
-                </Popconfirm>
-              </Space>
-            )}
-          </div>
-
-          <div className="mb-4">
-            <span className="text-[var(--color-text-secondary)]">{t('PublicEnumLibrary.team')}：</span>
-            <span>{Array.isArray(selectedLibrary.team) ? selectedLibrary.team.join(', ') : selectedLibrary.team}</span>
-          </div>
-
-          <div className="flex items-center py-2 border-b border-[var(--color-border)] text-[var(--color-text-secondary)] text-sm">
-            <span className="w-1/2">{t('PublicEnumLibrary.optionId')}</span>
-            <span className="w-1/2">{t('PublicEnumLibrary.optionName')}</span>
-          </div>
+              )}
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto">
-            {selectedLibrary.options.length === 0 ? (
-              <div className="text-center text-[var(--color-text-tertiary)] py-4">
-                {t('common.noData')}
+            {optionList.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full">
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={t('common.noData')}
+                  className="m-4"
+                />
+                {selectedLibrary.editable && (
+                  <Button
+                    type="link"
+                    icon={<PlusOutlined />}
+                    onClick={handleStartEditOptions}
+                    className="-mt-2"
+                  >
+                    {t('PublicEnumLibrary.addOption')}
+                  </Button>
+                )}
               </div>
             ) : (
-              <ul>
-                {selectedLibrary.options.map((opt, index) => (
-                  <li key={index} className="flex items-center py-2 border-b border-[var(--color-border-secondary)]">
-                    <span className="w-1/2">{opt.id}</span>
-                    <span className="w-1/2">{opt.name}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      );
-    };
-
-    const renderEditMode = () => (
-      <div className="flex-1 pl-4 flex flex-col">
-        <Form
-          ref={formRef}
-          layout="vertical"
-          className="flex-1 flex flex-col"
-        >
-          <div className="flex items-center gap-4 mb-4">
-            <Form.Item
-              name="name"
-              rules={[{ required: true, message: t('PublicEnumLibrary.nameRequired') }]}
-              className="mb-0 flex-1"
-            >
-              <Input placeholder={t('PublicEnumLibrary.namePlaceholder')} />
-            </Form.Item>
-            <Space>
-              <Button type="primary" loading={confirmLoading} onClick={handleSubmit}>
-                {t('common.save')}
-              </Button>
-              <Button onClick={handleCancel}>{t('common.cancel')}</Button>
-            </Space>
-          </div>
-
-          <Form.Item
-            label={t('PublicEnumLibrary.team')}
-            name="team"
-            rules={[{ required: true, message: t('PublicEnumLibrary.teamRequired') }]}
-          >
-            <GroupTreeSelector placeholder={t('common.selectTip')} />
-          </Form.Item>
-
-          <div className="flex-1 overflow-y-auto">
-            <div className="bg-[var(--color-fill-1)] p-4 rounded">
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
-                onDragEnd={onDragEnd}
+                onDragEnd={isEditingOptions ? onDragEnd : undefined}
               >
                 <SortableContext
                   items={optionList.map((_, idx) => idx.toString())}
                   strategy={verticalListSortingStrategy}
+                  disabled={!isEditingOptions}
                 >
                   <ul>
                     <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
-                      <span className="mr-[4px] w-[14px]"></span>
-                      <span className="mr-[10px] w-2/5">{t('PublicEnumLibrary.optionId')}</span>
-                      <span className="mr-[10px] w-2/5">{t('PublicEnumLibrary.optionName')}</span>
+                      {isEditingOptions && (
+                        <span className="mr-2 w-[14px]"></span>
+                      )}
+                      <span className="flex-1 mr-2">
+                        {t('PublicEnumLibrary.optionId')}
+                      </span>
+                      <span className="flex-1 mr-2">
+                        {t('PublicEnumLibrary.optionName')}
+                      </span>
+                      {isEditingOptions && <span className="w-[50px]"></span>}
                     </li>
                     {optionList.map((opt, index) => (
-                      <SortableItem key={index} id={index.toString()} index={index}>
-                        <HolderOutlined className="mr-[4px] cursor-move" />
+                      <SortableItem
+                        key={index}
+                        id={index.toString()}
+                        index={index}
+                      >
+                        {isEditingOptions && (
+                          <HolderOutlined className="mr-2 cursor-move text-[var(--color-text-tertiary)]" />
+                        )}
                         <Input
                           placeholder={t('PublicEnumLibrary.optionId')}
-                          className="mr-[10px] w-2/5"
+                          className={`flex-1 mr-2 ${!isEditingOptions ? '[&.ant-input-filled]:bg-[var(--color-fill-1)] text-[var(--color-text-tertiary)]' : ''}`}
                           value={opt.id}
-                          onChange={(e) => onOptionChange('id', e.target.value, index)}
+                          readOnly={!isEditingOptions}
+                          variant={isEditingOptions ? 'outlined' : 'filled'}
+                          onChange={(e) =>
+                            onOptionChange('id', e.target.value, index)
+                          }
                         />
                         <Input
                           placeholder={t('PublicEnumLibrary.optionName')}
-                          className="mr-[10px] w-2/5"
+                          className={`flex-1 mr-2 ${!isEditingOptions ? '[&.ant-input-filled]:bg-[var(--color-fill-1)] text-[var(--color-text-tertiary)]' : ''}`}
                           value={opt.name}
-                          onChange={(e) => onOptionChange('name', e.target.value, index)}
+                          readOnly={!isEditingOptions}
+                          variant={isEditingOptions ? 'outlined' : 'filled'}
+                          onChange={(e) =>
+                            onOptionChange('name', e.target.value, index)
+                          }
                         />
-                        <PlusOutlined
-                          className="mr-[10px] cursor-pointer text-[var(--color-primary)]"
-                          onClick={addOption}
-                        />
-                        {optionList.length > 1 && (
-                          <MinusOutlined
-                            className="cursor-pointer text-[var(--color-primary)]"
-                            onClick={() => deleteOption(index)}
-                          />
+                        {isEditingOptions && (
+                          <span className="w-[50px] flex items-center gap-1">
+                            <PlusOutlined
+                              className="cursor-pointer text-[var(--color-primary)]"
+                              onClick={addOption}
+                            />
+                            <MinusOutlined
+                              className="cursor-pointer text-red-500 hover:text-red-600"
+                              onClick={() => deleteOption(index)}
+                            />
+                          </span>
                         )}
                       </SortableItem>
                     ))}
                   </ul>
                 </SortableContext>
               </DndContext>
-            </div>
+            )}
           </div>
-        </Form>
-      </div>
-    );
+        </div>
+      );
+    };
 
     return (
-      <OperateModal
-        width={800}
-        title={t('PublicEnumLibrary.title')}
-        subTitle={t('PublicEnumLibrary.description')}
-        visible={visible}
-        onCancel={handleClose}
-        footer={
-          <Button onClick={handleClose}>{t('common.close')}</Button>
-        }
-      >
-        <div className="flex h-[400px]">
-          {renderLeftPanel()}
-          {(isEditing || isAdding) ? renderEditMode() : renderViewMode()}
-        </div>
-      </OperateModal>
+      <>
+        <OperateModal
+          width={800}
+          title={t('PublicEnumLibrary.title')}
+          subTitle={t('PublicEnumLibrary.description')}
+          visible={visible}
+          onCancel={handleClose}
+          footer={<Button onClick={handleClose}>{t('common.close')}</Button>}
+        >
+          <div className="flex h-[400px]">
+            {renderLeftPanel()}
+            {renderOptionsPanel()}
+          </div>
+        </OperateModal>
+
+        <Modal
+          title={
+            libraryModalMode === 'add'
+              ? t('PublicEnumLibrary.addLibrary')
+              : t('PublicEnumLibrary.editLibrary')
+          }
+          open={libraryModalVisible}
+          onCancel={handleLibraryModalCancel}
+          onOk={handleSubmitLibrary}
+          confirmLoading={confirmLoading}
+          okText={t('common.confirm')}
+          cancelText={t('common.cancel')}
+          width={480}
+          centered
+          destroyOnClose={false}
+          afterClose={() => libraryFormRef.current?.resetFields()}
+        >
+          <Form ref={libraryFormRef} layout="vertical" className="mt-4">
+            <Form.Item
+              label={t('PublicEnumLibrary.name')}
+              name="name"
+              rules={[
+                {
+                  required: true,
+                  message: t('PublicEnumLibrary.nameRequired'),
+                },
+                {
+                  validator: (_, value) => {
+                    if (!value) return Promise.resolve();
+                    const isDuplicate = libraries.some(
+                      (lib) =>
+                        lib.name === value &&
+                        lib.library_id !== editingLibrary?.library_id
+                    );
+                    if (isDuplicate) {
+                      return Promise.reject(
+                        new Error(t('PublicEnumLibrary.nameExists'))
+                      );
+                    }
+                    return Promise.resolve();
+                  },
+                },
+              ]}
+            >
+              <Input placeholder={t('PublicEnumLibrary.namePlaceholder')} />
+            </Form.Item>
+            <Form.Item
+              label={t('PublicEnumLibrary.team')}
+              name="team"
+              rules={[
+                {
+                  required: true,
+                  message: t('PublicEnumLibrary.teamRequired'),
+                },
+              ]}
+            >
+              <GroupTreeSelector placeholder={t('common.selectTip')} />
+            </Form.Item>
+          </Form>
+        </Modal>
+      </>
     );
   }
 );

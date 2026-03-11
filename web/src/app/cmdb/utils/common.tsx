@@ -364,12 +364,13 @@ export const getAssetColumns = (config: {
           ...columnItem,
           render: (_: unknown, record: any) => {
             const enumOptions = Array.isArray(item.option) ? (item.option as EnumList[]) : [];
-            return (
-              <>
-                {enumOptions.find((opt: EnumList) => opt.id === record[attrId])
-                  ?.name || '--'}
-              </>
-            );
+            const rawValue = record[attrId];
+            const valueArray = Array.isArray(rawValue) ? rawValue : (rawValue ? [rawValue] : []);
+            if (valueArray.length === 0) return <>--</>;
+            const displayNames = valueArray
+              .map((val: string) => enumOptions.find((opt: EnumList) => opt.id === val)?.name)
+              .filter(Boolean);
+            return displayNames.length > 0 ? <>{displayNames.join(', ')}</> : <>--</>;
           },
         };
       case 'table': {
