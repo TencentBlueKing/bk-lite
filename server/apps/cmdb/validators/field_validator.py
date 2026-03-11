@@ -64,6 +64,7 @@ from apps.cmdb.constants.constants import (
     ENUM_SELECT_MODE_MULTIPLE,
     ENUM_SELECT_MODE_DEFAULT,
 )
+from apps.cmdb.utils.time_util import parse_cmdb_time
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
@@ -594,6 +595,61 @@ class FieldValidator:
                         )
 
     @staticmethod
+    def validate_organization_value(value: Any, attr_id: str = "organization") -> None:
+        if value is None or value == "" or value == []:
+            return
+
+        if not isinstance(value, list):
+            raise BaseAppException(
+                f"字段 {attr_id} 必须是数组类型，当前类型: {type(value).__name__}",
+                data={"error_code": "ORGANIZATION_NOT_LIST"},
+            )
+
+        for idx, item in enumerate(value):
+            if not isinstance(item, int):
+                raise BaseAppException(
+                    f"字段 {attr_id} 的第 {idx + 1} 个元素必须是整数，当前类型: {type(item).__name__}",
+                    data={"error_code": "ORGANIZATION_ITEM_NOT_INT"},
+                )
+
+    @staticmethod
+    def validate_user_value(value: Any, attr_id: str = "user") -> None:
+        if value is None or value == "" or value == []:
+            return
+
+        if not isinstance(value, list):
+            raise BaseAppException(
+                f"字段 {attr_id} 必须是数组类型，当前类型: {type(value).__name__}",
+                data={"error_code": "USER_NOT_LIST"},
+            )
+
+        for idx, item in enumerate(value):
+            if not isinstance(item, int):
+                raise BaseAppException(
+                    f"字段 {attr_id} 的第 {idx + 1} 个元素必须是整数，当前类型: {type(item).__name__}",
+                    data={"error_code": "USER_ITEM_NOT_INT"},
+                )
+
+    @staticmethod
+    def validate_time_value(value: Any, attr_id: str = "time") -> None:
+        if value is None or value == "":
+            return
+
+        if not isinstance(value, str):
+            raise BaseAppException(
+                f"字段 {attr_id} 必须是字符串类型，当前类型: {type(value).__name__}",
+                data={"error_code": "TIME_NOT_STR"},
+            )
+
+        try:
+            parse_cmdb_time(value)
+        except (ValueError, TypeError) as e:
+            raise BaseAppException(
+                f"字段 {attr_id} 的值 '{value}' 无法解析为有效的时间格式: {str(e)}",
+                data={"error_code": "TIME_PARSE_ERROR"},
+            )
+
+    @staticmethod
     def validate_enum_value(value: Any, attr: Dict) -> None:
         if value is None or value == "":
             return
@@ -701,6 +757,17 @@ class FieldValidator:
 
             elif attr_type == "enum":
                 FieldValidator.validate_enum_value(value, attr)
+
+            elif attr_type == "organization":
+                FieldValidator.validate_organization_value(
+                    value, attr.get("attr_id", "organization")
+                )
+
+            elif attr_type == "user":
+                FieldValidator.validate_user_value(value, attr.get("attr_id", "user"))
+
+            elif attr_type == "time":
+                FieldValidator.validate_time_value(value, attr.get("attr_id", "time"))
 
         except Exception as e:
             # 捕获意外异常,记录日志并抛出通用错误
