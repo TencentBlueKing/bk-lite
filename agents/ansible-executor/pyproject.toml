@@ -1,0 +1,14 @@
+[project]
+name = "ansible-executor"
+version = "0.1.0"
+description = "NATS RPC Ansible executor service"
+requires-python = ">=3.12"
+dependencies = [
+    "ansible-core==2.18.6",
+    "nats-py==2.10.0",
+    "PyYAML==6.0.2",
+    "python-dotenv==1.0.0",
+]
+
+[tool.uv]
+package = false
