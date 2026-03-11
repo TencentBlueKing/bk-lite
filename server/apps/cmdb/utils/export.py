@@ -257,7 +257,15 @@ class Export:
 
                 _value = inst_info.get(attr["attr_id"])
                 if attr["attr_type"] == ENUM:
-                    _value = enum_field_dict[attr["attr_id"]].get(_value)
+                    if isinstance(_value, list):
+                        names = [
+                            str(enum_field_dict[attr["attr_id"]].get(v, v))
+                            for v in _value
+                            if v is not None
+                        ]
+                        _value = ",".join(names)
+                    else:
+                        _value = enum_field_dict[attr["attr_id"]].get(_value)
                 elif attr["attr_type"] == "table":
                     # table字段导出为单列JSON字符串
                     if _value:

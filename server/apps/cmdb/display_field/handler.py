@@ -106,39 +106,45 @@ class DisplayFieldConverter:
         return DISPLAY_VALUES_SEPARATOR.join(formatted_users)
 
     @staticmethod
-    def convert_enum(enum_id: str, options: List[dict]) -> str:
+    def convert_enum(enum_value, options: List[dict]) -> str:
         """
         将枚举ID转换为枚举显示名称
 
         Args:
-            enum_id: 枚举值ID
+            enum_value: 枚举值ID或ID列表（支持单选和多选模式）
             options: 枚举选项列表 [{'id': '1', 'name': 'AA'}, {'id': '2', 'name': 'BB'}]
 
         Returns:
-            枚举显示名称，如 "运行中"
+            枚举显示名称，多选时用逗号分隔，如 "运行中, 已停止"
         """
-        if not enum_id:
+        if not enum_value:
             return ""
 
         if not options or not isinstance(options, list):
-            logger.debug(f"[DisplayFieldConverter] 枚举选项为空，返回原始值: {enum_id}")
-            return str(enum_id)
+            logger.debug(
+                f"[DisplayFieldConverter] 枚举选项为空，返回原始值: {enum_value}"
+            )
+            if isinstance(enum_value, list):
+                return DISPLAY_VALUES_SEPARATOR.join(str(v) for v in enum_value if v)
+            return str(enum_value)
 
-        # 查找匹配的枚举选项
-        for option in options:
-            option_id = option.get("id")
-            option_name = option.get("name")
+        option_map = {str(opt.get("id")): opt.get("name") for opt in options if opt}
 
-            if str(option_id) == str(enum_id):
-                display_value = option_name or enum_id
-                logger.debug(
-                    f"[DisplayFieldConverter] 枚举ID转换: {enum_id} → '{display_value}'"
-                )
-                return display_value
+        if isinstance(enum_value, list):
+            display_names = []
+            for val in enum_value:
+                if not val:
+                    continue
+                name = option_map.get(str(val))
+                display_names.append(name if name else str(val))
+            return DISPLAY_VALUES_SEPARATOR.join(display_names)
 
-        # 未找到匹配项，返回原始值
-        logger.debug(f"[DisplayFieldConverter] 未找到枚举值 {enum_id}，使用原始值")
-        return str(enum_id)
+        name = option_map.get(str(enum_value))
+        display_value = name if name else str(enum_value)
+        logger.debug(
+            f"[DisplayFieldConverter] 枚举ID转换: {enum_value} → '{display_value}'"
+        )
+        return display_value
 
     @staticmethod
     def convert_tag(tag_values: List[str]) -> str:

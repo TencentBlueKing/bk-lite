@@ -25,6 +25,8 @@ import {
   TimeAttrOption,
   IntAttrOption,
   TableColumnSpec,
+  EnumRuleType,
+  PublicEnumLibraryItem,
 } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
@@ -108,10 +110,14 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     const [tagBatchError, setTagBatchError] = useState<string>('');
     const [tagErrors, setTagErrors] = useState<Record<number, { key?: boolean; value?: boolean }>>({});
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
+    const [enumRuleType, setEnumRuleType] = useState<EnumRuleType>('custom');
+    const [publicLibraryId, setPublicLibraryId] = useState<string>('');
+    const [publicLibraries, setPublicLibraries] = useState<PublicEnumLibraryItem[]>([]);
+    const [enumSelectMode, setEnumSelectMode] = useState<'single' | 'multiple'>('single');
     const formRef = useRef<FormInstance>(null);
     const searchParams = useSearchParams();
 
-    const { createModelAttr, updateModelAttr } = useModelApi();
+    const { createModelAttr, updateModelAttr, getPublicEnumLibraries } = useModelApi();
 
     const modelId: string = searchParams.get('model_id') || '';
     const { t } = useTranslation();
@@ -136,6 +142,12 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         setSubTitle(subTitle);
         setType(type);
         setTitle(title);
+        // Load public libraries for enum type
+        getPublicEnumLibraries().then((res: any) => {
+          setPublicLibraries(res || []);
+        }).catch(() => {
+          setPublicLibraries([]);
+        });
         if (type === 'add') {
           Object.assign(attrInfo, {
             is_required: false,
@@ -159,12 +171,29 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           setTagList([{ key: '', value: '' }]);
           setIsTagBatchEdit(false);
           setTagBatchText('');
+          setEnumRuleType('custom');
+          setPublicLibraryId('');
+          setEnumSelectMode('single');
         } else {
           const option = attrInfo.option;
-          if (attrInfo.attr_type === 'enum' && Array.isArray(option)) {
-            setEnumList(option.length > 0 ? option : [{ id: '', name: '' }]);
+          if (attrInfo.attr_type === 'enum') {
+            // Handle enum_rule_type for edit mode
+            const ruleType = attrInfo.enum_rule_type || 'custom';
+            setEnumRuleType(ruleType);
+            setEnumSelectMode(attrInfo.enum_select_mode || 'single');
+            if (ruleType === 'public_library') {
+              setPublicLibraryId(attrInfo.public_library_id || '');
+              setEnumList([{ id: '', name: '' }]);
+            } else if (Array.isArray(option)) {
+              setEnumList(option.length > 0 ? option : [{ id: '', name: '' }]);
+            } else {
+              setEnumList([{ id: '', name: '' }]);
+            }
           } else {
             setEnumList([{ id: '', name: '' }]);
+            setEnumRuleType('custom');
+            setPublicLibraryId('');
+            setEnumSelectMode('single');
           }
           if (attrInfo.attr_type === 'table' && Array.isArray(option)) {
             setTableColumnList(option.length > 0 ? option : [{ column_id: '', column_name: '', column_type: 'str', order: 1 }]);
@@ -215,9 +244,13 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           | Record<string, unknown> = {};
 
         if (values.attr_type === 'enum') {
-          const enumArray = Array.isArray(enumList) ? enumList : [];
-          const flag = enumArray.every((item) => !!item.id && !!item.name);
-          option = flag ? enumArray : [];
+          if (enumRuleType === 'public_library') {
+            option = [];
+          } else {
+            const enumArray = Array.isArray(enumList) ? enumList : [];
+            const flag = enumArray.every((item) => !!item.id && !!item.name);
+            option = flag ? enumArray : [];
+          }
         } else if (values.attr_type === 'table') {
           const tableArray = Array.isArray(tableColumnList) ? tableColumnList : [];
           const flag = tableArray.every((item) => !!item.column_id && !!item.column_name);
@@ -259,17 +292,33 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         delete restValues.max_value;
         delete restValues.tag_mode;
 
-        operateAttr({
+        const submitParams: Record<string, unknown> = {
           ...restValues,
           option,
           attr_group: selectedGroup?.group_name || '',
           model_id: modelId,
-        });
+        };
+
+        if (values.attr_type === 'enum') {
+          submitParams.enum_rule_type = enumRuleType;
+          submitParams.enum_select_mode = enumSelectMode;
+          if (enumRuleType === 'public_library') {
+            submitParams.public_library_id = publicLibraryId;
+          }
+        }
+
+        operateAttr(submitParams as AttrFieldType);
       });
     };
 
     // 自定义验证枚举列表
     const validateEnumList = async () => {
+      if (enumRuleType === 'public_library') {
+        if (!publicLibraryId) {
+          return Promise.reject(new Error(t('PublicEnumLibrary.publicLibraryRequired')));
+        }
+        return Promise.resolve();
+      }
       const enumArray = Array.isArray(enumList) ? enumList : [];
       if (enumArray.some((item) => !item.id || !item.name)) {
         return Promise.reject(new Error(t('valueValidate')));
@@ -675,63 +724,116 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
                       </div>
-                      <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        onDragEnd={onDragEnd}
-                      >
-                        <SortableContext
-                          items={enumList.map((_, idx) => idx.toString())}
-                          strategy={verticalListSortingStrategy}
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className="text-sm text-[var(--color-text-secondary)] shrink-0">
+                          {t('PublicEnumLibrary.enumRuleType')}：
+                        </span>
+                        <Radio.Group
+                          value={enumRuleType}
+                          onChange={(e) => {
+                            setEnumRuleType(e.target.value);
+                            if (e.target.value === 'custom') {
+                              setPublicLibraryId('');
+                            }
+                          }}
+                          disabled={type === 'edit'}
                         >
-                          <ul className="ml-6">
-                            <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
-                              <span className="mr-[4px] w-[14px]"></span>
-                              <span className="mr-[10px] w-2/5">
-                                {t('fieldValue')}
-                              </span>
-                              <span className="mr-[10px] w-2/5">
-                                {t('Model.display')}
-                              </span>
-                            </li>
-                            {enumList.map((enumItem, index) => (
-                              <SortableItem
-                                key={index}
-                                id={index.toString()}
-                                index={index}
-                              >
-                                <HolderOutlined className="mr-[4px]" />
-                                <Input
-                                  placeholder={
-                                    t('common.inputTip') + t('fieldValue')
-                                  }
-                                  className="mr-[10px] w-2/5"
-                                  value={enumItem.id}
-                                  onChange={(e) => onEnumKeyChange(e, index)}
-                                />
-                                <Input
-                                  placeholder={
-                                    t('common.inputTip') + t('Model.display')
-                                  }
-                                  className="mr-[10px] w-2/5"
-                                  value={enumItem.name}
-                                  onChange={(e) => onEnumValChange(e, index)}
-                                />
-                                <PlusOutlined
-                                  className="edit mr-[10px] cursor-pointer text-[var(--color-primary)]"
-                                  onClick={addEnumItem}
-                                />
-                                {enumList.length > 1 && (
-                                  <MinusOutlined
-                                    className="delete cursor-pointer text-[var(--color-primary)]"
-                                    onClick={() => deleteEnumItem(index)}
-                                  />
-                                )}
-                              </SortableItem>
+                          <Radio value="custom">{t('PublicEnumLibrary.enumRuleTypeCustom')}</Radio>
+                          <Radio value="public_library">{t('PublicEnumLibrary.enumRuleTypePublicLibrary')}</Radio>
+                        </Radio.Group>
+                        {type === 'edit' && (
+                          <span className="text-xs text-[var(--color-text-tertiary)]">
+                            ({t('PublicEnumLibrary.enumRuleTypeCannotChange')})
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className="text-sm text-[var(--color-text-secondary)] shrink-0">
+                          {t('Model.enumSelectMode')}：
+                        </span>
+                        <Radio.Group
+                          value={enumSelectMode}
+                          onChange={(e) => setEnumSelectMode(e.target.value)}
+                        >
+                          <Radio value="single">{t('Model.singleSelect')}</Radio>
+                          <Radio value="multiple">{t('Model.multipleSelect')}</Radio>
+                        </Radio.Group>
+                      </div>
+                      {enumRuleType === 'public_library' ? (
+                        <div className="pl-[72px]">
+                          <Select
+                            value={publicLibraryId || undefined}
+                            onChange={(value) => setPublicLibraryId(value)}
+                            placeholder={t('PublicEnumLibrary.selectPublicLibraryPlaceholder')}
+                            className="w-full"
+                            allowClear
+                          >
+                            {publicLibraries.map((lib) => (
+                              <Option key={lib.library_id} value={lib.library_id}>
+                                {lib.name} ({lib.options.length} {t('PublicEnumLibrary.optionsCount')})
+                              </Option>
                             ))}
-                          </ul>
-                        </SortableContext>
-                      </DndContext>
+                          </Select>
+                        </div>
+                      ) : (
+                        <DndContext
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={onDragEnd}
+                        >
+                          <SortableContext
+                            items={enumList.map((_, idx) => idx.toString())}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <ul className="pl-[72px]">
+                              <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
+                                <span className="mr-[4px] w-[14px]"></span>
+                                <span className="mr-[10px] w-2/5">
+                                  {t('fieldValue')}
+                                </span>
+                                <span className="mr-[10px] w-2/5">
+                                  {t('Model.display')}
+                                </span>
+                              </li>
+                              {enumList.map((enumItem, index) => (
+                                <SortableItem
+                                  key={index}
+                                  id={index.toString()}
+                                  index={index}
+                                >
+                                  <HolderOutlined className="mr-[4px]" />
+                                  <Input
+                                    placeholder={
+                                      t('common.inputTip') + t('fieldValue')
+                                    }
+                                    className="mr-[10px] w-2/5"
+                                    value={enumItem.id}
+                                    onChange={(e) => onEnumKeyChange(e, index)}
+                                  />
+                                  <Input
+                                    placeholder={
+                                      t('common.inputTip') + t('Model.display')
+                                    }
+                                    className="mr-[10px] w-2/5"
+                                    value={enumItem.name}
+                                    onChange={(e) => onEnumValChange(e, index)}
+                                  />
+                                  <PlusOutlined
+                                    className="edit mr-[10px] cursor-pointer text-[var(--color-primary)]"
+                                    onClick={addEnumItem}
+                                  />
+                                  {enumList.length > 1 && (
+                                    <MinusOutlined
+                                      className="delete cursor-pointer text-[var(--color-primary)]"
+                                      onClick={() => deleteEnumItem(index)}
+                                    />
+                                  )}
+                                </SortableItem>
+                              ))}
+                            </ul>
+                          </SortableContext>
+                        </DndContext>
+                      )}
                     </div>
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'time' ? (
