@@ -58,9 +58,9 @@ const SectionTitle: React.FC<{ title: string }> = ({ title }) => (
 );
 
 const POLICY_PRESETS: Record<PolicyType, { dimensions: AggregationDimension[]; window: number }> = {
-  service: { dimensions: ['service'], window: 2 },
-  location: { dimensions: ['location'], window: 5 },
-  resource_name: { dimensions: ['resource_name'], window: 5 },
+  service: { dimensions: ['service','location','resource_name','item'], window: 2 },
+  location: { dimensions: ['location','service','resource_name','item'], window: 5 },
+  resource_name: { dimensions: ['resource_name','service','location','item'], window: 5 },
   other: { dimensions: ['service'], window: 5 },
 };
 
@@ -110,7 +110,7 @@ const OperateModal: React.FC<OperateModalProps> = ({ open, currentRow, onClose, 
   const [strategyType, setStrategyType] = useState<'smart_denoise' | 'missing_detection'>('smart_denoise');
   const [filterType, setFilterType] = useState<'all' | 'filter'>('all');
   const [policy, setPolicy] = useState<PolicyType>('service');
-  const [dimensions, setDimensions] = useState<AggregationDimension[]>(['service']);
+  const [dimensions, setDimensions] = useState<AggregationDimension[]>(['service','location','resource_name','item']);
   const [detectionWindow, setDetectionWindow] = useState<number>(2);
   const [selfHealingEnabled, setSelfHealingEnabled] = useState(false);
   const [autoCloseEnabled, setAutoCloseEnabled] = useState(true);
@@ -136,7 +136,7 @@ const OperateModal: React.FC<OperateModalProps> = ({ open, currentRow, onClose, 
       setStrategyType(row.strategy_type === 'missing_detection' ? 'missing_detection' : 'smart_denoise');
       setFilterType(row.match_rules?.length ? 'filter' : 'all');
       setPolicy((row.params?.policy as PolicyType) || 'service');
-      setDimensions((row.params?.group_by as AggregationDimension[]) || ['service']);
+      setDimensions((row.params?.group_by as AggregationDimension[]) || ['service','location','resource_name','item']);
       setDetectionWindow(row.params?.window_size ?? 5);
       setSelfHealingEnabled(row.params?.time_out ?? false);
       setAutoCloseEnabled(row.auto_close ?? true);
@@ -153,7 +153,7 @@ const OperateModal: React.FC<OperateModalProps> = ({ open, currentRow, onClose, 
       setStrategyType('smart_denoise');
       setFilterType('all');
       setPolicy('service');
-      setDimensions(['service']);
+      setDimensions(['service','location','resource_name','item']);
       setDetectionWindow(2);
       setSelfHealingEnabled(false);
       setAutoCloseEnabled(true);
