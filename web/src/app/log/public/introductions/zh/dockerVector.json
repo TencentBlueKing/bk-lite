@@ -1,0 +1,107 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "Docker 是最流行的容器运行时，容器日志是排查应用问题的重要数据来源。本集成使用 Vector 的 docker_logs source 采集 Docker 容器的标准输出（stdout）和标准错误（stderr）日志。",
+      "Vector 通过 Docker API 自动发现运行中的容器，并实时采集其日志输出。支持按容器名称、镜像、标签等条件过滤，以及多行日志合并、JSON 解析等高级处理功能。"
+    ]
+  },
+  "features": {
+    "title": "核心功能",
+    "items": [
+      {
+        "icon": "🔍",
+        "title": "自动发现",
+        "description": "自动发现 Docker 主机上的所有容器，无需手动配置每个容器"
+      },
+      {
+        "icon": "🎯",
+        "title": "灵活过滤",
+        "description": "支持按容器名、镜像名、Docker 标签等多种条件过滤采集范围"
+      },
+      {
+        "icon": "📊",
+        "title": "多行合并",
+        "description": "智能合并 Java 堆栈、Python traceback 等跨行日志"
+      },
+      {
+        "icon": "🏷️",
+        "title": "元数据丰富",
+        "description": "自动添加容器名称、镜像、标签等上下文信息"
+      },
+      {
+        "icon": "⚡",
+        "title": "实时采集",
+        "description": "通过 Docker API 实时获取容器日志，延迟极低"
+      },
+      {
+        "icon": "🔄",
+        "title": "容器生命周期",
+        "description": "自动跟踪容器的启动和停止，无需重启采集器"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "日志字段说明",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": 180 },
+        { "key": "type", "title": "类型", "width": 100 },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        {
+          "field": "message",
+          "type": "string",
+          "description": "容器输出的日志内容"
+        },
+        {
+          "field": "stream",
+          "type": "string",
+          "description": "输出流类型：stdout 或 stderr"
+        },
+        {
+          "field": "container_name",
+          "type": "string",
+          "description": "容器名称"
+        },
+        {
+          "field": "container_id",
+          "type": "string",
+          "description": "容器 ID（完整 64 字符）"
+        },
+        {
+          "field": "image",
+          "type": "string",
+          "description": "容器使用的镜像名称和标签"
+        },
+        {
+          "field": "labels",
+          "type": "object",
+          "description": "容器的 Docker 标签"
+        },
+        {
+          "field": "host",
+          "type": "string",
+          "description": "Docker 宿主机名称"
+        },
+        {
+          "field": "timestamp",
+          "type": "datetime",
+          "description": "日志产生时间"
+        }
+      ]
+    }
+  ],
+  "bestPractices": {
+    "title": "最佳实践",
+    "items": [
+      "**使用标签过滤**：通过 Docker 标签（如 `logging=true`）精确控制采集范围，避免采集无关容器",
+      "**排除采集器容器**：确保排除 Vector 自身的容器，避免日志循环",
+      "**配置日志轮转**：在 Docker daemon 配置日志大小限制，防止日志文件过大",
+      "**应用输出 JSON**：建议应用以 JSON 格式输出日志，便于结构化解析和检索",
+      "**避免敏感信息**：确保容器日志不包含密码、密钥等敏感信息",
+      "**设置资源限制**：为 Vector 容器设置 CPU/内存 限制，防止影响宿主机性能"
+    ]
+  }
+}

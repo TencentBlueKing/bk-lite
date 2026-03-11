@@ -1,0 +1,43 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "日志文件集成使用 Vector 采集器，提供高性能、低资源占用的文件日志采集能力。支持多种日志格式自动识别、多行日志合并、文件轮转检测等功能。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "格式自动检测",
+        "description": "智能识别 JSON、Syslog、Apache/Nginx 等常见日志格式"
+      },
+      {
+        "icon": "🔄",
+        "title": "轮转检测",
+        "description": "自动检测日志轮转，无缝切换到新文件，不丢失日志"
+      },
+      {
+        "icon": "📄",
+        "title": "多行合并",
+        "description": "支持 Java 堆栈、Python Traceback 等多行日志合并"
+      },
+      {
+        "icon": "⚡",
+        "title": "高性能采集",
+        "description": "Rust 编写的 Vector 引擎，极低 CPU 和内存占用"
+      }
+    ]
+  },
+  "bestPractices": {
+    "title": "支持的日志格式",
+    "items": [
+      "JSON - 结构化 JSON 日志，自动提取所有字段",
+      "Syslog - RFC3164/RFC5424 格式的系统日志",
+      "Apache Common/Combined - Apache HTTP 服务器日志格式",
+      "Nginx - Nginx 访问日志和错误日志",
+      "纯文本 - 非结构化文本日志，作为 message 字段存储"
+    ]
+  }
+}

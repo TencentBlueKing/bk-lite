@@ -1,0 +1,98 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "The Syslog integration uses Vector as the collector to receive and parse log data transmitted via the Syslog protocol. It supports both RFC 3164 (BSD Syslog) and RFC 5424 (Syslog Protocol) formats, automatically extracting fields like priority, facility, severity, timestamp, hostname, and application name."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "🔄",
+        "title": "Dual Protocol Support",
+        "description": "Supports both UDP and TCP transmission to meet different scenario requirements"
+      },
+      {
+        "icon": "📋",
+        "title": "Format Compatibility",
+        "description": "Automatically recognizes RFC3164 (BSD) and RFC5424 formats"
+      },
+      {
+        "icon": "🔒",
+        "title": "TLS Encryption",
+        "description": "TCP mode supports TLS encrypted transmission to ensure data security"
+      },
+      {
+        "icon": "⚡",
+        "title": "High Throughput",
+        "description": "Single node supports receiving hundreds of thousands of logs per second"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "Syslog messages will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": 200 },
+        { "key": "type", "title": "Type", "width": 120 },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Log timestamp"
+        },
+        {
+          "field": "syslog.facility",
+          "type": "keyword",
+          "description": "Facility type (kern, user, mail, daemon, etc.)"
+        },
+        {
+          "field": "syslog.severity",
+          "type": "keyword",
+          "description": "Severity level (emerg, alert, crit, err, warning, notice, info, debug)"
+        },
+        {
+          "field": "syslog.hostname",
+          "type": "keyword",
+          "description": "Source hostname"
+        },
+        {
+          "field": "syslog.appname",
+          "type": "keyword",
+          "description": "Application name / process name"
+        },
+        {
+          "field": "syslog.procid",
+          "type": "keyword",
+          "description": "Process ID"
+        },
+        {
+          "field": "syslog.msgid",
+          "type": "keyword",
+          "description": "Message ID (RFC5424)"
+        },
+        {
+          "field": "message",
+          "type": "text",
+          "description": "Log message content"
+        }
+      ]
+    }
+  ],
+  "steps": {
+    "title": "Configure Sender",
+    "description": "Configure Linux systems to send Syslog to Vector:",
+    "items": []
+  },
+  "tips": [
+    {
+      "type": "warning",
+      "title": "rsyslog Configuration Example",
+      "content": "Edit `/etc/rsyslog.conf`, add the following line:\n`*.* @172.24.0.5:514` (UDP) or `*.* @@172.24.0.5:1514` (TCP)\nThen restart rsyslog: `systemctl restart rsyslog`"
+    }
+  ]
+}
