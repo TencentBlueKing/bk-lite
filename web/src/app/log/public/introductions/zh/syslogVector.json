@@ -1,0 +1,90 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "Syslog 接收使用 Vector 作为采集器，提供高性能的 Syslog 服务端能力。可以接收来自网络设备、Linux 服务器、容器等各类基础设施发送的 Syslog 日志。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "🔄",
+        "title": "双协议支持",
+        "description": "同时支持 UDP 和 TCP 传输，满足不同场景需求"
+      },
+      {
+        "icon": "📋",
+        "title": "格式兼容",
+        "description": "自动识别 RFC3164 (BSD) 和 RFC5424 格式"
+      },
+      {
+        "icon": "🔒",
+        "title": "TLS 加密",
+        "description": "TCP 模式支持 TLS 加密传输，保障数据安全"
+      },
+      {
+        "icon": "⚡",
+        "title": "高吞吐量",
+        "description": "单节点支持每秒数十万条日志接收"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "解析字段",
+      "description": "Syslog 日志将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": 200 },
+        { "key": "type", "title": "类型", "width": 120 },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        { "field": "@timestamp", "type": "date", "description": "日志时间戳" },
+        {
+          "field": "syslog.facility",
+          "type": "keyword",
+          "description": "设施类型 (kern, user, mail, daemon 等)"
+        },
+        {
+          "field": "syslog.severity",
+          "type": "keyword",
+          "description": "严重级别 (emerg, alert, crit, err, warning, notice, info, debug)"
+        },
+        {
+          "field": "syslog.hostname",
+          "type": "keyword",
+          "description": "发送主机名"
+        },
+        {
+          "field": "syslog.appname",
+          "type": "keyword",
+          "description": "应用名称 / 进程名"
+        },
+        {
+          "field": "syslog.procid",
+          "type": "keyword",
+          "description": "进程 ID"
+        },
+        {
+          "field": "syslog.msgid",
+          "type": "keyword",
+          "description": "消息 ID (RFC5424)"
+        },
+        { "field": "message", "type": "text", "description": "日志消息内容" }
+      ]
+    }
+  ],
+  "steps": {
+    "title": "配置发送端",
+    "description": "配置 Linux 系统将 Syslog 发送到 Vector：",
+    "items": []
+  },
+  "tips": [
+    {
+      "type": "warning",
+      "title": "rsyslog 配置示例",
+      "content": "编辑 `/etc/rsyslog.conf`，添加以下行：\n`*.* @172.24.0.5:514` (UDP) 或 `*.* @@172.24.0.5:1514` (TCP)\n然后重启 rsyslog：`systemctl restart rsyslog`"
+    }
+  ]
+}

@@ -336,3 +336,25 @@ export interface ModelFullInfoResponse {
   result: boolean;
   message: string;
 }
+
+export type EnumRuleType = 'custom' | 'public_library';
+
+export interface PublicEnumOption {
+  id: string;
+  name: string;
+}
+
+export interface PublicEnumLibraryItem {
+  library_id: string;
+  name: string;
+  team: (string | number)[];
+  options: PublicEnumOption[];
+  editable: boolean;
+}
+
+export interface LibraryReferenceItem {
+  model_id: string;
+  model_name: string;
+  attr_id: string;
+  attr_name: string;
+}

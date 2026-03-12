@@ -1,0 +1,82 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "PostgreSQL 集成使用 Filebeat 的 PostgreSQL 模块，自动采集和解析 PostgreSQL 数据库的服务日志。通过结构化的日志数据，帮助您快速定位数据库问题、监控连接状态、分析查询性能。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "多行解析",
+        "description": "智能处理跨多行的 SQL 语句和错误堆栈"
+      },
+      {
+        "icon": "⏱️",
+        "title": "查询耗时分析",
+        "description": "提取 duration 字段，分析慢查询和性能瓶颈"
+      },
+      {
+        "icon": "🔗",
+        "title": "连接追踪",
+        "description": "记录客户端连接来源、用户、数据库等信息"
+      },
+      {
+        "icon": "⚠️",
+        "title": "错误分级",
+        "description": "按日志级别 (LOG/WARNING/ERROR/FATAL) 分类告警"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "解析字段",
+      "description": "PostgreSQL 服务日志将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "200px" },
+        { "key": "type", "title": "类型", "width": "120px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        { "field": "@timestamp", "type": "date", "description": "日志时间戳" },
+        {
+          "field": "postgresql.log.level",
+          "type": "keyword",
+          "description": "日志级别 (LOG/WARNING/ERROR/FATAL)"
+        },
+        {
+          "field": "postgresql.log.database",
+          "type": "keyword",
+          "description": "数据库名称"
+        },
+        {
+          "field": "postgresql.log.user",
+          "type": "keyword",
+          "description": "执行用户"
+        },
+        {
+          "field": "postgresql.log.query",
+          "type": "text",
+          "description": "SQL 语句"
+        },
+        {
+          "field": "postgresql.log.duration",
+          "type": "float",
+          "description": "查询执行时间 (毫秒)"
+        },
+        {
+          "field": "postgresql.log.connection_from",
+          "type": "keyword",
+          "description": "客户端 IP 地址"
+        },
+        {
+          "field": "postgresql.log.session_id",
+          "type": "keyword",
+          "description": "会话标识"
+        }
+      ]
+    }
+  ]
+}

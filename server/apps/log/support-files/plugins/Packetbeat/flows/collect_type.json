@@ -18,5 +18,6 @@
     "source.stats.net_packets_total",
     "dest.stats.net_bytes_total",
     "dest.stats.net_packets_total"
-  ]
+  ],
+  "display_category": "network"
 }

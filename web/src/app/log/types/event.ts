@@ -31,6 +31,7 @@ export interface ObjectItem {
   description: string;
   display_name?: string;
   display_type?: string;
+  display_category?: string;
   collector: string;
   options?: ObjectItem[];
   label?: string;

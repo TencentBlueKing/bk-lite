@@ -8,7 +8,7 @@ from apps.cmdb.constants.constants import (
     OPERATE,
     VIEW,
 )
-from apps.cmdb.validators.field_validator import TAG_ATTR_ID
+from apps.cmdb.constants.field_constraints import TAG_ATTR_ID
 from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.models import DELETE_INST, UPDATE_INST, FieldGroup
@@ -22,7 +22,6 @@ from apps.core.utils.web_utils import WebUtils
 
 
 class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
-
     @property
     def default_group_id(self):
         return get_default_group_id()[0]
@@ -586,12 +585,6 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if not has_permission:
             return WebUtils.response_error(
                 "抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN
-            )
-
-        if attr_id == TAG_ATTR_ID and str(request.query_params.get("confirm", "")).lower() != "true":
-            return WebUtils.response_error(
-                "删除标签字段需要二次确认，请携带 confirm=true",
-                status_code=status.HTTP_400_BAD_REQUEST,
             )
 
         result = ModelManage.delete_model_attr(

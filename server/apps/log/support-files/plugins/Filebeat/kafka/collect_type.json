@@ -20,5 +20,6 @@
     "event.dataset",
     "event.module",
     "fileset.name"
-  ]
+  ],
+  "display_category": "middleware"
 }

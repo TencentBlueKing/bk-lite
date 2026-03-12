@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Icon from '@/components/icon';
 
 const IntegrationDetailLayout = ({
-  children,
+  children
 }: {
   children: React.ReactNode;
 }) => {
@@ -24,7 +24,7 @@ const IntegrationDetailLayout = ({
   };
 
   const TopSection = () => (
-    <div className="p-4 rounded-md w-full h-[95px] flex items-center bg-[var(--color-bg-1)]">
+    <div className="p-4 rounded-md w-full h-[80px] flex items-center bg-[var(--color-bg-1)]">
       <Icon type={icon as string} className="text-6xl mr-[10px] min-w-[60px]" />
       <div className="w-full">
         <h2 className="text-lg font-semibold mb-2">{pluginDisplayName}</h2>

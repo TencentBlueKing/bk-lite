@@ -147,7 +147,7 @@ const CorrelationRulesPage: React.FC = () => {
       },
     },
     {
-      title: t('settings.correlation.executionTime'),
+      title: t('settings.assignCreateTime'),
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,

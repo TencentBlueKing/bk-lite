@@ -9,7 +9,7 @@ export const useVectorConfig = () => {
   const pluginConfig = {
     collector: 'Vector',
     collect_type: 'file',
-    icon: 'jiaoxuerizhiPC',
+    icon: 'jiaoxuerizhiPC'
   };
 
   return {
@@ -19,7 +19,7 @@ export const useVectorConfig = () => {
       onTableDataChange?: (data: IntegrationLogInstance[]) => void;
     }) => {
       const disabledForm = {
-        file_path: false,
+        file_path: false
       };
       const formItems = <>{commonFormItems.getCommonFormItems(disabledForm)}</>;
       const configs = {
@@ -32,8 +32,8 @@ export const useVectorConfig = () => {
               mode: 'continue_through',
               start_pattern: '^(ERROR|WARN|INFO|DEBUG|TRACE|FATAL)\\s\\[',
               timeout_ms: 3000,
-              condition_pattern: '^(\\s+|Traceback|File\\s+)',
-            },
+              condition_pattern: '^(\\s+|Traceback|File\\s+)'
+            }
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
@@ -46,11 +46,11 @@ export const useVectorConfig = () => {
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
-                  node_ids: [item.node_ids].flat(),
+                  node_ids: [item.node_ids].flat()
                 };
-              }),
+              })
             };
-          },
+          }
         },
         edit: {
           formItems,
@@ -63,19 +63,22 @@ export const useVectorConfig = () => {
             return {
               file_path: path,
               multiline: Object.assign(sources?.multiline || {}, {
-                enabled: !!sources?.multiline?.mode,
-              }),
+                enabled: !!sources?.multiline?.mode
+              })
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
-            delete formData.multiline.enabled;
+            const originalChild = cloneDeep(configForm?.child || {});
+            const formDataCopy = cloneDeep(formData);
+            delete formDataCopy.multiline?.enabled;
+
             return {
               child: {
-                id: configForm.child.id,
-                content_data: formData,
-              },
+                ...originalChild,
+                content: formDataCopy
+              }
             };
-          },
+          }
         },
         manual: {
           defaultForm: {},
@@ -83,16 +86,16 @@ export const useVectorConfig = () => {
           getParams: (row: TableDataItem) => {
             return {
               instance_name: row.instance_name,
-              instance_id: row.instance_id,
+              instance_id: row.instance_id
             };
           },
-          getConfigText: () => '--',
-        },
+          getConfigText: () => '--'
+        }
       };
       return {
         ...pluginConfig,
-        ...configs[extra.mode],
+        ...configs[extra.mode]
       };
-    },
+    }
   };
 };

@@ -33,8 +33,8 @@ from apps.node_mgmt.utils.token_auth import generate_node_token
 from config.components.nats import NATS_NAMESPACE
 
 
-def _add_step(steps, action, status, message, timestamp=None, details=None):
-    """添加执行步骤记录"""
+def _add_step(node_obj, action, status, message, timestamp=None, details=None):
+    """添加执行步骤记录并立即持久化"""
     step = {
         "action": action,
         "status": status,
@@ -44,31 +44,83 @@ def _add_step(steps, action, status, message, timestamp=None, details=None):
     # 添加详细信息，特别是错误详情
     if details:
         step["details"] = details
+
+    # 获取现有 result，追加步骤
+    result = node_obj.result or {}
+    steps = result.get("steps", [])
     steps.append(step)
+    result["steps"] = steps
+    node_obj.result = result
+    node_obj.save(update_fields=["result"])
+
+    return step
 
 
-def _update_step_status(steps, status, message, details=None):
-    """更新最后一个步骤的状态"""
+def _update_step_status(node_obj, status, message, details=None):
+    """更新最后一个步骤的状态并立即持久化"""
+    result = node_obj.result or {}
+    steps = result.get("steps", [])
+
     if steps and steps[-1]["status"] == "running":
         steps[-1]["status"] = status
         steps[-1]["message"] = message
         if details:
             steps[-1]["details"] = details
+        result["steps"] = steps
+        node_obj.result = result
+        node_obj.save(update_fields=["result"])
 
 
-def _save_node_result(node_obj, steps, overall_status, final_message):
-    """保存节点执行结果"""
+def _batch_add_step(nodes, action, status, message, timestamp=None, details=None):
+    """批量为多个节点添加相同步骤并立即持久化"""
+    ts = timestamp or datetime.now().isoformat()
+
+    for node_obj in nodes:
+        step = {
+            "action": action,
+            "status": status,
+            "message": message,
+            "timestamp": ts,
+        }
+        if details:
+            step["details"] = details.copy() if isinstance(details, dict) else details
+
+        result = node_obj.result or {}
+        steps = result.get("steps", [])
+        steps.append(step)
+        result["steps"] = steps
+        node_obj.result = result
+        node_obj.save(update_fields=["result"])
+
+
+def _batch_update_step_status(nodes, status, message, details=None):
+    """批量更新多个节点最后一个步骤的状态并立即持久化"""
+    for node_obj in nodes:
+        result = node_obj.result or {}
+        steps = result.get("steps", [])
+
+        if steps and steps[-1]["status"] == "running":
+            steps[-1]["status"] = status
+            steps[-1]["message"] = message
+            if details:
+                steps[-1]["details"] = details
+            result["steps"] = steps
+            node_obj.result = result
+            node_obj.save(update_fields=["result"])
+
+
+def _save_node_result(node_obj, overall_status, final_message):
+    """保存节点最终执行结果"""
+    result = node_obj.result or {}
+    result["overall_status"] = overall_status
+    result["final_message"] = final_message
     node_obj.status = "success" if overall_status == "success" else "error"
-    node_obj.result = {
-        "steps": steps,
-        "overall_status": overall_status,
-        "final_message": final_message,
-    }
-    node_obj.save()
+    node_obj.result = result
+    node_obj.save(update_fields=["status", "result"])
 
 
-def _handle_step_exception(steps, error_message, exception_obj=None, timestamp=None):
-    """处理步骤执行异常"""
+def _parse_exception_details(error_message, exception_obj=None):
+    """解析异常详情，提取结构化错误信息"""
     import json
     import re
 
@@ -80,7 +132,6 @@ def _handle_step_exception(steps, error_message, exception_obj=None, timestamp=N
     if exception_obj:
         error_str = str(exception_obj)
 
-        # 尝试解析Go服务的JSON错误响应
         json_match = re.search(r'{.*"success".*}', error_str)
         if json_match:
             try:
@@ -88,7 +139,6 @@ def _handle_step_exception(steps, error_message, exception_obj=None, timestamp=N
                 if isinstance(go_response, dict) and not go_response.get(
                     "success", True
                 ):
-                    # 提取Go服务的关键错误信息
                     if "error" in go_response:
                         details["service_error"] = go_response["error"]
                     if "result" in go_response:
@@ -96,7 +146,6 @@ def _handle_step_exception(steps, error_message, exception_obj=None, timestamp=N
                     if "instance_id" in go_response:
                         details["instance_id"] = go_response["instance_id"]
 
-                    # 简单的错误分类
                     error_text = go_response.get("error", "").lower()
                     if "exit code" in error_text:
                         exit_code_match = re.search(r"exit code (\d+)", error_text)
@@ -113,12 +162,21 @@ def _handle_step_exception(steps, error_message, exception_obj=None, timestamp=N
             except (json.JSONDecodeError, KeyError):
                 pass
 
-    # 更新步骤状态
+    return details
+
+
+def _handle_step_exception(node_obj, error_message, exception_obj=None, timestamp=None):
+    """处理步骤执行异常并立即持久化"""
+    details = _parse_exception_details(error_message, exception_obj)
+
+    result = node_obj.result or {}
+    steps = result.get("steps", [])
+
     if steps and steps[-1]["status"] == "running":
-        _update_step_status(steps, "error", f"Step failed: {error_message}", details)
+        _update_step_status(node_obj, "error", f"Step failed: {error_message}", details)
     else:
         _add_step(
-            steps,
+            node_obj,
             "unknown",
             "error",
             f"Unexpected error: {error_message}",
@@ -131,35 +189,28 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
     """安装控制器任务调度入口"""
     file_key = f"{package_obj.os}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
 
-    # 获取控制器下发目录
     dir_map = ControllerConstants.CONTROLLER_INSTALL_DIR.get(package_obj.os)
     controller_install_dir, controller_storage_dir = (
         dir_map["install_dir"],
         dir_map["storage_dir"],
     )
 
-    # 获取安装命令所需参数
     obj = SidecarEnv.objects.filter(
         cloud_region=task_obj.cloud_region_id, key=NodeConstants.SERVER_URL_KEY
     ).first()
     server_url = obj.value if obj else "null"
 
-    # 基础准备工作：记录每个步骤的状态
     aes_obj = AESCryptor()
+    nodes_list = list(nodes)
 
-    base_steps = []  # 记录基础准备步骤（download, unzip）
     base_run = True
     base_error_message = ""
     unzip_name = ""
 
-    # Download 步骤
+    _batch_add_step(
+        nodes_list, "download", "running", "Downloading package to work node"
+    )
     try:
-        _add_step(
-            base_steps,
-            "download",
-            "running",
-            "Downloading package to work node",
-        )
         download_to_local(
             task_obj.work_node,
             NATS_NAMESPACE,
@@ -167,82 +218,89 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             package_obj.name,
             controller_storage_dir,
         )
-        _update_step_status(base_steps, "success", "Package downloaded successfully")
+        _batch_update_step_status(
+            nodes_list, "success", "Package downloaded successfully"
+        )
     except Exception as e:
-        _update_step_status(base_steps, "error", f"Download failed: {str(e)}")
+        _batch_update_step_status(nodes_list, "error", f"Download failed: {str(e)}")
         base_run = False
         base_error_message = f"Download failed: {str(e)}"
 
-    # Unzip 步骤（仅在 download 成功时执行）
     if base_run:
+        _batch_add_step(nodes_list, "unzip", "running", "Extracting package")
         try:
-            _add_step(base_steps, "unzip", "running", "Extracting package")
             unzip_name = unzip_file(
                 task_obj.work_node,
                 f"{controller_storage_dir}/{package_obj.name}",
                 controller_storage_dir,
             )
-            _update_step_status(base_steps, "success", "Package extracted successfully")
+            _batch_update_step_status(
+                nodes_list, "success", "Package extracted successfully"
+            )
         except Exception as e:
-            _update_step_status(base_steps, "error", f"Unzip failed: {str(e)}")
+            _batch_update_step_status(nodes_list, "error", f"Unzip failed: {str(e)}")
             base_run = False
             base_error_message = f"Unzip failed: {str(e)}"
 
-    for node_obj in nodes:
-        # 复制基础步骤到每个节点的步骤列表
-        steps = [step.copy() for step in base_steps]
+    for node_obj in nodes_list:
         overall_status = "success"
 
-        # 检查基础准备是否成功
         if not base_run:
-            _save_node_result(node_obj, steps, "error", base_error_message)
+            _save_node_result(node_obj, "error", base_error_message)
             continue
 
-        # 检查凭据有效性（密码或私钥至少提供一个）
         has_password = bool(node_obj.password)
         has_private_key = bool(node_obj.private_key)
 
         if not has_password and not has_private_key:
             _add_step(
-                steps,
+                node_obj,
                 "credential_check",
                 "error",
                 "No authentication method provided. Password or private key is required.",
             )
-            _save_node_result(node_obj, steps, "error", "Credential validation failed")
+            _save_node_result(node_obj, "error", "Credential validation failed")
             continue
 
-        # 凭据验证成功
         auth_method = "private key" if has_private_key else "password"
         _add_step(
-            steps,
+            node_obj,
             "credential_check",
             "success",
             f"Credential validation passed (using {auth_method})",
         )
 
-        # 解密密码（如果有）
         password = None
         if has_password:
             password = aes_obj.decode(node_obj.password)
 
-        # 解密私钥（如果有）
         private_key = None
         if has_private_key:
             private_key = aes_obj.decode(node_obj.private_key)
 
-        # 解密私钥密码短语（如果有）
         passphrase = None
         if node_obj.passphrase:
             passphrase = aes_obj.decode(node_obj.passphrase)
 
         try:
-            # 文件传输步骤
+            _add_step(node_obj, "prepare", "running", "Preparing remote directory")
+            remote_target_dir = f"{controller_install_dir}/{unzip_name}"
+            exec_command_to_remote(
+                task_obj.work_node,
+                node_obj.ip,
+                node_obj.username,
+                password,
+                f"mkdir -p {remote_target_dir}",
+                node_obj.port,
+                private_key=private_key,
+                passphrase=passphrase,
+            )
+            _update_step_status(
+                node_obj, "success", "Remote directory prepared successfully"
+            )
+
             _add_step(
-                steps,
-                "send",
-                "running",
-                "Starting file transfer to remote host",
+                node_obj, "send", "running", "Starting file transfer to remote host"
             )
             transfer_file_to_remote(
                 task_obj.work_node,
@@ -256,14 +314,12 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 passphrase=passphrase,
             )
             _update_step_status(
-                steps, "success", "File transfer completed successfully"
+                node_obj, "success", "File transfer completed successfully"
             )
 
-            # 安装执行步骤
-            _add_step(steps, "run", "running", "Starting controller installation")
+            _add_step(node_obj, "run", "running", "Starting controller installation")
             groups = ",".join([str(i) for i in node_obj.organizations])
 
-            # token生成
             node_id = uuid.uuid4().hex
             sidecar_token = generate_node_token(
                 node_id, node_obj.ip, task_obj.created_by
@@ -290,20 +346,19 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 passphrase=passphrase,
             )
             _update_step_status(
-                steps, "success", "Controller installation completed successfully"
+                node_obj, "success", "Controller installation completed successfully"
             )
 
         except Exception as e:
-            _handle_step_exception(steps, str(e), e)
+            _handle_step_exception(node_obj, str(e), e)
             overall_status = "error"
 
-        # 保存结果
         final_message = (
             "All steps completed successfully"
             if overall_status == "success"
             else "Installation failed"
         )
-        _save_node_result(node_obj, steps, overall_status, final_message)
+        _save_node_result(node_obj, overall_status, final_message)
 
 
 @shared_task
@@ -399,50 +454,43 @@ def uninstall_controller(task_id):
     aes_obj = AESCryptor()
 
     for node_obj in nodes:
-        steps = []
         overall_status = "success"
 
-        # 检查凭据有效性（密码或私钥至少提供一个）
         has_password = bool(node_obj.password)
         has_private_key = bool(node_obj.private_key)
 
         if not has_password and not has_private_key:
             _add_step(
-                steps,
+                node_obj,
                 "credential_check",
                 "error",
                 "No authentication method provided. Password or private key is required.",
             )
-            _save_node_result(node_obj, steps, "error", "Credential validation failed")
+            _save_node_result(node_obj, "error", "Credential validation failed")
             continue
 
-        # 凭据验证成功
         auth_method = "private key" if has_private_key else "password"
         _add_step(
-            steps,
+            node_obj,
             "credential_check",
             "success",
             f"Credential validation passed (using {auth_method})",
         )
 
-        # 解密密码（如果有）
         password = None
         if has_password:
             password = aes_obj.decode(node_obj.password)
 
-        # 解密私钥（如果有）
         private_key = None
         if has_private_key:
             private_key = aes_obj.decode(node_obj.private_key)
 
-        # 解密私钥密码短语（如果有）
         passphrase = None
         if node_obj.passphrase:
             passphrase = aes_obj.decode(node_obj.passphrase)
 
         try:
-            # 停止服务步骤
-            _add_step(steps, "stop_run", "running", "Stopping controller service")
+            _add_step(node_obj, "stop_run", "running", "Stopping controller service")
             uninstall_command = get_uninstall_command(node_obj.os)
             exec_command_to_remote(
                 task_obj.work_node,
@@ -455,12 +503,11 @@ def uninstall_controller(task_id):
                 passphrase=passphrase,
             )
             _update_step_status(
-                steps, "success", "Controller service stopped successfully"
+                node_obj, "success", "Controller service stopped successfully"
             )
 
-            # 删除控制器安装目录步骤
             _add_step(
-                steps,
+                node_obj,
                 "delete_dir",
                 "running",
                 "Removing controller installation directory",
@@ -476,36 +523,28 @@ def uninstall_controller(task_id):
                 passphrase=passphrase,
             )
             _update_step_status(
-                steps, "success", "Installation directory removed successfully"
+                node_obj, "success", "Installation directory removed successfully"
             )
 
-            # 删除node实例步骤
-            _add_step(
-                steps,
-                "delete_node",
-                "running",
-                "Removing node from database",
-            )
+            _add_step(node_obj, "delete_node", "running", "Removing node from database")
             Node.objects.filter(
                 cloud_region_id=task_obj.cloud_region_id, ip=node_obj.ip
             ).delete()
             _update_step_status(
-                steps, "success", "Node removed from database successfully"
+                node_obj, "success", "Node removed from database successfully"
             )
 
         except Exception as e:
-            _handle_step_exception(steps, str(e), e)
+            _handle_step_exception(node_obj, str(e), e)
             overall_status = "error"
 
-        # 保存结果
         final_message = (
             "All steps completed successfully"
             if overall_status == "success"
             else "Uninstallation failed"
         )
-        _save_node_result(node_obj, steps, overall_status, final_message)
+        _save_node_result(node_obj, overall_status, final_message)
 
-    # 更新任务状态并清理密码和密钥
     task_obj.status = "finished"
     task_obj.save()
     nodes.update(password="", private_key="", passphrase="")
@@ -529,13 +568,11 @@ def install_collector(task_id):
     nodes = task_obj.collectortasknode_set.all()
 
     for node_obj in nodes:
-        steps = []
         overall_status = "success"
 
         try:
-            # 下发采集器步骤
             _add_step(
-                steps,
+                node_obj,
                 "send",
                 "running",
                 f"Starting file download to node {node_obj.node_id}",
@@ -548,12 +585,11 @@ def install_collector(task_id):
                 collector_install_dir,
             )
             _update_step_status(
-                steps, "success", "File download completed successfully"
+                node_obj, "success", "File download completed successfully"
             )
 
-            # 根据文件扩展名决定是否解压
             if package_obj.name.lower().endswith(".zip"):
-                _add_step(steps, "unzip", "running", "Extracting collector package")
+                _add_step(node_obj, "unzip", "running", "Extracting collector package")
                 unzip_name = unzip_file(
                     node_obj.node_id,
                     f"{collector_install_dir}/{package_obj.name}",
@@ -561,24 +597,20 @@ def install_collector(task_id):
                 )
                 executable_name = unzip_name
                 _update_step_status(
-                    steps, "success", f"Package extracted successfully: {unzip_name}"
+                    node_obj, "success", f"Package extracted successfully: {unzip_name}"
                 )
             else:
                 executable_name = package_obj.name
                 _add_step(
-                    steps,
+                    node_obj,
                     "prepare",
                     "success",
                     "Package ready (no extraction required)",
                 )
 
-            # Linux操作系统赋予执行权限
             if package_obj.os in NodeConstants.LINUX_OS:
                 _add_step(
-                    steps,
-                    "set_exe",
-                    "running",
-                    "Setting execution permissions",
+                    node_obj, "set_exe", "running", "Setting execution permissions"
                 )
                 executable_path = f"{collector_install_dir}/{executable_name}"
                 exec_command_to_local(
@@ -586,26 +618,20 @@ def install_collector(task_id):
                     f"if [ -d '{executable_path}' ]; then find '{executable_path}' -type f -exec chmod +x {{}} \\; ; else chmod +x '{executable_path}'; fi",
                 )
                 _update_step_status(
-                    steps, "success", "Execution permissions set successfully"
+                    node_obj, "success", "Execution permissions set successfully"
                 )
 
         except Exception as e:
-            _handle_step_exception(steps, str(e), e)
+            _handle_step_exception(node_obj, str(e), e)
             overall_status = "error"
 
-        # 保存结果
         final_message = (
             "All steps completed successfully"
             if overall_status == "success"
             else "Collector installation failed"
         )
-        result = {
-            "steps": steps,
-            "overall_status": overall_status,
-            "final_message": final_message,
-        }
+        _save_node_result(node_obj, overall_status, final_message)
 
-        # 更新采集器安装状态
         collector_obj = Collector.objects.filter(
             node_operating_system=package_obj.os, name=package_obj.object
         ).first()
@@ -616,15 +642,10 @@ def install_collector(task_id):
                 "node_id": node_obj.node_id,
                 "collector_id": collector_obj.id,
                 "status": "success" if overall_status == "success" else "error",
-                "result": result,
+                "result": node_obj.result,
             },
         )
 
-        node_obj.result = result
-        node_obj.status = "success" if overall_status == "success" else "error"
-        node_obj.save()
-
-    # 更新任务状态
     task_obj.status = "finished"
     task_obj.save()
 

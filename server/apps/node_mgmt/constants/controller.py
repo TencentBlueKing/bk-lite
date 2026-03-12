@@ -48,11 +48,14 @@ class ControllerConstants:
     # 设置权限并运行命令
     RUN_COMMAND = {
         NodeConstants.LINUX_OS: (
-            "sudo rm -rf /opt/fusion-collectors && "
-            "sudo mv /tmp/fusion-collectors /opt/fusion-collectors && "
-            "sudo chmod -R +x /opt/fusion-collectors/* && "
+            'if [ "$(id -u)" -eq 0 ]; then SUDO=""; '
+            'elif command -v sudo >/dev/null 2>&1; then SUDO="sudo"; '
+            "else echo 'Error: root or sudo is required to install controller to /opt/fusion-collectors'; exit 1; fi && "
+            "$SUDO rm -rf /opt/fusion-collectors && "
+            "$SUDO mv /tmp/fusion-collectors /opt/fusion-collectors && "
+            "$SUDO chmod -R +x /opt/fusion-collectors/* && "
             "cd /opt/fusion-collectors && "
-            "sudo bash ./install.sh {server_url}/api/v1/node_mgmt/open_api/node "
+            "$SUDO bash ./install.sh {server_url}/api/v1/node_mgmt/open_api/node "
             "{server_token} {cloud} {group} {node_name} {node_id}"
         ),
         NodeConstants.WINDOWS_OS: (
@@ -64,13 +67,23 @@ class ControllerConstants:
 
     # 卸载命令
     UNINSTALL_COMMAND = {
-        NodeConstants.LINUX_OS: "cd /opt/fusion-collectors && sudo chmod +x uninstall.sh && sudo ./uninstall.sh",
+        NodeConstants.LINUX_OS: (
+            'if [ "$(id -u)" -eq 0 ]; then SUDO=""; '
+            'elif command -v sudo >/dev/null 2>&1; then SUDO="sudo"; '
+            "else echo 'Error: root or sudo is required to uninstall controller from /opt/fusion-collectors'; exit 1; fi && "
+            "cd /opt/fusion-collectors && $SUDO chmod +x uninstall.sh && $SUDO ./uninstall.sh"
+        ),
         NodeConstants.WINDOWS_OS: 'powershell -command "Remove-Item -Path {} -Recurse"',
     }
 
     # 控制器目录删除命令
     CONTROLLER_DIR_DELETE_COMMAND = {
-        NodeConstants.LINUX_OS: "sudo rm -rf /opt/fusion-collectors",
+        NodeConstants.LINUX_OS: (
+            'if [ "$(id -u)" -eq 0 ]; then SUDO=""; '
+            'elif command -v sudo >/dev/null 2>&1; then SUDO="sudo"; '
+            "else echo 'Error: root or sudo is required to remove /opt/fusion-collectors'; exit 1; fi && "
+            "$SUDO rm -rf /opt/fusion-collectors"
+        ),
         NodeConstants.WINDOWS_OS: 'powershell -command "Remove-Item -Path {} -Recurse"',
     }
 
