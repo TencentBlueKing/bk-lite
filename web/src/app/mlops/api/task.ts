@@ -39,8 +39,18 @@ const useMlopsTaskApi = () => {
   };
 
   // 获取训练状态数据
-  const getTrainTaskState = async (id: number, activeTap: string) => {
-    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/${id}/runs_data_list/`)
+  const getTrainTaskState = async ({
+    id,
+    activeTap,
+    page = 1,
+    page_size = 10
+  }: {
+    id: number,
+    activeTap: string,
+    page?: number,
+    page_size?: number
+  }) => {
+    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/${id}/runs_data_list/?page=${page}&page_size=${page_size}`);
   };
 
   // 获取状态指标

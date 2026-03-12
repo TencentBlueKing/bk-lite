@@ -74,15 +74,23 @@ const ServingPage = () => {
       key: 'name'
     },
     {
-      title: t(`model-release.modelDescription`),
-      dataIndex: 'description',
-      key: 'description'
+      title: t('model-release.modelVersion'),
+      dataIndex: 'model_version',
+      key: 'model_version',
+      width: 120,
+      render: (_: unknown, record: TableData) => {
+        const version = record.model_version;
+        if (version === 'best' || version === 'latest') {
+          return <span>{version}</span>;
+        }
+        return <span>{`Version_${version}` || '--'}</span>;
+      }
     },
     {
       title: t(`mlops-common.containerStatus`),
       dataIndex: 'container_info',
       key: 'container_info',
-      // width: 120,
+      width: 80,
       render: (_, record) => {
         const { status, state, detail } = record.container_info;
         const isSuccess = status === 'success';
@@ -99,7 +107,7 @@ const ServingPage = () => {
       title: t(`mlops-common.port`),
       dataIndex: 'port',
       key: 'port',
-      // width: 100,
+      width: 80,
       render: (_, record) => {
         const port = record.container_info?.port || '';
         return port ? <span>{port}</span> : <span>--</span>;
@@ -109,7 +117,7 @@ const ServingPage = () => {
       title: t(`mlops-common.createdAt`),
       key: 'created_at',
       dataIndex: 'created_at',
-      width: 170,
+      width: 150,
       render: (_, record) => {
         return <span>{convertToLocalizedTime(record.created_at, 'YYYY-MM-DD HH:mm:ss')}</span>
       }
@@ -145,6 +153,7 @@ const ServingPage = () => {
       dataIndex: 'action',
       key: 'action',
       width: 180,
+      fixed: 'right',
       render: (_, record: TableData) => {
         const { state } = record.container_info;
         return (

@@ -8,7 +8,7 @@ import os
 import requests
 from typing import Optional, Any
 from apps.core.logger import mlops_logger as logger
-from apps.mlops.services.config_helpers import get_host_ip
+from apps.mlops.services.config_helpers import get_host_address
 
 # 敏感字段列表，日志输出时会被脱敏
 # _SENSITIVE_KEYS = frozenset(
@@ -275,7 +275,7 @@ class WebhookClient:
             error_code = result.get("code")
             raise WebhookError(error_msg, code=error_code)
 
-        result["host"] = get_host_ip()
+        result["host"] = get_host_address()
         return result
 
     @staticmethod
@@ -425,8 +425,8 @@ class WebhookClient:
             error_msg = result.get("message", "未知错误")
             raise WebhookError(error_msg)
 
-        host_ip = get_host_ip()
+        host_address = get_host_address()
         results = result.get("results", [])
         for item in results:
-            item["host"] = host_ip
+            item["host"] = host_address
         return results

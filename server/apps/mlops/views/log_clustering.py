@@ -165,6 +165,30 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
             train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
 
+            # 启动异步轮询训练状态
+            from apps.mlops.tasks.poll_train_job_status import poll_train_job_status
+
+            # 获取当前 run 数量，用于防止竞态条件（轮询读取到旧的已完成 run）
+            experiment_name = mlflow_service.build_experiment_name(
+                prefix=self.MLFLOW_PREFIX,
+                algorithm=train_job.algorithm,
+                train_job_id=train_job.id,
+            )
+            experiment = mlflow_service.get_experiment_by_name(experiment_name)
+            current_run_count = 0
+            if experiment:
+                runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
+                current_run_count = len(runs) if not runs.empty else 0
+            expected_run_count = current_run_count + 1
+
+            logger.info(
+                f"触发轮询任务: TrainJob ID={train_job.id}, "
+                f"当前 run 数量: {current_run_count}, 预期: {expected_run_count}"
+            )
+            poll_train_job_status.delay(
+                train_job.id, self.MLFLOW_PREFIX, expected_run_count
+            )
+
             return Response(
                 {
                     "message": "训练任务已启动",
@@ -249,6 +273,14 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
         获取训练任务的所有 MLflow 运行记录
         """
         try:
+            # 获取分页参数
+            page = int(request.GET.get("page", 1))
+            page_size = request.GET.get("page_size")
+            # page_size 为 None、0、-1 时不分页
+            use_pagination = page_size is not None and page_size not in ["0", "-1"]
+            if use_pagination:
+                page_size = int(page_size)
+
             train_job = self.get_object()
 
             # 构造实验名称
@@ -269,7 +301,8 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                         "algorithm": train_job.algorithm,
                         "job_status": train_job.status,
                         "message": "未找到对应的MLflow实验",
-                        "data": [],
+                        "count": 0,
+                        "items": [],
                     }
                 )
 
@@ -284,7 +317,8 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                         "algorithm": train_job.algorithm,
                         "job_status": train_job.status,
                         "message": "未找到训练运行记录",
-                        "data": [],
+                        "count": 0,
+                        "items": [],
                     }
                 )
 
@@ -353,14 +387,23 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                     train_job.status = new_status
                     train_job.save(update_fields=["status"])
 
+            # 分页处理
+            total_count = len(run_datas)
+            if use_pagination:
+                start_idx = (page - 1) * page_size
+                end_idx = start_idx + page_size
+                paginated_data = run_datas[start_idx:end_idx]
+            else:
+                paginated_data = run_datas
+
             return Response(
                 {
                     "train_job_id": train_job.id,
                     "train_job_name": train_job.name,
                     "algorithm": train_job.algorithm,
-                    "job_status": train_job.status,  # 返回当前 TrainJob 状态
-                    "total_runs": len(run_datas),
-                    "data": run_datas,
+                    "job_status": train_job.status,
+                    "count": total_count,
+                    "items": paginated_data,
                 }
             )
         except Exception as e:
