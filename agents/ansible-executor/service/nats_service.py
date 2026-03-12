@@ -92,15 +92,20 @@ class AnsibleNATSService:
         retry_subject = (
             f"ansible_executor.callback.retry.{self.config.nats_instance_id}"
         )
+
+        owner_stream = None
         try:
             owner_stream = await self.js.find_stream_name_by_subject(subject_pattern)
-            if owner_stream != self.config.js_stream:
-                raise ValueError(
-                    f"subject '{subject_pattern}' is already owned by stream '{owner_stream}'. "
-                    f"Please change ANSIBLE_JS_NAMESPACE/ANSIBLE_JS_SUBJECT_PREFIX."
-                )
         except NotFoundError:
-            pass
+            owner_stream = None
+
+        if owner_stream and owner_stream != self.config.js_stream:
+            logger.warning(
+                "subject '%s' already belongs to stream '%s'; reuse this stream for restart compatibility",
+                subject_pattern,
+                owner_stream,
+            )
+            self.config.js_stream = owner_stream
 
         try:
             retry_owner_stream = await self.js.find_stream_name_by_subject(
@@ -154,6 +159,26 @@ class AnsibleNATSService:
             max_deliver=self.config.js_max_deliver,
             backoff=backoff_seconds or None,
         )
+        # WorkQueue stream requires one unique filtered consumer per subject pattern.
+        # Reuse existing filtered consumer when stream is reused across restarts.
+        existing_main_consumer = None
+        main_consumers = await self.js.consumers_info(self.config.js_stream)
+        for info in main_consumers:
+            cfg = info.config
+            if cfg and getattr(cfg, "filter_subject", "") == subject_pattern:
+                existing_main_consumer = info.name
+                break
+
+        if existing_main_consumer and existing_main_consumer != durable_name:
+            logger.warning(
+                "reuse existing main consumer '%s' for filter '%s' on stream '%s'",
+                existing_main_consumer,
+                subject_pattern,
+                self.config.js_stream,
+            )
+            durable_name = existing_main_consumer
+            consumer_config.durable_name = durable_name
+
         try:
             await self.js.consumer_info(self.config.js_stream, durable_name)
             await self.js.delete_consumer(self.config.js_stream, durable_name)
@@ -202,6 +227,25 @@ class AnsibleNATSService:
             max_deliver=self.config.js_max_deliver,
             backoff=[float(x) for x in (self.config.js_backoff or [])] or None,
         )
+
+        existing_retry_consumer = None
+        retry_consumers = await self.js.consumers_info(retry_stream)
+        for info in retry_consumers:
+            cfg = info.config
+            if cfg and getattr(cfg, "filter_subject", "") == retry_subject:
+                existing_retry_consumer = info.name
+                break
+
+        if existing_retry_consumer and existing_retry_consumer != retry_durable:
+            logger.warning(
+                "reuse existing callback retry consumer '%s' for filter '%s' on stream '%s'",
+                existing_retry_consumer,
+                retry_subject,
+                retry_stream,
+            )
+            retry_durable = existing_retry_consumer
+            retry_consumer_config.durable_name = retry_durable
+
         try:
             await self.js.consumer_info(retry_stream, retry_durable)
             await self.js.delete_consumer(retry_stream, retry_durable)
