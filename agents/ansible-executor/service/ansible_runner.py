@@ -6,6 +6,7 @@ import re
 import shlex
 import shutil
 import uuid
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,9 @@ class AdhocRequest:
     execute_timeout: int = 60
     task_id: str | None = None
     callback: dict[str, Any] | None = None
+    private_key_content: str | None = None
+    private_key_passphrase: str | None = None
+    host_credentials: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -38,15 +42,42 @@ class PlaybookRequest:
     execute_timeout: int = 600
     task_id: str | None = None
     callback: dict[str, Any] | None = None
+    private_key_content: str | None = None
+    private_key_passphrase: str | None = None
+    host_credentials: list[dict[str, Any]] | None = None
+
+
+def _validate_host_credentials(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    host_credentials = payload.get("host_credentials")
+    if host_credentials is None:
+        return []
+    if not isinstance(host_credentials, list):
+        raise ValueError("host_credentials must be list")
+    normalized: list[dict[str, Any]] = []
+    for idx, item in enumerate(host_credentials):
+        if not isinstance(item, dict):
+            raise ValueError(f"host_credentials[{idx}] must be object")
+        host = str(item.get("host", "")).strip()
+        if not host:
+            raise ValueError(f"host_credentials[{idx}].host is required")
+        normalized.append(item)
+    return normalized
 
 
 def to_adhoc_request(payload: dict[str, Any]) -> AdhocRequest:
+    host_credentials = _validate_host_credentials(payload)
     inventory = str(payload.get("inventory", "")).strip()
     inventory_content = payload.get("inventory_content")
     if inventory_content is not None and not isinstance(inventory_content, str):
         raise ValueError("inventory_content must be string")
-    if not inventory and not inventory_content:
-        raise ValueError("inventory or inventory_content is required")
+    if not inventory and not inventory_content and not host_credentials:
+        raise ValueError(
+            "inventory or inventory_content or host_credentials is required"
+        )
+    if inventory and host_credentials and not inventory_content:
+        raise ValueError(
+            "inventory path with host_credentials is ambiguous, use inventory_content or only host_credentials"
+        )
 
     timeout = int(payload.get("execute_timeout", 60))
     if timeout < 1 or timeout > 3600:
@@ -55,6 +86,15 @@ def to_adhoc_request(payload: dict[str, Any]) -> AdhocRequest:
     extra_vars = payload.get("extra_vars") or {}
     if not isinstance(extra_vars, dict):
         raise ValueError("extra_vars must be object")
+
+    private_key_content = payload.get("private_key_content")
+    if private_key_content is not None and not isinstance(private_key_content, str):
+        raise ValueError("private_key_content must be string")
+    private_key_passphrase = payload.get("private_key_passphrase")
+    if private_key_passphrase is not None and not isinstance(
+        private_key_passphrase, str
+    ):
+        raise ValueError("private_key_passphrase must be string")
 
     return AdhocRequest(
         inventory=inventory,
@@ -66,10 +106,14 @@ def to_adhoc_request(payload: dict[str, Any]) -> AdhocRequest:
         execute_timeout=timeout,
         task_id=str(payload.get("task_id", "")).strip() or None,
         callback=payload.get("callback"),
+        private_key_content=private_key_content,
+        private_key_passphrase=private_key_passphrase,
+        host_credentials=host_credentials,
     )
 
 
 def to_playbook_request(payload: dict[str, Any]) -> PlaybookRequest:
+    host_credentials = _validate_host_credentials(payload)
     playbook_path = str(payload.get("playbook_path", "")).strip()
     playbook_content = payload.get("playbook_content")
     inventory = str(payload.get("inventory", "")).strip()
@@ -80,8 +124,14 @@ def to_playbook_request(payload: dict[str, Any]) -> PlaybookRequest:
         raise ValueError("inventory_content must be string")
     if not playbook_path and not playbook_content:
         raise ValueError("playbook_path or playbook_content is required")
-    if not inventory and not inventory_content:
-        raise ValueError("inventory or inventory_content is required")
+    if not inventory and not inventory_content and not host_credentials:
+        raise ValueError(
+            "inventory or inventory_content or host_credentials is required"
+        )
+    if inventory and host_credentials and not inventory_content:
+        raise ValueError(
+            "inventory path with host_credentials is ambiguous, use inventory_content or only host_credentials"
+        )
 
     timeout = int(payload.get("execute_timeout", 600))
     if timeout < 1 or timeout > 7200:
@@ -90,6 +140,15 @@ def to_playbook_request(payload: dict[str, Any]) -> PlaybookRequest:
     extra_vars = payload.get("extra_vars") or {}
     if not isinstance(extra_vars, dict):
         raise ValueError("extra_vars must be object")
+
+    private_key_content = payload.get("private_key_content")
+    if private_key_content is not None and not isinstance(private_key_content, str):
+        raise ValueError("private_key_content must be string")
+    private_key_passphrase = payload.get("private_key_passphrase")
+    if private_key_passphrase is not None and not isinstance(
+        private_key_passphrase, str
+    ):
+        raise ValueError("private_key_passphrase must be string")
 
     return PlaybookRequest(
         playbook_path=playbook_path,
@@ -100,7 +159,70 @@ def to_playbook_request(payload: dict[str, Any]) -> PlaybookRequest:
         execute_timeout=timeout,
         task_id=str(payload.get("task_id", "")).strip() or None,
         callback=payload.get("callback"),
+        private_key_content=private_key_content,
+        private_key_passphrase=private_key_passphrase,
+        host_credentials=host_credentials,
     )
+
+
+def _materialize_private_key(workspace: Path, key_content: str) -> str:
+    key_file = workspace / "id_rsa"
+    key_file.write_text(key_content, encoding="utf-8")
+    os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)
+    return str(key_file)
+
+
+def _quote_inventory_value(value: Any) -> str:
+    text = str(value)
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+    if any(ch.isspace() for ch in text):
+        return f'"{escaped}"'
+    return escaped
+
+
+def _build_host_credentials_inventory(
+    workspace: Path, host_credentials: list[dict[str, Any]]
+) -> str:
+    lines: list[str] = []
+    for idx, item in enumerate(host_credentials):
+        host = str(item.get("host", "")).strip()
+        parts = [host]
+
+        user = item.get("user")
+        if user:
+            parts.append(f"ansible_user={_quote_inventory_value(user)}")
+
+        port = item.get("port")
+        if port is not None and str(port).strip() != "":
+            parts.append(f"ansible_port={_quote_inventory_value(port)}")
+
+        connection = item.get("connection")
+        if connection:
+            parts.append(f"ansible_connection={_quote_inventory_value(connection)}")
+
+        password = item.get("password")
+        if password:
+            parts.append(f"ansible_password={_quote_inventory_value(password)}")
+
+        private_key_file = item.get("private_key_file")
+        private_key_content = item.get("private_key_content")
+        if private_key_content:
+            key_file = workspace / f"id_rsa_{idx}"
+            key_file.write_text(str(private_key_content), encoding="utf-8")
+            os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)
+            private_key_file = str(key_file)
+        if private_key_file:
+            parts.append(
+                f"ansible_ssh_private_key_file={_quote_inventory_value(private_key_file)}"
+            )
+
+        passphrase = item.get("private_key_passphrase")
+        if passphrase:
+            parts.append(f"ansible_ssh_passphrase={_quote_inventory_value(passphrase)}")
+
+        lines.append(" ".join(parts))
+
+    return "\n".join(lines) + ("\n" if lines else "")
 
 
 def _sanitize_task_id(task_id: str | None) -> str:
@@ -137,9 +259,32 @@ def cleanup_workspace(workspace: Path | None) -> None:
 def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
     workspace = create_task_workspace(payload.task_id)
     inventory_value = payload.inventory
-    if payload.inventory_content:
+    extra_vars = dict(payload.extra_vars or {})
+
+    if payload.private_key_content and not payload.host_credentials:
+        private_key_path = _materialize_private_key(
+            workspace, payload.private_key_content
+        )
+        extra_vars.setdefault("ansible_ssh_private_key_file", private_key_path)
+        if payload.private_key_passphrase:
+            extra_vars.setdefault(
+                "ansible_ssh_passphrase", payload.private_key_passphrase
+            )
+
+    if payload.inventory_content or payload.host_credentials:
         inventory_file = workspace / "inventory.ini"
-        inventory_file.write_text(payload.inventory_content, encoding="utf-8")
+        parts: list[str] = []
+        if payload.inventory_content:
+            parts.append(payload.inventory_content.rstrip("\n"))
+        if payload.host_credentials:
+            parts.append(
+                _build_host_credentials_inventory(
+                    workspace, payload.host_credentials
+                ).rstrip("\n")
+            )
+        inventory_file.write_text(
+            "\n".join([p for p in parts if p]) + "\n", encoding="utf-8"
+        )
         inventory_value = str(inventory_file)
 
     cmd = build_adhoc_command(
@@ -149,10 +294,13 @@ def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
             hosts=payload.hosts,
             module=payload.module,
             module_args=payload.module_args,
-            extra_vars=payload.extra_vars,
+            extra_vars=extra_vars,
             execute_timeout=payload.execute_timeout,
             task_id=payload.task_id,
             callback=payload.callback,
+            private_key_content=None,
+            private_key_passphrase=None,
+            host_credentials=None,
         )
     )
     return cmd, workspace
@@ -160,6 +308,17 @@ def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
 
 def prepare_playbook_execution(payload: PlaybookRequest) -> tuple[list[str], Path]:
     workspace = create_task_workspace(payload.task_id)
+    extra_vars = dict(payload.extra_vars or {})
+
+    if payload.private_key_content and not payload.host_credentials:
+        private_key_path = _materialize_private_key(
+            workspace, payload.private_key_content
+        )
+        extra_vars.setdefault("ansible_ssh_private_key_file", private_key_path)
+        if payload.private_key_passphrase:
+            extra_vars.setdefault(
+                "ansible_ssh_passphrase", payload.private_key_passphrase
+            )
 
     playbook_path = payload.playbook_path
     if payload.playbook_content:
@@ -168,9 +327,20 @@ def prepare_playbook_execution(payload: PlaybookRequest) -> tuple[list[str], Pat
         playbook_path = str(playbook_file)
 
     inventory_value = payload.inventory
-    if payload.inventory_content:
+    if payload.inventory_content or payload.host_credentials:
         inventory_file = workspace / "inventory.ini"
-        inventory_file.write_text(payload.inventory_content, encoding="utf-8")
+        parts: list[str] = []
+        if payload.inventory_content:
+            parts.append(payload.inventory_content.rstrip("\n"))
+        if payload.host_credentials:
+            parts.append(
+                _build_host_credentials_inventory(
+                    workspace, payload.host_credentials
+                ).rstrip("\n")
+            )
+        inventory_file.write_text(
+            "\n".join([p for p in parts if p]) + "\n", encoding="utf-8"
+        )
         inventory_value = str(inventory_file)
 
     cmd = build_playbook_command(
@@ -179,10 +349,13 @@ def prepare_playbook_execution(payload: PlaybookRequest) -> tuple[list[str], Pat
             playbook_content=None,
             inventory=inventory_value,
             inventory_content=None,
-            extra_vars=payload.extra_vars,
+            extra_vars=extra_vars,
             execute_timeout=payload.execute_timeout,
             task_id=payload.task_id,
             callback=payload.callback,
+            private_key_content=None,
+            private_key_passphrase=None,
+            host_credentials=None,
         )
     )
     return cmd, workspace
