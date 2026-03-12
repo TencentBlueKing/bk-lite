@@ -105,8 +105,10 @@ const Associations: React.FC = () => {
           <>
             {
               <Tag color="green">
-                {assoTypeList.find((item) => item.asst_id === asst_id)
-                  ?.asst_name || '--'}
+                {(() => {
+                const matched = assoTypeList.find((item) => item.asst_id === asst_id);
+                return matched ? `${matched.asst_name}(${asst_id})` : '--';
+              })()}
               </Tag>
             }
           </>
