@@ -1,15 +1,14 @@
-import React from 'react';
 import { IntegrationLogInstance } from '@/app/log/types/integration';
 import { TableDataItem } from '@/app/log/types';
-import { useFileVectorFormItems } from '../../common/fileVectorFormItems';
+import { useMongodbFilebeatFormItems } from '../../common/mongodbFilebeatFormItems';
 import { cloneDeep } from 'lodash';
 
-export const useVectorConfig = () => {
-  const commonFormItems = useFileVectorFormItems();
+export const useMongodbFilebeatConfig = () => {
+  const commonFormItems = useMongodbFilebeatFormItems();
   const pluginConfig = {
-    collector: 'Vector',
-    collect_type: 'file',
-    icon: 'jiaoxuerizhiPC'
+    collector: 'Filebeat',
+    collect_type: 'mongodb',
+    icon: 'mongodb'
   };
 
   return {
@@ -18,31 +17,33 @@ export const useVectorConfig = () => {
       mode: 'manual' | 'auto' | 'edit';
       onTableDataChange?: (data: IntegrationLogInstance[]) => void;
     }) => {
-      const disabledForm = {
-        file_path: false
-      };
-      const formItems = <>{commonFormItems.getCommonFormItems(disabledForm)}</>;
       const configs = {
         auto: {
-          formItems: commonFormItems.getCommonFormItems(),
+          formItems: commonFormItems.getCommonFormItems({
+            disabledFormItems: {},
+            hiddenFormItems: {}
+          }),
           initTableItems: {},
           defaultForm: {
-            multiline: {
+            log: {
               enabled: true,
-              mode: 'continue_through',
-              start_pattern: '^(ERROR|WARN|INFO|DEBUG|TRACE|FATAL)\\s\\[',
-              timeout_ms: 3000,
-              condition_pattern: '^(\\s+|Traceback|File\\s+)'
+              paths: ['/var/log/mongodb/mongod.log']
             }
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
             const dataSource = cloneDeep(config.dataSource || []);
-            delete row.multiline.enabled;
+
+            // Flat structure with 2 fields: log_enabled, log_paths
+            const configData = {
+              log_enabled: !!row.log?.enabled,
+              log_paths: row.log?.paths || []
+            };
+
             return {
               collector: pluginConfig.collector,
               collect_type: pluginConfig.collect_type,
-              configs: [row],
+              configs: [configData],
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
@@ -53,36 +54,53 @@ export const useVectorConfig = () => {
           }
         },
         edit: {
-          formItems,
+          getFormItems: () => {
+            return commonFormItems.getCommonFormItems({
+              disabledFormItems: {},
+              hiddenFormItems: {}
+            });
+          },
           getDefaultForm: (formData: TableDataItem) => {
-            const sources =
-              formData?.child?.content?.sources?.[
-                pluginConfig.collect_type + '_' + formData.rowId
-              ];
-            const path = sources?.include?.[0] || null;
+            const content = formData?.child?.content || [];
+            const mongodbConfig =
+              content.find((item: any) => item.module === 'mongodb') || {};
+
             return {
-              file_path: path,
-              multiline: Object.assign(sources?.multiline || {}, {
-                enabled: !!sources?.multiline?.mode
-              })
+              log: {
+                enabled: !!mongodbConfig.log?.enabled,
+                paths: mongodbConfig.log?.['var.paths'] || []
+              }
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             const originalChild = cloneDeep(configForm?.child || {});
-            const formDataCopy = cloneDeep(formData);
-            delete formDataCopy.multiline?.enabled;
+            const updatedContent = (originalChild.content || []).map(
+              (item: any) => {
+                if (item.module === 'mongodb') {
+                  return {
+                    ...item,
+                    log: {
+                      ...item.log,
+                      enabled: !!formData.log?.enabled,
+                      'var.paths': formData.log?.paths || []
+                    }
+                  };
+                }
+                return item;
+              }
+            );
 
             return {
               child: {
                 ...originalChild,
-                content: formDataCopy
+                content: updatedContent
               }
             };
           }
         },
         manual: {
           defaultForm: {},
-          formItems,
+          formItems: commonFormItems.getCommonFormItems(),
           getParams: (row: TableDataItem) => {
             return {
               instance_name: row.instance_name,

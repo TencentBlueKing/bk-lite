@@ -1,14 +1,14 @@
 import { IntegrationLogInstance } from '@/app/log/types/integration';
 import { TableDataItem } from '@/app/log/types';
-import { useDockerVectorFormItems } from '../../common/dockerVectorFormItems';
+import { useRabbitmqFilebeatFormItems } from '../../common/rabbitmqFilebeatFormItems';
 import { cloneDeep } from 'lodash';
 
-export const useVectorConfig = () => {
-  const commonFormItems = useDockerVectorFormItems();
+export const useRabbitmqFilebeatConfig = () => {
+  const commonFormItems = useRabbitmqFilebeatFormItems();
   const pluginConfig = {
-    collector: 'Vector',
-    collect_type: 'docker',
-    icon: 'docker-run-to-docker-compose'
+    collector: 'Filebeat',
+    collect_type: 'rabbitmq',
+    icon: 'rabbitmq'
   };
 
   return {
@@ -20,30 +20,30 @@ export const useVectorConfig = () => {
       const configs = {
         auto: {
           formItems: commonFormItems.getCommonFormItems({
-            hiddenFormItems: {
-              start_pattern: true
-            },
-            disabledFormItems: {}
+            disabledFormItems: {},
+            hiddenFormItems: {}
           }),
           initTableItems: {},
           defaultForm: {
-            docker_host: 'unix:///var/run/docker.sock',
-            multiline: {
+            log: {
               enabled: true,
-              mode: 'continue_through',
-              start_pattern: '^(ERROR|WARN|INFO|DEBUG|TRACE|FATAL)\\s\\[',
-              timeout_ms: 3000,
-              condition_pattern: '^(\\s+|Traceback|File\\s+)'
+              paths: ['/var/log/rabbitmq/rabbit@hostname.log']
             }
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
             const dataSource = cloneDeep(config.dataSource || []);
-            delete row.multiline.enabled;
+
+            // Flat structure with 2 fields: log_enabled, log_paths
+            const configData = {
+              log_enabled: !!row.log?.enabled,
+              log_paths: row.log?.paths || []
+            };
+
             return {
               collector: pluginConfig.collector,
               collect_type: pluginConfig.collect_type,
-              configs: [row],
+              configs: [configData],
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
@@ -56,36 +56,48 @@ export const useVectorConfig = () => {
         edit: {
           getFormItems: () => {
             return commonFormItems.getCommonFormItems({
-              hiddenFormItems: {
-                start_pattern: true
-              },
-              disabledFormItems: {}
+              disabledFormItems: {},
+              hiddenFormItems: {}
             });
           },
           getDefaultForm: (formData: TableDataItem) => {
-            const sources =
-              formData?.child?.content?.sources?.[
-                pluginConfig.collect_type + '_' + formData.rowId
-              ] || {};
-            const multiline = sources.multiline || {};
+            // 从 content 数组中获取配置数据
+            const content = formData?.child?.content || [];
+            const logConfig =
+              content.find((item: any) => item.module === 'rabbitmq') || {};
+
             return {
-              docker_host: sources.docker_host || null,
-              include_containers: sources.include_containers || null,
-              exclude_containers: sources.exclude_containers || null,
-              multiline: Object.assign(multiline, {
-                enabled: !!multiline.mode
-              })
+              log: {
+                enabled: !!logConfig.log?.enabled,
+                paths: logConfig.log?.['var.paths'] || []
+              }
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
+            // 深拷贝原始 child 对象，保持完整结构
             const originalChild = cloneDeep(configForm?.child || {});
-            const formDataCopy = cloneDeep(formData);
-            delete formDataCopy.multiline?.enabled;
+
+            // 更新 content 中 rabbitmq 模块的 log 配置
+            const updatedContent = (originalChild.content || []).map(
+              (item: any) => {
+                if (item.module === 'rabbitmq') {
+                  return {
+                    ...item,
+                    log: {
+                      ...item.log,
+                      enabled: !!formData.log?.enabled,
+                      'var.paths': formData.log?.paths || []
+                    }
+                  };
+                }
+                return item;
+              }
+            );
 
             return {
               child: {
                 ...originalChild,
-                content: formDataCopy
+                content: updatedContent
               }
             };
           }

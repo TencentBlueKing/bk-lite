@@ -1,14 +1,14 @@
 import { IntegrationLogInstance } from '@/app/log/types/integration';
 import { TableDataItem } from '@/app/log/types';
-import { useDockerVectorFormItems } from '../../common/dockerVectorFormItems';
+import { usePostgresqlFilebeatFormItems } from '../../common/postgresqlFilebeatFormItems';
 import { cloneDeep } from 'lodash';
 
-export const useVectorConfig = () => {
-  const commonFormItems = useDockerVectorFormItems();
+export const usePostgresqlFilebeatConfig = () => {
+  const commonFormItems = usePostgresqlFilebeatFormItems();
   const pluginConfig = {
-    collector: 'Vector',
-    collect_type: 'docker',
-    icon: 'docker-run-to-docker-compose'
+    collector: 'Filebeat',
+    collect_type: 'postgresql',
+    icon: 'postgresql'
   };
 
   return {
@@ -20,30 +20,30 @@ export const useVectorConfig = () => {
       const configs = {
         auto: {
           formItems: commonFormItems.getCommonFormItems({
-            hiddenFormItems: {
-              start_pattern: true
-            },
-            disabledFormItems: {}
+            disabledFormItems: {},
+            hiddenFormItems: {}
           }),
           initTableItems: {},
           defaultForm: {
-            docker_host: 'unix:///var/run/docker.sock',
-            multiline: {
+            log: {
               enabled: true,
-              mode: 'continue_through',
-              start_pattern: '^(ERROR|WARN|INFO|DEBUG|TRACE|FATAL)\\s\\[',
-              timeout_ms: 3000,
-              condition_pattern: '^(\\s+|Traceback|File\\s+)'
+              paths: ['/var/log/postgresql/postgresql-14-main.log']
             }
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
             const dataSource = cloneDeep(config.dataSource || []);
-            delete row.multiline.enabled;
+
+            // Flat structure with 2 fields: log_enabled, log_paths
+            const configData = {
+              log_enabled: !!row.log?.enabled,
+              log_paths: row.log?.paths || []
+            };
+
             return {
               collector: pluginConfig.collector,
               collect_type: pluginConfig.collect_type,
-              configs: [row],
+              configs: [configData],
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
@@ -56,36 +56,44 @@ export const useVectorConfig = () => {
         edit: {
           getFormItems: () => {
             return commonFormItems.getCommonFormItems({
-              hiddenFormItems: {
-                start_pattern: true
-              },
-              disabledFormItems: {}
+              disabledFormItems: {},
+              hiddenFormItems: {}
             });
           },
           getDefaultForm: (formData: TableDataItem) => {
-            const sources =
-              formData?.child?.content?.sources?.[
-                pluginConfig.collect_type + '_' + formData.rowId
-              ] || {};
-            const multiline = sources.multiline || {};
+            const content = formData?.child?.content || [];
+            const postgresqlConfig =
+              content.find((item: any) => item.module === 'postgresql') || {};
+
             return {
-              docker_host: sources.docker_host || null,
-              include_containers: sources.include_containers || null,
-              exclude_containers: sources.exclude_containers || null,
-              multiline: Object.assign(multiline, {
-                enabled: !!multiline.mode
-              })
+              log: {
+                enabled: !!postgresqlConfig.log?.enabled,
+                paths: postgresqlConfig.log?.['var.paths'] || []
+              }
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             const originalChild = cloneDeep(configForm?.child || {});
-            const formDataCopy = cloneDeep(formData);
-            delete formDataCopy.multiline?.enabled;
+            const updatedContent = (originalChild.content || []).map(
+              (item: any) => {
+                if (item.module === 'postgresql') {
+                  return {
+                    ...item,
+                    log: {
+                      ...item.log,
+                      enabled: !!formData.log?.enabled,
+                      'var.paths': formData.log?.paths || []
+                    }
+                  };
+                }
+                return item;
+              }
+            );
 
             return {
               child: {
                 ...originalChild,
-                content: formDataCopy
+                content: updatedContent
               }
             };
           }

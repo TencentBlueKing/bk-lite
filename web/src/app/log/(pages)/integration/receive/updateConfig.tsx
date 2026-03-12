@@ -7,7 +7,7 @@ import React, {
   useMemo,
   useImperativeHandle,
   useEffect,
-  forwardRef,
+  forwardRef
 } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
@@ -35,14 +35,14 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       setModalVisible(true);
       setConfirmLoading(false);
       getContent(_form);
-    },
+    }
   }));
 
   const getContent = async (data: any) => {
     setPageLoading(true);
     try {
       const res = await getConfigContent({
-        ids: data.config_id,
+        ids: data.config_id
       });
       setConfigForm(res || {});
     } finally {
@@ -54,7 +54,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
     return getCollectTypeConfig({
       type: formData.collect_type__name,
       collector: formData.collect_type__collector,
-      mode: 'edit',
+      mode: 'edit'
     });
   }, [formData]);
 
@@ -63,7 +63,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       configsInfo.formItems ||
       configsInfo.getFormItems({
         rowId: formData.id,
-        ...configForm,
+        ...configForm
       })
     );
   }, [configsInfo, configForm, formData]);
@@ -72,7 +72,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
     if (configsInfo?.getDefaultForm && configForm && formData) {
       initData({
         rowId: formData.id,
-        ...configForm,
+        ...configForm
       });
     }
   }, [configsInfo, configForm, formData]);
@@ -84,7 +84,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
     const activeFormData = configsInfo.getDefaultForm(row);
     form.setFieldsValue({
       ...formData,
-      ...activeFormData,
+      ...activeFormData
     });
   };
 
@@ -103,17 +103,11 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
 
   const operateConfig = async (params: TableDataItem) => {
     try {
-      const { id, content_data } = configsInfo.getParams(
-        params,
-        configForm
-      ).child;
+      const { child } = configsInfo.getParams(params, configForm);
       const data = {
         instance_id: formData.id,
         collect_type_id: formData.collect_type_id,
-        child: {
-          id,
-          content_data,
-        },
+        child
       };
       setConfirmLoading(true);
       await updateInstanceCollectConfig(data);
