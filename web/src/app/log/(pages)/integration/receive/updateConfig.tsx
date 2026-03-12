@@ -123,7 +123,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
 
   return (
     <OperateModal
-      width={500}
+      width={600}
       title={title}
       visible={modalVisible}
       onCancel={handleCancel}

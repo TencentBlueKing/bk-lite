@@ -69,7 +69,6 @@
         "guide": "安装指南",
         "sidecar": "控制器",
         "installationGuide": "安装指引",
-        "telegrafConfigTips": "开启Telegraf采集器时，自动初始化并绑定对应配置文件，后续如需修改，请前往“配置列表”中修改。",
         "installWayDes": "远程安装需要提供主机相关登录信息，进行远程安装控制器。包括sidecar和nas executor；手动安装，需要按照安装步骤前往主机进行手动操作安装控制器。",
         "controllerInfo": "控制器信息",
         "system": "操作系统",

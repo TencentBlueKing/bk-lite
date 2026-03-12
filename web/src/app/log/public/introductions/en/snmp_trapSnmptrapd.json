@@ -2,7 +2,7 @@
   "overview": {
     "title": "Overview",
     "paragraphs": [
-      "SNMP Trap integration uses Vector to receive SNMP Trap messages sent by network devices. Through structured log data, you can monitor network device alarms, faults, and status changes to implement unified network device event management."
+      "SNMP Trap integration uses Snmptrapd to receive SNMP Trap messages sent by network devices. Through structured log data, you can monitor network device alarms, faults, and status changes to implement unified network device event management."
     ]
   },
   "features": {
@@ -90,7 +90,7 @@
   ],
   "steps": {
     "title": "Configure Sender",
-    "description": "Configure network devices to send SNMP Traps to Vector:",
+    "description": "Configure network devices to send SNMP Traps to Snmptrapd:",
     "items": []
   },
   "tips": [
