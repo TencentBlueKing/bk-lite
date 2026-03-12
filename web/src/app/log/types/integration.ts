@@ -6,6 +6,7 @@ export interface CollectTypeItem {
   collector: string;
   icon?: string;
   domain?: string;
+  display_category?: string;
   display_description?: string;
   description: string;
   display_name?: string;
