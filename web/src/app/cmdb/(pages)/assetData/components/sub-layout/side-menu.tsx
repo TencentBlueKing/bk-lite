@@ -25,6 +25,11 @@ interface ListItem {
   value?: number;
   model_asst_id: string;
 }
+
+interface RelationSection {
+  title: string;
+  children: ListItem[];
+}
 interface ModelAssociation {
   _id: number;
   _label: string;
@@ -95,7 +100,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
     [getModelAssociations]
   );
 
-  const relationData = useMemo(() => {
+  const relationData = useMemo<RelationSection[]>(() => {
     if (!assoInstances?.length) return [];
 
     const filterAssoList: any = allAssociations.filter((item) => {
@@ -131,10 +136,31 @@ const SideMenu: React.FC<SideMenuProps> = ({
         return acc;
       }, new Map());
 
-    return Array.from(groupedData.entries()).map(([title, children]) => ({
-      title,
-      children,
-    }));
+    return Array.from(groupedData.entries()).map(([title, children]) => {
+      const dedupedMap = new Map<string, ListItem>();
+
+      children.forEach((child: ListItem) => {
+        const dedupKey = child.text;
+        const existing = dedupedMap.get(dedupKey);
+
+        if (!existing) {
+          dedupedMap.set(dedupKey, child);
+          return;
+        }
+
+        const existingValue = existing.value || 0;
+        const currentValue = child.value || 0;
+
+        if (currentValue > existingValue) {
+          dedupedMap.set(dedupKey, child);
+        }
+      });
+
+      return {
+        title,
+        children: Array.from(dedupedMap.values()),
+      };
+    });
   }, [assoInstances, assoTypes, allAssociations, modelList]);
 
   return (
