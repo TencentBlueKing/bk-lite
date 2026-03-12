@@ -10,7 +10,7 @@ export const useAuditbeatConfig = () => {
   const pluginConfig = {
     collector: 'Auditbeat',
     collect_type: 'auditd',
-    icon: 'shenjirizhi3',
+    icon: 'shenjirizhi3'
   };
 
   return {
@@ -23,7 +23,7 @@ export const useAuditbeatConfig = () => {
         <>
           {commonFormItems.getCommonFormItems({
             disabledFormItems: {},
-            hiddenFormItems: {},
+            hiddenFormItems: {}
           })}
         </>
       );
@@ -33,7 +33,7 @@ export const useAuditbeatConfig = () => {
           initTableItems: {
             instance_id: `${pluginConfig.collector}-${
               pluginConfig.collect_type
-            }-${uuidv4()}`,
+            }-${uuidv4()}`
           },
           defaultForm: {},
           columns: [],
@@ -46,11 +46,11 @@ export const useAuditbeatConfig = () => {
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
-                  node_ids: [item.node_ids].flat(),
+                  node_ids: [item.node_ids].flat()
                 };
-              }),
+              })
             };
-          },
+          }
         },
         edit: {
           formItems,
@@ -68,17 +68,19 @@ export const useAuditbeatConfig = () => {
               ruleCategories.push('network');
             }
             return {
-              rule_categories: ruleCategories,
+              rule_categories: ruleCategories
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
+            const originalChild = cloneDeep(configForm?.child || {});
+
             return {
               child: {
-                id: configForm.child.id,
-                content_data: formData,
-              },
+                ...originalChild,
+                content: formData
+              }
             };
-          },
+          }
         },
         manual: {
           defaultForm: {},
@@ -86,16 +88,16 @@ export const useAuditbeatConfig = () => {
           getParams: (row: TableDataItem) => {
             return {
               instance_name: row.instance_name,
-              instance_id: row.instance_id,
+              instance_id: row.instance_id
             };
           },
-          getConfigText: () => '--',
-        },
+          getConfigText: () => '--'
+        }
       };
       return {
         ...pluginConfig,
-        ...configs[extra.mode],
+        ...configs[extra.mode]
       };
-    },
+    }
   };
 };

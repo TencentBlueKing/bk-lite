@@ -1,0 +1,74 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "ICMP 流量集成使用 Packetbeat 抓取 ICMP 协议包（如 Ping），帮助您监控网络连通性、诊断网络问题、分析主机间的网络延迟。适用于网络故障排查和基础设施健康监控。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "🔗",
+        "title": "连通性监控",
+        "description": "实时检测主机间网络连通状态，发现网络中断"
+      },
+      {
+        "icon": "⏱️",
+        "title": "延迟分析",
+        "description": "统计 RTT 往返时间，识别网络延迟问题"
+      },
+      {
+        "icon": "📊",
+        "title": "丢包检测",
+        "description": "通过无响应的请求识别网络丢包情况"
+      },
+      {
+        "icon": "🔍",
+        "title": "故障诊断",
+        "description": "快速定位网络路径中的问题节点"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "解析字段",
+      "description": "ICMP 流量将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "220px" },
+        { "key": "type", "title": "类型", "width": "100px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        { "field": "@timestamp", "type": "date", "description": "抓包时间戳" },
+        {
+          "field": "icmp.type",
+          "type": "keyword",
+          "description": "ICMP 类型 (Echo Request/Echo Reply 等)"
+        },
+        { "field": "icmp.code", "type": "long", "description": "ICMP 代码" },
+        { "field": "source.ip", "type": "ip", "description": "源 IP 地址" },
+        {
+          "field": "destination.ip",
+          "type": "ip",
+          "description": "目标 IP 地址"
+        },
+        {
+          "field": "event.duration",
+          "type": "long",
+          "description": "RTT 往返时间 (纳秒)"
+        },
+        {
+          "field": "icmp.request.bytes",
+          "type": "long",
+          "description": "请求包大小 (字节)"
+        },
+        {
+          "field": "network.direction",
+          "type": "keyword",
+          "description": "网络方向 (inbound/outbound)"
+        }
+      ]
+    }
+  ]
+}

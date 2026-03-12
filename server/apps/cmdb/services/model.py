@@ -14,10 +14,10 @@ from apps.cmdb.constants.constants import (
     USER,
     OPERATOR_MODEL,
     DISPLAY_FIELD_CONFIG,
+    ENUM_SELECT_MODE_DEFAULT,
 )
+from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.validators.field_validator import (
-    TAG_ATTR_ID,
-    TAG_MODE_FREE,
     normalize_tag_field_option as normalize_tag_field_option_config,
 )
 from apps.cmdb.validators import IdentifierValidator
@@ -78,7 +78,9 @@ class ModelManage(object):
         config = normalize_tag_field_option_config(option)
         return {
             "mode": config.mode,
-            "options": [{"key": item.key, "value": item.value} for item in config.options],
+            "options": [
+                {"key": item.key, "value": item.value} for item in config.options
+            ],
         }
 
     @staticmethod
@@ -89,7 +91,9 @@ class ModelManage(object):
         if not model_info:
             return
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
-        tag_attr = next((attr for attr in attrs if ModelManage._is_tag_attr(attr)), None)
+        tag_attr = next(
+            (attr for attr in attrs if ModelManage._is_tag_attr(attr)), None
+        )
         if not tag_attr:
             return
 
@@ -143,6 +147,186 @@ class ModelManage(object):
     def _validate_model_id(model_id: str):
         if not IdentifierValidator.is_valid(model_id):
             raise BaseAppException(IdentifierValidator.get_error_message("模型ID"))
+
+    @staticmethod
+    def normalize_enum_public_binding(
+        attr_info: dict, current_attr: dict | None = None
+    ) -> dict:
+        """
+        规范化 enum 公共选项库绑定信息并回填 option 快照。
+
+        处理逻辑：
+        1. 若 attr_type != enum，直接返回原 attr_info，不做处理。
+        2. enum_rule_type 默认为 custom。
+        3. 若 enum_rule_type == public_library：
+           - 校验 public_library_id 必填
+           - 从公共库拉取最新 options 并写入 option 字段（快照）
+        4. 若 enum_rule_type == custom：
+           - 清空 public_library_id
+           - 保持 option 不变
+
+        Args:
+            attr_info: 前端传入的属性配置
+            current_attr: 当前已存在的属性（更新场景下传入）
+
+        Returns:
+            dict: 规范化后的 attr_info（原地修改并返回）
+
+        Raises:
+            BaseAppException: 公共库不存在或配置不合法时抛出
+        """
+        if attr_info.get("attr_type") != "enum":
+            return attr_info
+
+        enum_rule_type = attr_info.get("enum_rule_type", "custom")
+        attr_info["enum_rule_type"] = enum_rule_type
+
+        if enum_rule_type == "public_library":
+            public_library_id = attr_info.get("public_library_id")
+            if not public_library_id:
+                raise BaseAppException("绑定公共选项库时 public_library_id 必填")
+
+            from apps.cmdb.services.public_enum_library import get_library_or_raise
+
+            library = get_library_or_raise(public_library_id)
+            attr_info["option"] = library.options
+            attr_info["public_library_id"] = public_library_id
+
+            logger.info(
+                f"[EnumPublicBinding] normalized attr_id={attr_info.get('attr_id')}, "
+                f"enum_rule_type={enum_rule_type}, public_library_id={public_library_id}"
+            )
+        else:
+            attr_info["enum_rule_type"] = "custom"
+            attr_info["public_library_id"] = None
+
+        return attr_info
+
+    @staticmethod
+    def validate_enum_rule_immutable(current_attr: dict, incoming_attr: dict) -> None:
+        """
+        校验字段创建后 enum_rule_type 不可切换。
+
+        规则：
+        - 仅对 attr_type == enum 的字段生效
+        - 创建时：任意 enum_rule_type（custom / public_library）均可
+        - 更新时：不允许从 custom 切换到 public_library，或反之
+
+        Args:
+            current_attr: 当前已存储的属性定义
+            incoming_attr: 本次请求传入的属性定义
+
+        Raises:
+            BaseAppException: 规则类型切换时抛出
+        """
+        if current_attr.get("attr_type") != "enum":
+            return
+        if incoming_attr.get("attr_type") != "enum":
+            return
+
+        current_rule = current_attr.get("enum_rule_type", "custom")
+        incoming_rule = incoming_attr.get("enum_rule_type", "custom")
+
+        if current_rule != incoming_rule:
+            raise BaseAppException(
+                f"枚举字段创建后规则类型不可切换（当前: {current_rule}）"
+            )
+
+    @staticmethod
+    def ensure_enum_select_mode(attr_info: dict) -> dict:
+        """
+        确保枚举字段具有 enum_select_mode 属性。
+
+        规则：
+        - 仅对 attr_type == enum 的字段生效
+        - 若未提供 enum_select_mode，则默认设置为 single
+
+        Args:
+            attr_info: 属性配置字典
+
+        Returns:
+            dict: 规范化后的 attr_info（原地修改并返回）
+        """
+        if attr_info.get("attr_type") != "enum":
+            return attr_info
+
+        if "enum_select_mode" not in attr_info:
+            attr_info["enum_select_mode"] = ENUM_SELECT_MODE_DEFAULT
+
+        return attr_info
+
+    @staticmethod
+    def validate_enum_select_mode_immutable(
+        current_attr: dict, incoming_attr: dict
+    ) -> None:
+        """
+        校验字段创建后 enum_select_mode 不可切换。
+
+        规则：
+        - 仅对 attr_type == enum 的字段生效
+        - 创建时：任意 enum_select_mode（single / multiple）均可
+        - 更新时：不允许从 single 切换到 multiple，或反之
+
+        Args:
+            current_attr: 当前已存储的属性定义
+            incoming_attr: 本次请求传入的属性定义
+
+        Raises:
+            BaseAppException: 选择模式切换时抛出
+        """
+        if current_attr.get("attr_type") != "enum":
+            return
+        if incoming_attr.get("attr_type") != "enum":
+            return
+
+        current_mode = current_attr.get("enum_select_mode", ENUM_SELECT_MODE_DEFAULT)
+        incoming_mode = incoming_attr.get("enum_select_mode", current_mode)
+
+        if current_mode != incoming_mode:
+            raise BaseAppException(
+                f"枚举字段创建后选择模式不可切换（当前: {current_mode}）"
+            )
+
+    @staticmethod
+    def resolve_runtime_enum_options(attr: dict) -> list[dict]:
+        """
+        运行时解析枚举选项。
+
+        口径：
+        - 若 enum_rule_type == public_library，优先从公共库实时拉取
+        - 若公共库不存在或查询失败，回退到字段快照（attr.option）
+        - 若 enum_rule_type == custom，直接返回 attr.option
+
+        Args:
+            attr: 字段属性定义
+
+        Returns:
+            list[dict]: 枚举选项列表 [{"id": str, "name": str}, ...]
+        """
+        if attr.get("attr_type") != "enum":
+            return []
+
+        enum_rule_type = attr.get("enum_rule_type", "custom")
+        option = attr.get("option", [])
+
+        if enum_rule_type != "public_library":
+            return option if isinstance(option, list) else []
+
+        public_library_id = attr.get("public_library_id")
+        if not public_library_id:
+            return option if isinstance(option, list) else []
+
+        try:
+            from apps.cmdb.services.public_enum_library import get_library_or_raise
+
+            library = get_library_or_raise(public_library_id)
+            return list(library.options)
+        except Exception as e:
+            logger.warning(
+                f"[EnumPublicBinding] resolve_runtime_enum_options fallback to snapshot, "
+                f"public_library_id={public_library_id}, error={e}"
+            )
+            return option if isinstance(option, list) else []
 
     @staticmethod
     def _add_display_field_to_attrs(
@@ -264,9 +448,7 @@ class ModelManage(object):
 
         # 为默认字段中的目标类型添加 _display 字段定义
         for attr in list(attrs):  # 使用 list() 避免迭代时修改列表
-            ModelManage._add_display_field_to_attrs(
-                attrs, attr, model_id, is_pre=True
-            )
+            ModelManage._add_display_field_to_attrs(attrs, attr, model_id, is_pre=True)
 
         data.update(attrs=json.dumps(attrs))
 
@@ -633,6 +815,10 @@ class ModelManage(object):
                     attr_info.get("option") or {}
                 )
 
+            if attr_info.get("attr_type") == "enum":
+                ModelManage.normalize_enum_public_binding(attr_info)
+                ModelManage.ensure_enum_select_mode(attr_info)
+
             ModelManage._validate_attr_id(attr_info["attr_id"])
             model_query = {"field": "model_id", "type": "str=", "value": model_id}
             models, _ = ag.query_entity(MODEL, [model_query])
@@ -646,7 +832,6 @@ class ModelManage(object):
                 raise BaseAppException("model attr repetition")
             attrs.append(attr_info)
 
-            # 如果新增字段是 organization/user/enum 类型,自动添加 _display 字段定义
             ModelManage._add_display_field_to_attrs(attrs, attr_info, model_id)
 
             result = ag.set_entity_properties(
@@ -714,6 +899,12 @@ class ModelManage(object):
                     attr_info.get("option") or current_attr.get("option") or {}
                 )
 
+            is_enum_attr = current_attr.get("attr_type") == "enum"
+            if is_enum_attr:
+                ModelManage.validate_enum_rule_immutable(current_attr, attr_info)
+                ModelManage.validate_enum_select_mode_immutable(current_attr, attr_info)
+                ModelManage.normalize_enum_public_binding(attr_info, current_attr)
+
             for attr in attrs:
                 if attr_info["attr_id"] != attr["attr_id"]:
                     continue
@@ -725,6 +916,12 @@ class ModelManage(object):
                     option=attr_info["option"],
                     user_prompt=attr_info["user_prompt"],
                 )
+                if is_enum_attr:
+                    attr["enum_rule_type"] = attr_info.get("enum_rule_type", "custom")
+                    attr["public_library_id"] = attr_info.get("public_library_id")
+                    attr["enum_select_mode"] = current_attr.get(
+                        "enum_select_mode", ENUM_SELECT_MODE_DEFAULT
+                    )
 
             result = ag.set_entity_properties(
                 MODEL, [model_info["_id"]], dict(attrs=json.dumps(attrs)), {}, [], False

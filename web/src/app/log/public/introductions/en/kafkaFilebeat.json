@@ -1,0 +1,81 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "Kafka integration uses the Filebeat Kafka module to automatically collect and parse Kafka broker logs. Supports server logs, controller logs, and authorization logs, helping you monitor Kafka cluster health, troubleshoot message issues, and optimize performance."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "🏥",
+        "title": "Multi-type Logs",
+        "description": "Supports server logs, controller logs, authorization logs"
+      },
+      {
+        "icon": "📊",
+        "title": "Cluster Monitoring",
+        "description": "Track partition leader changes, replica sync, controller elections"
+      },
+      {
+        "icon": "🔍",
+        "title": "Error Analysis",
+        "description": "Capture producer/consumer errors, connection failures, authentication issues"
+      },
+      {
+        "icon": "⚡",
+        "title": "Security Auditing",
+        "description": "Record ACL authorization decisions, authentication events"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "Kafka logs will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Log timestamp"
+        },
+        {
+          "field": "log.level",
+          "type": "keyword",
+          "description": "Log level (INFO, WARN, ERROR, DEBUG)"
+        },
+        {
+          "field": "kafka.log.class",
+          "type": "keyword",
+          "description": "Logger class name"
+        },
+        {
+          "field": "kafka.log.thread",
+          "type": "keyword",
+          "description": "Thread name"
+        },
+        {
+          "field": "kafka.log.component",
+          "type": "keyword",
+          "description": "Component (server, controller, authorizer)"
+        },
+        {
+          "field": "kafka.log.trace.id",
+          "type": "keyword",
+          "description": "Trace ID (if available)"
+        },
+        {
+          "field": "message",
+          "type": "text",
+          "description": "Log message content"
+        }
+      ]
+    }
+  ]
+}

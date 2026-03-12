@@ -1,0 +1,78 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "Redis 集成使用 Filebeat 的 Redis 模块，自动采集和解析 Redis 数据库的服务日志和慢查询日志。支持多种 Redis 部署模式（单机、主从、集群、哨兵），帮助您监控 Redis 运行状态、识别性能瓶颈、追踪慢命令。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "📄",
+        "title": "服务日志采集",
+        "description": "采集启动、连接、持久化、复制等运行日志"
+      },
+      {
+        "icon": "⏳",
+        "title": "慢查询分析",
+        "description": "识别执行时间超过阈值的命令，提取执行耗时"
+      },
+      {
+        "icon": "🔄",
+        "title": "主从状态监控",
+        "description": "追踪主从切换、同步状态、连接断开等事件"
+      },
+      {
+        "icon": "💾",
+        "title": "持久化追踪",
+        "description": "监控 RDB/AOF 持久化操作的状态和耗时"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "解析字段",
+      "description": "Redis 日志将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "220px" },
+        { "key": "type", "title": "类型", "width": "120px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        { "field": "@timestamp", "type": "date", "description": "日志时间戳" },
+        {
+          "field": "redis.log.level",
+          "type": "keyword",
+          "description": "日志级别 (. * # - 分别对应 debug/verbose/notice/warning)"
+        },
+        {
+          "field": "redis.log.role",
+          "type": "keyword",
+          "description": "节点角色 (M=主节点/S=从节点/C=子进程/X=哨兵)"
+        },
+        { "field": "redis.log.pid", "type": "long", "description": "进程 ID" },
+        {
+          "field": "redis.log.message",
+          "type": "text",
+          "description": "日志消息内容"
+        },
+        {
+          "field": "redis.slowlog.cmd",
+          "type": "keyword",
+          "description": "慢查询命令名称"
+        },
+        {
+          "field": "redis.slowlog.duration_us",
+          "type": "long",
+          "description": "命令执行时间 (微秒)"
+        },
+        {
+          "field": "redis.slowlog.key",
+          "type": "keyword",
+          "description": "操作的键名"
+        }
+      ]
+    }
+  ]
+}

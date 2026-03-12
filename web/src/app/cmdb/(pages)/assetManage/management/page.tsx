@@ -12,6 +12,7 @@ import {
   HolderOutlined,
   CopyOutlined,
   PlusOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import Image from 'next/image';
 import assetManageStyle from './index.module.scss';
@@ -19,6 +20,7 @@ import { getIconUrl } from '@/app/cmdb/utils/common';
 import GroupModal from './list/groupModal';
 import ModelModal from './list/modelModal';
 import CopyModelModal from './list/copyModelModal';
+import PublicEnumLibraryModal, { PublicEnumLibraryModalRef } from './list/publicEnumLibraryModal';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
@@ -37,6 +39,7 @@ const AssetManage = () => {
   const groupRef = useRef<any>(null);
   const modelRef = useRef<any>(null);
   const copyModelRef = useRef<any>(null);
+  const publicEnumLibraryRef = useRef<PublicEnumLibraryModalRef>(null);
   const [modelGroup, setModelGroup] = useState<GroupItem[]>([]);
   const [groupList, setGroupList] = useState<GroupItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -117,6 +120,10 @@ const AssetManage = () => {
 
   const showCopyModelModal = (model: ModelItem) => {
     copyModelRef.current?.showModal(model);
+  };
+
+  const showPublicEnumLibraryModal = () => {
+    publicEnumLibraryRef.current?.showModal();
   };
 
   const updateGroupList = () => {
@@ -247,6 +254,9 @@ const AssetManage = () => {
                 {t('Model.addGroup')}
               </Button>
             </PermissionWrapper>
+            <Button className="ml-[8px]" icon={<SettingOutlined />} onClick={showPublicEnumLibraryModal}>
+              {t('PublicEnumLibrary.manage')}
+            </Button>
           </div>
         </div>
         <Spin spinning={loading}>
@@ -421,6 +431,7 @@ const AssetManage = () => {
         modelGroupList={groupList}
         onSuccess={updateModelList}
       />
+      <PublicEnumLibraryModal ref={publicEnumLibraryRef} />
     </div>
   );
 };

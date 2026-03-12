@@ -1,0 +1,93 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "网络流集成使用 Packetbeat 的 Flow 功能，捕获和聚合网络会话数据。无需配置每个协议，即可获取主机间所有 TCP/UDP 通信的统计信息，帮助您进行流量分析、容量规划和安全监控。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "流量统计",
+        "description": "统计各主机、端口、协议的流量分布和趋势"
+      },
+      {
+        "icon": "🔗",
+        "title": "连接追踪",
+        "description": "记录所有网络连接的建立、数据传输和关闭"
+      },
+      {
+        "icon": "🌐",
+        "title": "拓扑可视化",
+        "description": "基于流量数据绘制主机间通信拓扑图"
+      },
+      {
+        "icon": "🛡️",
+        "title": "异常检测",
+        "description": "识别异常流量模式、未授权连接和数据外泄"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "解析字段",
+      "description": "网络流将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "220px" },
+        { "key": "type", "title": "类型", "width": "100px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "流量记录时间戳"
+        },
+        { "field": "source.ip", "type": "ip", "description": "源 IP 地址" },
+        { "field": "source.port", "type": "long", "description": "源端口" },
+        {
+          "field": "destination.ip",
+          "type": "ip",
+          "description": "目标 IP 地址"
+        },
+        {
+          "field": "destination.port",
+          "type": "long",
+          "description": "目标端口"
+        },
+        {
+          "field": "network.transport",
+          "type": "keyword",
+          "description": "传输协议 (tcp/udp)"
+        },
+        {
+          "field": "source.bytes",
+          "type": "long",
+          "description": "源发送字节数"
+        },
+        {
+          "field": "destination.bytes",
+          "type": "long",
+          "description": "目标发送字节数"
+        },
+        {
+          "field": "source.packets",
+          "type": "long",
+          "description": "源发送包数"
+        },
+        {
+          "field": "destination.packets",
+          "type": "long",
+          "description": "目标发送包数"
+        },
+        {
+          "field": "event.duration",
+          "type": "long",
+          "description": "会话持续时间 (纳秒)"
+        }
+      ]
+    }
+  ]
+}

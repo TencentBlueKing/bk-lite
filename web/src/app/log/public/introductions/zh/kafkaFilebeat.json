@@ -1,0 +1,107 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "Kafka 集成使用 Filebeat 的 Kafka 模块，自动采集和解析 Apache Kafka 的服务日志和 Controller 日志。帮助您监控 Kafka 集群健康状态、追踪 Broker 事件、分析消费者组行为和分区复制状态。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "🏥",
+        "title": "集群健康监控",
+        "description": "监控 Broker 启动/停止、Controller 选举、ISR 状态变化"
+      },
+      {
+        "icon": "📊",
+        "title": "分区追踪",
+        "description": "跟踪分区 Leader 分配、副本同步、重平衡事件"
+      },
+      {
+        "icon": "🔍",
+        "title": "错误分析",
+        "description": "快速定位连接失败、复制延迟、消费者组问题"
+      },
+      {
+        "icon": "⚡",
+        "title": "性能诊断",
+        "description": "分析请求处理时间、网络延迟、磁盘 I/O 问题"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "服务日志字段",
+      "description": "Kafka 服务日志将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "220px" },
+        { "key": "type", "title": "类型", "width": "100px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        { "field": "@timestamp", "type": "date", "description": "日志时间戳" },
+        {
+          "field": "kafka.log.level",
+          "type": "keyword",
+          "description": "日志级别 (TRACE/DEBUG/INFO/WARN/ERROR/FATAL)"
+        },
+        {
+          "field": "kafka.log.class",
+          "type": "keyword",
+          "description": "产生日志的 Java 类名"
+        },
+        {
+          "field": "kafka.log.thread",
+          "type": "keyword",
+          "description": "线程名称"
+        },
+        {
+          "field": "kafka.log.message",
+          "type": "text",
+          "description": "日志消息内容"
+        },
+        {
+          "field": "kafka.log.component",
+          "type": "keyword",
+          "description": "Kafka 组件 (Broker/Controller/Producer/Consumer)"
+        }
+      ]
+    },
+    {
+      "title": "Controller 日志字段",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "220px" },
+        { "key": "type", "title": "类型", "width": "100px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        {
+          "field": "kafka.controller.broker_id",
+          "type": "long",
+          "description": "Broker ID"
+        },
+        {
+          "field": "kafka.controller.topic",
+          "type": "keyword",
+          "description": "涉及的 Topic 名称"
+        },
+        {
+          "field": "kafka.controller.partition",
+          "type": "long",
+          "description": "分区编号"
+        },
+        {
+          "field": "kafka.controller.event_type",
+          "type": "keyword",
+          "description": "事件类型 (LeaderElection/IsrChange 等)"
+        },
+        {
+          "field": "kafka.controller.leader_epoch",
+          "type": "long",
+          "description": "Leader 纪元"
+        }
+      ]
+    }
+  ]
+}

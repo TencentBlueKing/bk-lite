@@ -4,7 +4,7 @@ import React, {
   useRef,
   forwardRef,
   useImperativeHandle,
-  useMemo,
+  useMemo
 } from 'react';
 import { Form, Select, message, Button, Popconfirm, Radio } from 'antd';
 import OperateModal from '@/components/operate-modal';
@@ -33,7 +33,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       installCollector,
       batchOperationCollector,
       getConfiglist,
-      applyConfig,
+      applyConfig
     } = useNodeManagerApi();
     const commonContext = useCommon();
     const nodeStateEnum = commonContext?.nodeStateEnum || {};
@@ -64,7 +64,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         setNodeIds(ids || []);
         initTypeOptions(selectedsystem || '');
         type === 'startCollectorr' && getConfigData(); //先不调这个接口，因为配置文件已隐藏
-      },
+      }
     }));
 
     const configs = useMemo(() => {
@@ -96,7 +96,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       const currentType = typeTag || selectedType;
       try {
         const params: any = {
-          node_operating_system: selectedsystem,
+          node_operating_system: selectedsystem
         };
         if (currentType) {
           params.tags = currentType;
@@ -115,9 +115,9 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               options: [
                 {
                   label: item.name,
-                  value: item.id,
-                },
-              ],
+                  value: item.id
+                }
+              ]
             });
             return;
           }
@@ -126,7 +126,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           if (tagIndex >= 0) {
             options[tagIndex].options.push({
               label: item.name,
-              value: item.id,
+              value: item.id
             });
           } else {
             options.push({
@@ -135,9 +135,9 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               options: [
                 {
                   label: item.name,
-                  value: item.id,
-                },
-              ],
+                  value: item.id
+                }
+              ]
             });
           }
         });
@@ -178,7 +178,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         let request: any = installCollector;
         let params: any = {
           nodes: nodeIds,
-          collector_package: values.version,
+          collector_package: values.version
         };
         switch (type) {
           case 'startCollector':
@@ -186,7 +186,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               node_ids: nodeIds,
               collector_id: collector,
               configuration: values.configuration,
-              operation: 'start',
+              operation: 'start'
             };
             request = batchOperationCollector;
             startCollector(request, params);
@@ -195,7 +195,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             params = {
               node_ids: nodeIds,
               collector_id: collector,
-              operation: 'restart',
+              operation: 'restart'
             };
             request = batchOperationCollector;
             break;
@@ -203,7 +203,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             params = {
               node_ids: nodeIds,
               collector_id: collector,
-              operation: 'stop',
+              operation: 'stop'
             };
             request = batchOperationCollector;
             break;
@@ -218,7 +218,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       const { configuration, ...rest } = params;
       Promise.all([
         operate(callback, rest, !!configuration),
-        configuration && handleApply(configuration),
+        configuration && handleApply(configuration)
       ])
         .then(() => {
           if (configuration) {
@@ -234,7 +234,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const handleApply = async (id: string) => {
       const params = nodeIds.map((item) => ({
         node_id: item,
-        collector_configuration_id: id,
+        collector_configuration_id: id
       }));
       await applyConfig(params);
     };
@@ -249,7 +249,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         const data = await callback(params);
         const config = {
           taskId: data.task_id || '',
-          type,
+          type
         };
         if (!keepLoading) {
           message.success(t('common.operationSuccessful'));
@@ -275,7 +275,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       setPackageList([]);
       collectorFormRef.current?.setFieldsValue({
         version: null,
-        configuration: null,
+        configuration: null
       });
       const object = collectorlist.find(
         (item: TableDataItem) => item.id === id
@@ -301,7 +301,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       collectorFormRef.current?.setFieldsValue({
         collector: null,
         version: null,
-        configuration: null,
+        configuration: null
       });
       getCollectors(system, value);
     };
@@ -353,8 +353,8 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             rules={[
               {
                 required: true,
-                message: t('common.required'),
-              },
+                message: t('common.required')
+              }
             ]}
           >
             <Radio.Group onChange={(e) => handleTypeChange(e.target.value)}>
@@ -365,55 +365,48 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               ))}
             </Radio.Group>
           </Form.Item>
-          <Form.Item noStyle>
-            <Form.Item
-              name="collector"
-              label={t('node-manager.cloudregion.node.collector')}
-              rules={[
-                {
-                  required: true,
-                  message: t('common.required'),
-                },
-              ]}
-            >
-              <Select
-                showSearch
-                allowClear
-                loading={collectorLoading}
-                options={options}
-                onChange={handleCollectorChange}
-              ></Select>
-            </Form.Item>
-            {type === 'startCollector' && collector?.includes('telegraf') && (
-              <div className="text-[12px] text-[var(--color-text-2)]">
-                {t('node-manager.cloudregion.node.telegrafConfigTips')}
-              </div>
-            )}
+          <Form.Item
+            name="collector"
+            label={t('node-manager.cloudregion.node.collector')}
+            rules={[
+              {
+                required: true,
+                message: t('common.required')
+              }
+            ]}
+          >
+            <Select
+              showSearch
+              allowClear
+              loading={collectorLoading}
+              options={options}
+              onChange={handleCollectorChange}
+            ></Select>
           </Form.Item>
           {type === 'startCollector' &&
             collector &&
             !collector.includes('telegraf') && (
-            <Form.Item
-              hidden
-              name="configuration"
-              label={t('node-manager.cloudregion.node.configuration')}
-            >
-              <Select
-                showSearch
-                allowClear
-                loading={configListLoading}
-                placeholder={t('common.selectMsg')}
-                filterOption={(input, option) =>
-                  (option?.label || '')
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-                options={configs.map((item) => ({
-                  value: item.id,
-                  label: item.name,
-                }))}
-              />
-            </Form.Item>
+              <Form.Item
+                hidden
+                name="configuration"
+                label={t('node-manager.cloudregion.node.configuration')}
+              >
+                <Select
+                  showSearch
+                  allowClear
+                  loading={configListLoading}
+                  placeholder={t('common.selectMsg')}
+                  filterOption={(input, option) =>
+                    (option?.label || '')
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
+                  }
+                  options={configs.map((item) => ({
+                    value: item.id,
+                    label: item.name
+                  }))}
+                />
+              </Form.Item>
           )}
           {type === 'installCollector' && (
             <Form.Item
@@ -422,8 +415,8 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               rules={[
                 {
                   required: true,
-                  message: t('common.required'),
-                },
+                  message: t('common.required')
+                }
               ]}
             >
               <Select
@@ -433,7 +426,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                 placeholder={t('common.selectMsg')}
                 options={packageList.map((item) => ({
                   value: item.id,
-                  label: item.version,
+                  label: item.version
                 }))}
                 filterOption={(input, option) =>
                   (option?.label || '')

@@ -157,6 +157,12 @@
                             flex: 1;
                             @include hide-text;
                         }
+
+                        .listItemTagValue {
+                            flex: 1;
+                            min-width: 0;
+                            overflow: hidden;
+                        }
                     }
                 }
             }

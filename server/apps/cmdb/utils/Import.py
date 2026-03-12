@@ -12,13 +12,14 @@ from apps.cmdb.constants.constants import (
     ENUM,
     INSTANCE_ASSOCIATION,
     ModelConstraintKey,
+    ENUM_SELECT_MODE_MULTIPLE,
+    ENUM_SELECT_MODE_DEFAULT,
 )
+from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models import CREATE_INST_ASST
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.validators.field_validator import (
-    TAG_ATTR_ID,
-    TAG_MODE_FREE,
     normalize_tag_field_option,
     normalize_tag_input_values,
     validate_tag_values,
@@ -27,18 +28,6 @@ from apps.cmdb.utils.change_record import create_change_record_by_asso
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.system_mgmt.models import Group
-
-
-def parse_tag_cell(raw: object) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, list):
-        return [str(item).strip() for item in raw if str(item).strip()]
-    value = str(raw).strip()
-    if not value:
-        return []
-    tokens = re.split(r"[,，\n\r]+", value)
-    return [token.strip() for token in tokens if token.strip()]
 
 
 class Import:
@@ -58,6 +47,8 @@ class Import:
         self.model_asso_map = self.get_model_asso_map()
         # 用于收集数据验证错误
         self.validation_errors = []
+        # 缓存的字段映射，由 _build_field_maps 初始化
+        self._field_maps = None
 
     @staticmethod
     def _normalize_user_token(token):
@@ -79,6 +70,186 @@ class Import:
         if s.endswith("）") and "（" in s:
             return s.rsplit("（", 1)[-1].rstrip("）").strip()
         return s
+
+    def _build_field_maps(self):
+        """构建字段类型映射表，用于Excel数据解析。
+
+        Returns:
+            dict: 包含各类字段映射的字典
+        """
+        field_maps = {
+            "need_val_to_id": {},      # 需要值到ID转换的字段（枚举、组织、用户）
+            "need_update_type": {},    # 需要类型转换的字段
+            "org_user": {},            # 组织/用户字段标识
+            "table_fields": set(),     # 表格字段
+            "tag_fields": set(),       # 标签字段
+            "enum_select_mode": {},    # 枚举字段选择模式
+            "attr_name_map": {},       # 属性ID到名称的映射
+        }
+
+        for attr_info in self.attrs:
+            attr_id = attr_info["attr_id"]
+            attr_type = attr_info["attr_type"]
+            field_maps["attr_name_map"][attr_id] = attr_info["attr_name"]
+
+            if attr_type in NEED_CONVERSION_TYPE:
+                field_maps["need_update_type"][attr_id] = attr_type
+            elif attr_type == "table":
+                field_maps["table_fields"].add(attr_id)
+            elif attr_type == "tag":
+                field_maps["tag_fields"].add(attr_id)
+            elif attr_type in {ORGANIZATION, USER, ENUM}:
+                field_maps["need_val_to_id"][attr_id] = {
+                    i["name"]: i["id"] for i in attr_info["option"]
+                }
+                if attr_type in {ORGANIZATION, USER}:
+                    field_maps["org_user"][attr_id] = attr_type
+                if attr_type == ENUM:
+                    field_maps["enum_select_mode"][attr_id] = attr_info.get(
+                        "enum_select_mode", ENUM_SELECT_MODE_DEFAULT
+                    )
+
+        return field_maps
+
+    def _process_type_conversion_field(self, key, value, row_index, field_maps):
+        """处理需要类型转换的字段。
+
+        Returns:
+            tuple: (converted_value, error_msg)
+        """
+        try:
+            method = NEED_CONVERSION_TYPE[field_maps["need_update_type"][key]]
+            return method(value), None
+        except (ValueError, TypeError):
+            attr_name = field_maps["attr_name_map"].get(key, key)
+            return None, f"第{row_index}行，字段'{attr_name}'的值'{value}'格式错误"
+
+    def _process_table_field(self, key, value, row_index, field_maps):
+        """处理表格字段。
+
+        Returns:
+            tuple: (parsed_value, error_msg)
+        """
+        try:
+            if isinstance(value, str):
+                return json.loads(value), None
+            return value, None
+        except (json.JSONDecodeError, TypeError):
+            attr_name = field_maps["attr_name_map"].get(key, key)
+            return None, f"第{row_index}行，字段'{attr_name}'的表格数据JSON格式错误"
+
+    def _process_tag_field(self, key, value, row_index, field_maps):
+        """处理标签字段。
+
+        Returns:
+            tuple: (normalized_value, error_msg)
+        """
+        try:
+            return normalize_tag_input_values(value), None
+        except Exception:
+            attr_name = field_maps["attr_name_map"].get(key, key)
+            return None, f"第{row_index}行，字段'{attr_name}'标签格式解析失败"
+
+    def _process_org_user_field(
+        self, key, value, row_index, field_maps, allowed_org_set
+    ):
+        """处理组织/用户字段。
+
+        Returns:
+            tuple: (enum_ids, error_msg, organization_cell_provided)
+        """
+        # 解析值列表
+        if not isinstance(value, list):
+            if "," in str(value):
+                value_list = str(value).split(",")
+            elif "，" in str(value):
+                value_list = str(value).split("，")
+            else:
+                value_list = [str(value)]
+        else:
+            value_list = value
+
+        field_type = field_maps["org_user"][key]
+
+        # 组织字段特殊处理
+        if field_type == ORGANIZATION:
+            return self._resolve_organization_ids(
+                value_list=value_list,
+                allowed_org_set=allowed_org_set,
+                row_index=row_index,
+                field_display_name=field_maps["attr_name_map"].get(key, key),
+            )
+
+        # 用户字段处理
+        enum_id = []
+        invalid_values = []
+        for val in value_list:
+            raw_val = val
+            lookup_val = self._normalize_user_token(val)
+            mapped_id = field_maps["need_val_to_id"][key].get(lookup_val)
+            if mapped_id is not None:
+                enum_id.append(mapped_id)
+            else:
+                invalid_values.append(raw_val)
+
+        # 用户字段结果处理
+        if key == "operator":
+            # 主要维护人支持多选
+            if len(enum_id) == 1:
+                enum_id = enum_id[0]
+        else:
+            if len(enum_id) >= 1:
+                enum_id = enum_id[0]
+
+        if invalid_values:
+            logger.warning(field_maps["need_val_to_id"][key])
+            attr_name = field_maps["attr_name_map"].get(key, key)
+            return None, f"第{row_index}行，字段'{attr_name}'的值'{invalid_values}'无效", False
+
+        return enum_id, None, False
+
+    def _process_enum_field(self, key, value, row_index, field_maps):
+        """处理枚举字段。
+
+        Returns:
+            tuple: (enum_ids, error_msg)
+        """
+        select_mode = field_maps["enum_select_mode"].get(key, ENUM_SELECT_MODE_DEFAULT)
+        attr_name = field_maps["attr_name_map"].get(key, key)
+
+        if select_mode == ENUM_SELECT_MODE_MULTIPLE:
+            # 多选枚举处理
+            if isinstance(value, list):
+                value_list = value
+            elif isinstance(value, str):
+                if "," in value:
+                    value_list = [v.strip() for v in value.split(",") if v.strip()]
+                elif "，" in value:
+                    value_list = [v.strip() for v in value.split("，") if v.strip()]
+                else:
+                    value_list = [value.strip()] if value.strip() else []
+            else:
+                value_list = [str(value)] if value else []
+
+            enum_ids = []
+            invalid_enum_values = []
+            for val in value_list:
+                mapped_id = field_maps["need_val_to_id"][key].get(val)
+                if mapped_id is not None:
+                    enum_ids.append(mapped_id)
+                else:
+                    invalid_enum_values.append(val)
+
+            if invalid_enum_values:
+                return None, f"第{row_index}行，字段'{attr_name}'的值'{invalid_enum_values}'无效"
+
+            return enum_ids, None
+        else:
+            # 单选枚举处理
+            enum_id = field_maps["need_val_to_id"][key].get(value)
+            if enum_id is not None:
+                return [enum_id], None
+            return None, f"第{row_index}行，字段'{attr_name}'的值'{value}'无效"
 
     def _resolve_organization_ids(
         self,
@@ -217,229 +388,179 @@ class Import:
 
         return enum_id, None, organization_cell_provided
 
-    def format_excel_data(self, excel_meta: bytes, allowed_org_ids: list = None):
-        """格式化excel"""
+    def _process_cell_value(
+        self, key, value, row_index, field_maps, allowed_org_set, item
+    ):
+        """处理单个单元格的值。
 
+        Args:
+            key: 字段键名
+            value: 单元格值
+            row_index: 行号
+            field_maps: 字段映射表
+            allowed_org_set: 允许的组织ID集合
+            item: 当前行数据字典
+
+        Returns:
+            tuple: (should_continue, error_msg, organization_cell_provided)
+        """
+        organization_cell_provided = False
+
+        # 处理类型转换字段
+        if key in field_maps["need_update_type"]:
+            converted, error_msg = self._process_type_conversion_field(
+                key, value, row_index, field_maps
+            )
+            if error_msg:
+                return True, error_msg, organization_cell_provided
+            item[key] = converted
+            return True, None, organization_cell_provided
+
+        # 处理表格字段
+        if key in field_maps["table_fields"]:
+            parsed, error_msg = self._process_table_field(
+                key, value, row_index, field_maps
+            )
+            if error_msg:
+                return True, error_msg, organization_cell_provided
+            item[key] = parsed
+            return True, None, organization_cell_provided
+
+        # 处理标签字段
+        if key in field_maps["tag_fields"]:
+            normalized, error_msg = self._process_tag_field(
+                key, value, row_index, field_maps
+            )
+            if error_msg:
+                return True, error_msg, organization_cell_provided
+            item[key] = normalized
+            return True, None, organization_cell_provided
+
+        # 处理枚举/组织/用户字段
+        if key in field_maps["need_val_to_id"]:
+            if key in field_maps["org_user"]:
+                enum_id, error_msg, provided = self._process_org_user_field(
+                    key, value, row_index, field_maps, allowed_org_set
+                )
+                organization_cell_provided = provided
+                if error_msg:
+                    return True, error_msg, organization_cell_provided
+                if enum_id:
+                    item[key] = enum_id
+            else:
+                enum_ids, error_msg = self._process_enum_field(
+                    key, value, row_index, field_maps
+                )
+                if error_msg:
+                    return True, error_msg, organization_cell_provided
+                if enum_ids:
+                    item[key] = enum_ids
+            return True, None, organization_cell_provided
+
+        # 普通字段直接赋值
+        return False, None, organization_cell_provided
+
+    def _process_excel_row(
+        self, row, keys, row_index, field_maps, allowed_org_set, asso_key_map
+    ):
+        """处理Excel中的一行数据。
+
+        Returns:
+            tuple: (item_dict, has_data, has_errors)
+        """
+        item = {"model_id": self.model_id}
+        inst_name = ""
+        row_has_data = False
+        row_validation_errors_count = len(self.validation_errors)
+
+        for i, cell in enumerate(row):
+            try:
+                value = ast.literal_eval(cell.value)
+            except Exception:  # noqa: BLE001 - 字面量解析失败时使用原始值
+                value = cell.value
+
+            if not value:
+                continue
+
+            row_has_data = True
+            key = keys[i]
+
+            if key == "inst_name":
+                inst_name = value
+
+            # 处理关联字段
+            if key in asso_key_map:
+                if inst_name:
+                    split_value = value.split(",")
+                    asso_key_map[key].setdefault(inst_name, []).extend(split_value)
+                continue
+
+            # 处理单元格值
+            handled, error_msg, _ = self._process_cell_value(
+                key, value, row_index, field_maps, allowed_org_set, item
+            )
+
+            if error_msg:
+                self.validation_errors.append(error_msg)
+                logger.warning(error_msg)
+                continue
+
+            # 普通字段直接赋值
+            if not handled:
+                item[key] = value
+
+        row_has_validation_errors = (
+            len(self.validation_errors) > row_validation_errors_count
+        )
+
+        return item, row_has_data, row_has_validation_errors
+
+    def format_excel_data(self, excel_meta: bytes, allowed_org_ids: list = None):
+        """格式化excel数据。
+
+        Args:
+            excel_meta: Excel文件字节流
+            allowed_org_ids: 允许的组织ID列表
+
+        Returns:
+            tuple: (result_list, asso_key_map)
+        """
         allowed_org_set = set(allowed_org_ids) if allowed_org_ids is not None else None
 
-        need_val_to_id_field_map, need_update_type_field_map, org_user_map = {}, {}, {}
-        table_field_set = set()
-        tag_field_set = set()
-        # 创建属性名称映射，用于错误提示
-        attr_name_map = {
-            attr_info["attr_id"]: attr_info["attr_name"] for attr_info in self.attrs
-        }
+        # 构建字段映射
+        field_maps = self._build_field_maps()
 
-        for attr_info in self.attrs:
-            if attr_info["attr_type"] in NEED_CONVERSION_TYPE:
-                need_update_type_field_map[attr_info["attr_id"]] = attr_info[
-                    "attr_type"
-                ]
-                continue
-
-            if attr_info["attr_type"] == "table":
-                table_field_set.add(attr_info["attr_id"])
-                continue
-
-            if attr_info["attr_type"] == "tag":
-                tag_field_set.add(attr_info["attr_id"])
-                continue
-
-            if attr_info["attr_type"] in {ORGANIZATION, USER, ENUM}:
-                need_val_to_id_field_map[attr_info["attr_id"]] = {
-                    i["name"]: i["id"] for i in attr_info["option"]
-                }
-                if attr_info["attr_type"] in {ORGANIZATION, USER}:
-                    org_user_map[attr_info["attr_id"]] = attr_info["attr_type"]
-        # 读取临时文件
+        # 读取Excel文件
         wb = openpyxl.load_workbook(excel_meta)
-        # 获取第一个工作表
         sheet1 = wb.worksheets[0]
-        # 获取工作表名称 就是模型名称
+
         if sheet1.title != self.model_id:
             raise ValueError(
                 f"Excel sheet name '{sheet1.title}' does not match model_id '{self.model_id}'."
             )
 
-        # 获取键
-        keys = [cell.value for cell in sheet1[3]]  # 3
-        # 中文键值
-        seckeys = [cell.value for cell in sheet1[2]]  # 3
+        # 获取列键名
+        keys = [cell.value for cell in sheet1[3]]
+        seckeys = [cell.value for cell in sheet1[2]]
+
+        # 构建关联字段映射
         asso_key_map = {}
-        # asso_key_map = {i: {} for i in keys if self.model_id in i}
         for idx, key in enumerate(keys):
             if idx < len(seckeys) and seckeys[idx] == "关联" and self.model_id in key:
                 asso_key_map[key] = {}
+
+        # 处理数据行
         result = []
-        # 从第4行第1列开始遍历
         for row_index, row in enumerate(
             sheet1.iter_rows(min_row=4, min_col=1), start=4
         ):
-            # 创建字典
-            item = {"model_id": self.model_id}
-            inst_name = ""
-            row_has_data = False
-            organization_cell_provided = False
-            row_validation_errors_count = len(
-                self.validation_errors
-            )  # 记录处理该行前的错误数量
-
-            # 遍历每一列
-            for i, cell in enumerate(row):
-                try:
-                    value = ast.literal_eval(cell.value)
-                except Exception:  # noqa: BLE001 - 字面量解析失败时使用原始值
-                    value = cell.value
-
-                if not value:
-                    continue
-
-                row_has_data = True
-
-                if keys[i] == ORGANIZATION:
-                    organization_cell_provided = True
-
-                if keys[i] == "inst_name":
-                    inst_name = value
-
-                if keys[i] in asso_key_map:
-                    # 处理关联字段
-                    if not inst_name:
-                        continue
-                    split_value = value.split(",")
-                    asso_key_map[keys[i]].setdefault(inst_name, []).extend(split_value)
-                    continue
-
-                # 将需要类型转换的键和值存入字典
-                if keys[i] in need_update_type_field_map:
-                    try:
-                        method = NEED_CONVERSION_TYPE[
-                            need_update_type_field_map[keys[i]]
-                        ]
-                        item[keys[i]] = method(value)
-                    except (ValueError, TypeError) as e:
-                        error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{value}'格式错误"
-                        self.validation_errors.append(error_msg)
-                        logger.warning(error_msg)
-                    continue
-
-                if keys[i] in table_field_set:
-                    try:
-                        if isinstance(value, str):
-                            parsed_value = json.loads(value)
-                        else:
-                            parsed_value = value
-                        item[keys[i]] = parsed_value
-                    except (json.JSONDecodeError, TypeError) as e:
-                        error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的表格数据JSON格式错误"
-                        self.validation_errors.append(error_msg)
-                        logger.warning(error_msg)
-                    continue
-
-                if keys[i] in tag_field_set:
-                    try:
-                        item[keys[i]] = parse_tag_cell(value)
-                    except Exception:
-                        error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'标签格式解析失败"
-                        self.validation_errors.append(error_msg)
-                        logger.warning(error_msg)
-                    continue
-
-                # 将需要枚举字段name与id反转的建和值存入字典
-                if keys[i] in need_val_to_id_field_map:
-                    if keys[i] in org_user_map:
-                        if type(value) != list:
-                            if "," in str(value):
-                                value_list = str(value).split(",")
-                            elif "，" in str(value):
-                                value_list = str(value).split("，")
-                            else:
-                                value_list = [str(value)]
-                        else:
-                            value_list = value
-
-                        # 组织字段：支持 Default/xxx，并做范围校验
-                        if org_user_map[keys[i]] == ORGANIZATION:
-                            org_ids, error_msg, provided = (
-                                self._resolve_organization_ids(
-                                    value_list=value_list,
-                                    allowed_org_set=allowed_org_set,
-                                    row_index=row_index,
-                                    field_display_name=attr_name_map.get(
-                                        keys[i], keys[i]
-                                    ),
-                                )
-                            )
-                            organization_cell_provided = (
-                                organization_cell_provided or provided
-                            )
-
-                            if error_msg:
-                                self.validation_errors.append(error_msg)
-                                logger.warning(error_msg)
-                                continue
-
-                            if org_ids:
-                                item[keys[i]] = org_ids
-                            continue
-
-                        enum_id = []
-                        invalid_values = []
-                        for val in value_list:
-                            raw_val = val
-                            lookup_val = (
-                                self._normalize_user_token(val)
-                                if org_user_map[keys[i]] == USER
-                                else val
-                            )
-                            mapped_id = need_val_to_id_field_map[keys[i]].get(
-                                lookup_val
-                            )
-                            if mapped_id is not None:
-                                enum_id.append(mapped_id)
-                            else:
-                                invalid_values.append(raw_val)
-
-                        # 用户字段：主要维护人(operator)支持多选；其他USER字段保持原先单选逻辑
-                        if org_user_map[keys[i]] == USER:
-                            if keys[i] == "operator":
-                                # 允许多个主要维护人：保存为list；单个则保持标量，兼容旧数据
-                                if len(enum_id) == 1:
-                                    enum_id = enum_id[0]
-                                elif len(enum_id) > 1:
-                                    enum_id = enum_id
-                            else:
-                                if len(enum_id) >= 1:
-                                    enum_id = enum_id[0]
-                        if invalid_values:
-                            logger.warning(need_val_to_id_field_map[keys[i]])
-                            error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{invalid_values}'无效"
-                            self.validation_errors.append(error_msg)
-                            logger.warning(error_msg)
-
-                        # 只有当没有验证错误时才设置字段值
-                        if enum_id and not invalid_values:
-                            item[keys[i]] = enum_id
-                    else:
-                        enum_id = need_val_to_id_field_map[keys[i]].get(value)
-                        if enum_id is not None:
-                            item[keys[i]] = enum_id
-                        else:
-                            error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{value}'无效"
-                            self.validation_errors.append(error_msg)
-                            logger.warning(error_msg)
-                    continue
-
-                # 将键和值存入字典
-                item[keys[i]] = value
-            # 检查该行是否有验证错误
-            row_has_validation_errors = (
-                len(self.validation_errors) > row_validation_errors_count
+            item, row_has_data, row_has_errors = self._process_excel_row(
+                row, keys, row_index, field_maps, allowed_org_set, asso_key_map
             )
 
-            # 只有当行有数据且没有验证错误时才添加到结果列表
-            if row_has_data and len(item) > 1 and not row_has_validation_errors:
+            if row_has_data and len(item) > 1 and not row_has_errors:
                 result.append(item)
+
         return result, asso_key_map
 
     def get_check_attr_map(self):
@@ -459,33 +580,44 @@ class Import:
                 )
         return check_attr_map
 
-    def inst_list_save(self, inst_list):
-        """实例列表保存"""
+    def _prepare_instances_for_save(self, inst_list):
+        """预处理实例列表：标签规范化、字段校验、生成 _display 字段。
+
+        Args:
+            inst_list: 原始实例列表
+
+        Returns:
+            list: 处理后的实例列表
+        """
         from apps.cmdb.validators import FieldValidator
         from apps.cmdb.display_field import DisplayFieldHandler
 
         inst_list = self._normalize_and_merge_tag_records(inst_list)
 
-        # 对每个实例进行字段校验和 _display 字段生成
         processed_inst_list = []
         for inst_data in inst_list:
-            # 1. 字段格式校验（与创建实例逻辑一致）
+            # 1. 字段格式校验
             validation_errors = FieldValidator.validate_instance_data(
                 inst_data, self.attrs
             )
             if validation_errors:
-                # 收集所有字段校验错误
                 for err in validation_errors:
                     error_msg = f"实例 {inst_data.get('inst_name', '未命名')}，字段 '{err['field_name']}'：{err['error']}"
                     self.validation_errors.append(error_msg)
                     logger.warning(error_msg)
-                continue  # 跳过有错误的实例
+                continue
 
-            # 2. 生成 _display 冗余字段（与创建实例逻辑一致）
+            # 2. 生成 _display 冗余字段
             inst_data = DisplayFieldHandler.build_display_fields(
                 self.model_id, inst_data, self.attrs
             )
             processed_inst_list.append(inst_data)
+
+        return processed_inst_list
+
+    def inst_list_save(self, inst_list):
+        """实例列表保存"""
+        processed_inst_list = self._prepare_instances_for_save(inst_list)
 
         with GraphClient() as ag:
             result = ag.batch_create_entity(
@@ -500,31 +632,7 @@ class Import:
 
     def inst_list_update(self, inst_list):
         """实例列表更新"""
-        from apps.cmdb.validators import FieldValidator
-        from apps.cmdb.display_field import DisplayFieldHandler
-
-        inst_list = self._normalize_and_merge_tag_records(inst_list)
-
-        # 对每个实例进行字段校验和 _display 字段生成
-        processed_inst_list = []
-        for inst_data in inst_list:
-            # 1. 字段格式校验（与修改实例逻辑一致）
-            validation_errors = FieldValidator.validate_instance_data(
-                inst_data, self.attrs
-            )
-            if validation_errors:
-                # 收集所有字段校验错误
-                for err in validation_errors:
-                    error_msg = f"实例 {inst_data.get('inst_name', '未命名')}，字段 '{err['field_name']}'：{err['error']}"
-                    self.validation_errors.append(error_msg)
-                    logger.warning(error_msg)
-                continue  # 跳过有错误的实例
-
-            # 2. 生成 _display 冗余字段（与修改实例逻辑一致）
-            inst_data = DisplayFieldHandler.build_display_fields(
-                self.model_id, inst_data, self.attrs
-            )
-            processed_inst_list.append(inst_data)
+        processed_inst_list = self._prepare_instances_for_save(inst_list)
 
         with GraphClient() as ag:
             add_results, update_results = ag.batch_save_entity(
@@ -573,7 +681,9 @@ class Import:
             normalized_records.append(data)
 
         if config.mode == TAG_MODE_FREE and merged_values:
-            ModelManage.merge_tag_options_from_values(self.model_id, list(merged_values))
+            ModelManage.merge_tag_options_from_values(
+                self.model_id, list(merged_values)
+            )
 
         return normalized_records
 

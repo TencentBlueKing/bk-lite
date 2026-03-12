@@ -159,3 +159,17 @@ MAX_CUSTOM_REGEX_LENGTH = 200
 # 模型ID、属性ID等标识符的校验正则: 必须以字母开头，且仅包含字母、数字或下划线
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 IDENTIFIER_ERROR_MESSAGE = "必须以字母开头，且仅包含字母、数字或下划线"
+
+
+# ========== Tag 字段约束常量 ==========
+
+TAG_ATTR_ID = "tag"
+TAG_MODE_FREE = "free"
+TAG_MODE_STRICT = "strict"
+TAG_MAX_PAIRS = 20
+
+
+# ========== Table 字段约束常量 ==========
+
+TABLE_MAX_ROWS = 10000
+TABLE_MAX_CELL_LENGTH = 10000

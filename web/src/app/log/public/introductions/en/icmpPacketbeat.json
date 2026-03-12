@@ -1,0 +1,91 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "ICMP traffic integration uses Packetbeat to capture ICMP (Internet Control Message Protocol) traffic. By monitoring ping requests, network error messages, and path detection data, it helps you identify network connectivity issues, latency problems, and routing failures."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "🔗",
+        "title": "Connectivity Detection",
+        "description": "Monitor ping requests and replies to identify network reachability issues"
+      },
+      {
+        "icon": "⏱️",
+        "title": "Latency Analysis",
+        "description": "Calculate RTT (Round-Trip Time) to analyze network latency"
+      },
+      {
+        "icon": "📊",
+        "title": "Error Detection",
+        "description": "Capture Destination Unreachable, Time Exceeded and other error messages"
+      },
+      {
+        "icon": "🔍",
+        "title": "Path Tracing",
+        "description": "Analyze traceroute data to understand network path"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "ICMP traffic will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Traffic timestamp"
+        },
+        {
+          "field": "source.ip",
+          "type": "ip",
+          "description": "Source IP address"
+        },
+        {
+          "field": "destination.ip",
+          "type": "ip",
+          "description": "Destination IP address"
+        },
+        {
+          "field": "icmp.type",
+          "type": "long",
+          "description": "ICMP message type"
+        },
+        {
+          "field": "icmp.code",
+          "type": "long",
+          "description": "ICMP message code"
+        },
+        {
+          "field": "icmp.request.message",
+          "type": "keyword",
+          "description": "Request type description (e.g., EchoRequest)"
+        },
+        {
+          "field": "icmp.response.message",
+          "type": "keyword",
+          "description": "Response type description (e.g., EchoReply)"
+        },
+        {
+          "field": "event.duration",
+          "type": "long",
+          "description": "Round-trip time (nanoseconds)"
+        },
+        {
+          "field": "network.transport",
+          "type": "keyword",
+          "description": "Protocol (icmp)"
+        }
+      ]
+    }
+  ]
+}

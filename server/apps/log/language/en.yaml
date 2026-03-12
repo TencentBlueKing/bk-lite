@@ -50,17 +50,32 @@ collect_type:
     icmp:
       name: ICMP
       description: Monitors ICMP traffic for network diagnostics and performance analysis.
-  Metricbeat:
-    docker:
-      description: Collects metrics from Docker containers to monitor container performance
-        and resource utilization.
-      name: Docker
-    system:
-      name: System
-      description: Gathers system-level metrics such as CPU, memory, and disk usage
-        for performance monitoring and resource management.
   Filebeat:
     filestream:
       name: Filestream
       description: Collects and forwards log data from various sources for centralized
         logging and analysis.
+  Winlogbeat:
+    winlogbeat:
+      name: Windows Event Logs
+      description: Collects Windows event logs including Security, System, Application, Sysmon, PowerShell, Defender and Task Scheduler logs.
+
+display_category:
+  general:
+    name: General
+    description: General file stream, syslog and basic collection
+  database:
+    name: Database
+    description: RDBMS, NoSQL, cache and data storage system logs
+  middleware:
+    name: Middleware
+    description: Web servers, message queues, application servers logs
+  network:
+    name: Network
+    description: Network protocol analysis and connection monitoring
+  container:
+    name: Container
+    description: Container runtime log collection
+  security:
+    name: Security & Audit
+    description: System audit, file integrity, security event monitoring

@@ -1,52 +1,64 @@
 import { useMemo } from 'react';
 import { TableDataItem } from '@/app/log/types';
 import { useFileConfig } from './collectTypes/file';
-import { useExecConfig } from './collectTypes/exec';
 import { useSyslogConfig } from './collectTypes/syslog';
 import { useDockerConfig } from './collectTypes/docker';
-import { useFilestreamConfig } from './collectTypes/filestream';
+import { useApacheConfig } from './collectTypes/apache';
+import { useNginxConfig } from './collectTypes/nginx';
+import { useMysqlConfig } from './collectTypes/mysql';
+import { usePostgresqlConfig } from './collectTypes/postgresql';
+import { useRedisConfig } from './collectTypes/redis';
+import { useMongodbConfig } from './collectTypes/mongodb';
+import { useKafkaConfig } from './collectTypes/kafka';
+import { useRabbitmqConfig } from './collectTypes/rabbitmq';
+import { useElasticsearchConfig } from './collectTypes/elasticsearch';
+import { useWinlogbeatConfig } from './collectTypes/winlogbeat';
 import { useAuditdConfig } from './collectTypes/auditd';
-import { useSystemConfig } from './collectTypes/system';
 import { useHttpConfig } from './collectTypes/http';
-import { useDnsConfig } from './collectTypes/dns';
 import { useFileIntegrityConfig } from './collectTypes/fileIntegrity';
-import { useKubernetesConfig } from './collectTypes/kubernetes';
 import { useIcmpConfig } from './collectTypes/icmp';
-import { useDhcpConfig } from './collectTypes/dhcp';
 import { useFlowsConfig } from './collectTypes/flows';
 
 export const useCollectTypeConfig = () => {
   const fileConfig = useFileConfig();
-  const execConfig = useExecConfig();
   const syslogConfig = useSyslogConfig();
   const dockerConfig = useDockerConfig();
-  const filestreamConfig = useFilestreamConfig();
+  const apacheConfig = useApacheConfig();
+  const nginxConfig = useNginxConfig();
+  const mysqlConfig = useMysqlConfig();
+  const postgresqlConfig = usePostgresqlConfig();
+  const redisConfig = useRedisConfig();
+  const mongodbConfig = useMongodbConfig();
+  const kafkaConfig = useKafkaConfig();
+  const rabbitmqConfig = useRabbitmqConfig();
+  const elasticsearchConfig = useElasticsearchConfig();
+  const winlogbeatConfig = useWinlogbeatConfig();
   const auditdConfig = useAuditdConfig();
-  const systemConfig = useSystemConfig();
   const httpConfig = useHttpConfig();
-  const dnsConfig = useDnsConfig();
   const fileIntegrityConfig = useFileIntegrityConfig();
-  const kubernetesConfig = useKubernetesConfig();
   const icmpConfig = useIcmpConfig();
-  const dhcpConfig = useDhcpConfig();
   const flowsConfig = useFlowsConfig();
 
   const configs: any = useMemo(
     () => ({
       file: fileConfig,
-      exec: execConfig,
       syslog: syslogConfig,
       docker: dockerConfig,
-      filestream: filestreamConfig,
+      apache: apacheConfig,
+      nginx: nginxConfig,
+      mysql: mysqlConfig,
+      postgresql: postgresqlConfig,
+      redis: redisConfig,
+      mongodb: mongodbConfig,
+      kafka: kafkaConfig,
+      rabbitmq: rabbitmqConfig,
+      elasticsearch: elasticsearchConfig,
+      winlogbeat: winlogbeatConfig,
       auditd: auditdConfig,
-      system: systemConfig,
       http: httpConfig,
       file_integrity: fileIntegrityConfig,
-      dns: dnsConfig,
-      kubernetes: kubernetesConfig,
       icmp: icmpConfig,
-      dhcp: dhcpConfig,
-      flows: flowsConfig,
+      flows: flowsConfig
     }),
     []
   );
@@ -63,15 +75,15 @@ export const useCollectTypeConfig = () => {
       configs[data.type]?.plugins?.[data.collector]?.getConfig(data);
     const config = {
       collector: '',
-      icon: '',
+      icon: ''
     };
     let defaultCollectTypeCfg: any = {
       getParams: () => ({
         instance_id: '',
-        instance_name: '',
+        instance_name: ''
       }),
       getFormItems: () => null,
-      configText: '',
+      configText: ''
     };
     if (data.mode === 'auto') {
       defaultCollectTypeCfg = {
@@ -79,19 +91,19 @@ export const useCollectTypeConfig = () => {
         initTableItems: {},
         defaultForm: {},
         columns: [],
-        getParams: () => ({}),
+        getParams: () => ({})
       };
     }
     return (
       collectTypeCfg || {
         ...config,
-        ...defaultCollectTypeCfg,
+        ...defaultCollectTypeCfg
       }
     );
   };
 
   return {
     configs,
-    getCollectTypeConfig,
+    getCollectTypeConfig
   };
 };

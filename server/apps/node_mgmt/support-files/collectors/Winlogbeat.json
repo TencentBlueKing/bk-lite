@@ -1,0 +1,20 @@
+[
+  {
+    "id": "Winlogbeat_windows",
+    "name": "Winlogbeat",
+    "controller_default_run": false,
+    "icon": "",
+    "node_operating_system": "windows",
+    "service_type": "exec",
+    "executable_path": "C:\\fusion-collectors\\bin\\winlogbeat\\winlogbeat.exe",
+    "execute_parameters": "-c %s",
+    "validation_parameters": "",
+    "default_template": "",
+    "introduction": "Winlogbeat is a lightweight shipper for Windows Event logs. It reads fromconfig_section configured event log channels and forwards them using official Logstash protocol.",
+    "default_config": {
+      "nats": "# ================================== General ===================================\nname: \"winlogbeat-${node.ip}-${node.cloud_region}\"\ntags: [\"bk-lite\", \"logstash\", \"windows\"]\n\n# ================================== Logging ===================================\nlogging.level: info\nlogging.to_files: true\nlogging.files:\n  path: C:\\fusion-collectors\\log\\winlogbeat\n  name: winlogbeat\n  keepfiles: 7\n  permissions: 0600\n\n# ================================== Outputs ===================================\noutput.logstash:\n  hosts: [\"localhost:15044\"]\n  worker: 1\n  bulk_max_size: 2048\n  timeout: 30s\n  max_retries: 3\n\n# ================================== Processors ===================================\nprocessors:\n  - add_host_metadata:\n      when.not.contains.tags: forwarded\n\n  - script:\n      lang: javascript\n      source: >\n        function process(event) {\n          var evt = event.Get();\n          \n          if (evt['@timestamp']) {\n            event.Put('timestamp', evt['@timestamp']);\n          }\n          \n          if (evt.winlog) {\n            event.Put('event_id', evt.winlog.event_id || 0);\n            event.Put('channel', evt.winlog.channel || 'unknown');\n            event.Put('provider_name', evt.winlog.provider_name || 'unknown');\n            event.Put('computer_name', evt.winlog.computer_name || 'unknown');\n            event.Put('record_id', evt.winlog.record_id || 0);\n            \n            if (evt.winlog.event_data) {\n              event.Put('event_data', evt.winlog.event_data);\n            }\n            \n            if (evt.winlog.user) {\n              event.Put('user_name', evt.winlog.user.name || 'unknown');\n              event.Put('user_domain', evt.winlog.user.domain || 'unknown');\n              event.Put('user_type', evt.winlog.user.type || 'unknown');\n            }\n          }\n          \n          if (evt.log && evt.log.level) {\n            event.Put('level', evt.log.level);\n          }\n          \n          if (evt.message) {\n            event.Put('_msg', evt.message);\n          }\n        }\n\n# ================================== Event Logs ===================================\nwinlogbeat.event_logs:\n"
+    },
+    "tags": ["windows", "beat", "log"],
+    "package_name": "winlogbeat"
+  }
+]
