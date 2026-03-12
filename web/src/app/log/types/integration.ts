@@ -34,7 +34,7 @@ export interface IntegrationLogInstance {
   instance_id?: string;
   instance_type?: string;
   endpoint?: string | null;
-  server?: string | null;
+  server?: any;
   host?: string | null;
   port?: string | null;
   jmx_url?: string | null;
