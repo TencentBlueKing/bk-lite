@@ -23,10 +23,14 @@ def sync_collect_task(instance_id):
     instance = CollectModels.objects.filter(id=instance_id).first()
     if not instance:
         return
-    # 防止周期触发与延迟补跑重叠导致同一任务并发执行
-    if instance.exec_status == CollectRunStatusType.RUNNING:
-        logger.info("采集任务已在执行中，跳过重复执行 task_id={}".format(instance_id))
-        return
+    if instance.exec_status == CollectRunStatusType.NOT_START:
+        CollectModels.objects.filter(id=instance_id).update(
+            exec_status=CollectRunStatusType.RUNNING
+        )
+    # # 防止周期触发与延迟补跑重叠导致同一任务并发执行
+    # if instance.exec_status == CollectRunStatusType.RUNNING:
+    #     logger.info("采集任务已在执行中，跳过重复执行 task_id={}".format(instance_id))
+    #     return
     # 统一在 Celery 执行入口更新任务开始时间和运行状态
     start_time = now()
     instance.exec_status = CollectRunStatusType.RUNNING
