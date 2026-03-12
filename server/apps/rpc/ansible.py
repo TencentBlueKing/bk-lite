@@ -1,6 +1,8 @@
 import uuid
+import json
 
 from apps.rpc.base import RpcClient
+import nats_client
 
 
 class AnsibleRpcClient(RpcClient):
@@ -117,3 +119,16 @@ class AnsibleExecutor(object):
         query_client = AnsibleRpcClient("ansible.task.query")
         request_data = {"task_id": task_id}
         return query_client.run(self.instance_id, request_data, _timeout=timeout)
+
+
+@nats_client.register(name="ansible_test_callback", namespace="ansible.test")
+def ansible_test_callback(result: dict):
+    """
+    测试回调用于联调：打印 ansible-executor 回调结果。
+    subject: ansible.test.ansible_test_callback
+    """
+    print(
+        "[ansible_test_callback] received:\n"
+        + json.dumps(result, ensure_ascii=False, indent=2)
+    )
+    return {"accepted": True, "task_id": result.get("task_id", "")}
