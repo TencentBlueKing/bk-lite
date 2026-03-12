@@ -48,7 +48,7 @@ const usePostgresqlFilebeatFormItems = () => {
                   {logEnabled && (
                     <Form.Item className="mb-0">
                       <div className="flex items-center">
-                        <div className="flex items-center w-[100px] mr-[10px]">
+                        <div className="flex items-center whitespace-nowrap mr-[10px]">
                           <span>{t('log.integration.logPath')}</span>
                           <span className="text-red-500 ml-[2px]">*</span>
                           <Tooltip
