@@ -245,14 +245,15 @@ const Asset = () => {
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
     const groupedData = data.reduce(
       (acc, item) => {
-        if (!acc[item.collector]) {
-          acc[item.collector] = {
-            title: item.collector || '--',
-            key: item.collector,
+        const category = item.display_category || 'other';
+        if (!acc[category]) {
+          acc[category] = {
+            title: category,
+            key: category,
             children: []
           };
         }
-        acc[item.collector].children.push({
+        acc[category].children.push({
           title: `${item.name}(${item.instance_count || 0})`,
           label: item.name || '--',
           key: item.id,
