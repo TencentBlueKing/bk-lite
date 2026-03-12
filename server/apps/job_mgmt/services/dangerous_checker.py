@@ -4,7 +4,7 @@ import re
 from typing import List
 
 from apps.core.logger import job_logger as logger
-from apps.job_mgmt.constants import DangerousLevel
+from apps.job_mgmt.constants import DangerousLevel, MatchType
 from apps.job_mgmt.models import DangerousPath, DangerousRule
 
 
@@ -59,6 +59,71 @@ class DangerousChecker:
     """危险规则检查器"""
 
     @staticmethod
+    def _match_pattern(pattern: str, content: str) -> list:
+        """
+        匹配模式（同时支持包含匹配和正则匹配）
+
+        优先尝试包含匹配，再尝试正则匹配，任一匹配成功即返回
+
+        Args:
+            pattern: 匹配模式
+            content: 待匹配内容
+
+        Returns:
+            匹配到的内容列表
+        """
+        matches = []
+
+        # 1. 包含匹配（忽略大小写）
+        if pattern.lower() in content.lower():
+            matches.append(pattern)
+            return matches
+
+        # 2. 正则匹配
+        try:
+            regex = re.compile(pattern, re.MULTILINE | re.IGNORECASE)
+            regex_matches = regex.findall(content)
+            for match in regex_matches:
+                matched_content = match if isinstance(match, str) else match[0] if match else ""
+                if matched_content:
+                    matches.append(matched_content)
+        except re.error as e:
+            logger.warning(f"Invalid regex pattern: {pattern}, error: {e}")
+
+        return matches
+
+    @staticmethod
+    def _match_path_pattern(pattern: str, target_path: str, match_type: str) -> list:
+        """
+        路径匹配
+
+        Args:
+            pattern: 规则 pattern
+            target_path: 目标路径
+            match_type: 匹配方式 (exact/regex)
+
+        Returns:
+            匹配到的内容列表
+        """
+        if match_type == MatchType.EXACT:
+            # 精确匹配：路径相等 或 路径前缀 + /
+            # /temp 匹配 /temp, /temp/, /temp/abc
+            # /temp 不匹配 /temptest, /data/temp
+            normalized_pattern = pattern.rstrip("/")
+            if target_path == normalized_pattern or target_path.startswith(normalized_pattern + "/"):
+                return [pattern]
+            return []
+
+        # 正则匹配
+        try:
+            regex = re.compile(pattern, re.IGNORECASE)
+            regex_matches = regex.findall(target_path)
+            return [m if isinstance(m, str) else m[0] for m in regex_matches if m]
+        except re.error as e:
+            logger.warning(f"Invalid regex pattern: {pattern}, error: {e}")
+            return []
+
+    @staticmethod
     def check_command(script_content: str, team: List[int] = None) -> DangerousCheckResult:
         """
         检查脚本内容中的危险命令
@@ -82,14 +147,9 @@ class DangerousChecker:
             rules = rules.filter(Q(team=[]) | Q(team__overlap=team))
 
         for rule in rules:
-            try:
-                pattern = re.compile(rule.pattern, re.MULTILINE | re.IGNORECASE)
-                matches = pattern.findall(script_content)
-                for match in matches:
-                    matched_content = match if isinstance(match, str) else match[0] if match else ""
-                    result.add_match(rule, matched_content)
-            except re.error as e:
-                logger.warning(f"Invalid regex pattern in rule {rule.id}: {rule.pattern}, error: {e}")
+            matches = DangerousChecker._match_pattern(rule.pattern, script_content)
+            for matched_content in matches:
+                result.add_match(rule, matched_content)
 
         return result
 
@@ -117,12 +177,9 @@ class DangerousChecker:
             rules = rules.filter(Q(team=[]) | Q(team__overlap=team))
 
         for rule in rules:
-            try:
-                pattern = re.compile(rule.pattern, re.IGNORECASE)
-                if pattern.search(target_path):
-                    result.add_match(rule, target_path)
-            except re.error as e:
-                logger.warning(f"Invalid regex pattern in rule {rule.id}: {rule.pattern}, error: {e}")
+            matches = DangerousChecker._match_path_pattern(rule.pattern, target_path, rule.match_type)
+            for matched_content in matches:
+                result.add_match(rule, matched_content)
 
         return result
 

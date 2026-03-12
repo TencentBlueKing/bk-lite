@@ -5,6 +5,7 @@ from apps.job_mgmt.constants.choices import (  # noqa
     ExecutionStatus,
     ExecutorDriver,
     JobType,
+    MatchType,
     OSType,
     OverwriteStrategy,
     ScheduleType,

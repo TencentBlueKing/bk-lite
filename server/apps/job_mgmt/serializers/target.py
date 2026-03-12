@@ -3,7 +3,7 @@
 from rest_framework import serializers
 
 from apps.core.utils.serializers import TeamSerializer
-from apps.job_mgmt.constants import CredentialSource, OSType, SSHCredentialType, TargetSource
+from apps.job_mgmt.constants import CredentialSource, OSType, SSHCredentialType
 from apps.job_mgmt.models import Target
 from apps.node_mgmt.models import CloudRegion
 
@@ -11,7 +11,6 @@ from apps.node_mgmt.models import CloudRegion
 class TargetSerializer(TeamSerializer):
     """目标序列化器"""
 
-    source_display = serializers.CharField(source="get_source_display", read_only=True)
     os_type_display = serializers.CharField(source="get_os_type_display", read_only=True)
     driver_display = serializers.CharField(source="get_driver_display", read_only=True)
     credential_source_display = serializers.CharField(source="get_credential_source_display", read_only=True)
@@ -19,6 +18,9 @@ class TargetSerializer(TeamSerializer):
     ssh_key_file_name = serializers.CharField(read_only=True)
     winrm_scheme_display = serializers.CharField(source="get_winrm_scheme_display", read_only=True)
     cloud_region_name = serializers.SerializerMethodField()
+    # 写入字段（创建/更新时使用）
+    ssh_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    winrm_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     def __init__(self, instance=None, data=None, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
@@ -32,85 +34,20 @@ class TargetSerializer(TeamSerializer):
             return self.cloud_region_map.get(instance.cloud_region_id)
         return None
 
-    class Meta:
-        model = Target
-        fields = [
-            "id",
-            "name",
-            "ip",
-            "os_type",
-            "os_type_display",
-            "cloud_region_id",
-            "cloud_region_name",
-            "driver",
-            "driver_display",
-            "node_id",
-            "source",
-            "source_display",
-            "source_id",
-            "credential_source",
-            "credential_source_display",
-            "credential_id",
-            "ssh_port",
-            "ssh_user",
-            "ssh_credential_type",
-            "ssh_credential_type_display",
-            "ssh_key_file",
-            "ssh_key_file_name",
-            "winrm_port",
-            "winrm_scheme",
-            "winrm_scheme_display",
-            "winrm_user",
-            "winrm_cert_validation",
-            "team",
-            "team_name",
-            "created_by",
-            "created_at",
-            "updated_by",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "created_by", "created_at", "updated_by", "updated_at"]
-
-
-class TargetCreateSerializer(serializers.ModelSerializer):
-    """目标创建序列化器（手动新增）"""
-
-    class Meta:
-        model = Target
-        fields = [
-            "name",
-            "ip",
-            "os_type",
-            "cloud_region_id",
-            "driver",
-            "credential_source",
-            "credential_id",
-            "ssh_port",
-            "ssh_user",
-            "ssh_credential_type",
-            "ssh_password",
-            "ssh_key_file",
-            "winrm_port",
-            "winrm_scheme",
-            "winrm_user",
-            "winrm_password",
-            "winrm_cert_validation",
-            "team",
-        ]
-
     def validate(self, attrs):
-        """验证手动新增目标"""
+        """验证凭据字段"""
+        # 更新时跳过凭据验证（如果没有提供相关字段）
+        if self.instance:
+            return attrs
+
         os_type = attrs.get("os_type", OSType.LINUX)
         credential_source = attrs.get("credential_source", CredentialSource.MANUAL)
 
         if credential_source == CredentialSource.MANUAL:
             if os_type == OSType.LINUX:
-                # Linux: SSH 凭据验证
                 if not attrs.get("ssh_user"):
                     raise serializers.ValidationError({"ssh_user": "Linux目标必须提供SSH用户名"})
-
                 ssh_credential_type = attrs.get("ssh_credential_type", SSHCredentialType.PASSWORD)
-
                 if ssh_credential_type == SSHCredentialType.PASSWORD:
                     if not attrs.get("ssh_password"):
                         raise serializers.ValidationError({"ssh_password": "密码认证方式必须提供SSH密码"})
@@ -118,65 +55,33 @@ class TargetCreateSerializer(serializers.ModelSerializer):
                     if not attrs.get("ssh_key_file"):
                         raise serializers.ValidationError({"ssh_key_file": "密钥认证方式必须上传SSH密钥文件"})
             else:
-                # Windows: WinRM 凭据验证
                 if not attrs.get("winrm_user"):
                     raise serializers.ValidationError({"winrm_user": "Windows目标必须提供WinRM用户名"})
                 if not attrs.get("winrm_password"):
                     raise serializers.ValidationError({"winrm_password": "Windows目标必须提供WinRM密码"})
-
         elif credential_source == CredentialSource.CREDENTIAL:
             if not attrs.get("credential_id"):
                 raise serializers.ValidationError({"credential_id": "凭据管理方式必须选择凭据"})
 
-        # 云区域必填
         if not attrs.get("cloud_region_id"):
             raise serializers.ValidationError({"cloud_region_id": "云区域必填"})
 
         return attrs
 
-    def create(self, validated_data):
-        """创建时设置来源为手动"""
-        validated_data["source"] = TargetSource.MANUAL
-        return super().create(validated_data)
-
-
-class TargetUpdateSerializer(serializers.ModelSerializer):
-    """目标更新序列化器"""
+    def validate_team(self, value):
+        """确保 team 是列表"""
+        if value is None:
+            return []
+        if isinstance(value, int):
+            return [value]
+        if isinstance(value, list):
+            return value
+        raise serializers.ValidationError("team 必须是列表或整数")
 
     class Meta:
         model = Target
-        fields = [
-            "name",
-            "os_type",
-            "cloud_region_id",
-            "driver",
-            "credential_source",
-            "credential_id",
-            "ssh_port",
-            "ssh_user",
-            "ssh_credential_type",
-            "ssh_password",
-            "ssh_key_file",
-            "winrm_port",
-            "winrm_scheme",
-            "winrm_user",
-            "winrm_password",
-            "winrm_cert_validation",
-            "team",
-        ]
-
-    def validate(self, attrs):
-        """验证更新逻辑"""
-        instance = self.instance
-
-        # 同步来源的目标，只能修改部分字段
-        if instance and instance.source == TargetSource.SYNC:
-            allowed_fields = {"name", "driver", "team"}
-            for field in attrs.keys():
-                if field not in allowed_fields:
-                    raise serializers.ValidationError({field: "同步来源的目标不能修改此字段"})
-
-        return attrs
+        fields = "__all__"
+        read_only_fields = ["id", "created_by", "created_at", "updated_by", "updated_at"]
 
 
 class TargetBatchDeleteSerializer(serializers.Serializer):
@@ -214,12 +119,9 @@ class TargetTestConnectionSerializer(serializers.Serializer):
 
         if credential_source == CredentialSource.MANUAL:
             if os_type == OSType.LINUX:
-                # Linux: SSH 凭据验证
                 if not attrs.get("ssh_user"):
                     raise serializers.ValidationError({"ssh_user": "Linux目标必须提供SSH用户名"})
-
                 ssh_credential_type = attrs.get("ssh_credential_type", SSHCredentialType.PASSWORD)
-
                 if ssh_credential_type == SSHCredentialType.PASSWORD:
                     if not attrs.get("ssh_password"):
                         raise serializers.ValidationError({"ssh_password": "密码认证方式必须提供SSH密码"})
@@ -227,7 +129,6 @@ class TargetTestConnectionSerializer(serializers.Serializer):
                     if not attrs.get("ssh_key_file"):
                         raise serializers.ValidationError({"ssh_key_file": "密钥认证方式必须提供SSH密钥文件"})
             else:
-                # Windows: WinRM 凭据验证
                 if not attrs.get("winrm_user"):
                     raise serializers.ValidationError({"winrm_user": "Windows目标必须提供WinRM用户名"})
                 if not attrs.get("winrm_password"):

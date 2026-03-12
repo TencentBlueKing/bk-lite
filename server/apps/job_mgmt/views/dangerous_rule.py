@@ -1,7 +1,11 @@
 """危险规则视图"""
 
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.job_mgmt.constants import DangerousLevel
 from apps.job_mgmt.filters.dangerous_rule import DangerousRuleFilter
 from apps.job_mgmt.models import DangerousRule
 from apps.job_mgmt.serializers.dangerous_rule import DangerousRuleCreateSerializer, DangerousRuleSerializer, DangerousRuleUpdateSerializer
@@ -43,3 +47,12 @@ class DangerousRuleViewSet(AuthViewSet):
     @HasPermission("dangerous_command-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["GET"])
+    def enabled_rules(self, request):
+        current_team = int(request.COOKIES.get("current_team", 0))
+        rules = DangerousRule.objects.filter(is_enabled=True, team__contains=current_team)
+        result = {DangerousLevel.CONFIRM: [], DangerousLevel.FORBIDDEN: []}
+        for rule in rules:
+            result[rule.level].append(rule.pattern)
+        return Response(result)

@@ -7,18 +7,12 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import job_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.job_mgmt.constants import TargetSource
 from apps.job_mgmt.filters.target import TargetFilter
 from apps.job_mgmt.models import Target
-from apps.job_mgmt.serializers.target import (
-    TargetBatchDeleteSerializer,
-    TargetCreateSerializer,
-    TargetSerializer,
-    TargetTestConnectionSerializer,
-    TargetUpdateSerializer,
-)
-from apps.job_mgmt.tasks import sync_targets_from_nodes_task
+from apps.job_mgmt.serializers.target import TargetBatchDeleteSerializer, TargetSerializer, TargetTestConnectionSerializer
+from apps.node_mgmt.models import CloudRegion
 from apps.rpc.executor import Executor
+from apps.rpc.node_mgmt import NodeMgmt
 
 
 class TargetViewSet(AuthViewSet):
@@ -32,11 +26,7 @@ class TargetViewSet(AuthViewSet):
     permission_key = "job"
 
     def get_serializer_class(self):
-        if self.action == "create":
-            return TargetCreateSerializer
-        elif self.action in ["update", "partial_update"]:
-            return TargetUpdateSerializer
-        elif self.action == "batch_delete":
+        if self.action == "batch_delete":
             return TargetBatchDeleteSerializer
         elif self.action == "test_connection":
             return TargetTestConnectionSerializer
@@ -52,43 +42,138 @@ class TargetViewSet(AuthViewSet):
 
     @HasPermission("target-Add")
     def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"])
+    @HasPermission("target-View")
+    def query_nodes(self, request):
         """
-        创建目标（手动新增）
+        从节点管理查询节点列表
 
-        根据 os_type 决定使用 SSH (Linux) 或 WinRM (Windows) 凭据。
+        直接查询 node_mgmt 的节点数据，不做同步存储，支持筛选和分页。
+        返回格式与手动添加目标保持一致，方便前端统一处理。
 
-        请求体:
+        查询参数:
+            cloud_region_id: 云区域ID (可选)
+            name: 节点名称，模糊匹配 (可选)
+            ip: IP地址，模糊匹配 (可选)
+            os: 操作系统 linux/windows (可选)
+            page: 页码，默认1
+            page_size: 每页数量，默认20
+
+        返回:
         {
-            "name": "目标名称",
-            "ip": "192.168.1.100",
-            "os_type": "linux",  // linux 或 windows
-            "cloud_region_id": "region-1",
-            "driver": "ansible",
-            "credential_source": "manual",  // manual 或 credential
-            "credential_id": "",  // 凭据管理时必填
-            // Linux SSH 字段 (os_type=linux 时必填)
-            "ssh_port": 22,
-            "ssh_user": "root",
-            "ssh_credential_type": "password",  // password 或 key
-            "ssh_password": "xxx",  // 密码方式必填
-            "ssh_key_file": <file>,  // 密钥方式必填
-            // Windows WinRM 字段 (os_type=windows 时必填)
-            "winrm_port": 5986,
-            "winrm_scheme": "https",  // http 或 https
-            "winrm_user": "Administrator",
-            "winrm_password": "xxx",
-            "winrm_cert_validation": true,  // 是否验证证书
-            "team": [1, 2]
+            "result": true,
+            "data": {
+                "count": 100,
+                "items": [
+                    {
+                        "id": "node-1",
+                        "name": "节点1",
+                        "ip": "192.168.1.100",
+                        "os_type": "linux",
+                        "cloud_region_id": 1,
+                        "cloud_region_name": "默认区域",
+                        "source": "node_mgmt"
+                    }
+                ]
+            }
         }
         """
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
+        # 构建查询参数
+        query_data = {
+            "page": int(request.query_params.get("page", 1)),
+            "page_size": int(request.query_params.get("page_size", 20)),
+        }
 
-        # 返回完整的对象信息
-        instance = Target.objects.get(pk=serializer.instance.pk)
-        response_serializer = TargetSerializer(instance)
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        # 可选筛选条件
+        cloud_region_id = request.query_params.get("cloud_region_id")
+        if cloud_region_id:
+            query_data["cloud_region_id"] = int(cloud_region_id)
+
+        name = request.query_params.get("name")
+        if name:
+            query_data["name"] = name
+
+        ip = request.query_params.get("ip")
+        if ip:
+            query_data["ip"] = ip
+
+        os_type = request.query_params.get("os")
+        if os_type:
+            query_data["os"] = os_type
+
+        # 组织权限过滤
+        current_team = request.COOKIES.get("current_team")
+        if current_team:
+            query_data["organization_ids"] = [current_team]
+
+        try:
+            node_mgmt = NodeMgmt()
+            result = node_mgmt.node_list(query_data)
+
+            # 获取云区域名称映射
+
+            cloud_regions = CloudRegion.objects.all().values("id", "name")
+            cloud_region_map = {cr["id"]: cr["name"] for cr in cloud_regions}
+
+            # 转换字段名，统一格式
+            unified_items = []
+            for node in result.get("nodes", []):
+                cloud_region_id = node.get("cloud_region")
+                unified_items.append(
+                    {
+                        "id": node.get("id"),
+                        "name": node.get("name"),
+                        "ip": node.get("ip"),
+                        "os_type": node.get("operating_system", "linux"),
+                        "cloud_region_id": cloud_region_id,
+                        "cloud_region_name": cloud_region_map.get(cloud_region_id, ""),
+                        "source": "node_mgmt",
+                    }
+                )
+
+            return Response(
+                {
+                    "result": True,
+                    "data": {
+                        "count": result.get("count", 0),
+                        "items": unified_items,
+                    },
+                }
+            )
+        except Exception as e:
+            logger.exception(f"[query_nodes] 查询节点失败: {e}")
+            return Response(
+                {"result": False, "message": f"查询节点失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["get"])
+    @HasPermission("target-View")
+    def cloud_regions(self, request):
+        """
+        获取云区域列表
+
+        返回:
+        {
+            "result": true,
+            "data": [
+                {"id": 1, "name": "默认区域"},
+                ...
+            ]
+        }
+        """
+        try:
+            node_mgmt = NodeMgmt()
+            result = node_mgmt.cloud_region_list()
+            return Response({"result": True, "data": result})
+        except Exception as e:
+            logger.exception(f"[cloud_regions] 查询云区域失败: {e}")
+            return Response(
+                {"result": False, "message": f"查询云区域失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @action(detail=False, methods=["post"])
     @HasPermission("target-Delete")
@@ -103,31 +188,6 @@ class TargetViewSet(AuthViewSet):
         deleted_count, _ = queryset.filter(id__in=ids).delete()
 
         return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
-
-    @action(detail=False, methods=["post"])
-    @HasPermission("target-Add")
-    def sync_from_nodes(self, request):
-        """
-        从 Node 同步目标
-
-        请求体:
-        {
-            "node_ids": ["node-1", "node-2"],  // 可选，不传则同步全部
-            "team": [1, 2]  // 必填，目标归属团队
-        }
-        """
-        node_ids = request.data.get("node_ids", [])
-        team = request.data.get("team", [])
-
-        if not team:
-            return Response(
-                {"error": "team 字段必填"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        sync_targets_from_nodes_task.delay(node_ids=node_ids, team=team)
-
-        return Response({"message": "同步任务已提交，后台执行中"}, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=False, methods=["post"])
     @HasPermission("target-View")
@@ -196,16 +256,9 @@ class TargetViewSet(AuthViewSet):
         """
         测试已有目标的连接
 
-        对于同步来源的目标，通过 node 执行简单脚本测试连接
+        通过 node 执行简单脚本测试连接（需要 node_id）
         """
         target = self.get_object()
-
-        # 目前只支持同步来源的目标
-        if target.source != TargetSource.SYNC:
-            return Response(
-                {"success": False, "message": "当前仅支持同步来源的目标连接测试"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
         if not target.node_id:
             return Response(

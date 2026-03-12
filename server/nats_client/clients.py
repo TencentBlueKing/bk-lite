@@ -1,13 +1,4 @@
-__all__ = [
-    "nat_request",
-    "request",
-    "request_sync",
-    "publish",
-    "publish_sync",
-    "js_publish",
-    "js_publish_sync",
-    "request_v2",
-]
+__all__ = ["nat_request", "request", "request_sync", "publish", "publish_sync", "js_publish", "js_publish_sync", "request_v2"]
 
 import asyncio
 import functools
@@ -17,10 +8,11 @@ import jsonpickle
 from django.conf import settings
 from nats.aio.client import Client
 
+from apps.core.logger import nats_logger as logger
+
 from .exceptions import NatsClientException
 from .types import ResponseType
 from .utils import parse_arguments
-from apps.core.logger import nats_logger as logger
 
 DEFAULT_REQUEST_TIMEOUT = 60
 
@@ -34,13 +26,9 @@ async def nat_request(
 ) -> ResponseType:
     payload = json.dumps(kwargs).encode()
     nc = await get_nc_client()
-    timeout = _timeout or getattr(
-        settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT
-    )
+    timeout = _timeout or getattr(settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT)
     try:
-        response = await nc.request(
-            f"{namespace}.{method_name}", payload, timeout=timeout
-        )
+        response = await nc.request(f"{namespace}.{method_name}", payload, timeout=timeout)
     finally:
         await nc.close()
     data = response.data.decode()
@@ -68,25 +56,14 @@ async def get_nc_client(nc=None, server: str = "") -> Client:
     return nc
 
 
-async def request(
-    namespace: str,
-    method_name: str,
-    *args,
-    _timeout: float = 0,
-    _raw=False,
-    **kwargs,
-) -> ResponseType:
+async def request(namespace: str, method_name: str, *args, _timeout: float = None, _raw=False, **kwargs) -> ResponseType:
     payload = parse_arguments(args, kwargs)
 
     nc = await get_nc_client()
 
-    timeout = _timeout or getattr(
-        settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT
-    )
+    timeout = _timeout or getattr(settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT)
     try:
-        response = await nc.request(
-            f"{namespace}.{method_name}", payload, timeout=timeout
-        )
+        response = await nc.request(f"{namespace}.{method_name}", payload, timeout=timeout)
     finally:
         await nc.close()
 
@@ -114,7 +91,8 @@ async def request(
                 decoded_exc = jsonpickle.decode(parsed["pickled_exc"])
                 exc = NatsClientException(str(decoded_exc))
             except (TypeError, KeyError):
-                # 最后的降级方案
+                # 最后的降级方案：打印完整响应便于排查
+                logger.error(f"NATS error response missing error details, full response: {parsed}")
                 fallback_message = parsed.get("message", "Unknown error occurred")
                 exc = NatsClientException(fallback_message)
 
@@ -126,15 +104,7 @@ async def request(
     return parsed["result"]
 
 
-async def request_v2(
-    namespace: str,
-    method_name: str,
-    server: str = "",
-    *args,
-    _timeout: float = 0,
-    _raw=False,
-    **kwargs,
-) -> ResponseType:
+async def request_v2(namespace: str, method_name: str, server: str = "", *args, _timeout: float = None, _raw=False, **kwargs) -> ResponseType:
     payload = parse_arguments(args, kwargs)
 
     try:
@@ -142,20 +112,12 @@ async def request_v2(
     except Exception as e:  # noqa
         import traceback
 
-        logger.error(
-            "==request_v2 nast connect method_name={}, error={}".format(
-                method_name, traceback.format_exc()
-            )
-        )
+        logger.error("==request_v2 nast connect method_name={}, error={}".format(method_name, traceback.format_exc()))
         raise NatsClientException(f"Cannot connect to NATS server: {server}")
 
-    timeout = _timeout or getattr(
-        settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT
-    )
+    timeout = _timeout or getattr(settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT)
     try:
-        response = await nc.request(
-            f"{namespace}.{method_name}", payload, timeout=timeout
-        )
+        response = await nc.request(f"{namespace}.{method_name}", payload, timeout=timeout)
     finally:
         await nc.close()
 
@@ -183,7 +145,8 @@ async def request_v2(
                 decoded_exc = jsonpickle.decode(parsed["pickled_exc"])
                 exc = NatsClientException(str(decoded_exc))
             except (TypeError, KeyError):
-                # 最后的降级方案
+                # 最后的降级方案：打印完整响应便于排查
+                logger.error(f"NATS error response missing error details, full response: {parsed}")
                 fallback_message = parsed.get("message", "Unknown error occurred")
                 exc = NatsClientException(fallback_message)
 

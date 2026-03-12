@@ -4,10 +4,9 @@ from django.db import models
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.job_mgmt.constants import ExecutionStatus, JobType, OverwriteStrategy, ScriptType, TriggerSource
+from apps.job_mgmt.constants import ExecutionStatus, JobType, OverwriteStrategy, ScriptType, TargetSource, TriggerSource
 from apps.job_mgmt.models.playbook import Playbook
 from apps.job_mgmt.models.script import Script
-from apps.job_mgmt.models.target import Target
 
 
 class JobExecution(TimeInfo, MaintainerInfo):
@@ -27,8 +26,16 @@ class JobExecution(TimeInfo, MaintainerInfo):
     script = models.ForeignKey(Script, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联脚本")
     playbook = models.ForeignKey(Playbook, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联Playbook")
 
-    # 执行目标
-    targets = models.ManyToManyField(Target, through="JobExecutionTarget", verbose_name="执行目标")
+    # 目标来源
+    target_source = models.CharField(max_length=32, choices=TargetSource.CHOICES, default=TargetSource.MANUAL, verbose_name="目标来源")
+
+    # 目标列表（JSONField 存储）
+    # node_mgmt 来源: [{"node_id": "xxx", "name": "xxx", "ip": "1.2.3.4", "os": "linux", "cloud_region_id": 1}]
+    # manual 来源: [{"target_id": 1, "name": "xxx", "ip": "1.2.3.4"}]
+    target_list = models.JSONField(default=list, verbose_name="目标列表")
+
+    # 执行结果（每个目标的执行结果）
+    execution_results = models.JSONField(default=list, verbose_name="执行结果")
 
     # 执行参数（脚本/Playbook 的参数值）
     params = models.TextField(blank=True, default="", verbose_name="执行参数")
@@ -69,73 +76,3 @@ class JobExecution(TimeInfo, MaintainerInfo):
 
     def __str__(self):
         return f"{self.name}({self.get_status_display()})"
-
-
-class JobExecutionTarget(TimeInfo):
-    """
-    作业执行目标明细
-
-    记录每个目标的执行状态和结果
-    """
-
-    execution = models.ForeignKey(JobExecution, on_delete=models.CASCADE, related_name="execution_targets", verbose_name="作业执行")
-    target = models.ForeignKey(Target, on_delete=models.CASCADE, verbose_name="执行目标")
-
-    status = models.CharField(max_length=32, choices=ExecutionStatus.CHOICES, default=ExecutionStatus.PENDING, verbose_name="执行状态")
-
-    # 执行结果
-    stdout = models.TextField(blank=True, default="", verbose_name="标准输出")
-    stderr = models.TextField(blank=True, default="", verbose_name="错误输出")
-    exit_code = models.IntegerField(null=True, blank=True, verbose_name="退出码")
-
-    # 执行时间
-    started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
-    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="结束时间")
-
-    # 错误信息
-    error_message = models.TextField(blank=True, default="", verbose_name="错误信息")
-
-    class Meta:
-        verbose_name = "作业执行目标"
-        verbose_name_plural = verbose_name
-        db_table = "job_execution_target"
-        ordering = ["id"]
-        unique_together = [["execution", "target"]]
-
-    def __str__(self):
-        return f"{self.execution.name}-{self.target.name}"
-
-
-class FileDistributionItem(TimeInfo):
-    """
-    文件分发明细
-
-    记录每个文件在每个目标上的分发状态
-    """
-
-    execution = models.ForeignKey(JobExecution, on_delete=models.CASCADE, related_name="file_items", verbose_name="作业执行")
-    target = models.ForeignKey(Target, on_delete=models.CASCADE, verbose_name="执行目标")
-
-    # 文件信息
-    file_name = models.CharField(max_length=256, verbose_name="文件名")
-    file_key = models.CharField(max_length=512, verbose_name="文件Key")
-    bucket_name = models.CharField(max_length=128, default="", verbose_name="存储桶")
-    file_size = models.BigIntegerField(default=0, verbose_name="文件大小")
-
-    status = models.CharField(max_length=32, choices=ExecutionStatus.CHOICES, default=ExecutionStatus.PENDING, verbose_name="执行状态")
-
-    # 执行时间
-    started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
-    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="结束时间")
-
-    # 错误信息
-    error_message = models.TextField(blank=True, default="", verbose_name="错误信息")
-
-    class Meta:
-        verbose_name = "文件分发明细"
-        verbose_name_plural = verbose_name
-        db_table = "job_file_distribution_item"
-        ordering = ["id"]
-
-    def __str__(self):
-        return f"{self.file_name}->{self.target.name}"

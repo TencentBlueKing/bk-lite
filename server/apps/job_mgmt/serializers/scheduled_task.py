@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from apps.job_mgmt.constants import JobType, ScheduleType
+from apps.job_mgmt.constants import JobType, ScheduleType, TargetSource
 from apps.job_mgmt.models import ScheduledTask, Target
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 
@@ -37,7 +37,8 @@ class ScheduledTaskListSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_target_count(self, obj):
-        return obj.targets.count()
+        target_list = obj.target_list or []
+        return len(target_list)
 
 
 class ScheduledTaskDetailSerializer(serializers.ModelSerializer):
@@ -48,7 +49,6 @@ class ScheduledTaskDetailSerializer(serializers.ModelSerializer):
     script_type_display = serializers.CharField(source="get_script_type_display", read_only=True)
     script_name = serializers.CharField(source="script.name", read_only=True, default=None)
     playbook_name = serializers.CharField(source="playbook.name", read_only=True, default=None)
-    target_ids = serializers.PrimaryKeyRelatedField(source="targets", many=True, read_only=True)
 
     class Meta:
         model = ScheduledTask
@@ -66,7 +66,8 @@ class ScheduledTaskDetailSerializer(serializers.ModelSerializer):
             "script_name",
             "playbook",
             "playbook_name",
-            "target_ids",
+            "target_source",
+            "target_list",
             "params",
             "script_type",
             "script_type_display",
@@ -91,7 +92,17 @@ class ScheduledTaskDetailSerializer(serializers.ModelSerializer):
 class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
     """定时任务创建序列化器"""
 
-    target_ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, write_only=True, help_text="目标ID列表")
+    target_source = serializers.ChoiceField(
+        choices=[TargetSource.NODE_MGMT, TargetSource.MANUAL, TargetSource.SYNC],
+        help_text="目标来源: node_mgmt=节点管理, manual=手动添加, sync=同步",
+    )
+    target_list = serializers.ListField(
+        child=serializers.DictField(),
+        min_length=1,
+        write_only=True,
+        help_text="目标列表: node_mgmt时为[{node_id, name, ip, os, cloud_region_id}], manual时为[{target_id, name, ip}]",
+    )
+    team = serializers.ListField(child=serializers.IntegerField(), required=False, default=list, help_text="团队ID列表，用于高危规则匹配")
 
     class Meta:
         model = ScheduledTask
@@ -104,7 +115,8 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
             "scheduled_time",
             "script",
             "playbook",
-            "target_ids",
+            "target_source",
+            "target_list",
             "params",
             "script_type",
             "script_content",
@@ -146,11 +158,15 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
             if not attrs.get("playbook"):
                 raise serializers.ValidationError({"playbook": "Playbook执行时必须指定Playbook"})
 
-        # 验证目标
-        target_ids = attrs.get("target_ids", [])
-        targets = Target.objects.filter(id__in=target_ids)
-        if targets.count() != len(target_ids):
-            raise serializers.ValidationError({"target_ids": "部分目标不存在"})
+        # 验证目标列表（仅 manual 来源需要验证 target_id 存在）
+        target_source = attrs.get("target_source")
+        target_list = attrs.get("target_list", [])
+        if target_source == TargetSource.MANUAL:
+            target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
+            if target_ids:
+                existing_count = Target.objects.filter(id__in=target_ids).count()
+                if existing_count != len(target_ids):
+                    raise serializers.ValidationError({"target_list": "部分目标不存在"})
 
         # 验证 params 格式
         params = attrs.get("params")
@@ -162,7 +178,6 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        target_ids = validated_data.pop("target_ids", [])
         request = self.context.get("request")
 
         if request and request.user:
@@ -170,7 +185,6 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
             validated_data["updated_by"] = request.user.username
 
         instance = ScheduledTask.objects.create(**validated_data)
-        instance.targets.set(target_ids)
 
         # 创建 celery-beat PeriodicTask
         periodic_task = ScheduledTaskService.create_periodic_task(instance)
@@ -184,7 +198,18 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
 class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
     """定时任务更新序列化器"""
 
-    target_ids = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True, help_text="目标ID列表")
+    target_source = serializers.ChoiceField(
+        choices=[TargetSource.NODE_MGMT, TargetSource.MANUAL, TargetSource.SYNC],
+        required=False,
+        help_text="目标来源: node_mgmt=节点管理, manual=手动添加, sync=同步",
+    )
+    target_list = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        write_only=True,
+        help_text="目标列表: node_mgmt时为[{node_id, name, ip, os, cloud_region_id}], manual时为[{target_id, name, ip}]",
+    )
+    team = serializers.ListField(child=serializers.IntegerField(), required=False, help_text="团队ID列表，用于高危规则匹配")
 
     class Meta:
         model = ScheduledTask
@@ -197,7 +222,8 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
             "scheduled_time",
             "script",
             "playbook",
-            "target_ids",
+            "target_source",
+            "target_list",
             "params",
             "script_type",
             "script_content",
@@ -245,12 +271,16 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
             playbook = attrs.get("playbook", instance.playbook if instance else None)
             if not playbook:
                 raise serializers.ValidationError({"playbook": "Playbook执行时必须指定Playbook"})
-        # 验证目标
-        target_ids = attrs.get("target_ids")
-        if target_ids is not None:
-            targets = Target.objects.filter(id__in=target_ids)
-            if targets.count() != len(target_ids):
-                raise serializers.ValidationError({"target_ids": "部分目标不存在"})
+
+        # 验证目标列表（仅 manual 来源需要验证 target_id 存在）
+        target_source = attrs.get("target_source", instance.target_source if instance else None)
+        target_list = attrs.get("target_list")
+        if target_list is not None and target_source == TargetSource.MANUAL:
+            target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
+            if target_ids:
+                existing_count = Target.objects.filter(id__in=target_ids).count()
+                if existing_count != len(target_ids):
+                    raise serializers.ValidationError({"target_list": "部分目标不存在"})
 
         # 验证 params 格式
         params = attrs.get("params")
@@ -262,7 +292,6 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
         return attrs
 
     def update(self, instance, validated_data):
-        target_ids = validated_data.pop("target_ids", None)
         request = self.context.get("request")
 
         if request and request.user:
@@ -271,9 +300,6 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
-
-        if target_ids is not None:
-            instance.targets.set(target_ids)
 
         # 更新 celery-beat PeriodicTask
         periodic_task = ScheduledTaskService.update_periodic_task(instance)

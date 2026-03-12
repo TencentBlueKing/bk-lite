@@ -5,7 +5,7 @@ from django_minio_backend import MinioBackend
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.job_mgmt.constants import CredentialSource, ExecutorDriver, OSType, SSHCredentialType, TargetSource, WinRMScheme
+from apps.job_mgmt.constants import CredentialSource, ExecutorDriver, OSType, SSHCredentialType, WinRMScheme
 
 # SSH 密钥文件存储 bucket
 SSH_KEY_BUCKET = "job-mgmt-private"
@@ -23,9 +23,7 @@ class Target(TimeInfo, MaintainerInfo):
     """
     执行目标（主机）
 
-    两种来源：
-    - sync: 从 Node 同步，node_id 是 Node.id，使用 execute_local / download_to_local
-    - manual: 手动新增，使用 cloud_region_id + SSH 凭据，使用 execute_ssh / download_to_remote
+    手动新增的目标，使用 cloud_region_id + SSH/WinRM 凭据，通过 execute_ssh / download_to_remote 执行。
     """
 
     name = models.CharField(max_length=128, verbose_name="名称")
@@ -35,12 +33,8 @@ class Target(TimeInfo, MaintainerInfo):
     # 云区域（关联 node_mgmt.CloudRegion，不使用外键）
     cloud_region_id = models.BigIntegerField(null=True, blank=True, verbose_name="云区域ID")
 
-    # 执行器标识（sync 来源时为 Node.id）
+    # 节点ID（预留字段）
     node_id = models.CharField(max_length=64, blank=True, default="", verbose_name="节点ID")
-
-    # 来源信息
-    source = models.CharField(max_length=32, choices=TargetSource.CHOICES, default=TargetSource.MANUAL, verbose_name="来源")
-    source_id = models.CharField(max_length=64, blank=True, default="", verbose_name="来源ID")
 
     # 执行驱动
     driver = models.CharField(max_length=32, choices=ExecutorDriver.CHOICES, default=ExecutorDriver.ANSIBLE, verbose_name="执行驱动")
@@ -86,11 +80,6 @@ class Target(TimeInfo, MaintainerInfo):
 
     def __str__(self):
         return f"{self.name}({self.ip})"
-
-    @property
-    def is_sync_source(self) -> bool:
-        """是否为同步来源"""
-        return self.source == TargetSource.SYNC
 
     @property
     def is_manual_credential(self) -> bool:

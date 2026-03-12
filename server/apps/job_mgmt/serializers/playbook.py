@@ -174,6 +174,8 @@ class PlaybookListSerializer(TeamSerializer):
             "name",
             "version",
             "team_name",
+            "created_by",
+            "updated_by",
             "updated_at",
             "description",
         ]
@@ -193,6 +195,7 @@ class PlaybookDetailSerializer(serializers.ModelSerializer):
             "file_list",
             "params",
             "created_by",
+            "updated_by",
             "updated_at",
         ]
         read_only_fields = fields
@@ -238,6 +241,11 @@ class PlaybookCreateSerializer(serializers.Serializer):
         # 解析 ZIP 包内容
         parsed = parse_playbook_zip(file)
 
+        # 获取当前用户信息
+        request = self.context.get("request")
+        username = getattr(request.user, "username", "") if request else ""
+        domain = getattr(request.user, "domain", "domain.com") if request else "domain.com"
+
         # 创建 Playbook
         playbook = Playbook.objects.create(
             name=name,
@@ -247,6 +255,10 @@ class PlaybookCreateSerializer(serializers.Serializer):
             readme=parsed["readme"],
             file_list=parsed["file_list"],
             params=parsed["params"],
+            created_by=username,
+            updated_by=username,
+            domain=domain,
+            updated_by_domain=domain,
         )
 
         return playbook
@@ -313,13 +325,18 @@ class PlaybookUpgradeSerializer(serializers.Serializer):
         """
         更新版本
 
-        1. 上传新文件
-        2. 解析 ZIP 包内容
-        3. 更新版本号（自动或手动）
-        4. 从文件名更新 name
+        1. 删除旧文件
+        2. 上传新文件
+        3. 解析 ZIP 包内容
+        4. 更新版本号（自动或手动）
+        5. 从文件名更新 name
         """
         file = validated_data["file"]
         new_version = validated_data.get("version", "").strip()
+
+        # 删除旧文件，避免存储泄漏
+        if instance.file:
+            instance.file.delete(save=False)
 
         # 版本号逻辑：不填则自动 +0.0.1
         if not new_version:
@@ -334,6 +351,11 @@ class PlaybookUpgradeSerializer(serializers.Serializer):
         # 解析 ZIP 包内容
         parsed = parse_playbook_zip(file)
 
+        # 获取当前用户信息
+        request = self.context.get("request")
+        username = getattr(request.user, "username", "") if request else ""
+        domain = getattr(request.user, "domain", "domain.com") if request else "domain.com"
+
         # 更新实例
         instance.file = file
         instance.name = name
@@ -341,6 +363,8 @@ class PlaybookUpgradeSerializer(serializers.Serializer):
         instance.readme = parsed["readme"]
         instance.file_list = parsed["file_list"]
         instance.params = parsed["params"]
+        instance.updated_by = username
+        instance.updated_by_domain = domain
         instance.save()
 
         return instance

@@ -4,12 +4,14 @@
 class TargetSource:
     """目标来源"""
 
-    SYNC = "sync"  # 从 Node 同步，使用 execute_local / download_to_local
+    SYNC = "sync"  # 从 Node 同步，使用 execute_local / download_to_local（兼容旧值）
     MANUAL = "manual"  # 手动新增，使用 execute_ssh / download_to_remote
+    NODE_MGMT = "node_mgmt"  # 节点管理，使用 execute_local / download_to_local
 
     CHOICES = (
         (SYNC, "同步"),
         (MANUAL, "手动"),
+        (NODE_MGMT, "节点管理"),
     )
 
 
@@ -107,6 +109,18 @@ class DangerousLevel:
     CHOICES = (
         (CONFIRM, "二次确认"),
         (FORBIDDEN, "禁止分发"),
+    )
+
+
+class MatchType:
+    """匹配方式"""
+
+    EXACT = "exact"  # 精确匹配（路径前缀）
+    REGEX = "regex"  # 正则匹配
+
+    CHOICES = (
+        (EXACT, "精确匹配"),
+        (REGEX, "正则匹配"),
     )
 
 

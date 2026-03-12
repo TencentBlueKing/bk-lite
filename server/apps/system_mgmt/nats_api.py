@@ -626,7 +626,7 @@ def get_user_rules_by_app(group_id, username, domain, app, module, child_module=
     module_filter = Q(group_rule__rules__has_key=module)
 
     # 如果指定了子模块，不在数据库层面过滤，在Python层面处理复杂嵌套
-    rules = UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(base_filter & module_filter)
+    rules = list(UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(base_filter & module_filter))
 
     if not rules:
         return {"instance": [], "team": admin_teams}

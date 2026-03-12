@@ -113,6 +113,7 @@ class GenericViewSetFun(object):
             return self.value_error(message)
 
         current_team, include_children, org_field, query = self.filter_by_group(queryset, request, user)
+
         permission_key = permission_key or getattr(self, "permission_key", None)
         if permission_key:
             app_name = self._get_app_name()

@@ -1,18 +1,14 @@
 """作业执行视图"""
 
-from datetime import datetime
-
-from django_minio_backend import MinioBackend
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.job_mgmt.constants import ExecutionStatus, JobType
+from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource, TriggerSource
 from apps.job_mgmt.filters.execution import JobExecutionFilter
-from apps.job_mgmt.models import JobExecution, JobExecutionTarget, Playbook, Script, Target
+from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target
 from apps.job_mgmt.serializers.execution import (
     FileDistributionSerializer,
     JobExecutionDetailSerializer,
@@ -22,9 +18,6 @@ from apps.job_mgmt.serializers.execution import (
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
-
-# 文件分发存储 bucket
-FILE_DISTRIBUTION_BUCKET = "job-mgmt-private"
 
 
 class JobExecutionViewSet(AuthViewSet):
@@ -70,11 +63,17 @@ class JobExecutionViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        # 验证目标
-        target_ids = data["target_ids"]
-        targets = Target.objects.filter(id__in=target_ids)
-        if targets.count() != len(target_ids):
-            return Response({"error": "部分目标不存在"}, status=status.HTTP_400_BAD_REQUEST)
+        # 获取目标来源和目标列表
+        target_source = data["target_source"]
+        target_list = data["target_list"]
+
+        # 验证目标（仅 manual 来源需要验证 target_id 存在）
+        if target_source == TargetSource.MANUAL:
+            target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
+            if target_ids:
+                existing_count = Target.objects.filter(id__in=target_ids).count()
+                if existing_count != len(target_ids):
+                    return Response({"error": "部分目标不存在"}, status=status.HTTP_400_BAD_REQUEST)
 
         username = request.user.username if request.user else ""
         name = data["name"]
@@ -99,7 +98,9 @@ class JobExecutionViewSet(AuthViewSet):
                 playbook=playbook,
                 params=params_str,
                 timeout=timeout,
-                total_count=len(target_ids),
+                total_count=len(target_list),
+                target_source=target_source,
+                target_list=target_list,
                 team=team,
                 created_by=username,
                 updated_by=username,
@@ -133,42 +134,38 @@ class JobExecutionViewSet(AuthViewSet):
                 script_type=script_type,
                 script_content=script_content,
                 timeout=timeout,
-                total_count=len(target_ids),
+                total_count=len(target_list),
+                target_source=target_source,
+                target_list=target_list,
                 team=team,
                 created_by=username,
                 updated_by=username,
             )
             task_func = execute_script_task
 
-        # 创建目标明细
-        for target in targets:
-            JobExecutionTarget.objects.create(
-                execution=execution,
-                target=target,
-                status=ExecutionStatus.PENDING,
-            )
-
         # 触发异步任务
-        task_func.delay(execution.id)
+        # task_func.delay(execution.id)
+        task_func(execution.id)
 
         return Response(
             JobExecutionDetailSerializer(execution).data,
             status=status.HTTP_201_CREATED,
         )
 
-    @action(detail=False, methods=["post"], parser_classes=[MultiPartParser])
+    @action(detail=False, methods=["post"])
     @HasPermission("file_dist-Add")
     def file_distribution(self, request):
         """
         文件分发
 
-        使用 multipart/form-data 上传文件并分发到指定目标。
+        使用 JSON 请求体，传入已上传文件的 ID 列表进行分发。
 
-        请求体 (multipart/form-data):
+        请求体 (application/json):
         {
             "name": "部署配置文件",
-            "files": [<文件1>, <文件2>, ...],
-            "target_ids": [1, 2, 3],
+            "file_ids": [1, 2, 3],
+            "target_source": "node_mgmt",
+            "target_list": [{"node_id": "xxx", "name": "xxx", "ip": "1.2.3.4", "os": "linux"}],
             "target_path": "/etc/nginx/",
             "overwrite_strategy": "overwrite",
             "timeout": 600,
@@ -179,11 +176,23 @@ class JobExecutionViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        # 验证目标
-        target_ids = data["target_ids"]
-        targets = Target.objects.filter(id__in=target_ids)
-        if targets.count() != len(target_ids):
-            return Response({"error": "部分目标不存在"}, status=status.HTTP_400_BAD_REQUEST)
+        # 获取目标来源和目标列表
+        target_source = data["target_source"]
+        target_list = data["target_list"]
+
+        # 验证目标（仅 manual 来源需要验证 target_id 存在）
+        if target_source == TargetSource.MANUAL:
+            target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
+            if target_ids:
+                existing_count = Target.objects.filter(id__in=target_ids).count()
+                if existing_count != len(target_ids):
+                    return Response({"error": "部分目标不存在"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 验证文件
+        file_ids = data["file_ids"]
+        distribution_files = DistributionFile.objects.filter(id__in=file_ids)
+        if distribution_files.count() != len(file_ids):
+            return Response({"error": "部分文件不存在或已过期"}, status=status.HTTP_400_BAD_REQUEST)
 
         username = request.user.username if request.user else ""
 
@@ -199,19 +208,13 @@ class JobExecutionViewSet(AuthViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 上传文件到 MinIO，构建 files 列表
-        storage = MinioBackend(bucket_name=FILE_DISTRIBUTION_BUCKET)
+        # 从数据库获取文件信息，构建 files 列表
         files_info = []
-        for file in data["files"]:
-            now = datetime.now()
-            file_path = f"files/{now.year}/{now.month:02d}/{now.day:02d}/{file.name}"
-            saved_path = storage.save(file_path, file)
+        for df in distribution_files:
             files_info.append(
                 {
-                    "name": file.name,
-                    "file_key": saved_path,
-                    "bucket_name": FILE_DISTRIBUTION_BUCKET,
-                    "size": file.size,
+                    "name": df.original_name,
+                    "file_key": df.file_key,
                 }
             )
 
@@ -224,22 +227,16 @@ class JobExecutionViewSet(AuthViewSet):
             target_path=data["target_path"],
             overwrite_strategy=data.get("overwrite_strategy", "overwrite"),
             timeout=data.get("timeout", 600),
-            total_count=len(target_ids),
+            total_count=len(target_list),
+            target_source=target_source,
+            target_list=target_list,
             team=data.get("team", []),
             created_by=username,
             updated_by=username,
         )
 
-        # 创建目标明细
-        for target in targets:
-            JobExecutionTarget.objects.create(
-                execution=execution,
-                target=target,
-                status=ExecutionStatus.PENDING,
-            )
-
         # 触发异步任务
-        distribute_files_task.delay(execution.id)
+        distribute_files_task(execution.id)
 
         return Response(
             JobExecutionDetailSerializer(execution).data,
@@ -252,12 +249,8 @@ class JobExecutionViewSet(AuthViewSet):
         """
         获取执行目标明细列表
         """
-        from apps.job_mgmt.serializers.execution import JobExecutionTargetSerializer
-
         execution = self.get_object()
-        targets = execution.execution_targets.all()
-        serializer = JobExecutionTargetSerializer(targets, many=True)
-        return Response(serializer.data)
+        return Response(execution.execution_results or [])
 
     @action(detail=True, methods=["post"])
     @HasPermission("job_record-Edit")
@@ -277,7 +270,91 @@ class JobExecutionViewSet(AuthViewSet):
         execution.status = ExecutionStatus.CANCELLED
         execution.save(update_fields=["status", "updated_at"])
 
-        # 更新所有未完成的目标
-        execution.execution_targets.exclude(status__in=ExecutionStatus.TERMINAL_STATES).update(status=ExecutionStatus.CANCELLED)
-
         return Response({"message": "已取消执行"})
+
+    @action(detail=True, methods=["post"])
+    @HasPermission("job_record-Edit")
+    def re_execute(self, request, pk=None):
+        """
+        重新执行
+
+        基于现有执行记录创建一个新的执行任务，使用相同的参数重新执行。
+        仅支持脚本执行和 Playbook 类型，不支持文件分发（文件可能已过期）。
+        """
+        original = self.get_object()
+
+        # 文件分发不支持重新执行
+        if original.job_type == JobType.FILE_DISTRIBUTION:
+            return Response(
+                {"error": "文件分发类型不支持重新执行，请重新上传文件"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        username = request.user.username if request.user else ""
+
+        # 获取原执行记录的目标列表
+        target_list = original.target_list or []
+        if not target_list:
+            return Response({"error": "原执行目标已不存在"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 根据作业类型创建新的执行记录
+        if original.job_type == JobType.PLAYBOOK:
+            if not original.playbook:
+                return Response({"error": "原关联 Playbook 已不存在"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 高危命令检测（Playbook 内容可能已变更）
+            # Playbook 暂不做高危检测
+
+            execution = JobExecution.objects.create(
+                name=original.name,
+                job_type=JobType.PLAYBOOK,
+                trigger_source=TriggerSource.MANUAL,
+                status=ExecutionStatus.PENDING,
+                playbook=original.playbook,
+                params=original.params,
+                timeout=original.timeout,
+                total_count=len(target_list),
+                target_source=original.target_source,
+                target_list=target_list,
+                team=original.team,
+                created_by=username,
+                updated_by=username,
+            )
+            task_func = execute_playbook_task
+        else:
+            # 脚本执行
+            # 高危命令检测
+            check_result = DangerousChecker.check_command(original.script_content, original.team)
+            if not check_result.can_execute:
+                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+                return Response(
+                    {"error": f"脚本包含高危命令，禁止执行: {', '.join(forbidden_rules)}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            execution = JobExecution.objects.create(
+                name=original.name,
+                job_type=JobType.SCRIPT,
+                trigger_source=TriggerSource.MANUAL,
+                status=ExecutionStatus.PENDING,
+                script=original.script,
+                params=original.params,
+                script_type=original.script_type,
+                script_content=original.script_content,
+                timeout=original.timeout,
+                total_count=len(target_list),
+                target_source=original.target_source,
+                target_list=target_list,
+                team=original.team,
+                created_by=username,
+                updated_by=username,
+            )
+            task_func = execute_script_task
+
+        # 触发异步任务
+        task_func(execution.id)
+
+        return Response(
+            JobExecutionDetailSerializer(execution).data,
+            status=status.HTTP_201_CREATED,
+        )

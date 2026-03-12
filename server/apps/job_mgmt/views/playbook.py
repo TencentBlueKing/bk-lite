@@ -100,7 +100,15 @@ class PlaybookViewSet(AuthViewSet):
 
         # 只删除当前用户有权限的Playbook
         queryset = self.filter_queryset(self.get_queryset())
-        deleted_count, _ = queryset.filter(id__in=ids).delete()
+        playbooks = queryset.filter(id__in=ids)
+
+        # 先批量删除 MinIO 文件
+        for playbook in playbooks:
+            if playbook.file:
+                playbook.file.delete(save=False)
+
+        # 再批量删除数据库记录
+        deleted_count, _ = playbooks.delete()
 
         return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
 

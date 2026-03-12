@@ -1,6 +1,7 @@
 from apps.job_mgmt.views.dangerous_path import DangerousPathViewSet  # noqa
 from apps.job_mgmt.views.dangerous_rule import DangerousRuleViewSet  # noqa
 from apps.job_mgmt.views.dashboard import DashboardViewSet  # noqa
+from apps.job_mgmt.views.distribution_file import DistributionFileViewSet  # noqa
 from apps.job_mgmt.views.execution import JobExecutionViewSet  # noqa
 from apps.job_mgmt.views.playbook import PlaybookViewSet  # noqa
 from apps.job_mgmt.views.scheduled_task import ScheduledTaskViewSet  # noqa

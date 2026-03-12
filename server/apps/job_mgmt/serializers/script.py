@@ -2,8 +2,29 @@
 
 from rest_framework import serializers
 
+from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.models import Script
 from apps.job_mgmt.services.param_crypto import ParamCrypto
+
+
+class ScriptListSerializer(TeamSerializer):
+    """脚本列表序列化器（返回精简字段）"""
+
+    script_type_display = serializers.CharField(source="get_script_type_display", read_only=True)
+
+    class Meta:
+        model = Script
+        fields = [
+            "id",
+            "name",
+            "description",
+            "script_type",
+            "script_type_display",
+            "timeout",
+            "team_name",
+            "is_built_in",
+            "updated_at",
+        ]
 
 
 class ScriptSerializer(serializers.ModelSerializer):

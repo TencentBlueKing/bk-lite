@@ -8,7 +8,13 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.filters.script import ScriptFilter
 from apps.job_mgmt.models import Script
-from apps.job_mgmt.serializers.script import ScriptBatchDeleteSerializer, ScriptCreateSerializer, ScriptSerializer, ScriptUpdateSerializer
+from apps.job_mgmt.serializers.script import (
+    ScriptBatchDeleteSerializer,
+    ScriptCreateSerializer,
+    ScriptListSerializer,
+    ScriptSerializer,
+    ScriptUpdateSerializer,
+)
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 
 
@@ -23,7 +29,9 @@ class ScriptViewSet(AuthViewSet):
     permission_key = "job"
 
     def get_serializer_class(self):
-        if self.action == "create":
+        if self.action == "list":
+            return ScriptListSerializer
+        elif self.action == "create":
             return ScriptCreateSerializer
         elif self.action in ["update", "partial_update"]:
             return ScriptUpdateSerializer

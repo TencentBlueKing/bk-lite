@@ -60,6 +60,12 @@ class Playbook(TimeInfo, MaintainerInfo):
     def __str__(self):
         return f"{self.name} ({self.version})"
 
+    def delete(self, *args, **kwargs):
+        """删除时同时删除 MinIO 中的文件"""
+        if self.file:
+            self.file.delete(save=False)
+        super().delete(*args, **kwargs)
+
     @property
     def file_name(self) -> str:
         """文件名（兼容属性）"""

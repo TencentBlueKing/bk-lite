@@ -5,10 +5,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.time_util import get_crontab_next_runs
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import ExecutionStatus, JobType
 from apps.job_mgmt.filters.scheduled_task import ScheduledTaskFilter
-from apps.job_mgmt.models import JobExecution, JobExecutionTarget, ScheduledTask
+from apps.job_mgmt.models import JobExecution, ScheduledTask
 from apps.job_mgmt.serializers.scheduled_task import (
     ScheduledTaskBatchDeleteSerializer,
     ScheduledTaskCreateSerializer,
@@ -107,8 +108,8 @@ class ScheduledTaskViewSet(AuthViewSet):
         instance = self.get_object()
 
         # 获取执行目标
-        targets = list(instance.targets.all())
-        if not targets:
+        target_list = instance.target_list or []
+        if not target_list:
             return Response({"error": "没有配置执行目标"}, status=status.HTTP_400_BAD_REQUEST)
 
         # 处理参数：解析 is_modified=False 的参数并转换为字符串
@@ -129,19 +130,13 @@ class ScheduledTaskViewSet(AuthViewSet):
             files=instance.files,
             target_path=instance.target_path,
             timeout=instance.timeout,
-            total_count=len(targets),
+            total_count=len(target_list),
+            target_source=instance.target_source,
+            target_list=target_list,
             team=instance.team,
             created_by=request.user.username if request.user else "",
             updated_by=request.user.username if request.user else "",
         )
-
-        # 创建目标明细
-        for target in targets:
-            JobExecutionTarget.objects.create(
-                execution=execution,
-                target=target,
-                status=ExecutionStatus.PENDING,
-            )
 
         # 触发异步任务
         if instance.job_type == JobType.SCRIPT:
@@ -192,3 +187,25 @@ class ScheduledTaskViewSet(AuthViewSet):
                 "deleted_count": deleted_count,
             }
         )
+
+    @action(detail=False, methods=["post"], url_path="crontab_preview")
+    def crontab_preview(self, request):
+        """
+        预览   表达式的下次执行时间
+
+        请求参数:
+            cron_expression: crontab 表达式 (5字段: 分 时 日 月 周)
+
+        返回:
+            next_runs: 下5次执行时间列表
+        """
+        cron_expression = request.data.get("cron_expression", "").strip()
+
+        if not cron_expression:
+            return Response({"error": "cron_expression 不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            next_runs = get_crontab_next_runs(cron_expression, count=5)
+            return Response({"result": True, "data": {"next_runs": next_runs}})
+        except ValueError as e:
+            return Response({"result": False, "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)

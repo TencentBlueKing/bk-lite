@@ -2,33 +2,7 @@
 
 from rest_framework import serializers
 
-from apps.job_mgmt.models import JobExecution, JobExecutionTarget, Playbook, Script
-
-
-class JobExecutionTargetSerializer(serializers.ModelSerializer):
-    """作业执行目标序列化器"""
-
-    target_name = serializers.CharField(source="target.name", read_only=True)
-    target_ip = serializers.CharField(source="target.ip", read_only=True)
-    status_display = serializers.CharField(source="get_status_display", read_only=True)
-
-    class Meta:
-        model = JobExecutionTarget
-        fields = [
-            "id",
-            "target",
-            "target_name",
-            "target_ip",
-            "status",
-            "status_display",
-            "stdout",
-            "stderr",
-            "exit_code",
-            "started_at",
-            "finished_at",
-            "error_message",
-        ]
-        read_only_fields = ["id", "started_at", "finished_at"]
+from apps.job_mgmt.models import JobExecution, Playbook, Script
 
 
 class JobExecutionListSerializer(serializers.ModelSerializer):
@@ -37,7 +11,7 @@ class JobExecutionListSerializer(serializers.ModelSerializer):
     job_type_display = serializers.CharField(source="get_job_type_display", read_only=True)
     trigger_source_display = serializers.CharField(source="get_trigger_source_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
-    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    duration = serializers.SerializerMethodField(help_text="耗时（秒）")
 
     class Meta:
         model = JobExecution
@@ -55,11 +29,18 @@ class JobExecutionListSerializer(serializers.ModelSerializer):
             "failed_count",
             "started_at",
             "finished_at",
+            "duration",
             "executor_user",
             "created_by",
             "created_at",
         ]
         read_only_fields = fields
+
+    def get_duration(self, obj) -> int | None:
+        """计算耗时（秒）"""
+        if obj.started_at and obj.finished_at:
+            return int((obj.finished_at - obj.started_at).total_seconds())
+        return None
 
 
 class JobExecutionDetailSerializer(serializers.ModelSerializer):
@@ -69,10 +50,7 @@ class JobExecutionDetailSerializer(serializers.ModelSerializer):
     trigger_source_display = serializers.CharField(source="get_trigger_source_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     script_type_display = serializers.CharField(source="get_script_type_display", read_only=True)
-    execution_targets = JobExecutionTargetSerializer(many=True, read_only=True)
-    status_display = serializers.CharField(source="get_status_display", read_only=True)
-    script_type_display = serializers.CharField(source="get_script_type_display", read_only=True)
-    execution_targets = JobExecutionTargetSerializer(many=True, read_only=True)
+    duration = serializers.SerializerMethodField(help_text="耗时（秒）")
 
     class Meta:
         model = JobExecution
@@ -96,18 +74,27 @@ class JobExecutionDetailSerializer(serializers.ModelSerializer):
             "timeout",
             "started_at",
             "finished_at",
+            "duration",
             "total_count",
             "success_count",
             "failed_count",
             "executor_user",
             "team",
-            "execution_targets",
+            "target_source",
+            "target_list",
+            "execution_results",
             "created_by",
             "created_at",
             "updated_by",
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_duration(self, obj) -> int | None:
+        """计算耗时（秒）"""
+        if obj.started_at and obj.finished_at:
+            return int((obj.finished_at - obj.started_at).total_seconds())
+        return None
 
 
 class QuickExecuteSerializer(serializers.Serializer):
@@ -120,14 +107,19 @@ class QuickExecuteSerializer(serializers.Serializer):
 
     按原型设计：
     - 作业名称（必填）
-    - 目标主机（必填）
+    - 目标来源和目标列表（必填）
     - 内容来源：作业模版 | 临时输入
     - 执行参数：模版模式为 dict，临时输入模式为字符串
     - 超时时间（默认 600 秒）
     """
 
     name = serializers.CharField(max_length=256, help_text="作业名称")
-    target_ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, help_text="目标主机ID列表")
+    target_source = serializers.ChoiceField(choices=["node_mgmt", "manual", "sync"], help_text="目标来源: node_mgmt=节点管理, manual=手动添加, sync=同步")
+    target_list = serializers.ListField(
+        child=serializers.DictField(),
+        min_length=1,
+        help_text="目标列表: node_mgmt时为[{node_id, name, ip, os, cloud_region_id}], manual时为[{target_id, name, ip}]",
+    )
 
     # 作业模版模式 - 脚本库
     script_id = serializers.IntegerField(required=False, help_text="脚本ID（作业模版-脚本库）")
@@ -192,32 +184,30 @@ class QuickExecuteSerializer(serializers.Serializer):
 class FileDistributionSerializer(serializers.Serializer):
     """文件分发序列化器
 
-    使用 multipart/form-data 上传文件，后端自动处理文件存储到 MinIO。
+    使用 JSON 请求体，传入已上传文件的 ID 列表进行分发。
 
-    请求体 (multipart/form-data):
+    请求体 (application/json):
     {
         "name": "部署配置文件",
-        "files": [<文件1>, <文件2>, ...],  // 多文件上传
-        "target_ids": [1, 2, 3],
+        "file_ids": [1, 2, 3],
+        "target_source": "node_mgmt",
+        "target_list": [{"node_id": "xxx", "name": "xxx", "ip": "1.2.3.4", ...}],
         "target_path": "/etc/nginx/",
-        "overwrite_strategy": "overwrite",  // overwrite 或 skip
+        "overwrite_strategy": "overwrite",
         "timeout": 600,
         "team": [1]
     }
     """
 
     name = serializers.CharField(max_length=256, help_text="作业名称")
-    files = serializers.ListField(child=serializers.FileField(), min_length=1, help_text="文件列表（支持多文件上传）")
-    target_ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, help_text="目标ID列表")
+    file_ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, help_text="已上传文件ID列表")
+    target_source = serializers.ChoiceField(choices=["node_mgmt", "manual", "sync"], help_text="目标来源: node_mgmt=节点管理, manual=手动添加, sync=同步")
+    target_list = serializers.ListField(
+        child=serializers.DictField(),
+        min_length=1,
+        help_text="目标列表: node_mgmt时为[{node_id, name, ip, os, cloud_region_id}], manual时为[{target_id, name, ip}]",
+    )
     target_path = serializers.CharField(max_length=512, help_text="目标路径")
     overwrite_strategy = serializers.ChoiceField(choices=["overwrite", "skip"], default="overwrite", help_text="覆盖策略：overwrite=覆盖已存在文件, skip=跳过已存在文件")
     timeout = serializers.IntegerField(required=False, default=600, min_value=1, max_value=86400, help_text="超时时间（秒）")
     team = serializers.ListField(child=serializers.IntegerField(), required=False, default=list, help_text="团队ID列表")
-
-    def validate_files(self, value):
-        """验证文件"""
-        max_size = 500 * 1024 * 1024  # 500MB
-        for file in value:
-            if file.size > max_size:
-                raise serializers.ValidationError(f"文件 {file.name} 超过 500MB 限制")
-        return value

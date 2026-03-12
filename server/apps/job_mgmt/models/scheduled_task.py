@@ -4,10 +4,9 @@ from django.db import models
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.job_mgmt.constants import ConcurrencyPolicy, JobType, ScheduleType, ScriptType
+from apps.job_mgmt.constants import ConcurrencyPolicy, JobType, ScheduleType, ScriptType, TargetSource
 from apps.job_mgmt.models.playbook import Playbook
 from apps.job_mgmt.models.script import Script
-from apps.job_mgmt.models.target import Target
 
 
 class ScheduledTask(TimeInfo, MaintainerInfo):
@@ -33,8 +32,13 @@ class ScheduledTask(TimeInfo, MaintainerInfo):
     script = models.ForeignKey(Script, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联脚本")
     playbook = models.ForeignKey(Playbook, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联Playbook")
 
-    # 执行目标
-    targets = models.ManyToManyField(Target, verbose_name="执行目标")
+    # 目标来源
+    target_source = models.CharField(max_length=32, choices=TargetSource.CHOICES, default=TargetSource.MANUAL, verbose_name="目标来源")
+
+    # 目标列表（JSONField 存储）
+    # node_mgmt 来源: [{"node_id": "xxx", "name": "xxx", "ip": "1.2.3.4", "os": "linux", "cloud_region_id": 1}]
+    # manual 来源: [{"target_id": 1, "name": "xxx", "ip": "1.2.3.4"}]
+    target_list = models.JSONField(default=list, verbose_name="目标列表")
 
     # 执行参数
     params = models.JSONField(default=dict, verbose_name="执行参数")

@@ -6,6 +6,7 @@ from apps.job_mgmt.views import (
     DangerousPathViewSet,
     DangerousRuleViewSet,
     DashboardViewSet,
+    DistributionFileViewSet,
     JobExecutionViewSet,
     PlaybookViewSet,
     ScheduledTaskViewSet,
@@ -38,5 +39,8 @@ router.register(r"api/scheduled_task", ScheduledTaskViewSet, basename="scheduled
 
 # Dashboard
 router.register(r"api/dashboard", DashboardViewSet, basename="dashboard")
+
+# 分发文件
+router.register(r"api/distribution_file", DistributionFileViewSet, basename="distribution_file")
 
 urlpatterns = router.urls
