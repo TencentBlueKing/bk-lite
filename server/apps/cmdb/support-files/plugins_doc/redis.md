@@ -15,7 +15,11 @@
 | ip_addr | 主机内网 IP（hostname -I 第一个） |
 | port | Redis 监听端口 |
 | version | Redis 版本（redis-cli --version） |
-| install_path | 安装路径（进程可执行文件父目录） |
+| install_path | 安装路径（脱敏输出，常为空） |
 | max_conn | 最大连接数（config get maxclients） |
 | max_mem | 限制最大内存（config get maxmemory，0 表示未限制） |
 | database_role | 实例角色（master / slave，来自 info replication） |
+| topo_mode | 拓扑模式：standalone / replication / sentinel / cluster |
+| cluster_uuid | 集群/哨兵组唯一标识（用于去重与关联） |
+| slaves | 从节点列表（master 时）：`[{"ip":"","port":""},...]` |
+| master | 主节点地址（slave 时）：`"ip:port"` 或空 |
