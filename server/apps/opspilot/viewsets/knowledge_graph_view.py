@@ -75,10 +75,10 @@ class KnowledgeGraphViewSet(MaintainerViewSet):
     def rebuild_graph_community(self, request):
         knowledge_base_id = request.data.get("knowledge_base_id")
         graph_obj = KnowledgeGraph.objects.filter(knowledge_base_id=knowledge_base_id).first()
-        if graph_obj.status != "completed":
-            return JsonResponse({"result": False, "message": "Knowledge graph is not completed"})
         if not graph_obj:
             return JsonResponse({"result": False, "message": "Knowledge graph not found"})
+        if graph_obj.status != "completed":
+            return JsonResponse({"result": False, "message": "Knowledge graph is not completed"})
         try:
             rebuild_graph_community_by_instance.delay(graph_obj.id)
             return JsonResponse({"result": True})
