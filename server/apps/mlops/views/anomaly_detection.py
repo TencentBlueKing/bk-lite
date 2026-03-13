@@ -1072,7 +1072,6 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
 
                 # 更新容器信息（status 由用户控制，不修改）
                 instance.container_info = result
-                logger.info(result)
                 instance.port = int(result.get("port", 0)) if result.get("port") else instance.port
                 instance.save(update_fields=["container_info", "port"])
 
