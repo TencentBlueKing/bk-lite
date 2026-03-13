@@ -96,6 +96,26 @@ class MiddlewareCollectMetrics(CollectBase):
             return router_id
         return self.get_inst_name(data)
 
+
+    def get__host_assos(self, data):
+        host_inst_name = self.get_ip_addr(data)
+        if not host_inst_name:
+            logger.warning(
+                "实例未解析到主机标识，跳过run关联创建 instance_id=%s node_name=%s",
+                data.get("instance_id", "") if isinstance(data, dict) else "",
+                data.get("node_name", "") if isinstance(data, dict) else "",
+            )
+            return []
+
+        return [
+            {
+                "model_id": "host",
+                "inst_name": host_inst_name,
+                "asst_id": "run",
+                "model_asst_id": "rabbitmq_run_host",
+            }
+        ]
+
     @property
     def model_field_mapping(self):
         mapping = {
@@ -110,7 +130,8 @@ class MiddlewareCollectMetrics(CollectBase):
                 "server_name": "server_name",
                 "include": "include",
                 "ssl_version": "ssl_version",
-                "inst_name": self.get_inst_name
+                "inst_name": self.get_inst_name,
+                self.asso: self.get__host_assos,
             },
             "zookeeper": {
                 "inst_name": self.get_inst_name,
@@ -126,7 +147,8 @@ class MiddlewareCollectMetrics(CollectBase):
                 "tick_time": "tick_time",
                 "init_limit": "init_limit",
                 "sync_limit": "sync_limit",
-                "server": "server"
+                "server": "server",
+                self.asso: self.get__host_assos,
             },
             "kafka": {
                 "inst_name": self.get_inst_name,
@@ -146,6 +168,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "socket_receive_buffer_bytes": "socket_receive_buffer_bytes",  # 接收缓冲区大小
                 "socket_request_max_bytes": "socket_request_max_bytes",  # 单个请求套接字最大字节数
                 "socket_send_buffer_bytes": "socket_send_buffer_bytes",  # 发送缓冲区大小
+                self.asso: self.get__host_assos,
             },
             "etcd": {
                 "inst_name": self.get_inst_name,
@@ -156,6 +179,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "conf_file_path": "conf_file_path",
                 "peer_port": "peer_port",  # 集群通讯端口
                 "install_path": "install_path",
+                self.asso: self.get__host_assos,
             },
             "rabbitmq": {
                 "inst_name": self.get_inst_name,
@@ -168,6 +192,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "version": "version",
                 "enabled_plugin_file": "enabled_plugin_file",
                 "erlang_version": "erlang_version",
+                self.asso: self.get__host_assos,
             },
             "tomcat": {
                 "inst_name": self.get_inst_name,
@@ -181,6 +206,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "permsize": "permsize",
                 "log_path": "log_path",
                 "java_version": "java_version",
+                self.asso: self.get__host_assos,
             },
             "apache":{
                 "inst_name": self.get_inst_name,
@@ -193,6 +219,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "error_log":"error_log",
                 "custom_Log":"custom_Log",
                 "include":"include",
+                self.asso: self.get__host_assos,
             },
             "consul": {
                 "inst_name": self.get_inst_name,
@@ -203,6 +230,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "data_dir": "data_dir",
                 "conf_path": "conf_path",
                 "role": "role",
+                self.asso: self.get__host_assos,
             },
             "activemq":{
                 "inst_name": self.get_inst_name,
@@ -215,6 +243,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "java_version":"java_version",
                 "xms":"xms",
                 "xmx":"xmx",
+                self.asso: self.get__host_assos,
             },
             "weblogic": {
                 "inst_name": self.get_inst_name,
@@ -226,6 +255,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "domain_version": "domain_version",
                 "admin_server_name": "admin_server_name",
                 "name": "name",
+                self.asso: self.get__host_assos,
             },
             "keepalived": {
                 "inst_name": self.get_keepalived_inst_name,
@@ -238,6 +268,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "user_name": "user_name",
                 "install_path": "install_path",
                 "config_file": "config_file",
+                self.asso: self.get__host_assos,
             },
             "tongweb": {
                 "inst_name": self.get_inst_name,
@@ -251,6 +282,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "xmx": "xmx",
                 "metaspace_size": "metaspace_size",
                 "max_metaspace_size": "max_metaspace_size",
+                self.asso: self.get__host_assos,
             },
             "jetty": {
                 "inst_name": self.get_inst_name,
@@ -265,6 +297,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "war_name": "war_name",
                 "jvm_para": "jvm_para",
                 "max_threads": "max_threads",
+                self.asso: self.get__host_assos,
             },
             "docker": {
                 "inst_name": self.get_docker_inst_name,
@@ -278,6 +311,7 @@ class MiddlewareCollectMetrics(CollectBase):
                 "networks": lambda data: self.format_json_field(data.get("networks")),
                 "ports": "ports",
                 "mounts": lambda data: self.format_json_field(data.get("mounts")),
+                self.asso: self.get__host_assos,
             },
         }
 
@@ -353,5 +387,3 @@ class MiddlewareCollectMetrics(CollectBase):
                 if data:
                     result.append(data)
             self.result[self.model_id] = result
-
-
