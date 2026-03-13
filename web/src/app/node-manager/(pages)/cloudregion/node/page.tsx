@@ -14,9 +14,9 @@ import nodeStyle from './index.module.scss';
 import CollectorModal from './collectorModal';
 import { useTranslation } from '@/utils/i18n';
 import { ModalRef, TableDataItem, Pagination } from '@/app/node-manager/types';
-import { SearchFilters } from '@/app/node-manager/types/node';
+import { SearchFilters } from '@/components/search-combination/types';
 import CustomTable from '@/components/custom-table';
-import SearchCombination from './searchCombination';
+import SearchCombination from '@/components/search-combination';
 import {
   useColumns,
   useTelegrafMap,
