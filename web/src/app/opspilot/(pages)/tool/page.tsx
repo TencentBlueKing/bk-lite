@@ -126,6 +126,18 @@ const ToolListPage: React.FC = () => {
       disabled: isBuiltIn,
     },
     {
+      name: 'transport',
+      type: 'select',
+      label: t('tool.transport'),
+      placeholder: `${t('common.selectMsg')}${t('tool.transport')}`,
+      options: [
+        { value: 'streamable_http', label: 'Streamable' },
+        { value: 'sse', label: 'SSE' },
+      ],
+      rules: [{ required: true, message: `${t('common.selectMsg')}${t('tool.transport')}` }],
+      disabled: isBuiltIn,
+    },
+    {
       name: 'url',
       type: 'custom',
       label: t('tool.mcpUrl'),
@@ -139,18 +151,6 @@ const ToolListPage: React.FC = () => {
         />
       ),
       rules: [{ required: true, message: `${t('common.inputMsg')}${t('tool.mcpUrl')}` }],
-    },
-    {
-      name: 'transport',
-      type: 'select',
-      label: t('tool.transport'),
-      placeholder: `${t('common.selectMsg')}${t('tool.transport')}`,
-      options: [
-        { value: 'streamable_http', label: 'Streamable' },
-        { value: 'sse', label: 'SSE' },
-      ],
-      rules: [{ required: true, message: `${t('common.selectMsg')}${t('tool.transport')}` }],
-      disabled: isBuiltIn,
     },
     ...(!isBuiltIn ? [
       {
