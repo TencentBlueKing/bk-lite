@@ -1,7 +1,6 @@
 # ================================== HTTP Protocol ==================================
 {% set _ports = ports | default("80,8080,8000") %}
 {% set _capture_body = capture_body | default(false) %}
-packetbeat.interfaces.device: {{ network_interface | default('any') | to_json }}
 - type: http
   {% if _ports is string %}
   ports: {{ _ports.split(',') | map('trim') | map('int') | list | to_json }}
