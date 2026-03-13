@@ -20,7 +20,7 @@ from apps.cmdb.constants.constants import VIEW
 def cmdb_list_models(
     team_id: Optional[int] = None,
     include_children: Optional[bool] = None,
-    config: Optional[RunnableConfig] = None,
+    config: RunnableConfig = None,
 ) -> Dict[str, Any]:
     try:
         user = _get_user_from_config(config)
@@ -62,7 +62,7 @@ def cmdb_get_model_info(
     model_id: str,
     team_id: Optional[int] = None,
     include_children: Optional[bool] = None,
-    config: Optional[RunnableConfig] = None,
+    config: RunnableConfig = None,
 ) -> Dict[str, Any]:
     try:
         if not model_id:
@@ -91,7 +91,7 @@ def cmdb_list_model_attrs(
     model_id: str,
     team_id: Optional[int] = None,
     include_children: Optional[bool] = None,
-    config: Optional[RunnableConfig] = None,
+    config: RunnableConfig = None,
 ) -> Dict[str, Any]:
     try:
         if not model_id:
