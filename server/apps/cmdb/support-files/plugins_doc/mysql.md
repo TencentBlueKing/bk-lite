@@ -11,6 +11,9 @@
 说明：任务实际执行发生在你选择的“接入点”上；文档中的连通性自测命令，均应在接入点机器上执行。
 
 
+### 版本兼容性
+- 兼容官方 MySQL 5.5+ 版本（包含：5.6.x、5.7.x、8.0.x、8.4.x等）
+
 ### 前置要求
 在开始之前，请先确认以下条件：
 
@@ -128,20 +131,22 @@ FLUSH PRIVILEGES;
 
 
 ### 采集内容
-| Key 名称 | 含义 |
-| :----------- | :--- |
-| mysql.ip_addr | 实例 IP |
-| mysql.port | 监听端口 |
-| mysql.version | MySQL 版本 |
-| mysql.enable_binlog | 是否开启 binlog (log_bin) |
-| mysql.sync_binlog | binlog 同步策略 (sync_binlog) |
-| mysql.max_conn | 最大连接数 (max_connections) |
-| mysql.max_mem | 单包最大大小 (max_allowed_packet) |
-| mysql.basedir | 安装目录 (basedir) |
-| mysql.datadir | 数据目录 (datadir) |
-| mysql.socket | 本地 socket 文件 |
-| mysql.bind_address | 绑定地址 (bind_address) |
-| mysql.slow_query_log | 慢查询日志是否开启 |
+| Key 名称                  | 含义               |
+| :------------------------ | :----------------- |
+| mysql.ip_addr             | 实例 IP            |
+| mysql.port                | 监听端口           |
+| mysql.version             | MySQL 版本         |
+| mysql.enable_binlog       | 是否开启 binlog    |
+| mysql.sync_binlog         | binlog 同步策略    |
+| mysql.max_conn            | 最大连接数         |
+| mysql.max_mem             | 单包最大大小       |
+| mysql.basedir             | 安装目录           |
+| mysql.datadir             | 数据目录           |
+| mysql.socket              | 本地 socket 文件   |
+| mysql.bind_address        | 绑定地址           |
+| mysql.slow_query_log      | 慢查询日志是否开启 |
 | mysql.slow_query_log_file | 慢查询日志文件路径 |
-| mysql.log_error | 错误日志文件路径 |
-| mysql.wait_timeout | 空闲连接等待超时 (wait_timeout) |
+| mysql.log_error           | 错误日志文件路径   |
+| mysql.wait_timeout        | 空闲连接等待超时   |
+
+> 补充说明：`mysql.basedir`、`mysql.datadir`、`mysql.socket`、`mysql.bind_address`、`mysql.slow_query_log`、`mysql.slow_query_log_file`、`mysql.log_error` 等字段均来自 `SHOW GLOBAL VARIABLES`，在目标实例未配置对应变量或变量值为空时，采集结果中可能为空（NULL 或空字符串）；`mysql.enable_binlog` / `mysql.sync_binlog` 依赖 `log_bin`、`sync_binlog` 变量，若未开启 binlog 或版本不支持，则对应字段会为空或为默认值。
