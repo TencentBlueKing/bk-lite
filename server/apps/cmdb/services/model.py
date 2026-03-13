@@ -1305,3 +1305,135 @@ class ModelManage(object):
                     False,
                 )
         return True
+
+    @staticmethod
+    def export_model_config(language):
+        """导出模型配置为Excel (按model_config.xlsx模板格式)"""
+        from io import BytesIO
+
+        from openpyxl import Workbook
+
+        CLASSIFICATION_HEADERS_CN = ["模型分类ID", "模型分类名称"]
+        CLASSIFICATION_HEADERS_EN = ["classification_id", "classification_name"]
+
+        MODEL_HEADERS_CN = ["模型ID", "模型名称", "模型图标", "模型分类ID"]
+        MODEL_HEADERS_EN = ["model_id", "model_name", "icn", "classification_id"]
+
+        ATTR_HEADERS_CN = [
+            "英文名",
+            "名称",
+            "类型",
+            "数据配置",
+            "分组",
+            "是否唯一",
+            "是否可编辑",
+            "是否必填",
+            "用户提示",
+        ]
+        ATTR_HEADERS_EN = [
+            "attr_id",
+            "attr_name",
+            "attr_type",
+            "option",
+            "attr_group",
+            "is_only",
+            "editable",
+            "is_required",
+            "user_prompt",
+        ]
+
+        ASSO_HEADERS_CN = ["源模型", "目标模型", "关联关系", "源-目标约束"]
+        ASSO_HEADERS_EN = ["src_model_id", "dst_model_id", "asst_id", "mapping"]
+
+        workbook = Workbook()
+
+        ws_classifications = workbook.active
+        if ws_classifications is None:
+            ws_classifications = workbook.create_sheet(title="classifications")
+        else:
+            ws_classifications.title = "classifications"
+        ws_classifications.append(CLASSIFICATION_HEADERS_CN)
+        ws_classifications.append(CLASSIFICATION_HEADERS_EN)
+
+        classifications = ClassificationManage.search_model_classification(
+            language=language
+        )
+        for classification in classifications:
+            ws_classifications.append(
+                [
+                    classification.get("classification_id", ""),
+                    classification.get("classification_name", ""),
+                ]
+            )
+
+        ws_models = workbook.create_sheet(title="models")
+        ws_models.append(MODEL_HEADERS_CN)
+        ws_models.append(MODEL_HEADERS_EN)
+
+        models = ModelManage.search_model(language=language)
+        for model in models:
+            ws_models.append(
+                [
+                    model.get("model_id", ""),
+                    model.get("model_name", ""),
+                    model.get("icn", ""),
+                    model.get("classification_id", ""),
+                ]
+            )
+
+        for model in models:
+            model_id = model.get("model_id", "")
+            if not model_id:
+                continue
+
+            ws_attr = workbook.create_sheet(title=f"attr-{model_id}")
+            ws_attr.append(ATTR_HEADERS_CN)
+            ws_attr.append(ATTR_HEADERS_EN)
+
+            attrs = ModelManage.parse_attrs(model.get("attrs", "[]"))
+            for attr in attrs:
+                if attr.get("is_display_field"):
+                    continue
+                option = attr.get("option", {})
+                option_str = json.dumps(option, ensure_ascii=False) if option else ""
+                ws_attr.append(
+                    [
+                        attr.get("attr_id", ""),
+                        attr.get("attr_name", ""),
+                        attr.get("attr_type", ""),
+                        option_str,
+                        attr.get("attr_group", ""),
+                        attr.get("is_only", False),
+                        attr.get("editable", True),
+                        attr.get("is_required", False),
+                        attr.get("user_prompt", ""),
+                    ]
+                )
+
+            associations = ModelManage.model_association_search(model_id)
+            if associations:
+                ws_asso = workbook.create_sheet(title=f"asso-{model_id}")
+                ws_asso.append(ASSO_HEADERS_CN)
+                ws_asso.append(ASSO_HEADERS_EN)
+                for asso in associations:
+                    ws_asso.append(
+                        [
+                            asso.get("src_model_id", ""),
+                            asso.get("dst_model_id", ""),
+                            asso.get("asst_id", ""),
+                            asso.get("mapping", ""),
+                        ]
+                    )
+
+        file_stream = BytesIO()
+        workbook.save(file_stream)
+        file_stream.seek(0)
+
+        return file_stream
+
+    @staticmethod
+    def import_model_config(file):
+        from apps.cmdb.model_migrate.migrete_service import ModelMigrate
+
+        migrator = ModelMigrate(file_source=file, is_pre=False)
+        migrator.main()
