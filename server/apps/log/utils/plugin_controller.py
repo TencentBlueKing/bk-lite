@@ -236,3 +236,13 @@ class Controller:
         )
 
         return content
+
+    def has_template_for_config_type(self, config_type: str) -> bool:
+        """判断当前采集类型是否存在指定 config_type 的模板。"""
+        template_dir = os.path.join(
+            PluginConstants.DIRECTORY, self.data["collector"], self.data["collect_type"]
+        )
+        templates = self.get_template_info_by_type(
+            template_dir, self.data["collect_type"]
+        )
+        return any(t["config_type"] == config_type for t in templates)
