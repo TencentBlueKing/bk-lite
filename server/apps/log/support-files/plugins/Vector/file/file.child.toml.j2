@@ -1,12 +1,25 @@
+{% set component_suffix = ((config_id | default(instance_id, true)) | lower | replace('-', '_')) %}
+
 # ====================================
-# file 日志源（含字段映射）
+# file 日志源（生产标准参数）
 # ====================================
-[sources.file_{{ instance_id }}]
+[sources.file_{{ component_suffix }}]
 type = "file"
-include = ["{{ file_path }}"]
+include = [{{ include | map('tojson') | join(', ') }}]
+{% if exclude %}
+exclude = [{{ exclude | map('tojson') | join(', ') }}]
+{% endif %}
 data_dir = "/opt/fusion-collectors"
-ignore_older = 86400  # 忽略24小时以前的日志，可按需调整
-# encoding = "utf-8"  # 如有乱码可手动开启
+{% if ignore_older_secs %}
+ignore_older_secs = {{ ignore_older_secs }}
+{% endif %}
+{% if read_from %}
+read_from = "{{ read_from }}"
+{% endif %}
+{% if encoding and encoding.charset %}
+[sources.file_{{ component_suffix }}.encoding]
+charset = "{{ encoding.charset }}"
+{% endif %}
 
 {% if multiline %}
 # ====================================
@@ -18,41 +31,59 @@ multiline.start_pattern = '{{ multiline.start_pattern }}'
 multiline.timeout_ms = {{ multiline.timeout_ms }}
 {% endif %}
 
+{% set file_input = "file_" ~ component_suffix %}
+{% if parser and parser.type == "json" %}
+# ====================================
+# JSON message 解析（transform 层）
+# ====================================
+[transforms.file_parse_{{ component_suffix }}]
+type = "remap"
+inputs = ["file_{{ component_suffix }}"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null && is_object(parsed) {
+  . = merge(., parsed)
+}
+'''
+{% set file_input = "file_parse_" ~ component_suffix %}
+{% endif %}
+
 # ====================================
 # enrich（字段补全）
 # ====================================
-[transforms.file_enrich_{{ instance_id }}]
+[transforms.file_enrich_{{ component_suffix }}]
 type = "remap"
-inputs = ["file_{{ instance_id }}"]
+inputs = ["{{ file_input }}"]
 source = '''
 .collector = "Vector"
 .collect_type = "file"
 .instance_id = "{{ instance_id }}"
+.config_id = "{{ config_id | default('', true) }}"
 '''
 
 # ====================================
 # sinks
 # ====================================
-[sinks.vmlogs_{{ instance_id }}]
+[sinks.vmlogs_{{ component_suffix }}]
 type = "nats"
-inputs = ["file_enrich_{{ instance_id }}"]
+inputs = ["file_enrich_{{ component_suffix }}"]
 subject = "vector"
 url = "${NATS_PROTOCOL}://${NATS_SERVERS}"
 
-[sinks.vmlogs_{{ instance_id }}.auth]
+[sinks.vmlogs_{{ component_suffix }}.auth]
 strategy = "user_password"
 
-[sinks.vmlogs_{{ instance_id }}.auth.user_password]
+[sinks.vmlogs_{{ component_suffix }}.auth.user_password]
 user = "${NATS_USERNAME}"
 password = "${NATS_PASSWORD}"
 
 {% if NATS_PROTOCOL == "tls" %}
 # TLS 配置
-[sinks.vmlogs_{{ instance_id }}.tls]
+[sinks.vmlogs_{{ component_suffix }}.tls]
 enabled = true
 verify_certificate = true
 ca_file = "${NATS_TLS_CA_FILE}"
 {% endif %}
 
-[sinks.vmlogs_{{ instance_id }}.encoding]
+[sinks.vmlogs_{{ component_suffix }}.encoding]
 codec = "json"
