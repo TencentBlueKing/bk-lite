@@ -325,7 +325,6 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
 
             # 每次运行信息的耗时和名称
             run_datas = []
-            latest_run_status = None  # 记录最新一次运行的状态
 
             for idx, row in runs.iterrows():
                 # 处理时间计算，避免产生NaN或Infinity
@@ -356,9 +355,6 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                     # 获取状态
                     run_status = row.get("status", MLflowRunStatus.UNKNOWN)
 
-                    # 记录第一条（最新）的运行状态
-                    if idx == 0:
-                        latest_run_status = run_status
 
                     run_data = {
                         "run_id": str(row["run_id"]),
@@ -379,14 +375,6 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                 except Exception as e:
                     logger.warning(f"解析 run 数据失败: {e}")
                     continue
-
-            # 同步最新运行状态到 TrainJob（避免状态不一致）
-            if latest_run_status and train_job.status == TrainJobStatus.RUNNING:
-                new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(latest_run_status)
-
-                if new_status:
-                    train_job.status = new_status
-                    train_job.save(update_fields=["status"])
 
             # 分页处理
             total_count = len(run_datas)

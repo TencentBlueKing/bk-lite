@@ -116,6 +116,13 @@ def poll_train_job_status(
         _mark_train_job_failed(train_job_id, mlflow_prefix)
         return {"result": False, "reason": "max retries exceeded"}
 
+    except Exception as e:
+        logger.error(
+            f"轮询训练状态异常: TrainJob ID={train_job_id}, error={e}",
+            exc_info=True,
+        )
+        raise self.retry(exc=e)
+
 
 def _load_train_job(train_job_id: int, mlflow_prefix: str):
     """

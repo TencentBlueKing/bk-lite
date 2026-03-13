@@ -939,6 +939,64 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @action(detail=True, methods=["post"], url_path="stop")
+    @HasPermission("classification-Stop")
+    def stop(self, request, *args, **kwargs):
+        """
+        停止训练任务
+        """
+        try:
+            train_job = self.get_object()
+
+            # 检查任务状态
+            if train_job.status != TrainJobStatus.RUNNING:
+                return Response(
+                    {"error": "训练任务未在运行中"}, status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 构建训练任务标识
+            job_id = mlflow_service.build_job_id(
+                prefix=self.MLFLOW_PREFIX,
+                algorithm=train_job.algorithm,
+                train_job_id=train_job.id,
+            )
+
+            # 调用 WebhookClient 停止任务（默认删除容器）
+            result = WebhookClient.stop(job_id)
+
+            # 更新任务状态
+            train_job.status = TrainJobStatus.PENDING
+            train_job.save(update_fields=["status"])
+
+            return Response(
+                {
+                    "message": "训练任务已停止",
+                    "job_id": job_id,
+                    "train_job_id": train_job.id,
+                    "webhook_response": result,
+                }
+            )
+
+        except WebhookTimeoutError as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except WebhookConnectionError as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except WebhookError as e:
+            logger.error(f"停止训练任务失败: {e}")
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            logger.error(f"停止训练任务失败: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"停止训练任务失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
     @action(detail=True, methods=["get"], url_path="runs_data_list")
     @HasPermission("classification-View")
     def get_run_data_list(self, request, pk=None):
@@ -994,7 +1052,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
 
             # 每次运行信息的耗时和名称
             run_datas = []
-            latest_run_status = None
 
             for idx, row in runs.iterrows():
                 # 处理时间计算，避免产生NaN或Infinity
@@ -1023,9 +1080,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                     # 获取状态
                     run_status = row.get("status", "UNKNOWN")
 
-                    # 记录第一条（最新）的运行状态
-                    if idx == 0:
-                        latest_run_status = run_status
 
                     run_data = {
                         "run_id": str(row["run_id"]),
@@ -1046,14 +1100,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 except Exception as e:
                     logger.warning(f"解析 run 数据失败: {e}")
                     continue
-
-            # 同步最新运行状态到 TrainJob
-            if latest_run_status and train_job.status == TrainJobStatus.RUNNING:
-                new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(latest_run_status)
-
-                if new_status:
-                    train_job.status = new_status
-                    train_job.save(update_fields=["status"])
 
             # 分页处理
             total_count = len(run_datas)

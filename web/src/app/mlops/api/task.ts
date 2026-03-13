@@ -98,6 +98,10 @@ const useMlopsTaskApi = () => {
     return await post(`/mlops/${TRAINJOB_MAP[key]}/${id}/train/`);
   };
 
+  // 停止训练
+  const stopTrainTask = async (id: number | string, key: DatasetType) => {
+    return await post(`/mlops/${TRAINJOB_MAP[key]}/${id}/stop/`);
+  };
   // 编辑异常检测训练任务
   const updateAnomalyTrainTask = async (id: string, params: UpdateTrainJobParams): Promise<TrainJob> => {
     return await patch(`/mlops/anomaly_detection_train_jobs/${id}/`, params);
@@ -199,6 +203,7 @@ const useMlopsTaskApi = () => {
     addImageClassificationTrainTask,
     addObjectDetectionTrainTask,
     startTrainTask,
+    stopTrainTask,
     updateAnomalyTrainTask,
     updateLogClusteringTrainTask,
     updateTimeSeriesTrainTask,

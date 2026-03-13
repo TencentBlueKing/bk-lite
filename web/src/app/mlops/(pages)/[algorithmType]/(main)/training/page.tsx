@@ -38,6 +38,7 @@ const TrainingPage = () => {
     getTrainJobList,
     deleteTrainTask,
     startTrainTask,
+    stopTrainTask,
   } = useMlopsTaskApi();
 
   const modalRef = useRef<ModalRef>(null);
@@ -127,6 +128,23 @@ const TrainingPage = () => {
                   disabled={record.status === 'running'}
                 >
                   {t('traintask.train')}
+                </Button>
+              </Popconfirm>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Stop']}>
+              <Popconfirm
+                title={t('traintask.trainStopTitle')}
+                description={t('traintask.trainStopContent')}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                onConfirm={() => onTrainStop(record)}
+              >
+                <Button
+                  type="link"
+                  className="mr-2.5"
+                  disabled={record.status !== 'running'}
+                >
+                  {t('mlops-common.stop')}
                 </Button>
               </Popconfirm>
             </PermissionWrapper>
@@ -269,6 +287,18 @@ const TrainingPage = () => {
     } catch (e) {
       console.error(e);
       message.error(t(`common.error`));
+    } finally {
+      getTasks();
+    }
+  };
+
+  const onTrainStop = async (record: TrainJob) => {
+    try {
+      await stopTrainTask(record.id, algorithmType);
+      message.success(t('traintask.trainStopSuccess'));
+    } catch (e) {
+      console.error(e);
+      message.error(t('common.error'));
     } finally {
       getTasks();
     }
