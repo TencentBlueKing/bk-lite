@@ -17,8 +17,8 @@ const getDynamicMenuItems = async (locale: string) => {
       const menuContent = await fs.readFile(menuPath, 'utf-8');
       const menu = JSON.parse(menuContent);
       allMenuItems = allMenuItems.concat(menu[locale] || []);
-    } catch (err) {
-      console.error(`Failed to load menu for ${app}:`, err);
+    } catch {
+      // Silently skip if menu.json doesn't exist for this app
     }
   }
 
