@@ -74,30 +74,18 @@ export const useRabbitmqFilebeatConfig = () => {
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
-            // 深拷贝原始 child 对象，保持完整结构
             const originalChild = cloneDeep(configForm?.child || {});
 
-            // 更新 content 中 rabbitmq 模块的 log 配置
-            const updatedContent = (originalChild.content || []).map(
-              (item: any) => {
-                if (item.module === 'rabbitmq') {
-                  return {
-                    ...item,
-                    log: {
-                      ...item.log,
-                      enabled: !!formData.log?.enabled,
-                      'var.paths': formData.log?.paths || []
-                    }
-                  };
-                }
-                return item;
-              }
-            );
+            // 扁平化的 content（2个参数，和新增一致）
+            const content = {
+              log_enabled: !!formData.log?.enabled,
+              log_paths: formData.log?.paths || []
+            };
 
             return {
               child: {
                 ...originalChild,
-                content: updatedContent
+                content
               }
             };
           }
