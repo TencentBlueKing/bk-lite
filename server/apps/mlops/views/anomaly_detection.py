@@ -22,6 +22,7 @@ from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.validators import validate_serving_status_change
 from apps.mlops.services import (
     get_image_by_prefix,
+    get_host_address,
     get_mlflow_train_config,
     get_mlflow_tracking_uri,
     ConfigurationError,
@@ -1338,15 +1339,9 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             serving = self.get_object()
 
             # 获取参数
-            url = request.data.get("url")
             data = request.data.get("data")
 
             # 参数校验
-            if not url:
-                return Response(
-                    {"error": "url 参数不能为空"}, status=status.HTTP_400_BAD_REQUEST
-                )
-
             if not data:
                 return Response(
                     {"error": "data 参数不能为空"}, status=status.HTTP_400_BAD_REQUEST
@@ -1366,8 +1361,13 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
                 )
 
             # 构建预测服务 URL
-            # url: http://192.168.1.100 + port: 38291 -> http://192.168.1.100:38291/predict
-            predict_url = f"{url.rstrip('/')}:{port}/predict"
+            host_address = get_host_address()
+            if not host_address:
+                return Response(
+                    {"error": "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            predict_url = f"http://{host_address}:{port}/predict"
 
             # 构建请求体
             payload = {"data": data}
