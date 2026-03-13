@@ -21,9 +21,9 @@ class KnowledgeGraphSerializer(UsernameSerializer):
         loader = self._get_loader()
         knowledge_base = validated_data.get("knowledge_base")
         if knowledge_base:
-            creating_graph = KnowledgeGraph.objects.filter(knowledge_base_id=knowledge_base.id, status__in=["pending", "training"]).first()
-            if creating_graph:
-                message = loader.get("error.knowledge_graph_pending_or_training_no_create") or "Knowledge graph is pending or training, cannot create"
+            existing_graph = KnowledgeGraph.objects.filter(knowledge_base_id=knowledge_base.id).first()
+            if existing_graph:
+                message = loader.get("error.knowledge_graph_already_exists") or "Knowledge graph already exists for this knowledge base"
                 raise serializers.ValidationError({"message": message})
 
         validated_data["status"] = "pending"
