@@ -815,12 +815,12 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                   className="mt-3 [&_.ant-table-cell]:!py-1.5" style={{ width: 'calc(100% - 40px)' }}
                                   columns={[
                                     {
-                                      title: t('fieldValue'),
+                                      title: t('PublicEnumLibrary.optionId'),
                                       dataIndex: 'id',
                                       key: 'id',
                                     },
                                     {
-                                      title: t('Model.display'),
+                                      title: t('PublicEnumLibrary.optionName'),
                                       dataIndex: 'name',
                                       key: 'name',
                                     },
@@ -843,10 +843,10 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                               <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
                                 <span className="mr-[4px] w-[14px]"></span>
                                 <span className="mr-[10px] w-2/5">
-                                  {t('fieldValue')}
+                                  {t('PublicEnumLibrary.optionId')}
                                 </span>
                                 <span className="mr-[10px] w-2/5">
-                                  {t('Model.display')}
+                                  {t('PublicEnumLibrary.optionName')}
                                 </span>
                               </li>
                               {enumList.map((enumItem, index) => (
@@ -858,7 +858,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                   <HolderOutlined className="mr-[4px]" />
                                   <Input
                                     placeholder={
-                                      t('common.inputTip') + t('fieldValue')
+                                      t('common.inputTip') + t('PublicEnumLibrary.optionId')
                                     }
                                     className="mr-[10px] w-2/5"
                                     value={enumItem.id}
@@ -866,7 +866,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                   />
                                   <Input
                                     placeholder={
-                                      t('common.inputTip') + t('Model.display')
+                                      t('common.inputTip') + t('PublicEnumLibrary.optionName')
                                     }
                                     className="mr-[10px] w-2/5"
                                     value={enumItem.name}
