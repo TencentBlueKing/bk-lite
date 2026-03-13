@@ -6,7 +6,7 @@ import {
   SearchCombinationProps,
   FieldConfig,
   SearchFilters,
-} from '@/app/node-manager/types/node';
+} from './types';
 const { Option } = Select;
 
 const SearchCombination: React.FC<SearchCombinationProps> = ({
@@ -390,7 +390,7 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
           }
           
           .search-combination-wrapper {
-            position: fixed;
+            position: relative;
             z-index: 99;
           }
           
@@ -429,7 +429,7 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
             background-color: var(--color-fill-2) !important;
           }
 
-          .ant-card-body {
+          .enum-options-dropdown .ant-card-body {
             position: fixed;
             background-color: var(--color-bg-1);
             min-width: 200px;
