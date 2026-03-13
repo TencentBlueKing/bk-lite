@@ -84,31 +84,19 @@ export const useMysqlFilebeatConfig = () => {
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             const originalChild = cloneDeep(configForm?.child || {});
-            const updatedContent = (originalChild.content || []).map(
-              (item: any) => {
-                if (item.module === 'mysql') {
-                  return {
-                    ...item,
-                    error: {
-                      ...item.error,
-                      enabled: !!formData.error_log?.enabled,
-                      'var.paths': formData.error_log?.paths || []
-                    },
-                    slowlog: {
-                      ...item.slowlog,
-                      enabled: !!formData.slowlog?.enabled,
-                      'var.paths': formData.slowlog?.paths || []
-                    }
-                  };
-                }
-                return item;
-              }
-            );
+
+            // 扁平化的 content（4个参数，和新增一致）
+            const content = {
+              error_enabled: !!formData.error_log?.enabled,
+              error_paths: formData.error_log?.paths || [],
+              slowlog_enabled: !!formData.slowlog?.enabled,
+              slowlog_paths: formData.slowlog?.paths || []
+            };
 
             return {
               child: {
                 ...originalChild,
-                content: updatedContent
+                content
               }
             };
           }
