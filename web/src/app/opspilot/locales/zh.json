@@ -104,6 +104,7 @@
     "general": "通用",
     "noToolsAvailable": "暂无工具",
     "mcpUrl": "链接",
+    "transport": "传输类型",
     "label": "标签",
     "maintenance": "运维",
     "subTools": "子工具",

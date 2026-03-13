@@ -2,7 +2,7 @@
   "overview": {
     "title": "概述",
     "paragraphs": [
-      "SNMP Trap 接收使用 Vector 作为采集器，提供高性能的 SNMP Trap 服务端能力。可以接收来自网络设备、服务器硬件（iDRAC/iLO）、存储设备、UPS、环境监控等发送的异常事件通知。"
+      "SNMP Trap 接收使用 Snmptrapd 作为采集器，提供高性能的 SNMP Trap 服务端能力。可以接收来自网络设备、服务器硬件（iDRAC/iLO）、存储设备、UPS、环境监控等发送的异常事件通知。"
     ]
   },
   "features": {
@@ -85,7 +85,7 @@
   ],
   "steps": {
     "title": "配置发送端",
-    "description": "配置网络设备将 SNMP Trap 发送到 Vector：",
+    "description": "配置网络设备将 SNMP Trap 发送到 Snmptrapd：",
     "items": []
   },
   "tips": [

@@ -12,7 +12,7 @@ import {
   TreeItem,
   Pagination,
   TableDataItem,
-  ListItem,
+  ListItem
 } from '@/app/log/types';
 import { ObjectItem } from '@/app/log/types/event';
 import CustomTable from '@/components/custom-table';
@@ -41,7 +41,7 @@ const Strategy: React.FC = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 20,
+    pageSize: 20
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
@@ -56,7 +56,7 @@ const Strategy: React.FC = () => {
     {
       title: t('common.name'),
       dataIndex: 'name',
-      key: 'name',
+      key: 'name'
     },
     {
       title: t('log.event.policyType'),
@@ -67,7 +67,7 @@ const Strategy: React.FC = () => {
           {ALGORITHM_LIST.find((item: ListItem) => item.value === val)?.title ||
             '--'}
         </>
-      ),
+      )
     },
     {
       title: t('common.creator'),
@@ -92,7 +92,7 @@ const Strategy: React.FC = () => {
         ) : (
           <>--</>
         );
-      },
+      }
     },
     {
       title: t('common.createTime'),
@@ -100,7 +100,7 @@ const Strategy: React.FC = () => {
       key: 'created_at',
       render: (_, { created_at }) => (
         <>{created_at ? convertToLocalizedTime(created_at) : '--'}</>
-      ),
+      )
     },
     {
       title: t('log.event.executionTime'),
@@ -108,7 +108,7 @@ const Strategy: React.FC = () => {
       key: 'last_run_time',
       render: (_, { last_run_time }) => (
         <>{last_run_time ? convertToLocalizedTime(last_run_time) : '--'}</>
-      ),
+      )
     },
     {
       title: t('log.event.effective'),
@@ -126,7 +126,7 @@ const Strategy: React.FC = () => {
             checked={record.enable}
           />
         </Permission>
-      ),
+      )
     },
     {
       title: t('common.action'),
@@ -163,8 +163,8 @@ const Strategy: React.FC = () => {
             </Popconfirm>
           </Permission>
         </>
-      ),
-    },
+      )
+    }
   ];
 
   useEffect(() => {
@@ -200,7 +200,7 @@ const Strategy: React.FC = () => {
       name: text ? '' : searchText,
       page: pagination.current,
       page_size: pagination.pageSize,
-      collect_type: objectId || '',
+      collect_type: objectId || ''
     };
   };
 
@@ -209,7 +209,7 @@ const Strategy: React.FC = () => {
       setEnableLoading(true);
       await patchPolicy({
         enable: val,
-        id,
+        id
       });
       message.success(t(val ? 'common.started' : 'common.closed'));
       getAssetInsts(objectId);
@@ -232,13 +232,13 @@ const Strategy: React.FC = () => {
       const params = getParams(text);
       params.collect_type = objectId;
       const data = await getPolicy('', params, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       if (currentRequestId !== tableRequestIdRef.current) return;
       setTableData(data.items || []);
       setPagination((pre) => ({
         ...pre,
-        total: data.count,
+        total: data.count
       }));
     } finally {
       if (currentRequestId === tableRequestIdRef.current) {
@@ -256,7 +256,7 @@ const Strategy: React.FC = () => {
       setTreeLoading(true);
       const data: ObjectItem[] = await getCollectTypes(
         {
-          add_policy_count: true,
+          add_policy_count: true
         },
         { signal: abortController.signal }
       );
@@ -273,22 +273,26 @@ const Strategy: React.FC = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.collector]) {
-        acc[item.collector] = {
-          title: item.collector || '--',
-          key: item.collector,
-          children: [],
-        };
-      }
-      acc[item.collector].children.push({
-        title: `${item.name}(${item.policy_count || 0})`,
-        label: item.name || '--',
-        key: item.id,
-        children: [],
-      });
-      return acc;
-    }, {} as Record<string, TreeItem>);
+    const groupedData = data.reduce(
+      (acc, item) => {
+        const category = item.display_category || 'other';
+        if (!acc[category]) {
+          acc[category] = {
+            title: category,
+            key: category,
+            children: []
+          };
+        }
+        acc[category].children.push({
+          title: `${item.name}(${item.policy_count || 0})`,
+          label: item.name || '--',
+          key: item.id,
+          children: []
+        });
+        return acc;
+      },
+      {} as Record<string, TreeItem>
+    );
     return Object.values(groupedData);
   };
 
@@ -321,7 +325,7 @@ const Strategy: React.FC = () => {
       objName,
       type,
       id: row.id,
-      name: row.name,
+      name: row.name
     });
     const targetUrl = `/log/event/strategy/detail?${params.toString()}`;
     router.push(targetUrl);

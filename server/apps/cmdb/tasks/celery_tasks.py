@@ -5,6 +5,7 @@
 from datetime import datetime, timedelta
 
 from celery import shared_task
+from django.utils.timezone import now
 
 from apps.cmdb.collection.collect_tasks.job_collect import JobCollect
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
@@ -26,6 +27,18 @@ def sync_collect_task(instance_id):
         CollectModels.objects.filter(id=instance_id).update(
             exec_status=CollectRunStatusType.RUNNING
         )
+    # # 防止周期触发与延迟补跑重叠导致同一任务并发执行
+    # if instance.exec_status == CollectRunStatusType.RUNNING:
+    #     logger.info("采集任务已在执行中，跳过重复执行 task_id={}".format(instance_id))
+    #     return
+    # 统一在 Celery 执行入口更新任务开始时间和运行状态
+    start_time = now()
+    instance.exec_status = CollectRunStatusType.RUNNING
+    instance.exec_time = start_time
+    CollectModels.objects.filter(id=instance_id).update(
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time=start_time,
+    )
     exec_error_message = ""
     try:
         if instance.is_job:
