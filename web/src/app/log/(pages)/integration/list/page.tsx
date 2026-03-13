@@ -33,7 +33,8 @@ const Integration = () => {
     if (activeGroup === 'all')
       return collectTypeList.filter((item) => item.name.includes(searchText));
     return collectTypeList.filter(
-      (item) => item.collector === activeGroup && item.name.includes(searchText)
+      (item) =>
+        item.display_category === activeGroup && item.name.includes(searchText)
     );
   }, [collectTypeList, activeGroup, searchText]);
 
@@ -65,14 +66,15 @@ const Integration = () => {
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
     const groupedData = data.reduce(
       (acc, item) => {
-        if (!acc[item.collector]) {
-          acc[item.collector] = {
-            title: item.collector || '--',
-            key: item.collector,
+        const category = item.display_category || 'other';
+        if (!acc[category]) {
+          acc[category] = {
+            title: category,
+            key: category,
             children: []
           };
         }
-        acc[item.collector].children.push({
+        acc[category].children.push({
           title: item.name || '--',
           label: item.name || '--',
           key: item.id,
@@ -165,7 +167,7 @@ const Integration = () => {
                         >
                           {app.name || '--'}
                         </h2>
-                        <Tag className="mt-[4px]">{app.collector}</Tag>
+                        <Tag className="mt-[4px]">{app.display_category}</Tag>
                       </div>
                     </div>
                     <p

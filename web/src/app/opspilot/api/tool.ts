@@ -20,11 +20,12 @@ export const useToolApi = () => {
     return await del(`/opspilot/model_provider_mgmt/skill_tools/${id}/`);
   };
 
-  const fetchAvailableTools = async (url: string, enable_auth?: boolean, auth_token?: string): Promise<MCPToolDefinition[]> => {
+  const fetchAvailableTools = async (url: string, enable_auth?: boolean, auth_token?: string, transport?: string): Promise<MCPToolDefinition[]> => {
     return await post('/opspilot/model_provider_mgmt/skill_tools/get_mcp_tools/', {
       server_url: url,
       enable_auth: enable_auth || false,
-      auth_token: auth_token || ''
+      auth_token: auth_token || '',
+      transport: transport || 'streamable_http'
     });
   };
 

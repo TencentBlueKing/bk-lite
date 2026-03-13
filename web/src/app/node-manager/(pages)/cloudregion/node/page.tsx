@@ -142,11 +142,13 @@ const Node = () => {
     const uniqueOS = [...new Set(operatingSystems)];
     const installMethods = selectedNodes.map((node) => node.install_method);
     const uniqueInstallMethods = [...new Set(installMethods)];
-    // 控制器：检查操作系统和安装方式是否都一致
+    // 控制器：检查操作系统和安装方式是否都一致，且不包含 Windows 系统
+    const hasWindows = operatingSystems.includes('windows');
     return (
       uniqueOS.length !== 1 ||
       uniqueInstallMethods.length !== 1 ||
-      uniqueInstallMethods.includes('manual')
+      uniqueInstallMethods.includes('manual') ||
+      hasWindows
     );
   }, [selectedRowKeys, nodeList]);
 
@@ -382,7 +384,7 @@ const Node = () => {
         key: 'controller',
         onCell: () => ({
           style: {
-            minWidth: 120
+            minWidth: 190
           }
         }),
         render: (_: any, record: TableDataItem) => {

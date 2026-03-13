@@ -10,7 +10,7 @@ export const usePacketbeatConfig = () => {
   const pluginConfig = {
     collector: 'Packetbeat',
     collect_type: 'icmp',
-    icon: 'wangluo',
+    icon: 'wangluo'
   };
 
   return {
@@ -26,10 +26,10 @@ export const usePacketbeatConfig = () => {
           initTableItems: {
             instance_id: `${pluginConfig.collector}-${
               pluginConfig.collect_type
-            }-${uuidv4()}`,
+            }-${uuidv4()}`
           },
           defaultForm: {
-            sample_rate: 0.1,
+            sample_rate: 0.1
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
@@ -41,11 +41,11 @@ export const usePacketbeatConfig = () => {
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
-                  node_ids: [item.node_ids].flat(),
+                  node_ids: [item.node_ids].flat()
                 };
-              }),
+              })
             };
-          },
+          }
         },
         edit: {
           formItems,
@@ -53,17 +53,19 @@ export const usePacketbeatConfig = () => {
             const sources = formData?.child?.content?.[0] || {};
             const rate = sources?.sample_rate || null;
             return {
-              sample_rate: rate,
+              sample_rate: rate
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
+            const originalChild = cloneDeep(configForm?.child || {});
+
             return {
               child: {
-                id: configForm.child.id,
-                content_data: formData,
-              },
+                ...originalChild,
+                content: formData
+              }
             };
-          },
+          }
         },
         manual: {
           defaultForm: {},
@@ -71,16 +73,16 @@ export const usePacketbeatConfig = () => {
           getParams: (row: TableDataItem) => {
             return {
               instance_name: row.instance_name,
-              instance_id: row.instance_id,
+              instance_id: row.instance_id
             };
           },
-          getConfigText: () => '--',
-        },
+          getConfigText: () => '--'
+        }
       };
       return {
         ...pluginConfig,
-        ...configs[extra.mode],
+        ...configs[extra.mode]
       };
-    },
+    }
   };
 };

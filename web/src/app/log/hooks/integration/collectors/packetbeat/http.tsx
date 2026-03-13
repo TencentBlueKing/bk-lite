@@ -10,7 +10,7 @@ export const usePacketbeatConfig = () => {
   const pluginConfig = {
     collector: 'Packetbeat',
     collect_type: 'http',
-    icon: 'wangluo',
+    icon: 'wangluo'
   };
 
   return {
@@ -23,7 +23,7 @@ export const usePacketbeatConfig = () => {
         <>
           {commonFormItems.getCommonFormItems({
             hiddenFormItems: {},
-            disabledFormItems: {},
+            disabledFormItems: {}
           })}
         </>
       );
@@ -33,10 +33,10 @@ export const usePacketbeatConfig = () => {
           initTableItems: {
             instance_id: `${pluginConfig.collector}-${
               pluginConfig.collect_type
-            }-${uuidv4()}`,
+            }-${uuidv4()}`
           },
           defaultForm: {
-            ports: [80, 8080, 8000, 5000, 8002],
+            ports: [80, 8080, 8000, 5000, 8002]
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
@@ -48,11 +48,11 @@ export const usePacketbeatConfig = () => {
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
-                  node_ids: [item.node_ids].flat(),
+                  node_ids: [item.node_ids].flat()
                 };
-              }),
+              })
             };
-          },
+          }
         },
         edit: {
           formItems,
@@ -60,17 +60,19 @@ export const usePacketbeatConfig = () => {
             const sources = formData?.child?.content?.[0] || {};
             const ports = sources?.ports || null;
             return {
-              ports,
+              ports
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
+            const originalChild = cloneDeep(configForm?.child || {});
+
             return {
               child: {
-                id: configForm.child.id,
-                content_data: formData,
-              },
+                ...originalChild,
+                content: formData
+              }
             };
-          },
+          }
         },
         manual: {
           defaultForm: {},
@@ -78,16 +80,16 @@ export const usePacketbeatConfig = () => {
           getParams: (row: TableDataItem) => {
             return {
               instance_name: row.instance_name,
-              instance_id: row.instance_id,
+              instance_id: row.instance_id
             };
           },
-          getConfigText: () => '--',
-        },
+          getConfigText: () => '--'
+        }
       };
       return {
         ...pluginConfig,
-        ...configs[extra.mode],
+        ...configs[extra.mode]
       };
-    },
+    }
   };
 };

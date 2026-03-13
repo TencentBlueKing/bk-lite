@@ -197,7 +197,7 @@ const AssociationsModal = forwardRef<AssoModalRef, AssoModalProps>(
                 {assoTypeList.map((item) => {
                   return (
                     <Option value={item.asst_id} key={item.asst_id}>
-                      {item.asst_name}
+                      {item.asst_name}({item.asst_id})
                     </Option>
                   );
                 })}

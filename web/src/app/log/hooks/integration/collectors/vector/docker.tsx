@@ -8,7 +8,7 @@ export const useVectorConfig = () => {
   const pluginConfig = {
     collector: 'Vector',
     collect_type: 'docker',
-    icon: 'docker-run-to-docker-compose',
+    icon: 'docker-run-to-docker-compose'
   };
 
   return {
@@ -21,9 +21,9 @@ export const useVectorConfig = () => {
         auto: {
           formItems: commonFormItems.getCommonFormItems({
             hiddenFormItems: {
-              start_pattern: true,
+              start_pattern: true
             },
-            disabledFormItems: {},
+            disabledFormItems: {}
           }),
           initTableItems: {},
           defaultForm: {
@@ -33,8 +33,8 @@ export const useVectorConfig = () => {
               mode: 'continue_through',
               start_pattern: '^(ERROR|WARN|INFO|DEBUG|TRACE|FATAL)\\s\\[',
               timeout_ms: 3000,
-              condition_pattern: '^(\\s+|Traceback|File\\s+)',
-            },
+              condition_pattern: '^(\\s+|Traceback|File\\s+)'
+            }
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
@@ -47,19 +47,19 @@ export const useVectorConfig = () => {
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
-                  node_ids: [item.node_ids].flat(),
+                  node_ids: [item.node_ids].flat()
                 };
-              }),
+              })
             };
-          },
+          }
         },
         edit: {
           getFormItems: () => {
             return commonFormItems.getCommonFormItems({
               hiddenFormItems: {
-                start_pattern: true,
+                start_pattern: true
               },
-              disabledFormItems: {},
+              disabledFormItems: {}
             });
           },
           getDefaultForm: (formData: TableDataItem) => {
@@ -73,19 +73,22 @@ export const useVectorConfig = () => {
               include_containers: sources.include_containers || null,
               exclude_containers: sources.exclude_containers || null,
               multiline: Object.assign(multiline, {
-                enabled: !!multiline.mode,
-              }),
+                enabled: !!multiline.mode
+              })
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
-            delete formData.multiline.enabled;
+            const originalChild = cloneDeep(configForm?.child || {});
+            const formDataCopy = cloneDeep(formData);
+            delete formDataCopy.multiline?.enabled;
+
             return {
               child: {
-                id: configForm.child.id,
-                content_data: formData,
-              },
+                ...originalChild,
+                content: formDataCopy
+              }
             };
-          },
+          }
         },
         manual: {
           defaultForm: {},
@@ -93,16 +96,16 @@ export const useVectorConfig = () => {
           getParams: (row: TableDataItem) => {
             return {
               instance_name: row.instance_name,
-              instance_id: row.instance_id,
+              instance_id: row.instance_id
             };
           },
-          getConfigText: () => '--',
-        },
+          getConfigText: () => '--'
+        }
       };
       return {
         ...pluginConfig,
-        ...configs[extra.mode],
+        ...configs[extra.mode]
       };
-    },
+    }
   };
 };

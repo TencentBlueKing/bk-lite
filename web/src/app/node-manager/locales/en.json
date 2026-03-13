@@ -69,7 +69,6 @@
         "guide": "Installation Guide",
         "sidecar": "Controller",
         "installationGuide": "Installation Guide",
-        "telegrafConfigTips": "When opening the Telegraf probe, it automatically initializes and binds the corresponding configuration file. If you need to modify it later, please go to the 'Configuration List' to make changes.",
         "installWayDes": "Remote installation requires providing host-related login information to perform remote installation of controllers, including sidecar and nas executor; for manual installation, follow the installation steps to manually operate and install the component on the host.",
         "controllerInfo": "Controller Information",
         "system": "Operating System",
