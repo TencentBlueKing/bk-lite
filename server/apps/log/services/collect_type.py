@@ -19,6 +19,78 @@ from apps.rpc.node_mgmt import NodeMgmt
 
 class CollectTypeService:
     @staticmethod
+    def _normalize_update_content(collector: str, collect_type: str, content: dict):
+        """标准化更新入参，兼容前端表单结构与模板变量结构。"""
+        if not isinstance(content, dict):
+            return content
+
+        # Vector/docker: 兼容 docker_host/include_containers/multiline 等表单结构
+        if collector == "Vector" and collect_type == "docker":
+            normalized = dict(content)
+
+            include_containers = normalized.get("include_containers")
+            exclude_containers = normalized.get("exclude_containers")
+            multiline = normalized.get("multiline") or {}
+
+            if "endpoint" not in normalized and normalized.get("docker_host"):
+                normalized["endpoint"] = normalized.get("docker_host")
+
+            if "enable_container_filter" not in normalized:
+                normalized["enable_container_filter"] = bool(
+                    include_containers or exclude_containers
+                )
+
+            if (
+                "container_name_contains" not in normalized
+                and include_containers is not None
+            ):
+                if isinstance(include_containers, list):
+                    normalized["container_name_contains"] = ",".join(
+                        [str(i) for i in include_containers]
+                    )
+                else:
+                    normalized["container_name_contains"] = include_containers
+
+            if (
+                "container_name_exclude" not in normalized
+                and exclude_containers is not None
+            ):
+                if isinstance(exclude_containers, list):
+                    normalized["container_name_exclude"] = ",".join(
+                        [str(i) for i in exclude_containers]
+                    )
+                else:
+                    normalized["container_name_exclude"] = exclude_containers
+
+            if "enable_multiline" not in normalized:
+                normalized["enable_multiline"] = bool(multiline.get("mode"))
+
+            if (
+                "multiline_pattern" not in normalized
+                and multiline.get("condition_pattern") is not None
+            ):
+                normalized["multiline_pattern"] = multiline.get("condition_pattern")
+
+            if (
+                "multiline_start_pattern" not in normalized
+                and multiline.get("start_pattern") is not None
+            ):
+                normalized["multiline_start_pattern"] = multiline.get("start_pattern")
+
+            if "multiline_mode" not in normalized and multiline.get("mode") is not None:
+                normalized["multiline_mode"] = multiline.get("mode")
+
+            if (
+                "multiline_timeout_ms" not in normalized
+                and multiline.get("timeout_ms") is not None
+            ):
+                normalized["multiline_timeout_ms"] = multiline.get("timeout_ms")
+
+            return normalized
+
+        return content
+
+    @staticmethod
     def get_collect_type(collect_type: str) -> str:
         """
         Get the collect type based on the provided string.
@@ -174,7 +246,7 @@ class CollectTypeService:
 
     @staticmethod
     def update_instance_config_v2(child_info, base_info, instance_id, collect_type_id):
-        """ 更新对象实例配置 """
+        """更新对象实例配置"""
         child_env = None
         collect_type_obj = CollectType.objects.filter(id=collect_type_id).first()
         if not collect_type_obj:
@@ -189,11 +261,17 @@ class CollectTypeService:
             }
         )
 
+        instance_obj = CollectInstance.objects.filter(id=instance_id).first()
+        node_id = instance_obj.node_id if instance_obj else None
+
         def build_content(config_obj, config_type, raw_content):
             """构造最终配置内容，兼容模板变量(dict)与最终内容(list/dict)。"""
             if isinstance(raw_content, dict):
+                normalized_content = CollectTypeService._normalize_update_content(
+                    collect_type_obj.collector, collect_type_obj.name, raw_content
+                )
                 return col_obj.render_config_template_content(
-                    config_type, raw_content, instance_id
+                    config_type, normalized_content, instance_id, node_id=node_id
                 )
 
             if config_obj.file_type == "yaml":
@@ -216,7 +294,10 @@ class CollectTypeService:
         if base_info:
             config_obj = CollectConfig.objects.filter(id=base_info["id"]).first()
             if config_obj:
-                content = build_content(config_obj, "base", base_info["content"])
+                base_content = base_info.get("content")
+                if base_content is None:
+                    base_content = base_info.get("content_data")
+                content = build_content(config_obj, "base", base_content)
                 env_config = base_info.get("env_config")
                 if env_config:
                     child_env = {k: v for k, v in env_config.items()}
@@ -226,7 +307,10 @@ class CollectTypeService:
             config_obj = CollectConfig.objects.filter(id=child_info["id"]).first()
             if not config_obj:
                 return
-            content = build_content(config_obj, "child", child_info["content"])
+            child_content = child_info.get("content")
+            if child_content is None:
+                child_content = child_info.get("content_data")
+            content = build_content(config_obj, "child", child_content)
             NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
 
     @staticmethod
