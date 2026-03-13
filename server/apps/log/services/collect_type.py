@@ -19,6 +19,14 @@ from apps.rpc.node_mgmt import NodeMgmt
 
 class CollectTypeService:
     @staticmethod
+    def _extract_update_payload(payload: dict, config_type: str):
+        content = payload.get("content")
+
+        if content is None:
+            raise BaseAppException(f"{config_type}.content is required")
+        return content
+
+    @staticmethod
     def get_collect_type(collect_type: str) -> str:
         """
         Get the collect type based on the provided string.
@@ -174,7 +182,7 @@ class CollectTypeService:
 
     @staticmethod
     def update_instance_config_v2(child_info, base_info, instance_id, collect_type_id):
-        """ 更新对象实例配置 """
+        """更新对象实例配置"""
         child_env = None
         collect_type_obj = CollectType.objects.filter(id=collect_type_id).first()
         if not collect_type_obj:
@@ -189,11 +197,20 @@ class CollectTypeService:
             }
         )
 
+        instance_obj = CollectInstance.objects.filter(id=instance_id).first()
+        node_id = instance_obj.node_id if instance_obj else None
+
         def build_content(config_obj, config_type, raw_content):
             """构造最终配置内容，兼容模板变量(dict)与最终内容(list/dict)。"""
-            if isinstance(raw_content, dict):
+            has_template = col_obj.has_template_for_config_type(config_type)
+
+            if has_template:
+                if not isinstance(raw_content, dict):
+                    raise BaseAppException(
+                        f"{config_type} content must be mapping when template rendering is enabled"
+                    )
                 return col_obj.render_config_template_content(
-                    config_type, raw_content, instance_id
+                    config_type, raw_content, instance_id, node_id=node_id
                 )
 
             if config_obj.file_type == "yaml":
@@ -216,7 +233,10 @@ class CollectTypeService:
         if base_info:
             config_obj = CollectConfig.objects.filter(id=base_info["id"]).first()
             if config_obj:
-                content = build_content(config_obj, "base", base_info["content"])
+                base_content = CollectTypeService._extract_update_payload(
+                    base_info, "base"
+                )
+                content = build_content(config_obj, "base", base_content)
                 env_config = base_info.get("env_config")
                 if env_config:
                     child_env = {k: v for k, v in env_config.items()}
@@ -226,7 +246,10 @@ class CollectTypeService:
             config_obj = CollectConfig.objects.filter(id=child_info["id"]).first()
             if not config_obj:
                 return
-            content = build_content(config_obj, "child", child_info["content"])
+            child_content = CollectTypeService._extract_update_payload(
+                child_info, "child"
+            )
+            content = build_content(config_obj, "child", child_content)
             NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
 
     @staticmethod
