@@ -114,40 +114,42 @@ const TrainingPage = () => {
       render: (_: unknown, record: TrainJob) => {
         return (
           <>
-            <PermissionWrapper requiredPermissions={['Train']}>
-              <Popconfirm
-                title={t('traintask.trainStartTitle')}
-                description={t('traintask.trainStartContent')}
-                okText={t('common.confirm')}
-                cancelText={t('common.cancel')}
-                onConfirm={() => onTrainStart(record)}
-              >
-                <Button
-                  type="link"
-                  className="mr-2.5"
-                  disabled={record.status === 'running'}
+            {record.status === 'running' ? (
+              <PermissionWrapper requiredPermissions={['Stop']}>
+                <Popconfirm
+                  title={t('traintask.trainStopTitle')}
+                  description={t('traintask.trainStopContent')}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  onConfirm={() => onTrainStop(record)}
                 >
-                  {t('traintask.train')}
-                </Button>
-              </Popconfirm>
-            </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={['Stop']}>
-              <Popconfirm
-                title={t('traintask.trainStopTitle')}
-                description={t('traintask.trainStopContent')}
-                okText={t('common.confirm')}
-                cancelText={t('common.cancel')}
-                onConfirm={() => onTrainStop(record)}
-              >
-                <Button
-                  type="link"
-                  className="mr-2.5"
-                  disabled={record.status !== 'running'}
+                  <Button
+                    type="link"
+                    danger
+                    className="mr-2.5"
+                  >
+                    {t('mlops-common.stop')}
+                  </Button>
+                </Popconfirm>
+              </PermissionWrapper>
+            ) : (
+              <PermissionWrapper requiredPermissions={['Train']}>
+                <Popconfirm
+                  title={t('traintask.trainStartTitle')}
+                  description={t('traintask.trainStartContent')}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  onConfirm={() => onTrainStart(record)}
                 >
-                  {t('mlops-common.stop')}
-                </Button>
-              </Popconfirm>
-            </PermissionWrapper>
+                  <Button
+                    type="link"
+                    className="mr-2.5"
+                  >
+                    {t('traintask.train')}
+                  </Button>
+                </Popconfirm>
+              </PermissionWrapper>
+            )}
             <PermissionWrapper requiredPermissions={['View']}>
               <Button
                 type="link"

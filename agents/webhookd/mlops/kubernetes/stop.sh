@@ -118,7 +118,7 @@ elif [ -n "$DEPLOYMENT_EXISTS" ]; then
     echo "{\"status\":\"success\",\"id\":\"$ID\",\"state\":\"terminating\",\"detail\":\"Deployment and Service deletion initiated\"}"
     exit 0
 else
-    # 资源不存在
-    json_error "RESOURCE_NOT_FOUND" "$ID" "Resource not found"
-    exit 1
+    # 资源不存在（幂等设计：不存在时返回成功）
+    json_success "$ID" "Resource does not exist (already stopped or removed)"
+    exit 0
 fi
