@@ -78,7 +78,7 @@
   {
     "name": "查询时间范围内的指标数据",
     "desc": "",
-    "rest_api": "query_range",
+    "rest_api": "monitor/mm_query_range",
     "chart_type": [
       "line",
       "bar",
@@ -106,7 +106,7 @@
       {
         "name": "step",
         "type": "string",
-        "value": "5min",
+        "value": "5m",
         "alias_name": "step",
         "filterType": "params"
       }
@@ -152,7 +152,7 @@
   {
     "desc": "",
     "name": "查询单个指标数据",
-    "rest_api": "monitor/query",
+    "rest_api": "monitor/mm_query",
     "tag": [
       "monitor"
     ],
