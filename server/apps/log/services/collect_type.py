@@ -1,5 +1,4 @@
 from collections import defaultdict
-from typing import Any
 
 import toml
 import yaml
@@ -19,210 +18,13 @@ from apps.rpc.node_mgmt import NodeMgmt
 
 
 class CollectTypeService:
-    UPDATE_COMPAT_MODE = "compat"
-    UPDATE_STRICT_MODE = "strict"
-
     @staticmethod
-    def _get_update_mode() -> str:
-        import os
-
-        mode = os.getenv(
-            "LOG_UPDATE_PAYLOAD_MODE", CollectTypeService.UPDATE_COMPAT_MODE
-        )
-        mode = (mode or "").strip().lower()
-        if mode in {
-            CollectTypeService.UPDATE_COMPAT_MODE,
-            CollectTypeService.UPDATE_STRICT_MODE,
-        }:
-            return mode
-        return CollectTypeService.UPDATE_COMPAT_MODE
-
-    @staticmethod
-    def _emit_update_payload_observation(
-        collect_type_obj,
-        instance_id,
-        config_type,
-        source_field,
-        unknown_fields,
-        adapter_applied,
-        mode,
-    ):
-        logger.info(
-            "log.update_payload_normalized",
-            extra={
-                "collector": collect_type_obj.collector,
-                "collect_type": collect_type_obj.name,
-                "instance_id": instance_id,
-                "config_type": config_type,
-                "source_field": source_field,
-                "unknown_fields": unknown_fields,
-                "adapter_applied": adapter_applied,
-                "mode": mode,
-            },
-        )
-
-    @staticmethod
-    def _normalize_vector_docker(content: dict) -> tuple[dict, list[str], bool]:
-        normalized = dict(content)
-        include_containers = normalized.get("include_containers")
-        exclude_containers = normalized.get("exclude_containers")
-        multiline = normalized.get("multiline") or {}
-
-        if "endpoint" not in normalized and normalized.get("docker_host"):
-            normalized["endpoint"] = normalized.get("docker_host")
-
-        if "enable_container_filter" not in normalized:
-            normalized["enable_container_filter"] = bool(
-                include_containers or exclude_containers
-            )
-
-        if (
-            "container_name_contains" not in normalized
-            and include_containers is not None
-        ):
-            if isinstance(include_containers, list):
-                normalized["container_name_contains"] = ",".join(
-                    [str(i) for i in include_containers]
-                )
-            else:
-                normalized["container_name_contains"] = include_containers
-
-        if (
-            "container_name_exclude" not in normalized
-            and exclude_containers is not None
-        ):
-            if isinstance(exclude_containers, list):
-                normalized["container_name_exclude"] = ",".join(
-                    [str(i) for i in exclude_containers]
-                )
-            else:
-                normalized["container_name_exclude"] = exclude_containers
-
-        if "enable_multiline" not in normalized:
-            normalized["enable_multiline"] = bool(multiline.get("mode"))
-
-        if (
-            "multiline_pattern" not in normalized
-            and multiline.get("condition_pattern") is not None
-        ):
-            normalized["multiline_pattern"] = multiline.get("condition_pattern")
-
-        if (
-            "multiline_start_pattern" not in normalized
-            and multiline.get("start_pattern") is not None
-        ):
-            normalized["multiline_start_pattern"] = multiline.get("start_pattern")
-
-        if "multiline_mode" not in normalized and multiline.get("mode") is not None:
-            normalized["multiline_mode"] = multiline.get("mode")
-
-        if (
-            "multiline_timeout_ms" not in normalized
-            and multiline.get("timeout_ms") is not None
-        ):
-            normalized["multiline_timeout_ms"] = multiline.get("timeout_ms")
-
-        allowed_fields = {
-            "endpoint",
-            "enable_container_filter",
-            "container_name_contains",
-            "container_name_exclude",
-            "enable_multiline",
-            "multiline_pattern",
-            "multiline_start_pattern",
-            "multiline_mode",
-            "multiline_timeout_ms",
-            # 兼容输入字段
-            "docker_host",
-            "include_containers",
-            "exclude_containers",
-            "multiline",
-        }
-        unknown_fields = [k for k in normalized.keys() if k not in allowed_fields]
-        adapter_applied = any(
-            key in content
-            for key in [
-                "docker_host",
-                "include_containers",
-                "exclude_containers",
-                "multiline",
-            ]
-        )
-        return normalized, unknown_fields, adapter_applied
-
-    @staticmethod
-    def _normalize_generic_passthrough(content: dict) -> tuple[dict, list[str], bool]:
-        return dict(content), [], False
-
-    @staticmethod
-    def _normalize_by_adapter(
-        collector: str, collect_type: str, content: dict
-    ) -> tuple[dict, list[str], bool]:
-        adapters = {
-            ("Vector", "docker"): CollectTypeService._normalize_vector_docker,
-            # 当前可编辑类型先使用透传（维持行为）
-            ("Vector", "file"): CollectTypeService._normalize_generic_passthrough,
-            ("Vector", "syslog"): CollectTypeService._normalize_generic_passthrough,
-            ("Packetbeat", "flows"): CollectTypeService._normalize_generic_passthrough,
-            ("Packetbeat", "http"): CollectTypeService._normalize_generic_passthrough,
-            ("Packetbeat", "icmp"): CollectTypeService._normalize_generic_passthrough,
-            ("Auditbeat", "auditd"): CollectTypeService._normalize_generic_passthrough,
-            (
-                "Auditbeat",
-                "file_integrity",
-            ): CollectTypeService._normalize_generic_passthrough,
-        }
-        adapter = adapters.get(
-            (collector, collect_type), CollectTypeService._normalize_generic_passthrough
-        )
-        return adapter(content)
-
-    @staticmethod
-    def _extract_update_payload(
-        collect_type_obj,
-        payload: dict,
-        instance_id,
-        config_type,
-        has_template,
-    ) -> tuple[Any, str]:
+    def _extract_update_payload(payload: dict, config_type: str):
         content = payload.get("content")
-        source_field = "content"
 
         if content is None:
             raise BaseAppException(f"{config_type}.content is required")
-
-        if not has_template:
-            return content, source_field
-
-        # 有模板：要求映射类型为 dict
-        if not isinstance(content, dict):
-            raise BaseAppException(
-                f"{config_type} content must be mapping when template rendering is enabled"
-            )
-
-        normalized, unknown_fields, adapter_applied = (
-            CollectTypeService._normalize_by_adapter(
-                collect_type_obj.collector, collect_type_obj.name, content
-            )
-        )
-        mode = CollectTypeService._get_update_mode()
-
-        CollectTypeService._emit_update_payload_observation(
-            collect_type_obj,
-            instance_id,
-            config_type,
-            source_field,
-            unknown_fields,
-            adapter_applied,
-            mode,
-        )
-
-        if mode == CollectTypeService.UPDATE_STRICT_MODE and unknown_fields:
-            raise BaseAppException(
-                f"unknown fields in {collect_type_obj.collector}/{collect_type_obj.name} {config_type} payload: {unknown_fields}"
-            )
-
-        return normalized, source_field
+        return content
 
     @staticmethod
     def get_collect_type(collect_type: str) -> str:
@@ -431,13 +233,8 @@ class CollectTypeService:
         if base_info:
             config_obj = CollectConfig.objects.filter(id=base_info["id"]).first()
             if config_obj:
-                has_template = col_obj.has_template_for_config_type("base")
-                base_content, _ = CollectTypeService._extract_update_payload(
-                    collect_type_obj,
-                    base_info,
-                    instance_id,
-                    "base",
-                    has_template,
+                base_content = CollectTypeService._extract_update_payload(
+                    base_info, "base"
                 )
                 content = build_content(config_obj, "base", base_content)
                 env_config = base_info.get("env_config")
@@ -449,13 +246,8 @@ class CollectTypeService:
             config_obj = CollectConfig.objects.filter(id=child_info["id"]).first()
             if not config_obj:
                 return
-            has_template = col_obj.has_template_for_config_type("child")
-            child_content, _ = CollectTypeService._extract_update_payload(
-                collect_type_obj,
-                child_info,
-                instance_id,
-                "child",
-                has_template,
+            child_content = CollectTypeService._extract_update_payload(
+                child_info, "child"
             )
             content = build_content(config_obj, "child", child_content)
             NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
