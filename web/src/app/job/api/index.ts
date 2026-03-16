@@ -365,6 +365,16 @@ const useJobApi = () => {
     return await post(`/job_mgmt/api/scheduled_task/${id}/run_now/`);
   };
 
+  interface TemplateParamItem {
+    name: string;
+    value: unknown;
+    is_modified: boolean;
+  }
+
+  interface AdhocParamItem {
+    value: string;
+  }
+
   // Quick Execution
   const quickExecute = async (data: {
     name?: string;
@@ -373,7 +383,7 @@ const useJobApi = () => {
     script_content?: string;
     target_source: ExecutionTargetSource;
     target_list: TargetListItem[];
-    params?: Record<string, unknown> | Array<{ value: string }>;
+    params?: TemplateParamItem[] | AdhocParamItem[];
     timeout?: number;
     team?: number[];
   }): Promise<any> => {
@@ -385,7 +395,7 @@ const useJobApi = () => {
     playbook_id: number;
     target_source: ExecutionTargetSource;
     target_list: TargetListItem[];
-    params?: Record<string, unknown>;
+    params?: TemplateParamItem[];
     timeout?: number;
     team?: number[];
   }): Promise<any> => {

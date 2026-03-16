@@ -164,13 +164,10 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
           }
         }
         const permissionMap = collectPermissionOperations(allMenuData);
-        console.log(permissionMap, menusToFilter, routeClientId);
         const filteredMenus = filterMenusByPermission(permissionMap, menusToFilter, routeClientId);
         const parsedPermissions = extractPermissions(filteredMenus);
         setMenuItems(filteredMenus);
-        console.log('filteredMenus', filteredMenus);
         setPermissions(parsedPermissions);
-        console.log('parsedPermissions', parsedPermissions);
         setLoading(false);
       } catch (err) {
         console.error('Failed to fetch menus:', err);
