@@ -65,7 +65,8 @@ export const useRedisFilebeatConfig = () => {
           getFormItems: () => {
             return commonFormItems.getCommonFormItems({
               disabledFormItems: {},
-              hiddenFormItems: {}
+              hiddenFormItems: {},
+              isEdit: true
             });
           },
           getDefaultForm: (formData: TableDataItem) => {

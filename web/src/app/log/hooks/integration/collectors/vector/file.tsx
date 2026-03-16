@@ -19,7 +19,7 @@ export const useVectorConfig = () => {
       onTableDataChange?: (data: IntegrationLogInstance[]) => void;
     }) => {
       const disabledForm = {
-        paths: false
+        include: false
       };
       const formItems = (
         <>
@@ -33,12 +33,12 @@ export const useVectorConfig = () => {
           formItems: commonFormItems.getCommonFormItems(),
           initTableItems: {},
           defaultForm: {
-            paths: [],
-            exclude_paths: [],
+            include: [],
+            exclude: [],
             read_from: 'beginning',
             ignore_older_secs: 86400,
-            encoding: 'utf-8',
-            parser: '',
+            encoding_charset: 'utf-8',
+            parser_type: '',
             multiline: {
               enabled: false,
               mode: 'continue_through',
@@ -54,16 +54,16 @@ export const useVectorConfig = () => {
 
             // 构建 content
             const content: Record<string, unknown> = {
-              paths: formDataCopy.paths || [],
-              exclude_paths: formDataCopy.exclude_paths || [],
+              include: formDataCopy.include || [],
+              exclude: formDataCopy.exclude || [],
               read_from: formDataCopy.read_from,
               ignore_older_secs: formDataCopy.ignore_older_secs,
-              encoding: formDataCopy.encoding
+              encoding_charset: formDataCopy.encoding_charset
             };
 
-            // 处理 parser
-            if (formDataCopy.parser) {
-              content.parser = formDataCopy.parser;
+            // 处理 parser_type
+            if (formDataCopy.parser_type) {
+              content.parser_type = formDataCopy.parser_type;
             }
 
             // 处理 multiline
@@ -101,12 +101,12 @@ export const useVectorConfig = () => {
             const sourceData = sources[sourceKey] || {};
 
             return {
-              paths: sourceData.include || [],
-              exclude_paths: sourceData.exclude || [],
+              include: sourceData.include || [],
+              exclude: sourceData.exclude || [],
               read_from: sourceData.read_from || 'beginning',
               ignore_older_secs: sourceData.ignore_older_secs || 86400,
-              encoding: sourceData.encoding || 'utf-8',
-              parser: sourceData.parser || '',
+              encoding_charset: sourceData.encoding_charset || 'utf-8',
+              parser_type: sourceData.parser_type || '',
               multiline: {
                 enabled: !!sourceData.multiline?.mode,
                 mode: sourceData.multiline?.mode || 'continue_through',
@@ -122,16 +122,16 @@ export const useVectorConfig = () => {
 
             // 构建 content 对象
             const content: Record<string, unknown> = {
-              paths: formDataCopy.paths || [],
-              exclude_paths: formDataCopy.exclude_paths || [],
+              include: formDataCopy.include || [],
+              exclude: formDataCopy.exclude || [],
               read_from: formDataCopy.read_from,
               ignore_older_secs: formDataCopy.ignore_older_secs,
-              encoding: formDataCopy.encoding
+              encoding_charset: formDataCopy.encoding_charset
             };
 
-            // 处理 parser
-            if (formDataCopy.parser) {
-              content.parser = formDataCopy.parser;
+            // 处理 parser_type
+            if (formDataCopy.parser_type) {
+              content.parser_type = formDataCopy.parser_type;
             }
 
             // 处理 multiline

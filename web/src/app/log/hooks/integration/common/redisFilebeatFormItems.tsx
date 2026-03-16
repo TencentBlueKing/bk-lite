@@ -12,9 +12,10 @@ const useRedisFilebeatFormItems = () => {
       extra: {
         disabledFormItems?: Record<string, boolean>;
         hiddenFormItems?: Record<string, boolean>;
+        isEdit?: boolean;
       } = {}
     ) => {
-      const { disabledFormItems = {} } = extra;
+      const { disabledFormItems = {}, isEdit = false } = extra;
 
       return (
         <>
@@ -162,7 +163,7 @@ const useRedisFilebeatFormItems = () => {
                                 'log.integration.redisPasswordPlaceholder'
                               )}
                               disabled={disabledFormItems.slowlog_password}
-                              clickToEdit={false}
+                              clickToEdit={isEdit}
                             />
                           </Form.Item>
                         </div>
