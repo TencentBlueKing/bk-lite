@@ -93,9 +93,7 @@ class Executor(object):
         )
         return return_data
 
-    def download_to_local(
-        self, bucket_name, file_key, file_name, target_path, timeout=60
-    ):
+    def download_to_local(self, bucket_name, file_key, file_name, target_path, timeout=60, overwrite=True):
         """
         下载文件
         :param bucket_name: 存储桶名称
@@ -103,6 +101,7 @@ class Executor(object):
         :param file_name: 文件名称
         :param target_path: 本地目标路径
         :param timeout: 执行超时时间(秒)
+        :param overwrite: 是否覆盖已存在文件，默认True
         :return: 下载结果
         """
         request_data = {
@@ -111,6 +110,7 @@ class Executor(object):
             "file_name": file_name,
             "target_path": target_path,
             "execute_timeout": timeout,
+            "overwrite": overwrite,
         }
         return_data = self.download_to_local_client.run(
             self.instance_id, request_data, _timeout=timeout
@@ -129,7 +129,9 @@ class Executor(object):
         private_key=None,
         passphrase=None,
         timeout=60,
+        rpc_timeout=None,
         port=22,
+        overwrite=True,
         local_path="/tmp",
     ):
         """
@@ -145,6 +147,7 @@ class Executor(object):
         :param private_key: SSH私钥内容(PEM格式，可选)
         :param passphrase: 私钥密码短语(可选)
         :param timeout: 执行超时时间(秒)
+        :param overwrite: 是否覆盖已存在文件，默认True
         :param local_path: 执行器本地下载目录（可选，默认/tmp）
         :return: 下载结果
         """
@@ -158,6 +161,7 @@ class Executor(object):
             "port": port,
             "user": username,
             "execute_timeout": timeout,
+            "overwrite": overwrite,
         }
         # 添加可选参数
         if password:
@@ -167,7 +171,9 @@ class Executor(object):
         if passphrase:
             request_data["passphrase"] = passphrase
         return_data = self.download_to_remote_client.run(
-            self.instance_id, request_data, _timeout=timeout
+            self.instance_id,
+            request_data,
+            _timeout=rpc_timeout if rpc_timeout is not None else timeout,
         )
         return return_data
 
@@ -188,16 +194,7 @@ class Executor(object):
         return return_data
 
     def transfer_file_to_remote(
-        self,
-        source_path,
-        target_path,
-        host,
-        username,
-        password=None,
-        private_key=None,
-        passphrase=None,
-        timeout=60,
-        port=22,
+        self, source_path, target_path, host, username, password=None, private_key=None, passphrase=None, timeout=60, port=22
     ):
         """
         传递文件到远程主机
@@ -227,7 +224,5 @@ class Executor(object):
             request_data["private_key"] = private_key
         if passphrase:
             request_data["passphrase"] = passphrase
-        return_data = self.transfer_file_to_remote_client.run(
-            self.instance_id, request_data, _timeout=timeout
-        )
+        return_data = self.transfer_file_to_remote_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data

@@ -380,6 +380,20 @@ def check_replication_lag(config: RunnableConfig = None):
     Returns:
         JSON格式,包含复制状态信息
     """
+    # 前置检查：AlwaysOn可用性组功能是否启用
+    hadr_check = """
+    SELECT SERVERPROPERTY('IsHadrEnabled') as is_hadr_enabled;
+    """
+
+    try:
+        hadr_result = execute_readonly_query(hadr_check, config=config)
+        is_hadr_enabled = hadr_result[0]["is_hadr_enabled"] == 1 if hadr_result and hadr_result[0]["is_hadr_enabled"] is not None else False
+
+        if not is_hadr_enabled:
+            return safe_json_dumps({"has_replication": False, "message": "当前实例未启用AlwaysOn可用性组功能（HADR未启用）"})
+    except Exception as e:
+        return safe_json_dumps({"has_replication": False, "message": f"无法检查AlwaysOn状态: {str(e)}"})
+
     # AlwaysOn可用性组状态
     ag_query = """
     SELECT

@@ -577,13 +577,21 @@ class ToolsNodes(BasicNode):
 
         if self.mcp_config:
             self.mcp_client = MultiServerMCPClient(self.mcp_config)
-            self.tools = await self.mcp_client.get_tools()
+            try:
+                self.tools = await self.mcp_client.get_tools()
+                logger.debug(f"成功加载 MCP 工具，共 {len(self.tools)} 个")
+            except Exception as e:
+                logger.error(f"MCP 工具加载失败: {e}。将继续使用其他可用工具。")
+                # MCP 加载失败时不中断，继续加载其他工具（如 LangChain 工具）
 
         # 初始化LangChain工具
         for server in request.tools_servers:
             if server.url.startswith("langchain:"):
-                langchain_tools = ToolsLoader.load_tools(server.url, server.extra_tools_prompt, server.extra_param_prompt)
-                self.tools.extend(langchain_tools)
+                try:
+                    langchain_tools = ToolsLoader.load_tools(server.url, server.extra_tools_prompt, server.extra_param_prompt)
+                    self.tools.extend(langchain_tools)
+                except Exception as e:
+                    logger.error(f"LangChain 工具加载失败 ({server.url}): {e}。将继续使用其他可用工具。")
 
     async def build_tools_node(self) -> ToolNode:
         """构建工具节点"""

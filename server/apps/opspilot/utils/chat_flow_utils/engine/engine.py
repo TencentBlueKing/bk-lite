@@ -137,6 +137,13 @@ class ChatFlowEngine:
         except Exception as e:
             logger.exception(f"记录节点执行明细失败: execution_id={self.execution_id}, node_id={node_id}, error={str(e)}")
 
+    async def _record_node_execution_result_async(self, node_id: str, context: NodeExecutionContext) -> None:
+        """异步记录节点执行明细（用于 async 上下文）
+
+        使用 sync_to_async 包装同步的 ORM 操作，避免在异步上下文中直接调用同步数据库操作。
+        """
+        await sync_to_async(self._record_node_execution_result, thread_sensitive=True)(node_id, context)
+
     def _get_start_node(self) -> Optional[Dict[str, Any]]:
         """获取起始节点
 
@@ -236,7 +243,9 @@ class ChatFlowEngine:
 
             # 使用公共方法创建 agents 节点的执行上下文
             agent_node_id = target_agent_node.get("id")
-            agent_context = self._create_node_execution_context(node=target_agent_node, input_data=final_input_data, status=NodeStatus.RUNNING)
+            agent_context = await self._create_node_execution_context_async(
+                node=target_agent_node, input_data=final_input_data, status=NodeStatus.RUNNING
+            )
 
             try:
                 # 同步调用 execute_method,它会返回一个异步生成器
@@ -275,7 +284,7 @@ class ChatFlowEngine:
 
                 # 更新节点执行顺序
                 self._update_node_execution_order(agent_node_id)
-                self._record_node_execution_result(agent_node_id, agent_context)
+                await self._record_node_execution_result_async(agent_node_id, agent_context)
 
                 # 记录系统输出到对话历史
                 if accumulated_content:
@@ -314,7 +323,7 @@ class ChatFlowEngine:
 
                 # 更新节点执行顺序
                 self._update_node_execution_order(agent_node_id)
-                self._record_node_execution_result(agent_node_id, agent_context)
+                await self._record_node_execution_result_async(agent_node_id, agent_context)
 
                 error_data = {"type": "ERROR", "error": f"流处理错误: {str(e)}", "timestamp": int(time.time() * 1000)}
                 yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
@@ -425,6 +434,50 @@ class ChatFlowEngine:
         # 注册到 execution_contexts
         self.execution_contexts[node_id] = context
         self._record_node_execution_result(node_id, context)
+
+        return context
+
+    async def _create_node_execution_context_async(
+        self,
+        node: Dict[str, Any],
+        input_data: Dict[str, Any],
+        status: NodeStatus = NodeStatus.RUNNING,
+    ) -> NodeExecutionContext:
+        """异步创建节点执行上下文并注册变量（用于 async 上下文）
+
+        与 _create_node_execution_context 功能相同，但使用异步方式记录节点执行结果，
+        避免在异步上下文中直接调用同步数据库操作。
+
+        Args:
+            node: 节点配置
+            input_data: 输入数据
+            status: 初始状态，默认 RUNNING
+
+        Returns:
+            NodeExecutionContext: 创建的执行上下文
+        """
+        node_id = node.get("id")
+        node_type = node.get("type")
+        node_name = node.get("data", {}).get("label", "") or node.get("data", {}).get("name", "") or node_id
+
+        # 创建执行上下文
+        context = NodeExecutionContext(node_id=node_id, flow_id=str(self.instance.id))
+        context.start_time = time.time()
+        context.status = status
+        context.input_data = input_data
+
+        # 保存节点信息到变量管理器
+        self.variable_manager.set_variable(f"node_{node_id}_type", node_type)
+        self.variable_manager.set_variable(f"node_{node_id}_name", node_name)
+
+        # 保存输出参数名（用于失败时也使用用户指定的输出参数名）
+        node_config = node.get("data", {}).get("config", {})
+        output_key = node_config.get("outputParams", "last_message")
+        self.variable_manager.set_variable(f"node_{node_id}_output_key", output_key)
+
+        # 注册到 execution_contexts
+        self.execution_contexts[node_id] = context
+        await self._record_node_execution_result_async(node_id, context)
 
         return context
 
