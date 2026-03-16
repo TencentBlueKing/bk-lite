@@ -84,31 +84,19 @@ export const useFilebeatConfig = () => {
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             const originalChild = cloneDeep(configForm?.child || {});
-            const updatedContent = (originalChild.content || []).map(
-              (item: any) => {
-                if (item.module === 'apache') {
-                  return {
-                    ...item,
-                    access: {
-                      ...item.access,
-                      enabled: !!formData.access_log?.enabled,
-                      'var.paths': formData.access_log?.paths || []
-                    },
-                    error: {
-                      ...item.error,
-                      enabled: !!formData.error_log?.enabled,
-                      'var.paths': formData.error_log?.paths || []
-                    }
-                  };
-                }
-                return item;
-              }
-            );
+
+            // 扁平化的 content（4个参数，和新增一致）
+            const content = {
+              access_enabled: !!formData.access_log?.enabled,
+              access_paths: formData.access_log?.paths || [],
+              error_enabled: !!formData.error_log?.enabled,
+              error_paths: formData.error_log?.paths || []
+            };
 
             return {
               child: {
                 ...originalChild,
-                content: updatedContent
+                content
               }
             };
           }

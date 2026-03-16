@@ -184,7 +184,7 @@
     "paramDefinition": "参数定义",
     "addParam": "新增参数",
     "paramName": "参数名",
-    "paramNamePlaceholder": "请输入参数名（用于Jinja2模板引用）",
+    "paramNamePlaceholder": "请输入参数名",
     "paramNameHint": "用于Jinja2模板中引用，如 {{ param_name }}",
     "paramLabel": "参数标签",
     "paramLabelPlaceholder": "请输入显示名称",
