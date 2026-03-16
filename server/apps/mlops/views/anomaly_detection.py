@@ -1308,7 +1308,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("anomaly_detection-Predict")
+    @HasPermission("anomaly_detection-View")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行异常检测

@@ -1335,7 +1335,7 @@ class ImageClassificationServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("image_classification-Predict")
+    @HasPermission("image_classification-View")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行图片分类预测

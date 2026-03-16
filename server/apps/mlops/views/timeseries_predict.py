@@ -361,7 +361,6 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                     # 获取状态
                     run_status = row.get("status", MLflowRunStatus.UNKNOWN)
 
-
                     run_data = {
                         "run_id": str(row["run_id"]),
                         "run_name": str(run_name),
@@ -450,20 +449,17 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                     {
                         "run_id": run_id,
                         "metric_name": metric_name,
-                        "message": "该指标无历史数据",
-                        "data": [],
+                        "total_points": 0,
+                        "metric_history": [],
                     }
                 )
-
-            # 判断排序方式（基于第一条数据的键）
-            sort_by = "timestamp" if "index" in metric_data[0] else "step"
 
             return Response(
                 {
                     "run_id": run_id,
                     "metric_name": metric_name,
-                    "sort_by": sort_by,
-                    "data": metric_data,
+                    "total_points": len(metric_data),
+                    "metric_history": metric_data,
                 }
             )
 
@@ -801,7 +797,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
                 # 启动成功，仅更新容器信息
                 serving.container_info = result
-                serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
+                serving.port = (
+                    int(result.get("port", 0)) if result.get("port") else serving.port
+                )
                 serving.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据（status 由用户控制，不修改）
@@ -954,7 +952,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
                 # 更新容器信息（status 由用户控制，不修改）
                 instance.container_info = result
-                instance.port = int(result.get("port", 0)) if result.get("port") else instance.port
+                instance.port = (
+                    int(result.get("port", 0)) if result.get("port") else instance.port
+                )
                 instance.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据
@@ -1018,7 +1018,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
                 # 正常启动成功，更新容器信息
                 serving.container_info = result
-                serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
+                serving.port = (
+                    int(result.get("port", 0)) if result.get("port") else serving.port
+                )
                 serving.save(update_fields=["container_info", "port"])
 
                 return Response(
@@ -1184,7 +1186,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("timeseries_predict-Predict")
+    @HasPermission("timeseries_predict-View")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行时间序列预测
@@ -1229,7 +1231,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             host_address = get_host_address()
             if not host_address:
                 return Response(
-                    {"error": "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"},
+                    {
+                        "error": "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             predict_url = f"http://{host_address}:{port}/predict"
@@ -1458,11 +1462,11 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
             )
 
         except Exception as e:
-             logger.error(f"恢复失败: {str(e)}", exc_info=True)
-             return Response(
-                 {"error": f"恢复失败: {str(e)}"},
-                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-             )
+            logger.error(f"恢复失败: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"恢复失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
@@ -1478,7 +1482,10 @@ class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
     def get_serializer_class(self):
         if (
             self.action == "list"
-            and not self.request.query_params.get("include_form_config", "false").lower() == "true"
+            and not self.request.query_params.get(
+                "include_form_config", "false"
+            ).lower()
+            == "true"
         ):
             return AlgorithmConfigListSerializer
         return AlgorithmConfigSerializer
@@ -1505,10 +1512,15 @@ class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
         instance = self.get_object()
         is_active_new = request.data.get("is_active")
         if instance.is_active and is_active_new is False:
-            task_count = TimeSeriesPredictTrainJob.objects.filter(algorithm=instance.name).count()
+            task_count = TimeSeriesPredictTrainJob.objects.filter(
+                algorithm=instance.name
+            ).count()
             if task_count > 0:
                 return Response(
-                    {"error": f"无法禁用：有 {task_count} 个训练任务正在使用此算法", "task_count": task_count},
+                    {
+                        "error": f"无法禁用：有 {task_count} 个训练任务正在使用此算法",
+                        "task_count": task_count,
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         return super().partial_update(request, *args, **kwargs)
@@ -1516,10 +1528,15 @@ class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
     @HasPermission("timeseries_predict-Delete")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        task_count = TimeSeriesPredictTrainJob.objects.filter(algorithm=instance.name).count()
+        task_count = TimeSeriesPredictTrainJob.objects.filter(
+            algorithm=instance.name
+        ).count()
         if task_count > 0:
             return Response(
-                {"error": f"无法删除：有 {task_count} 个训练任务正在使用此算法", "task_count": task_count},
+                {
+                    "error": f"无法删除：有 {task_count} 个训练任务正在使用此算法",
+                    "task_count": task_count,
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return super().destroy(request, *args, **kwargs)
@@ -1543,5 +1560,6 @@ class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
             )
             return Response({"image": config.image})
         except AlgorithmConfig.DoesNotExist:
-            return Response({"error": f"未找到算法配置: timeseries_predict/{name}"}, status=404)
-
+            return Response(
+                {"error": f"未找到算法配置: timeseries_predict/{name}"}, status=404
+            )

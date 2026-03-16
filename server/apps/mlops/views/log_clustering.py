@@ -355,7 +355,6 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                     # 获取状态
                     run_status = row.get("status", MLflowRunStatus.UNKNOWN)
 
-
                     run_data = {
                         "run_id": str(row["run_id"]),
                         "run_name": str(run_name),
@@ -442,20 +441,17 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
                     {
                         "run_id": run_id,
                         "metric_name": metric_name,
-                        "message": "该指标无历史数据",
-                        "data": [],
+                        "total_points": 0,
+                        "metric_history": [],
                     }
                 )
-
-            # 判断排序方式（基于第一条数据的键）
-            sort_by = "timestamp" if "index" in metric_data[0] else "step"
 
             return Response(
                 {
                     "run_id": run_id,
                     "metric_name": metric_name,
-                    "sort_by": sort_by,
-                    "data": metric_data,
+                    "total_points": len(metric_data),
+                    "metric_history": metric_data,
                 }
             )
 
@@ -922,7 +918,9 @@ class LogClusteringServingViewSet(ModelViewSet):
 
                 # 启动成功，更新容器信息
                 serving.container_info = result
-                serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
+                serving.port = (
+                    int(result.get("port", 0)) if result.get("port") else serving.port
+                )
                 serving.save(update_fields=["container_info", "port"])
 
                 response.data["container_info"] = result
@@ -1057,7 +1055,9 @@ class LogClusteringServingViewSet(ModelViewSet):
                 )
 
                 instance.container_info = result
-                instance.port = int(result.get("port", 0)) if result.get("port") else instance.port
+                instance.port = (
+                    int(result.get("port", 0)) if result.get("port") else instance.port
+                )
                 instance.save(update_fields=["container_info", "port"])
 
                 response.data["container_info"] = result
@@ -1117,7 +1117,9 @@ class LogClusteringServingViewSet(ModelViewSet):
 
                 # 正常启动成功，更新容器信息
                 serving.container_info = result
-                serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
+                serving.port = (
+                    int(result.get("port", 0)) if result.get("port") else serving.port
+                )
                 serving.save(update_fields=["container_info", "port"])
 
                 return Response(
@@ -1250,7 +1252,7 @@ class LogClusteringServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("log_clustering-Predict")
+    @HasPermission("log_clustering-View")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行日志聚类
@@ -1265,7 +1267,9 @@ class LogClusteringServingViewSet(ModelViewSet):
             host_address = get_host_address()
             if not host_address:
                 return Response(
-                    {"error": "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"},
+                    {
+                        "error": "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
