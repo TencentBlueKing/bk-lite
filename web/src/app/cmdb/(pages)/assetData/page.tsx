@@ -433,7 +433,7 @@ const AssetDataContent = () => {
     router.replace(`/cmdb/assetData?${urlParams.toString()}`);
   };
 
-  const getTableParams = (overrideQueryList?: FilterItem | FilterItem[] | null) => {
+  const getTableParams = (overrideQueryList?: FilterItem | FilterItem[] | null, overridePage?: number) => {
     const activeQueryList = overrideQueryList !== undefined ? overrideQueryList : queryList;
     const orgCondition = organization?.length
       ? [{ field: 'organization', type: 'list[]', value: organization }]
@@ -451,7 +451,7 @@ const AssetDataContent = () => {
 
     return {
       query_list: finalQueryList,
-      page: pagination.current,
+      page: overridePage ?? pagination.current,
       page_size: pagination.pageSize,
       order: '',
       model_id: modelId,
@@ -460,12 +460,12 @@ const AssetDataContent = () => {
     };
   };
 
-  const getInitData = (id: string, overrideQueryList?: FilterItem[] | null) => {
-    const tableParams = getTableParams(overrideQueryList);
+  const getInitData = (id: string, overrideQueryList?: FilterItem[] | null, overridePage?: number) => {
+    const tableParams = getTableParams(overrideQueryList, overridePage);
 
     getModelAttrGroupsFullInfo(id)
       .then((res) => setPropertyListGroups(res.groups))
-      .catch(() => message.error(t('common.getFailed')));
+      .catch(() => message.error('Failed to load attribute groups'));
 
     setLoading(true);
     Promise.all([
@@ -479,12 +479,14 @@ const AssetDataContent = () => {
         setPropertyList(attrList);
         setTableData(instData.insts);
         setPagination(prev => ({ ...prev, total: instData.count }));
-        // 延迟到下一帧再设置
+
+      })
+      .finally(() => {
+        setLoading(false);
         requestAnimationFrame(() => {
           initialDataLoaded.current = true;
         });
-      })
-      .finally(() => setLoading(false));
+      });
   };
 
   const onSelectChange = (selectedKeys: any) => {
@@ -732,6 +734,8 @@ const AssetDataContent = () => {
     const targetGroup = modelGroup.find((group) => group.list.some((item) => item.model_id === key));
     if (!targetGroup) return;
 
+    initialDataLoaded.current = false;
+
     setQueryList(null);
     setSelectedTreeKeys([key]);
     setModelId(key);
@@ -742,7 +746,7 @@ const AssetDataContent = () => {
     setPropertyListGroups([]);
     setPropertyList([]);
     router.push(`/cmdb/assetData?modelId=${key}&classificationId=${targetGroup.classification_id}`);
-    getInitData(key, null);
+    getInitData(key, null, 1);
   };
 
   useEffect(() => {

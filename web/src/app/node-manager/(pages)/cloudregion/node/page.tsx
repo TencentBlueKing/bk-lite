@@ -14,9 +14,9 @@ import nodeStyle from './index.module.scss';
 import CollectorModal from './collectorModal';
 import { useTranslation } from '@/utils/i18n';
 import { ModalRef, TableDataItem, Pagination } from '@/app/node-manager/types';
-import { SearchFilters } from '@/app/node-manager/types/node';
+import { SearchFilters } from '@/components/search-combination/types';
 import CustomTable from '@/components/custom-table';
-import SearchCombination from './searchCombination';
+import SearchCombination from '@/components/search-combination';
 import {
   useColumns,
   useTelegrafMap,
@@ -142,11 +142,13 @@ const Node = () => {
     const uniqueOS = [...new Set(operatingSystems)];
     const installMethods = selectedNodes.map((node) => node.install_method);
     const uniqueInstallMethods = [...new Set(installMethods)];
-    // 控制器：检查操作系统和安装方式是否都一致
+    // 控制器：检查操作系统和安装方式是否都一致，且不包含 Windows 系统
+    const hasWindows = operatingSystems.includes('windows');
     return (
       uniqueOS.length !== 1 ||
       uniqueInstallMethods.length !== 1 ||
-      uniqueInstallMethods.includes('manual')
+      uniqueInstallMethods.includes('manual') ||
+      hasWindows
     );
   }, [selectedRowKeys, nodeList]);
 
@@ -382,7 +384,7 @@ const Node = () => {
         key: 'controller',
         onCell: () => ({
           style: {
-            minWidth: 120
+            minWidth: 190
           }
         }),
         render: (_: any, record: TableDataItem) => {

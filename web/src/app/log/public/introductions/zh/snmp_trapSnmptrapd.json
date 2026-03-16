@@ -1,0 +1,98 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "SNMP Trap 接收使用 Snmptrapd 作为采集器，提供高性能的 SNMP Trap 服务端能力。可以接收来自网络设备、服务器硬件（iDRAC/iLO）、存储设备、UPS、环境监控等发送的异常事件通知。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "🔔",
+        "title": "实时告警",
+        "description": "即时接收设备主动推送的异常事件，无需轮询"
+      },
+      {
+        "icon": "📋",
+        "title": "多版本支持",
+        "description": "支持 SNMPv1、v2c、v3 协议版本"
+      },
+      {
+        "icon": "🔍",
+        "title": "OID 解析",
+        "description": "自动解析 OID 为可读名称，支持自定义 MIB"
+      },
+      {
+        "icon": "⚡",
+        "title": "高吞吐量",
+        "description": "单节点支持每秒数万条 Trap 消息接收"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "解析字段",
+      "description": "SNMP Trap 消息将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": 200 },
+        { "key": "type", "title": "类型", "width": 120 },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Trap 接收时间戳"
+        },
+        {
+          "field": "snmp.source_ip",
+          "type": "ip",
+          "description": "发送设备 IP 地址"
+        },
+        {
+          "field": "snmp.version",
+          "type": "keyword",
+          "description": "SNMP 版本 (v1, v2c, v3)"
+        },
+        {
+          "field": "snmp.community",
+          "type": "keyword",
+          "description": "Community 字符串 (v1/v2c)"
+        },
+        {
+          "field": "snmp.trap_oid",
+          "type": "keyword",
+          "description": "Trap OID 标识符"
+        },
+        {
+          "field": "snmp.trap_name",
+          "type": "keyword",
+          "description": "Trap 名称（通过 MIB 解析）"
+        },
+        {
+          "field": "snmp.enterprise",
+          "type": "keyword",
+          "description": "Enterprise OID (v1)"
+        },
+        {
+          "field": "snmp.varbinds",
+          "type": "object",
+          "description": "变量绑定列表（OID-值对）"
+        }
+      ]
+    }
+  ],
+  "steps": {
+    "title": "配置发送端",
+    "description": "配置网络设备将 SNMP Trap 发送到 Snmptrapd：",
+    "items": []
+  },
+  "tips": [
+    {
+      "type": "warning",
+      "title": "设备配置示例",
+      "content": "**Cisco 设备配置示例：**\n`snmp-server host 172.24.0.5 traps version 2c public`\n`snmp-server enable traps`\n\n**华为设备配置示例：**\n`snmp-agent target-host trap address udp-domain 172.24.0.5 params securityname public v2c`"
+    }
+  ]
+}

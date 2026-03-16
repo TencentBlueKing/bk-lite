@@ -1,0 +1,103 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "SNMP Trap integration uses Snmptrapd to receive SNMP Trap messages sent by network devices. Through structured log data, you can monitor network device alarms, faults, and status changes to implement unified network device event management."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "🔔",
+        "title": "Multi-version Support",
+        "description": "Supports SNMP v1, v2c, and v3 protocol Trap messages"
+      },
+      {
+        "icon": "📋",
+        "title": "Secure Transmission",
+        "description": "Supports v3 authentication and encryption for enterprise security requirements"
+      },
+      {
+        "icon": "🔍",
+        "title": "MIB Parsing",
+        "description": "Converts OID to readable names and extracts VarBinds information"
+      },
+      {
+        "icon": "⚡",
+        "title": "Real-time Reception",
+        "description": "Immediate reception of device alarm information for fast response"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "SNMP Trap messages will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Trap receive timestamp"
+        },
+        {
+          "field": "snmp.version",
+          "type": "keyword",
+          "description": "SNMP version (v1/v2c/v3)"
+        },
+        {
+          "field": "snmp.community",
+          "type": "keyword",
+          "description": "Community string (v1/v2c)"
+        },
+        {
+          "field": "source.ip",
+          "type": "ip",
+          "description": "Device IP address"
+        },
+        {
+          "field": "snmp.trap.oid",
+          "type": "keyword",
+          "description": "Trap OID"
+        },
+        {
+          "field": "snmp.trap.name",
+          "type": "keyword",
+          "description": "Trap name (if MIB is configured)"
+        },
+        {
+          "field": "snmp.trap.generic_type",
+          "type": "keyword",
+          "description": "Generic Trap type"
+        },
+        {
+          "field": "snmp.trap.specific_type",
+          "type": "keyword",
+          "description": "Enterprise-specific Trap type"
+        },
+        {
+          "field": "snmp.vars",
+          "type": "object",
+          "description": "Variable bindings (VarBinds)"
+        }
+      ]
+    }
+  ],
+  "steps": {
+    "title": "Configure Sender",
+    "description": "Configure network devices to send SNMP Traps to Snmptrapd:",
+    "items": []
+  },
+  "tips": [
+    {
+      "type": "warning",
+      "title": "Device Configuration Example",
+      "content": "**Cisco Device Configuration:**\n`snmp-server host 172.24.0.5 traps version 2c public`\n`snmp-server enable traps`\n\n**Huawei Device Configuration:**\n`snmp-agent target-host trap address udp-domain 172.24.0.5 params securityname public v2c`"
+    }
+  ]
+}

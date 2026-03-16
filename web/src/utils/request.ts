@@ -88,6 +88,9 @@ const useApiClient = () => {
   const get = useCallback(async <T = any>(url: string, config?: AxiosRequestConfig, onError?: () => void): Promise<T> => {
     try {
       const response = await apiClient.get<T>(url, config);
+      if (config?.responseType === 'blob') {
+        return response.data;
+      }
       return handleResponse(response, onError);
     } catch (error) {
       throw error;

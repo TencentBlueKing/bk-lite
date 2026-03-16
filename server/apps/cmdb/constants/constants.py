@@ -74,6 +74,11 @@ ENUM = "enum"
 USER = "user"
 ORGANIZATION = "organization"
 
+ENUM_SELECT_MODE_SINGLE = "single"
+ENUM_SELECT_MODE_MULTIPLE = "multiple"
+ENUM_SELECT_MODE_CHOICES = (ENUM_SELECT_MODE_SINGLE, ENUM_SELECT_MODE_MULTIPLE)
+ENUM_SELECT_MODE_DEFAULT = ENUM_SELECT_MODE_SINGLE
+
 # 模型内置属性：组织
 INIT_MODEL_GROUP = "group"
 
@@ -165,6 +170,7 @@ ATTR_TYPE_MAP = {
     "str": "字符串",
     "int": "整数",
     "enum": "枚举",
+    "tag": "标签",
     "time": "时间",
     "user": " 用户",
     "pwd": "密码",

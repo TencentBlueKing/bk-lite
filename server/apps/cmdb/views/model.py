@@ -8,6 +8,7 @@ from apps.cmdb.constants.constants import (
     OPERATE,
     VIEW,
 )
+from apps.cmdb.constants.field_constraints import TAG_ATTR_ID
 from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.models import DELETE_INST, UPDATE_INST, FieldGroup
@@ -21,7 +22,6 @@ from apps.core.utils.web_utils import WebUtils
 
 
 class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
-
     @property
     def default_group_id(self):
         return get_default_group_id()[0]
@@ -751,3 +751,34 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             )
 
         return WebUtils.response_success(result)
+
+    @HasPermission("model_management-View")
+    @action(detail=False, methods=["get"], url_path="export_model_config")
+    def export_model_config(self, request):
+        from django.http import HttpResponse
+
+        file_stream = ModelManage.export_model_config(language=request.user.locale)
+
+        response = HttpResponse(
+            file_stream.read(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = (
+            'attachment; filename="export_model_config.xlsx"'
+        )
+        return response
+
+    @HasPermission("model_management-Edit Model")
+    @action(detail=False, methods=["post"], url_path="import_model_config")
+    def import_model_config(self, request):
+        file = request.FILES.get("file")
+        if not file:
+            return WebUtils.response_error(error_message="请上传Excel文件")
+
+        if not file.name.endswith((".xlsx", ".xls")):
+            return WebUtils.response_error(
+                error_message="请上传Excel格式文件(.xlsx或.xls)"
+            )
+
+        ModelManage.import_model_config(file)
+        return WebUtils.response_success(response_data="",message="模型配置导入成功")

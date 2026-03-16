@@ -1,0 +1,17 @@
+- module: kafka
+  log:
+    enabled: {{ log_enabled | default(true) | lower }}
+    {% if kafka_home %}
+    var.kafka_home: "{{ kafka_home }}"
+    {% endif %}
+    {% if log_paths %}
+    var.paths:
+      {% for path in log_paths %}
+      - "{{ path }}"
+      {% endfor %}
+    {% endif %}
+  fields:
+    collector: "Filebeat"
+    collect_type: "kafka"
+    instance_id: "{{ instance_id }}"
+  fields_under_root: {{ fields_under_root | default(true) | lower }}

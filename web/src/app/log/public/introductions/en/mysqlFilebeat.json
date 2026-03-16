@@ -1,0 +1,111 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "MySQL integration uses the Filebeat MySQL module to automatically collect and parse MySQL database error logs and slow query logs. It helps you monitor database health, optimize query performance, and troubleshoot issues."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "Error Log Analysis",
+        "description": "Capture startup errors, connection failures, crash information"
+      },
+      {
+        "icon": "⚡",
+        "title": "Slow Query Tracking",
+        "description": "Identify queries exceeding long_query_time for optimization"
+      },
+      {
+        "icon": "🔍",
+        "title": "Query Analysis",
+        "description": "Parse SQL statements, execution time, scan row counts"
+      },
+      {
+        "icon": "🚨",
+        "title": "Lock Wait Detection",
+        "description": "Identify queries causing lock waits and deadlocks"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Error Log Fields",
+      "description": "MySQL error logs will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Log timestamp"
+        },
+        {
+          "field": "log.level",
+          "type": "keyword",
+          "description": "Log level (Note, Warning, Error)"
+        },
+        {
+          "field": "mysql.error.thread_id",
+          "type": "long",
+          "description": "Thread ID"
+        },
+        {
+          "field": "mysql.error.code",
+          "type": "long",
+          "description": "Error code"
+        },
+        {
+          "field": "message",
+          "type": "text",
+          "description": "Error message content"
+        }
+      ]
+    },
+    {
+      "title": "Slow Query Log Fields",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "mysql.slowlog.query_time",
+          "type": "float",
+          "description": "Query execution time (seconds)"
+        },
+        {
+          "field": "mysql.slowlog.lock_time",
+          "type": "float",
+          "description": "Lock wait time (seconds)"
+        },
+        {
+          "field": "mysql.slowlog.rows_sent",
+          "type": "long",
+          "description": "Rows returned"
+        },
+        {
+          "field": "mysql.slowlog.rows_examined",
+          "type": "long",
+          "description": "Rows examined"
+        },
+        {
+          "field": "mysql.slowlog.user",
+          "type": "keyword",
+          "description": "Query user"
+        },
+        {
+          "field": "mysql.slowlog.query",
+          "type": "text",
+          "description": "SQL statement"
+        }
+      ]
+    }
+  ]
+}

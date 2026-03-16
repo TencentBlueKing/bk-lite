@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import MarkdownRenderer from '@/components/markdown';
+import IntroRenderer from './introRenderer';
 import { useSearchParams } from 'next/navigation';
 
 const Output: React.FC = () => {
@@ -11,7 +11,7 @@ const Output: React.FC = () => {
 
   return (
     <div className="p-4 overflow-y-auto h-[calc(100vh-270px)]">
-      <MarkdownRenderer filePath="outputs" fileName={fileName} />
+      <IntroRenderer filePath="introductions" fileName={fileName} />
     </div>
   );
 };

@@ -1,0 +1,92 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "Elasticsearch 集成使用 Filebeat 的 Elasticsearch 模块，自动采集和解析 Elasticsearch 集群的服务日志、慢查询日志和 GC 日志。支持 Elasticsearch 7.x/8.x 的 JSON 结构化日志格式，帮助您监控集群健康、识别性能问题、优化 JVM 配置。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "📋",
+        "title": "服务日志采集",
+        "description": "采集集群状态变化、节点加入/离开、分片分配等事件"
+      },
+      {
+        "icon": "🐢",
+        "title": "慢查询分析",
+        "description": "识别耗时查询和索引操作，提取执行时间和查询 DSL"
+      },
+      {
+        "icon": "♻️",
+        "title": "GC 日志监控",
+        "description": "追踪 JVM 垃圾回收事件，监控停顿时间和内存使用"
+      },
+      {
+        "icon": "🔗",
+        "title": "集群关联分析",
+        "description": "按节点、索引、分片维度关联日志，全局视角排查问题"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "解析字段",
+      "description": "Elasticsearch 日志将被解析为以下结构化字段：",
+      "columns": [
+        { "key": "field", "title": "字段名", "width": "260px" },
+        { "key": "type", "title": "类型", "width": "100px" },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        { "field": "@timestamp", "type": "date", "description": "日志时间戳" },
+        {
+          "field": "elasticsearch.server.level",
+          "type": "keyword",
+          "description": "日志级别 (TRACE/DEBUG/INFO/WARN/ERROR)"
+        },
+        {
+          "field": "elasticsearch.server.component",
+          "type": "keyword",
+          "description": "组件名 (o.e.c.s.ClusterApplierService 等)"
+        },
+        {
+          "field": "elasticsearch.server.node.name",
+          "type": "keyword",
+          "description": "节点名称"
+        },
+        {
+          "field": "elasticsearch.server.cluster.name",
+          "type": "keyword",
+          "description": "集群名称"
+        },
+        {
+          "field": "elasticsearch.slowlog.took_ms",
+          "type": "long",
+          "description": "查询/索引执行时间 (毫秒)"
+        },
+        {
+          "field": "elasticsearch.slowlog.type",
+          "type": "keyword",
+          "description": "慢日志类型 (index_search/index_indexing)"
+        },
+        {
+          "field": "elasticsearch.slowlog.index",
+          "type": "keyword",
+          "description": "涉及的索引名称"
+        },
+        {
+          "field": "elasticsearch.gc.phase",
+          "type": "keyword",
+          "description": "GC 阶段 (young/old/full)"
+        },
+        {
+          "field": "elasticsearch.gc.duration_ms",
+          "type": "long",
+          "description": "GC 停顿时间 (毫秒)"
+        }
+      ]
+    }
+  ]
+}

@@ -42,7 +42,8 @@ CMDB 字段校验器
 
 import re
 import json
-from typing import Any, Dict
+from dataclasses import dataclass, field
+from typing import Any, Dict, Literal
 
 from apps.cmdb.constants.field_constraints import (
     IDENTIFIER_PATTERN,
@@ -51,9 +52,182 @@ from apps.cmdb.constants.field_constraints import (
     DEFAULT_STRING_CONSTRAINT,
     DEFAULT_NUMBER_CONSTRAINT,
     MAX_CUSTOM_REGEX_LENGTH,
+    TAG_ATTR_ID,
+    TAG_MODE_FREE,
+    TAG_MODE_STRICT,
+    TAG_MAX_PAIRS,
+    TABLE_MAX_ROWS,
+    TABLE_MAX_CELL_LENGTH,
 )
+from apps.cmdb.constants.constants import (
+    ENUM_SELECT_MODE_SINGLE,
+    ENUM_SELECT_MODE_MULTIPLE,
+    ENUM_SELECT_MODE_DEFAULT,
+)
+from apps.cmdb.utils.time_util import parse_cmdb_time
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
+
+
+@dataclass(frozen=True)
+class TagOption:
+    key: str
+    value: str
+
+
+@dataclass
+class TagFieldConfig:
+    mode: Literal["free", "strict"] = TAG_MODE_FREE
+    options: list[TagOption] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class TagValueItem:
+    raw: str
+
+
+@dataclass
+class TagValidationResult:
+    normalized_values: list[TagValueItem]
+    errors: list[str]
+
+
+def _validate_tag_key_value(key: str, value: str) -> str | None:
+    if not key:
+        return "标签 key 不能为空"
+    if not value:
+        return "标签 value 不能为空"
+    if any(ch in value for ch in (" ", ":", "\n", "\r")):
+        return "标签 value 不能包含空格、冒号或换行符"
+    return None
+
+
+def normalize_tag_field_option(option: dict | None) -> TagFieldConfig:
+    if option is None:
+        return TagFieldConfig()
+    if not isinstance(option, dict):
+        raise BaseAppException("tag 字段 option 必须是对象")
+
+    mode = option.get("mode", TAG_MODE_FREE)
+    if mode not in {TAG_MODE_FREE, TAG_MODE_STRICT}:
+        raise BaseAppException("tag 字段 mode 仅支持 free 或 strict")
+
+    options = option.get("options", [])
+    if not isinstance(options, list):
+        raise BaseAppException("tag 字段 options 必须是数组")
+
+    normalized_options: list[TagOption] = []
+    option_keys: set[tuple[str, str]] = set()
+    for idx, item in enumerate(options):
+        if not isinstance(item, dict):
+            raise BaseAppException(f"tag 字段 options 第{idx + 1}项必须是对象")
+        key = str(item.get("key", "")).strip()
+        value = str(item.get("value", "")).strip()
+        error = _validate_tag_key_value(key, value)
+        if error:
+            raise BaseAppException(f"tag 字段 options 第{idx + 1}项错误: {error}")
+        dedupe_key = (key, value)
+        if dedupe_key in option_keys:
+            continue
+        option_keys.add(dedupe_key)
+        normalized_options.append(TagOption(key=key, value=value))
+
+    return TagFieldConfig(mode=mode, options=normalized_options)
+
+
+def validate_tag_values(
+    values: list[str], config: TagFieldConfig
+) -> TagValidationResult:
+    errors: list[str] = []
+    if not isinstance(values, list):
+        return TagValidationResult(normalized_values=[], errors=["标签值必须是数组"])
+
+    normalized_values: list[TagValueItem] = []
+    seen: set[str] = set()
+    candidate_set = {f"{item.key}:{item.value}" for item in config.options}
+
+    for idx, raw_item in enumerate(values):
+        value_str = str(raw_item).strip()
+        if not value_str:
+            continue
+        if value_str.count(":") != 1:
+            errors.append(f"第{idx + 1}个标签格式错误，必须为 key:value")
+            continue
+        key, value = [part.strip() for part in value_str.split(":", 1)]
+        error = _validate_tag_key_value(key, value)
+        if error:
+            errors.append(f"第{idx + 1}个标签不合法: {error}")
+            continue
+        normalized_raw = f"{key}:{value}"
+        if config.mode == TAG_MODE_STRICT and normalized_raw not in candidate_set:
+            errors.append(f"第{idx + 1}个标签不在候选范围内: {normalized_raw}")
+            continue
+        if normalized_raw in seen:
+            continue
+        seen.add(normalized_raw)
+        normalized_values.append(TagValueItem(raw=normalized_raw))
+
+    if len(normalized_values) > TAG_MAX_PAIRS:
+        errors.append(f"单实例最多允许 {TAG_MAX_PAIRS} 个标签")
+
+    return TagValidationResult(normalized_values=normalized_values, errors=errors)
+
+
+def normalize_tag_input_values(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        tokens = re.split(r"[,，\n\r]+", raw)
+        return [t.strip() for t in tokens if t.strip()]
+    raise BaseAppException("标签字段值必须是字符串或字符串数组")
+
+
+def normalize_enum_values(raw: str | list | None) -> list[str]:
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, list):
+        return [
+            str(item).strip() for item in raw if item is not None and str(item).strip()
+        ]
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return []
+        tokens = re.split(r"[,，\n\r]+", raw)
+        return [t.strip() for t in tokens if t.strip()]
+    return [str(raw)]
+
+
+def validate_enum_values(
+    values: list[str],
+    mode: str,
+    option_ids: set[str],
+    required: bool,
+    attr_id: str = "enum",
+) -> None:
+    if required and len(values) == 0:
+        raise BaseAppException(
+            f"字段 {attr_id} 为必填项，不能为空",
+            data={"error_code": "EMPTY_NOT_ALLOWED"},
+        )
+
+    if mode == ENUM_SELECT_MODE_SINGLE and len(values) > 1:
+        raise BaseAppException(
+            f"字段 {attr_id} 为单选模式，只能选择一个值",
+            data={"error_code": "SINGLE_MODE_TOO_MANY_VALUES"},
+        )
+
+    for v in values:
+        if v and str(v) not in option_ids:
+            raise BaseAppException(
+                f"枚举值 '{v}' 不在有效选项范围内",
+                data={"error_code": "INVALID_ENUM_OPTION"},
+            )
 
 
 class ValidationTimeoutError(Exception):
@@ -370,6 +544,11 @@ class FieldValidator:
         if not isinstance(rows, list):
             raise BaseAppException("table 字段值解析后必须是数组")
 
+        if len(rows) > TABLE_MAX_ROWS:
+            raise BaseAppException(
+                f"表格数据最多允许 {TABLE_MAX_ROWS} 行，当前 {len(rows)} 行"
+            )
+
         # 构建列ID到类型的映射
         column_map = {col["column_id"]: col["column_type"] for col in option}
 
@@ -398,6 +577,15 @@ class FieldValidator:
                 if cell_value is None or cell_value == "":
                     continue
 
+                # 单元格长度校验
+                if (
+                    isinstance(cell_value, str)
+                    and len(cell_value) > TABLE_MAX_CELL_LENGTH
+                ):
+                    raise BaseAppException(
+                        f"第{row_idx + 1}行，列 '{col_id}' 的值超过最大长度 {TABLE_MAX_CELL_LENGTH}"
+                    )
+
                 if col_type == "number":
                     try:
                         float(cell_value)
@@ -405,6 +593,99 @@ class FieldValidator:
                         raise BaseAppException(
                             f"第{row_idx + 1}行，列 '{col_id}' 的值 '{cell_value}' 不是有效的数字"
                         )
+
+    @staticmethod
+    def validate_organization_value(value: Any, attr_id: str = "organization") -> None:
+        if value is None or value == "" or value == []:
+            return
+
+        if not isinstance(value, list):
+            raise BaseAppException(
+                f"字段 {attr_id} 必须是数组类型，当前类型: {type(value).__name__}",
+                data={"error_code": "ORGANIZATION_NOT_LIST"},
+            )
+
+        for idx, item in enumerate(value):
+            if not isinstance(item, int):
+                raise BaseAppException(
+                    f"字段 {attr_id} 的第 {idx + 1} 个元素必须是整数，当前类型: {type(item).__name__}",
+                    data={"error_code": "ORGANIZATION_ITEM_NOT_INT"},
+                )
+
+    @staticmethod
+    def validate_user_value(value: Any, attr_id: str = "user") -> None:
+        if value is None or value == "" or value == []:
+            return
+
+        if not isinstance(value, list):
+            raise BaseAppException(
+                f"字段 {attr_id} 必须是数组类型，当前类型: {type(value).__name__}",
+                data={"error_code": "USER_NOT_LIST"},
+            )
+
+        for idx, item in enumerate(value):
+            if not isinstance(item, int):
+                raise BaseAppException(
+                    f"字段 {attr_id} 的第 {idx + 1} 个元素必须是整数，当前类型: {type(item).__name__}",
+                    data={"error_code": "USER_ITEM_NOT_INT"},
+                )
+
+    @staticmethod
+    def validate_time_value(value: Any, attr_id: str = "time") -> None:
+        if value is None or value == "":
+            return
+
+        if not isinstance(value, str):
+            raise BaseAppException(
+                f"字段 {attr_id} 必须是字符串类型，当前类型: {type(value).__name__}",
+                data={"error_code": "TIME_NOT_STR"},
+            )
+
+        try:
+            parse_cmdb_time(value)
+        except (ValueError, TypeError) as e:
+            raise BaseAppException(
+                f"字段 {attr_id} 的值 '{value}' 无法解析为有效的时间格式: {str(e)}",
+                data={"error_code": "TIME_PARSE_ERROR"},
+            )
+
+    @staticmethod
+    def validate_enum_value(value: Any, attr: Dict) -> None:
+        if value is None or value == "":
+            return
+
+        enum_rule_type = attr.get("enum_rule_type", "custom")
+
+        if enum_rule_type == "public_library":
+            public_library_id = attr.get("public_library_id")
+            if public_library_id:
+                try:
+                    from apps.cmdb.services.public_enum_library import (
+                        get_library_or_raise,
+                    )
+
+                    library = get_library_or_raise(public_library_id)
+                    valid_ids = {opt.get("id") for opt in library.options}
+                except Exception:
+                    valid_ids = {opt.get("id") for opt in attr.get("option", []) if opt}
+            else:
+                valid_ids = {opt.get("id") for opt in attr.get("option", []) if opt}
+        else:
+            valid_ids = {opt.get("id") for opt in attr.get("option", []) if opt}
+
+        if isinstance(value, list):
+            for v in value:
+                if v and str(v) not in valid_ids:
+                    raise BaseAppException(
+                        f"枚举值 '{v}' 不在有效选项范围内",
+                        data={"error_code": "CMDB_ENUM_VALUE_NOT_IN_LIBRARY"},
+                    )
+        else:
+            if str(value) not in valid_ids:
+                raise BaseAppException(
+                    f"枚举值 '{value}' 不在有效选项范围内",
+                    data={"error_code": "CMDB_ENUM_VALUE_NOT_IN_LIBRARY"},
+                )
 
     @staticmethod
     def validate_field_by_attr(value: Any, attr: Dict) -> None:
@@ -467,8 +748,27 @@ class FieldValidator:
                         value, option, attr.get("attr_id", "table")
                     )
 
-            # 其他类型暂不处理(password/user/organization/bool/enum/time等)
-            # 这些类型由现有逻辑处理或不需要额外校验
+            elif attr_type == "tag":
+                tag_config = normalize_tag_field_option(option)
+                normalized_values = normalize_tag_input_values(value)
+                result = validate_tag_values(normalized_values, tag_config)
+                if result.errors:
+                    raise BaseAppException("; ".join(result.errors))
+
+            elif attr_type == "enum":
+                FieldValidator.validate_enum_value(value, attr)
+
+            elif attr_type == "organization":
+                FieldValidator.validate_organization_value(
+                    value, attr.get("attr_id", "organization")
+                )
+
+            elif attr_type == "user":
+                FieldValidator.validate_user_value(value, attr.get("attr_id", "user"))
+
+            elif attr_type == "time":
+                FieldValidator.validate_time_value(value, attr.get("attr_id", "time"))
+
         except Exception as e:
             # 捕获意外异常,记录日志并抛出通用错误
             attr_id = attr.get("attr_id", "unknown")

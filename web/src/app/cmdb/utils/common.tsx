@@ -2,13 +2,21 @@ import { BUILD_IN_MODEL, CREDENTIAL_LIST } from '@/app/cmdb/constants/asset';
 import { getSvgIcon } from './utils';
 import dayjs from 'dayjs';
 import { AttrFieldType } from '@/app/cmdb/types/assetManage';
-import { Tag, Select, Input, InputNumber, DatePicker, Tooltip, Button, Table, Popover, Space } from 'antd';
+import {
+  Tag,
+  Select,
+  Input,
+  InputNumber,
+  DatePicker,
+  Tooltip,
+  Table,
+  Popover,
+} from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
 import UserAvatar from '@/components/user-avatar';
-import React, { useState } from 'react';
-import { useTranslation } from '@/utils/i18n';
+import React from 'react';
 import {
   ModelIconItem,
   ColumnItem,
@@ -22,9 +30,23 @@ import {
   IntAttrOption,
   AttrLike,
   TableColumnSpec,
+  TagAttrOption,
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { formatCollectTaskDisplay } from '@/app/cmdb/utils/collectTask';
+import TableFieldEditor from './tableFieldEditor';
+import TagCascaderEditor from './tagCascaderEditor';
+import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
+import { getTagDisplayText } from '@/app/cmdb/utils/tag';
+
+// 解析表格字段值（支持 JSON 字符串或数组）
+export const parseTableValue = (val: any): any[] => {
+  if (!val) return [];
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return []; }
+  }
+  return Array.isArray(val) ? val : [];
+};
 
 type UserDisplayContext = 'table' | 'detail';
 
@@ -342,31 +364,21 @@ export const getAssetColumns = (config: {
           ...columnItem,
           render: (_: unknown, record: any) => {
             const enumOptions = Array.isArray(item.option) ? (item.option as EnumList[]) : [];
-            return (
-              <>
-                {enumOptions.find((opt: EnumList) => opt.id === record[attrId])
-                  ?.name || '--'}
-              </>
-            );
+            const rawValue = record[attrId];
+            const valueArray = Array.isArray(rawValue) ? rawValue : (rawValue ? [rawValue] : []);
+            if (valueArray.length === 0) return <>--</>;
+            const displayNames = valueArray
+              .map((val: string) => enumOptions.find((opt: EnumList) => opt.id === val)?.name)
+              .filter(Boolean);
+            return displayNames.length > 0 ? <>{displayNames.join(', ')}</> : <>--</>;
           },
         };
       case 'table': {
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
-            const parseTableValue = (val: any): any[] => {
-              if (!val) return [];
-              if (typeof val === 'string') {
-                try {
-                  return JSON.parse(val);
-                } catch {
-                  return [];
-                }
-              }
-              return Array.isArray(val) ? val : [];
-            };
-            
             const tableData = parseTableValue(record[attrId]);
+            
             const tableColumns = (item.option as TableColumnSpec[]) || [];
             
             if (!tableData.length || !tableColumns.length) return <>--</>;
@@ -419,6 +431,13 @@ export const getAssetColumns = (config: {
           },
         };
       }
+      case 'tag':
+        return {
+          ...columnItem,
+          render: (_: unknown, record: any) => {
+            return <TagCapsuleGroup value={record[attrId]} maxVisible={2} compact />;
+          },
+        };
       case 'time': {
         const timeOption = item.option as TimeAttrOption | undefined;
         const dateFormat = timeOption?.display_format === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM-DD HH:mm:ss';
@@ -484,161 +503,6 @@ export const getAssetColumns = (config: {
   });
 };
 
-const TableFieldEditor = ({ columns, disabled, value, onChange }: {
-  columns: TableColumnSpec[];
-  disabled?: boolean;
-  value?: any;
-  onChange?: (value: any) => void;
-}) => {
-  const { t } = useTranslation();
-  const createEmptyRow = () => {
-    const newRow: any = {};
-    columns.forEach(col => {
-      newRow[col.column_id] = '';
-    });
-    return newRow;
-  };
-
-  const initializedRef = React.useRef(false);
-
-  const parseValue = (val: any): any[] => {
-    if (!val) return [createEmptyRow()];
-    if (typeof val === 'string') {
-      try {
-        const parsed = JSON.parse(val);
-        return parsed.length > 0 ? parsed : [createEmptyRow()];
-      } catch {
-        return [createEmptyRow()];
-      }
-    }
-    return Array.isArray(val) && val.length > 0 ? val : [createEmptyRow()];
-  };
-
-  const [dataSource, setDataSource] = useState<any[]>(() => parseValue(value));
-
-  React.useEffect(() => {
-    if (!initializedRef.current) {
-      initializedRef.current = true;
-      setDataSource(parseValue(value));
-    }
-  }, [value]);
-
-  const isRowEmpty = (row: any) => {
-    return columns.every(col => {
-      const val = row[col.column_id];
-      return val === '' || val === null || val === undefined;
-    });
-  };
-
-  const handleChange = (newData: any[]) => {
-    setDataSource(newData);
-    const nonEmptyRows = newData.filter(row => !isRowEmpty(row));
-    onChange?.(nonEmptyRows.length > 0 ? nonEmptyRows : undefined);
-  };
-
-  const handleAddRow = (index: number) => {
-    const newData = [...dataSource];
-    newData.splice(index + 1, 0, createEmptyRow());
-    handleChange(newData);
-  };
-
-  const handleDeleteRow = (index: number) => {
-    const newData = dataSource.filter((_, idx) => idx !== index);
-    handleChange(newData);
-  };
-
-  const handleCellChange = (index: number, columnId: string, val: any) => {
-    const newData = [...dataSource];
-    newData[index] = { ...newData[index], [columnId]: val };
-    handleChange(newData);
-  };
-
-  const sortedColumns = [...columns].sort((a, b) => a.order - b.order);
-
-  const tableColumns: Array<{
-    title: string;
-    dataIndex: string;
-    key: string;
-    align?: 'center';
-    width?: number;
-    render: (_: any, record: any, index: number) => React.ReactNode;
-  }> = sortedColumns.map(col => ({
-    title: col.column_name,
-    dataIndex: col.column_id,
-    key: col.column_id,
-    align: 'center' as const,
-    render: (_: any, record: any, index: number) => {
-      if (col.column_type === 'number') {
-        return (
-          <InputNumber
-            value={record[col.column_id]}
-            onChange={(val) => handleCellChange(index, col.column_id, val)}
-            disabled={disabled}
-            style={{ width: '100%' }}
-          />
-        );
-      }
-      return (
-        <Input
-          value={record[col.column_id]}
-          onChange={(e) => handleCellChange(index, col.column_id, e.target.value)}
-          disabled={disabled}
-        />
-      );
-    },
-  }));
-
-  tableColumns.push({
-    title: t('common.actions'),
-    key: 'action',
-    dataIndex: 'action',
-    width: 70,
-    render: (_: any, __: any, index: number) => (
-      <Space size={2}>
-        <Button
-          type="text"
-          size="small"
-          onClick={() => handleAddRow(index)}
-          disabled={disabled}
-          style={{
-            minWidth: 20,
-            padding: '0 4px',
-            color: 'var(--color-primary)',
-          }}
-        >
-          +
-        </Button>
-        {dataSource.length > 0 && (
-          <Button
-            type="text"
-            size="small"
-            onClick={() => handleDeleteRow(index)}
-            disabled={disabled}
-            style={{
-              minWidth: 24,
-              padding: '0 4px',
-              color: 'var(--color-primary)',
-            }}
-          >
-            −
-          </Button>
-        )}
-      </Space>
-    ),
-  });
-
-  return (
-    <Table
-      dataSource={dataSource}
-      columns={tableColumns}
-      pagination={false}
-      size="small"
-      tableLayout="fixed"
-      style={{ width: '100%' }}
-      rowKey={(_, index) => String(index)}
-    />
-  );
-};
 
 export const getFieldItem = (config: {
   fieldItem: AttrFieldType;
@@ -649,6 +513,7 @@ export const getFieldItem = (config: {
   disabled?: boolean;
   placeholder?: string;
   flatGroups?: Array<{ id: string; name: string; parentId?: string }>;
+  inModal?: boolean;
 }) => {
   const { disabled, placeholder } = config;
   if (config.isEdit) {
@@ -681,9 +546,13 @@ export const getFieldItem = (config: {
           </Select>
         );
       case 'enum':
-        const enumOpts = Array.isArray(config.fieldItem.option) ? config.fieldItem.option : [];
+        const enumOpts = Array.isArray(config.fieldItem.option)
+          ? config.fieldItem.option
+          : [];
+        const isMultipleEnum = config.fieldItem.enum_select_mode === 'multiple';
         return (
           <Select
+            mode={isMultipleEnum ? 'multiple' : undefined}
             showSearch
             disabled={disabled}
             placeholder={placeholder}
@@ -724,7 +593,15 @@ export const getFieldItem = (config: {
         const showTime = displayFormat === 'datetime';
         const format =
           displayFormat === 'datetime' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD';
-        return <DatePicker showTime={showTime} format={format} disabled={disabled} placeholder={placeholder} style={{ width: '100%' }} />;
+        return (
+          <DatePicker
+            showTime={showTime}
+            format={format}
+            disabled={disabled}
+            placeholder={placeholder}
+            style={{ width: '100%' }}
+          />
+        );
       case 'int':
         const intOption = config.fieldItem.option as IntAttrOption;
         return (
@@ -732,17 +609,47 @@ export const getFieldItem = (config: {
             style={{ width: '100%' }}
             disabled={disabled}
             placeholder={placeholder}
-            min={intOption?.min_value !== '' ? Number(intOption?.min_value) : undefined}
-            max={intOption?.max_value !== '' ? Number(intOption?.max_value) : undefined}
+            min={
+              ![undefined, '', null].includes(intOption?.min_value as string)
+                ? Number(intOption.min_value)
+                : undefined
+            }
+            max={
+              ![undefined, '', null].includes(intOption?.max_value as string)
+                ? Number(intOption.max_value)
+                : undefined
+            }
           />
         );
       case 'table':
-        return <TableFieldEditor columns={config.fieldItem.option as TableColumnSpec[]} disabled={disabled} />;
+        return (
+          <TableFieldEditor
+            columns={config.fieldItem.option as TableColumnSpec[]}
+            disabled={disabled}
+            inModal={config.inModal}
+          />
+        );
+      case 'tag': {
+        const tagOption = (config.fieldItem.option || {}) as TagAttrOption;
+        return (
+          <TagCascaderEditor
+            option={tagOption}
+            disabled={disabled}
+            placeholder={placeholder}
+          />
+        );
+      }
       default:
         if (config.fieldItem.attr_type === 'str') {
           const strOption = config.fieldItem.option as StrAttrOption;
           if (strOption?.widget_type === 'multi_line') {
-            return <Input.TextArea rows={3} disabled={disabled} placeholder={placeholder} />;
+            return (
+              <Input.TextArea
+                rows={3}
+                disabled={disabled}
+                placeholder={placeholder}
+              />
+            );
           }
         }
         return <Input disabled={disabled} placeholder={placeholder} />;
@@ -754,7 +661,7 @@ export const getFieldItem = (config: {
         config.value,
         config.userList || [],
         'detail',
-        config.hideUserAvatar
+        config.hideUserAvatar,
       );
     case 'organization':
       if (config.hideUserAvatar && config.flatGroups) {
@@ -769,23 +676,22 @@ export const getFieldItem = (config: {
     case 'bool':
       return config.value ? 'Yes' : 'No';
     case 'enum':
-      const enumOptions = Array.isArray(config.fieldItem.option) ? (config.fieldItem.option as EnumList[]) : [];
+      const enumOptions = Array.isArray(config.fieldItem.option)
+        ? (config.fieldItem.option as EnumList[])
+        : [];
       if (Array.isArray(config.value)) {
         if (config.value.length === 0) return '--';
         const enumNames = config.value
           .map((val: any) => {
-            return enumOptions.find(
-              (item: EnumList) => item.id === val
-            )?.name;
+            return enumOptions.find((item: EnumList) => item.id === val)?.name;
           })
           .filter((name) => name !== undefined)
           .join('，');
         return enumNames || '--';
       }
       return (
-        enumOptions.find(
-          (item: EnumList) => item.id === config.value,
-        )?.name || '--'
+        enumOptions.find((item: EnumList) => item.id === config.value)?.name ||
+        '--'
       );
     case 'str':
       if (config.fieldItem.attr_id === 'collect_task') {
@@ -794,28 +700,18 @@ export const getFieldItem = (config: {
       }
       return config.value || '--';
     case 'table':
-      const parseTableValue = (val: any): any[] => {
-        if (!val) return [];
-        if (typeof val === 'string') {
-          try {
-            return JSON.parse(val);
-          } catch {
-            return [];
-          }
-        }
-        return Array.isArray(val) ? val : [];
-      };
       const tableData = parseTableValue(config.value);
       const tableColumns = config.fieldItem.option as TableColumnSpec[];
       if (!tableData.length || !tableColumns?.length) return '--';
-      
+
       const sortedCols = [...tableColumns].sort((a, b) => a.order - b.order);
-      const tableCols = sortedCols.map(col => ({
+      const tableCols = sortedCols.map((col) => ({
         title: col.column_name,
         dataIndex: col.column_id,
         key: col.column_id,
+        render: (val: any) => (val === undefined || val === null || val === '') ? '--' : val,
       }));
-      
+
       return (
         <Table
           dataSource={tableData}
@@ -825,8 +721,11 @@ export const getFieldItem = (config: {
           tableLayout="fixed"
           style={{ width: '100%' }}
           rowKey={(_, index) => String(index)}
+          className="[&_.ant-table-thead_th]:!py-2 [&_.ant-table-tbody_td]:!py-1 [&_.ant-table-thead_th]:text-xs [&_.ant-table-thead_th:first-child]:!rounded-none [&_.ant-table-thead_th:last-child]:!rounded-none"
         />
       );
+    case 'tag':
+      return getTagDisplayText(config.value);
     default:
       if (config.fieldItem.attr_type === 'time' && config.value) {
         const timeOpt = config.fieldItem.option as TimeAttrOption;
@@ -939,12 +838,12 @@ export const getStringValidationRule = (item: AttrLike, t: (key: string) => stri
 
 export const getNumberRangeRule = (item: AttrLike, t: (key: string) => string) => {
   const intOption = item.option as IntAttrOption;
-  const hasMin = intOption?.min_value !== undefined && intOption?.min_value !== '' && intOption?.min_value !== null;
-  const hasMax = intOption?.max_value !== undefined && intOption?.max_value !== '' && intOption?.max_value !== null;
+  const hasMin = ![undefined, '', null].includes(intOption?.min_value as string);
+  const hasMax = ![undefined, '', null].includes(intOption?.max_value as string);
   if (!hasMin && !hasMax) return null;
   return {
     validator: (_: unknown, value: unknown) => {
-      if (value === undefined || value === null || value === '') {
+      if ([undefined, null, ''].includes(value as string)) {
         return Promise.resolve();
       }
       const numValue = Number(value);
@@ -992,3 +891,6 @@ export const normalizeTimeValueForSubmit = (item: AttrLike, value: unknown) => {
   }
   return value;
 };
+
+
+export { TableFieldEditor, TagCascaderEditor };

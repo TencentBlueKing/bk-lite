@@ -1,13 +1,14 @@
 import os
 import uuid
 import json
+from collections.abc import Mapping
 
 from jinja2 import Environment, FileSystemLoader, DebugUndefined
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.constants.database import DatabaseConstants
 from apps.log.constants.plugin import PluginConstants
-from apps.log.models import CollectConfig
+from apps.log.models import CollectConfig, CollectType
 from apps.rpc.node_mgmt import NodeMgmt
 
 from apps.core.logger import log_logger as logger
@@ -31,19 +32,21 @@ class Controller:
         """
         result = []
         for filename in os.listdir(template_dir):
-            if not filename.endswith('.j2'):
+            if not filename.endswith(".j2"):
                 continue
-            parts = filename[:-3].split('.')  # 去掉 .j2 后按 . 分割
+            parts = filename[:-3].split(".")  # 去掉 .j2 后按 . 分割
             if len(parts) != 3:
                 continue  # 忽略非法命名格式
             file_type, config_type, file_type_ext = parts
             if file_type != type_name:
                 continue
-            result.append({
-                "type": file_type,
-                "config_type": config_type,
-                "file_type": file_type_ext
-            })
+            result.append(
+                {
+                    "type": file_type,
+                    "config_type": config_type,
+                    "file_type": file_type_ext,
+                }
+            )
         return result
 
     def render_template(self, template_dir: str, file_name: str, context: dict):
@@ -55,16 +58,18 @@ class Controller:
         :return: 渲染后的配置字符串
         """
         _context = {**context}
-        env = Environment(loader=FileSystemLoader(template_dir), undefined=DebugUndefined)
+        env = Environment(
+            loader=FileSystemLoader(template_dir), undefined=DebugUndefined
+        )
 
         # 添加 to_json 过滤器
-        env.filters['to_json'] = lambda obj: json.dumps(obj, ensure_ascii=False)
+        env.filters["to_json"] = lambda obj: json.dumps(obj, ensure_ascii=False)
 
         template = env.get_template(file_name)
         return template.render(_context)
 
     def format_configs(self):
-        """ 格式化配置数据，将实例和配置合并成最终的配置列表。"""
+        """格式化配置数据，将实例和配置合并成最终的配置列表。"""
         collect_type = self.data["collect_type"]
         collector = self.data["collector"]
         configs = []
@@ -73,12 +78,18 @@ class Controller:
             for node_id in node_ids:
                 node_info = {"node_id": node_id}
                 for config in self.data["configs"]:
-                    _config = {"collector": collector, "collect_type": collect_type, **node_info, **config, **instance}
+                    _config = {
+                        "collector": collector,
+                        "collect_type": collect_type,
+                        **node_info,
+                        **config,
+                        **instance,
+                    }
                     configs.append(_config)
         return configs
 
     def get_child_config_sort_order(self, collect_type: str):
-        """ 获取子配置的排序顺序, 用于配置渲染顺序 """
+        """获取子配置的排序顺序, 用于配置渲染顺序"""
         sort_order = 1 if collect_type == "flows" else 0
         return sort_order
 
@@ -95,12 +106,26 @@ class Controller:
         configs = self.format_configs()
         node_configs, node_child_configs, collect_configs = [], [], []
 
+        # 查询 CollectType 获取 config_section
+        collect_type_obj = CollectType.objects.filter(
+            name=self.data["collect_type"], collector=self.data["collector"]
+        ).first()
+        config_section = collect_type_obj.config_section if collect_type_obj else ""
+
         # 步骤1：准备所有配置数据（渲染模板）
         for config_info in configs:
-            template_dir = os.path.join(base_dir, config_info["collector"], config_info["collect_type"])
-            templates = self.get_template_info_by_type(template_dir, config_info["collect_type"])
-            env_config = {k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")}
+            template_dir = os.path.join(
+                base_dir, config_info["collector"], config_info["collect_type"]
+            )
+            templates = self.get_template_info_by_type(
+                template_dir, config_info["collect_type"]
+            )
+            env_config = {
+                k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")
+            }
             tls_context = self.tls_context(config_info["node_id"])
+            if not isinstance(tls_context, Mapping):
+                tls_context = {}
 
             for template in templates:
                 is_child = True if template["config_type"] == "child" else False
@@ -117,7 +142,10 @@ class Controller:
                 # 节点管理创建配置
                 if is_child:
                     # 子配置环境变量加上config_id作后缀，确保环境变量名为大写
-                    child_env_config = {f"{k.upper()}__{config_id.upper()}": v for k, v in env_config.items()}
+                    child_env_config = {
+                        f"{k.upper()}__{config_id.upper()}": v
+                        for k, v in env_config.items()
+                    }
                     node_child_config = dict(
                         id=config_id,
                         collect_type=config_info["collect_type"],
@@ -126,13 +154,16 @@ class Controller:
                         node_id=config_info["node_id"],
                         collector_name=collector_name,
                         env_config=child_env_config,
-                        sort_order=self.get_child_config_sort_order(config_info["collect_type"]),
+                        sort_order=self.get_child_config_sort_order(
+                            config_info["collect_type"]
+                        ),
+                        config_section=config_section,
                     )
                     node_child_configs.append(node_child_config)
                 else:
                     node_config = dict(
                         id=config_id,
-                        name=f'{collector_name}-{config_id}',
+                        name=f"{collector_name}-{config_id}",
                         content=template_config,
                         node_id=config_info["node_id"],
                         collector_name=collector_name,
@@ -151,21 +182,33 @@ class Controller:
                 )
 
         # 步骤2：批量创建 CollectConfig（使用外层事务，不新建事务）
-        CollectConfig.objects.bulk_create(collect_configs, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+        CollectConfig.objects.bulk_create(
+            collect_configs, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
+        )
         logger.info(f"创建 CollectConfig 成功，数量={len(collect_configs)}")
 
         # 步骤3：原子性创建配置和子配置（RPC调用，底层有事务保护，失败会抛异常）
         if node_configs or node_child_configs:
-            NodeMgmt().batch_create_configs_and_child_configs(node_configs, node_child_configs)
-            logger.info(f"创建配置成功，node_config={len(node_configs)}个，child_config={len(node_child_configs)}个")
+            NodeMgmt().batch_create_configs_and_child_configs(
+                node_configs, node_child_configs
+            )
+            logger.info(
+                f"创建配置成功，node_config={len(node_configs)}个，child_config={len(node_child_configs)}个"
+            )
 
         logger.info(f"创建采集配置成功，共{len(collect_configs)}个配置")
 
-    def render_config_template_content(self, file_type, context_data, instance_id):
-        """ 渲染配置模板内容。"""
+    def render_config_template_content(
+        self, file_type, context_data, instance_id, node_id=None
+    ):
+        """渲染配置模板内容。"""
 
-        template_dir = os.path.join(PluginConstants.DIRECTORY, self.data["collector"], self.data["collect_type"])
-        templates = self.get_template_info_by_type(template_dir, self.data["collect_type"])
+        template_dir = os.path.join(
+            PluginConstants.DIRECTORY, self.data["collector"], self.data["collect_type"]
+        )
+        templates = self.get_template_info_by_type(
+            template_dir, self.data["collect_type"]
+        )
 
         template = None
 
@@ -175,13 +218,31 @@ class Controller:
             template = _template
 
         if template is None:
-            raise BaseAppException(f"No matching template found for {self.data['collect_type']} with file type {file_type}")
+            raise BaseAppException(
+                f"No matching template found for {self.data['collect_type']} with file type {file_type}"
+            )
 
         # 生成配置
+        tls_context = self.tls_context(node_id) if node_id else {}
+        if not isinstance(tls_context, Mapping):
+            tls_context = {}
+        if not isinstance(context_data, Mapping):
+            context_data = {}
+
         content = self.render_template(
             template_dir,
             f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
-            {"instance_id": instance_id,  **context_data},
+            {**tls_context, "instance_id": instance_id, **context_data},
         )
 
         return content
+
+    def has_template_for_config_type(self, config_type: str) -> bool:
+        """判断当前采集类型是否存在指定 config_type 的模板。"""
+        template_dir = os.path.join(
+            PluginConstants.DIRECTORY, self.data["collector"], self.data["collect_type"]
+        )
+        templates = self.get_template_info_by_type(
+            template_dir, self.data["collect_type"]
+        )
+        return any(t["config_type"] == config_type for t in templates)

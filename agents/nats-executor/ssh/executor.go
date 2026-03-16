@@ -10,15 +10,17 @@ import (
 	"nats-executor/utils"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
 	"golang.org/x/crypto/ssh"
 )
 
-func buildSCPCommand(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool) (string, func(), error) {
+func buildSCPCommand(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
 	var cleanup func()
 	var scpCommand string
+	sshOptions := scpOptionFlags(profile)
 
 	if privateKey != "" {
 		tmpDir := os.TempDir()
@@ -34,31 +36,76 @@ func buildSCPCommand(user, host, password, privateKey string, port uint, sourceP
 		}
 
 		if isUpload {
-			scpCommand = fmt.Sprintf("scp -i %s -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
-				keyFile, port, sourcePath, user, host, targetPath)
+			scpCommand = fmt.Sprintf("scp -i %s %s -P %d -r %s %s@%s:%s",
+				keyFile, sshOptions, port, sourcePath, user, host, targetPath)
 		} else {
-			scpCommand = fmt.Sprintf("scp -i %s -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
-				keyFile, port, sourcePath, user, host, targetPath)
+			scpCommand = fmt.Sprintf("scp -i %s %s -P %d -r %s %s@%s:%s",
+				keyFile, sshOptions, port, sourcePath, user, host, targetPath)
 		}
 
-		logger.Debugf("[SCP] Using private key authentication")
+		logger.Debugf("[SCP] Using private key authentication with profile=%s", profile)
 	} else if password != "" {
 		cleanup = func() {}
 
 		if isUpload {
-			scpCommand = fmt.Sprintf("sshpass -p '%s' scp -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
-				password, port, sourcePath, user, host, targetPath)
+			scpCommand = fmt.Sprintf("sshpass -p '%s' scp %s -P %d -r %s %s@%s:%s",
+				password, sshOptions, port, sourcePath, user, host, targetPath)
 		} else {
-			scpCommand = fmt.Sprintf("sshpass -p '%s' scp -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
-				password, port, sourcePath, user, host, targetPath)
+			scpCommand = fmt.Sprintf("sshpass -p '%s' scp %s -P %d -r %s %s@%s:%s",
+				password, sshOptions, port, sourcePath, user, host, targetPath)
 		}
 
-		logger.Debugf("[SCP] Using password authentication")
+		logger.Debugf("[SCP] Using password authentication with profile=%s", profile)
 	} else {
 		return "", nil, fmt.Errorf("no authentication method provided (password or private key required)")
 	}
 
 	return scpCommand, cleanup, nil
+}
+
+func executeSCPWithFallback(instanceId string, request local.ExecuteRequest) local.ExecuteResponse {
+	response := local.Execute(request, instanceId)
+	if response.Success {
+		return response
+	}
+
+	if !shouldRetryWithLegacy(response.Output + " " + response.Error) {
+		return response
+	}
+
+	legacyCommand := addLegacySCPOptions(request.Command)
+	if legacyCommand == request.Command {
+		return response
+	}
+
+	logger.Warnf("[SCP Execute] Instance: %s, SCP failed with modern profile, retrying with legacy profile", instanceId)
+	legacyRequest := request
+	legacyRequest.Command = legacyCommand
+
+	legacyResponse := local.Execute(legacyRequest, instanceId)
+	if legacyResponse.Success {
+		logger.Warnf("[SCP Execute] Instance: %s, SCP succeeded with legacy fallback profile", instanceId)
+	}
+
+	return legacyResponse
+}
+
+func addLegacySCPOptions(command string) string {
+	if !strings.Contains(command, "scp") {
+		return command
+	}
+
+	if strings.Contains(command, "PubkeyAcceptedAlgorithms=+ssh-rsa") {
+		return command
+	}
+
+	legacyOptions := " -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa"
+	portFlagIndex := strings.Index(command, " -P ")
+	if portFlagIndex == -1 {
+		return command + legacyOptions
+	}
+
+	return command[:portFlagIndex] + legacyOptions + command[portFlagIndex:]
 }
 
 func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
@@ -87,7 +134,7 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 				Error:      errMsg,
 			}
 		}
-		authMethods = append(authMethods, ssh.PublicKeys(signer))
+		authMethods = append(authMethods, buildPublicKeyAuthMethod(signer, profileModern))
 		logger.Debugf("[SSH Execute] Instance: %s, Using public key authentication", instanceId)
 	}
 
@@ -108,34 +155,64 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	}
 
 	sshConfig := &ssh.ClientConfig{
-		User:            req.User,
-		Auth:            authMethods,
-		Timeout:         30 * time.Second,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		HostKeyAlgorithms: []string{
-			ssh.KeyAlgoRSA,
-			ssh.KeyAlgoDSA,
-			ssh.KeyAlgoECDSA256,
-			ssh.KeyAlgoECDSA384,
-			ssh.KeyAlgoECDSA521,
-			ssh.KeyAlgoED25519,
-			"ssh-rsa",
-			"ssh-dss",
-			"rsa-sha2-256",
-			"rsa-sha2-512",
-		},
+		User:              req.User,
+		Auth:              authMethods,
+		Timeout:           30 * time.Second,
+		HostKeyCallback:   ssh.InsecureIgnoreHostKey(),
+		HostKeyAlgorithms: hostKeyAlgorithmsForProfile(profileModern),
 	}
 
 	addr := fmt.Sprintf("%s:%d", req.Host, req.Port)
 	client, err := ssh.Dial("tcp", addr, sshConfig)
 	if err != nil {
-		errMsg := fmt.Sprintf("Failed to create SSH client: %v", err)
-		logger.Errorf("[SSH Execute] Instance: %s, Failed to create SSH client for %s@%s:%d - Error: %v", instanceId, req.User, req.Host, req.Port, err)
-		return ExecuteResponse{
-			InstanceId: instanceId,
-			Success:    false,
-			Output:     errMsg,
-			Error:      errMsg,
+		if shouldRetryWithLegacy(err.Error()) {
+			logger.Warnf("[SSH Execute] Instance: %s, modern profile dial failed, retrying legacy profile for %s@%s:%d - Error: %v", instanceId, req.User, req.Host, req.Port, err)
+
+			legacyAuthMethods := make([]ssh.AuthMethod, 0, len(authMethods))
+			if req.PrivateKey != "" {
+				var legacySigner ssh.Signer
+				if req.Passphrase != "" {
+					legacySigner, err = ssh.ParsePrivateKeyWithPassphrase([]byte(req.PrivateKey), []byte(req.Passphrase))
+				} else {
+					legacySigner, err = ssh.ParsePrivateKey([]byte(req.PrivateKey))
+				}
+
+				if err != nil {
+					errMsg := fmt.Sprintf("Failed to parse private key for legacy retry: %v", err)
+					logger.Errorf("[SSH Execute] Instance: %s, %s", instanceId, errMsg)
+					return ExecuteResponse{InstanceId: instanceId, Success: false, Output: errMsg, Error: errMsg}
+				}
+
+				legacyAuthMethods = append(legacyAuthMethods, buildPublicKeyAuthMethod(legacySigner, profileLegacy))
+			}
+
+			if req.Password != "" {
+				legacyAuthMethods = append(legacyAuthMethods, ssh.Password(req.Password))
+			}
+
+			legacyConfig := &ssh.ClientConfig{
+				User:              req.User,
+				Auth:              legacyAuthMethods,
+				Timeout:           30 * time.Second,
+				HostKeyCallback:   ssh.InsecureIgnoreHostKey(),
+				HostKeyAlgorithms: hostKeyAlgorithmsForProfile(profileLegacy),
+			}
+
+			client, err = ssh.Dial("tcp", addr, legacyConfig)
+			if err == nil {
+				logger.Warnf("[SSH Execute] Instance: %s, legacy profile dial succeeded for %s@%s:%d", instanceId, req.User, req.Host, req.Port)
+			}
+		}
+
+		if err != nil {
+			errMsg := fmt.Sprintf("Failed to create SSH client: %v", err)
+			logger.Errorf("[SSH Execute] Instance: %s, Failed to create SSH client for %s@%s:%d - Error: %v", instanceId, req.User, req.Host, req.Port, err)
+			return ExecuteResponse{
+				InstanceId: instanceId,
+				Success:    false,
+				Output:     errMsg,
+				Error:      errMsg,
+			}
 		}
 	}
 
@@ -215,6 +292,24 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	}
 }
 
+func buildPublicKeyAuthMethod(signer ssh.Signer, profile sshCompatibilityProfile) ssh.AuthMethod {
+	if signer.PublicKey().Type() != ssh.KeyAlgoRSA {
+		return ssh.PublicKeys(signer)
+	}
+
+	algorithmSigner, ok := signer.(ssh.AlgorithmSigner)
+	if !ok {
+		return ssh.PublicKeys(signer)
+	}
+
+	rsaSigner, err := ssh.NewSignerWithAlgorithms(algorithmSigner, rsaSignerAlgorithmsForProfile(profile))
+	if err != nil {
+		return ssh.PublicKeys(signer)
+	}
+
+	return ssh.PublicKeys(rsaSigner)
+}
+
 func SubscribeSSHExecutor(nc *nats.Conn, instanceId *string) {
 	subject := fmt.Sprintf("ssh.execute.%s", *instanceId)
 	logger.Infof("[SSH Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
@@ -289,13 +384,18 @@ func SubscribeDownloadToRemote(nc *nats.Conn, instanceId *string) {
 			return
 		}
 
-		logger.Debugf("[Download Subscribe] Instance: %s, Starting download from bucket %s, file %s to local path %s", *instanceId, downloadRequest.BucketName, downloadRequest.FileKey, downloadRequest.TargetPath)
+		localTargetPath := downloadRequest.LocalPath
+		if localTargetPath == "" {
+			localTargetPath = "/tmp"
+		}
+
+		logger.Debugf("[Download Subscribe] Instance: %s, Starting download from bucket %s, file %s to local path %s", *instanceId, downloadRequest.BucketName, downloadRequest.FileKey, localTargetPath)
 
 		localdownloadRequest := utils.DownloadFileRequest{
 			BucketName:     downloadRequest.BucketName,
 			FileKey:        downloadRequest.FileKey,
 			FileName:       downloadRequest.FileName,
-			TargetPath:     downloadRequest.TargetPath,
+			TargetPath:     localTargetPath,
 			ExecuteTimeout: downloadRequest.ExecuteTimeout,
 		}
 
@@ -317,6 +417,7 @@ func SubscribeDownloadToRemote(nc *nats.Conn, instanceId *string) {
 			sourcePath,
 			downloadRequest.TargetPath,
 			true,
+			profileModern,
 		)
 
 		if cleanup != nil {
@@ -342,7 +443,7 @@ func SubscribeDownloadToRemote(nc *nats.Conn, instanceId *string) {
 
 		logger.Debugf("[Download Subscribe] Instance: %s, Starting SCP transfer to remote host: %s@%s:%s", *instanceId, downloadRequest.User, downloadRequest.Host, downloadRequest.TargetPath)
 		logger.Debugf("[Download Subscribe] Instance: %s, SCP command: %s", *instanceId, scpCommand)
-		responseData := local.Execute(localExecuteRequest, *instanceId)
+		responseData := executeSCPWithFallback(*instanceId, localExecuteRequest)
 
 		if responseData.Success {
 			logger.Debugf("[Download Subscribe] Instance: %s, File transfer to remote host completed successfully", *instanceId)
@@ -410,6 +511,7 @@ func SubscribeUploadToRemote(nc *nats.Conn, instanceId *string) {
 			uploadRequest.SourcePath,
 			uploadRequest.TargetPath,
 			true,
+			profileModern,
 		)
 
 		if cleanup != nil {
@@ -435,7 +537,7 @@ func SubscribeUploadToRemote(nc *nats.Conn, instanceId *string) {
 
 		logger.Debugf("[Upload Subscribe] Instance: %s, Executing SCP command to upload file", *instanceId)
 		logger.Debugf("[Upload Subscribe] Instance: %s, SCP command: %s", *instanceId, scpCommand)
-		responseData := local.Execute(localExecuteRequest, *instanceId)
+		responseData := executeSCPWithFallback(*instanceId, localExecuteRequest)
 
 		if responseData.Success {
 			logger.Debugf("[Upload Subscribe] Instance: %s, File upload to remote host completed successfully", *instanceId)

@@ -46,12 +46,6 @@
       "name": "Integration",
       "children": [
         {
-          "title": "日志接收",
-          "icon": "caijiqi",
-          "url": "/log/integration/receive",
-          "name": "receive"
-        },
-        {
           "title": "日志集成",
           "icon": "yangbenkuguanli",
           "url": "/log/integration/list",
@@ -71,6 +65,12 @@
               "name": "integration_output"
             }
           ]
+        },
+        {
+          "title": "日志接收",
+          "icon": "caijiqi",
+          "url": "/log/integration/receive",
+          "name": "receive"
         },
         {
           "title": "日志分组",
@@ -128,12 +128,6 @@
       "name": "integration",
       "children": [
         {
-          "title": "Log receive",
-          "icon": "caijiqi",
-          "url": "/log/integration/receive",
-          "name": "receive"
-        },
-        {
           "title": "Log Integration",
           "icon": "yangbenkuguanli",
           "url": "/log/integration/list",
@@ -153,6 +147,12 @@
               "name": "integration_output"
             }
           ]
+        },
+        {
+          "title": "Log receive",
+          "icon": "caijiqi",
+          "url": "/log/integration/receive",
+          "name": "receive"
         },
         {
           "title": "Log Grouping",

@@ -1,0 +1,86 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "PostgreSQL integration uses the Filebeat PostgreSQL module to automatically collect and parse PostgreSQL database server logs. Through structured log data, it helps you quickly locate database issues, monitor connection status, and analyze query performance."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "Multi-line Parsing",
+        "description": "Intelligently handle multi-line SQL statements and error stacks"
+      },
+      {
+        "icon": "⏱️",
+        "title": "Query Time Analysis",
+        "description": "Extract duration field to analyze slow queries and performance bottlenecks"
+      },
+      {
+        "icon": "🔗",
+        "title": "Connection Tracking",
+        "description": "Record client connection source, user, database information"
+      },
+      {
+        "icon": "⚠️",
+        "title": "Error Classification",
+        "description": "Categorize alerts by log level (LOG/WARNING/ERROR/FATAL)"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "PostgreSQL server logs will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Log timestamp"
+        },
+        {
+          "field": "postgresql.log.level",
+          "type": "keyword",
+          "description": "Log level (LOG/WARNING/ERROR/FATAL)"
+        },
+        {
+          "field": "postgresql.log.database",
+          "type": "keyword",
+          "description": "Database name"
+        },
+        {
+          "field": "postgresql.log.user",
+          "type": "keyword",
+          "description": "Executing user"
+        },
+        {
+          "field": "postgresql.log.query",
+          "type": "text",
+          "description": "SQL statement"
+        },
+        {
+          "field": "postgresql.log.duration",
+          "type": "float",
+          "description": "Query execution time (milliseconds)"
+        },
+        {
+          "field": "postgresql.log.connection_from",
+          "type": "keyword",
+          "description": "Client IP address"
+        },
+        {
+          "field": "postgresql.log.session_id",
+          "type": "keyword",
+          "description": "Session identifier"
+        }
+      ]
+    }
+  ]
+}

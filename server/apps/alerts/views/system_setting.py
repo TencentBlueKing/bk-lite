@@ -226,7 +226,7 @@ class SystemSettingModelViewSet(ModelViewSet):
 
         from apps.system_mgmt.models.channel import Channel
 
-        channel_list = Channel.objects.all()
+        channel_list = Channel.objects.exclude(channel_type="nats")
         for channel in channel_list:
             result.append(
                 {

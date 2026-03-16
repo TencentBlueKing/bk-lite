@@ -17,16 +17,16 @@
     # 实例创建时生成 _display 字段
     from apps.cmdb.display_field import DisplayFieldHandler
     instance_data = DisplayFieldHandler.build_display_fields(model_id, instance_data, attrs)
-    
+
     # 批量初始化历史数据
     from apps.cmdb.display_field import DisplayFieldInitializer
     initializer = DisplayFieldInitializer()
     result = initializer.initialize_all()
-    
+
     # 同步用户/组织变更
     from apps.cmdb.display_field import sync_display_fields_for_system_mgmt
     sync_display_fields_for_system_mgmt(users=[{"id": 1, "username": "admin", "display_name": "管理员"}])
-    
+
     # 缓存管理
     from apps.cmdb.display_field import ExcludeFieldsCache
     exclude_fields = ExcludeFieldsCache.get_exclude_fields()
@@ -39,6 +39,7 @@ from .constants import (
     FIELD_TYPE_ORGANIZATION,
     FIELD_TYPE_USER,
     FIELD_TYPE_ENUM,
+    FIELD_TYPE_TAG,
     DISPLAY_VALUES_SEPARATOR,
     USER_DISPLAY_FORMAT,
 )
@@ -69,27 +70,24 @@ from .cache import (
 
 __all__ = [
     # Constants
-    'DISPLAY_FIELD_TYPES',
-    'DISPLAY_SUFFIX',
-    'FIELD_TYPE_ORGANIZATION',
-    'FIELD_TYPE_USER',
-    'FIELD_TYPE_ENUM',
-    'DISPLAY_VALUES_SEPARATOR',
-    'USER_DISPLAY_FORMAT',
-    
+    "DISPLAY_FIELD_TYPES",
+    "DISPLAY_SUFFIX",
+    "FIELD_TYPE_ORGANIZATION",
+    "FIELD_TYPE_USER",
+    "FIELD_TYPE_ENUM",
+    "FIELD_TYPE_TAG",
+    "DISPLAY_VALUES_SEPARATOR",
+    "USER_DISPLAY_FORMAT",
     # Handler
-    'DisplayFieldConverter',
-    'DisplayFieldHandler',
-    
+    "DisplayFieldConverter",
+    "DisplayFieldHandler",
     # Initializer
-    'DisplayFieldInitializer',
-    'display_field_initializer',
-    
+    "DisplayFieldInitializer",
+    "display_field_initializer",
     # Sync
-    'DisplayFieldSynchronizer',
-    'sync_display_fields_for_system_mgmt',
-    
+    "DisplayFieldSynchronizer",
+    "sync_display_fields_for_system_mgmt",
     # Cache
-    'ExcludeFieldsCache',
-    'init_all_caches_on_startup',
+    "ExcludeFieldsCache",
+    "init_all_caches_on_startup",
 ]

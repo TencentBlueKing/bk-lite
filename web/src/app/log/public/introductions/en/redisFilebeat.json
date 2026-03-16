@@ -1,0 +1,86 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "Redis integration uses the Filebeat Redis module to automatically collect and parse Redis database server logs and slow query logs. Supports multiple Redis deployment modes (standalone, master-slave, cluster, sentinel), helping you monitor Redis running status, identify performance bottlenecks, and track slow commands."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "📄",
+        "title": "Server Log Collection",
+        "description": "Collect startup, connection, persistence, replication logs"
+      },
+      {
+        "icon": "⏳",
+        "title": "Slow Query Analysis",
+        "description": "Identify commands exceeding threshold with execution time"
+      },
+      {
+        "icon": "🔄",
+        "title": "Master-Slave Monitoring",
+        "description": "Track failovers, sync status, disconnection events"
+      },
+      {
+        "icon": "💾",
+        "title": "Persistence Tracking",
+        "description": "Monitor RDB/AOF persistence operation status and duration"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "Redis logs will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "220px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Log timestamp"
+        },
+        {
+          "field": "redis.log.level",
+          "type": "keyword",
+          "description": "Log level (. * # - corresponds to debug/verbose/notice/warning)"
+        },
+        {
+          "field": "redis.log.role",
+          "type": "keyword",
+          "description": "Node role (M=master/S=slave/C=child/X=sentinel)"
+        },
+        {
+          "field": "redis.log.pid",
+          "type": "long",
+          "description": "Process ID"
+        },
+        {
+          "field": "redis.log.message",
+          "type": "text",
+          "description": "Log message content"
+        },
+        {
+          "field": "redis.slowlog.cmd",
+          "type": "keyword",
+          "description": "Slow query command name"
+        },
+        {
+          "field": "redis.slowlog.duration_us",
+          "type": "long",
+          "description": "Command execution time (microseconds)"
+        },
+        {
+          "field": "redis.slowlog.key",
+          "type": "keyword",
+          "description": "Key name operated on"
+        }
+      ]
+    }
+  ]
+}

@@ -19,3 +19,6 @@
 | max_conn | 最大连接数（config get maxclients） |
 | max_mem | 限制最大内存（config get maxmemory，0 表示未限制） |
 | database_role | 实例角色（master / slave，来自 info replication） |
+| topo_mode | 拓扑模式：standalone / replication / sentinel / cluster |
+| slaves | 从节点列表（master 时）：`[{"ip":"","port":""},...]` |
+| master | 主节点地址（slave 时）：`"ip:port"` 或空 |

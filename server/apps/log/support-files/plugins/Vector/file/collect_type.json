@@ -14,5 +14,6 @@
     "source_type",
     "timestamp",
     "instance_id"
-]
+  ],
+  "display_category": "general"
 }

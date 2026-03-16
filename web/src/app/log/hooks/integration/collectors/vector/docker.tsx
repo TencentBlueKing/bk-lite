@@ -8,7 +8,7 @@ export const useVectorConfig = () => {
   const pluginConfig = {
     collector: 'Vector',
     collect_type: 'docker',
-    icon: 'docker-run-to-docker-compose',
+    icon: 'docker-run-to-docker-compose'
   };
 
   return {
@@ -20,46 +20,88 @@ export const useVectorConfig = () => {
       const configs = {
         auto: {
           formItems: commonFormItems.getCommonFormItems({
-            hiddenFormItems: {
-              start_pattern: true,
-            },
-            disabledFormItems: {},
+            hiddenFormItems: {},
+            disabledFormItems: {}
           }),
           initTableItems: {},
           defaultForm: {
-            docker_host: 'unix:///var/run/docker.sock',
-            multiline: {
-              enabled: true,
-              mode: 'continue_through',
-              start_pattern: '^(ERROR|WARN|INFO|DEBUG|TRACE|FATAL)\\s\\[',
-              timeout_ms: 3000,
-              condition_pattern: '^(\\s+|Traceback|File\\s+)',
+            endpoint: 'unix:///var/run/docker.sock',
+            containerFilter: {
+              enabled: false
             },
+            container_name_contains: [],
+            container_name_exclude: ['vector', 'logspout'],
+            multiline: {
+              enabled: false,
+              mode: 'continue_through',
+              condition_pattern: '^[\\s]+',
+              start_pattern: '^[^\\s]',
+              timeout_ms: 1000
+            }
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
             const dataSource = cloneDeep(config.dataSource || []);
-            delete row.multiline.enabled;
+            const formData = cloneDeep(row);
+
+            // 处理容器过滤开关
+            const enableContainerFilter =
+              formData.containerFilter?.enabled || false;
+            delete formData.containerFilter;
+
+            // 处理多行合并开关
+            const enableMultiline = formData.multiline?.enabled || false;
+            delete formData.multiline?.enabled;
+
+            // 构建最终参数
+            const params: any = {
+              endpoint: formData.endpoint,
+              enable_container_filter: enableContainerFilter,
+              enable_multiline: enableMultiline
+            };
+
+            // 容器过滤参数
+            if (enableContainerFilter) {
+              const containsArr = formData.container_name_contains || [];
+              const excludeArr = formData.container_name_exclude || [];
+              params.container_name_contains = Array.isArray(containsArr)
+                ? containsArr.join(',')
+                : containsArr;
+              params.container_name_exclude = Array.isArray(excludeArr)
+                ? excludeArr.join(',')
+                : excludeArr;
+            }
+
+            // 多行合并参数
+            if (enableMultiline) {
+              params.multiline_mode =
+                formData.multiline?.mode || 'continue_through';
+              params.multiline_pattern =
+                formData.multiline?.condition_pattern || '^[\\s]+';
+              params.multiline_start_pattern =
+                formData.multiline?.start_pattern || '^[^\\s]';
+              params.multiline_timeout_ms =
+                formData.multiline?.timeout_ms || 1000;
+            }
+
             return {
               collector: pluginConfig.collector,
               collect_type: pluginConfig.collect_type,
-              configs: [row],
+              configs: [params],
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
-                  node_ids: [item.node_ids].flat(),
+                  node_ids: [item.node_ids].flat()
                 };
-              }),
+              })
             };
-          },
+          }
         },
         edit: {
           getFormItems: () => {
             return commonFormItems.getCommonFormItems({
-              hiddenFormItems: {
-                start_pattern: true,
-              },
-              disabledFormItems: {},
+              hiddenFormItems: {},
+              disabledFormItems: {}
             });
           },
           getDefaultForm: (formData: TableDataItem) => {
@@ -67,42 +109,94 @@ export const useVectorConfig = () => {
               formData?.child?.content?.sources?.[
                 pluginConfig.collect_type + '_' + formData.rowId
               ] || {};
-            const multiline = sources.multiline || {};
+
+            // 从实际数据结构中获取容器过滤数组
+            const includeContainers = sources.include_containers || [];
+            const excludeContainers = sources.exclude_containers || [];
+
+            // 判断容器过滤是否开启：有 include 或 exclude 数组且不为空
+            const hasContainerFilter =
+              includeContainers.length > 0 || excludeContainers.length > 0;
+
             return {
-              docker_host: sources.docker_host || null,
-              include_containers: sources.include_containers || null,
-              exclude_containers: sources.exclude_containers || null,
-              multiline: Object.assign(multiline, {
-                enabled: !!multiline.mode,
-              }),
+              endpoint: sources.docker_host || 'unix:///var/run/docker.sock',
+              containerFilter: {
+                enabled: hasContainerFilter
+              },
+              container_name_contains: includeContainers,
+              container_name_exclude: excludeContainers,
+              multiline: {
+                enabled: !!sources.multiline?.mode,
+                mode: sources.multiline?.mode || 'continue_through',
+                condition_pattern:
+                  sources.multiline?.condition_pattern || '^[\\s]+',
+                start_pattern: sources.multiline?.start_pattern || '^[^\\s]',
+                timeout_ms: sources.multiline?.timeout_ms || 1000
+              }
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
-            delete formData.multiline.enabled;
+            const originalChild = cloneDeep(configForm?.child || {});
+            const formDataCopy = cloneDeep(formData);
+
+            // 处理容器过滤开关
+            const enableContainerFilter =
+              formDataCopy.containerFilter?.enabled || false;
+
+            // 处理多行合并开关
+            const enableMultiline = formDataCopy.multiline?.enabled || false;
+
+            // 容器过滤参数
+            const containsArr = formDataCopy.container_name_contains || [];
+            const excludeArr = formDataCopy.container_name_exclude || [];
+
+            // 构建扁平化的 content 对象（9个参数）
+            const content: any = {
+              endpoint: formDataCopy.endpoint,
+              enable_container_filter: enableContainerFilter,
+              container_name_contains: Array.isArray(containsArr)
+                ? containsArr.join(',')
+                : containsArr,
+              container_name_exclude: Array.isArray(excludeArr)
+                ? excludeArr.join(',')
+                : excludeArr,
+              enable_multiline: enableMultiline,
+              multiline_mode:
+                formDataCopy.multiline?.mode || 'continue_through',
+              multiline_pattern:
+                formDataCopy.multiline?.condition_pattern || '^[\\s]+',
+              multiline_start_pattern:
+                formDataCopy.multiline?.start_pattern || '^[^\\s]',
+              multiline_timeout_ms: formDataCopy.multiline?.timeout_ms || 1000
+            };
+
             return {
               child: {
-                id: configForm.child.id,
-                content_data: formData,
-              },
+                ...originalChild,
+                content
+              }
             };
-          },
+          }
         },
         manual: {
           defaultForm: {},
-          formItems: commonFormItems.getCommonFormItems(),
+          formItems: commonFormItems.getCommonFormItems({
+            hiddenFormItems: {},
+            disabledFormItems: {}
+          }),
           getParams: (row: TableDataItem) => {
             return {
               instance_name: row.instance_name,
-              instance_id: row.instance_id,
+              instance_id: row.instance_id
             };
           },
-          getConfigText: () => '--',
-        },
+          getConfigText: () => '--'
+        }
       };
       return {
         ...pluginConfig,
-        ...configs[extra.mode],
+        ...configs[extra.mode]
       };
-    },
+    }
   };
 };

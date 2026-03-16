@@ -23,6 +23,7 @@ type DownloadFileRequest struct {
 	FileName       string `json:"file_name"`
 	FileKey        string `json:"file_key"`
 	TargetPath     string `json:"target_path"`
+	LocalPath      string `json:"local_path"`
 	Host           string `json:"host"`
 	Port           uint   `json:"port"`
 	User           string `json:"user"`

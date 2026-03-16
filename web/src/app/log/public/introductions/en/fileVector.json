@@ -1,0 +1,43 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "Log File integration uses Vector collector to provide high-performance, low-resource file log collection. Supports automatic log format recognition, multi-line log merging, file rotation detection, and more."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "Auto Format Detection",
+        "description": "Intelligently identify JSON, Syslog, Apache/Nginx and other common formats"
+      },
+      {
+        "icon": "🔄",
+        "title": "Rotation Detection",
+        "description": "Auto-detect log rotation, seamlessly switch to new files without losing logs"
+      },
+      {
+        "icon": "📄",
+        "title": "Multi-line Merge",
+        "description": "Support Java stack traces, Python Tracebacks multi-line log merging"
+      },
+      {
+        "icon": "⚡",
+        "title": "High Performance",
+        "description": "Rust-powered Vector engine with minimal CPU and memory usage"
+      }
+    ]
+  },
+  "bestPractices": {
+    "title": "Supported Log Formats",
+    "items": [
+      "JSON - Structured JSON logs with automatic field extraction",
+      "Syslog - RFC3164/RFC5424 format system logs",
+      "Apache Common/Combined - Apache HTTP server log format",
+      "Nginx - Nginx access and error logs",
+      "Plain Text - Unstructured text logs stored as message field"
+    ]
+  }
+}

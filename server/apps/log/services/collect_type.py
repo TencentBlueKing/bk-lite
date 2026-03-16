@@ -7,13 +7,25 @@ from django.db import transaction
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import log_logger as logger
 from apps.log.constants.database import DatabaseConstants
-from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectConfig, CollectType
+from apps.log.models import (
+    CollectInstance,
+    CollectInstanceOrganization,
+    CollectConfig,
+    CollectType,
+)
 from apps.log.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
 
 
-
 class CollectTypeService:
+    @staticmethod
+    def _extract_update_payload(payload: dict, config_type: str):
+        content = payload.get("content")
+
+        if content is None:
+            raise BaseAppException(f"{config_type}.content is required")
+        return content
+
     @staticmethod
     def get_collect_type(collect_type: str) -> str:
         """
@@ -56,7 +68,7 @@ class CollectTypeService:
 
         # 如果有实例已存在，直接返回错误
         if old_instances:
-            old_names = '、'.join([inst['instance_name'] for inst in old_instances])
+            old_names = "、".join([inst["instance_name"] for inst in old_instances])
             raise BaseAppException(f"以下实例已存在：{old_names}")
 
         if not new_instances:
@@ -86,17 +98,25 @@ class CollectTypeService:
         try:
             with transaction.atomic():
                 # 步骤1：批量创建实例
-                CollectInstance.objects.bulk_create(creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+                CollectInstance.objects.bulk_create(
+                    creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
+                )
                 logger.info(f"创建 CollectInstance 成功，数量={len(creates)}")
 
                 # 步骤2：批量创建组织关联
                 if assos:
                     CollectInstanceOrganization.objects.bulk_create(
-                        [CollectInstanceOrganization(collect_instance_id=asso[0], organization=asso[1]) 
-                         for asso in assos],
-                        batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
+                        [
+                            CollectInstanceOrganization(
+                                collect_instance_id=asso[0], organization=asso[1]
+                            )
+                            for asso in assos
+                        ],
+                        batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
                     )
-                    logger.info(f"创建 CollectInstanceOrganization 成功，数量={len(assos)}")
+                    logger.info(
+                        f"创建 CollectInstanceOrganization 成功，数量={len(assos)}"
+                    )
 
                 # 步骤3：创建配置（Controller 的 RPC 调用）
                 # 注意：Controller.controller() 内部已有完整的事务保护和回滚机制
@@ -131,15 +151,17 @@ class CollectTypeService:
             creates = []
             for instance_id in instance_ids:
                 for org in organizations:
-                    creates.append(CollectInstanceOrganization(
-                        collect_instance_id=instance_id,
-                        organization=org
-                    ))
-            CollectInstanceOrganization.objects.bulk_create(creates, ignore_conflicts=True)
+                    creates.append(
+                        CollectInstanceOrganization(
+                            collect_instance_id=instance_id, organization=org
+                        )
+                    )
+            CollectInstanceOrganization.objects.bulk_create(
+                creates, ignore_conflicts=True
+            )
 
     @staticmethod
     def update_instance_config(child_info, base_info):
-
         child_env = None
 
         if base_info:
@@ -160,7 +182,7 @@ class CollectTypeService:
 
     @staticmethod
     def update_instance_config_v2(child_info, base_info, instance_id, collect_type_id):
-        """ 更新对象实例配置 """
+        """更新对象实例配置"""
         child_env = None
         collect_type_obj = CollectType.objects.filter(id=collect_type_id).first()
         if not collect_type_obj:
@@ -175,10 +197,46 @@ class CollectTypeService:
             }
         )
 
+        instance_obj = CollectInstance.objects.filter(id=instance_id).first()
+        node_id = instance_obj.node_id if instance_obj else None
+
+        def build_content(config_obj, config_type, raw_content):
+            """构造最终配置内容，兼容模板变量(dict)与最终内容(list/dict)。"""
+            has_template = col_obj.has_template_for_config_type(config_type)
+
+            if has_template:
+                if not isinstance(raw_content, dict):
+                    raise BaseAppException(
+                        f"{config_type} content must be mapping when template rendering is enabled"
+                    )
+                return col_obj.render_config_template_content(
+                    config_type, raw_content, instance_id, node_id=node_id
+                )
+
+            if config_obj.file_type == "yaml":
+                return yaml.safe_dump(
+                    raw_content,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                )
+
+            if config_obj.file_type == "toml":
+                if not isinstance(raw_content, dict):
+                    raise BaseAppException("toml content must be a mapping")
+                return toml.dumps(raw_content)
+
+            raise BaseAppException(
+                f"unsupported config file type: {config_obj.file_type}"
+            )
+
         if base_info:
             config_obj = CollectConfig.objects.filter(id=base_info["id"]).first()
             if config_obj:
-                content = col_obj.render_config_template_content("base", base_info["content_data"], instance_id)
+                base_content = CollectTypeService._extract_update_payload(
+                    base_info, "base"
+                )
+                content = build_content(config_obj, "base", base_content)
                 env_config = base_info.get("env_config")
                 if env_config:
                     child_env = {k: v for k, v in env_config.items()}
@@ -188,7 +246,10 @@ class CollectTypeService:
             config_obj = CollectConfig.objects.filter(id=child_info["id"]).first()
             if not config_obj:
                 return
-            content = col_obj.render_config_template_content("child", child_info["content_data"], instance_id)
+            child_content = CollectTypeService._extract_update_payload(
+                child_info, "child"
+            )
+            content = build_content(config_obj, "child", child_content)
             NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
 
     @staticmethod
@@ -206,13 +267,19 @@ class CollectTypeService:
             instance.collectinstanceorganization_set.all().delete()
             if organizations:
                 creates = [
-                    CollectInstanceOrganization(collect_instance_id=instance_id, organization=org)
+                    CollectInstanceOrganization(
+                        collect_instance_id=instance_id, organization=org
+                    )
                     for org in organizations
                 ]
-                CollectInstanceOrganization.objects.bulk_create(creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+                CollectInstanceOrganization.objects.bulk_create(
+                    creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
+                )
 
     @staticmethod
-    def search_instance_with_permission(collect_type_id, name, page, page_size, queryset):
+    def search_instance_with_permission(
+        collect_type_id, name, page, page_size, queryset
+    ):
         """
         使用权限过滤后的查询集查询采集实例列表（参考监控模块实现）
         支持单采集类型查询和全部采集类型查询
@@ -233,7 +300,7 @@ class CollectTypeService:
             queryset = queryset.filter(name__icontains=name)
 
         # 去重并关联查询
-        queryset = queryset.distinct().select_related('collect_type')
+        queryset = queryset.distinct().select_related("collect_type")
 
         # 计算总数
         total_count = queryset.count()

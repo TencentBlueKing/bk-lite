@@ -19,7 +19,7 @@ def get_monitor_module_data(module, child_module, page, page_size, group_id):
         ).distinct("id")
     elif module == "condition":
         queryset = MonitorCondition.objects.filter(
-            monitor_object_id=child_module, organizations__organization=group_id
+            organizations__organization=group_id
         ).distinct("id")
     else:
         raise ValueError("Invalid module type")
@@ -59,5 +59,5 @@ def get_monitor_module_list():
             "children": type_list,
         },
         {"name": "policy", "display_name": "Policy", "children": type_list},
-        {"name": "condition", "display_name": "Condition", "children": type_list},
+        {"name": "condition", "display_name": "Condition", "children": []},
     ]

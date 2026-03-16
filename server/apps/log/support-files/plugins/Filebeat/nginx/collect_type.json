@@ -1,0 +1,33 @@
+{
+  "name": "nginx",
+  "collector": "Filebeat",
+  "config_section": "module",
+  "icon": "nginx",
+  "description": "Collects and parses Nginx access and error logs using Filebeat module",
+  "default_query": "collect_type: nginx | last 1 by (_time) partition by (instance_id)",
+  "attrs": [
+    "collect_type",
+    "collector",
+    "instance_id",
+    "nginx.access.remote_ip",
+    "nginx.access.user_name",
+    "nginx.access.method",
+    "nginx.access.url",
+    "nginx.access.http_version",
+    "nginx.access.response_code",
+    "nginx.access.body_sent.bytes",
+    "nginx.access.referrer",
+    "nginx.access.agent",
+    "nginx.access.geoip.country_name",
+    "nginx.access.geoip.city_name",
+    "nginx.error.level",
+    "nginx.error.message",
+    "nginx.error.pid",
+    "nginx.error.tid",
+    "nginx.error.connection_id",
+    "event.dataset",
+    "event.module",
+    "fileset.name"
+  ],
+  "display_category": "middleware"
+}

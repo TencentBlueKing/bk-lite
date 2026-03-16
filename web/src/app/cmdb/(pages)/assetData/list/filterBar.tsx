@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Tag, Button, Popover, Form, Input, InputNumber, Select, DatePicker, Checkbox, Space, Modal, message } from 'antd';
 import { FunnelPlotFilled, CloseOutlined, StarOutlined } from '@ant-design/icons';
-import type { AttrFieldType } from '@/app/cmdb/types/assetManage';
+import type { AttrFieldType, EnumList } from '@/app/cmdb/types/assetManage';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import styles from './filterBar.module.scss';
@@ -15,15 +15,6 @@ import { useSavedFiltersApi, type SavedFiltersConfigValue, type SavedFilterItem 
 const { RangePicker } = DatePicker;
 
 const SAVED_FILTERS_CONFIG_KEY = 'cmdb_saved_filters';
-
-// 筛选条件的数据格式（兼容旧代码，实际使用 FilterItem）
-export interface FilterCondition {
-  field: string;
-  type: string;
-  value?: any; // 值（时间类型时可能为空，使用 start 和 end）
-  start?: string; // 时间范围开始
-  end?: string; // 时间范围结束
-}
 
 export interface FilterBarProps {
   attrList?: AttrFieldType[];
@@ -72,6 +63,9 @@ const FilterBar: React.FC<FilterBarProps> = ({
     // 如果有 attrList，优先使用
     const fieldInfo = getFieldInfo(filter.field);
     if (fieldInfo?.attr_type) {
+      if (filter.type === 'list_any[]' && fieldInfo.attr_type === 'tag') {
+        return 'tag';
+      }
       // 如果 type 是 list 且字段类型是 user，返回 user
       if (filter.type === 'list[]' && fieldInfo.attr_type === 'user') {
         return 'user';
@@ -95,6 +89,9 @@ const FilterBar: React.FC<FilterBarProps> = ({
     }
     if (filter.type.includes('bool') || typeof filter.value === 'boolean') {
       return 'bool';
+    }
+    if (filter.type === 'list_any[]') {
+      return 'tag';
     }
     return 'str';
   };
@@ -138,10 +135,25 @@ const FilterBar: React.FC<FilterBarProps> = ({
           .filter(Boolean);
         return userNames.join(', ');
       }
+      if (fieldInfo?.attr_type === 'enum' && Array.isArray(fieldInfo?.option)) {
+        const enumOptions = fieldInfo.option as EnumList[];
+        const enumNames = filter.value
+          .map((id) => {
+            const opt = enumOptions.find((o) => o.id === id);
+            return opt?.name || String(id);
+          });
+        return enumNames.join(', ');
+      }
       return filter.value.join(', ');
     }
     if (typeof filter.value === 'boolean') {
       return filter.value ? t('yes') : t('no');
+    }
+    const fieldInfo = getFieldInfo(filter.field);
+    if (fieldInfo?.attr_type === 'enum' && Array.isArray(fieldInfo?.option)) {
+      const enumOptions = fieldInfo.option as EnumList[];
+      const opt = enumOptions.find((o) => o.id === filter.value);
+      return opt?.name || String(filter.value || '');
     }
     return String(filter.value || '');
   };
@@ -187,7 +199,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
           value: [dayjs(filter.start), dayjs(filter.end)],
         });
       }
-    } else if (fieldType === 'user' || filter.type === 'list[]' || filter.type === 'user[]') {
+    } else if (fieldType === 'user' || filter.type === 'list[]' || filter.type === 'user[]' || fieldType === 'tag') {
       // 处理 user 类型：支持 type 为 'list' 或 'user[]'（兼容旧代码）
       const fieldInfo = getFieldInfo(filter.field);
       if (fieldType === 'user' || fieldInfo?.attr_type === 'user' || filter.type === 'user[]') {
@@ -266,6 +278,10 @@ const FilterBar: React.FC<FilterBarProps> = ({
       } else if (fieldType === 'str') {
         updatedFilter.value = String(values.value || '');
         updatedFilter.type = values.isExact ? 'str=' : 'str*';
+      } else if (fieldType === 'tag') {
+        updatedFilter.value = Array.isArray(values.value) ? values.value : values.value ? [values.value] : [];
+        updatedFilter.type = 'list_any[]';
+        (updatedFilter as any).accurate = true;
       }
 
       const newFilters = update(editingIndex, updatedFilter);
@@ -281,12 +297,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
   const handleCancel = () => {
     form.resetFields();
     setEditPopoverVisible(false);
-  };
-
-  const handlePopoverOpenChange = (visible: boolean) => {
-    if (!visible && editPopoverVisible) {
-      return;
-    }
   };
 
   const generateDefaultFilterName = (): string => {
@@ -448,6 +458,35 @@ const FilterBar: React.FC<FilterBarProps> = ({
         );
       case 'str':
       default:
+        if (fieldType === 'tag') {
+          const fieldInfo = getFieldInfo(editingFilter.field);
+          const tagOption = fieldInfo?.option as any;
+          const options = Array.isArray(tagOption?.options) ? tagOption.options : [];
+          const grouped = options.reduce((acc: Record<string, string[]>, item: any) => {
+            const key = String(item.key || '').trim();
+            const val = String(item.value || '').trim();
+            if (!key || !val) return acc;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(val);
+            return acc;
+          }, {});
+
+          return (
+            <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectValue') }]}> 
+              <Select
+                mode="multiple"
+                placeholder={t('FilterBar.pleaseSelect')}
+                allowClear
+                showSearch
+                style={{ width: '100%' }}
+                options={Object.keys(grouped).map((key) => ({
+                  label: key,
+                  options: grouped[key].map((v) => ({ label: `${key}:${v}`, value: `${key}:${v}` })),
+                }))}
+              />
+            </Form.Item>
+          );
+        }
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
             <Form.Item
@@ -489,7 +528,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
                 <Popover
                   key={`${filter.field}-${index}`}
                   open={editPopoverVisible && clickedTagIndex === index}
-                  onOpenChange={handlePopoverOpenChange}
                   trigger="click"
                   placement="bottomLeft"
                   content={

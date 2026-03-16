@@ -10,7 +10,7 @@ export const useAuditbeatConfig = () => {
   const pluginConfig = {
     collector: 'Auditbeat',
     collect_type: 'file_integrity',
-    icon: 'shenjirizhi3',
+    icon: 'shenjirizhi3'
   };
 
   return {
@@ -19,50 +19,86 @@ export const useAuditbeatConfig = () => {
       mode: 'manual' | 'auto' | 'edit';
       onTableDataChange?: (data: IntegrationLogInstance[]) => void;
     }) => {
-      const formItems = <>{commonFormItems.getCommonFormItems()}</>;
+      const disabledForm = {
+        monitor_paths: false
+      };
+      const formItems = (
+        <>
+          {commonFormItems.getCommonFormItems({
+            disabledFormItems: disabledForm
+          })}
+        </>
+      );
       const configs = {
         auto: {
           formItems: commonFormItems.getCommonFormItems(),
           initTableItems: {
             instance_id: `${pluginConfig.collector}-${
               pluginConfig.collect_type
-            }-${uuidv4()}`,
+            }-${uuidv4()}`
           },
           defaultForm: {
-            paths: ['/bin', '/usr/bin', '/sbin', '/usr/sbin', '/etc'],
+            monitor_paths: ['/etc/passwd', '/etc/shadow', '/etc/sudoers'],
+            exclude_paths: [],
+            hash_algorithm: 'sha256',
+            recursive_monitor: false
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
             const dataSource = cloneDeep(config.dataSource || []);
+            const formDataCopy = cloneDeep(row);
+
+            // 构建 content，只需要4个参数
+            const content: Record<string, unknown> = {
+              paths: formDataCopy.monitor_paths || [],
+              exclude_files: formDataCopy.exclude_paths || [],
+              hash_types: [formDataCopy.hash_algorithm || 'sha256'],
+              recursive: formDataCopy.recursive_monitor || false
+            };
+
             return {
               collector: pluginConfig.collector,
               collect_type: pluginConfig.collect_type,
-              configs: [row],
+              configs: [content],
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
-                  node_ids: [item.node_ids].flat(),
+                  node_ids: [item.node_ids].flat()
                 };
-              }),
+              })
             };
-          },
+          }
         },
         edit: {
           formItems,
           getDefaultForm: (formData: TableDataItem) => {
-            const paths = formData?.child?.content?.[0]?.paths || null;
+            const content = formData?.child?.content?.[0] || {};
+
+            // 后端字段映射：paths -> monitor_paths, exclude_files -> exclude_paths
+            // hash_types[0] -> hash_algorithm, recursive -> recursive_monitor
             return {
-              paths,
+              monitor_paths: content.paths || [],
+              exclude_paths: content.exclude_files || [],
+              hash_algorithm: content.hash_types?.[0] || 'sha256',
+              recursive_monitor: content.recursive ?? false
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
+            const originalChild = cloneDeep(configForm?.child || {});
+            const formDataCopy = cloneDeep(formData);
+
             return {
               child: {
-                id: configForm.child.id,
-                content_data: formData,
-              },
+                ...originalChild,
+                content: {
+                  paths: formDataCopy.monitor_paths || [],
+                  exclude_files: formDataCopy.exclude_paths || [],
+                  hash_types: [formDataCopy.hash_algorithm || 'sha256'],
+                  recursive: formDataCopy.recursive_monitor || false
+                }
+              }
             };
-          },
+          }
         },
         manual: {
           defaultForm: {},
@@ -70,16 +106,16 @@ export const useAuditbeatConfig = () => {
           getParams: (row: TableDataItem) => {
             return {
               instance_name: row.instance_name,
-              instance_id: row.instance_id,
+              instance_id: row.instance_id
             };
           },
-          getConfigText: () => '--',
-        },
+          getConfigText: () => '--'
+        }
       };
       return {
         ...pluginConfig,
-        ...configs[extra.mode],
+        ...configs[extra.mode]
       };
-    },
+    }
   };
 };

@@ -1,0 +1,100 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "Windows 事件日志是 Windows 操作系统的核心日志系统，记录了系统运行、应用程序和安全相关的所有事件。本集成使用 Winlogbeat 采集 Windows 事件日志，Winlogbeat 是 Elastic 官方提供的专用 Windows 事件日志采集器。",
+      "Windows 事件日志对于安全监控、故障排查和合规审计至关重要。通过采集 Security、System、Application 等日志通道，可以全面掌握 Windows 系统的运行状态和安全态势。"
+    ]
+  },
+  "features": {
+    "title": "核心功能",
+    "items": [
+      {
+        "icon": "🔒",
+        "title": "安全事件监控",
+        "description": "采集登录/注销、权限变更、账户管理等安全事件，满足合规要求"
+      },
+      {
+        "icon": "💻",
+        "title": "系统事件采集",
+        "description": "监控系统启动、服务状态、驱动程序等系统级事件"
+      },
+      {
+        "icon": "📱",
+        "title": "应用程序日志",
+        "description": "采集应用程序的错误、警告和信息事件"
+      },
+      {
+        "icon": "🎯",
+        "title": "事件 ID 过滤",
+        "description": "精确筛选关键安全事件，减少噪音数据"
+      },
+      {
+        "icon": "📊",
+        "title": "结构化解析",
+        "description": "将 XML 格式的事件数据解析为结构化字段"
+      },
+      {
+        "icon": "🔌",
+        "title": "多通道支持",
+        "description": "支持采集任意 Windows 事件日志通道"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "重要事件 ID 参考",
+      "columns": [
+        { "key": "eventId", "title": "事件 ID", "width": 100 },
+        { "key": "category", "title": "类别", "width": 100 },
+        { "key": "description", "title": "说明" }
+      ],
+      "data": [
+        {
+          "eventId": "4624",
+          "category": "登录",
+          "description": "账户登录成功"
+        },
+        {
+          "eventId": "4625",
+          "category": "登录",
+          "description": "账户登录失败"
+        },
+        { "eventId": "4634", "category": "登录", "description": "账户注销" },
+        {
+          "eventId": "4672",
+          "category": "登录",
+          "description": "特权登录（管理员）"
+        },
+        { "eventId": "4688", "category": "进程", "description": "新进程创建" },
+        { "eventId": "4697", "category": "服务", "description": "服务安装" },
+        {
+          "eventId": "4720",
+          "category": "账户",
+          "description": "用户账户创建"
+        },
+        {
+          "eventId": "4726",
+          "category": "账户",
+          "description": "用户账户删除"
+        },
+        {
+          "eventId": "4740",
+          "category": "账户",
+          "description": "用户账户被锁定"
+        }
+      ]
+    }
+  ],
+  "bestPractices": {
+    "title": "最佳实践",
+    "items": [
+      "**启用审计策略**：确保 Windows 审计策略已正确配置，否则相关事件不会被记录",
+      "**关注登录事件**：4624（成功）和 4625（失败）是最重要的安全事件，务必采集",
+      "**监控特权操作**：4672（特权登录）和 4688（进程创建）有助于检测提权攻击",
+      "**安装 Sysmon**：建议安装 Microsoft Sysmon 增强安全监控能力",
+      "**启用 PowerShell 日志**：PowerShell 是攻击者常用工具，建议启用脚本块日志",
+      "**合理过滤**：使用事件 ID 过滤减少噪音，但要确保关键事件不被遗漏"
+    ]
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "HTTP traffic analysis integration uses Packetbeat to capture and analyze HTTP traffic in real-time. By decoding HTTP requests and responses, it helps you monitor API calls, troubleshoot performance issues, and analyze application communication patterns."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "Request/Response Capture",
+        "description": "Complete capture of HTTP request and response details"
+      },
+      {
+        "icon": "🔍",
+        "title": "Performance Metrics",
+        "description": "Calculate response time, throughput, error rate metrics"
+      },
+      {
+        "icon": "⚠️",
+        "title": "Content Extraction",
+        "description": "Extract headers, parameters, request body key information"
+      },
+      {
+        "icon": "🛡️",
+        "title": "Security Analysis",
+        "description": "Detect abnormal requests, injection attacks, unauthorized access"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "HTTP traffic will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Transaction timestamp"
+        },
+        {
+          "field": "source.ip",
+          "type": "ip",
+          "description": "Client IP address"
+        },
+        {
+          "field": "destination.ip",
+          "type": "ip",
+          "description": "Server IP address"
+        },
+        {
+          "field": "http.request.method",
+          "type": "keyword",
+          "description": "HTTP method"
+        },
+        {
+          "field": "url.full",
+          "type": "keyword",
+          "description": "Complete request URL"
+        },
+        {
+          "field": "http.response.status_code",
+          "type": "long",
+          "description": "Response status code"
+        },
+        {
+          "field": "http.request.bytes",
+          "type": "long",
+          "description": "Request body size"
+        },
+        {
+          "field": "http.response.bytes",
+          "type": "long",
+          "description": "Response body size"
+        },
+        {
+          "field": "event.duration",
+          "type": "long",
+          "description": "Response time (nanoseconds)"
+        },
+        {
+          "field": "http.request.headers",
+          "type": "object",
+          "description": "Request headers"
+        },
+        {
+          "field": "http.response.headers",
+          "type": "object",
+          "description": "Response headers"
+        }
+      ]
+    }
+  ]
+}

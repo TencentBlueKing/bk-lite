@@ -62,8 +62,8 @@ const getMergedMessages = async () => {
 
         const messages = flattenMessages(JSON.parse(await fs.readFile(filePath, 'utf8')));
         mergedMessages[locale as Locale] = deepMerge(mergedMessages[locale as Locale], messages);
-      } catch (error) {
-        console.error(`Error loading locale for ${app}:`, error);
+      } catch {
+        // Silently skip if locale file doesn't exist for this app
       }
     }
   }

@@ -10,7 +10,7 @@ Display Field 模块常量定义
 # ========== 字段类型常量 ==========
 
 # 需要生成 _display 冗余字段的字段类型
-DISPLAY_FIELD_TYPES = frozenset(["organization", "user", "enum"])
+DISPLAY_FIELD_TYPES = frozenset(["organization", "user", "enum", "tag", "table"])
 
 # 组织类型字段
 FIELD_TYPE_ORGANIZATION = "organization"
@@ -20,6 +20,12 @@ FIELD_TYPE_USER = "user"
 
 # 枚举类型字段
 FIELD_TYPE_ENUM = "enum"
+
+# 标签类型字段
+FIELD_TYPE_TAG = "tag"
+
+# 表格类型字段
+FIELD_TYPE_TABLE = "table"
 
 # ========== 字段后缀常量 ==========
 

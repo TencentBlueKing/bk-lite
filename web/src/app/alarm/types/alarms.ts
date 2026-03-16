@@ -26,6 +26,7 @@ export interface AlarmTableDataItem {
   source_names: string;
   duration: string;
   operator_user: string;
+  operator: string[];
   created_at: string;
   updated_at: string;
   alert_id: string;
@@ -41,7 +42,7 @@ export interface AlarmTableDataItem {
   resource_type: string;
   operate: string | null;
   notification_status: string;
-  [key: string]: string | number | null | undefined;
+  [key: string]: any;
 }
 export interface RuleInfo {
   type?: string;

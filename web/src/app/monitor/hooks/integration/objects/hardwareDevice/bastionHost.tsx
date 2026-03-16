@@ -3,34 +3,34 @@ export const useBastionHostConfig = () => {
     instance_type: 'bastion_host',
     dashboardDisplay: [
       {
-        indexId: 'interface_ifOutDiscards',
+        indexId: 'ipmi_chassis_power_state',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '15%',
-        },
+          width: '15%'
+        }
       },
       {
-        indexId: 'interface_ifOperStatus',
+        indexId: 'ipmi_fan_speed_rpm',
         displayType: 'lineChart',
         sortIndex: 1,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '40%',
-        },
+          width: '40%'
+        }
       },
       {
-        indexId: 'interface_ifInErrors',
+        indexId: 'ipmi_temperature_celsius',
         displayType: 'lineChart',
         sortIndex: 2,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '40%',
-        },
+          width: '40%'
+        }
       },
       {
         indexId: 'interfaces',
@@ -44,22 +44,22 @@ export const useBastionHostConfig = () => {
           'ifInUcastPkts',
           'ifOutUcastPkts',
           'ifInOctets',
-          'ifOutOctets',
+          'ifOutOctets'
         ],
         style: {
           height: '400px',
-          width: '100%',
-        },
-      },
+          width: '100%'
+        }
+      }
     ],
     tableDiaplay: [
       { type: 'enum', key: 'ipmi_chassis_power_state' },
       { type: 'value', key: 'ipmi_fan_speed_rpm' },
-      { type: 'value', key: 'ipmi_temperature_celsius' },
+      { type: 'value', key: 'ipmi_temperature_celsius' }
     ],
     groupIds: {},
     collectTypes: {
-      'Bastion Host SNMP General': 'snmp',
-    },
+      'Bastion Host SNMP General': 'snmp'
+    }
   };
 };
