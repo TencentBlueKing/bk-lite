@@ -238,7 +238,9 @@ class ClassificationServingViewSet(ModelViewSet):
                 )
 
                 serving.container_info = result
-                serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
+                serving.port = (
+                    int(result.get("port", 0)) if result.get("port") else serving.port
+                )
                 serving.save(update_fields=["container_info", "port"])
 
                 response.data["container_info"] = result
@@ -386,7 +388,9 @@ class ClassificationServingViewSet(ModelViewSet):
 
                 # 更新容器信息（status 由用户控制，不修改）
                 instance.container_info = result
-                instance.port = int(result.get("port", 0)) if result.get("port") else instance.port
+                instance.port = (
+                    int(result.get("port", 0)) if result.get("port") else instance.port
+                )
                 instance.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据
@@ -453,7 +457,9 @@ class ClassificationServingViewSet(ModelViewSet):
 
                 # 正常启动成功，仅更新容器信息
                 serving.container_info = result
-                serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
+                serving.port = (
+                    int(result.get("port", 0)) if result.get("port") else serving.port
+                )
                 serving.save(update_fields=["container_info", "port"])
 
                 return Response(
@@ -654,7 +660,9 @@ class ClassificationServingViewSet(ModelViewSet):
             host_address = get_host_address()
             if not host_address:
                 return Response(
-                    {"error": "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"},
+                    {
+                        "error": "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -871,6 +879,28 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             # 动态获取训练镜像
             train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
 
+            # 获取当前 run 数量（在容器启动前查询，避免读到新 run 导致 off-by-one）
+            from apps.mlops.tasks.poll_train_job_status import poll_train_job_status
+
+            expected_run_count = 0
+            try:
+                experiment_name = mlflow_service.build_experiment_name(
+                    prefix=self.MLFLOW_PREFIX,
+                    algorithm=train_job.algorithm,
+                    train_job_id=train_job.id,
+                )
+                experiment = mlflow_service.get_experiment_by_name(experiment_name)
+                current_run_count = 0
+                if experiment:
+                    runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
+                    current_run_count = len(runs) if not runs.empty else 0
+                expected_run_count = current_run_count + 1
+            except Exception:
+                logger.warning(
+                    f"查询 MLflow run 数量失败，降级 expected_run_count=0, "
+                    f"TrainJob ID={train_job.id}"
+                )
+
             WebhookClient.train(
                 job_id=job_id,
                 bucket=config.bucket,
@@ -888,24 +918,9 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             train_job.save(update_fields=["status"])
 
             # 启动异步轮询训练状态
-            from apps.mlops.tasks.poll_train_job_status import poll_train_job_status
-
-            # 获取当前 run 数量，用于防止竞态条件（轮询读取到旧的已完成 run）
-            experiment_name = mlflow_service.build_experiment_name(
-                prefix=self.MLFLOW_PREFIX,
-                algorithm=train_job.algorithm,
-                train_job_id=train_job.id,
-            )
-            experiment = mlflow_service.get_experiment_by_name(experiment_name)
-            current_run_count = 0
-            if experiment:
-                runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
-                current_run_count = len(runs) if not runs.empty else 0
-            expected_run_count = current_run_count + 1
-
             logger.info(
                 f"触发轮询任务: TrainJob ID={train_job.id}, "
-                f"当前 run 数量: {current_run_count}, 预期: {expected_run_count}"
+                f"预期 run 数量: {expected_run_count}"
             )
             poll_train_job_status.delay(
                 train_job.id, self.MLFLOW_PREFIX, expected_run_count
@@ -1080,7 +1095,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                     # 获取状态
                     run_status = row.get("status", "UNKNOWN")
 
-
                     run_data = {
                         "run_id": str(row["run_id"]),
                         "run_name": str(run_name),
@@ -1245,7 +1259,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             if not version_data:
                 logger.warning(f"模型未找到版本: {model_name}")
                 return Response({"model_name": model_name, "versions": [], "total": 0})
-
 
             return Response(
                 {

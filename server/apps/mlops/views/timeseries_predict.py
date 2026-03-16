@@ -149,6 +149,28 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             # 动态获取训练镜像
             train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
 
+            # 获取当前 run 数量（在容器启动前查询，避免读到新 run 导致 off-by-one）
+            from apps.mlops.tasks.poll_train_job_status import poll_train_job_status
+
+            expected_run_count = 0
+            try:
+                experiment_name = mlflow_service.build_experiment_name(
+                    prefix=self.MLFLOW_PREFIX,
+                    algorithm=train_job.algorithm,
+                    train_job_id=train_job.id,
+                )
+                experiment = mlflow_service.get_experiment_by_name(experiment_name)
+                current_run_count = 0
+                if experiment:
+                    runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
+                    current_run_count = len(runs) if not runs.empty else 0
+                expected_run_count = current_run_count + 1
+            except Exception:
+                logger.warning(
+                    f"查询 MLflow run 数量失败，降级 expected_run_count=0, "
+                    f"TrainJob ID={train_job.id}"
+                )
+
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
@@ -167,24 +189,9 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             train_job.save(update_fields=["status"])
 
             # 启动异步轮询训练状态
-            from apps.mlops.tasks.poll_train_job_status import poll_train_job_status
-
-            # 获取当前 run 数量，用于防止竞态条件（轮询读取到旧的已完成 run）
-            experiment_name = mlflow_service.build_experiment_name(
-                prefix=self.MLFLOW_PREFIX,
-                algorithm=train_job.algorithm,
-                train_job_id=train_job.id,
-            )
-            experiment = mlflow_service.get_experiment_by_name(experiment_name)
-            current_run_count = 0
-            if experiment:
-                runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
-                current_run_count = len(runs) if not runs.empty else 0
-            expected_run_count = current_run_count + 1
-
             logger.info(
                 f"触发轮询任务: TrainJob ID={train_job.id}, "
-                f"当前 run 数量: {current_run_count}, 预期: {expected_run_count}"
+                f"预期 run 数量: {expected_run_count}"
             )
             poll_train_job_status.delay(
                 train_job.id, self.MLFLOW_PREFIX, expected_run_count

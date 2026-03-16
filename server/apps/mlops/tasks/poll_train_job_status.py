@@ -6,7 +6,7 @@
 """
 
 from celery import shared_task
-from celery.exceptions import SoftTimeLimitExceeded
+from celery.exceptions import Retry, SoftTimeLimitExceeded
 
 from apps.core.logger import mlops_logger as logger
 
@@ -21,7 +21,11 @@ from apps.core.logger import mlops_logger as logger
     reject_on_worker_lost=True,
 )
 def poll_train_job_status(
-    self, train_job_id: int, mlflow_prefix: str, expected_run_count: int = 0
+    self,
+    train_job_id: int,
+    mlflow_prefix: str,
+    expected_run_count: int = 0,
+    consecutive_errors: int = 0,
 ) -> dict:
     """
     轮询 MLflow 训练运行状态
@@ -50,13 +54,22 @@ def poll_train_job_status(
             train_job_id=train_job.id,
         )
 
+        # 构造 retry 时需传递的完整 kwargs（确保 consecutive_errors 状态正确传播）
+        def _retry_kwargs(errors: int) -> dict:
+            return {
+                "train_job_id": train_job_id,
+                "mlflow_prefix": mlflow_prefix,
+                "expected_run_count": expected_run_count,
+                "consecutive_errors": errors,
+            }
+
         experiment = mlflow_service.get_experiment_by_name(experiment_name)
         if not experiment:
             logger.warning(
                 f"训练状态查询: 实验{experiment_name}不存在, "
                 f"TrainJob ID: {train_job_id}, 将继续重试"
             )
-            raise self.retry()
+            raise self.retry(kwargs=_retry_kwargs(0))
 
         # 获取最新运行记录
         runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
@@ -65,7 +78,7 @@ def poll_train_job_status(
                 f"训练状态查询: 实验{experiment_name}无运行记录 , "
                 f"TrainJob ID: {train_job_id}, 将继续重试"
             )
-            raise self.retry()
+            raise self.retry(kwargs=_retry_kwargs(0))
 
         # 校验 run 数量，防止读取到旧的已完成 run（竞态条件）
         current_run_count = len(runs)
@@ -75,9 +88,12 @@ def poll_train_job_status(
                 f"TrainJob ID: {train_job_id}, "
                 f"当前 run 数量: {current_run_count}, 预期: {expected_run_count}"
             )
-            raise self.retry()
+            raise self.retry(kwargs=_retry_kwargs(0))
 
         latest_run_status = str(runs.iloc[0].get("status", MLflowRunStatus.UNKNOWN))
+
+        # MLflow 通信成功，重置连续错误计数
+        consecutive_errors = 0
 
         # 训练仍在运行，继续轮询
         if latest_run_status == MLflowRunStatus.RUNNING:
@@ -85,14 +101,20 @@ def poll_train_job_status(
                 f"训练状态查询: 实验{experiment_name}仍在运行, "
                 f"TrainJob ID: {train_job_id}"
             )
-            raise self.retry()
+            raise self.retry(kwargs=_retry_kwargs(0))
 
-        # 训练结束（完成/失败/终止），映射状态
+        # 训练结束（完成/失败/终止），映射状态并用乐观锁更新
         new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(
             latest_run_status, TrainJobStatus.FAILED
         )
-        train_job.status = new_status
-        train_job.save(update_fields=["status"])
+        model_class = _get_train_job_model(mlflow_prefix)
+        updated = model_class.objects.filter(
+            id=train_job_id, status=TrainJobStatus.RUNNING
+        ).update(status=new_status)
+        if not updated:
+            logger.info(
+                f"训练状态查询: TrainJob ID={train_job_id} 状态已变更，跳过更新"
+            )
 
         logger.info(
             f"训练状态查询: 实验{experiment_name}训练结束, "
@@ -108,20 +130,56 @@ def poll_train_job_status(
         }
 
     except SoftTimeLimitExceeded:
-        logger.error(f"训练状态查询超时: 将继续重试TrainJob ID  {train_job_id}")
-        raise self.retry()
+        consecutive_errors += 1
+        logger.error(
+            f"训练状态查询超时: TrainJob ID={train_job_id}, "
+            f"连续错误: {consecutive_errors}"
+        )
+        if consecutive_errors >= 10:
+            logger.error(
+                f"连续错误达到熔断阈值: TrainJob ID={train_job_id}, 标记为失败"
+            )
+            _mark_train_job_failed(train_job_id, mlflow_prefix)
+            return {"result": False, "reason": "consecutive errors circuit breaker"}
+        raise self.retry(
+            kwargs={
+                "train_job_id": train_job_id,
+                "mlflow_prefix": mlflow_prefix,
+                "expected_run_count": expected_run_count,
+                "consecutive_errors": consecutive_errors,
+            }
+        )
 
     except self.MaxRetriesExceededError:
         logger.error(f"超过最大重试次数: TrainJob ID: {train_job_id}")
         _mark_train_job_failed(train_job_id, mlflow_prefix)
         return {"result": False, "reason": "max retries exceeded"}
 
+    except Retry:
+        raise
+
     except Exception as e:
+        consecutive_errors += 1
         logger.error(
-            f"轮询训练状态异常: TrainJob ID={train_job_id}, error={e}",
+            f"轮询训练状态异常: TrainJob ID={train_job_id}, "
+            f"连续错误: {consecutive_errors}, error={e}",
             exc_info=True,
         )
-        raise self.retry(exc=e)
+        if consecutive_errors >= 10:
+            logger.error(
+                f"连续错误达到熔断阈值: TrainJob ID={train_job_id}, 标记为失败"
+            )
+            _mark_train_job_failed(train_job_id, mlflow_prefix)
+            return {"result": False, "reason": "consecutive errors circuit breaker"}
+        raise self.retry(
+            exc=e,
+            kwargs={
+                "train_job_id": train_job_id,
+                "mlflow_prefix": mlflow_prefix,
+                "expected_run_count": expected_run_count,
+                "consecutive_errors": consecutive_errors,
+            },
+        )
 
 
 def _load_train_job(train_job_id: int, mlflow_prefix: str):
