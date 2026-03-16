@@ -183,7 +183,7 @@
     "paramDefinition": "Parameter Definition",
     "addParam": "Add Parameter",
     "paramName": "Parameter Name",
-    "paramNamePlaceholder": "Enter parameter name (for Jinja2 template reference)",
+    "paramNamePlaceholder": "Enter parameter name",
     "paramNameHint": "Used in Jinja2 templates, e.g. {{ param_name }}",
     "paramLabel": "Label",
     "paramLabelPlaceholder": "Enter display name",

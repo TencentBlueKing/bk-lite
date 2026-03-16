@@ -233,10 +233,10 @@ const QuickExecPage = () => {
 
   // Execute the actual job
   const doExecute = async (values: any, scriptContent?: string) => {
-    const params: Record<string, unknown> = {};
+    const templateParamsPayload: Record<string, unknown> = {};
     templateParams.forEach((param) => {
       const value = values[`param_${param.name}`];
-      params[param.name] = value ?? '';
+      templateParamsPayload[param.name] = value ?? '';
     });
 
     const timeout = values.timeout ? Number(values.timeout) : 600;
@@ -259,7 +259,7 @@ const QuickExecPage = () => {
           script_id: selectedTemplate,
           target_source,
           target_list,
-          params,
+          params: templateParamsPayload,
           timeout,
         });
       } else {
@@ -268,18 +268,19 @@ const QuickExecPage = () => {
           playbook_id: selectedTemplate!,
           target_source,
           target_list,
-          params,
+          params: templateParamsPayload,
           timeout,
         });
       }
     } else {
+      const execParamsText = String(values.execParams || '').trim();
       await quickExecute({
         name: values.jobName,
         script_type: scriptLang,
         script_content: scriptContent!,
         target_source,
         target_list,
-        params,
+        params: execParamsText ? [{ value: execParamsText }] : [],
         timeout,
       });
     }
