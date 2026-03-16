@@ -20,4 +20,4 @@
 | data_dir       | 数据目录                                           |
 | conf_file_path | 使用的配置文件绝对路径                             |
 
-> 补充说明：`conf_file_path` 在未使用 `--config-file` 启动时为空；`version` 在 `etcd --version` 执行失败或输出格式非常规时可能为空；
+> 补充说明：`conf_file_path` 在未使用 `--config-file` 启动时为空；
