@@ -28,7 +28,9 @@ class Executor(object):
         :return: 健康检查结果
         """
         request_data = {"execute_timeout": timeout}
-        return_data = self.health_check_client.run(self.instance_id, request_data, _timeout=timeout)
+        return_data = self.health_check_client.run(
+            self.instance_id, request_data, _timeout=timeout
+        )
         return return_data
 
     def execute_local(self, command, timeout=60, shell=None):
@@ -42,10 +44,22 @@ class Executor(object):
         request_data = {"command": command, "execute_timeout": timeout}
         if shell:
             request_data["shell"] = shell
-        return_data = self.local_client.run(self.instance_id, request_data, _timeout=timeout)
+        return_data = self.local_client.run(
+            self.instance_id, request_data, _timeout=timeout
+        )
         return return_data
 
-    def execute_ssh(self, command, host, username, password=None, private_key=None, passphrase=None, timeout=60, port=22):
+    def execute_ssh(
+        self,
+        command,
+        host,
+        username,
+        password=None,
+        private_key=None,
+        passphrase=None,
+        timeout=60,
+        port=22,
+    ):
         """
         通过SSH执行远程命令
         :param command: 要执行的命令
@@ -58,7 +72,13 @@ class Executor(object):
         :param timeout: 执行超时时间(秒)
         :return: 命令执行结果
         """
-        request_data = {"command": command, "host": host, "port": port, "user": username, "execute_timeout": timeout}
+        request_data = {
+            "command": command,
+            "host": host,
+            "port": port,
+            "user": username,
+            "execute_timeout": timeout,
+        }
 
         # 添加可选参数
         if password:
@@ -68,7 +88,9 @@ class Executor(object):
         if passphrase:
             request_data["passphrase"] = passphrase
 
-        return_data = self.ssh_client.run(self.instance_id, request_data, _timeout=timeout)
+        return_data = self.ssh_client.run(
+            self.instance_id, request_data, _timeout=timeout
+        )
         return return_data
 
     def download_to_local(self, bucket_name, file_key, file_name, target_path, timeout=60, overwrite=True):
@@ -90,7 +112,9 @@ class Executor(object):
             "execute_timeout": timeout,
             "overwrite": overwrite,
         }
-        return_data = self.download_to_local_client.run(self.instance_id, request_data, _timeout=timeout)
+        return_data = self.download_to_local_client.run(
+            self.instance_id, request_data, _timeout=timeout
+        )
         return return_data
 
     def download_to_remote(
@@ -108,6 +132,7 @@ class Executor(object):
         rpc_timeout=None,
         port=22,
         overwrite=True,
+        local_path="/tmp",
     ):
         """
         下载文件到远程
@@ -123,6 +148,7 @@ class Executor(object):
         :param passphrase: 私钥密码短语(可选)
         :param timeout: 执行超时时间(秒)
         :param overwrite: 是否覆盖已存在文件，默认True
+        :param local_path: 执行器本地下载目录（可选，默认/tmp）
         :return: 下载结果
         """
         request_data = {
@@ -130,6 +156,7 @@ class Executor(object):
             "file_key": file_key,
             "file_name": file_name,
             "target_path": target_path,
+            "local_path": local_path,
             "host": host,
             "port": port,
             "user": username,
@@ -161,7 +188,9 @@ class Executor(object):
             "zip_path": file_path,
             "dest_dir": target_path,
         }
-        return_data = self.unzip_local_client.run(self.instance_id, request_data, _timeout=timeout)
+        return_data = self.unzip_local_client.run(
+            self.instance_id, request_data, _timeout=timeout
+        )
         return return_data
 
     def transfer_file_to_remote(

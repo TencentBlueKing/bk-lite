@@ -24,12 +24,6 @@ const useFileVectorFormItems = () => {
     { value: 'end', label: t('log.integration.fileReadFromEnd') }
   ];
 
-  // 解析器选项
-  const parserOptions = [
-    { value: '', label: t('log.integration.fileParserNone') },
-    { value: 'json', label: 'JSON' }
-  ];
-
   return {
     getCommonFormItems: (
       extra: {
@@ -69,7 +63,7 @@ const useFileVectorFormItems = () => {
                 </div>
                 <Form.Item
                   className="mb-0 flex-1"
-                  name="paths"
+                  name="include"
                   rules={[
                     {
                       required: true,
@@ -80,7 +74,7 @@ const useFileVectorFormItems = () => {
                   <Select
                     mode="tags"
                     placeholder={t('log.integration.filePathsPlaceholder')}
-                    disabled={disabledFormItems.paths}
+                    disabled={disabledFormItems.include}
                     suffixIcon={null}
                     open={false}
                   />
@@ -104,13 +98,13 @@ const useFileVectorFormItems = () => {
                     <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
                   </Tooltip>
                 </div>
-                <Form.Item className="mb-0 flex-1" name="exclude_paths">
+                <Form.Item className="mb-0 flex-1" name="exclude">
                   <Select
                     mode="tags"
                     placeholder={t(
                       'log.integration.fileExcludePathsPlaceholder'
                     )}
-                    disabled={disabledFormItems.exclude_paths}
+                    disabled={disabledFormItems.exclude}
                     suffixIcon={null}
                     open={false}
                   />
@@ -119,41 +113,10 @@ const useFileVectorFormItems = () => {
             </Form.Item>
           </div>
 
-          {/* 日志格式区块 */}
-          <div className="font-semibold mb-[8px]">
-            {t('log.integration.fileLogFormat')}
-          </div>
-          <div className="text-[var(--color-text-3)] mb-[12px]">
-            {t('log.integration.fileLogFormatDesc')}
-          </div>
-          <div className="bg-[var(--color-fill-1)] rounded-md px-[20px] py-[16px] mb-[20px]">
-            {/* 解析器 */}
-            <Form.Item className="mb-[10px]">
-              <div className="flex items-center">
-                <div className="flex items-center w-[100px] shrink-0 mr-[10px]">
-                  <span className="whitespace-nowrap">
-                    {t('log.integration.fileParser')}
-                  </span>
-                  <Tooltip title={t('log.integration.fileParserHint')}>
-                    <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
-                  </Tooltip>
-                </div>
-                <Form.Item className="mb-0 flex-1" name="parser">
-                  <Select
-                    placeholder={t('log.integration.fileParser')}
-                    disabled={disabledFormItems.parser}
-                    allowClear
-                  >
-                    {parserOptions.map((item) => (
-                      <Option key={item.value} value={item.value}>
-                        {item.label}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              </div>
-            </Form.Item>
-          </div>
+          {/* parser_type - 隐藏字段，默认不解析 */}
+          <Form.Item noStyle name="parser_type" initialValue="">
+            <input type="hidden" />
+          </Form.Item>
 
           {/* 多行合并配置 */}
           <Form.Item layout="vertical" className="mb-[8px]">
@@ -360,10 +323,10 @@ const useFileVectorFormItems = () => {
                     <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
                   </Tooltip>
                 </div>
-                <Form.Item className="mb-0 flex-1" name="encoding">
+                <Form.Item className="mb-0 flex-1" name="encoding_charset">
                   <Select
                     placeholder={t('log.integration.fileEncoding')}
-                    disabled={disabledFormItems.encoding}
+                    disabled={disabledFormItems.encoding_charset}
                   >
                     {encodingOptions.map((item) => (
                       <Option key={item.value} value={item.value}>

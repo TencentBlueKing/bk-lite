@@ -34,10 +34,7 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
 
   const isMine = () =>
     rowData.every((item) =>
-      item?.operator_user
-        ?.split(',')
-        .map((name: string) => name.trim())
-        .includes(username)
+      Array.isArray(item?.operator) ? item.operator.includes(username) : false
     );
 
   const apiNameMap = {
