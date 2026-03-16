@@ -378,7 +378,7 @@ const UserInfo: React.FC = () => {
           </div>
         </>
       )}
-      <VersionModal open={versionVisible} onClose={() => setVersionVisible(false)} />
+      <VersionModal visible={versionVisible} onClose={() => setVersionVisible(false)} />
       <UserInformation visible={userInfoVisible} onClose={() => setUserInfoVisible(false)} />
     </div>
   );

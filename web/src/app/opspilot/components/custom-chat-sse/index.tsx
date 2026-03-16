@@ -612,12 +612,14 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                   placement={msg.role === 'user' ? 'end' : 'start'}
                   loading={isEmptyMessage && isCurrentBotLoading}
                   content={renderContent(msg)}
-                  avatar={
-                    <Icon
-                      type={msg.role === 'user' ? 'yonghu' : 'jiqiren3'}
-                      className={styles.avatar}
-                    />
-                  }
+                  avatar={{
+                    icon: (
+                      <Icon
+                        type={msg.role === 'user' ? 'yonghu' : 'jiqiren3'}
+                        className={styles.avatar}
+                      />
+                    )
+                  }}
                   footer={
                     isEmptyMessage && isCurrentBotLoading ? null : (
                       <MessageActions
