@@ -15,7 +15,7 @@ import { PlusOutlined, InboxOutlined, FileOutlined, CloseOutlined, ExclamationCi
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import useJobApi from '@/app/job/api';
-import HostSelectionModal, { HostItem } from '@/app/job/components/host-selection-modal';
+import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
 
 const { Dragger } = Upload;
 
@@ -26,6 +26,7 @@ const FileDistPage = () => {
   const [form] = Form.useForm();
 
   const [hostModalOpen, setHostModalOpen] = useState(false);
+  const [targetSource, setTargetSource] = useState<TargetSourceType>('target_manager');
   const [selectedHostKeys, setSelectedHostKeys] = useState<string[]>([]);
   const [selectedHosts, setSelectedHosts] = useState<HostItem[]>([]);
 
@@ -37,6 +38,12 @@ const FileDistPage = () => {
     setSelectedHostKeys(keys);
     setSelectedHosts(hosts);
     setHostModalOpen(false);
+  };
+
+  const handleTargetSourceChange = (val: TargetSourceType) => {
+    setTargetSource(val);
+    setSelectedHostKeys([]);
+    setSelectedHosts([]);
   };
 
   const handleRemoveFile = (index: number) => {
@@ -56,7 +63,7 @@ const FileDistPage = () => {
       console.log('[DangerousPath] Calling API...');
       const rules = await getEnabledDangerousPaths();
       console.log('[DangerousPath] API response:', rules);
-      
+
       const matchedForbidden: string[] = [];
       const matchedConfirm: string[] = [];
 
@@ -110,7 +117,9 @@ const FileDistPage = () => {
 
     // Convert HostItem to TargetListItem format
     const targetList = selectedHosts.map((h) => ({
-      target_id: Number(h.key),
+      ...(targetSource === 'node_manager'
+        ? { node_id: h.key }
+        : { target_id: Number(h.key) }),
       name: h.hostName,
       ip: h.ipAddress,
       os: h.osType?.toLowerCase() as 'linux' | 'windows',
@@ -119,7 +128,7 @@ const FileDistPage = () => {
     await createFileDistribution({
       name: values.jobName,
       file_ids: fileIds,
-      target_source: 'manual',
+      target_source: targetSource === 'node_manager' ? 'node_mgmt' : 'manual',
       target_list: targetList,
       target_path: values.targetPath,
       timeout: Number(values.timeout) || 600,
@@ -255,6 +264,16 @@ const FileDistPage = () => {
             <Input placeholder={t('job.jobNamePlaceholder')} />
           </Form.Item>
 
+          <Form.Item label={t('job.targetSource')} required>
+            <Radio.Group
+              value={targetSource}
+              onChange={(e) => handleTargetSourceChange(e.target.value)}
+            >
+              <Radio value="node_manager">{t('job.nodeManager')}</Radio>
+              <Radio value="target_manager">{t('job.targetManager')}</Radio>
+            </Radio.Group>
+          </Form.Item>
+
           {/* 目标主机 */}
           <Form.Item
             label={t('job.targetHost')}
@@ -376,6 +395,7 @@ const FileDistPage = () => {
       <HostSelectionModal
         open={hostModalOpen}
         selectedKeys={selectedHostKeys}
+        source={targetSource}
         onConfirm={handleHostConfirm}
         onCancel={() => setHostModalOpen(false)}
       />

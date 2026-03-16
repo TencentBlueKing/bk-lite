@@ -74,6 +74,7 @@ const QuickExecPage = () => {
   const [scriptList, setScriptList] = useState<Script[]>([]);
   const [playbookList, setPlaybookList] = useState<Playbook[]>([]);
   const [templateParams, setTemplateParams] = useState<ScriptParam[]>([]);
+  const [editedTemplateParams, setEditedTemplateParams] = useState<Record<string, boolean>>({});
   const [initialized, setInitialized] = useState(false);
   const [scriptLang, setScriptLang] = useState<ScriptLang>('shell');
 
@@ -101,8 +102,10 @@ const QuickExecPage = () => {
     setSelectedTemplate(id);
     if (!id) {
       setTemplateParams([]);
+      setEditedTemplateParams({});
       return;
     }
+    setEditedTemplateParams({});
     const currentType = type ?? templateType;
     try {
       if (currentType === 'scriptLibrary') {
@@ -171,6 +174,7 @@ const QuickExecPage = () => {
     setContentSource(val);
     setSelectedTemplate(undefined);
     setTemplateParams([]);
+    setEditedTemplateParams({});
   };
 
   const handleTemplateTypeChange = (val: string | number) => {
@@ -180,6 +184,7 @@ const QuickExecPage = () => {
     setTemplateType(val as TemplateType);
     setSelectedTemplate(undefined);
     setTemplateParams([]);
+    setEditedTemplateParams({});
   };
 
   const handleTargetSourceChange = (val: TargetSourceType) => {
@@ -190,6 +195,7 @@ const QuickExecPage = () => {
       setTemplateType('scriptLibrary');
       setSelectedTemplate(undefined);
       setTemplateParams([]);
+      setEditedTemplateParams({});
     }
   };
 
@@ -233,19 +239,23 @@ const QuickExecPage = () => {
 
   // Execute the actual job
   const doExecute = async (values: any, scriptContent?: string) => {
-    const templateParamsPayload: Record<string, unknown> = {};
-    templateParams.forEach((param) => {
-      const value = values[`param_${param.name}`];
-      templateParamsPayload[param.name] = value ?? '';
+    const templateParamsPayload = templateParams.map((param) => {
+      const currentValue = values[`param_${param.name}`] ?? '';
+      const defaultValue = param.default ?? '';
+      return {
+        name: param.name,
+        value: currentValue,
+        is_modified: currentValue !== defaultValue || !!editedTemplateParams[param.name],
+      };
     });
 
     const timeout = values.timeout ? Number(values.timeout) : 600;
-    
+
     // Convert to target_source + target_list format
     const target_source = targetSource === 'node_manager' ? 'node_mgmt' : 'manual';
     const target_list = selectedHosts.map((h) => ({
-      ...(targetSource === 'node_manager' 
-        ? { node_id: h.key } 
+      ...(targetSource === 'node_manager'
+        ? { node_id: h.key }
         : { target_id: Number(h.key) }),
       name: h.hostName,
       ip: h.ipAddress,
@@ -292,7 +302,7 @@ const QuickExecPage = () => {
   const handleExecute = async () => {
     try {
       const values = await form.validateFields();
-      
+
       if (selectedHosts.length === 0) {
         message.error(t('job.selectTargetHostRequired'));
         return;
@@ -531,6 +541,12 @@ const QuickExecPage = () => {
                         <Password
                           placeholder={param.description || param.name}
                           clickToEdit={!!param.default}
+                          onReset={() =>
+                            setEditedTemplateParams((prev) => ({
+                              ...prev,
+                              [param.name]: true,
+                            }))
+                          }
                         />
                       ) : (
                         <Input
@@ -547,11 +563,11 @@ const QuickExecPage = () => {
 
           {contentSource === 'manual' && (
             <>
-              <Form.Item 
-                label={t('job.scriptContent')} 
+              <Form.Item
+                label={t('job.scriptContent')}
                 name="scriptContent"
-                rules={[{ 
-                  required: true, 
+                rules={[{
+                  required: true,
                   validator: (_, value) => {
                     if (!value || !value[scriptLang] || value[scriptLang].trim() === '') {
                       return Promise.reject(new Error(t('job.scriptContentRequired')));
@@ -560,7 +576,7 @@ const QuickExecPage = () => {
                   }
                 }]}
               >
-                <ScriptEditor 
+                <ScriptEditor
                   activeLang={scriptLang}
                   onLangChange={setScriptLang}
                 />
