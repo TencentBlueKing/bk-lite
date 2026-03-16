@@ -69,7 +69,7 @@ def poll_train_job_status(
                 f"训练状态查询: 实验{experiment_name}不存在, "
                 f"TrainJob ID: {train_job_id}, 将继续重试"
             )
-            raise self.retry(kwargs=_retry_kwargs(0))
+            raise self.retry(args=(), kwargs=_retry_kwargs(0))
 
         # 获取最新运行记录
         runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
@@ -78,7 +78,7 @@ def poll_train_job_status(
                 f"训练状态查询: 实验{experiment_name}无运行记录 , "
                 f"TrainJob ID: {train_job_id}, 将继续重试"
             )
-            raise self.retry(kwargs=_retry_kwargs(0))
+            raise self.retry(args=(), kwargs=_retry_kwargs(0))
 
         # 校验 run 数量，防止读取到旧的已完成 run（竞态条件）
         current_run_count = len(runs)
@@ -88,7 +88,7 @@ def poll_train_job_status(
                 f"TrainJob ID: {train_job_id}, "
                 f"当前 run 数量: {current_run_count}, 预期: {expected_run_count}"
             )
-            raise self.retry(kwargs=_retry_kwargs(0))
+            raise self.retry(args=(), kwargs=_retry_kwargs(0))
 
         latest_run_status = str(runs.iloc[0].get("status", MLflowRunStatus.UNKNOWN))
 
@@ -101,7 +101,7 @@ def poll_train_job_status(
                 f"训练状态查询: 实验{experiment_name}仍在运行, "
                 f"TrainJob ID: {train_job_id}"
             )
-            raise self.retry(kwargs=_retry_kwargs(0))
+            raise self.retry(args=(), kwargs=_retry_kwargs(0))
 
         # 训练结束（完成/失败/终止），映射状态并用乐观锁更新
         new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(
@@ -142,12 +142,13 @@ def poll_train_job_status(
             _mark_train_job_failed(train_job_id, mlflow_prefix)
             return {"result": False, "reason": "consecutive errors circuit breaker"}
         raise self.retry(
+            args=(),
             kwargs={
                 "train_job_id": train_job_id,
                 "mlflow_prefix": mlflow_prefix,
                 "expected_run_count": expected_run_count,
                 "consecutive_errors": consecutive_errors,
-            }
+            },
         )
 
     except self.MaxRetriesExceededError:
@@ -172,6 +173,7 @@ def poll_train_job_status(
             _mark_train_job_failed(train_job_id, mlflow_prefix)
             return {"result": False, "reason": "consecutive errors circuit breaker"}
         raise self.retry(
+            args=(),
             exc=e,
             kwargs={
                 "train_job_id": train_job_id,
