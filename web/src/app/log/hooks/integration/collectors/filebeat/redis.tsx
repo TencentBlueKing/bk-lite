@@ -87,32 +87,20 @@ export const useRedisFilebeatConfig = () => {
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             const originalChild = cloneDeep(configForm?.child || {});
-            const updatedContent = (originalChild.content || []).map(
-              (item: any) => {
-                if (item.module === 'redis') {
-                  return {
-                    ...item,
-                    log: {
-                      ...item.log,
-                      enabled: !!formData.log?.enabled,
-                      'var.paths': formData.log?.paths || []
-                    },
-                    slowlog: {
-                      ...item.slowlog,
-                      enabled: !!formData.slowlog?.enabled,
-                      'var.hosts': formData.slowlog?.hosts || [],
-                      'var.password': formData.slowlog?.password || ''
-                    }
-                  };
-                }
-                return item;
-              }
-            );
+
+            // 扁平化的 content（5个参数，和新增一致）
+            const content = {
+              log_enabled: !!formData.log?.enabled,
+              log_paths: formData.log?.paths || [],
+              slowlog_enabled: !!formData.slowlog?.enabled,
+              slowlog_hosts: formData.slowlog?.hosts || [],
+              slowlog_password: formData.slowlog?.password || ''
+            };
 
             return {
               child: {
                 ...originalChild,
-                content: updatedContent
+                content
               }
             };
           }

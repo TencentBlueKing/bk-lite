@@ -19,6 +19,7 @@ export interface ToolParams {
   kwargs: ToolVariable[];
   enable_auth: boolean;
   auth_token: string;
+  transport?: string;
 }
 
 /** 工具创建/更新请求参数 */

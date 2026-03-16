@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form, Select } from 'antd';
+import { Form, Input, Select } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { TimeListField, MonthDayPicker, CronEditor } from '../index';
 import type { CeleryNodeConfigProps } from './types';
@@ -75,6 +75,10 @@ export const CeleryNodeConfig: React.FC<CeleryNodeConfigProps> = ({
           <CronEditor />
         </Form.Item>
       )}
+
+      <Form.Item name="message" label={t('chatflow.nodeConfig.triggerMessage')}>
+        <Input.TextArea rows={4} placeholder={t('chatflow.nodeConfig.triggerMessagePlaceholder')} />
+      </Form.Item>
     </>
   );
 };

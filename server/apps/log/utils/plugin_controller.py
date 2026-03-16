@@ -1,6 +1,7 @@
 import os
 import uuid
 import json
+from collections.abc import Mapping
 
 from jinja2 import Environment, FileSystemLoader, DebugUndefined
 
@@ -123,6 +124,8 @@ class Controller:
                 k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")
             }
             tls_context = self.tls_context(config_info["node_id"])
+            if not isinstance(tls_context, Mapping):
+                tls_context = {}
 
             for template in templates:
                 is_child = True if template["config_type"] == "child" else False
@@ -195,7 +198,9 @@ class Controller:
 
         logger.info(f"创建采集配置成功，共{len(collect_configs)}个配置")
 
-    def render_config_template_content(self, file_type, context_data, instance_id):
+    def render_config_template_content(
+        self, file_type, context_data, instance_id, node_id=None
+    ):
         """渲染配置模板内容。"""
 
         template_dir = os.path.join(
@@ -218,10 +223,26 @@ class Controller:
             )
 
         # 生成配置
+        tls_context = self.tls_context(node_id) if node_id else {}
+        if not isinstance(tls_context, Mapping):
+            tls_context = {}
+        if not isinstance(context_data, Mapping):
+            context_data = {}
+
         content = self.render_template(
             template_dir,
             f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
-            {"instance_id": instance_id, **context_data},
+            {**tls_context, "instance_id": instance_id, **context_data},
         )
 
         return content
+
+    def has_template_for_config_type(self, config_type: str) -> bool:
+        """判断当前采集类型是否存在指定 config_type 的模板。"""
+        template_dir = os.path.join(
+            PluginConstants.DIRECTORY, self.data["collector"], self.data["collect_type"]
+        )
+        templates = self.get_template_info_by_type(
+            template_dir, self.data["collect_type"]
+        )
+        return any(t["config_type"] == config_type for t in templates)

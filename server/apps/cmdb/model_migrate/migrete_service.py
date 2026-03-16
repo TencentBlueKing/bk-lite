@@ -24,9 +24,9 @@ from apps.cmdb.constants.field_constraints import (
 )
 from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.models import FieldGroup
 from apps.cmdb.utils.base import get_default_group_id
 from apps.core.logger import cmdb_logger as logger
-
 
 EXCEL_STR_TYPE_MAP = {
     "ipv4": StringValidationType.IPV4,
@@ -51,16 +51,26 @@ EXCEL_TIME_TYPE_MAP = {
 
 
 class ModelMigrate:
-    def __init__(self):
+    DEFAULT_FILE_PATH = "apps/cmdb/support-files/model_config.xlsx"
+
+    def __init__(self, file_source=None, is_pre=True):
+        self.file_source = file_source
+        self.is_pre = is_pre
         self.model_config = self.get_model_config()
         self.default_group_id = get_default_group_id()
 
     def get_model_config(self):
-        # 读取 Excel 文件
-        file_path = "apps/cmdb/support-files/model_config.xlsx"
+        if self.file_source is None:
+            source = self.DEFAULT_FILE_PATH
+        elif hasattr(self.file_source, "read"):
+            from io import BytesIO
+
+            source = BytesIO(self.file_source.read())
+        else:
+            source = self.file_source
 
         # 指定第二行（索引1）作为表头，并读取所有 sheet 页
-        sheets_dict = pd.read_excel(file_path, sheet_name=None, header=1)
+        sheets_dict = pd.read_excel(source, sheet_name=None, header=1)
 
         sheets_map = {}
 
@@ -84,7 +94,7 @@ class ModelMigrate:
         """初始化模型分类"""
 
         for classification in self.model_config.get("classifications", []):
-            classification.update(is_pre=True)
+            classification.update(is_pre=self.is_pre)
 
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(CLASSIFICATION, [])
@@ -95,6 +105,19 @@ class ModelMigrate:
                 exist_items,
             )
         return result
+
+    def _prepare_attr(self, attr):
+        if not attr.get("attr_id"):
+            return None
+
+        attr_type = attr.get("attr_type", "str")
+        option_value = attr.get("option", "")
+        attr["option"] = self._parse_attr_option(attr_type, option_value)
+
+        user_prompt = attr.get("prompt", "") or attr.get("user_prompt", "")
+        attr["user_prompt"] = str(user_prompt) if user_prompt else ""
+
+        return attr
 
     def model_add_organization(self, model):
         """
@@ -240,25 +263,18 @@ class ModelMigrate:
                 logger.warning(f"跳过无效模型ID: {model_id}")
                 continue
 
-            model.update(is_pre=True)
+            model.update(is_pre=self.is_pre)
             self.model_add_organization(model)
             _attrs = []
             attr_key = f"attr-{model_id}"
             attrs = self.model_config.get(attr_key, [])
             for attr in attrs:
-                attr.update(is_pre=True)
-
-                if not attr.get("attr_id"):
+                prepared = self._prepare_attr(dict(attr))
+                if not prepared:
                     continue
+                prepared["is_pre"] = self.is_pre
+                _attrs.append(prepared)
 
-                attr_type = attr.get("attr_type", "str")
-                option_value = attr.get("option", "")
-                attr["option"] = self._parse_attr_option(attr_type, option_value)
-
-                user_prompt = attr.get("prompt", "") or attr.get("user_prompt", "")
-                attr["user_prompt"] = str(user_prompt) if user_prompt else ""
-
-                _attrs.append(attr)
             models.append({**model, "attrs": json.dumps(_attrs)})
 
         with GraphClient() as ag:
@@ -291,7 +307,53 @@ class ModelMigrate:
                 "classification_model_asst_id",
             )
 
+        # 为成功创建的模型创建 FieldGroup 记录
+        self._create_field_groups(success_models)
+
         return result, asso_result
+
+    @staticmethod
+    def _create_field_groups(success_models):
+        """为成功创建的模型创建 FieldGroup 记录"""
+        for model_data in success_models:
+            model_id = model_data.get("model_id")
+            if not model_id:
+                continue
+
+            try:
+                attrs = json.loads(model_data.get("attrs", "[]"))
+            except (json.JSONDecodeError, TypeError):
+                attrs = []
+
+            if not attrs:
+                continue
+
+            group_attrs_map = {}
+            group_order = []
+
+            for attr in attrs:
+                group_name = attr.get("attr_group") or "默认分组"
+                attr_id = attr.get("attr_id")
+
+                if group_name not in group_attrs_map:
+                    group_attrs_map[group_name] = []
+                    group_order.append(group_name)
+
+                if attr_id:
+                    group_attrs_map[group_name].append(attr_id)
+
+            for order, group_name in enumerate(group_order, start=1):
+                attr_ids = group_attrs_map.get(group_name, [])
+                FieldGroup.objects.get_or_create(
+                    model_id=model_id,
+                    group_name=group_name,
+                    defaults={
+                        "order": order,
+                        "is_collapsed": False,
+                        "attr_orders": attr_ids,
+                        "created_by": "system",
+                    },
+                )
 
     def migrate_associations(self):
         """初始模型关联"""
@@ -302,7 +364,7 @@ class ModelMigrate:
                 associations.extend(self.model_config[asso_key])
 
         for association in associations:
-            association.update(is_pre=True)
+            association.update(is_pre=self.is_pre)
 
         with GraphClient() as ag:
             models, _ = ag.query_entity(MODEL, [])
@@ -315,6 +377,7 @@ class ModelMigrate:
                     **i,
                 )
                 for i in associations
+                if model_map.get(i["src_model_id"]) and model_map.get(i["dst_model_id"])
             ]
             result = ag.batch_create_edge(
                 MODEL_ASSOCIATION, MODEL, MODEL, asso_list, "model_asst_id"
@@ -367,7 +430,7 @@ class ModelMigrate:
                 if INIT_MODEL_GROUP not in model or not model[INIT_MODEL_GROUP]:
                     models_without_group.append(model["_id"])
                 elif INIT_MODEL_GROUP in model and isinstance(
-                    model[INIT_MODEL_GROUP], int
+                        model[INIT_MODEL_GROUP], int
                 ):
                     # 如果组织字段是单个整数，转换为列表
                     models_without_group.append(model["_id"])

@@ -362,9 +362,17 @@ class CollectConfigViewSet(ViewSet):
 
     @action(methods=["post"], detail=False, url_path="update_instance_collect_config")
     def update_instance_collect_config(self, request):
+        child = request.data.get("child")
+        base = request.data.get("base")
+
+        if isinstance(child, dict) and child.get("content") is None:
+            return WebUtils.response_error("child.content is required")
+        if isinstance(base, dict) and base.get("content") is None:
+            return WebUtils.response_error("base.content is required")
+
         CollectTypeService.update_instance_config_v2(
-            request.data.get("child"),
-            request.data.get("base"),
+            child,
+            base,
             request.data.get("instance_id"),
             request.data.get("collect_type_id"),
         )
