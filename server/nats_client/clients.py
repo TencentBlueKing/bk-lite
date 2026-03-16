@@ -99,7 +99,6 @@ async def request(namespace: str, method_name: str, *args, _timeout: Optional[fl
 
     data = response.data.decode()
     parsed = json.loads(data)
-    logger.info(f"nats_response={data}")
     if _raw:
         parsed.pop("pickled_exc", None)
         return parsed
