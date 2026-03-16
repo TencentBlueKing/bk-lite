@@ -182,7 +182,7 @@ const BestPracticesSection: React.FC<{ title: string; items: string[] }> = ({
   return (
     <div>
       <SectionTitle title={title} />
-      <ul className="pl-5 m-0">
+      <ul className="list-disc pl-5 m-0">
         {items.map((item, index) => (
           <li
             key={index}
