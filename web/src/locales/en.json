@@ -66,6 +66,7 @@
     "trainFailed": "Failed to train",
     "noResult": "No Results",
     "noData": "No Data",
+    "more": "More",
     "inputRequired": "Please Input, it is required",
     "invalidURL": "Please enter a valid URL",
     "errorFetch": "Error fetch",

@@ -1,18 +1,22 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '@/context/auth';
+import { useSession } from 'next-auth/react';
 import Introduction from '@/app/cmdb/components/introduction';
-import { Input, Button, Modal, message, Spin, Empty, Tooltip } from 'antd';
+import { Input, Button, Modal, message, Spin, Empty, Tooltip, Dropdown, Space } from 'antd';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import {
   EditTwoTone,
   DeleteTwoTone,
   SwitcherOutlined,
-  HolderOutlined,
   CopyOutlined,
   PlusOutlined,
   SettingOutlined,
+  DownloadOutlined,
+  UploadOutlined,
+  DownOutlined,
 } from '@ant-design/icons';
 import Image from 'next/image';
 import assetManageStyle from './index.module.scss';
@@ -21,16 +25,25 @@ import GroupModal from './list/groupModal';
 import ModelModal from './list/modelModal';
 import CopyModelModal from './list/copyModelModal';
 import PublicEnumLibraryModal, { PublicEnumLibraryModalRef } from './list/publicEnumLibraryModal';
+import ImportModelConfigModal, { ImportModelConfigModalRef } from './list/importModelConfigModal';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
-import { useClassificationApi, useInstanceApi } from '@/app/cmdb/api';
+import { useClassificationApi, useInstanceApi, useModelApi } from '@/app/cmdb/api';
 import { useCommon } from '@/app/cmdb/context/common';
+import { useUserInfoContext } from '@/context/userInfo';
+import type { MenuProps } from 'antd';
 
 const AssetManage = () => {
   const { getClassificationList, deleteClassification } =
     useClassificationApi();
   const { getModelInstanceCount } = useInstanceApi();
+  const { exportModelConfig } = useModelApi();
+  const { isSuperUser, selectedGroup } = useUserInfoContext();
+  const authContext = useAuth();
+  const { data: session } = useSession();
+  const token = (session?.user as any)?.token || authContext?.token || null;
+  const tokenRef = useRef(token);
   const commonContext = useCommon();
   const modelListFromContext = commonContext?.modelList || [];
   const { confirm } = Modal;
@@ -40,14 +53,20 @@ const AssetManage = () => {
   const modelRef = useRef<any>(null);
   const copyModelRef = useRef<any>(null);
   const publicEnumLibraryRef = useRef<PublicEnumLibraryModalRef>(null);
+  const importModelConfigRef = useRef<ImportModelConfigModalRef>(null);
   const [modelGroup, setModelGroup] = useState<GroupItem[]>([]);
   const [groupList, setGroupList] = useState<GroupItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');
-  const [dragItem, setDragItem] = useState<any>({});
-  const [dragOverItem, setDragOverItem] = useState<any>({});
   const [rawModelGroup, setRawModelGroup] = useState<GroupItem[]>([]);
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState<boolean>(false);
+
+  const showConfigButtons = isSuperUser && selectedGroup?.name === 'Default';
+
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
 
   useEffect(() => {
     if (modelListFromContext.length > 0) {
@@ -126,6 +145,10 @@ const AssetManage = () => {
     publicEnumLibraryRef.current?.showModal();
   };
 
+  const showImportModelConfigModal = () => {
+    importModelConfigRef.current?.showModal();
+  };
+
   const updateGroupList = () => {
     getModelGroup();
   };
@@ -145,6 +168,18 @@ const AssetManage = () => {
     setSearchText((e.target as HTMLInputElement).value);
   };
 
+  // 导出模型配置
+  const handleExportConfig = async () => {
+    setExportLoading(true);
+    try {
+      await exportModelConfig(tokenRef.current);
+    } catch (error: any) {
+      message.error(error.message);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   const linkToDetail = (model: ModelItem) => {
     const params = new URLSearchParams({
       model_id: model.model_id,
@@ -156,29 +191,6 @@ const AssetManage = () => {
     router.push(`/cmdb/assetManage/management/detail/attributes?${params}`);
   };
 
-  const handleDragStart = (item: any) => {
-    if (item) return;
-    setDragItem(item);
-  };
-
-  const handleDragEnter = (item: any) => {
-    if (item) return;
-    setDragOverItem(item);
-  };
-
-  const handleDragEnd = (groupIndex: number) => {
-    if (groupIndex) return;
-    if (dragItem === null || dragOverItem === null) {
-      return;
-    }
-    const newModelGroup = Array.from(modelGroup);
-    const newItems = newModelGroup[groupIndex].list;
-    const [draggedItem] = newItems.splice(dragItem.index, 1);
-    newItems.splice(dragOverItem.index, 0, draggedItem);
-    setDragItem(null);
-    setDragOverItem(null);
-    setModelGroup(newModelGroup);
-  };
 
   const getModelGroup = async () => {
     setLoading(true);
@@ -254,14 +266,54 @@ const AssetManage = () => {
                 {t('Model.addGroup')}
               </Button>
             </PermissionWrapper>
-            <Button className="ml-[8px]" icon={<SettingOutlined />} onClick={showPublicEnumLibraryModal}>
-              {t('PublicEnumLibrary.manage')}
-            </Button>
+            {showConfigButtons ? (
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: 'publicEnumLibrary',
+                      icon: <SettingOutlined />,
+                      label: t('PublicEnumLibrary.manage'),
+                      onClick: showPublicEnumLibraryModal,
+                    },
+                    {
+                      key: 'exportConfig',
+                      icon: <DownloadOutlined />,
+                      label: t('Model.exportModelConfig'),
+                      onClick: handleExportConfig,
+                      disabled: exportLoading,
+                    },
+                    {
+                      key: 'importConfig',
+                      icon: <UploadOutlined />,
+                      label: t('Model.importModelConfig'),
+                      onClick: showImportModelConfigModal,
+                    },
+                  ] as MenuProps['items'],
+                }}
+                placement="bottomRight"
+              >
+                <Button className="ml-[8px]">
+                  <Space>
+                    {t('seeMore')}
+                    <DownOutlined />
+                  </Space>
+                </Button>
+              </Dropdown>
+            ) : (
+              <Button
+                className="ml-[8px]"
+                icon={<SettingOutlined />}
+                onClick={showPublicEnumLibraryModal}
+              >
+                {t('PublicEnumLibrary.manage')}
+              </Button>
+            )}
           </div>
         </div>
         <Spin spinning={loading}>
           {modelGroup.length ? (
-            modelGroup.map((item, groupIndex) => {
+            modelGroup.map(item => {
               return (
                 <div className="model-group" key={item.classification_id}>
                   <div
@@ -299,32 +351,8 @@ const AssetManage = () => {
                   <ul className={assetManageStyle.modelList}>
                     {item.list.map((model, index) => (
                       <li
-                        className={`bg-[var(--color-bg)] flex justify-between items-center ${
-                          assetManageStyle.modelListItem
-                        } ${
-                          dragOverItem?.model_id === model.model_id &&
-                          dragOverItem?.model_id !== dragItem?.model_id &&
-                          modelGroup[groupIndex].list.find(
-                            (group) => group.model_id === dragItem.model_id
-                          )
-                            ? assetManageStyle.dragActive
-                            : ''
-                        }`}
+                        className={`bg-[var(--color-bg)] flex justify-between items-center ${assetManageStyle.modelListItem}`}
                         key={index}
-                        draggable
-                        onDragStart={() =>
-                          handleDragStart({
-                            ...model,
-                            index,
-                          })
-                        }
-                        onDragEnter={() =>
-                          handleDragEnter({
-                            ...model,
-                            index,
-                          })
-                        }
-                        onDragEnd={() => handleDragEnd(groupIndex)}
                         onMouseEnter={() => setHoveredModelId(model.model_id)}
                         onMouseLeave={() => setHoveredModelId(null)}
                       >
@@ -337,9 +365,6 @@ const AssetManage = () => {
                             })
                           }
                         >
-                          <HolderOutlined
-                            className={`${assetManageStyle.dragHander} cursor-move`}
-                          />
                           <div style={{ width: 40 }}>
                             <Image
                               src={getIconUrl(model)}
@@ -369,6 +394,7 @@ const AssetManage = () => {
                                 <Button
                                   type="primary"
                                   shape="circle"
+                                  size="small"
                                   icon={<CopyOutlined />}
                                   onClick={(e) => handleCopyClick(e, model)}
                                 />
@@ -432,6 +458,7 @@ const AssetManage = () => {
         onSuccess={updateModelList}
       />
       <PublicEnumLibraryModal ref={publicEnumLibraryRef} />
+      <ImportModelConfigModal ref={importModelConfigRef} onSuccess={updateModelList} />
     </div>
   );
 };
