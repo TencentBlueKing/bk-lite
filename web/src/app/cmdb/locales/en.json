@@ -191,7 +191,10 @@
         "tagDuplicateError": "Duplicate tag entries are not allowed",
         "enumSelectMode": "Selection Mode",
         "singleSelect": "Single Select",
-        "multipleSelect": "Multiple Select"
+        "multipleSelect": "Multiple Select",
+        "exportModelConfig": "Export Config",
+        "importModelConfig": "Import Config",
+        "importSuccess": "Import successful"
     },
     "PublicEnumLibrary": {
         "title": "Public Option Library",
