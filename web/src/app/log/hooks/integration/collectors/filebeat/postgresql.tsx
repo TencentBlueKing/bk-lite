@@ -74,26 +74,17 @@ export const usePostgresqlFilebeatConfig = () => {
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             const originalChild = cloneDeep(configForm?.child || {});
-            const updatedContent = (originalChild.content || []).map(
-              (item: any) => {
-                if (item.module === 'postgresql') {
-                  return {
-                    ...item,
-                    log: {
-                      ...item.log,
-                      enabled: !!formData.log?.enabled,
-                      'var.paths': formData.log?.paths || []
-                    }
-                  };
-                }
-                return item;
-              }
-            );
+
+            // 扁平化的 content（2个参数，和新增一致）
+            const content = {
+              log_enabled: !!formData.log?.enabled,
+              log_paths: formData.log?.paths || []
+            };
 
             return {
               child: {
                 ...originalChild,
-                content: updatedContent
+                content
               }
             };
           }

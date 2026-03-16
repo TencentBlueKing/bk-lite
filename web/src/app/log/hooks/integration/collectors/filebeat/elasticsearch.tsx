@@ -114,46 +114,25 @@ export const useElasticsearchFilebeatConfig = () => {
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             const originalChild = cloneDeep(configForm?.child || {});
-            const updatedContent = (originalChild.content || []).map(
-              (item: any) => {
-                if (item.module === 'elasticsearch') {
-                  return {
-                    ...item,
-                    server: {
-                      ...item.server,
-                      enabled: !!formData.server?.enabled,
-                      'var.paths': formData.server?.paths || []
-                    },
-                    gc: {
-                      ...item.gc,
-                      enabled: !!formData.gc?.enabled,
-                      'var.paths': formData.gc?.paths || []
-                    },
-                    audit: {
-                      ...item.audit,
-                      enabled: !!formData.audit?.enabled,
-                      'var.paths': formData.audit?.paths || []
-                    },
-                    slowlog: {
-                      ...item.slowlog,
-                      enabled: !!formData.slowlog?.enabled,
-                      'var.paths': formData.slowlog?.paths || []
-                    },
-                    deprecation: {
-                      ...item.deprecation,
-                      enabled: !!formData.deprecation?.enabled,
-                      'var.paths': formData.deprecation?.paths || []
-                    }
-                  };
-                }
-                return item;
-              }
-            );
+
+            // 扁平化的 content（10个参数，和新增一致）
+            const content = {
+              server_enabled: !!formData.server?.enabled,
+              server_paths: formData.server?.paths || [],
+              gc_enabled: !!formData.gc?.enabled,
+              gc_paths: formData.gc?.paths || [],
+              audit_enabled: !!formData.audit?.enabled,
+              audit_paths: formData.audit?.paths || [],
+              slowlog_enabled: !!formData.slowlog?.enabled,
+              slowlog_paths: formData.slowlog?.paths || [],
+              deprecation_enabled: !!formData.deprecation?.enabled,
+              deprecation_paths: formData.deprecation?.paths || []
+            };
 
             return {
               child: {
                 ...originalChild,
-                content: updatedContent
+                content
               }
             };
           }

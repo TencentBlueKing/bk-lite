@@ -94,36 +94,22 @@ export const useNginxFilebeatConfig = () => {
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             const originalChild = cloneDeep(configForm?.child || {});
-            const updatedContent = (originalChild.content || []).map(
-              (item: any) => {
-                if (item.module === 'nginx') {
-                  return {
-                    ...item,
-                    access: {
-                      ...item.access,
-                      enabled: !!formData.access_log?.enabled,
-                      'var.paths': formData.access_log?.paths || []
-                    },
-                    error: {
-                      ...item.error,
-                      enabled: !!formData.error_log?.enabled,
-                      'var.paths': formData.error_log?.paths || []
-                    },
-                    ingress_controller: {
-                      ...item.ingress_controller,
-                      enabled: !!formData.ingress_controller?.enabled,
-                      'var.paths': formData.ingress_controller?.paths || []
-                    }
-                  };
-                }
-                return item;
-              }
-            );
+
+            // 扁平化的 content（6个参数，和新增一致）
+            const content = {
+              access_enabled: !!formData.access_log?.enabled,
+              access_paths: formData.access_log?.paths || [],
+              error_enabled: !!formData.error_log?.enabled,
+              error_paths: formData.error_log?.paths || [],
+              ingress_controller_enabled:
+                !!formData.ingress_controller?.enabled,
+              ingress_controller_paths: formData.ingress_controller?.paths || []
+            };
 
             return {
               child: {
                 ...originalChild,
-                content: updatedContent
+                content
               }
             };
           }

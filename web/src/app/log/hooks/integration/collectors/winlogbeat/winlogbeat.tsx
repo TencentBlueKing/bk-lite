@@ -178,51 +178,33 @@ export const useWinlogbeatConfig = () => {
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             const originalChild = cloneDeep(configForm?.child || {});
-            const originalContent = originalChild.content || [];
 
-            // 日志名称映射
-            const nameFormKeyMap: Record<string, string> = {
-              Security: 'security',
-              System: 'system',
-              Application: 'application',
-              'Microsoft-Windows-Sysmon/Operational': 'sysmon',
-              'Microsoft-Windows-PowerShell/Operational': 'powershell',
-              'Windows PowerShell': 'powershell',
-              'Microsoft-Windows-Windows Defender/Operational': 'defender',
-              'Microsoft-Windows-TaskScheduler/Operational': 'task_scheduler'
+            // 扁平化的 content（15个参数，和新增一致）
+            const content = {
+              security_enabled: !!formData.security?.enabled,
+              security_level: (formData.security?.level || []).join(','),
+              security_event_id: formData.security?.event_id || '',
+              system_enabled: !!formData.system?.enabled,
+              system_level: (formData.system?.level || []).join(','),
+              application_enabled: !!formData.application?.enabled,
+              application_level: (formData.application?.level || []).join(','),
+              sysmon_enabled: !!formData.sysmon?.enabled,
+              sysmon_level: (formData.sysmon?.level || []).join(','),
+              powershell_enabled: !!formData.powershell?.enabled,
+              powershell_level: (formData.powershell?.level || []).join(','),
+              defender_enabled: !!formData.defender?.enabled,
+              defender_level: (formData.defender?.level || []).join(','),
+              task_scheduler_enabled: !!formData.task_scheduler?.enabled,
+              task_scheduler_level: (formData.task_scheduler?.level || []).join(
+                ','
+              ),
+              ignore_older: formData.ignore_older || '72h'
             };
-
-            // 更新现有配置
-            const updatedContent = originalContent.map((item: any) => {
-              const formKey = nameFormKeyMap[item.name];
-              if (!formKey) return item;
-
-              const formConfig = formData[formKey];
-              if (!formConfig) return item;
-
-              const updatedItem: any = {
-                ...item,
-                ignore_older: formData.ignore_older || '72h',
-                level: Array.isArray(formConfig.level)
-                  ? formConfig.level.join(',')
-                  : formConfig.level || ''
-              };
-
-              // Security 特殊处理 event_id
-              if (
-                item.name === 'Security' &&
-                formConfig.event_id !== undefined
-              ) {
-                updatedItem.event_id = formConfig.event_id;
-              }
-
-              return updatedItem;
-            });
 
             return {
               child: {
                 ...originalChild,
-                content: updatedContent
+                content
               }
             };
           }
