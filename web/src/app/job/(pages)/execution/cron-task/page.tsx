@@ -175,7 +175,7 @@ const CronTaskPage = () => {
   };
 
   const handleEdit = (record: ScheduledTask) => {
-    router.push(`/job/execution/cron-task/edit/${record.id}`);
+    router.push(`/job/execution/cron-task/edit?id=${record.id}`);
   };
 
   const handleCreate = () => {
