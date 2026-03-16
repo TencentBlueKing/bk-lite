@@ -3,16 +3,21 @@
 
 ### 前置要求
 1. etcd 已启动
+   
+### 版本兼容性
+- 兼容官方 etcd v3.0.x+ 版本（包括：v3.4.x、v3.5.x、v3.6.x、v3.7.x 等）。
 
 ### 采集内容
-| Key 名称 | 含义 |
-| :----------- | :--- |
-| inst_name | 实例展示名：`{内网IP}-etcd-{客户端端口}` |
-| obj_id | 固定对象标识 etcd |
-| ip_addr | 主机内网 IP |
-| port | 客户端监听端口（listen-client-urls 解析，默认 2379） |
-| peer_port | 节点间交互端口（listen-peer-urls 解析，默认 2380） |
-| install_path | etcd 可执行文件所在目录 |
-| version | etcd 版本（etcd --version） |
-| data_dir | 数据目录（--data-dir 或配置文件，缺省 default.etcd） |
-| conf_file_path | 使用的配置文件绝对路径（--config-file，可能为空） |
+| Key 名称       | 含义                                               |
+| :------------- | :------------------------------------------------- |
+| inst_name      | 实例展示名：`{内网IP}-etcd-{客户端端口}`           |
+| obj_id         | 固定对象标识 etcd                                  |
+| ip_addr        | 主机内网 IP                                        |
+| port           | 客户端监听端口                                     |
+| peer_port      | 节点间交互端口（listen-peer-urls 解析，默认 2380） |
+| install_path   | etcd 可执行文件所在目录                            |
+| version        | etcd 版本                                          |
+| data_dir       | 数据目录                                           |
+| conf_file_path | 使用的配置文件绝对路径                             |
+
+> 补充说明：`conf_file_path` 在未使用 `--config-file` 启动时为空；`version` 在 `etcd --version` 执行失败或输出格式非常规时可能为空；
