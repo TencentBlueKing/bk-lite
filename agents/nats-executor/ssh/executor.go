@@ -384,13 +384,18 @@ func SubscribeDownloadToRemote(nc *nats.Conn, instanceId *string) {
 			return
 		}
 
-		logger.Debugf("[Download Subscribe] Instance: %s, Starting download from bucket %s, file %s to local path %s", *instanceId, downloadRequest.BucketName, downloadRequest.FileKey, downloadRequest.TargetPath)
+		localTargetPath := downloadRequest.LocalPath
+		if localTargetPath == "" {
+			localTargetPath = "/tmp"
+		}
+
+		logger.Debugf("[Download Subscribe] Instance: %s, Starting download from bucket %s, file %s to local path %s", *instanceId, downloadRequest.BucketName, downloadRequest.FileKey, localTargetPath)
 
 		localdownloadRequest := utils.DownloadFileRequest{
 			BucketName:     downloadRequest.BucketName,
 			FileKey:        downloadRequest.FileKey,
 			FileName:       downloadRequest.FileName,
-			TargetPath:     downloadRequest.TargetPath,
+			TargetPath:     localTargetPath,
 			ExecuteTimeout: downloadRequest.ExecuteTimeout,
 		}
 

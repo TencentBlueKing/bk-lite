@@ -168,6 +168,7 @@ def download_to_remote(
     port=22,
     private_key=None,
     passphrase=None,
+    local_path="/tmp",
 ):
     exe_obj = Executor(instance_id)
     result = exe_obj.download_to_remote(
@@ -182,6 +183,7 @@ def download_to_remote(
         passphrase=passphrase,
         timeout=InstallerConstants.FILE_TRANSFER_TIMEOUT,
         port=port,
+        local_path=local_path,
     )
     return result
 
