@@ -48,7 +48,7 @@ class AlertModelSerializer(serializers.ModelSerializer):
             # "events": {"write_only": True},  # events 字段只读
             "created_at": {"read_only": True},
             "updated_at": {"read_only": True},
-            "operator": {"write_only": True},
+            # "operator": {"write_only": True},
             "labels": {"write_only": True},
         }
 
