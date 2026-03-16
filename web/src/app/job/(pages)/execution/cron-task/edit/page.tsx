@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import {
   Button,
   Form,
@@ -15,20 +15,21 @@ import {
   Spin,
   Alert,
 } from 'antd';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
 import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook } from '@/app/job/types';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
 import { useUserInfoContext } from '@/context/userInfo';
 
-const EditCronTaskPage = () => {
+const EditCronTaskContent = () => {
   const { t } = useTranslation();
   const router = useRouter();
-  const params = useParams();
-  const taskId = Number(params.id);
+  const searchParams = useSearchParams();
+  const taskId = Number(searchParams.get('id'));
   const { isLoading: isApiReady } = useApiClient();
   const {
     getScheduledTaskDetail,
@@ -394,12 +395,25 @@ const EditCronTaskPage = () => {
           border: '1px solid var(--color-border-1)',
         }}
       >
-        <h2 className="text-base font-medium m-0 mb-1" style={{ color: 'var(--color-text-1)' }}>
-          {t('job.editTask')}
-        </h2>
-        <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
-          {t('job.editTaskDesc')}
-        </p>
+        <div className="flex items-center gap-2 mb-1">
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => router.back()}
+            className="!p-1"
+          />
+          <h2 className="text-base font-medium m-0" style={{ color: 'var(--color-text-1)' }}>
+            {t('job.editTask')}
+          </h2>
+        </div>
+        <div className="flex items-start gap-2">
+          <div className="!p-1 invisible">
+            <ArrowLeftOutlined />
+          </div>
+          <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
+            {t('job.editTaskDesc')}
+          </p>
+        </div>
       </div>
 
       <div
@@ -676,6 +690,18 @@ const EditCronTaskPage = () => {
         onCancel={() => setHostModalOpen(false)}
       />
     </div>
+  );
+};
+
+const EditCronTaskPage = () => {
+  return (
+    <Suspense fallback={
+      <div className="w-full h-full flex items-center justify-center">
+        <Spin size="large" />
+      </div>
+    }>
+      <EditCronTaskContent />
+    </Suspense>
   );
 };
 
