@@ -24,15 +24,42 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
     const entryType = item.entry_type ?? item.entryType ?? item.conversation_entry_type;
 
     const normalizePythonJson = (raw: string) => {
-      const replacedLiterals = raw
+      const result = raw
         .replace(/\bNone\b/g, 'null')
         .replace(/\bTrue\b/g, 'true')
         .replace(/\bFalse\b/g, 'false');
-      return replacedLiterals.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, (_, value) => {
-        const unescaped = value.replace(/\\'/g, "'");
-        const escaped = unescaped.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-        return `"${escaped}"`;
-      });
+      
+      const chars = result.split('');
+      const output: string[] = [];
+      let inString = false;
+      let stringChar = '';
+      
+      for (let i = 0; i < chars.length; i++) {
+        const char = chars[i];
+        const prevChar = i > 0 ? chars[i - 1] : '';
+        
+        if (!inString) {
+          if (char === "'" || char === '"') {
+            inString = true;
+            stringChar = char;
+            output.push('"');
+          } else {
+            output.push(char);
+          }
+        } else {
+          if (char === stringChar && prevChar !== '\\') {
+            inString = false;
+            stringChar = '';
+            output.push('"');
+          } else if (char === '"' && stringChar === "'") {
+            output.push('\\"');
+          } else {
+            output.push(char);
+          }
+        }
+      }
+      
+      return output.join('');
     };
 
     const parseJsonValue = (raw: string): any => {
@@ -64,8 +91,8 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
       return '';
     };
 
-    const shouldProcessAGUI = normalizedRole === 'bot' && (entryType === 'AG-UI' || (typeof rawContent === 'string' && rawContent.trim().startsWith('[')));
     const shouldProcessOpenAI = normalizedRole === 'bot' && entryType === 'OpenAI';
+    const shouldProcessAGUI = normalizedRole === 'bot' && !shouldProcessOpenAI && (entryType === 'AG-UI' || (typeof rawContent === 'string' && rawContent.trim().startsWith('[')));
 
     let processed: { content: any; browserStepProgress: any; browserStepsHistory: any } = {
       content: rawContent,

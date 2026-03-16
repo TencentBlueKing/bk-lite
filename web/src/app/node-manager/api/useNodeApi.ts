@@ -4,7 +4,8 @@ import type {
   NodeItem,
   UpdateConfigReq,
 } from '../types/cloudregion';
-import { NodeParams, SearchFilters } from '../types/node';
+import { NodeParams } from '../types/node';
+import { SearchFilters } from '@/components/search-combination/types';
 
 /**
  * 节点管理API Hook

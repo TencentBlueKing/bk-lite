@@ -68,7 +68,6 @@
     "clear": "Clear",
     "item": "items",
     "fieldKey": "key",
-    "fieldValue": "value",
     "creator": "Creator",
     "updateTime": "Update Time",
     "list": "List",
@@ -174,7 +173,6 @@
         "widgetType": "Widget Type",
         "singleLine": "Single Line",
         "multiLine": "Multi-Line",
-        "display": "Display",
         "attrIdPattern": "Attribute ID must start with a letter and contain only letters, numbers, or underscores",
         "columnId": "Column ID",
         "columnName": "Column Name",
@@ -193,7 +191,10 @@
         "tagDuplicateError": "Duplicate tag entries are not allowed",
         "enumSelectMode": "Selection Mode",
         "singleSelect": "Single Select",
-        "multipleSelect": "Multiple Select"
+        "multipleSelect": "Multiple Select",
+        "exportModelConfig": "Export Config",
+        "importModelConfig": "Import Config",
+        "importSuccess": "Import successful"
     },
     "PublicEnumLibrary": {
         "title": "Public Option Library",

@@ -167,7 +167,7 @@ const Integration = () => {
                         >
                           {app.name || '--'}
                         </h2>
-                        <Tag className="mt-[4px]">{app.collector}</Tag>
+                        <Tag className="mt-[4px]">{app.display_category}</Tag>
                       </div>
                     </div>
                     <p

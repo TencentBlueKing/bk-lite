@@ -5,6 +5,16 @@ import { useFlowsPacketbeatFormItems } from '../../common/flowsPacketbeatFormIte
 import { cloneDeep } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
 
+// 解析带单位的值，如 "10s" 或 "10ss" → 10
+const parseValueWithUnit = (
+  value: string | number | null | undefined
+): number | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return value;
+  const match = String(value).match(/^(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+};
+
 export const usePacketbeatConfig = () => {
   const commonFormItems = useFlowsPacketbeatFormItems();
   const pluginConfig = {
@@ -19,7 +29,14 @@ export const usePacketbeatConfig = () => {
       mode: 'manual' | 'auto' | 'edit';
       onTableDataChange?: (data: IntegrationLogInstance[]) => void;
     }) => {
-      const formItems = <>{commonFormItems.getCommonFormItems()}</>;
+      const formItems = (
+        <>
+          {commonFormItems.getCommonFormItems({
+            hiddenFormItems: {},
+            disabledFormItems: {}
+          })}
+        </>
+      );
       const configs = {
         auto: {
           formItems: commonFormItems.getCommonFormItems(),
@@ -29,8 +46,8 @@ export const usePacketbeatConfig = () => {
             }-${uuidv4()}`
           },
           defaultForm: {
-            flows_timeout: 30,
-            flows_period: 10
+            flows_period: 10,
+            flows_timeout: 30
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
@@ -38,7 +55,13 @@ export const usePacketbeatConfig = () => {
             return {
               collector: pluginConfig.collector,
               collect_type: pluginConfig.collect_type,
-              configs: [row],
+              configs: [
+                {
+                  ...row,
+                  flows_period: row.flows_period || 10,
+                  flows_timeout: row.flows_timeout || 30
+                }
+              ],
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
@@ -51,26 +74,25 @@ export const usePacketbeatConfig = () => {
         edit: {
           formItems,
           getDefaultForm: (formData: TableDataItem) => {
-            const sources =
-              formData?.child?.content?.['packetbeat.flows'] || {};
-            const period = sources?.period
-              ? sources?.period.replace('s', '')
-              : null;
-            const timeout = sources?.timeout
-              ? sources?.timeout.replace('s', '')
-              : null;
+            const content = formData?.child?.content || {};
+            // 后端返回的结构是 content['packetbeat.flows']
+            const flowsConfig = content['packetbeat.flows'] || {};
+            const flowsPeriod = flowsConfig?.period || null;
+            const flowsTimeout = flowsConfig?.timeout || null;
             return {
-              flows_period: period,
-              flows_timeout: timeout
+              flows_period: parseValueWithUnit(flowsPeriod),
+              flows_timeout: parseValueWithUnit(flowsTimeout)
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             const originalChild = cloneDeep(configForm?.child || {});
-
             return {
               child: {
                 ...originalChild,
-                content: formData
+                content: {
+                  flows_period: formData.flows_period || 10,
+                  flows_timeout: formData.flows_timeout || 30
+                }
               }
             };
           }

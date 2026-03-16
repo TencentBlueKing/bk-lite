@@ -1,25 +1,34 @@
 # ====================================
 # Docker 日志源（含字段映射）
 # ====================================
+{% set _endpoint = endpoint | default('unix:///var/run/docker.sock') %}
+{% set _enable_container_filter = enable_container_filter | default(false) %}
+{% set _container_name_contains = container_name_contains | default('') %}
+{% set _container_name_exclude = container_name_exclude | default('vector,logspout') %}
+{% set _enable_multiline = enable_multiline | default(false) %}
+
 [sources.docker_{{ instance_id }}]
 type = "docker_logs"
-docker_host = "{{ docker_host }}"
+docker_host = "{{ _endpoint }}"
 auto_partial_merge = true
-{% if include_containers %}
-include_containers = [{{ include_containers | map('tojson') | join(', ') }}]
-{% elif exclude_containers %}
-exclude_containers = [{{ exclude_containers | map('tojson') | join(', ') }}]
+{% if _enable_container_filter %}
+{% if _container_name_contains %}
+include_containers = [{{ _container_name_contains.split(',') | map('trim') | reject('equalto', '') | map('tojson') | join(', ') }}]
+{% endif %}
+{% if _container_name_exclude %}
+exclude_containers = [{{ _container_name_exclude.split(',') | map('trim') | reject('equalto', '') | map('tojson') | join(', ') }}]
+{% endif %}
 {% endif %}
 
 
-{% if multiline %}
+{% if _enable_multiline %}
 # ====================================
 # 多行日志处理
 # ====================================
-multiline.condition_pattern = '{{ multiline.condition_pattern }}'
-multiline.mode = "{{ multiline.mode }}"
-multiline.start_pattern = '{{ multiline.start_pattern }}'
-multiline.timeout_ms = {{ multiline.timeout_ms }}
+multiline.condition_pattern = '{{ multiline_pattern | default("^[\\s]+") }}'
+multiline.mode = "{{ multiline_mode | default('continue_through') }}"
+multiline.start_pattern = '{{ multiline_start_pattern | default("^[^\\s]") }}'
+multiline.timeout_ms = {{ multiline_timeout_ms | default(1000) }}
 {% endif %}
 
 # ====================================

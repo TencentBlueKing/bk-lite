@@ -66,6 +66,7 @@
     "trainFailed": "训练失败",
     "noResult": "无结果",
     "noData": "暂无数据",
+    "more": "更多",
     "inputRequired": "请输入，必填项",
     "invalidURL": "请输入有效的URL",
     "errorFetch": "获取错误",

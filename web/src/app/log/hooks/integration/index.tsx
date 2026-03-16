@@ -13,10 +13,8 @@ import { useKafkaConfig } from './collectTypes/kafka';
 import { useRabbitmqConfig } from './collectTypes/rabbitmq';
 import { useElasticsearchConfig } from './collectTypes/elasticsearch';
 import { useWinlogbeatConfig } from './collectTypes/winlogbeat';
-import { useAuditdConfig } from './collectTypes/auditd';
 import { useHttpConfig } from './collectTypes/http';
 import { useFileIntegrityConfig } from './collectTypes/fileIntegrity';
-import { useIcmpConfig } from './collectTypes/icmp';
 import { useFlowsConfig } from './collectTypes/flows';
 
 export const useCollectTypeConfig = () => {
@@ -33,10 +31,8 @@ export const useCollectTypeConfig = () => {
   const rabbitmqConfig = useRabbitmqConfig();
   const elasticsearchConfig = useElasticsearchConfig();
   const winlogbeatConfig = useWinlogbeatConfig();
-  const auditdConfig = useAuditdConfig();
   const httpConfig = useHttpConfig();
   const fileIntegrityConfig = useFileIntegrityConfig();
-  const icmpConfig = useIcmpConfig();
   const flowsConfig = useFlowsConfig();
 
   const configs: any = useMemo(
@@ -54,10 +50,8 @@ export const useCollectTypeConfig = () => {
       rabbitmq: rabbitmqConfig,
       elasticsearch: elasticsearchConfig,
       winlogbeat: winlogbeatConfig,
-      auditd: auditdConfig,
       http: httpConfig,
       file_integrity: fileIntegrityConfig,
-      icmp: icmpConfig,
       flows: flowsConfig
     }),
     []

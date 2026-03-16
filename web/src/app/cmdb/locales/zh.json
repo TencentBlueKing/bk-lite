@@ -67,7 +67,6 @@
     "clear": "清空",
     "item": "条目",
     "fieldKey": "键",
-    "fieldValue": "值",
     "creator": "创建者",
     "updateTime": "更新时间",
     "list": "列表",
@@ -174,7 +173,6 @@
         "widgetType": "组件类型",
         "singleLine": "单行",
         "multiLine": "多行",
-        "display": "显示",
         "attrIdPattern": "属性ID必须以字母开头，且仅包含字母、数字或下划线",
         "columnId": "列ID",
         "columnName": "列名称",
@@ -193,7 +191,10 @@
         "tagDuplicateError": "标签项不能重复",
         "enumSelectMode": "选择模式",
         "singleSelect": "单选",
-        "multipleSelect": "多选"
+        "multipleSelect": "多选",
+        "exportModelConfig": "导出配置",
+        "importModelConfig": "导入配置",
+        "importSuccess": "导入成功"
     },
     "PublicEnumLibrary": {
         "title": "公共选项库",
