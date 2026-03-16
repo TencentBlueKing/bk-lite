@@ -365,6 +365,8 @@ ATTR:
     max_conn: MAX Connect
     collect_time: Last Updated Time
     install_path: Bin Path
+    topo_mode: Topology Mode
+    cluster_uuid: Cluster UUID
   mongodb:
     inst_name: Name
     organization: Organization
