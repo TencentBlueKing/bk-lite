@@ -373,7 +373,7 @@ const useJobApi = () => {
     script_content?: string;
     target_source: ExecutionTargetSource;
     target_list: TargetListItem[];
-    params?: Record<string, unknown>;
+    params?: Record<string, unknown> | Array<{ value: string }>;
     timeout?: number;
     team?: number[];
   }): Promise<any> => {
