@@ -237,14 +237,38 @@ def _get_train_job_model(mlflow_prefix: str):
 
 
 def _mark_train_job_failed(train_job_id: int, mlflow_prefix: str) -> None:
-    """超过最大重试次数时标记训练任务为失败"""
+    """超过最大重试次数时标记训练任务为失败，并尝试停止残留容器"""
     from apps.mlops.constants import TrainJobStatus
+    from apps.mlops.utils import mlflow_service
+    from apps.mlops.utils.webhook_client import (
+        WebhookClient,
+        WebhookConnectionError,
+        WebhookError,
+        WebhookTimeoutError,
+    )
 
     model_class = _get_train_job_model(mlflow_prefix)
     if model_class is None:
         return
 
     try:
+        # 先尝试停止容器（即使失败也继续标记 DB 状态）
+        train_job = model_class.objects.filter(id=train_job_id).first()
+        if train_job:
+            job_id = mlflow_service.build_job_id(
+                prefix=mlflow_prefix,
+                algorithm=train_job.algorithm,
+                train_job_id=train_job_id,
+            )
+            try:
+                WebhookClient.stop(job_id)
+                logger.info(f"已停止训练容器: job_id={job_id}")
+            except (WebhookError, WebhookConnectionError, WebhookTimeoutError) as e:
+                logger.warning(
+                    f"停止训练容器失败（容器可能已停止）: job_id={job_id}, error={e}"
+                )
+
+        # 标记 DB 状态
         model_class.objects.filter(
             id=train_job_id, status=TrainJobStatus.RUNNING
         ).update(status=TrainJobStatus.FAILED)

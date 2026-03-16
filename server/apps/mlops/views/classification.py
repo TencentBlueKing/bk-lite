@@ -875,6 +875,13 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 train_job_id=train_job.id,
             )
 
+            # 启动前清理可能残留的旧训练容器
+            try:
+                WebhookClient.stop(job_id)
+                logger.info(f"已清理残留的旧训练容器: job_id={job_id}")
+            except (WebhookError, WebhookConnectionError, WebhookTimeoutError):
+                pass  # 容器不存在是正常的
+
             # 调用 WebhookClient 启动训练
             # 动态获取训练镜像
             train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
