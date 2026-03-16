@@ -28,6 +28,7 @@ It features low deployment resource requirements, low usage cost, and a gradual 
 ## Overview
 * [Design Philosophy](docs/overview/design.md)
 * [Architecture](docs/overview/architecture.md)
+* [Log Management White Paper](docs/overview/log_whitepaper.md)
 * [Project Structure](docs/overview/code_framework.md)
 * [Database Schema Design](docs/db/README.md)
 

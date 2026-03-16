@@ -42,6 +42,7 @@ Blueking Lite 是一个 **AI First** 的**轻量版**运维产品，具有部署
 
 - 📝 [设计理念](docs/overview/design.md)
 - 🏗️ [架构设计](docs/overview/architecture.md)
+- 📋 [日志管理白皮书](docs/overview/log_whitepaper.md)
 - 📁 [代码目录](docs/overview/code_framework.md)
 - 🗄️ [数据库表结构设计](docs/db/README.md)
 
