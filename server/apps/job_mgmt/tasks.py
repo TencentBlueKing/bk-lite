@@ -5,6 +5,8 @@
 - target_source=manual: 使用 execute_ssh / download_to_remote（通过 SSH 凭据连接）
 """
 
+import os
+import shlex
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional, Tuple
@@ -14,16 +16,30 @@ from celery import shared_task
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
-from apps.job_mgmt.constants import ExecutionStatus, ScriptType, TargetSource
+from apps.core.mixinx import EncryptMixin
+from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
+from apps.node_mgmt.models import CloudRegion
 from apps.node_mgmt.utils.s3 import delete_s3_file
+from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
+from apps.rpc.node_mgmt import NodeMgmt
 from config.components.nats import NATS_NAMESPACE
 
 # 最大并发执行数
 MAX_WORKERS = 10
+DEFAULT_RPC_TIMEOUT = int(os.getenv("JOB_MGMT_RPC_TIMEOUT", "60"))
+
+
+def _decrypt_password(password: Optional[str]) -> Optional[str]:
+    """解密密码字段（兼容历史明文数据）"""
+    if not password:
+        return None
+    data = {"password": password}
+    EncryptMixin.decrypt_field("password", data)
+    return data.get("password")
 
 
 def _get_ssh_private_key(target) -> Optional[str]:
@@ -39,6 +55,80 @@ def _get_ssh_private_key(target) -> Optional[str]:
         return content
     except Exception:
         return None
+
+
+def _get_ansible_node(cloud_region_id: int) -> str:
+    """
+    根据云区域ID获取 Ansible 执行节点
+
+    Args:
+        cloud_region_id: 云区域ID
+
+    Returns:
+        节点ID
+
+    Raises:
+        ValueError: 未找到可用的 Ansible 执行节点
+    """
+    node_mgmt = NodeMgmt()
+    result = node_mgmt.node_list(
+        {
+            "cloud_region_id": cloud_region_id,
+            "is_container": True,
+            "page": 1,
+            "page_size": 1,
+        }
+    )
+    if not isinstance(result, dict):
+        raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点")
+    nodes = result.get("nodes", [])
+    if not nodes:
+        raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点")
+    return nodes[0]["id"]
+
+
+def _get_cloud_region_name(cloud_region_id: int) -> str:
+    """根据云区域ID获取云区域名称（用于 executor instance_id）"""
+    region = CloudRegion.objects.filter(id=cloud_region_id).first()
+    if not region or not region.name:
+        raise ValueError(f"云区域 {cloud_region_id} 不存在或名称为空")
+    return region.name
+
+
+def _build_host_credentials(targets: list) -> list:
+    """
+    构建多主机凭据列表
+
+    Args:
+        targets: Target 对象列表
+
+    Returns:
+        host_credentials 列表，每个元素包含主机连接信息
+    """
+    credentials = []
+    for target in targets:
+        cred = {
+            "host": target.ip,
+            "port": target.ssh_port if target.os_type == OSType.LINUX else target.winrm_port,
+        }
+
+        if target.os_type == OSType.LINUX:
+            cred["user"] = target.ssh_user
+            cred["connection"] = "ssh"
+            if target.ssh_credential_type == SSHCredentialType.PASSWORD:
+                cred["password"] = _decrypt_password(target.ssh_password)
+            else:
+                private_key = _get_ssh_private_key(target)
+                if private_key:
+                    cred["private_key_content"] = private_key
+        else:
+            # Windows
+            cred["user"] = target.winrm_user
+            cred["password"] = _decrypt_password(target.winrm_password)
+            cred["connection"] = "winrm"
+
+        credentials.append(cred)
+    return credentials
 
 
 def _format_error_message(e: Exception) -> str:
@@ -84,6 +174,29 @@ def _get_shell_type(script_type: str) -> str:
     return ScriptType.SHELL_MAPPING.get(script_type, "sh")
 
 
+def _merge_script_with_params(script_content: str, params: str, script_type: str) -> str:
+    """按脚本类型合并执行参数
+
+    shell 脚本使用位置参数语义：先 `set --`，再执行脚本内容，确保 `$1/$2` 生效。
+    其他脚本类型保持现有拼接方式。
+    """
+    if not params:
+        return script_content
+
+    if script_type == ScriptType.SHELL:
+        try:
+            tokens = shlex.split(params)
+        except ValueError:
+            tokens = params.split()
+
+        escaped_params = " ".join(shlex.quote(token) for token in tokens)
+        if not escaped_params:
+            return script_content
+        return f"set -- {escaped_params}\n{script_content}"
+
+    return f"{script_content} {params}"
+
+
 def _get_ssh_credentials(target_id: int) -> dict:
     """从 Target 获取 SSH 凭据信息"""
     try:
@@ -103,13 +216,53 @@ def _get_ssh_credentials(target_id: int) -> dict:
         return {
             "host": target.ip,
             "username": target.ssh_user,
-            "password": target.ssh_password if target.ssh_password else None,
+            "password": _decrypt_password(target.ssh_password),
             "private_key": private_key,
             "port": target.ssh_port,
             "node_id": target.node_id,  # 云区域 ID
         }
     except Target.DoesNotExist:
         return {}
+
+
+def _get_target(target_id: int) -> Optional[Target]:
+    """获取目标对象"""
+    return Target.objects.filter(id=target_id).first()
+
+
+def _download_to_remote(
+    instance_id: str,
+    file_item: dict,
+    target_path: str,
+    ssh_creds: dict,
+    timeout: int,
+    overwrite: bool,
+) -> dict:
+    """参考 node_mgmt installer 模式封装远程下载调用"""
+    has_password = bool(ssh_creds.get("password"))
+    has_private_key = bool(ssh_creds.get("private_key"))
+    if not has_password and not has_private_key:
+        raise ValueError("目标缺少认证信息，需要密码或私钥")
+
+    rpc_timeout = min(timeout, DEFAULT_RPC_TIMEOUT)
+    if rpc_timeout <= 0:
+        rpc_timeout = DEFAULT_RPC_TIMEOUT
+
+    executor = Executor(instance_id)
+    return executor.download_to_remote(
+        bucket_name=NATS_NAMESPACE,
+        file_key=file_item.get("file_key", ""),
+        file_name=file_item.get("name", ""),
+        target_path=target_path,
+        host=ssh_creds["host"],
+        username=ssh_creds["username"],
+        password=ssh_creds["password"],
+        private_key=ssh_creds["private_key"],
+        timeout=timeout,
+        rpc_timeout=rpc_timeout,
+        port=ssh_creds["port"],
+        overwrite=overwrite,
+    )
 
 
 def _prepare_execution(execution_id: int, task_name: str) -> Tuple[Optional[JobExecution], list]:
@@ -255,8 +408,111 @@ def _execute_script_on_target(target_info: dict, target_source: str, script_cont
     return result
 
 
-@shared_task(bind=True, max_retries=0)
-def execute_script_task(self, execution_id: int):
+def _execute_script_via_ansible(execution: JobExecution, target_list: list, script_content: str, script_type: str) -> None:
+    """
+    通过 Ansible 执行脚本（异步方式）
+
+    对于手动目标且使用 Ansible 驱动的情况，调用 Ansible Executor 执行脚本。
+    执行结果通过 NATS 回调返回。
+
+    Args:
+        execution: 作业执行记录
+        target_list: 目标列表（包含 target_id）
+        script_content: 脚本内容
+        script_type: 脚本类型
+    """
+    task_name = "execute_script_via_ansible"
+
+    # 获取所有目标的 Target 对象
+    target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
+    if not target_ids:
+        raise ValueError("未找到有效的目标ID")
+
+    targets = list(Target.objects.filter(id__in=target_ids))
+    if not targets:
+        raise ValueError("未找到有效的目标记录")
+
+    # 按云区域分组目标
+    region_targets = {}
+    for target in targets:
+        region_id = target.cloud_region_id
+        if region_id not in region_targets:
+            region_targets[region_id] = []
+        region_targets[region_id].append(target)
+
+    # 目前只支持单云区域执行，取第一个云区域
+    if len(region_targets) > 1:
+        logger.warning(f"[{task_name}] 检测到多个云区域，当前仅使用第一个云区域执行")
+
+    cloud_region_id = list(region_targets.keys())[0]
+    region_target_list = region_targets[cloud_region_id]
+
+    # 获取 Ansible 执行节点
+    try:
+        ansible_node_id = _get_ansible_node(cloud_region_id)
+    except ValueError as e:
+        raise ValueError(f"获取 Ansible 节点失败: {e}")
+
+    # 构建凭据
+    host_credentials = _build_host_credentials(region_target_list)
+
+    # 构建回调配置
+    callback_config = {
+        "subject": f"{NATS_NAMESPACE}.ansible_task_callback",
+        "timeout": 30,
+    }
+
+    # 根据脚本类型选择模块
+    shell_mapping = {
+        ScriptType.SHELL: "shell",
+        ScriptType.PYTHON: "shell",
+        ScriptType.POWERSHELL: "win_shell",
+        ScriptType.BAT: "win_shell",
+    }
+    module = shell_mapping.get(script_type, "shell")
+
+    # 调用 Ansible Executor
+    executor = AnsibleExecutor(ansible_node_id)
+    result = executor.adhoc(
+        host_credentials=host_credentials,
+        module=module,
+        module_args=script_content,
+        callback=callback_config,
+        task_id=str(execution.id),
+        timeout=execution.timeout,
+    )
+
+    logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={result}")
+
+
+def _should_use_ansible(target_source: str, target_list: list) -> bool:
+    """
+    判断是否应使用 Ansible 执行
+
+    Args:
+        target_source: 目标来源
+        target_list: 目标列表
+
+    Returns:
+        True 如果应使用 Ansible 执行
+    """
+    if target_source != TargetSource.MANUAL:
+        return False
+
+    # 检查第一个目标的驱动类型
+    target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
+    if not target_ids:
+        return False
+
+    target = Target.objects.filter(id=target_ids[0]).first()
+    if not target:
+        return False
+
+    return target.driver == ExecutorDriver.ANSIBLE
+
+
+@shared_task(max_retries=0)
+def execute_script_task(execution_id: int):
     """
     脚本执行任务
 
@@ -296,11 +552,35 @@ def execute_script_task(self, execution_id: int):
     script_content = execution.script_content
     script_type = execution.script_type
 
-    # 如果有命令行参数，附加到脚本内容末尾
-    if execution.params:
-        script_content = f"{script_content} {execution.params}"
+    # 合并脚本与参数（shell 脚本按位置参数语义处理）
+    script_content = _merge_script_with_params(script_content, execution.params, script_type)
 
-    # 并发执行
+    # 判断是否使用 Ansible 执行
+    if _should_use_ansible(execution.target_source, target_list):
+        try:
+            _execute_script_via_ansible(execution, target_list, script_content, script_type)
+            # Ansible 是异步执行，结果通过回调返回，这里直接返回
+            logger.info(f"[{task_name}] Ansible 任务已提交，等待回调: execution_id={execution_id}")
+            return
+        except Exception as e:
+            error_msg = f"Ansible 执行失败: {str(e)}"
+            logger.exception(f"[{task_name}] {error_msg}")
+            _update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
+            error_results = [
+                {
+                    "target_key": str(t.get("target_id", "")),
+                    "name": t.get("name", ""),
+                    "ip": t.get("ip", ""),
+                    "status": ExecutionStatus.FAILED,
+                    "error_message": error_msg,
+                }
+                for t in target_list
+            ]
+            execution.execution_results = error_results
+            execution.save(update_fields=["execution_results", "updated_at"])
+            return
+
+    # 并发执行（Sidecar 方式）
     results = []
     with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(target_list))) as pool:
         futures = {
@@ -328,7 +608,14 @@ def execute_script_task(self, execution_id: int):
     _finalize_execution(execution, task_name, results)
 
 
-def _distribute_file_to_target(target_info: dict, target_source: str, files: list, target_path: str, timeout: int, overwrite: bool = True) -> dict:
+def _distribute_file_to_target(
+    target_info: dict,
+    target_source: str,
+    files: list,
+    target_path: str,
+    timeout: int,
+    overwrite: bool = True,
+) -> dict:
     """分发文件到单个目标
 
     Args:
@@ -361,6 +648,8 @@ def _distribute_file_to_target(target_info: dict, target_source: str, files: lis
     try:
         for file_item in files:
             file_result = {"file_name": file_item.get("name", ""), "success": False, "error": ""}
+            file_key = file_item.get("file_key", "")
+            file_name = file_item.get("name", "")
 
             try:
                 if target_source in (TargetSource.NODE_MGMT, TargetSource.SYNC):
@@ -369,34 +658,46 @@ def _distribute_file_to_target(target_info: dict, target_source: str, files: lis
                     executor = Executor(node_id)
                     params = dict(
                         bucket_name=NATS_NAMESPACE,
-                        file_key=file_item.get("file_key", ""),
-                        file_name=file_item.get("name", ""),
+                        file_key=file_key,
+                        file_name=file_name,
                         target_path=target_path,
                         timeout=timeout,
                         overwrite=overwrite,
                     )
                     exec_result = executor.download_to_local(**params)
                 else:
-                    # 手动来源：使用 download_to_remote
+                    # 手动来源：根据驱动选择分发方式
                     target_id = target_info.get("target_id")
+                    if not target_id:
+                        raise ValueError("手动目标缺少 target_id")
+                    target_obj = _get_target(target_id)
                     ssh_creds = _get_ssh_credentials(target_id)
                     if not ssh_creds:
                         raise ValueError(f"无法获取目标凭据: target_id={target_id}")
 
-                    executor = Executor(ssh_creds["node_id"])
-                    exec_result = executor.download_to_remote(
-                        bucket_name=NATS_NAMESPACE,
-                        file_key=file_item.get("file_key", ""),
-                        file_name=file_item.get("name", ""),
-                        target_path=target_path,
-                        host=ssh_creds["host"],
-                        username=ssh_creds["username"],
-                        password=ssh_creds["password"],
-                        private_key=ssh_creds["private_key"],
-                        timeout=timeout,
-                        port=ssh_creds["port"],
-                        overwrite=overwrite,
-                    )
+                    if target_obj and target_obj.driver == ExecutorDriver.ANSIBLE:
+                        if not target_obj.cloud_region_id:
+                            raise ValueError(f"目标缺少云区域配置: target_id={target_id}")
+                        # Ansible 驱动：instance_id 使用云区域名称
+                        ansible_instance_id = _get_cloud_region_name(target_obj.cloud_region_id)
+                        exec_result = _download_to_remote(
+                            ansible_instance_id,
+                            file_item,
+                            target_path,
+                            ssh_creds,
+                            timeout,
+                            overwrite,
+                        )
+                    else:
+                        # Sidecar 驱动：继续使用目标关联节点
+                        exec_result = _download_to_remote(
+                            ssh_creds["node_id"],
+                            file_item,
+                            target_path,
+                            ssh_creds,
+                            timeout,
+                            overwrite,
+                        )
 
                 # 检查结果
                 if isinstance(exec_result, str):
@@ -430,9 +731,15 @@ def _distribute_file_to_target(target_info: dict, target_source: str, files: lis
     # 汇总错误信息
     errors = [f"{fr['file_name']}: {fr['error']}" for fr in result["file_results"] if not fr["success"]]
     error_message = "\n".join(errors) if errors else result.get("error_message", "")
+    stdout_message = f"分发 {len(files)} 个文件到 {target_path}"
+    if not success and error_message:
+        if "RPC request timeout" in error_message:
+            stdout_message = f"NATS接口调用超时: {error_message}"
+        else:
+            stdout_message = error_message
 
     result["status"] = ExecutionStatus.SUCCESS if success else ExecutionStatus.FAILED
-    result["stdout"] = f"分发 {len(files)} 个文件到 {target_path}"
+    result["stdout"] = stdout_message
     result["stderr"] = error_message
     result["exit_code"] = 0 if success else 1
     result["error_message"] = error_message
@@ -441,8 +748,8 @@ def _distribute_file_to_target(target_info: dict, target_source: str, files: lis
     return result
 
 
-@shared_task(bind=True, max_retries=0)
-def distribute_files_task(self, execution_id: int):
+@shared_task(max_retries=0)
+def distribute_files_task(execution_id: int):
     """
     文件分发任务
 
@@ -589,8 +896,8 @@ def _execute_playbook_on_target(target_info: dict, target_source: str, timeout: 
     return result
 
 
-@shared_task(bind=True, max_retries=0)
-def execute_playbook_task(self, execution_id: int):
+@shared_task(max_retries=0)
+def execute_playbook_task(execution_id: int):
     """
     Playbook 执行任务
 
@@ -643,8 +950,8 @@ def execute_playbook_task(self, execution_id: int):
     _finalize_execution(execution, task_name, results)
 
 
-@shared_task(bind=True, max_retries=0)
-def execute_scheduled_task(self, scheduled_task_id: int):
+@shared_task(max_retries=0)
+def execute_scheduled_task(scheduled_task_id: int):
     """
     定时任务触发执行
 
@@ -723,8 +1030,8 @@ def execute_scheduled_task(self, scheduled_task_id: int):
     logger.info(f"[execute_scheduled_task] 定时任务触发完成: scheduled_task_id={scheduled_task_id}, execution_id={execution.id}")
 
 
-@shared_task(bind=True, max_retries=0)
-def cleanup_expired_distribution_files_task(self):
+@shared_task(max_retries=0)
+def cleanup_expired_distribution_files_task():
     """
     清理过期的分发文件
 

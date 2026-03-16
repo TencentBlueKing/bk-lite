@@ -1,10 +1,12 @@
 """脚本参数处理服务
 
-处理新格式的脚本参数：
+处理位置参数格式的脚本参数：
 [
-    {"key": "param1", "value": "value1", "is_modified": True},
-    {"key": "param2", "value": "******", "is_modified": False},  # 使用脚本库默认值
+    {"name": "传递路径", "value": "/tmp", "is_modified": True},
+    {"name": "重试次数", "value": "", "is_modified": False},  # 脚本库模式按顺序回填默认值
 ]
+
+执行时仅使用 value，并严格按列表顺序拼接为位置参数。
 """
 
 from rest_framework import serializers
@@ -14,7 +16,7 @@ class ScriptParamsService:
     """脚本参数处理服务"""
 
     @staticmethod
-    def validate_params_format(params: list) -> None:
+    def validate_params_format(params: list, require_is_modified: bool = True) -> None:
         """
         验证 params 格式是否正确
 
@@ -31,37 +33,36 @@ class ScriptParamsService:
             if not isinstance(param, dict):
                 raise serializers.ValidationError({"params": f"第 {i + 1} 个参数必须是字典格式"})
 
-            required_keys = {"key", "value", "is_modified"}
+            required_keys = {"value"}
+            if require_is_modified:
+                required_keys.add("is_modified")
             missing_keys = required_keys - set(param.keys())
             if missing_keys:
                 raise serializers.ValidationError({"params": f"第 {i + 1} 个参数缺少字段: {missing_keys}"})
 
-            if not isinstance(param.get("key"), str):
-                raise serializers.ValidationError({"params": f"第 {i + 1} 个参数的 key 必须是字符串"})
+            # name 为展示字段；兼容历史 key 字段
+            display_name = param.get("name", param.get("key"))
+            if display_name is not None and not isinstance(display_name, str):
+                raise serializers.ValidationError({"params": f"第 {i + 1} 个参数的 name 必须是字符串"})
 
-            if not isinstance(param.get("is_modified"), bool):
+            if "is_modified" in param and not isinstance(param.get("is_modified"), bool):
                 raise serializers.ValidationError({"params": f"第 {i + 1} 个参数的 is_modified 必须是布尔值"})
 
     @staticmethod
-    def get_script_default_params(script) -> dict:
+    def get_script_default_params(script) -> list:
         """
-        获取脚本库中脚本的默认参数映射
+        获取脚本库中脚本的默认参数定义（按顺序）
 
         Args:
             script: Script 模型实例
 
         Returns:
-            dict: {param_name: default_value}
+            list: 参数定义列表
         """
         if not script or not script.params:
-            return {}
+            return []
 
-        default_params = {}
-        for param_def in script.params:
-            if isinstance(param_def, dict) and "name" in param_def:
-                default_params[param_def["name"]] = param_def.get("default", "")
-
-        return default_params
+        return [param_def for param_def in script.params if isinstance(param_def, dict)]
 
     @staticmethod
     def resolve_params(
@@ -73,12 +74,12 @@ class ScriptParamsService:
         解析参数，将 is_modified=False 的参数替换为脚本库默认值
 
         Args:
-            params: 新格式的参数列表
+            params: 位置参数列表
             script: Script 模型实例（脚本库模式时提供）
             allow_unmodified_without_script: 临时脚本模式下是否允许 is_modified=False
 
         Returns:
-            list: 解析后的参数列表，所有 value 都已填充正确值
+            list: 解析后的参数列表（按原顺序）
 
         Raises:
             serializers.ValidationError: 参数解析失败时抛出
@@ -86,33 +87,39 @@ class ScriptParamsService:
         if not params:
             return []
 
-        # 验证格式
-        ScriptParamsService.validate_params_format(params)
+        # 验证格式：临时输入脚本模式可不传 is_modified
+        ScriptParamsService.validate_params_format(params, require_is_modified=script is not None)
 
-        # 获取脚本库默认参数
+        # 获取脚本库默认参数定义（按顺序）
         default_params = ScriptParamsService.get_script_default_params(script)
         has_script = script is not None
+        if has_script and default_params:
+            # 执行时使用真实默认值：对 is_encrypted=true 的 default 做临时解密
+            from apps.job_mgmt.services.param_crypto import ParamCrypto
+
+            default_params = [param_def.copy() for param_def in default_params]
+            ParamCrypto.decrypt_param_defaults(default_params)
 
         resolved_params = []
-        for param in params:
-            key = param["key"]
+        for index, param in enumerate(params):
+            name = param.get("name", param.get("key", ""))
             value = param["value"]
-            is_modified = param["is_modified"]
+            is_modified = param.get("is_modified", True)
 
             if not is_modified:
                 if has_script:
-                    # 脚本库模式：从脚本库获取默认值
-                    if key not in default_params:
-                        raise serializers.ValidationError({"params": f"参数 '{key}' 在脚本库中不存在，无法获取默认值"})
-                    value = default_params[key]
+                    # 脚本库模式：按位置回填默认值
+                    if index >= len(default_params):
+                        raise serializers.ValidationError({"params": f"第 {index + 1} 个参数无法从脚本库按顺序获取默认值"})
+                    value = default_params[index].get("default", "")
                 elif not allow_unmodified_without_script:
                     # 临时脚本模式且不允许 is_modified=False
-                    raise serializers.ValidationError({"params": f"临时脚本模式下参数 '{key}' 不能使用默认值"})
+                    raise serializers.ValidationError({"params": f"临时脚本模式下第 {index + 1} 个参数不能使用默认值"})
                 # 临时脚本模式且允许：直接使用前端传的 value
 
             resolved_params.append(
                 {
-                    "key": key,
+                    "name": name,
                     "value": value,
                     "is_modified": is_modified,
                 }
@@ -123,7 +130,7 @@ class ScriptParamsService:
     @staticmethod
     def params_to_string(params: list) -> str:
         """
-        将参数列表转换为命令行参数字符串
+        将参数列表按顺序转换为命令行位置参数字符串
 
         Args:
             params: 参数列表
@@ -146,9 +153,9 @@ class ScriptParamsService:
             params: 参数列表
 
         Returns:
-            dict: {key: value}
+            dict: {name: value}
         """
         if not params:
             return {}
 
-        return {param["key"]: param["value"] for param in params}
+        return {param.get("name", param.get("key", "")): param.get("value", "") for param in params if param.get("name") or param.get("key")}

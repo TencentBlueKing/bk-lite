@@ -7,12 +7,57 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import job_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.job_mgmt.constants import OSType, SSHCredentialType
 from apps.job_mgmt.filters.target import TargetFilter
 from apps.job_mgmt.models import Target
 from apps.job_mgmt.serializers.target import TargetBatchDeleteSerializer, TargetSerializer, TargetTestConnectionSerializer
 from apps.node_mgmt.models import CloudRegion
 from apps.rpc.executor import Executor
 from apps.rpc.node_mgmt import NodeMgmt
+
+
+def _get_executor_node(cloud_region_id: int) -> str:
+    """
+    根据云区域ID获取执行节点
+
+    Args:
+        cloud_region_id: 云区域ID
+
+    Returns:
+        节点ID
+
+    Raises:
+        ValueError: 未找到可用的执行节点
+    """
+    node_mgmt = NodeMgmt()
+    result = node_mgmt.node_list(
+        {
+            "cloud_region_id": cloud_region_id,
+            "is_container": True,
+            "page": 1,
+            "page_size": 1,
+        }
+    )
+    if not isinstance(result, dict):
+        raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的执行节点")
+    nodes = result.get("nodes", [])
+    if not nodes:
+        raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的执行节点")
+    return nodes[0]["id"]
+
+
+def _parse_ssh_test_result(result) -> tuple[bool, str, str]:
+    """解析 SSH 测试连接返回结果，兼容字符串与字典两种格式"""
+    if isinstance(result, str):
+        return ("success" in result, result, "")
+
+    if isinstance(result, dict):
+        success = result.get("success", False)
+        stdout = result.get("result", "")
+        error = result.get("error", "")
+        return success, str(stdout), str(error)
+
+    return False, str(result), f"未知返回类型: {type(result).__name__}"
 
 
 class TargetViewSet(AuthViewSet):
@@ -193,30 +238,20 @@ class TargetViewSet(AuthViewSet):
     @HasPermission("target-View")
     def test_connection(self, request):
         """
-        测试连接
+        测试连接（仅支持 Linux SSH）
 
-        根据 os_type 决定使用 SSH (Linux) 或 WinRM (Windows) 连接。
+        通过 nats-executor 执行 echo success 命令测试 SSH 连接。
 
         请求体:
         {
             "ip": "192.168.1.100",
-            "os_type": "linux",  // linux 或 windows，默认 linux
-            "cloud_region_id": "region-1",
-            "driver": "ansible",
-            "credential_source": "manual",
-            "credential_id": "",  // 凭据管理时必填
-            // Linux SSH 字段
+            "os_type": "linux",  // 目前仅支持 linux
+            "cloud_region_id": 1,
             "ssh_port": 22,
             "ssh_user": "root",
-            "ssh_credential_type": "password",
+            "ssh_credential_type": "password",  // password 或 key
             "ssh_password": "xxx",  // 密码方式必填
-            "ssh_key_file": <file>,  // 密钥方式必填
-            // Windows WinRM 字段
-            "winrm_port": 5986,
-            "winrm_scheme": "https",  // http 或 https
-            "winrm_user": "Administrator",
-            "winrm_password": "xxx",
-            "winrm_cert_validation": true  // 是否验证证书
+            "ssh_key_file": <file>  // 密钥方式必填
         }
 
         返回:
@@ -229,74 +264,55 @@ class TargetViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
 
-        # TODO: 实际连接测试逻辑
-        # 当前返回模拟结果，后续对接执行器 (rpc/executor.py)
-        # 需要根据 os_type 和凭据信息执行 SSH 或 WinRM 连接测试
-
         ip = validated_data.get("ip")
-        os_type = validated_data.get("os_type", "linux")
+        os_type = validated_data.get("os_type", OSType.LINUX)
+        cloud_region_id = validated_data.get("cloud_region_id")
 
-        if os_type == "linux":
-            user = validated_data.get("ssh_user", "")
-            port = validated_data.get("ssh_port", 22)
-            logger.info(f"Test SSH connection: {user}@{ip}:{port}")
-            message = f"连接测试功能待实现（SSH {user}@{ip}:{port}）"
-        else:
-            user = validated_data.get("winrm_user", "")
-            port = validated_data.get("winrm_port", 5986)
-            scheme = validated_data.get("winrm_scheme", "https")
-            logger.info(f"Test WinRM connection: {user}@{ip}:{port} ({scheme})")
-            message = f"连接测试功能待实现（WinRM {user}@{ip}:{port} {scheme}）"
+        # Windows 暂不支持
+        if os_type == OSType.WINDOWS:
+            return Response({"success": False, "message": "Windows 测试连接暂不支持"})
 
-        return Response({"success": True, "message": message}, status=status.HTTP_200_OK)
-
-    @action(detail=True, methods=["post"])
-    @HasPermission("target-View")
-    def test_target_connection(self, request, pk=None):
-        """
-        测试已有目标的连接
-
-        通过 node 执行简单脚本测试连接（需要 node_id）
-        """
-        target = self.get_object()
-
-        if not target.node_id:
-            return Response(
-                {"success": False, "message": "目标缺少 node_id，无法测试连接"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+        # 获取执行节点
         try:
-            executor = Executor(target.node_id)
-            # 根据操作系统选择测试命令
-            if target.os_type == "windows":
-                test_command = "echo yes"
-                shell = "cmd"
+            node_id = _get_executor_node(cloud_region_id)
+        except ValueError as e:
+            logger.warning(f"[test_connection] 获取执行节点失败: {e}")
+            return Response({"success": False, "message": str(e)})
+
+        # 构建 SSH 凭据
+        ssh_user = validated_data.get("ssh_user", "")
+        ssh_port = validated_data.get("ssh_port", 22)
+        ssh_credential_type = validated_data.get("ssh_credential_type", SSHCredentialType.PASSWORD)
+
+        password = None
+        private_key = None
+
+        if ssh_credential_type == SSHCredentialType.PASSWORD:
+            password = validated_data.get("ssh_password", "")
+        else:
+            # 密钥方式：读取上传的文件内容
+            ssh_key_file = validated_data.get("ssh_key_file")
+            if ssh_key_file:
+                private_key = ssh_key_file.read().decode("utf-8")
+
+        # 执行测试命令
+        try:
+            logger.info(f"[test_connection] Testing SSH: {ssh_user}@{ip}:{ssh_port} via node {node_id}")
+            executor = Executor(node_id)
+            result = executor.execute_ssh(
+                command="echo success", host=str(ip), username=ssh_user, password=password, private_key=private_key, timeout=30, port=ssh_port
+            )
+            # 解析结果（兼容字符串与字典）
+            success, stdout, error = _parse_ssh_test_result(result)
+
+            if success and "success" in stdout:
+                logger.info(f"[test_connection] SSH connection test passed: {ssh_user}@{ip}:{ssh_port}")
+                return Response({"success": True, "message": "连接测试成功"})
             else:
-                test_command = "echo yes"
-                shell = "sh"
-
-            result = executor.execute_local(test_command, timeout=30, shell=shell)
-
-            exit_code = result.get("exit_code", result.get("code", -1))
-            stdout = result.get("stdout", "").strip()
-
-            if exit_code == 0 and "yes" in stdout:
-                logger.info(f"Target {target.name}({target.ip}) connection test passed")
-                return Response(
-                    {"success": True, "message": "连接测试成功"},
-                    status=status.HTTP_200_OK,
-                )
-            else:
-                logger.warning(f"Target {target.name}({target.ip}) connection test failed: exit_code={exit_code}, stdout={stdout}")
-                return Response(
-                    {"success": False, "message": f"连接测试失败: exit_code={exit_code}"},
-                    status=status.HTTP_200_OK,
-                )
+                error_msg = error if error else f"输出异常: {stdout}"
+                logger.warning(f"[test_connection] SSH connection test failed: {ssh_user}@{ip}:{ssh_port}, error: {error_msg}")
+                return Response({"success": False, "message": f"连接测试失败: {error_msg}"})
 
         except Exception as e:
-            logger.exception(f"Target {target.name}({target.ip}) connection test error: {e}")
-            return Response(
-                {"success": False, "message": f"连接测试异常: {str(e)}"},
-                status=status.HTTP_200_OK,
-            )
+            logger.exception(f"[test_connection] SSH connection test error: {ssh_user}@{ip}:{ssh_port}, error: {e}")
+            return Response({"success": False, "message": f"连接测试异常: {str(e)}"})

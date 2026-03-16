@@ -3,6 +3,8 @@ __all__ = ["nat_request", "request", "request_sync", "publish", "publish_sync", 
 import asyncio
 import functools
 import json
+from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import jsonpickle
 from django.conf import settings
@@ -15,6 +17,29 @@ from .types import ResponseType
 from .utils import parse_arguments
 
 DEFAULT_REQUEST_TIMEOUT = 60
+
+
+def _mask_server_url(server_url: str) -> str:
+    """脱敏 NATS server URL，避免日志泄露用户名/密码"""
+    if not server_url:
+        return server_url
+    try:
+        parsed = urlsplit(server_url)
+        if parsed.username or parsed.password:
+            host = parsed.hostname or ""
+            if parsed.port:
+                host = f"{host}:{parsed.port}"
+            netloc = f"***:***@{host}"
+            return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+    except Exception:
+        return "***"
+    return server_url
+
+
+def _mask_servers(servers) -> str:
+    if isinstance(servers, (list, tuple)):
+        return ",".join(_mask_server_url(str(s)) for s in servers)
+    return _mask_server_url(str(servers))
 
 
 async def nat_request(
@@ -52,13 +77,18 @@ async def get_nc_client(nc=None, server: str = "") -> Client:
 
     options = getattr(settings, "NATS_OPTIONS", {})
 
-    await nc.connect(servers=servers, **options)
+    # 连接超时保护：避免 connect 阶段无上限阻塞
+    connect_timeout = options.pop("connect_timeout", getattr(settings, "NATS_CONNECT_TIMEOUT", 10))
+    try:
+        await asyncio.wait_for(nc.connect(servers=servers, **options), timeout=connect_timeout)
+    except Exception as e:
+        logger.error("NATS connect failed, servers=%s, error=%s", _mask_servers(servers), str(e))
+        raise
     return nc
 
 
-async def request(namespace: str, method_name: str, *args, _timeout: float = None, _raw=False, **kwargs) -> ResponseType:
+async def request(namespace: str, method_name: str, *args, _timeout: Optional[float] = None, _raw=False, **kwargs) -> ResponseType:
     payload = parse_arguments(args, kwargs)
-
     nc = await get_nc_client()
 
     timeout = _timeout or getattr(settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT)
@@ -69,7 +99,7 @@ async def request(namespace: str, method_name: str, *args, _timeout: float = Non
 
     data = response.data.decode()
     parsed = json.loads(data)
-
+    logger.info(f"nats_response={data}")
     if _raw:
         parsed.pop("pickled_exc", None)
         return parsed
@@ -104,7 +134,9 @@ async def request(namespace: str, method_name: str, *args, _timeout: float = Non
     return parsed["result"]
 
 
-async def request_v2(namespace: str, method_name: str, server: str = "", *args, _timeout: float = None, _raw=False, **kwargs) -> ResponseType:
+async def request_v2(
+    namespace: str, method_name: str, server: str = "", *args, _timeout: Optional[float] = None, _raw=False, **kwargs
+) -> ResponseType:
     payload = parse_arguments(args, kwargs)
 
     try:

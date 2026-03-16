@@ -196,6 +196,7 @@ class MaintainerViewSet(LanguageViewSet):
             model = serializer.Meta.model
             if hasattr(model, "created_by"):
                 serializer.save(created_by=username, updated_by=username, domain=domain, updated_by_domain=domain)
+                return
 
         except Exception as e:
             logger.error(f"Error in perform_create: {e}")
@@ -217,6 +218,7 @@ class MaintainerViewSet(LanguageViewSet):
             model = serializer.Meta.model
             if hasattr(model, "updated_by"):
                 serializer.save(updated_by=username, updated_by_domain=domain)
+                return
 
         except Exception as e:
             logger.error(f"Error in perform_update: {e}")
@@ -297,6 +299,68 @@ class AuthViewSet(MaintainerViewSet):
             logger.error(f"Error in _list method: {e}")
             raise
 
+    def _normalize_org_values(self, data, org_field):
+        """规范化组织字段为 int 列表，兼容 QueryDict / str / list / int"""
+        values = []
+
+        if hasattr(data, "getlist"):
+            raw_list = data.getlist(org_field)
+            if raw_list:
+                values = raw_list
+            elif org_field in data:
+                values = [data.get(org_field)]
+        elif isinstance(data, dict) and org_field in data:
+            raw_value = data.get(org_field)
+            values = raw_value if isinstance(raw_value, list) else [raw_value]
+
+        normalized = []
+        for value in values:
+            if value is None:
+                continue
+
+            if isinstance(value, int):
+                normalized.append(value)
+                continue
+
+            if isinstance(value, str):
+                v = value.strip()
+                if not v:
+                    continue
+
+                # 支持 "1,2" / "1" / "[1,2]"
+                if v.startswith("[") and v.endswith("]"):
+                    try:
+                        import json
+
+                        parsed = json.loads(v)
+                        if isinstance(parsed, list):
+                            for item in parsed:
+                                try:
+                                    normalized.append(int(item))
+                                except Exception:
+                                    continue
+                            continue
+                    except Exception:
+                        pass
+
+                if "," in v:
+                    for item in v.split(","):
+                        item = item.strip()
+                        if not item:
+                            continue
+                        try:
+                            normalized.append(int(item))
+                        except Exception:
+                            continue
+                    continue
+
+                try:
+                    normalized.append(int(v))
+                except Exception:
+                    continue
+
+        return normalized
+
     def retrieve(self, request, *args, **kwargs):
         serializer = self.get_detail(request, *args, **kwargs)
         return Response(serializer.data)
@@ -340,10 +404,13 @@ class AuthViewSet(MaintainerViewSet):
             instance = self.get_object()
             org_field = self.ORGANIZATION_FIELD
             instance_org_value = getattr(instance, org_field, [])
+            if not isinstance(instance_org_value, list):
+                instance_org_value = []
 
             if getattr(user, "is_superuser", False):
                 if org_field in data:
-                    delete_team = [i for i in instance_org_value if i not in data[org_field]]
+                    org_values = self._normalize_org_values(data, org_field)
+                    delete_team = [i for i in instance_org_value if i not in org_values]
                     self.delete_rules(instance.id, delete_team)
                 return super().update(request, *args, **kwargs)
 
@@ -363,7 +430,8 @@ class AuthViewSet(MaintainerViewSet):
                     )
                     return self.value_error(message)
             if org_field in data:
-                delete_team = [i for i in instance_org_value if i not in data[org_field]]
+                org_values = self._normalize_org_values(data, org_field)
+                delete_team = [i for i in instance_org_value if i not in org_values]
                 self.delete_rules(instance.id, delete_team)
             serializer = self.get_serializer(instance, data=data, partial=partial)
             serializer.is_valid(raise_exception=True)

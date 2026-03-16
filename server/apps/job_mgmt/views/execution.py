@@ -279,16 +279,8 @@ class JobExecutionViewSet(AuthViewSet):
         重新执行
 
         基于现有执行记录创建一个新的执行任务，使用相同的参数重新执行。
-        仅支持脚本执行和 Playbook 类型，不支持文件分发（文件可能已过期）。
         """
         original = self.get_object()
-
-        # 文件分发不支持重新执行
-        if original.job_type == JobType.FILE_DISTRIBUTION:
-            return Response(
-                {"error": "文件分发类型不支持重新执行，请重新上传文件"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
         username = request.user.username if request.user else ""
 
@@ -298,7 +290,25 @@ class JobExecutionViewSet(AuthViewSet):
             return Response({"error": "原执行目标已不存在"}, status=status.HTTP_400_BAD_REQUEST)
 
         # 根据作业类型创建新的执行记录
-        if original.job_type == JobType.PLAYBOOK:
+        if original.job_type == JobType.FILE_DISTRIBUTION:
+            execution = JobExecution.objects.create(
+                name=original.name,
+                job_type=JobType.FILE_DISTRIBUTION,
+                trigger_source=TriggerSource.MANUAL,
+                status=ExecutionStatus.PENDING,
+                files=original.files,
+                target_path=original.target_path,
+                overwrite_strategy=original.overwrite_strategy,
+                timeout=original.timeout,
+                total_count=len(target_list),
+                target_source=original.target_source,
+                target_list=target_list,
+                team=original.team,
+                created_by=username,
+                updated_by=username,
+            )
+            task_func = distribute_files_task
+        elif original.job_type == JobType.PLAYBOOK:
             if not original.playbook:
                 return Response({"error": "原关联 Playbook 已不存在"}, status=status.HTTP_400_BAD_REQUEST)
 

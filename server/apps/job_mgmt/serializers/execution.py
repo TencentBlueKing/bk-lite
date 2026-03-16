@@ -131,9 +131,16 @@ class QuickExecuteSerializer(serializers.Serializer):
     script_type = serializers.ChoiceField(choices=["shell", "bash", "python", "powershell", "bat"], required=False, help_text="脚本类型（临时输入模式必填）")
     script_content = serializers.CharField(required=False, help_text="脚本内容（临时输入模式）")
 
-    # 执行参数（新格式）
-    # [{"key": "param1", "value": "value1", "is_modified": True}, ...]
-    params = serializers.ListField(child=serializers.DictField(), required=False, default=list, help_text="执行参数列表，格式: [{key, value, is_modified}]")
+    # 执行参数（位置参数格式，严格按列表顺序）
+    # [{"name": "传递路径", "value": "/tmp", "is_modified": True}, ...]
+    # 临时输入脚本场景可省略 is_modified（后端按 True 处理）
+    # name 仅用于展示，执行时只使用 value 按顺序拼接
+    params = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list,
+        help_text="执行参数列表（按顺序），格式: [{name, value, is_modified}]；临时输入可省略 is_modified（默认 True）；name 仅展示",
+    )
 
     # 超时时间
     timeout = serializers.IntegerField(required=False, default=600, min_value=1, max_value=86400, help_text="超时时间（秒）")
@@ -176,7 +183,8 @@ class QuickExecuteSerializer(serializers.Serializer):
         if params:
             from apps.job_mgmt.services.script_params_service import ScriptParamsService
 
-            ScriptParamsService.validate_params_format(params)
+            has_script_template = bool(attrs.get("script_id"))
+            ScriptParamsService.validate_params_format(params, require_is_modified=has_script_template)
 
         return attrs
 

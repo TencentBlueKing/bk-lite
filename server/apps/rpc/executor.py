@@ -105,6 +105,7 @@ class Executor(object):
         private_key=None,
         passphrase=None,
         timeout=60,
+        rpc_timeout=None,
         port=22,
         overwrite=True,
     ):
@@ -142,7 +143,11 @@ class Executor(object):
             request_data["private_key"] = private_key
         if passphrase:
             request_data["passphrase"] = passphrase
-        return_data = self.download_to_remote_client.run(self.instance_id, request_data, _timeout=timeout)
+        return_data = self.download_to_remote_client.run(
+            self.instance_id,
+            request_data,
+            _timeout=rpc_timeout if rpc_timeout is not None else timeout,
+        )
         return return_data
 
     def unzip_local(self, file_path, target_path, timeout=60):

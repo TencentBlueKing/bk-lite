@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 
+from apps.core.mixinx import EncryptMixin
 from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.constants import CredentialSource, OSType, SSHCredentialType
 from apps.job_mgmt.models import Target
@@ -15,12 +16,12 @@ class TargetSerializer(TeamSerializer):
     driver_display = serializers.CharField(source="get_driver_display", read_only=True)
     credential_source_display = serializers.CharField(source="get_credential_source_display", read_only=True)
     ssh_credential_type_display = serializers.CharField(source="get_ssh_credential_type_display", read_only=True)
-    ssh_key_file_name = serializers.CharField(read_only=True)
     winrm_scheme_display = serializers.CharField(source="get_winrm_scheme_display", read_only=True)
     cloud_region_name = serializers.SerializerMethodField()
     # 写入字段（创建/更新时使用）
     ssh_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     winrm_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    ssh_key_file = serializers.FileField(write_only=True, required=False, allow_null=True)
 
     def __init__(self, instance=None, data=None, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
@@ -78,9 +79,53 @@ class TargetSerializer(TeamSerializer):
             return value
         raise serializers.ValidationError("team 必须是列表或整数")
 
+    def create(self, validated_data):
+        """创建时加密密码字段"""
+        EncryptMixin.encrypt_field("ssh_password", validated_data)
+        EncryptMixin.encrypt_field("winrm_password", validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """更新时加密密码字段"""
+        EncryptMixin.encrypt_field("ssh_password", validated_data)
+        EncryptMixin.encrypt_field("winrm_password", validated_data)
+        return super().update(instance, validated_data)
+
     class Meta:
         model = Target
-        fields = "__all__"
+        fields = [
+            "id",
+            "name",
+            "ip",
+            "os_type",
+            "os_type_display",
+            "cloud_region_id",
+            "cloud_region_name",
+            "node_id",
+            "driver",
+            "driver_display",
+            "credential_source",
+            "credential_source_display",
+            "credential_id",
+            "ssh_port",
+            "ssh_user",
+            "ssh_credential_type",
+            "ssh_credential_type_display",
+            "ssh_password",
+            "ssh_key_file",
+            "winrm_port",
+            "winrm_scheme",
+            "winrm_scheme_display",
+            "winrm_user",
+            "winrm_password",
+            "winrm_cert_validation",
+            "team",
+            "team_name",
+            "created_by",
+            "created_at",
+            "updated_by",
+            "updated_at",
+        ]
         read_only_fields = ["id", "created_by", "created_at", "updated_by", "updated_at"]
 
 
