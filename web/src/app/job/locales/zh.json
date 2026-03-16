@@ -1,6 +1,8 @@
 {
   "common": {
-    "comingSoon": "即将上线"
+    "comingSoon": "即将上线",
+    "enabled": "启用",
+    "disabled": "停用"
   },
   "job": {
     "scriptExecution": "脚本执行",
@@ -247,6 +249,7 @@
     "createTaskDesc": "创建新的定时任务，配置执行策略和执行内容。支持简单策略快速配置，或使用复杂策略自定义 Cron 表达式。",
     "scheduleType": "执行策略",
     "executeOnce": "单次执行",
+    "cronExpression": "Cron 表达式",
     "enabled": "已启用",
     "disabled": "已停用",
     "targetCount": "目标数量",
@@ -375,6 +378,11 @@
     "confirmCommandMessage": "脚本包含以下需要二次确认的命令：",
     "confirmExecuteQuestion": "是否确认执行？",
     "confirmExecute": "确认执行",
+    "fileDistributionNotSupported": "文件分发类型暂不支持重新执行",
+    "reExecuteSuccess": "重新执行已触发",
+    "reExecuteFailed": "重新执行失败",
+    "testConnectionSuccess": "连接测试成功",
+    "testConnectionFailed": "连接测试失败",
     "dangerousPathDetected": "检测到高危路径",
     "forbiddenPathMessage": "目标路径包含以下禁止分发的路径，无法执行：",
     "dangerousPathWarning": "高危路径警告",

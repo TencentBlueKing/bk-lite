@@ -191,7 +191,10 @@
         "tagDuplicateError": "标签项不能重复",
         "enumSelectMode": "选择模式",
         "singleSelect": "单选",
-        "multipleSelect": "多选"
+        "multipleSelect": "多选",
+        "exportModelConfig": "导出配置",
+        "importModelConfig": "导入配置",
+        "importSuccess": "导入成功"
     },
     "PublicEnumLibrary": {
         "title": "公共选项库",
