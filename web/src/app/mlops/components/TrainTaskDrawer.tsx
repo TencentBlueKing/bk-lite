@@ -4,7 +4,7 @@ import { useAuth } from "@/context/auth";
 import useMlopsTaskApi from "@/app/mlops/api/task";
 import TrainTaskHistory from "./TrainTaskHistory";
 import TrainTaskDetail from "./TrainTaskDetail";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { TRAINJOB_MAP } from "@/app/mlops/constants";
 import styles from './traintask.module.scss'
 
@@ -24,21 +24,47 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
   const [activeRunID, setActiveRunID] = useState<string>('');
   const [key] = activeTag;
 
+  // 分页状态
+  const [pagination, setPagination] = useState({
+    current: 1,
+    total: 0,
+    pageSize: 10,
+  });
+
   const currentDetail = useMemo(() => {
     return historyData?.find((item: any) => item.run_id === activeRunID);
-  }, [activeRunID]);
+  }, [activeRunID, historyData]);
 
   useEffect(() => {
     if (open) {
-      getStateData();
+      // 打开时重置分页到第一页
+      setPagination(prev => ({ ...prev, current: 1 }));
+      getStateData(1, pagination.pageSize);
     }
   }, [open]);
 
-  const getStateData = async () => {
+  // 分页变化时重新请求
+  useEffect(() => {
+    if (open && selectId) {
+      getStateData(pagination.current, pagination.pageSize);
+    }
+  }, [pagination.current, pagination.pageSize]);
+
+  const getStateData = useCallback(async (page: number = pagination.current, pageSize: number = pagination.pageSize) => {
+    if (!selectId) return;
     setTableLoading(true);
     try {
-      const { data } = await getTrainTaskState(selectId as number, key);
-      setHistoryData(data);
+      const { items, count } = await getTrainTaskState({
+        id: selectId,
+        activeTap: key,
+        page,
+        page_size: pageSize
+      });
+      setHistoryData(items || []);
+      setPagination(prev => ({
+        ...prev,
+        total: count || 0
+      }));
     } catch (e) {
       console.error(e);
       message.error(t(`traintask.getTrainStatusFailed`));
@@ -46,6 +72,10 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
     } finally {
       setTableLoading(false);
     }
+  }, [selectId, key, getTrainTaskState, t]);
+
+  const handlePaginationChange = (value: { current: number; pageSize: number; total: number }) => {
+    setPagination(value);
   };
 
   const openDetail = (record: any) => {
@@ -99,6 +129,10 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
     }
   };
 
+  const handleRefresh = () => {
+    getStateData(pagination.current, pagination.pageSize);
+  };
+
   return (
     <Drawer
       className={`${styles.drawer}`}
@@ -119,7 +153,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
           {t(`mlops-common.backToList`)}
         </Button>
       ] : [
-        <Button key="refresh" type="primary" className="float-right" disabled={tableLoading} onClick={getStateData}>
+        <Button key="refresh" type="primary" className="float-right" disabled={tableLoading} onClick={handleRefresh}>
           {t(`mlops-common.refreshList`)}
         </Button>
       ]}
@@ -129,6 +163,8 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
           <TrainTaskHistory
             data={historyData}
             loading={tableLoading}
+            pagination={pagination}
+            onChange={handlePaginationChange}
             openDetail={openDetail}
             downloadModel={downloadModel}
           /> :

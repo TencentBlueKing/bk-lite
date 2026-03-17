@@ -38,6 +38,7 @@ const TrainingPage = () => {
     getTrainJobList,
     deleteTrainTask,
     startTrainTask,
+    stopTrainTask,
   } = useMlopsTaskApi();
 
   const modalRef = useRef<ModalRef>(null);
@@ -113,23 +114,42 @@ const TrainingPage = () => {
       render: (_: unknown, record: TrainJob) => {
         return (
           <>
-            <PermissionWrapper requiredPermissions={['Train']}>
-              <Popconfirm
-                title={t('traintask.trainStartTitle')}
-                description={t('traintask.trainStartContent')}
-                okText={t('common.confirm')}
-                cancelText={t('common.cancel')}
-                onConfirm={() => onTrainStart(record)}
-              >
-                <Button
-                  type="link"
-                  className="mr-2.5"
-                  disabled={record.status === 'running'}
+            {record.status === 'running' ? (
+              <PermissionWrapper requiredPermissions={['Stop']}>
+                <Popconfirm
+                  title={t('traintask.trainStopTitle')}
+                  description={t('traintask.trainStopContent')}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  onConfirm={() => onTrainStop(record)}
                 >
-                  {t('traintask.train')}
-                </Button>
-              </Popconfirm>
-            </PermissionWrapper>
+                  <Button
+                    type="link"
+                    danger
+                    className="mr-2.5"
+                  >
+                    {t('mlops-common.stop')}
+                  </Button>
+                </Popconfirm>
+              </PermissionWrapper>
+            ) : (
+              <PermissionWrapper requiredPermissions={['Train']}>
+                <Popconfirm
+                  title={t('traintask.trainStartTitle')}
+                  description={t('traintask.trainStartContent')}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  onConfirm={() => onTrainStart(record)}
+                >
+                  <Button
+                    type="link"
+                    className="mr-2.5"
+                  >
+                    {t('traintask.train')}
+                  </Button>
+                </Popconfirm>
+              </PermissionWrapper>
+            )}
             <PermissionWrapper requiredPermissions={['View']}>
               <Button
                 type="link"
@@ -269,6 +289,18 @@ const TrainingPage = () => {
     } catch (e) {
       console.error(e);
       message.error(t(`common.error`));
+    } finally {
+      getTasks();
+    }
+  };
+
+  const onTrainStop = async (record: TrainJob) => {
+    try {
+      await stopTrainTask(record.id, algorithmType);
+      message.success(t('traintask.trainStopSuccess'));
+    } catch (e) {
+      console.error(e);
+      message.error(t('common.error'));
     } finally {
       getTasks();
     }

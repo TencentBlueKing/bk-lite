@@ -61,8 +61,21 @@ class CollectModelViewSet(AuthViewSet):
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="collect_task_names")
     def collect_task_names(self, request, *args, **kwargs):
-        task_list = CollectModels.objects.values("id", "name").order_by("id")
-        return WebUtils.response_success(list(task_list))
+        # Given 任务名用于实例页跳转，When 返回任务列表，Then 同时返回 plugin 供前端拼接详情路由。
+        queryset = CollectModels.objects.all().order_by("id")
+        # Given 用户可能跨组织访问页面，When 拉取任务名，Then 先执行对象权限过滤。
+        queryset = self.get_queryset_by_permission(request, queryset)
+        task_list = queryset.values("id", "name", "model_id")
+        data = [
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "plugin": item["model_id"],
+                "model_id": item["model_id"],
+            }
+            for item in task_list
+        ]
+        return WebUtils.response_success(data)
 
     def get_serializer_class(self):
         if self.action == "list":

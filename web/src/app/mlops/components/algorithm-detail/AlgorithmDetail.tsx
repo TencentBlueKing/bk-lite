@@ -74,11 +74,13 @@ const AlgorithmDetail = ({ datasetType }: AlgorithmDetailProps) => {
       title: t('common.name'),
       key: 'name',
       dataIndex: 'name',
+      width: 200
     },
     {
       title: t('datasets.trainFileType'),
       key: 'type',
       dataIndex: 'type',
+      width: 200,
       render: (_, record) => {
         const activeTypes = Object.entries(record.type)
           .filter(([, value]) => value === true)

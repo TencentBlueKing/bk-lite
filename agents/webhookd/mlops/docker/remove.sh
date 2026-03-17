@@ -28,10 +28,10 @@ fi
 # 容器名称
 CONTAINER_NAME="${ID}"
 
-# 检查容器是否存在
+# 检查容器是否存在（幂等设计：不存在时返回成功）
 if ! docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    json_error "CONTAINER_NOT_FOUND" "$ID" "Container not found"
-    exit 1
+    json_success "$ID" "Container does not exist (already removed)"
+    exit 0
 fi
 
 # 如果容器还在运行，先停止

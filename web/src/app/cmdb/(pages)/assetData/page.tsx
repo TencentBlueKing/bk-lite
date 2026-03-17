@@ -24,7 +24,10 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
-import { ensureCollectTaskMap } from '@/app/cmdb/utils/collectTask';
+import {
+  ensureCollectTaskMap,
+  ensureCollectModelTreeCache,
+} from '@/app/cmdb/utils/collectTask';
 import { useCommon } from '@/app/cmdb/context/common';
 import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
 import { useModelApi, useClassificationApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
@@ -171,7 +174,7 @@ const AssetDataContent = () => {
     deleteInstance,
     batchDeleteInstances,
   } = useInstanceApi();
-  const { getCollectTaskNames } = useCollectApi();
+  const { getCollectTaskNames, getCollectModelTree } = useCollectApi();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -289,8 +292,17 @@ const AssetDataContent = () => {
   }, [modelId]);
 
   useEffect(() => {
-    ensureCollectTaskMap(getCollectTaskNames).catch(() => {
-      useAssetDataStore.getState().setCollectTaskMap({});
+    // Given collect_task 跳转依赖任务映射和模型树，When 页面初始化，Then 并行预热两份缓存。
+    Promise.all([
+      ensureCollectTaskMap(getCollectTaskNames),
+      ensureCollectModelTreeCache(getCollectModelTree),
+    ]).catch(() => {
+      const store = useAssetDataStore.getState();
+      store.setCollectTaskMap({});
+      store.setCollectTaskPluginMap({});
+      store.setCollectModelTree([]);
+      store.setCollectPluginCategoryMap({});
+      store.setCollectModelPluginMap({});
     });
   }, []);
 

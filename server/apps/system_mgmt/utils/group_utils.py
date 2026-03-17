@@ -1,4 +1,8 @@
+import logging
+
 from apps.system_mgmt.models import Group
+
+_logger = logging.getLogger("system_mgmt")
 
 
 class GroupUtils(object):
@@ -48,8 +52,10 @@ class GroupUtils(object):
 
         # 单次查询获取所有组织的父子关系
         all_groups = Group.objects.values_list("id", "parent_id")
+        all_groups_list = list(all_groups)  # 强制执行查询
+
         children_map = {}
-        for gid, pid in all_groups:
+        for gid, pid in all_groups_list:
             if pid is not None:
                 children_map.setdefault(pid, []).append(gid)
 
@@ -73,6 +79,7 @@ class GroupUtils(object):
         result = set()
         for gid in group_ids:
             collect_descendants(gid, result)
+
         return list(result)
 
     @staticmethod
