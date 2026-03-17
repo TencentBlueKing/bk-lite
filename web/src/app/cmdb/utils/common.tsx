@@ -53,9 +53,9 @@ export const parseTableValue = (val: any): any[] => {
 const collectTaskLinkClassName =
   'text-[var(--color-primary)] underline cursor-pointer hover:text-[var(--color-primary-hover,#3a84ff)]';
 
-const renderCollectTaskValue = (value: unknown, pluginIdHint?: string) => {
+const renderCollectTaskValue = (value: unknown) => {
   // Given 实例页需要按任务跳转采集详情，When 拿到 collect_task 值，Then 先解析是否可生成完整路由。
-  const meta = getCollectTaskLinkMeta(value, pluginIdHint);
+  const meta = getCollectTaskLinkMeta(value);
   if (!meta.clickable || !meta.href) {
     return (
       <EllipsisWithTooltip
@@ -509,10 +509,7 @@ export const getAssetColumns = (config: {
             }
 
             if (attrId === 'collect_task') {
-              // Given 列表行包含 model_id，When task->plugin 映射缺失，Then 使用 model_id 作为兜底提示。
-              const pluginIdHint =
-                typeof record.model_id === 'string' ? record.model_id : undefined;
-              return renderCollectTaskValue(record[attrId], pluginIdHint);
+              return renderCollectTaskValue(record[attrId]);
             }
 
             return (
@@ -533,7 +530,6 @@ export const getFieldItem = (config: {
   userList?: UserItem[];
   isEdit: boolean;
   value?: any;
-  modelIdHint?: string;
   hideUserAvatar?: boolean;
   disabled?: boolean;
   placeholder?: string;
@@ -721,7 +717,7 @@ export const getFieldItem = (config: {
     case 'str':
       if (config.fieldItem.attr_id === 'collect_task') {
         // Given 详情页字段为只读展示，When collect_task 可解析路由，Then 渲染可点击新标签链接。
-        const meta = getCollectTaskLinkMeta(config.value, config.modelIdHint);
+        const meta = getCollectTaskLinkMeta(config.value);
         if (config.hideUserAvatar || !meta.clickable || !meta.href) {
           return meta.displayText;
         }
