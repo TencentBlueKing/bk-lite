@@ -1,0 +1,13 @@
+{
+  "name": "job",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "ace-builds": "^1.39.1",
+    "react-ace": "^14.0.1"
+  }
+}
