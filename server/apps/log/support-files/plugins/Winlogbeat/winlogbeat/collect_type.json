@@ -1,7 +1,7 @@
 {
   "name": "winlogbeat",
   "collector": "Winlogbeat",
-  "icon": "winlogbeat",
+  "icon": "winlogbeat1",
   "description": "Collects Windows Event logs from configured channels (System, Security, Application, etc.) for security monitoring and system diagnostics",
   "default_query": "collect_type: winlogbeat AND channel: [Security, System] | stats count by channel, event_id | sort by count desc",
   "attrs": [
