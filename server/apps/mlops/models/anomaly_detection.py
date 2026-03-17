@@ -214,7 +214,7 @@ class AnomalyDetectionServing(MaintainerInfo, TimeInfo):
         max_length=50,
         default="latest",
         verbose_name="模型版本",
-        help_text="模型版本",
+        help_text="模型版本号，如 1, 2, latest 等",
     )
     port = models.IntegerField(
         null=True,
@@ -227,9 +227,8 @@ class AnomalyDetectionServing(MaintainerInfo, TimeInfo):
         choices=[("active", "Active"), ("inactive", "Inactive")],
         default="inactive",
         verbose_name="服务状态",
-        help_text="用户意图：是否希望服务运行",
+        help_text="发布状态(弃用，以容器状态为准)",
     )
-
     container_info = models.JSONField(
         default=dict,
         blank=True,

@@ -140,6 +140,9 @@
     "trainStartTitle": "Confirm to start training?",
     "trainStartSucess": "Training started successfully",
     "trainStartContent": "Training once started will not stop.",
+    "trainStopTitle": "Confirm to stop training?",
+    "trainStopContent": "The training task will be terminated and status will be reset to pending.",
+    "trainStopSuccess": "Training stopped successfully",
     "searchText": "Search task name",
     "datasets": "Datasets",
     "algorithms": "Training Algorithms",
@@ -200,7 +203,7 @@
   "serving-guide": {
     "title": "Usage Guide",
     "usageExample": "Example",
-    "capabilityTest": "Capability Test",
+    "capabilityTest": "Online Test",
     "endpoint": "Endpoint",
     "endpointTip": "Replace <Server IP> with the IP address of the server where the service is deployed",
     "example": "Example",

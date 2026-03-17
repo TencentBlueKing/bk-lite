@@ -40,6 +40,7 @@ export const AlgorithmFieldRenderer: React.FC<AlgorithmFieldRendererProps> = ({
       label: field.label,
       rules: field.required ? [{ required: true, message: `请输入${field.label}` }] : undefined,
       tooltip: field.tooltip,
+      initialValue: field.defaultValue,
       layout: (field.layout === 'horizontal' ? 'horizontal' : undefined) as any,
     };
 
@@ -89,7 +90,7 @@ export const AlgorithmFieldRenderer: React.FC<AlgorithmFieldRendererProps> = ({
             {...commonProps}
             valuePropName="checked"
           >
-            <Switch defaultChecked={!!field.defaultValue} size="small" />
+            <Switch size="small" />
           </Form.Item>
         );
 

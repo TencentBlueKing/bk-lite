@@ -76,3 +76,27 @@ def get_mlflow_tracking_uri() -> str:
     if not mlflow_tracking_uri:
         raise ConfigurationError("MLflow tracking URI not configured")
     return mlflow_tracking_uri
+
+
+def get_host_address() -> str:
+    """
+    从 DEFAULT_ZONE_VAR_NODE_SERVER_URL 环境变量中解析宿主机地址
+
+    该环境变量由部署脚本注入，格式为 https://{HOST}:{PORT}
+    返回值可能是 IP 地址或域名，取决于环境变量的配置。
+
+    示例:
+        https://10.10.41.149:443 -> 10.10.41.149
+        https://bklite.example.com:443 -> bklite.example.com
+
+    Returns:
+        str: 宿主机地址（IP 或域名），未配置时返回空字符串
+    """
+    from urllib.parse import urlparse
+
+    node_server_url = os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", "")
+    if node_server_url:
+        parsed = urlparse(node_server_url)
+        if parsed.hostname:
+            return parsed.hostname
+    return ""
