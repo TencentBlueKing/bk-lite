@@ -1,7 +1,7 @@
 {
   "name": "file_integrity",
   "collector": "Auditbeat",
-  "icon": "file_integrity",
+  "icon": "shenjirizhi3",
   "description": "Monitors file system changes and integrity using cryptographic hashes for security compliance and intrusion detection",
   "default_query": "collect_type: file_integrity AND file_action: [created, updated, deleted] | stats count by file_action, file_path | sort by count desc",
   "attrs": [

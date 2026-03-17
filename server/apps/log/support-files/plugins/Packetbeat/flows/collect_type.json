@@ -1,7 +1,7 @@
 {
   "name": "flows",
   "collector": "Packetbeat",
-  "icon": "flows",
+  "icon": "wangluo",
   "description": "Monitors network flows for traffic analysis, bandwidth monitoring, and anomaly detection",
   "default_query": "collect_type: flows | last 1 by (_time) partition by (flow_id)",
   "attrs": [
