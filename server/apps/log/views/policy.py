@@ -12,6 +12,7 @@ from apps.core.utils.permission_utils import (
     get_permissions_rules,
     permission_filter,
     check_instance_permission,
+    filter_instances_with_permissions,
 )
 from apps.core.utils.web_utils import WebUtils
 from apps.log.constants.permission import PermissionConstants
@@ -38,31 +39,85 @@ class PolicyViewSet(viewsets.ModelViewSet):
     filterset_class = PolicyFilter
     pagination_class = CustomPageNumberPagination
 
-    def list(self, request, *args, **kwargs):
-        collect_type_id = request.query_params.get("collect_type", None)
-
-        # 获取权限规则
+    def _get_accessible_policy_queryset(self, request, collect_type_id=None):
         include_children = request.COOKIES.get("include_children", "0") == "1"
-        permission = get_permission_rules(
+        permissions_result = get_permissions_rules(
             request.user,
             request.COOKIES.get("current_team"),
             "log",
-            f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
+            PermissionConstants.POLICY_MODULE,
             include_children=include_children,
         )
+        if not isinstance(permissions_result, dict):
+            permissions_result = {}
 
-        # 应用权限过滤
-        base_qs = permission_filter(
-            Policy,
-            permission,
-            team_key="policyorganization__organization__in",
-            id_key="id__in",
+        policy_permissions = permissions_result.get("data", {})
+        current_teams = permissions_result.get("team", [])
+        target_collect_type_id = (
+            str(collect_type_id)
+            if collect_type_id and collect_type_id != "global"
+            else None
+        )
+        only_global = collect_type_id == "global"
+
+        all_policies = (
+            Policy.objects.select_related("collect_type")
+            .prefetch_related("policyorganization_set")
+            .all()
         )
 
-        # 只需要按采集类型过滤（移除冗余的组织过滤）
-        qs = base_qs.filter(collect_type_id=collect_type_id)
+        accessible_instances = []
+        accessible_policy_ids = []
+        for policy_obj in all_policies:
+            policy_collect_type_id = (
+                str(policy_obj.collect_type_id)
+                if policy_obj.collect_type_id is not None
+                else None
+            )
 
-        queryset = self.filter_queryset(qs)
+            if only_global and policy_collect_type_id is not None:
+                continue
+
+            if target_collect_type_id and policy_collect_type_id not in [
+                target_collect_type_id,
+                None,
+            ]:
+                continue
+
+            teams = {
+                org.organization for org in policy_obj.policyorganization_set.all()
+            }
+            has_permission = check_instance_permission(
+                policy_obj.collect_type_id,
+                policy_obj.id,
+                teams,
+                policy_permissions,
+                current_teams,
+            )
+            if not has_permission:
+                continue
+
+            accessible_policy_ids.append(policy_obj.id)
+            accessible_instances.append(
+                {
+                    "instance_id": policy_obj.id,
+                    "organizations": list(teams),
+                    "collect_type_id": policy_obj.collect_type_id,
+                }
+            )
+
+        permission_map = filter_instances_with_permissions(
+            accessible_instances, policy_permissions, current_teams
+        )
+        queryset = Policy.objects.filter(id__in=accessible_policy_ids)
+        return queryset, permission_map
+
+    def list(self, request, *args, **kwargs):
+        collect_type_id = request.query_params.get("collect_type") or None
+        queryset, policy_permission_map = self._get_accessible_policy_queryset(
+            request, collect_type_id
+        )
+        queryset = self.filter_queryset(queryset)
         queryset = queryset.distinct().select_related("collect_type")
 
         # 获取分页参数
@@ -81,10 +136,6 @@ class PolicyViewSet(viewsets.ModelViewSet):
         results = serializer.data
 
         # 添加权限信息到每个策略实例
-        policy_permission_map = {
-            i["id"]: i["permission"] for i in permission.get("instance", [])
-        }
-
         for policy_info in results:
             if policy_info["id"] in policy_permission_map:
                 policy_info["permission"] = policy_permission_map[policy_info["id"]]
@@ -286,6 +337,8 @@ class AlertViewSet(viewsets.ModelViewSet):
             PermissionConstants.POLICY_MODULE,
             include_children=include_children,
         )
+        if not isinstance(permissions_result, dict):
+            permissions_result = {}
 
         policy_permissions = permissions_result.get("data", {})
         cur_team = permissions_result.get("team", [])
@@ -650,26 +703,31 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         # 2. 权限校验 - 验证用户是否有权限访问该告警所属的策略
         try:
-            collect_type_id = str(alert_obj.collect_type_id)
-            include_children = request.COOKIES.get("include_children", "0") == "1"
-            permission = get_permission_rules(
-                request.user,
-                request.COOKIES.get("current_team"),
-                "log",
-                f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
-                include_children=include_children,
-            )
+            if alert_obj.collect_type_id is None:
+                accessible_policy_ids = self._get_all_accessible_policy_ids(request)
+                if alert_obj.policy_id not in accessible_policy_ids:
+                    return WebUtils.response_error("无权限访问该告警", status_code=403)
+            else:
+                collect_type_id = str(alert_obj.collect_type_id)
+                include_children = request.COOKIES.get("include_children", "0") == "1"
+                permission = get_permission_rules(
+                    request.user,
+                    request.COOKIES.get("current_team"),
+                    "log",
+                    f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
+                    include_children=include_children,
+                )
 
-            # 检查是否有权限访问该策略
-            policy_qs = permission_filter(
-                Policy,
-                permission,
-                team_key="policyorganization__organization__in",
-                id_key="id__in",
-            )
+                # 检查是否有权限访问该策略
+                policy_qs = permission_filter(
+                    Policy,
+                    permission,
+                    team_key="policyorganization__organization__in",
+                    id_key="id__in",
+                )
 
-            if not policy_qs.filter(id=alert_obj.policy_id).exists():
-                return WebUtils.response_error("无权限访问该告警", status_code=403)
+                if not policy_qs.filter(id=alert_obj.policy_id).exists():
+                    return WebUtils.response_error("无权限访问该告警", status_code=403)
 
         except Exception as e:
             logger.error(f"Permission check failed for alert {alert_id}: {e}")
