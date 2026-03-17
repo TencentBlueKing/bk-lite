@@ -173,18 +173,16 @@ const JobHomePage = () => {
       render: (_: unknown, record: JobRecord) => {
         const color = STATUS_COLOR_MAP[record.status] || '#8c8c8c';
         return (
-          <span
-            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded"
-            style={{ backgroundColor: `${color}10` }}
+          <Tag
+            style={{
+              color,
+              backgroundColor: `${color}10`,
+              borderColor: color,
+              margin: 0,
+            }}
           >
-            <span
-              className="inline-block w-2 h-2 rounded-full"
-              style={{ backgroundColor: color }}
-            />
-            <span style={{ color }}>
-              {record.status_display || getStatusText(record.status)}
-            </span>
-          </span>
+            {record.status_display || getStatusText(record.status)}
+          </Tag>
         );
       },
     },

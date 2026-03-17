@@ -44,6 +44,7 @@ const ScriptLibraryPage = () => {
   const { isLoading: isApiReady } = useApiClient();
   const {
     getScriptList,
+    getScriptDetail,
     createScript,
     updateScript,
     deleteScript,
@@ -189,44 +190,66 @@ const ScriptLibraryPage = () => {
     setModalType('edit');
     setEditingScript(record);
     form.resetFields();
-    form.setFieldsValue({
-      name: record.name,
-      description: record.description,
-      team: record.team || [],
-    });
-    const lang = record.script_type || 'shell';
-    setScriptLang(lang);
-    setScriptContent({
-      shell: '',
-      bat: '',
-      python: '',
-      powershell: '',
-      [lang]: record.content || '',
-    });
-    setParams(record.params || []);
+    resetEditorState();
     setModalOpen(true);
+
+    void (async () => {
+      try {
+        const detail = await getScriptDetail(record.id);
+        form.setFieldsValue({
+          name: detail.name,
+          description: detail.description,
+          team: detail.team || [],
+        });
+        const lang = detail.script_type || 'shell';
+        setScriptLang(lang);
+        setScriptContent({
+          shell: '',
+          bat: '',
+          python: '',
+          powershell: '',
+          [lang]: detail.content || '',
+        });
+        setParams(detail.params || []);
+        setEditingScript(detail);
+      } catch {
+        message.error(t('common.operationFailed'));
+        setModalOpen(false);
+      }
+    })();
   };
 
   const openViewModal = (record: Script) => {
     setModalType('view');
     setEditingScript(record);
     form.resetFields();
-    form.setFieldsValue({
-      name: record.name,
-      description: record.description,
-      team: record.team || [],
-    });
-    const lang = record.script_type || 'shell';
-    setScriptLang(lang);
-    setScriptContent({
-      shell: '',
-      bat: '',
-      python: '',
-      powershell: '',
-      [lang]: record.content || '',
-    });
-    setParams(record.params || []);
+    resetEditorState();
     setModalOpen(true);
+
+    void (async () => {
+      try {
+        const detail = await getScriptDetail(record.id);
+        form.setFieldsValue({
+          name: detail.name,
+          description: detail.description,
+          team: detail.team || [],
+        });
+        const lang = detail.script_type || 'shell';
+        setScriptLang(lang);
+        setScriptContent({
+          shell: '',
+          bat: '',
+          python: '',
+          powershell: '',
+          [lang]: detail.content || '',
+        });
+        setParams(detail.params || []);
+        setEditingScript(detail);
+      } catch {
+        message.error(t('common.operationFailed'));
+        setModalOpen(false);
+      }
+    })();
   };
 
   const handleDelete = (record: Script) => {
@@ -523,6 +546,7 @@ const ScriptLibraryPage = () => {
               : t('job.viewScript')
         }
         open={modalOpen}
+        destroyOnClose
         confirmLoading={confirmLoading}
         onCancel={() => setModalOpen(false)}
         footer={
@@ -553,7 +577,8 @@ const ScriptLibraryPage = () => {
               value={scriptContent}
               onChange={isViewMode ? undefined : setScriptContent}
               activeLang={scriptLang}
-              onLangChange={isViewMode ? undefined : setScriptLang}
+              onLangChange={setScriptLang}
+              readOnly={isViewMode}
             />
           </Form.Item>
 

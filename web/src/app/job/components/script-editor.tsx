@@ -72,6 +72,7 @@ interface ScriptEditorProps {
   onChange?: (value: Record<ScriptLang, string>) => void;
   activeLang?: ScriptLang;
   onLangChange?: (lang: ScriptLang) => void;
+  readOnly?: boolean;
 }
 
 const ScriptEditor: React.FC<ScriptEditorProps> = ({
@@ -79,6 +80,7 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
   onChange,
   activeLang: controlledLang,
   onLangChange,
+  readOnly = false,
 }) => {
   const { t } = useTranslation();
   const [internalLang, setInternalLang] = useState<ScriptLang>('shell');
@@ -165,6 +167,7 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
   };
 
   const handleEditorChange = (newValue: string) => {
+    if (readOnly) return;
     const updated = { ...scripts, [activeLang]: newValue };
     setScripts(updated);
     onChange?.(updated);
@@ -245,6 +248,7 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
         theme="monokai"
         value={scripts[activeLang]}
         onChange={handleEditorChange}
+        readOnly={readOnly}
         width="100%"
         height={isFullscreen ? '100%' : '320px'}
         style={isFullscreen ? { flex: 1 } : {}}
