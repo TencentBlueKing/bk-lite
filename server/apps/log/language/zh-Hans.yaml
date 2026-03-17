@@ -23,9 +23,6 @@ collect_type:
       description: 从文件采集日志数据，用于集中式日志记录和分析。
       name: 文件采集
   Packetbeat:
-    Snmptrapd:
-      name: SNMP Trap
-      description: 采集 SNMP trap 消息，用于网络设备监控和告警。
     http:
       description: 监控 HTTP 流量，分析 Web 应用程序性能并检测异常。
       name: HTTP 协议
@@ -41,10 +38,41 @@ collect_type:
     icmp:
       name: ICMP 协议
       description: 监控 ICMP 流量，用于网络诊断和性能分析。
+  Snmptrapd:
+    snmp_trap:
+      name: SNMP Trap
+      description: 采集 SNMP trap 消息，用于网络设备监控和告警。
   Filebeat:
     filestream:
       name: 文件流采集
       description: 从各种来源采集和转发日志数据，用于集中式日志记录和分析。
+    apache:
+      name: Apache 日志
+      description: 使用 Filebeat 模块采集并解析 Apache HTTP 服务器访问日志和错误日志。
+    elasticsearch:
+      name: Elasticsearch 日志
+      description: 使用 Filebeat 模块采集并解析 Elasticsearch 服务日志、审计日志、慢日志、弃用日志和 GC 日志。
+    mysql:
+      name: MySQL 日志
+      description: 使用 Filebeat 模块采集并解析 MySQL 慢日志和错误日志。
+    kafka:
+      name: Kafka 日志
+      description: 使用 Filebeat 模块采集并解析 Kafka 日志文件。
+    nginx:
+      name: Nginx 日志
+      description: 使用 Filebeat 模块采集并解析 Nginx 访问日志和错误日志。
+    mongodb:
+      name: MongoDB 日志
+      description: 使用 Filebeat 模块采集并解析 MongoDB 日志。
+    rabbitmq:
+      name: RabbitMQ 日志
+      description: 使用 Filebeat 模块采集并解析 RabbitMQ 日志文件。
+    redis:
+      name: Redis 日志
+      description: 使用 Filebeat 模块采集并解析 Redis 日志和慢日志。
+    postgresql:
+      name: PostgreSQL 日志
+      description: 使用 Filebeat 模块采集并解析 PostgreSQL 日志。
   Winlogbeat:
     winlogbeat:
       name: Windows 事件日志
