@@ -5,6 +5,8 @@ interface CollectTaskItem {
   name: string;
   plugin?: string;
   category?: string;
+  plugin_name?: string;
+  category_name?: string;
 }
 
 type CollectTaskMap = Record<string, string>;
@@ -52,8 +54,21 @@ export const ensureCollectTaskMap = async (
   const safeItems = Array.isArray(items) ? items : [];
   const map = normalizeCollectTaskMap(safeItems);
   const routeMap = normalizeCollectTaskPluginMap(safeItems);
-  useAssetDataStore.getState().setCollectTaskMap(map);
-  useAssetDataStore.getState().setCollectTaskRouteMap(routeMap);
+  const store = useAssetDataStore.getState();
+  store.setCollectTaskMap(map);
+  store.setCollectTaskRouteMap(routeMap);
+  store.setCollectTaskOptions(
+    safeItems
+      .filter((item) => item?.id !== undefined && item?.id !== null && item?.name)
+      .map((item) => ({
+        id: String(item.id),
+        name: String(item.name),
+        plugin: item.plugin,
+        category: item.category,
+        plugin_name: item.plugin_name,
+        category_name: item.category_name,
+      }))
+  );
   return map;
 };
 

@@ -14,6 +14,7 @@ import {
 } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
+import CollectTaskTreeSelect from '@/app/cmdb/components/collect-task-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
 import UserAvatar from '@/components/user-avatar';
 import React from 'react';
@@ -538,6 +539,14 @@ export const getFieldItem = (config: {
 }) => {
   const { disabled, placeholder } = config;
   if (config.isEdit) {
+    if (config.fieldItem.attr_id === 'collect_task') {
+      return (
+        <CollectTaskTreeSelect
+          disabled={disabled}
+          placeholder={placeholder}
+        />
+      );
+    }
     switch (config.fieldItem.attr_type) {
       case 'user':
         return (

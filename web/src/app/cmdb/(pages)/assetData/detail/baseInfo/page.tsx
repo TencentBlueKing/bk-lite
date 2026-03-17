@@ -41,6 +41,7 @@ const BaseInfo = () => {
       const store = useAssetDataStore.getState();
       store.setCollectTaskMap({});
       store.setCollectTaskRouteMap({});
+      store.setCollectTaskOptions([]);
     });
   }, []);
 

@@ -21,6 +21,13 @@ interface CollectTaskRoute {
   category: string;
 }
 
+interface CollectTaskOption {
+  id: string;
+  name: string;
+  plugin?: string;
+  category?: string;
+}
+
 interface AssetDataStore {
   query_list: FilterItem[];
   searchAttr: string;
@@ -30,6 +37,8 @@ interface AssetDataStore {
   collectTaskMap: Record<string, string>;
   // Given 跳转采集详情依赖 plugin/category，When 拿到 taskId，Then 直接读取路由参数。
   collectTaskRouteMap: Record<string, CollectTaskRoute>;
+  // Given 编辑控件需要树状选项，When 页面已预取任务列表，Then 直接复用该缓存避免重复请求。
+  collectTaskOptions: CollectTaskOption[];
   user_configs: UserConfigs;
   needRefresh: boolean;
   add: (item: FilterItem) => FilterItem[];
@@ -41,6 +50,7 @@ interface AssetDataStore {
   setCloudList: (list: { proxy_id: string; proxy_name: string }[]) => void;
   setCollectTaskMap: (map: Record<string, string>) => void;
   setCollectTaskRouteMap: (map: Record<string, CollectTaskRoute>) => void;
+  setCollectTaskOptions: (items: CollectTaskOption[]) => void;
   setUserConfigs: (configs: UserConfigs) => void;
   updateUserConfig: (key: string, value: unknown) => void;
   getSavedFilters: (modelId: string) => SavedFilterItem[];
@@ -55,6 +65,7 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   cloud_list: [],
   collectTaskMap: {},
   collectTaskRouteMap: {},
+  collectTaskOptions: [],
   user_configs: {},
   needRefresh: false,
 
@@ -97,6 +108,10 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
 
   setCollectTaskRouteMap: (map: Record<string, CollectTaskRoute>) => {
     set({ collectTaskRouteMap: map });
+  },
+
+  setCollectTaskOptions: (items: CollectTaskOption[]) => {
+    set({ collectTaskOptions: items });
   },
 
   setUserConfigs: (configs: UserConfigs) => {

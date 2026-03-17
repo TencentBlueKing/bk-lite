@@ -66,8 +66,12 @@ class CollectModelViewSet(AuthViewSet):
         # Given 页面受组织与实例权限控制，When 查询任务名，Then 先应用对象权限过滤。
         queryset = self.get_queryset_by_permission(request, queryset)
         task_list = queryset.values("id", "name", "model_id")
-        plugin_category_map = {
-            str(child.get("id")): str(item.get("id"))
+        plugin_meta_map = {
+            str(child.get("id")): {
+                "category": str(item.get("id")),
+                "category_name": item.get("name"),
+                "plugin_name": child.get("name"),
+            }
             for item in COLLECT_OBJ_TREE
             for child in item.get("children", [])
             if child.get("id")
@@ -77,7 +81,9 @@ class CollectModelViewSet(AuthViewSet):
                 "id": item["id"],
                 "name": item["name"],
                 "plugin": item["model_id"],
-                "category": plugin_category_map.get(str(item["model_id"]))
+                "category": plugin_meta_map.get(str(item["model_id"]), {}).get("category"),
+                "plugin_name": plugin_meta_map.get(str(item["model_id"]), {}).get("plugin_name"),
+                "category_name": plugin_meta_map.get(str(item["model_id"]), {}).get("category_name"),
             }
             for item in task_list
         ]
