@@ -273,27 +273,12 @@ const Strategy: React.FC = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce(
-      (acc, item) => {
-        const category = item.display_category || 'other';
-        if (!acc[category]) {
-          acc[category] = {
-            title: category,
-            key: category,
-            children: []
-          };
-        }
-        acc[category].children.push({
-          title: `${item.name}(${item.policy_count || 0})`,
-          label: item.name || '--',
-          key: item.id,
-          children: []
-        });
-        return acc;
-      },
-      {} as Record<string, TreeItem>
-    );
-    return Object.values(groupedData);
+    return data.map((item) => ({
+      title: `${item.name}(${item.policy_count || 0})`,
+      label: item.name || '--',
+      key: item.id,
+      children: []
+    }));
   };
 
   const deleteConfirm = async (id: number | string) => {

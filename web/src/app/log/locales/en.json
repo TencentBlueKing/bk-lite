@@ -100,6 +100,7 @@
   },
   "log": {
     "integration": {
+      "connect": "Connect",
       "sampleRate": "Sampling Rate",
       "processDes": "The System process metricset provides process statistics. One document is provided for each process.",
       "ruleCategories": "Preset Rule",
