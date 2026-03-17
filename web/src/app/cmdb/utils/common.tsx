@@ -33,7 +33,9 @@ import {
   TagAttrOption,
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
-import { formatCollectTaskDisplay } from '@/app/cmdb/utils/collectTask';
+import {
+  getCollectTaskLinkMeta,
+} from '@/app/cmdb/utils/collectTask';
 import TableFieldEditor from './tableFieldEditor';
 import TagCascaderEditor from './tagCascaderEditor';
 import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
@@ -46,6 +48,34 @@ export const parseTableValue = (val: any): any[] => {
     try { return JSON.parse(val); } catch { return []; }
   }
   return Array.isArray(val) ? val : [];
+};
+
+const collectTaskLinkClassName =
+  'text-[var(--color-primary)] underline cursor-pointer hover:text-[var(--color-primary-hover,#3a84ff)]';
+
+const renderCollectTaskValue = (value: unknown, pluginIdHint?: string) => {
+  // Given 实例页需要按任务跳转采集详情，When 拿到 collect_task 值，Then 先解析是否可生成完整路由。
+  const meta = getCollectTaskLinkMeta(value, pluginIdHint);
+  if (!meta.clickable || !meta.href) {
+    return (
+      <EllipsisWithTooltip
+        className="whitespace-nowrap overflow-hidden text-ellipsis"
+        text={meta.displayText}
+      />
+    );
+  }
+
+  return (
+    <a
+      href={meta.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-block max-w-full whitespace-nowrap overflow-hidden text-ellipsis ${collectTaskLinkClassName}`}
+      title={meta.displayText}
+    >
+      {meta.displayText}
+    </a>
+  );
 };
 
 type UserDisplayContext = 'table' | 'detail';
@@ -463,8 +493,6 @@ export const getAssetColumns = (config: {
           ...columnItem,
           render: (_: unknown, record: any) => {
             const cloudOptions = useAssetDataStore.getState().cloud_list;
-            const collectTaskMap = useAssetDataStore.getState().collectTaskMap;
-
             const modelId = record.model_id;
             if (attrId === 'cloud' && modelId === 'host') {
               const cloudId = +record[attrId];
@@ -481,13 +509,10 @@ export const getAssetColumns = (config: {
             }
 
             if (attrId === 'collect_task') {
-              const displayText = formatCollectTaskDisplay(record[attrId], collectTaskMap);
-              return (
-                <EllipsisWithTooltip
-                  className="whitespace-nowrap overflow-hidden text-ellipsis"
-                  text={displayText}
-                ></EllipsisWithTooltip>
-              );
+              // Given 列表行包含 model_id，When task->plugin 映射缺失，Then 使用 model_id 作为兜底提示。
+              const pluginIdHint =
+                typeof record.model_id === 'string' ? record.model_id : undefined;
+              return renderCollectTaskValue(record[attrId], pluginIdHint);
             }
 
             return (
@@ -508,6 +533,7 @@ export const getFieldItem = (config: {
   userList?: UserItem[];
   isEdit: boolean;
   value?: any;
+  modelIdHint?: string;
   hideUserAvatar?: boolean;
   disabled?: boolean;
   placeholder?: string;
@@ -694,8 +720,22 @@ export const getFieldItem = (config: {
       );
     case 'str':
       if (config.fieldItem.attr_id === 'collect_task') {
-        const taskMap = useAssetDataStore.getState().collectTaskMap;
-        return formatCollectTaskDisplay(config.value, taskMap);
+        // Given 详情页字段为只读展示，When collect_task 可解析路由，Then 渲染可点击新标签链接。
+        const meta = getCollectTaskLinkMeta(config.value, config.modelIdHint);
+        if (config.hideUserAvatar || !meta.clickable || !meta.href) {
+          return meta.displayText;
+        }
+        return (
+          <a
+            href={meta.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={collectTaskLinkClassName}
+            title={meta.displayText}
+          >
+            {meta.displayText}
+          </a>
+        );
       }
       return config.value || '--';
     case 'table':
