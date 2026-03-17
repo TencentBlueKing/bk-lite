@@ -9,7 +9,7 @@ export const useWinlogbeatConfig = () => {
   const pluginConfig = {
     collector: 'Winlogbeat',
     collect_type: 'winlogbeat',
-    icon: 'winlogbeat'
+    icon: 'winlogbeat1'
   };
 
   const defaultLevels = ['critical', 'error', 'warning'];
