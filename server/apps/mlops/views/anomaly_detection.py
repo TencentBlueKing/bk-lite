@@ -1331,7 +1331,6 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
         URL: POST /api/v1/mlops/anomaly_detection_servings/{pk}/predict/
 
         请求参数:
-            url: 预测服务主机地址（如 http://192.168.1.100，不含端口）
             data: 历史时间序列数据数组 [{"timestamp": "...", "value": ...}, ...]
 
         返回格式:

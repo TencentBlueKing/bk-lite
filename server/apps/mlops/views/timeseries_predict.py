@@ -1210,7 +1210,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         请求参数:
             url: 预测服务主机地址（如 http://192.168.1.100，不含端口）
             data: 历史时间序列数据数组 [{"timestamp": "...", "value": ...}, ...]
-            steps: 预测步数（默认 10）
+            config: { "steps": 预测步长 }
 
         返回格式:
             预测服务的响应（通常为 {"success": true, "history": [...], "prediction": [...], "metadata": {...}, "error": null}）
@@ -1220,7 +1220,8 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
             # 获取参数
             data = request.data.get("data")
-            steps = request.data.get("steps", 10)
+            config = request.data.get("config", {})
+            steps = config.get("steps", 5)
 
             # 参数校验
             if not data:
