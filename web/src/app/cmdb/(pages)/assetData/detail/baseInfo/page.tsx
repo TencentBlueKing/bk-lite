@@ -5,7 +5,10 @@ import { useModelApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import { useSearchParams } from 'next/navigation';
 import { Spin } from 'antd';
 import { useCommon } from '@/app/cmdb/context/common';
-import { ensureCollectTaskMap } from '@/app/cmdb/utils/collectTask';
+import {
+  ensureCollectTaskMap,
+  ensureCollectModelTreeCache,
+} from '@/app/cmdb/utils/collectTask';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import {
   AttrFieldType,
@@ -16,7 +19,7 @@ import {
 const BaseInfo = () => {
   const { getModelAttrGroupsFullInfo } = useModelApi();
   const { getInstanceDetail } = useInstanceApi();
-  const { getCollectTaskNames } = useCollectApi();
+  const { getCollectTaskNames, getCollectModelTree } = useCollectApi();
 
   const searchParams = useSearchParams();
   const commonContext = useCommon();
@@ -34,8 +37,17 @@ const BaseInfo = () => {
   }, []);
 
   useEffect(() => {
-    ensureCollectTaskMap(getCollectTaskNames).catch(() => {
-      useAssetDataStore.getState().setCollectTaskMap({});
+    // Given 详情页也支持 collect_task 跳转，When 页面进入，Then 预热与列表页一致的映射缓存。
+    Promise.all([
+      ensureCollectTaskMap(getCollectTaskNames),
+      ensureCollectModelTreeCache(getCollectModelTree),
+    ]).catch(() => {
+      const store = useAssetDataStore.getState();
+      store.setCollectTaskMap({});
+      store.setCollectTaskPluginMap({});
+      store.setCollectModelTree([]);
+      store.setCollectPluginCategoryMap({});
+      store.setCollectModelPluginMap({});
     });
   }, []);
 

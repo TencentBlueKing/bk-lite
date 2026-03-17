@@ -34,6 +34,12 @@
           "isNotMenuItem": true
         },
         {
+          "title": "编辑定时任务",
+          "url": "/job/execution/cron-task/edit",
+          "name": "cron_task_edit",
+          "isNotMenuItem": true
+        },
+        {
           "title": "作业记录",
           "url": "/job/execution/job-record",
           "name": "job_record"
@@ -115,6 +121,12 @@
           "title": "Create Scheduled Task",
           "url": "/job/execution/cron-task/create",
           "name": "cron_task_create",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Edit Scheduled Task",
+          "url": "/job/execution/cron-task/edit",
+          "name": "cron_task_edit",
           "isNotMenuItem": true
         },
         {

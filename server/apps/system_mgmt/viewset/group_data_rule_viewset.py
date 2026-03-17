@@ -7,6 +7,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
+from apps.rpc.job_mgmt import JobMgmt
 from apps.rpc.log import Log
 from apps.rpc.monitor import Monitor
 from apps.rpc.node_mgmt import NodeMgmt
@@ -125,6 +126,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
             "log": Log,
             "cmdb": CMDB,
             "ops-analysis": OperationAnalysisRPC,
+            "job": JobMgmt,
         }
         app = params.pop("app")
         if app not in client_map.keys():

@@ -39,8 +39,18 @@ const useMlopsTaskApi = () => {
   };
 
   // 获取训练状态数据
-  const getTrainTaskState = async (id: number, activeTap: string) => {
-    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/${id}/runs_data_list/`)
+  const getTrainTaskState = async ({
+    id,
+    activeTap,
+    page = 1,
+    page_size = 10
+  }: {
+    id: number,
+    activeTap: string,
+    page?: number,
+    page_size?: number
+  }) => {
+    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/${id}/runs_data_list/?page=${page}&page_size=${page_size}`);
   };
 
   // 获取状态指标
@@ -88,6 +98,10 @@ const useMlopsTaskApi = () => {
     return await post(`/mlops/${TRAINJOB_MAP[key]}/${id}/train/`);
   };
 
+  // 停止训练
+  const stopTrainTask = async (id: number | string, key: DatasetType) => {
+    return await post(`/mlops/${TRAINJOB_MAP[key]}/${id}/stop/`);
+  };
   // 编辑异常检测训练任务
   const updateAnomalyTrainTask = async (id: string, params: UpdateTrainJobParams): Promise<TrainJob> => {
     return await patch(`/mlops/anomaly_detection_train_jobs/${id}/`, params);
@@ -189,6 +203,7 @@ const useMlopsTaskApi = () => {
     addImageClassificationTrainTask,
     addObjectDetectionTrainTask,
     startTrainTask,
+    stopTrainTask,
     updateAnomalyTrainTask,
     updateLogClusteringTrainTask,
     updateTimeSeriesTrainTask,

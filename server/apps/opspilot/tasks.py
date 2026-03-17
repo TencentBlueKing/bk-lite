@@ -1,8 +1,11 @@
+import concurrent.futures
 import os
 import tempfile
 import time
 
 from celery import shared_task
+from django.core.exceptions import SynchronousOnlyOperation
+from django.db import close_old_connections
 from django.utils import timezone
 from tqdm import tqdm
 
@@ -28,6 +31,33 @@ from apps.opspilot.services.knowledge_search_service import KnowledgeSearchServi
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.graph_utils import GraphUtils
+
+
+def _run_in_native_thread(func, *args, **kwargs):
+    def _execute(allow_async_unsafe=False):
+        close_old_connections()
+        previous_async_flag = os.environ.get("DJANGO_ALLOW_ASYNC_UNSAFE")
+        if allow_async_unsafe:
+            os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
+
+        try:
+            return func(*args, **kwargs)
+        finally:
+            close_old_connections()
+            if allow_async_unsafe:
+                if previous_async_flag is None:
+                    os.environ.pop("DJANGO_ALLOW_ASYNC_UNSAFE", None)
+                else:
+                    os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = previous_async_flag
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        try:
+            future = executor.submit(_execute, False)
+            return future.result()
+        except SynchronousOnlyOperation:
+            logger.warning("Fallback with DJANGO_ALLOW_ASYNC_UNSAFE for eventlet ORM task")
+            future = executor.submit(_execute, True)
+            return future.result()
 
 
 @shared_task
@@ -392,47 +422,58 @@ def get_chunk_and_question(client, index_name, qa_pairs):
 
 @shared_task
 def rebuild_graph_community_by_instance(instance_id):
-    graph_obj = KnowledgeGraph.objects.get(id=instance_id)
-    graph_obj.status = "rebuilding"
-    graph_obj.save()
-    res = GraphUtils.rebuild_graph_community(graph_obj)
-    if not res["result"]:
-        logger.error("Failed to rebuild graph community")
-    logger.info("Graph community rebuild completed for instance ID: {}".format(instance_id))
-    graph_obj.status = "completed"
-    graph_obj.save()
+    def _execute():
+        graph_obj = KnowledgeGraph.objects.get(id=instance_id)
+        graph_obj.status = "rebuilding"
+        graph_obj.save()
+        res = GraphUtils.rebuild_graph_community(graph_obj)
+        if not res["result"]:
+            logger.error("Failed to rebuild graph community")
+        logger.info("Graph community rebuild completed for instance ID: {}".format(instance_id))
+        graph_obj.status = "completed"
+        graph_obj.save()
+
+    return _run_in_native_thread(_execute)
 
 
 @shared_task
 def create_graph(instance_id):
-    logger.info("Start creating graph for instance ID: {}".format(instance_id))
-    instance = KnowledgeGraph.objects.get(id=instance_id)
-    instance.status = "training"
-    instance.save()
-    res = GraphUtils.create_graph(instance)
-    if not res["result"]:
-        logger.error("Failed to create graph: {}".format(res["message"]))
-    else:
+    def _execute():
+        logger.info("Start creating graph for instance ID: {}".format(instance_id))
+        instance = KnowledgeGraph.objects.get(id=instance_id)
+        instance.status = "training"
+        instance.save()
+        res = GraphUtils.create_graph(instance)
+        if not res["result"]:
+            logger.error("Failed to create graph: {}".format(res["message"]))
+            return
+
         instance.status = "completed"
         instance.save()
         logger.info("Graph created completed: {}".format(instance.id))
 
+    return _run_in_native_thread(_execute)
+
 
 @shared_task
 def update_graph(instance_id, old_doc_list):
-    logger.info("Start updating graph for instance ID: {}".format(instance_id))
-    instance = KnowledgeGraph.objects.get(id=instance_id)
-    instance.status = "training"
-    instance.save()
-    res = GraphUtils.update_graph(instance, old_doc_list)
-    if not res["result"]:
-        instance.status = "failed"
+    def _execute():
+        logger.info("Start updating graph for instance ID: {}".format(instance_id))
+        instance = KnowledgeGraph.objects.get(id=instance_id)
+        instance.status = "training"
         instance.save()
-        logger.error("Failed to update graph: {}".format(res["message"]))
-    else:
+        res = GraphUtils.update_graph(instance, old_doc_list)
+        if not res["result"]:
+            instance.status = "failed"
+            instance.save()
+            logger.error("Failed to update graph: {}".format(res["message"]))
+            return
+
         instance.status = "completed"
         instance.save()
         logger.info("Graph updated completed: {}".format(instance.id))
+
+    return _run_in_native_thread(_execute)
 
 
 @shared_task
@@ -779,11 +820,21 @@ def chat_flow_test_execute_task(workflow_id, node_id, input_data, entry_type, ex
 
 @shared_task
 def update_graph_task(current_count, all_count, task_id):
-    task_obj = KnowledgeTask.objects.filter(id=task_id).first()
-    if not task_obj:
-        return
+    def _execute():
+        task_obj = KnowledgeTask.objects.filter(id=task_id).first()
+        if not task_obj:
+            return
 
-    task_obj.completed_count = current_count
-    train_progress = round(float(current_count / all_count) * 100, 2)
-    task_obj.train_progress = train_progress
-    task_obj.save()
+        task_obj.completed_count = current_count
+        train_progress = round(float(current_count / all_count) * 100, 2)
+        task_obj.train_progress = train_progress
+        task_obj.save()
+
+    try:
+        return _run_in_native_thread(_execute)
+    except SynchronousOnlyOperation:
+        logger.warning(
+            "Skip update_graph_task progress update due to async context conflict: task_id=%s",
+            task_id,
+        )
+        return

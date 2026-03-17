@@ -473,6 +473,20 @@ def check_backup_status(database_name: str = None, days: int = 7, config: Runnab
     Returns:
         JSON格式,包含备份状态和历史
     """
+    # 检查msdb.dbo.backupset表是否可访问
+    backupset_check = """
+    SELECT CASE WHEN OBJECT_ID('msdb.dbo.backupset', 'U') IS NOT NULL THEN 1 ELSE 0 END as has_backupset_table;
+    """
+
+    try:
+        table_check = execute_readonly_query(backupset_check, config=config)
+        has_backupset_table = table_check[0]["has_backupset_table"] == 1 if table_check else False
+
+        if not has_backupset_table:
+            return safe_json_dumps({"has_backup": False, "message": "当前实例未配置备份功能或msdb.dbo.backupset表不可访问"})
+    except Exception as e:
+        return safe_json_dumps({"has_backup": False, "message": f"无法检查备份状态: {str(e)}"})
+
     # 最近备份记录查询
     if database_name:
         backup_history_query = f"""
@@ -624,6 +638,20 @@ def check_agent_jobs(job_name: str = None, include_history: bool = True, config:
     Returns:
         JSON格式,包含作业状态和历史
     """
+    # 检查msdb.dbo.sysjobs表是否存在（判断SQL Server Agent是否已配置）
+    agent_check = """
+    SELECT CASE WHEN OBJECT_ID('msdb.dbo.sysjobs', 'U') IS NOT NULL THEN 1 ELSE 0 END as has_sysjobs_table;
+    """
+
+    try:
+        table_check = execute_readonly_query(agent_check, config=config)
+        has_sysjobs_table = table_check[0]["has_sysjobs_table"] == 1 if table_check else False
+
+        if not has_sysjobs_table:
+            return safe_json_dumps({"has_agent": False, "message": "当前实例未配置SQL Server Agent或msdb.dbo.sysjobs表不可访问"})
+    except Exception as e:
+        return safe_json_dumps({"has_agent": False, "message": f"无法检查SQL Server Agent状态: {str(e)}"})
+
     # 作业列表查询
     if job_name:
         jobs_query = """
@@ -900,8 +928,20 @@ def check_replication_status(config: RunnableConfig = None):
     HAVING COUNT(*) > 0;
     """
 
+    # 检查sys.publications表是否存在
+    publications_table_check = """
+    SELECT CASE WHEN OBJECT_ID('sys.publications', 'V') IS NOT NULL THEN 1 ELSE 0 END as has_publications_table;
+    """
+
     try:
-        # 首先检查是否有分发数据库
+        # 首先检查sys.publications表是否存在
+        table_check = execute_readonly_query(publications_table_check, config=config)
+        has_publications_table = table_check[0]["has_publications_table"] == 1 if table_check else False
+
+        if not has_publications_table:
+            return safe_json_dumps({"has_replication": False, "message": "当前数据库未配置复制功能（sys.publications表不存在）"})
+
+        # 检查是否有分发数据库
         dist_check = execute_readonly_query(distributor_check, config=config)
         has_distributor = dist_check[0]["has_distributor"] == 1 if dist_check else False
 
@@ -1010,6 +1050,20 @@ def check_database_size_growth(database_name: str = None, days: int = 30, config
     Returns:
         JSON格式,包含数据库大小增长趋势
     """
+    # 检查msdb.dbo.backupset表是否可访问
+    backupset_check = """
+    SELECT CASE WHEN OBJECT_ID('msdb.dbo.backupset', 'U') IS NOT NULL THEN 1 ELSE 0 END as has_backupset_table;
+    """
+
+    try:
+        table_check = execute_readonly_query(backupset_check, config=config)
+        has_backupset_table = table_check[0]["has_backupset_table"] == 1 if table_check else False
+
+        if not has_backupset_table:
+            return safe_json_dumps({"has_growth_data": False, "message": "当前实例未配置备份功能，无法基于备份历史分析数据库增长趋势"})
+    except Exception as e:
+        return safe_json_dumps({"has_growth_data": False, "message": f"无法检查备份历史: {str(e)}"})
+
     # 基于备份历史的大小变化
     if database_name:
         growth_query = f"""

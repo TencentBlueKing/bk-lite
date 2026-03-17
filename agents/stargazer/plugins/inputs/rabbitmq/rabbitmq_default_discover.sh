@@ -4,6 +4,9 @@ host_innerip=$(hostname -I | awk '{print $1}')
 cookie_file="/var/lib/rabbitmq/.erlang.cookie"
 conf_default="/etc/rabbitmq/rabbitmq.conf"
 
+# 转义 JSON 字符串
+json_escape() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/\\n}; s=${s//$'\r'/}; s=${s//$'\t'/\\t}; echo "$s"; }
+
 find_rabbitmqctl() {
     if command -v rabbitmqctl >/dev/null 2>&1; then
         command -v rabbitmqctl
@@ -274,9 +277,9 @@ discover_rabbitmq() {
     
     inst_name="$host_innerip-rabbitmq-$main_port"
     
+    # 修改 JSON 输出逻辑，使用 json_escape 转义字符串
     printf '{
     "inst_name": "%s",
-    "obj_id":"rabbitmq",
     "port": "%s",
     "allport": "%s",
     "ip_addr": "%s",
@@ -287,7 +290,16 @@ discover_rabbitmq() {
     "enabled_plugin_file": "%s",
     "erlang_version": "%s"
 }\n' \
-"$inst_name" "$main_port" "$all_ports" "$host_innerip" "$node_name" "$log_files" "$config_files" "$rabbitmq_version" "$enabled_plugin_file" "$erlang_version"
+        "$(json_escape "$inst_name")" \
+        "$(json_escape "$main_port")" \
+        "$(json_escape "$all_ports")" \
+        "$(json_escape "$host_innerip")" \
+        "$(json_escape "$node_name")" \
+        "$(json_escape "$log_files")" \
+        "$(json_escape "$config_files")" \
+        "$(json_escape "$rabbitmq_version")" \
+        "$(json_escape "$enabled_plugin_file")" \
+        "$(json_escape "$erlang_version")"
 }
 
 discover_rabbitmq

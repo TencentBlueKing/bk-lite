@@ -1,5 +1,6 @@
-import os
 import logging
+import os
+
 from config.components.base import APP_CODE, BASE_DIR, DEBUG
 
 if DEBUG:
@@ -40,23 +41,22 @@ class IgnoreSpecificPaths(logging.Filter):
             return False
         return True
 
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "filters": {
-            "ignore_paths": {
-                "()": IgnoreSpecificPaths,
-            },
+        "ignore_paths": {
+            "()": IgnoreSpecificPaths,
         },
+    },
     "formatters": {
         "simple": {
             "format": "%(levelname)s [%(asctime)s] [%(name)s] [%(filename)s:%(funcName)s:%(lineno)d] %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
         "verbose": {
-            "format": "%(levelname)s [%(asctime)s] %(pathname)s "
-            "%(lineno)d %(funcName)s %(process)d %(thread)d "
-            "\n \t %(message)s \n",
+            "format": "%(levelname)s [%(asctime)s] %(pathname)s " "%(lineno)d %(funcName)s %(process)d %(thread)d " "\n \t %(message)s \n",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
@@ -83,8 +83,8 @@ LOGGING = {
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "alert.log"),
             "maxBytes": 100 * 1024 * 1024,  # 添加文件大小限制
-            "backupCount": 5,               # 添加备份文件数量
-            "encoding": "utf-8",            # 添加编码格式
+            "backupCount": 5,  # 添加备份文件数量
+            "encoding": "utf-8",  # 添加编码格式
         },
         "cmdb": {
             "class": "logging.handlers.RotatingFileHandler",
@@ -126,6 +126,11 @@ LOGGING = {
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "opspilot.log"),
         },
+        "job": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "formatter": "verbose",
+            "filename": os.path.join(log_dir, "job.log"),
+        },
         "playground": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
@@ -150,6 +155,7 @@ LOGGING = {
         "ops-console": {"handlers": ["ops-console", "console"], "level": LOG_LEVEL, "propagate": True},
         "system-manager": {"handlers": ["system-manager", "console"], "level": LOG_LEVEL, "propagate": True},
         "opspilot": {"handlers": ["opspilot", "console"], "level": LOG_LEVEL, "propagate": True},
+        "job": {"handlers": ["job", "console"], "level": LOG_LEVEL, "propagate": True},
         "alert": {"handlers": ["alert", "console"], "level": LOG_LEVEL, "propagate": True},
         "celery": {"handlers": ["root"], "level": "INFO", "propagate": True},
         "playground": {"handlers": ["playground", "console"], "level": LOG_LEVEL, "propagate": True},
