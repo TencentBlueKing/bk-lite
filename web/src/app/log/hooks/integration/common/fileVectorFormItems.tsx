@@ -1,46 +1,173 @@
 import React from 'react';
 import { Form, Input, InputNumber, Select, Switch, Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { M_TIMEOUT_UNITS } from '@/app/log/constants';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useConditionModeList } from '@/app/log/hooks/integration/common/other';
 const { Option } = Select;
-const { TextArea } = Input;
 
 const useFileVectorFormItems = () => {
   const { t } = useTranslation();
   const conditionModeList = useConditionModeList();
 
+  // 编码选项
+  const encodingOptions = [
+    { value: 'utf-8', label: 'UTF-8' },
+    { value: 'gbk', label: 'GBK' },
+    { value: 'gb2312', label: 'GB2312' },
+    { value: 'utf-16le', label: 'UTF-16LE' },
+    { value: 'iso-8859-1', label: 'ISO-8859-1' }
+  ];
+
+  // 读取位置选项
+  const readFromOptions = [
+    { value: 'beginning', label: t('log.integration.fileReadFromBeginning') },
+    { value: 'end', label: t('log.integration.fileReadFromEnd') }
+  ];
+
+  // 解析器选项
+  const parserOptions = [
+    { value: '', label: t('log.integration.fileParserNone') },
+    { value: 'json', label: 'JSON' }
+  ];
+
   return {
-    getCommonFormItems: (disabledFormItems: Record<string, boolean> = {}) => {
+    getCommonFormItems: (
+      extra: {
+        disabledFormItems?: Record<string, boolean>;
+        hiddenFormItems?: Record<string, boolean>;
+      } = {}
+    ) => {
+      const { disabledFormItems = {} } = extra;
+
       return (
         <>
-          <Form.Item
-            label={t('log.integration.filePath')}
-            required={true}
-            name="file_path"
-            rules={[
-              {
-                required: true,
-                message: t('common.required'),
-              },
-            ]}
-          >
-            <Input disabled={disabledFormItems.file_path} />
-          </Form.Item>
+          {/* 文件路径配置区块 */}
+          <div className="font-semibold mb-[8px]">
+            {t('log.integration.filePathConfig')}
+          </div>
+          <div className="text-[var(--color-text-3)] mb-[12px]">
+            {t('log.integration.filePathConfigDesc')}
+          </div>
+          <div className="bg-[var(--color-fill-1)] rounded-md px-[20px] py-[16px] mb-[20px]">
+            {/* 日志路径 */}
+            <Form.Item className="mb-[10px]">
+              <div className="flex items-center">
+                <div className="flex items-center w-[100px] shrink-0 mr-[10px]">
+                  <span className="whitespace-nowrap">
+                    {t('log.integration.filePaths')}
+                  </span>
+                  <Tooltip
+                    title={
+                      <div style={{ whiteSpace: 'pre-line' }}>
+                        {t('log.integration.filePathsHint')}
+                      </div>
+                    }
+                  >
+                    <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
+                  </Tooltip>
+                  <span className="text-red-500 ml-[2px]">*</span>
+                </div>
+                <Form.Item
+                  className="mb-0 flex-1"
+                  name="paths"
+                  rules={[
+                    {
+                      required: true,
+                      message: t('common.required')
+                    }
+                  ]}
+                >
+                  <Select
+                    mode="tags"
+                    placeholder={t('log.integration.filePathsPlaceholder')}
+                    disabled={disabledFormItems.paths}
+                    suffixIcon={null}
+                    open={false}
+                  />
+                </Form.Item>
+              </div>
+            </Form.Item>
+            {/* 排除路径 */}
+            <Form.Item className="mb-0">
+              <div className="flex items-center">
+                <div className="flex items-center w-[100px] shrink-0 mr-[10px]">
+                  <span className="whitespace-nowrap">
+                    {t('log.integration.fileExcludePaths')}
+                  </span>
+                  <Tooltip
+                    title={
+                      <div style={{ whiteSpace: 'pre-line' }}>
+                        {t('log.integration.fileExcludePathsHint')}
+                      </div>
+                    }
+                  >
+                    <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
+                  </Tooltip>
+                </div>
+                <Form.Item className="mb-0 flex-1" name="exclude_paths">
+                  <Select
+                    mode="tags"
+                    placeholder={t(
+                      'log.integration.fileExcludePathsPlaceholder'
+                    )}
+                    disabled={disabledFormItems.exclude_paths}
+                    suffixIcon={null}
+                    open={false}
+                  />
+                </Form.Item>
+              </div>
+            </Form.Item>
+          </div>
+
+          {/* 日志格式区块 */}
+          <div className="font-semibold mb-[8px]">
+            {t('log.integration.fileLogFormat')}
+          </div>
+          <div className="text-[var(--color-text-3)] mb-[12px]">
+            {t('log.integration.fileLogFormatDesc')}
+          </div>
+          <div className="bg-[var(--color-fill-1)] rounded-md px-[20px] py-[16px] mb-[20px]">
+            {/* 解析器 */}
+            <Form.Item className="mb-[10px]">
+              <div className="flex items-center">
+                <div className="flex items-center w-[100px] shrink-0 mr-[10px]">
+                  <span className="whitespace-nowrap">
+                    {t('log.integration.fileParser')}
+                  </span>
+                  <Tooltip title={t('log.integration.fileParserHint')}>
+                    <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
+                  </Tooltip>
+                </div>
+                <Form.Item className="mb-0 flex-1" name="parser">
+                  <Select
+                    placeholder={t('log.integration.fileParser')}
+                    disabled={disabledFormItems.parser}
+                    allowClear
+                  >
+                    {parserOptions.map((item) => (
+                      <Option key={item.value} value={item.value}>
+                        {item.label}
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </div>
+            </Form.Item>
+          </div>
+
+          {/* 多行合并配置 */}
           <Form.Item layout="vertical" className="mb-[8px]">
             <div className="flex items-center">
-              <span className="mr-[10px]">
+              <span className="mr-[10px] font-semibold">
                 {t('log.integration.multiline')}
               </span>
               <Form.Item noStyle name={['multiline', 'enabled']}>
-                <Switch />
+                <Switch disabled={disabledFormItems.multiline_enabled} />
               </Form.Item>
             </div>
           </Form.Item>
-          <div className="text-[var(--color-text-3)]">
-            {t('log.integration.multilineDes')}
+          <div className="text-[var(--color-text-3)] mb-[12px]">
+            {t('log.integration.fileMultilineDesc')}
           </div>
           <Form.Item
             className="mb-[0]"
@@ -52,45 +179,83 @@ const useFileVectorFormItems = () => {
               const multilineEnabled = getFieldValue(['multiline', 'enabled']);
               return (
                 <div
-                  className={`border rounded-md mt-[10px] px-[20px] pt-[20px] mb-[20px] ${
+                  className={`bg-[var(--color-fill-1)] rounded-md px-[20px] py-[16px] mb-[20px] ${
                     !multilineEnabled ? 'hidden' : ''
                   }`}
                 >
                   {multilineEnabled && (
-                    <Form.Item
-                      name="multiline"
-                      rules={[
-                        ({ getFieldValue }) => ({
-                          validator() {
-                            const multiline = getFieldValue('multiline') || {};
-                            const hasAny = Object.values(multiline).some(
-                              (v) => v && v !== ''
-                            );
-                            const hasAll =
-                              multiline.start_pattern &&
-                              multiline.condition_pattern &&
-                              multiline.mode &&
-                              multiline.timeout_ms;
-
-                            if (hasAny && !hasAll) {
-                              return Promise.reject(
-                                new Error(
-                                  t('log.integration.multilineAllRequired')
-                                )
-                              );
-                            }
-                            return Promise.resolve();
-                          },
-                        }),
-                      ]}
-                    >
-                      <Form.Item className="mb-[10px]" layout="vertical">
-                        <div className="flex items-center justify-between">
-                          <div className="flex w-[100px] mr-[10px]">
-                            <EllipsisWithTooltip
-                              className="overflow-hidden text-ellipsis whitespace-nowrap"
-                              text={t('log.integration.startPattern')}
+                    <>
+                      {/* 合并模式 */}
+                      <Form.Item className="mb-[10px]">
+                        <div className="flex items-center">
+                          <div className="flex items-center w-[100px] shrink-0 mr-[10px]">
+                            <span className="whitespace-nowrap">
+                              {t('log.integration.dockerMergeMode')}
+                            </span>
+                            <Tooltip
+                              title={
+                                <div style={{ whiteSpace: 'pre-line' }}>
+                                  {t('log.integration.dockerMergeModeTooltip')}
+                                </div>
+                              }
+                            >
+                              <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
+                            </Tooltip>
+                          </div>
+                          <Form.Item
+                            className="mb-0 flex-1"
+                            name={['multiline', 'mode']}
+                          >
+                            <Select
+                              placeholder={t('log.integration.dockerMergeMode')}
+                              disabled={disabledFormItems.multiline_mode}
+                            >
+                              {conditionModeList.map((item) => (
+                                <Option key={item.value} value={item.value}>
+                                  {item.title}
+                                </Option>
+                              ))}
+                            </Select>
+                          </Form.Item>
+                        </div>
+                      </Form.Item>
+                      {/* 匹配正则 */}
+                      <Form.Item className="mb-[10px]">
+                        <div className="flex items-center">
+                          <div className="flex items-center w-[100px] shrink-0 mr-[10px]">
+                            <span className="whitespace-nowrap">
+                              {t('log.integration.dockerMatchRegex')}
+                            </span>
+                            <Tooltip
+                              title={
+                                <div style={{ whiteSpace: 'pre-line' }}>
+                                  {t('log.integration.dockerMatchRegexTooltip')}
+                                </div>
+                              }
+                            >
+                              <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
+                            </Tooltip>
+                          </div>
+                          <Form.Item
+                            className="mb-0 flex-1"
+                            name={['multiline', 'condition_pattern']}
+                          >
+                            <Input
+                              placeholder="^[\s]+"
+                              disabled={
+                                disabledFormItems.multiline_condition_pattern
+                              }
                             />
+                          </Form.Item>
+                        </div>
+                      </Form.Item>
+                      {/* 起始行正则 */}
+                      <Form.Item className="mb-[10px]">
+                        <div className="flex items-center">
+                          <div className="flex items-center w-[100px] shrink-0 mr-[10px]">
+                            <span className="whitespace-nowrap">
+                              {t('log.integration.startPattern')}
+                            </span>
                             <Tooltip
                               title={
                                 <div style={{ whiteSpace: 'pre-line' }}>
@@ -102,115 +267,141 @@ const useFileVectorFormItems = () => {
                             </Tooltip>
                           </div>
                           <Form.Item
+                            className="mb-0 flex-1"
                             name={['multiline', 'start_pattern']}
-                            noStyle
                           >
-                            <TextArea
-                              placeholder={t('log.integration.startPattern')}
-                              rows={2}
+                            <Input
+                              placeholder="^\d{4}-\d{2}-\d{2}"
+                              disabled={
+                                disabledFormItems.multiline_start_pattern
+                              }
                             />
                           </Form.Item>
                         </div>
                       </Form.Item>
-                      <Form.Item className="mb-[10px]" layout="vertical">
-                        <div className="flex items-center justify-between">
-                          <div className="flex w-[100px] mr-[10px]">
-                            <EllipsisWithTooltip
-                              className="overflow-hidden text-ellipsis whitespace-nowrap"
-                              text={t('log.integration.conditionPattern')}
-                            />
+                      {/* 多行等待超时 */}
+                      <Form.Item className="mb-0">
+                        <div className="flex items-center">
+                          <div className="flex items-center w-[100px] shrink-0 mr-[10px]">
+                            <span className="whitespace-nowrap">
+                              {t('log.integration.dockerTimeoutMs')}
+                            </span>
                             <Tooltip
-                              title={
-                                <div style={{ whiteSpace: 'pre-line' }}>
-                                  {t('log.integration.conditionPatternTips')}
-                                </div>
-                              }
+                              title={t(
+                                'log.integration.dockerTimeoutMsTooltip'
+                              )}
                             >
                               <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
                             </Tooltip>
                           </div>
                           <Form.Item
-                            name={['multiline', 'condition_pattern']}
-                            noStyle
+                            className="mb-0 flex-1"
+                            name={['multiline', 'timeout_ms']}
                           >
-                            <TextArea
-                              placeholder={t(
-                                'log.integration.conditionPattern'
-                              )}
-                              rows={2}
-                            />
-                          </Form.Item>
-                        </div>
-                      </Form.Item>
-                      <Form.Item className="mb-[10px]" layout="vertical">
-                        <div className="flex items-center justify-between">
-                          <div className="flex w-[100px] mr-[10px]">
-                            <EllipsisWithTooltip
-                              className="overflow-hidden text-ellipsis whitespace-nowrap"
-                              text={t('log.integration.mode')}
-                            />
-                            <Tooltip title={t('log.integration.modeTips')}>
-                              <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
-                            </Tooltip>
-                          </div>
-                          <Form.Item name={['multiline', 'mode']} noStyle>
-                            <Select
-                              placeholder={t('log.integration.mode')}
-                              style={{ width: '100%' }}
-                            >
-                              {conditionModeList.map((item) => (
-                                <Option key={item.value} value={item.value}>
-                                  <Tooltip title={item.label}>
-                                    {item.title}
-                                  </Tooltip>
-                                </Option>
-                              ))}
-                            </Select>
-                          </Form.Item>
-                        </div>
-                      </Form.Item>
-                      <Form.Item className="mb-0" layout="vertical">
-                        <div className="flex items-center justify-between">
-                          <div className="flex w-[100px] mr-[10px]">
-                            <EllipsisWithTooltip
-                              className="overflow-hidden text-ellipsis whitespace-nowrap"
-                              text={t('log.integration.timeoutMs')}
-                            />
-                            <Tooltip title={t('log.integration.timeoutMsTips')}>
-                              <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
-                            </Tooltip>
-                          </div>
-                          <Form.Item name={['multiline', 'timeout_ms']} noStyle>
                             <InputNumber
                               className="w-full"
-                              placeholder={t('log.integration.timeoutMs')}
+                              placeholder="1000"
                               min={1}
                               precision={0}
-                              addonAfter={
-                                <Select
-                                  style={{ width: 116 }}
-                                  defaultValue="ms"
-                                >
-                                  {M_TIMEOUT_UNITS.map((item: string) => (
-                                    <Option key={item} value={item}>
-                                      {item}
-                                    </Option>
-                                  ))}
-                                </Select>
-                              }
+                              addonAfter="ms"
+                              disabled={disabledFormItems.multiline_timeout_ms}
                             />
                           </Form.Item>
                         </div>
                       </Form.Item>
-                    </Form.Item>
+                    </>
                   )}
                 </div>
               );
             }}
           </Form.Item>
+
+          {/* 高级配置区块 */}
+          <div className="font-semibold mb-[8px]">
+            {t('log.integration.fileAdvancedConfig')}
+          </div>
+          <div className="text-[var(--color-text-3)] mb-[12px]">
+            {t('log.integration.fileAdvancedConfigDesc')}
+          </div>
+          <div className="bg-[var(--color-fill-1)] rounded-md px-[20px] py-[16px] mb-[20px]">
+            {/* 读取位置 */}
+            <Form.Item className="mb-[10px]">
+              <div className="flex items-center">
+                <div className="flex items-center w-[100px] shrink-0 mr-[10px]">
+                  <span className="whitespace-nowrap">
+                    {t('log.integration.fileReadFrom')}
+                  </span>
+                  <Tooltip title={t('log.integration.fileReadFromHint')}>
+                    <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
+                  </Tooltip>
+                </div>
+                <Form.Item className="mb-0 flex-1" name="read_from">
+                  <Select
+                    placeholder={t('log.integration.fileReadFrom')}
+                    disabled={disabledFormItems.read_from}
+                  >
+                    {readFromOptions.map((item) => (
+                      <Option key={item.value} value={item.value}>
+                        {item.label}
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </div>
+            </Form.Item>
+            {/* 文件编码 */}
+            <Form.Item className="mb-[10px]">
+              <div className="flex items-center">
+                <div className="flex items-center w-[100px] shrink-0 mr-[10px]">
+                  <span className="whitespace-nowrap">
+                    {t('log.integration.fileEncoding')}
+                  </span>
+                  <Tooltip title={t('log.integration.fileEncodingHint')}>
+                    <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
+                  </Tooltip>
+                </div>
+                <Form.Item className="mb-0 flex-1" name="encoding">
+                  <Select
+                    placeholder={t('log.integration.fileEncoding')}
+                    disabled={disabledFormItems.encoding}
+                  >
+                    {encodingOptions.map((item) => (
+                      <Option key={item.value} value={item.value}>
+                        {item.label}
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </div>
+            </Form.Item>
+            {/* 忽略过旧文件 */}
+            <Form.Item className="mb-0">
+              <div className="flex items-center">
+                <div className="flex items-center w-[100px] shrink-0 mr-[10px]">
+                  <span className="whitespace-nowrap">
+                    {t('log.integration.fileIgnoreOlderSecs')}
+                  </span>
+                  <Tooltip title={t('log.integration.fileIgnoreOlderSecsHint')}>
+                    <QuestionCircleOutlined className="text-[var(--ant-color-text-description)] ml-[4px]" />
+                  </Tooltip>
+                </div>
+                <Form.Item className="mb-0 flex-1" name="ignore_older_secs">
+                  <InputNumber
+                    className="w-full"
+                    placeholder="86400"
+                    min={1}
+                    precision={0}
+                    addonAfter="s"
+                    disabled={disabledFormItems.ignore_older_secs}
+                  />
+                </Form.Item>
+              </div>
+            </Form.Item>
+          </div>
         </>
       );
-    },
+    }
   };
 };
+
 export { useFileVectorFormItems };
