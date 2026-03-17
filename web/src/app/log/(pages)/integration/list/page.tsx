@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Spin, Input, Button, Tag, Empty } from 'antd';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/log/api/integration';
-import { SettingOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import { useCollectTypeInfo } from '@/app/log/hooks/integration/common/getCollectTypeConfig';
@@ -17,7 +17,7 @@ const { Search } = Input;
 
 const Integration = () => {
   const { isLoading } = useApiClient();
-  const { getCollectTypes } = useIntegrationApi();
+  const { getCollectTypes, getDisplayCategoryEnum } = useIntegrationApi();
   const { t } = useTranslation();
   const router = useRouter();
   const { getIcon } = useCollectTypeInfo();
@@ -28,6 +28,7 @@ const Integration = () => {
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
+  const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
 
   const collectTypes = useMemo(() => {
     if (activeGroup === 'all')
@@ -51,10 +52,22 @@ const Integration = () => {
     setPageLoading(true);
     setTreeLoading(isInit);
     try {
-      const data = (await getCollectTypes(rest)) || [];
-      setCollectTypeList(data);
-      if (isInit) {
-        setTreeData(getTreeData(data));
+      const [data, categoryEnum] = await Promise.all([
+        getCollectTypes(rest),
+        isInit ? getDisplayCategoryEnum() : Promise.resolve(null)
+      ]);
+      setCollectTypeList(data || []);
+      if (isInit && categoryEnum) {
+        // Build category id to name map
+        const map = categoryEnum.reduce(
+          (acc: Record<string, string>, item: { id: string; name: string }) => {
+            acc[item.id] = item.name;
+            return acc;
+          },
+          {}
+        );
+        setCategoryMap(map);
+        setTreeData(getTreeData(data || [], categoryEnum));
         setDefaultSelectObj('all');
       }
     } finally {
@@ -63,38 +76,34 @@ const Integration = () => {
     }
   };
 
-  const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce(
+  const getTreeData = (
+    data: ObjectItem[],
+    categoryEnum: { id: string; name: string }[]
+  ): TreeItem[] => {
+    // Count items per category
+    const categoryCounts = data.reduce(
       (acc, item) => {
         const category = item.display_category || 'other';
-        if (!acc[category]) {
-          acc[category] = {
-            title: category,
-            key: category,
-            children: []
-          };
-        }
-        acc[category].children.push({
-          title: item.name || '--',
-          label: item.name || '--',
-          key: item.id,
-          children: []
-        });
+        acc[category] = (acc[category] || 0) + 1;
         return acc;
       },
-      {} as Record<string, TreeItem>
+      {} as Record<string, number>
     );
+
+    // Build tree from API category enum
+    const categoryNodes: TreeItem[] = categoryEnum.map((item) => ({
+      title: `${item.name}(${categoryCounts[item.id] || 0})`,
+      key: item.id,
+      children: []
+    }));
+
     return [
       {
         title: `${t('common.all')}(${data.length})`,
         key: 'all',
         children: []
       },
-      ...Object.values(groupedData).map((item) => {
-        item.title = `${item.title}(${item.children.length})`;
-        item.children = [];
-        return item;
-      })
+      ...categoryNodes
     ];
   };
 
@@ -162,12 +171,15 @@ const Integration = () => {
                         }}
                       >
                         <h2
-                          title={app.name}
+                          title={`${app.name} (${app.collector})`}
                           className="text-xl font-bold m-0 hide-text"
                         >
-                          {app.name || '--'}
+                          {app.name || '--'} ({app.collector})
                         </h2>
-                        <Tag className="mt-[4px]">{app.display_category}</Tag>
+                        <Tag className="mt-[4px]">
+                          {categoryMap[app.display_category] ||
+                            app.display_category}
+                        </Tag>
                       </div>
                     </div>
                     <p
@@ -182,7 +194,7 @@ const Integration = () => {
                         className="w-full"
                       >
                         <Button
-                          icon={<SettingOutlined />}
+                          icon={<PlusOutlined />}
                           type="primary"
                           className="w-full rounded-md transition-opacity duration-300"
                           onClick={(e) => {
@@ -190,7 +202,7 @@ const Integration = () => {
                             linkToDetial(app);
                           }}
                         >
-                          {t('common.setting')}
+                          {t('log.integration.connect')}
                         </Button>
                       </Permission>
                     </div>

@@ -300,33 +300,18 @@ const Alert: React.FC = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce(
-      (acc, item) => {
-        const category = item.display_category || 'other';
-        if (!acc[category]) {
-          acc[category] = {
-            title: category,
-            key: category,
-            children: []
-          };
-        }
-        acc[category].children.push({
-          title: item.name || '--',
-          label: item.name || '--',
-          key: item.id,
-          children: []
-        });
-        return acc;
-      },
-      {} as Record<string, TreeItem>
-    );
     return [
       {
         title: t('common.all'),
         key: 'all',
         children: []
       },
-      ...Object.values(groupedData)
+      ...data.map((item) => ({
+        title: item.name || '--',
+        label: item.name || '--',
+        key: item.id,
+        children: []
+      }))
     ];
   };
 

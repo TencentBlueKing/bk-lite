@@ -2,7 +2,7 @@ import useApiClient from '@/utils/request';
 import React from 'react';
 import {
   InstanceInfo,
-  IntegrationLogInstance,
+  IntegrationLogInstance
 } from '@/app/log/types/integration';
 import { GroupInfo } from '@/app/log/types/integration';
 import { cloneDeep } from 'lodash';
@@ -31,13 +31,17 @@ const useIntegrationApi = () => {
   ) => {
     return await get('/log/collect_types/', {
       params,
-      ...config,
+      ...config
     });
+  };
+
+  const getDisplayCategoryEnum = async () => {
+    return await get('/log/collect_types/display_category_enum/');
   };
 
   const getFields = async (params = {}) => {
     return await get('/log/collect_types/all_attrs/', {
-      params,
+      params
     });
   };
 
@@ -50,7 +54,7 @@ const useIntegrationApi = () => {
     } = {}
   ) => {
     return await get(`/log/search/field_names/`, {
-      params,
+      params
     });
   };
 
@@ -156,7 +160,7 @@ const useIntegrationApi = () => {
     } = {}
   ) => {
     return await get('/log/log_group/', {
-      params,
+      params
     });
   };
 
@@ -166,6 +170,7 @@ const useIntegrationApi = () => {
 
   return {
     getCollectTypes,
+    getDisplayCategoryEnum,
     getLogNodeList,
     batchCreateInstances,
     getInstanceList,
@@ -182,7 +187,7 @@ const useIntegrationApi = () => {
     updateDefaultLogStreams,
     getCollectTypesById,
     getFields,
-    getFieldValues,
+    getFieldValues
   };
 };
 
