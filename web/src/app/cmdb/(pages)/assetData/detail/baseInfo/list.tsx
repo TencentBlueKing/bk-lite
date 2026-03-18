@@ -296,8 +296,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                         userList,
                         isEdit: false,
                         value: item.value,
-                        // Given 详情页缺少行级 model_id，When 解析 collect_task 跳转，Then 透传当前页面 model_id 作为 hint。
-                        modelIdHint: modelId,
                       })
                     )}
                   </>

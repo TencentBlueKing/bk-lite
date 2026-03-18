@@ -26,6 +26,7 @@ MAX_LOGIN_FAILURES = 2  # 登录失败最大重试次数
 # 浏览器超时配置（秒），可通过环境变量调整
 BROWSER_LLM_TIMEOUT = int(os.getenv("BROWSER_LLM_TIMEOUT", "30"))  # LLM 调用超时
 BROWSER_STEP_TIMEOUT = int(os.getenv("BROWSER_STEP_TIMEOUT", "60"))  # 单步执行超时（包含导航、页面加载等）
+BROWSER_TASK_EVENT_MAX_LEN = int(os.getenv("BROWSER_TASK_EVENT_MAX_LEN", "4000"))
 
 # 页面加载等待配置（秒），避免截图时页面仍在 loading
 # minimum_wait_page_load_time: 页面加载后最小等待时间，确保页面渲染完成后再截图
@@ -78,6 +79,20 @@ class BrowserStepInfo(TypedDict):
 
 # 步骤回调类型定义
 StepCallbackType = Callable[[BrowserStepInfo], None] | Callable[[BrowserStepInfo], Awaitable[None]]
+CustomEventCallbackType = Callable[[Dict[str, Any]], None] | Callable[[Dict[str, Any]], Awaitable[None]]
+
+LOW_SIGNAL_MESSAGES = {
+    "执行作业",
+    "执行",
+    "开始",
+    "开始执行",
+    "运行",
+    "运行一下",
+    "按要求执行",
+    "go",
+    "run",
+    "start",
+}
 
 # 登录失败检测关键词（中英文）
 # 注意：这些关键词必须是页面上实际显示的错误消息，而不是 LLM 思考过程中的描述
@@ -328,6 +343,74 @@ def _build_sensitive_data(username: Optional[str] = None, password: Optional[str
         sensitive_data["x_password"] = password
 
     return sensitive_data
+
+
+def _build_browser_task_event_payload(tool_name: str, url: str, final_task: str) -> Dict[str, Any]:
+    """构建 browser_task_received 事件负载（含长度保护）"""
+    task_text = final_task or ""
+    if len(task_text) > BROWSER_TASK_EVENT_MAX_LEN:
+        return {
+            "tool": tool_name,
+            "url": url,
+            "task_final": task_text[:BROWSER_TASK_EVENT_MAX_LEN],
+            "truncated": True,
+            "timestamp_ms": int(time.time() * 1000),
+        }
+    return {
+        "tool": tool_name,
+        "url": url,
+        "task_final": task_text,
+        "truncated": False,
+        "timestamp_ms": int(time.time() * 1000),
+    }
+
+
+def _is_low_signal_message(message: Optional[str]) -> bool:
+    if not message:
+        return True
+
+    text = message.strip()
+    if not text:
+        return True
+
+    normalized = text.lower()
+    if len(normalized) <= 12 and normalized in LOW_SIGNAL_MESSAGES:
+        return True
+
+    return False
+
+
+def _build_forced_browser_task(base_task: Optional[str], user_message: Optional[str], llm_task: Optional[str]) -> Optional[str]:
+    base_text = (base_task or "").strip()
+    delta_text = (user_message or "").strip()
+
+    if not base_text:
+        return llm_task
+
+    if not delta_text or _is_low_signal_message(delta_text) or delta_text in base_text:
+        return base_text
+
+    return f"""请严格按以下要求执行，不得省略或改写。
+
+【基础任务】
+{base_text}
+
+【本轮用户补充要求】
+{delta_text}"""
+
+
+def _apply_secret_placeholders(task: Optional[str], sensitive_data: Optional[Dict[str, str]]) -> Optional[str]:
+    if not task or not sensitive_data:
+        return task
+
+    replaced_task = task
+    for secret_key, actual_value in sensitive_data.items():
+        if not actual_value:
+            continue
+        placeholder = f"<secret>{secret_key}</secret>"
+        replaced_task = replaced_task.replace(actual_value, placeholder)
+
+    return replaced_task
 
 
 def _create_smart_wait_hook() -> tuple[Callable, dict]:
@@ -761,7 +844,7 @@ def _create_dom_error_detection_hook(
                     if is_inspection_task and hasattr(agent, "message_manager"):
                         try:
                             # 构造提示信息，让 LLM 知道页面有错误
-                            hint = f"【系统自动检测】页面{err.get('position', '')}区域发现错误提示: " f"'{err.get('text', '')[:100]}'"
+                            hint = f"【系统自动检测】页面{err.get('position', '')}区域发现错误提示: '{err.get('text', '')[:100]}'"
                             # 注入到 agent 的 injected_agent_state
                             if hasattr(agent, "injected_agent_state"):
                                 current_state = agent.injected_agent_state or ""
@@ -840,12 +923,12 @@ def _create_login_failure_hook(
                 # 如果失败次数达到阈值，停止 agent
                 if state["login_failure_count"] >= max_failures:
                     state["stopped_due_to_login_failure"] = True
-                    logger.error(f"[Step {step_num}] 登录失败次数已达 {max_failures} 次，停止执行。" f"匹配关键词: '{matched_pattern}', 页面标题: '{page_title}'")
+                    logger.error(f"[Step {step_num}] 登录失败次数已达 {max_failures} 次，停止执行。匹配关键词: '{matched_pattern}', 页面标题: '{page_title}'")
                     # 暂停 agent 执行
                     agent.pause()
                     # 抛出异常以确保停止
                     raise LoginFailureError(
-                        f"登录失败次数超过限制({max_failures}次)，已停止执行。" f"页面标题: {state['last_failure_reason']}",
+                        f"登录失败次数超过限制({max_failures}次)，已停止执行。页面标题: {state['last_failure_reason']}",
                         state["login_failure_count"],
                     )
 
@@ -926,10 +1009,12 @@ async def _browse_website_async(
     headless: bool = True,
     llm: ChatOpenAI = None,
     step_callback: Optional[StepCallbackType] = None,
+    custom_event_callback: Optional[CustomEventCallbackType] = None,
     sensitive_data: Optional[Dict[str, str]] = None,
     masked_task: Optional[str] = None,
     user_data_dir: Optional[str] = None,
     locale: str = "en",
+    tool_name: str = "browse_website",
 ) -> Dict[str, Any]:
     """
     异步浏览网站并执行任务
@@ -958,8 +1043,6 @@ async def _browse_website_async(
     """
     browser = None
     try:
-        logger.info(f"开始浏览网站: {url}, 任务: {task or '无特定任务'}")
-
         # 初始化 LLM（使用 browser_use.llm.ChatOpenAI）
         if not llm:
             llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
@@ -1005,6 +1088,17 @@ async def _browse_website_async(
 
         # 创建步骤回调适配器
         register_callback = _create_step_callback_adapter(step_callback, max_steps)
+
+        # 回传 browser_use 实际接收任务（final_task），用于前端展示
+        if custom_event_callback is not None:
+            task_payload = _build_browser_task_event_payload(tool_name=tool_name, url=url, final_task=final_task)
+            try:
+                if asyncio.iscoroutinefunction(custom_event_callback):
+                    await custom_event_callback(task_payload)
+                else:
+                    custom_event_callback(task_payload)
+            except Exception as e:
+                logger.warning(f"browser task custom event 回调执行失败: {e}")
 
         # 创建登录失败检测 hook（仅当任务包含账号密码时启用）
         has_credentials = sensitive_data is not None and len(sensitive_data) > 0
@@ -1426,7 +1520,10 @@ def browse_website(
     configurable = config.get("configurable", {}) if config else {}
     llm_config = configurable.get("graph_request")
     step_callback: Optional[StepCallbackType] = configurable.get("browser_step_callback")
-
+    custom_event_callback: Optional[CustomEventCallbackType] = configurable.get("browser_custom_event_callback")
+    forced_base_task = configurable.get("browser_use_base_task")
+    forced_user_message = configurable.get("browser_use_user_message")
+    force_browser_task = configurable.get("browser_use_force_task", False)
     try:
         # 验证URL
         _validate_url(url)
@@ -1438,8 +1535,17 @@ def browse_website(
         )
         # logger.info(f"task: {task}\n username: {username}\n password: {password}")
 
+        original_llm_task = task
+        if force_browser_task:
+            task = _build_forced_browser_task(
+                base_task=forced_base_task,
+                user_message=forced_user_message,
+                llm_task=task,
+            )
+
         # 从独立参数构建 sensitive_data（凭据应通过 username/password 参数传递）
         sensitive_data = _build_sensitive_data(username=username, password=password)
+        task = _apply_secret_placeholders(task, sensitive_data)
 
         # 如果有凭据，在 task 开头添加提示，让浏览器 agent 知道有凭据可用
         masked_task = task
@@ -1462,12 +1568,17 @@ def browse_website(
                 task=masked_task,
                 llm=llm,
                 step_callback=step_callback,
+                custom_event_callback=custom_event_callback,
                 sensitive_data=sensitive_data,
                 masked_task=masked_task,
                 user_data_dir=user_data_dir,
                 locale=locale,
+                tool_name="browse_website",
             )
         )
+        if force_browser_task and isinstance(result, dict):
+            result["task_source"] = "forced_from_skill_prompt"
+            result["llm_task_original"] = original_llm_task
         return result
 
     except ValueError as e:
@@ -1545,6 +1656,7 @@ def extract_webpage_info(
         configurable = config.get("configurable", {}) if config else {}
         llm_config = configurable.get("graph_request")
         step_callback: Optional[StepCallbackType] = configurable.get("browser_step_callback")
+        custom_event_callback: Optional[CustomEventCallbackType] = configurable.get("browser_custom_event_callback")
 
         llm = ChatOpenAI(
             model=llm_config.model,
@@ -1585,10 +1697,12 @@ def extract_webpage_info(
                 task=masked_task,
                 llm=llm,
                 step_callback=step_callback,
+                custom_event_callback=custom_event_callback,
                 sensitive_data=sensitive_data,
                 masked_task=masked_task,
                 user_data_dir=user_data_dir,
                 locale=locale,
+                tool_name="extract_webpage_info",
             )
         )
 
