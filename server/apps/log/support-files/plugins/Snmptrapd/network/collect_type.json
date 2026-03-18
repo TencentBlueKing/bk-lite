@@ -1,7 +1,7 @@
 {
   "name": "snmp_trap",
   "collector": "Snmptrapd",
-  "icon": "network",
+  "icon": "snmp_trap",
   "description": "Collects SNMP Trap messages from network devices",
   "default_query": "collect_type: snmp_trap | last 1 by (_time) partition by (node_ip)",
   "display_category": "general",

@@ -23,8 +23,7 @@ import {
   UserItem,
   TabItem,
   TimeSelectorDefaultValue,
-  TimeValuesProps,
-  TreeItem
+  TimeValuesProps
 } from '@/app/log/types';
 import { ObjectItem } from '@/app/log/types/event';
 import { AlertOutlined } from '@ant-design/icons';
@@ -44,7 +43,6 @@ import { LEVEL_MAP } from '@/app/log/constants';
 import { useLevelList, useStateMap } from '@/app/log/hooks/event';
 import useLogEventApi from '@/app/log/api/event';
 import useLogIntegrationApi from '@/app/log/api/integration';
-import TreeSelector from '@/app/log/components/tree-selector';
 import { cloneDeep } from 'lodash';
 const { Search } = Input;
 const { Option } = Select;
@@ -90,11 +88,8 @@ const Alert: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
-  const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
-  const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [objectId, setObjectId] = useState<React.Key>('');
 
   const columns: ColumnItem[] = [
     {
@@ -231,10 +226,8 @@ const Alert: React.FC = () => {
       return;
     }
     timerRef.current = setInterval(() => {
-      if (objectId) {
-        getAssetInsts('timer');
-        getChartData('timer');
-      }
+      getAssetInsts('timer');
+      getChartData('timer');
     }, frequence);
     return () => {
       clearTimer();
@@ -242,27 +235,20 @@ const Alert: React.FC = () => {
   }, [
     frequence,
     timeValues,
-    objectId,
     searchText,
     pagination.current,
     pagination.pageSize
   ]);
 
   useEffect(() => {
-    if (isLoading || !objectId) return;
+    if (isLoading) return;
     getAssetInsts('refresh');
-  }, [
-    isLoading,
-    timeValues,
-    objectId,
-    pagination.current,
-    pagination.pageSize
-  ]);
+  }, [isLoading, timeValues, pagination.current, pagination.pageSize]);
 
   useEffect(() => {
-    if (isLoading || !objectId) return;
+    if (isLoading) return;
     getChartData('refresh');
-  }, [isLoading, timeValues, objectId]);
+  }, [isLoading, timeValues]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -290,44 +276,11 @@ const Alert: React.FC = () => {
 
   const getObjects = async () => {
     try {
-      setTreeLoading(true);
       const data: ObjectItem[] = await getCollectTypes();
       setObjects(data);
-      setTreeData(getTreeData(data));
-    } finally {
-      setTreeLoading(false);
+    } catch (error) {
+      console.error(error);
     }
-  };
-
-  const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce(
-      (acc, item) => {
-        const category = item.display_category || 'other';
-        if (!acc[category]) {
-          acc[category] = {
-            title: category,
-            key: category,
-            children: []
-          };
-        }
-        acc[category].children.push({
-          title: item.name || '--',
-          label: item.name || '--',
-          key: item.id,
-          children: []
-        });
-        return acc;
-      },
-      {} as Record<string, TreeItem>
-    );
-    return [
-      {
-        title: t('common.all'),
-        key: 'all',
-        children: []
-      },
-      ...Object.values(groupedData)
-    ];
   };
 
   const alertCloseConfirm = async (id: string | number) => {
@@ -355,7 +308,6 @@ const Alert: React.FC = () => {
     const params = {
       status: isActive ? 'new' : 'closed',
       levels: filtersMap.level.join(','),
-      collect_type: objectId === 'all' ? '' : objectId,
       content: searchText || '',
       page: pagination.current,
       page_size: pagination.pageSize,
@@ -500,30 +452,16 @@ const Alert: React.FC = () => {
     chartAbortControllerRef.current?.abort();
   };
 
-  const handleObjectChange = async (id: string) => {
-    cancelAllRequests();
-    clearData();
-    setObjectId(id);
-  };
-
   return (
     <div className="w-full">
-      <div className={alertStyle.alert}>
-        <TreeSelector
-          loading={treeLoading}
-          data={treeData}
-          showAllMenu
-          defaultSelectedKey="all"
-          onNodeSelect={handleObjectChange}
-        />
+      <div className={alertStyle.alertNoTree}>
         <div className={alertStyle.alarmList}>
           <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
           <div className={alertStyle.searchCondition}>
-            <div className="mb-[10px]">{t('log.search.searchCriteria')}</div>
             <div className={alertStyle.condition}>
               <ul className="flex">
                 <li className="mr-[8px]">
-                  <span className="mr-[8px] text-[12px] text-[var(--color-text-3)]">
+                  <span className="mr-[8px] text-[14px] text-[var(--color-text-3)]">
                     {t('log.event.level')}
                   </span>
                   <Select
@@ -599,7 +537,7 @@ const Alert: React.FC = () => {
             />
             <CustomTable
               className="w-full"
-              scroll={{ y: 'calc(100vh - 640px)', x: 'max-content' }}
+              scroll={{ y: 'calc(100vh - 606px)', x: 'max-content' }}
               columns={columns}
               dataSource={tableData}
               pagination={pagination}

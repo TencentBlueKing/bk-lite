@@ -557,16 +557,16 @@ monitor_object_metric:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
   ActiveMQ:
-    topics_consumer_count:
+    activemq_topics_consumer_count:
       name: 主题消费者数量
       desc: 指定主题的当前消费者连接数量，反映主题的消息消费能力
-    topics_dequeue_count:
+    activemq_topics_dequeue_count:
       name: 主题出队消息数
       desc: 从指定主题出队的消息总数，反映主题已处理的消息量
-    topics_enqueue_count:
+    activemq_topics_enqueue_count:
       name: 主题入队消息数
       desc: 进入指定主题的消息总数，反映主题接收的消息量
-    topics_size:
+    activemq_topics_size:
       name: 主题当前消息数
       desc: 指定主题当前存储的消息数量，反映主题积压情况
   Postgres:

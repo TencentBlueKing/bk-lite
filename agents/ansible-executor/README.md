@@ -61,44 +61,69 @@
 
 ```bash
 cd agents/ansible-executor
-cp .env.example .env
+cp config.example.yml config.yml
 uv sync
-uv run python main.py
+uv run python main.py --config ./config.yml
 ```
 
-关键 NATS 配置（支持 TLS CA）：
+## 打包为可执行程序（PyInstaller）
+
+已内置 PyInstaller 打包支持，并且执行 ansible ad-hoc / playbook 时不再依赖外部 `ansible`、`ansible-playbook` 可执行文件，而是通过当前程序自身的内部 helper 子进程调用 `ansible-core`。
 
 ```bash
-# NATS 地址（可多个，逗号分隔）
-NATS_SERVERS=nats://localhost:4222
-# NATS 认证用户名/密码（无认证可留空）
-NATS_USERNAME=your_nats_username
-NATS_PASSWORD=your_nats_password
-# NATS_PROTOCOL=tls
-# NATS_TLS_CA_FILE=/path/to/ca.pem
-# RPC 实例后缀（subject 中使用）
-NATS_INSTANCE_ID=default
-# NATS 建连超时（秒）
-NATS_CONNECT_TIMEOUT=5
-# 执行 worker 并发数
-ANSIBLE_MAX_WORKERS=4
-# 回调 RPC 超时（秒）
-ANSIBLE_CALLBACK_TIMEOUT=10
-# 临时工作目录（任务文件落盘位置）
-ANSIBLE_WORK_DIR=/tmp/ansible-executor
-# JetStream 命名空间（其余 stream/subject 默认从这里派生）
-ANSIBLE_JS_NAMESPACE=bk.ans_exec
-# 任务最大重投递次数
-ANSIBLE_JS_MAX_DELIVER=5
-# ACK 等待时长（秒）
-ANSIBLE_JS_ACK_WAIT=300
-# 重试退避策略（秒）
-ANSIBLE_JS_BACKOFF=5,15,30,60
-# 死信队列 subject
-ANSIBLE_DLQ_SUBJECT=bk.ans_exec.tasks.dlq
-# 本地任务状态库路径
-ANSIBLE_STATE_DB_PATH=/tmp/ansible-executor/task_state.db
+cd agents/ansible-executor
+make package
 ```
+
+产物目录：
+
+```bash
+dist/ansible-executor/
+```
+
+运行方式：
+
+```bash
+cp config.example.yml dist/ansible-executor/config.yml
+./dist/ansible-executor/ansible-executor --config ./dist/ansible-executor/config.yml
+```
+
+说明：
+
+- 推荐使用 `onedir` 产物，便于携带 ansible 运行时资源
+- 推荐使用 `config.yml` 作为 sidecar 探针配置文件，便于排查与版本化管理
+- 如果未显式传 `--config`，程序会自动查找当前目录或可执行文件同目录下的 `config.yml` / `config.yaml`
+- 仍兼容环境变量注入；适合将敏感信息通过 sidecar 注入，再在 `config.yml` 中使用 `${ENV_VAR}` 引用
+- 目标机器仍需具备 ansible 实际运行所需的系统环境，例如 SSH 能力、可访问的 inventory / playbook / 私钥文件等
+
+推荐 sidecar 配置示例：
+
+```yaml
+nats:
+  servers:
+    - nats://127.0.0.1:4222
+  username: ${NATS_USERNAME}
+  password: ${NATS_PASSWORD}
+  protocol: tls
+  tls_ca_file: /etc/ansible-executor/ca.pem
+  instance_id: default
+  connect_timeout: 5
+
+runtime:
+  max_workers: 4
+  callback_timeout: 10
+  work_dir: /var/lib/ansible-executor/work
+  state_db_path: /var/lib/ansible-executor/task_state.db
+
+jetstream:
+  namespace: bk.ans_exec
+  max_deliver: 5
+  ack_wait: 300
+  backoff: [5, 15, 30, 60]
+  dlq_subject: bk.ans_exec.tasks.dlq
+```
+
+兼容的环境变量模式仍保留，便于迁移，但不再推荐作为主配置方式。
 
 ## Docker（可选）
 

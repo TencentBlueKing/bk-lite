@@ -39,6 +39,7 @@ CASE
   MIN(CAST(level AS INTEGER)) as alert_level,
   LIST(event_id) as event_ids,
   FIRST(title) as alert_title,
+  FIRST(description) as first_event_description,
   STRING_AGG(DISTINCT CAST(resource_name AS VARCHAR), ',') as alert_description
 {% endmacro %}
 

@@ -28,9 +28,6 @@ collect_type:
       description: Collects log data from files for centralized logging and analysis.
       name: File
   Packetbeat:
-    Snmptrapd:
-      name: SNMP Trap
-      description: Collects SNMP trap messages for network device monitoring and alerting.
     http:
       description: Monitors HTTP traffic to analyze web application performance and
         detect anomalies.
@@ -50,11 +47,42 @@ collect_type:
     icmp:
       name: ICMP
       description: Monitors ICMP traffic for network diagnostics and performance analysis.
+  Snmptrapd:
+    snmp_trap:
+      name: SNMP Trap
+      description: Collects SNMP Trap messages from network devices.
   Filebeat:
     filestream:
       name: Filestream
       description: Collects and forwards log data from various sources for centralized
         logging and analysis.
+    apache:
+      name: Apache
+      description: Collects and parses Apache HTTP server access and error logs using Filebeat module.
+    elasticsearch:
+      name: Elasticsearch
+      description: Collects and parses Elasticsearch server, audit, slowlog, deprecation and GC logs using Filebeat module.
+    mysql:
+      name: MySQL
+      description: Collects and parses MySQL slow logs and error logs using Filebeat module.
+    kafka:
+      name: Kafka
+      description: Collects and parses Kafka log files using Filebeat module.
+    nginx:
+      name: Nginx
+      description: Collects and parses Nginx access and error logs using Filebeat module.
+    mongodb:
+      name: MongoDB
+      description: Collects and parses MongoDB logs using Filebeat module.
+    rabbitmq:
+      name: RabbitMQ
+      description: Collects and parses RabbitMQ log files using Filebeat module.
+    redis:
+      name: Redis
+      description: Collects and parses Redis logs and slowlogs using Filebeat module.
+    postgresql:
+      name: PostgreSQL
+      description: Collects and parses PostgreSQL logs using Filebeat module.
   Winlogbeat:
     winlogbeat:
       name: Windows Event Logs

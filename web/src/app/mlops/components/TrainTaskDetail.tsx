@@ -106,7 +106,7 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, status, getMet
     try {
       const detailInfo = await getMetricsDetail(runId, metricName);
       const { metric_history } = detailInfo;
-      setData(metric_history);
+      setData(metric_history || []);
     } catch (error) {
       console.error(`加载指标 ${metricName} 数据失败:`, error);
       setData([]);

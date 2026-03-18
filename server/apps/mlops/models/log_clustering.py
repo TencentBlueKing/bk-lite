@@ -230,7 +230,7 @@ class LogClusteringServing(MaintainerInfo, TimeInfo):
         choices=[("active", "Active"), ("inactive", "Inactive")],
         default="inactive",
         verbose_name="服务状态",
-        help_text="用户意图：是否希望服务运行",
+        help_text="发布状态(弃用，以容器状态为准)",
     )
 
     container_info = models.JSONField(

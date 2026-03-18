@@ -5,6 +5,7 @@ from apps.mlops.services.algorithm_config_service import (
 from apps.mlops.services.config_helpers import (
     ConfigurationError,
     MLflowTrainConfig,
+    get_host_address,
     get_mlflow_train_config,
     get_mlflow_tracking_uri,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "get_image_by_prefix",
     "ConfigurationError",
     "MLflowTrainConfig",
+    "get_host_address",
     "get_mlflow_train_config",
     "get_mlflow_tracking_uri",
 ]
