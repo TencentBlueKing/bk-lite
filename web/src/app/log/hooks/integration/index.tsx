@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { TableDataItem } from '@/app/log/types';
 import { useFileConfig } from './collectTypes/file';
-import { useSyslogConfig } from './collectTypes/syslog';
 import { useDockerConfig } from './collectTypes/docker';
 import { useApacheConfig } from './collectTypes/apache';
 import { useNginxConfig } from './collectTypes/nginx';
@@ -19,7 +18,6 @@ import { useFlowsConfig } from './collectTypes/flows';
 
 export const useCollectTypeConfig = () => {
   const fileConfig = useFileConfig();
-  const syslogConfig = useSyslogConfig();
   const dockerConfig = useDockerConfig();
   const apacheConfig = useApacheConfig();
   const nginxConfig = useNginxConfig();
@@ -38,7 +36,6 @@ export const useCollectTypeConfig = () => {
   const configs: any = useMemo(
     () => ({
       file: fileConfig,
-      syslog: syslogConfig,
       docker: dockerConfig,
       apache: apacheConfig,
       nginx: nginxConfig,
