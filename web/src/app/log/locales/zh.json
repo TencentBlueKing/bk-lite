@@ -100,6 +100,7 @@
   },
   "log": {
     "integration": {
+      "connect": "接入",
       "sampleRate": "采样率",
       "processDes": "process指标集提供进程统计信息。每个进程提供一个文档。",
       "ruleCategories": "预设规则",
