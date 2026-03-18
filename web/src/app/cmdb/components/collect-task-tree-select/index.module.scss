@@ -1,0 +1,29 @@
+.collectTaskTreeSelect {
+  :global(.ant-select-tree-list-holder-inner) {
+    align-items: stretch;
+  }
+
+  :global(.ant-select-tree-treenode) {
+    align-items: center;
+  }
+
+  :global(.ant-select-tree-switcher) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    line-height: 28px;
+  }
+
+  :global(.ant-select-tree-node-content-wrapper) {
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  :global(.ant-select-tree-title) {
+    display: inline-flex;
+    align-items: center;
+    line-height: 20px;
+  }
+}

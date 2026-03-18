@@ -61,17 +61,29 @@ class CollectModelViewSet(AuthViewSet):
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="collect_task_names")
     def collect_task_names(self, request, *args, **kwargs):
-        # Given 任务名用于实例页跳转，When 返回任务列表，Then 同时返回 plugin 供前端拼接详情路由。
+        # Given 实例页需要直接拼接采集任务详情链接，When 返回任务列表，Then 提供 id/name/plugin/category。
         queryset = CollectModels.objects.all().order_by("id")
-        # Given 用户可能跨组织访问页面，When 拉取任务名，Then 先执行对象权限过滤。
+        # Given 页面受组织与实例权限控制，When 查询任务名，Then 先应用对象权限过滤。
         queryset = self.get_queryset_by_permission(request, queryset)
         task_list = queryset.values("id", "name", "model_id")
+        plugin_meta_map = {
+            str(child.get("id")): {
+                "category": str(item.get("id")),
+                "category_name": item.get("name"),
+                "plugin_name": child.get("name"),
+            }
+            for item in COLLECT_OBJ_TREE
+            for child in item.get("children", [])
+            if child.get("id")
+        }
         data = [
             {
                 "id": item["id"],
                 "name": item["name"],
                 "plugin": item["model_id"],
-                "model_id": item["model_id"],
+                "category": plugin_meta_map.get(str(item["model_id"]), {}).get("category"),
+                "plugin_name": plugin_meta_map.get(str(item["model_id"]), {}).get("plugin_name"),
+                "category_name": plugin_meta_map.get(str(item["model_id"]), {}).get("category_name"),
             }
             for item in task_list
         ]

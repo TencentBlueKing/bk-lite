@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import type { SavedFilterItem } from '@/app/cmdb/api/userConfig';
-import type { TreeNode } from '@/app/cmdb/types/autoDiscovery';
 
 export interface FilterItem {
   field: string;
@@ -17,6 +16,18 @@ interface UserConfigs {
   [key: string]: unknown;
 }
 
+interface CollectTaskRoute {
+  plugin: string;
+  category: string;
+}
+
+interface CollectTaskOption {
+  id: string;
+  name: string;
+  plugin?: string;
+  category?: string;
+}
+
 interface AssetDataStore {
   query_list: FilterItem[];
   searchAttr: string;
@@ -24,14 +35,10 @@ interface AssetDataStore {
   cloud_list: { proxy_id: string; proxy_name: string }[];
   // Given 实例页需要显示采集任务名称，When 仅有 collect_task id，Then 通过该映射展示任务名。
   collectTaskMap: Record<string, string>;
-  // Given 跳转采集详情必须带 plugin，When 已拿到 taskId，Then 通过该映射查到 plugin。
-  collectTaskPluginMap: Record<string, string>;
-  // Given 跳转采集详情必须带 category，When 已拿到 plugin，Then 通过该映射查到 category。
-  collectPluginCategoryMap: Record<string, string>;
-  // Given 某些场景只有 modelId，When 缺少 task->plugin，Then 用 model->plugin 作为兜底。
-  collectModelPluginMap: Record<string, string>;
-  // Given collect_model_tree 在页面生命周期内稳定，When 已拉取一次，Then 缓存在 store 复用。
-  collectModelTree: TreeNode[];
+  // Given 跳转采集详情依赖 plugin/category，When 拿到 taskId，Then 直接读取路由参数。
+  collectTaskRouteMap: Record<string, CollectTaskRoute>;
+  // Given 编辑控件需要树状选项，When 页面已预取任务列表，Then 直接复用该缓存避免重复请求。
+  collectTaskOptions: CollectTaskOption[];
   user_configs: UserConfigs;
   needRefresh: boolean;
   add: (item: FilterItem) => FilterItem[];
@@ -42,11 +49,8 @@ interface AssetDataStore {
   setQueryList: (items: FilterItem[]) => FilterItem[];
   setCloudList: (list: { proxy_id: string; proxy_name: string }[]) => void;
   setCollectTaskMap: (map: Record<string, string>) => void;
-  setCollectTaskPluginMap: (map: Record<string, string>) => void;
-  setCollectTaskPlugin: (taskId: string, pluginId: string) => void;
-  setCollectPluginCategoryMap: (map: Record<string, string>) => void;
-  setCollectModelPluginMap: (map: Record<string, string>) => void;
-  setCollectModelTree: (tree: TreeNode[]) => void;
+  setCollectTaskRouteMap: (map: Record<string, CollectTaskRoute>) => void;
+  setCollectTaskOptions: (items: CollectTaskOption[]) => void;
   setUserConfigs: (configs: UserConfigs) => void;
   updateUserConfig: (key: string, value: unknown) => void;
   getSavedFilters: (modelId: string) => SavedFilterItem[];
@@ -60,10 +64,8 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   case_sensitive: false,
   cloud_list: [],
   collectTaskMap: {},
-  collectTaskPluginMap: {},
-  collectPluginCategoryMap: {},
-  collectModelPluginMap: {},
-  collectModelTree: [],
+  collectTaskRouteMap: {},
+  collectTaskOptions: [],
   user_configs: {},
   needRefresh: false,
 
@@ -104,29 +106,12 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
     set({ collectTaskMap: map });
   },
 
-  setCollectTaskPluginMap: (map: Record<string, string>) => {
-    set({ collectTaskPluginMap: map });
+  setCollectTaskRouteMap: (map: Record<string, CollectTaskRoute>) => {
+    set({ collectTaskRouteMap: map });
   },
 
-  setCollectTaskPlugin: (taskId: string, pluginId: string) => {
-    set((state) => ({
-      collectTaskPluginMap: {
-        ...state.collectTaskPluginMap,
-        [taskId]: pluginId,
-      },
-    }));
-  },
-
-  setCollectPluginCategoryMap: (map: Record<string, string>) => {
-    set({ collectPluginCategoryMap: map });
-  },
-
-  setCollectModelPluginMap: (map: Record<string, string>) => {
-    set({ collectModelPluginMap: map });
-  },
-
-  setCollectModelTree: (tree: TreeNode[]) => {
-    set({ collectModelTree: tree });
+  setCollectTaskOptions: (items: CollectTaskOption[]) => {
+    set({ collectTaskOptions: items });
   },
 
   setUserConfigs: (configs: UserConfigs) => {
