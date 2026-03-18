@@ -5,6 +5,7 @@ import {
   DangerousRuleFormData,
   DangerousRuleListResponse,
   DangerousRule,
+  EnabledDangerousPaths,
   TargetParams,
   TargetListResponse,
   Target,
@@ -124,7 +125,7 @@ const useJobApi = () => {
   // Get enabled dangerous paths for file distribution validation
   const getEnabledDangerousPaths = async (
     config?: AxiosRequestConfig
-  ): Promise<{ confirm: (string | { pattern?: string; match_pattern?: string; name?: string })[]; forbidden: (string | { pattern?: string; match_pattern?: string; name?: string })[] }> => {
+  ): Promise<EnabledDangerousPaths> => {
     return await get('/job_mgmt/api/dangerous_path/enabled_paths/', config);
   };
 
