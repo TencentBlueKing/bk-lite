@@ -1,1 +1,1 @@
-DEFAULT_PERMISSION = ["view", "operate"]
+DEFAULT_PERMISSION = ["View", "Operate"]
