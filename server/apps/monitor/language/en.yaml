@@ -621,16 +621,16 @@ monitor_object_metric:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
   ActiveMQ:
-    topics_consumer_count:
+    activemq_topics_consumer_count:
       name: Topic Consumer Count
       desc: Current number of consumer connections for a specific topic, reflecting message consumption capacity
-    topics_dequeue_count:
+    activemq_topics_dequeue_count:
       name: Topic Dequeue Count
       desc: Total number of messages dequeued from a specific topic, reflecting processed message volume
-    topics_enqueue_count:
+    activemq_topics_enqueue_count:
       name: Topic Enqueue Count
       desc: Total number of messages enqueued to a specific topic, reflecting received message volume
-    topics_size:
+    activemq_topics_size:
       name: Topic Current Size
       desc: Current number of messages stored in a specific topic, reflecting backlog status
   Postgres:
