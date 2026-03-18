@@ -3,25 +3,21 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Input, Button, message, Switch, Popconfirm } from 'antd';
 import useApiClient from '@/utils/request';
 import useLogEventApi from '@/app/log/api/event';
-import useLogIntegrationApi from '@/app/log/api/integration';
 import { useAlgorithmList } from '@/app/log/hooks/event';
 import assetStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import {
   ColumnItem,
-  TreeItem,
   Pagination,
   TableDataItem,
   ListItem
 } from '@/app/log/types';
-import { ObjectItem } from '@/app/log/types/event';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import { getRandomColor, findLabelById } from '@/app/log/utils/common';
+import { getRandomColor } from '@/app/log/utils/common';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { PlusOutlined } from '@ant-design/icons';
-import { useRouter, useSearchParams } from 'next/navigation';
-import TreeSelector from '@/app/log/components/tree-selector';
+import { useRouter } from 'next/navigation';
 import Permission from '@/components/permission';
 
 const Strategy: React.FC = () => {
@@ -29,28 +25,19 @@ const Strategy: React.FC = () => {
   const { isLoading } = useApiClient();
   const { getPolicy, patchPolicy, deletePolicy } = useLogEventApi();
   const ALGORITHM_LIST = useAlgorithmList();
-  const { getCollectTypes } = useLogIntegrationApi();
-  const searchParams = useSearchParams();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const objId = searchParams.get('objId');
   const router = useRouter();
   const tableAbortControllerRef = useRef<AbortController | null>(null);
   const tableRequestIdRef = useRef<number>(0);
-  const treeAbortControllerRef = useRef<AbortController | null>(null);
-  const treeRequestIdRef = useRef<number>(0);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
     pageSize: 20
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
-  const [treeLoading, setTreeLoading] = useState<boolean>(false);
-  const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [searchText, setSearchText] = useState<string>('');
   const [enableLoading, setEnableLoading] = useState<boolean>(false);
-  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
-  const [objectId, setObjectId] = useState<React.Key>('');
   const [confirmLoading, setConfirmLoading] = useState(false);
   const columns: ColumnItem[] = [
     {
@@ -169,8 +156,8 @@ const Strategy: React.FC = () => {
 
   useEffect(() => {
     if (isLoading) return;
-    getObjects();
-  }, [isLoading]);
+    getAssetInsts();
+  }, [isLoading, pagination.current, pagination.pageSize]);
 
   useEffect(() => {
     return () => {
@@ -178,29 +165,15 @@ const Strategy: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (objectId) {
-      getAssetInsts(objectId);
-    }
-  }, [pagination.current, pagination.pageSize, objectId]);
-
   const cancelAllRequests = () => {
     tableAbortControllerRef.current?.abort();
-    treeAbortControllerRef.current?.abort();
-  };
-
-  const handleObjectChange = async (id: string) => {
-    tableAbortControllerRef.current?.abort();
-    setTableData([]);
-    setObjectId(id);
   };
 
   const getParams = (text?: string) => {
     return {
       name: text ? '' : searchText,
       page: pagination.current,
-      page_size: pagination.pageSize,
-      collect_type: objectId || ''
+      page_size: pagination.pageSize
     };
   };
 
@@ -212,7 +185,7 @@ const Strategy: React.FC = () => {
         id
       });
       message.success(t(val ? 'common.started' : 'common.closed'));
-      getAssetInsts(objectId);
+      getAssetInsts();
     } finally {
       setEnableLoading(false);
     }
@@ -222,7 +195,7 @@ const Strategy: React.FC = () => {
     setPagination(pagination);
   };
 
-  const getAssetInsts = async (objectId: React.Key, text?: string) => {
+  const getAssetInsts = async (text?: string) => {
     tableAbortControllerRef.current?.abort();
     const abortController = new AbortController();
     tableAbortControllerRef.current = abortController;
@@ -230,7 +203,6 @@ const Strategy: React.FC = () => {
     try {
       setTableLoading(true);
       const params = getParams(text);
-      params.collect_type = objectId;
       const data = await getPolicy('', params, {
         signal: abortController.signal
       });
@@ -247,67 +219,28 @@ const Strategy: React.FC = () => {
     }
   };
 
-  const getObjects = async (type?: string) => {
-    treeAbortControllerRef.current?.abort();
-    const abortController = new AbortController();
-    treeAbortControllerRef.current = abortController;
-    const currentRequestId = ++treeRequestIdRef.current;
-    try {
-      setTreeLoading(true);
-      const data: ObjectItem[] = await getCollectTypes(
-        {
-          add_policy_count: true
-        },
-        { signal: abortController.signal }
-      );
-      if (currentRequestId !== treeRequestIdRef.current) return;
-      if (!type) {
-        setDefaultSelectObj(objId ? +objId : data[0]?.id);
-      }
-      setTreeData(getTreeData(data));
-    } finally {
-      if (currentRequestId === treeRequestIdRef.current) {
-        setTreeLoading(false);
-      }
-    }
-  };
-
-  const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    return data.map((item) => ({
-      title: `${item.name}(${item.policy_count || 0})`,
-      label: item.name || '--',
-      key: item.id,
-      children: []
-    }));
-  };
-
   const deleteConfirm = async (id: number | string) => {
     setConfirmLoading(true);
     try {
       await deletePolicy(id);
       message.success(t('common.successfullyDeleted'));
-      getAssetInsts(objectId);
-      getObjects('refresh');
+      getAssetInsts();
     } finally {
       setConfirmLoading(false);
     }
   };
 
   const enterText = () => {
-    getAssetInsts(objectId);
+    getAssetInsts();
   };
 
   const clearText = () => {
     setSearchText('');
-    getAssetInsts(objectId, 'clear');
+    getAssetInsts('clear');
   };
 
   const linkToStrategyDetail = (type: string, row = { id: '', name: '' }) => {
-    const objId = objectId as string;
-    const objName = findLabelById(treeData, objId) as string;
     const params = new URLSearchParams({
-      objId,
-      objName,
       type,
       id: row.id,
       name: row.name
@@ -317,13 +250,7 @@ const Strategy: React.FC = () => {
   };
 
   return (
-    <div className={assetStyle.asset}>
-      <TreeSelector
-        data={treeData}
-        defaultSelectedKey={defaultSelectObj as string}
-        loading={treeLoading}
-        onNodeSelect={handleObjectChange}
-      />
+    <div className={assetStyle.assetNoTree}>
       <div className={assetStyle.table}>
         <div className={assetStyle.search}>
           <div>
