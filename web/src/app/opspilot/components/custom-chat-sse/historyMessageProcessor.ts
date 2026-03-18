@@ -3,7 +3,7 @@
  * 用于将历史会话中的 AG-UI 协议消息解析并渲染为 HTML
  */
 
-import { BrowserStepProgressData, BrowserStepsHistory } from '@/app/opspilot/types/global';
+import { BrowserStepProgressData, BrowserStepsHistory, BrowserTaskReceivedData } from '@/app/opspilot/types/global';
 import { renderToolCallCard, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 
 const escapeNewlinesInStrings = (raw: string) => {
@@ -318,6 +318,20 @@ const buildFromEvents = (events: any[], finalize = true) => {
     isRunning = true;
   };
 
+  const findLatestCallingToolCallId = (preferredToolName?: string) => {
+    const entries = Array.from(toolCalls.entries()).reverse();
+
+    if (preferredToolName) {
+      const matchedEntry = entries.find(([, tool]) => tool.status === 'calling' && tool.name === preferredToolName);
+      if (matchedEntry) {
+        return matchedEntry[0];
+      }
+    }
+
+    const latestCallingEntry = entries.find(([, tool]) => tool.status === 'calling');
+    return latestCallingEntry?.[0] || null;
+  };
+
   events.forEach((msg: any) => {
     switch (msg.type) {
       case 'TEXT_MESSAGE_CONTENT':
@@ -397,6 +411,15 @@ const buildFromEvents = (events: any[], finalize = true) => {
       case 'CUSTOM':
         if (msg.name === 'browser_step_progress' && msg.value) {
           upsertStep(msg.value as BrowserStepProgressData);
+        } else if (msg.name === 'browser_task_received' && msg.value) {
+          const browserTaskReceived = msg.value as BrowserTaskReceivedData;
+          const toolCallId = findLatestCallingToolCallId(typeof browserTaskReceived.tool === 'string' ? browserTaskReceived.tool : undefined);
+          if (toolCallId) {
+            const tool = toolCalls.get(toolCallId);
+            if (tool) {
+              tool.browserTaskReceived = browserTaskReceived;
+            }
+          }
         }
         break;
 
