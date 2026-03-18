@@ -15,6 +15,7 @@ class PolicySerializer(serializers.ModelSerializer):
         model = Policy
         fields = "__all__"
         read_only_fields = ("created_at", "updated_at", "last_run_time")
+        validators = []
 
     def get_organizations(self, obj):
         """通过外键关系获取组织列表"""
