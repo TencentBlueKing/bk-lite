@@ -6,7 +6,7 @@
         background: var(--color-bg-1);
         height: calc(100vh - 146px);
         padding: 20px;
-        
+
         .search {
             display: flex;
             justify-content: space-between;
@@ -17,6 +17,29 @@
 
 .asset .table :global(.ant-table) {
     width: calc(100vw - 280px);
+    min-width: 800px;
+}
+
+.assetNoTree {
+    overflow: hidden;
+    width: 100%;
+
+    .table {
+        background: var(--color-bg-1);
+        height: calc(100vh - 146px);
+        padding: 20px;
+        width: 100%;
+
+        .search {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+    }
+}
+
+.assetNoTree .table :global(.ant-table) {
+    width: 100%;
     min-width: 800px;
 }
 
