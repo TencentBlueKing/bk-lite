@@ -42,10 +42,16 @@ async function handleProxy(req: NextRequest): Promise<NextResponse> {
     targetUrl += searchParams;
   }
 
-  console.log(`[PROXY] Forwarding Request: ${req.method} ${targetUrl}`);
+  const authHeader = req.headers.get('authorization');
+  console.log(`[PROXY] Forwarding Request: ${req.method} ${targetUrl}, Auth: ${authHeader ? 'present' : 'MISSING'}`);
 
   // 复制原始请求头，追加 X-Forwarded-* 自定义请求头
   const headers = new Headers(req.headers);
+  
+  // 确保 Authorization header 被正确复制
+  if (authHeader) {
+    headers.set('Authorization', authHeader);
+  }
   headers.set('X-Forwarded-Host', req.nextUrl.host || '');
   headers.set('X-Forwarded-For', req.headers.get('x-forwarded-for') || '');
   headers.set('X-Forwarded-Proto', req.nextUrl.protocol || 'http');

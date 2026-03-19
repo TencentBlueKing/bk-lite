@@ -1,0 +1,109 @@
+.conditionBuilder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.countText {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.maxConditionHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #bfbfbf;
+  font-size: 12px;
+  
+  .hintIcon {
+    color: #bfbfbf;
+    font-size: 12px;
+  }
+}
+
+.conditionListWrapper {
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.headerRow,
+.conditionRow {
+  display: grid;
+  grid-template-columns: 48px 150px 100px 1fr 32px;
+  gap: 8px;
+  align-items: center;
+}
+
+.headerRow {
+  color: #595959;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 0 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.conditionRow {
+  padding: 0;
+}
+
+.logicColumn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.actionColumn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fieldColumn,
+.operatorColumn,
+.valueColumn {
+  display: flex;
+  align-items: center;
+}
+
+.logicTag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 22px;
+  border-radius: 4px;
+  background: #e6f4ff;
+  color: #1677ff;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.emptyState {
+  padding: 24px 12px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 6px;
+  color: #bfbfbf;
+  font-size: 13px;
+  text-align: center;
+  background: #fafafa;
+}
+
+.timeRangeWrapper {
+  width: 100%;
+}

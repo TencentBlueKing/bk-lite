@@ -20,6 +20,7 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const modelName: string = searchParams.get('model_name') || '';
   const modelId: string = searchParams.get('model_id') || '';
   const instName: string = searchParams.get('inst_name') || searchParams.get('ip_addr') || '--';
+  const instId: number = Number(searchParams.get('inst_id') || 0);
   const { t } = useTranslation();
 
   const handleBackButtonClick = () => {

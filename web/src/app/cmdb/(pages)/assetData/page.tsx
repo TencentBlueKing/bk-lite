@@ -15,7 +15,7 @@ import {
   Empty,
 } from 'antd';
 import type { MenuProps } from 'antd';
-import { DownOutlined } from '@ant-design/icons';
+import { DownOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
@@ -47,6 +47,10 @@ import ImportInst from './list/importInst';
 import FieldModal from './list/fieldModal';
 import SelectInstance from './detail/relationships/selectInstance';
 import ExportModal from './components/exportModal';
+import SubscriptionDrawer from '@/app/cmdb/components/subscription/SubscriptionDrawer';
+import SubscriptionRuleForm, { type SubscriptionRuleFormRef } from '@/app/cmdb/components/subscription/SubscriptionRuleForm';
+import { useQuickSubscribeDefaults, useSubscriptionMutation } from '@/app/cmdb/hooks/useSubscription';
+import type { QuickSubscribeDefaults, QuickSubscribeSource } from '@/app/cmdb/types/subscription';
 import assetDataStyle from './index.module.scss';
 
 const { confirm } = Modal;
@@ -161,7 +165,7 @@ interface ImportRef {
 
 const AssetDataContent = () => {
   const { t } = useTranslation();
-  const { selectedGroup } = useUserInfoContext();
+  const { selectedGroup, userId } = useUserInfoContext();
   const { getModelAssociationTypes, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
@@ -211,6 +215,17 @@ const AssetDataContent = () => {
   const [organization, setOrganization] = useState<number[]>([]);
   const [selectedTreeKeys, setSelectedTreeKeys] = useState<string[]>([]);
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<string[]>([]);
+  const [subscriptionDrawerOpen, setSubscriptionDrawerOpen] = useState(false);
+  const [quickSubscribeModalOpen, setQuickSubscribeModalOpen] = useState(false);
+  const [subscriptionSource, setSubscriptionSource] = useState<QuickSubscribeSource>('drawer');
+  const quickSubscribeFormRef = useRef<SubscriptionRuleFormRef>(null);
+  const { submitting: quickSubscribeSubmitting, createRule: quickSubscribeCreateRule } = useSubscriptionMutation();
+  const [quickContext, setQuickContext] = useState<{
+    selectedInstanceIds?: number[];
+    queryList?: any[];
+    currentInstanceId?: number;
+    currentInstanceName?: string;
+  }>({});
   const [proxyOptions, setProxyOptions] = useState<
     { proxy_id: string; proxy_name: string }[]
   >([]);
@@ -330,6 +345,43 @@ const AssetDataContent = () => {
       exportType,
       tableData,
     } as any);
+  };
+
+  const currentModelName =
+    modelList.find((m) => m.key === modelId)?.label ||
+    originModels.find((m) => m.model_id === modelId)?.model_name ||
+    '';
+  const quickDefaults: QuickSubscribeDefaults = useQuickSubscribeDefaults(subscriptionSource, {
+    model_id: modelId,
+    model_name: currentModelName,
+    selectedInstanceIds: quickContext.selectedInstanceIds,
+    queryList: quickContext.queryList,
+    currentInstanceId: quickContext.currentInstanceId,
+    currentInstanceName: quickContext.currentInstanceName,
+    currentUser: Number(userId || userList[0]?.id || 0),
+    currentOrganization: Number(selectedGroup?.id || 0),
+  });
+
+  const openSubscription = (source: QuickSubscribeSource) => {
+    setSubscriptionSource(source);
+    if (source === 'list_selection') {
+      setQuickContext({ selectedInstanceIds: selectedRowKeys.map((k) => Number(k)) });
+    } else if (source === 'list_filter') {
+      setQuickContext({ queryList: storeQueryList });
+    } else {
+      setQuickContext({});
+    }
+    
+    if (source === 'drawer') {
+      setSubscriptionDrawerOpen(true);
+    } else {
+      setQuickSubscribeModalOpen(true);
+    }
+  };
+
+  const handleQuickSubscribeSubmit = async (payload: any, enabled: boolean) => {
+    await quickSubscribeCreateRule({ ...payload, is_enabled: enabled });
+    setQuickSubscribeModalOpen(false);
   };
 
   const showImportModal = () => {
@@ -864,6 +916,8 @@ const AssetDataContent = () => {
     ...buildPrefixedItems(batchOperateItems, 'batch'),
   ];
 
+  const showSubscribeAction = selectedRowKeys.length > 0 || storeQueryList.length > 0;
+
   return (
     <Spin spinning={loading} wrapperClassName={assetDataStyle.assetLoading}>
       <div className={assetDataStyle.assetData}>
@@ -940,6 +994,13 @@ const AssetDataContent = () => {
                 className={`${assetDataStyle.actionGroup} ${isActionsCollapsed ? assetDataStyle.actionGroupCollapsed : ''}`}
                 aria-hidden={isActionsCollapsed}
               >
+                {showSubscribeAction && (
+                  <Button
+                    onClick={() => openSubscription(selectedRowKeys.length > 0 ? 'list_selection' : 'list_filter')}
+                  >
+                    {t('subscription.subscribe')}
+                  </Button>
+                )}
                 <PermissionWrapper requiredPermissions={['Add']}>
                   <Dropdown menu={{ items: addInstItems }} placement="bottom">
                     <Button type="primary">
@@ -971,10 +1032,18 @@ const AssetDataContent = () => {
                   </Space>
                 </Button>
               </Dropdown>
+              <Button icon={<UnorderedListOutlined />} onClick={() => openSubscription('drawer')}>
+                {t('subscription.dataSubscription')}
+              </Button>
             </Space>
           </div>
           <div ref={actionSizerRef} className={assetDataStyle.actionSizer}>
             <Space>
+              {showSubscribeAction && (
+                <Button>
+                  {t('subscription.subscribe')}
+                </Button>
+              )}
               <Button type="primary">
                 <Space>
                   {t('common.addNew')}
@@ -992,6 +1061,9 @@ const AssetDataContent = () => {
                   {t('more')}
                   <DownOutlined />
                 </Space>
+              </Button>
+              <Button icon={<UnorderedListOutlined />}>
+                {t('subscription.dataSubscription')}
               </Button>
             </Space>
           </div>
@@ -1049,6 +1121,59 @@ const AssetDataContent = () => {
             models={originModels}
             assoTypes={assoTypes}
           />
+          <SubscriptionDrawer
+            open={subscriptionDrawerOpen}
+            onClose={() => setSubscriptionDrawerOpen(false)}
+            modelId={modelId}
+            modelName={currentModelName}
+            quickDefaults={quickDefaults}
+          />
+          <Modal
+            open={quickSubscribeModalOpen}
+            width={800}
+            title={t('subscription.createRule')}
+            centered
+            onCancel={() => setQuickSubscribeModalOpen(false)}
+            footer={(
+              <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+                <Button
+                  type="primary"
+                  loading={quickSubscribeSubmitting}
+                  onClick={() => void quickSubscribeFormRef.current?.submit(true)}
+                >
+                  {t('subscription.saveAndEnable')}
+                </Button>
+                <Button
+                  loading={quickSubscribeSubmitting}
+                  onClick={() => void quickSubscribeFormRef.current?.submit(false)}
+                >
+                  {t('subscription.saveOnly')}
+                </Button>
+                <Button onClick={() => setQuickSubscribeModalOpen(false)}>
+                  {t('subscription.cancel')}
+                </Button>
+              </Space>
+            )}
+            destroyOnClose
+            styles={{
+              body: {
+                maxHeight: 'calc(100vh - 220px)',
+                overflowY: 'auto',
+                paddingTop: 24,
+                paddingLeft: 24,
+                paddingRight: 24,
+              },
+            }}
+          >
+            <SubscriptionRuleForm
+              ref={quickSubscribeFormRef}
+              quickDefaults={quickDefaults}
+              modelId={modelId}
+              modelName={currentModelName}
+              onSubmitAndEnable={(data) => handleQuickSubscribeSubmit(data, true)}
+              onSubmitOnly={(data) => handleQuickSubscribeSubmit(data, false)}
+            />
+          </Modal>
         </div>
       </div>
     </Spin>
