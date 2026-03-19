@@ -47,8 +47,9 @@ class BasicNode:
         if llm.extra_body is None:
             llm.extra_body = {}
 
-        if disable_stream and "qwen" in request.model.lower():
-            llm.extra_body["enable_thinking"] = False
+        show_think = bool((request.extra_config or {}).get("show_think", True))
+        if "qwen" in request.model.lower():
+            llm.extra_body["enable_thinking"] = show_think
 
         # 如果需要隔离,则禁用callbacks以避免被LangGraph捕获
         if isolated:
