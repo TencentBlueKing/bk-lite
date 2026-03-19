@@ -29,15 +29,39 @@ const Integration = () => {
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
 
   const collectTypes = useMemo(() => {
-    if (activeGroup === 'all')
-      return collectTypeList.filter((item) => item.name.includes(searchText));
+    const searchLower = searchText.toLowerCase();
+    if (activeGroup === 'all') {
+      const filtered = collectTypeList.filter((item) =>
+        (item.display_name || item.name).toLowerCase().includes(searchLower)
+      );
+      // Sort by category order from left tree
+      if (categoryOrder.length > 0) {
+        const orderMap = categoryOrder.reduce(
+          (acc, category, index) => {
+            acc[category] = index;
+            return acc;
+          },
+          {} as Record<string, number>
+        );
+        return filtered.sort((a, b) => {
+          const orderA =
+            orderMap[a.display_category] ?? Number.MAX_SAFE_INTEGER;
+          const orderB =
+            orderMap[b.display_category] ?? Number.MAX_SAFE_INTEGER;
+          return orderA - orderB;
+        });
+      }
+      return filtered;
+    }
     return collectTypeList.filter(
       (item) =>
-        item.display_category === activeGroup && item.name.includes(searchText)
+        item.display_category === activeGroup &&
+        (item.display_name || item.name).toLowerCase().includes(searchLower)
     );
-  }, [collectTypeList, activeGroup, searchText]);
+  }, [collectTypeList, activeGroup, searchText, categoryOrder]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -67,6 +91,8 @@ const Integration = () => {
           {}
         );
         setCategoryMap(map);
+        // Save category order for sorting
+        setCategoryOrder(categoryEnum.map((item: { id: string }) => item.id));
         setTreeData(getTreeData(data || [], categoryEnum));
         setDefaultSelectObj('all');
       }
@@ -117,8 +143,8 @@ const Integration = () => {
       name: app.name,
       collector: app.collector,
       id: app.id,
-      display_name: app.name,
-      description: app.description || '--'
+      display_name: app.display_name || app.name,
+      description: app.display_description || app.description || '--'
     };
     const params = new URLSearchParams(row);
     const targetUrl = `/log/integration/list/detail/configure?${params.toString()}`;
@@ -171,10 +197,11 @@ const Integration = () => {
                         }}
                       >
                         <h2
-                          title={`${app.name} (${app.collector})`}
+                          title={`${app.display_name || app.name} (${app.collector})`}
                           className="text-xl font-bold m-0 hide-text"
                         >
-                          {app.name || '--'} ({app.collector})
+                          {app.display_name || app.name || '--'} (
+                          {app.collector})
                         </h2>
                         <Tag className="mt-[4px]">
                           {categoryMap[app.display_category] ||
@@ -184,9 +211,9 @@ const Integration = () => {
                     </div>
                     <p
                       className="mb-[15px] text-[var(--color-text-3)] text-[13px] h-[54px] overflow-hidden line-clamp-3"
-                      title={app.description || '--'}
+                      title={app.display_description || app.description || '--'}
                     >
-                      {app.description || '--'}
+                      {app.display_description || app.description || '--'}
                     </p>
                     <div className="w-full h-[32px] flex justify-center items-end">
                       <Permission

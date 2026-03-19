@@ -37,8 +37,8 @@ const sanitizeHtml = (html: string): string => {
 
 const sanitizeToolCallHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['span', 'style'],
-    ALLOWED_ATTR: ['class', 'style', 'data-tool-id', 'data-result'],
+    ALLOWED_TAGS: ['span', 'style', 'div', 'button', 'pre'],
+    ALLOWED_ATTR: ['class', 'style', 'data-tool-id', 'data-open'],
     ALLOW_DATA_ATTR: true,
   });
 };
@@ -78,13 +78,13 @@ const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
 
   const renderToolCalls = (toolCalls?: Map<string, ToolCallInfo>) => {
     if (!toolCalls || toolCalls.size === 0) return null;
-    
+
     const toolCallsHtml = Array.from(toolCalls.entries())
       .map(([id, info]) => renderToolCallCard(id, info))
       .join('');
 
     return (
-      <div 
+      <div
         className="mb-3"
         dangerouslySetInnerHTML={{ __html: sanitizeToolCallHtml(toolCallsHtml) }}
       />
@@ -100,24 +100,24 @@ const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
   const renderSSEResult = () => {
     const content = result?.content || streamingContent;
     const hasContent = content || (result?.toolCalls && result.toolCalls.size > 0);
-    
+
     if (!hasContent && !loading) return null;
 
     return (
       <div className="mt-4">
         <h3 className="mb-2 font-medium">{t('chatflow.executeResult')}</h3>
-        <div className="bg-[var(--color-fill-1)] p-4 rounded-md">
+        <div className="bg-(--color-fill-1) p-4 rounded-md">
           {renderToolCalls(result?.toolCalls)}
-          
+
           {content && (
             <div
               dangerouslySetInnerHTML={{ __html: renderedContent }}
               className={styles.markdownBody}
             />
           )}
-          
+
           {loading && !content && !result?.toolCalls?.size && (
-            <div className="flex items-center gap-2 text-[var(--color-text-3)]">
+            <div className="flex items-center gap-2 text-(--color-text-3)">
               <span className="inline-flex gap-1">
                 <span className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
                 <span className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
@@ -136,7 +136,7 @@ const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
     return (
       <div className="mt-4">
         <h3 className="mb-2 font-medium">{t('chatflow.executeResult')}</h3>
-        <div className="bg-[var(--color-fill-1)] p-4 rounded-md">
+        <div className="bg-(--color-fill-1) p-4 rounded-md">
           <pre className="whitespace-pre-wrap text-sm overflow-auto max-h-60 font-mono">
             {JSON.stringify(result.rawResponse?.content ?? result.rawResponse, null, 2)}
           </pre>
@@ -192,8 +192,8 @@ const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
               {t('common.stop')}
             </Button>
           ) : (
-            <Button 
-              type="primary" 
+            <Button
+              type="primary"
               onClick={onExecute}
               loading={loading}
             >
@@ -211,7 +211,7 @@ const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
         </div>
 
         <Form layout="vertical">
-          <Form.Item 
+          <Form.Item
             label={t('chatflow.executeMessage')}
           >
             <TextArea

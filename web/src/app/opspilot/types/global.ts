@@ -43,6 +43,15 @@ export interface BrowserStepProgressData {
   screenshot?: string;
 }
 
+export interface BrowserTaskReceivedData {
+  tool?: string;
+  url?: string;
+  task_final?: string;
+  truncated?: boolean;
+  timestamp_ms?: number;
+  [key: string]: unknown;
+}
+
 export interface BrowserStepsHistory {
   steps: BrowserStepProgressData[];
   isRunning: boolean;
@@ -52,6 +61,8 @@ export interface CustomChatMessage {
   id: string;
   role: 'user' | 'bot';
   content: string;
+  thinking?: string;
+  isThinking?: boolean;
   createAt?: string;
   updateAt?: string;
   knowledgeBase?: KnowledgeBase | null;
