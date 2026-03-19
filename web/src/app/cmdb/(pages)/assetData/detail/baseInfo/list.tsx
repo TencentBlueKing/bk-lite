@@ -18,6 +18,7 @@ import {
 } from '@/app/cmdb/types/assetManage';
 import {
   EditOutlined,
+  BellOutlined,
   CopyOutlined,
   CheckOutlined,
   CloseOutlined,
@@ -37,6 +38,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   userList,
   instDetail,
   onsuccessEdit,
+  onSubscribe,
 }) => {
   const [form] = Form.useForm();
   const [fieldList, setFieldList] = useState<DescriptionsProps['items']>([]);
@@ -533,18 +535,28 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
               </Button>
             </>
           ) : (
-            <PermissionWrapper
-              requiredPermissions={['Edit']}
-              instPermissions={instDetail.permission}
-            >
+            <>
               <Button
                 size="small"
-                icon={<EditOutlined />}
-                onClick={() => toggleBatchEdit(true)}
+                icon={<BellOutlined />}
+                className="mr-2"
+                onClick={onSubscribe}
               >
-                {t('batchEdit')}
+                {t('subscription.subscribe')}
               </Button>
-            </PermissionWrapper>
+              <PermissionWrapper
+                requiredPermissions={['Edit']}
+                instPermissions={instDetail.permission}
+              >
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => toggleBatchEdit(true)}
+                >
+                  {t('batchEdit')}
+                </Button>
+              </PermissionWrapper>
+            </>
           )}
         </div>
       )}

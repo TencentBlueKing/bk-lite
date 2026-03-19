@@ -10,6 +10,7 @@ import { useTranslation } from '@/utils/i18n';
 import { SearchFilterProps } from '@/app/cmdb/types/assetData';
 import { useAssetDataStore, type SavedFilter } from '@/app/cmdb/store';
 import { useSavedFiltersApi, type SavedFiltersConfigValue } from '@/app/cmdb/api/userConfig';
+import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 
@@ -341,18 +342,6 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           </Select>
         );
       case 'tag':
-        const tagOption = selectedAttr.option as any;
-        const tagOptions = Array.isArray(tagOption?.options)
-          ? tagOption.options
-          : [];
-        const grouped = tagOptions.reduce((acc: Record<string, string[]>, item: any) => {
-          const key = String(item.key || '').trim();
-          const val = String(item.value || '').trim();
-          if (!key || !val) return acc;
-          if (!acc[key]) acc[key] = [];
-          acc[key].push(val);
-          return acc;
-        }, {});
         return (
           <Select
             mode="multiple"
@@ -365,13 +354,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             onClear={() => onSearchValueChange([], true)}
             maxTagCount={2}
             maxTagPlaceholder={(omittedValues) => `+${omittedValues.length}`}
-            options={Object.keys(grouped).map((key) => ({
-              label: key,
-              options: grouped[key].map((v) => ({
-                label: `${key}:${v}`,
-                value: `${key}:${v}`,
-              })),
-            }))}
+            options={getTagOptions(selectedAttr)}
           />
         );
       case 'bool':
