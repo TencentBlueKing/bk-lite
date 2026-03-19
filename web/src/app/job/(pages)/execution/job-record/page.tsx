@@ -124,7 +124,7 @@ const JobRecordPage = () => {
     setDetailLoading(true);
     try {
       const res = await getJobRecordDetail(id);
-      
+
       // 兼容 API 返回的 execution_results 字段，映射为 execution_targets
       if (!res.execution_targets && res.execution_results) {
         res.execution_targets = res.execution_results.map((result: any, index: number) => ({
@@ -142,7 +142,7 @@ const JobRecordPage = () => {
           error_message: result.error_message || '',
         }));
       }
-      
+
       setDetail(res);
     } finally {
       setDetailLoading(false);

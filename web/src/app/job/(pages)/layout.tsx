@@ -1,9 +1,17 @@
 'use client';
 
+import styles from './layout.module.scss';
+
 export default function JobLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return children;
+  return (
+    <div className={styles.container}>
+      <div className={styles.content}>
+        {children}
+      </div>
+    </div>
+  );
 }

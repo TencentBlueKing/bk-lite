@@ -28,16 +28,16 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
         .replace(/\bNone\b/g, 'null')
         .replace(/\bTrue\b/g, 'true')
         .replace(/\bFalse\b/g, 'false');
-      
+
       const chars = result.split('');
       const output: string[] = [];
       let inString = false;
       let stringChar = '';
-      
+
       for (let i = 0; i < chars.length; i++) {
         const char = chars[i];
         const prevChar = i > 0 ? chars[i - 1] : '';
-        
+
         if (!inString) {
           if (char === "'" || char === '"') {
             inString = true;
@@ -58,7 +58,7 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
           }
         }
       }
-      
+
       return output.join('');
     };
 
