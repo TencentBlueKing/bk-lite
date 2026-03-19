@@ -436,7 +436,10 @@ class InstanceSearch:
                 }
                 if not values_set:
                     continue
-                values = "|".join(values_set)
+                # re.escape 生成的反斜杠需要再做一次 PromQL 字符串转义，
+                # 否则会在 VM 侧触发 invalid syntax（例如 "\-" 被当作非法转义）
+                values = "|".join(sorted(values_set))
+                values = self._escape_promql_label_value(values)
                 query_parts.append(f'{key}=~"{values}"')
 
             query = metric_obj.query
