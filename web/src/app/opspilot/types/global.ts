@@ -61,6 +61,8 @@ export interface CustomChatMessage {
   id: string;
   role: 'user' | 'bot';
   content: string;
+  thinking?: string;
+  isThinking?: boolean;
   createAt?: string;
   updateAt?: string;
   knowledgeBase?: KnowledgeBase | null;

@@ -13,13 +13,14 @@ import {
   Alert,
   Modal,
 } from 'antd';
-import { PlusOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
 import { Script, Playbook, ScriptParam } from '@/app/job/types';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import ScriptEditor from '@/app/job/components/script-editor';
 import Password from '@/components/password';
 
@@ -452,7 +453,7 @@ const QuickExecPage = () => {
         <Form
           form={form}
           layout="vertical"
-          className="max-w-180"
+          className="w-full"
           initialValues={{ timeout: '600', scriptContent: DEFAULT_SCRIPT_CONTENT }}
         >
 
@@ -466,13 +467,10 @@ const QuickExecPage = () => {
 
 
           <Form.Item label={t('job.targetSource')} required>
-            <Radio.Group
+            <TargetSourceSelector
               value={targetSource}
-              onChange={(e) => handleTargetSourceChange(e.target.value)}
-            >
-              <Radio value="node_manager">{t('job.nodeManager')}</Radio>
-              <Radio value="target_manager">{t('job.targetManager')}</Radio>
-            </Radio.Group>
+              onChange={handleTargetSourceChange}
+            />
           </Form.Item>
 
 
@@ -480,18 +478,10 @@ const QuickExecPage = () => {
             label={t('job.targetHost')}
             required
           >
-            <div className="flex items-center gap-3">
-              <Button
-                type="dashed"
-                icon={<PlusOutlined />}
-                onClick={() => setHostModalOpen(true)}
-              >
-                {t('job.addTargetHost')}
-              </Button>
-              <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
-                {t('job.selectedHosts').replace('{count}', String(selectedHosts.length))}
-              </span>
-            </div>
+            <AddTargetHostButton
+              count={selectedHosts.length}
+              onClick={() => setHostModalOpen(true)}
+            />
           </Form.Item>
 
 
@@ -609,7 +599,7 @@ const QuickExecPage = () => {
 
 
           <Form.Item label={t('job.timeout')} name="timeout">
-            <Input className="w-50" />
+            <Input className="w-full" />
           </Form.Item>
           <p className="text-xs -mt-4 mb-6" style={{ color: 'var(--color-text-3)' }}>
             {t('job.timeoutHint')}

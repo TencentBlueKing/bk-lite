@@ -11,11 +11,12 @@ import {
   message,
   Modal,
 } from 'antd';
-import { PlusOutlined, InboxOutlined, FileOutlined, CloseOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { InboxOutlined, FileOutlined, CloseOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import useJobApi from '@/app/job/api';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { EnabledDangerousPaths } from '@/app/job/types';
 
 const { Dragger } = Upload;
@@ -261,7 +262,7 @@ const FileDistPage = () => {
         <Form
           form={form}
           layout="vertical"
-          className="max-w-180"
+          className="w-full"
           initialValues={{ timeout: '600', overwriteStrategy: 'overwrite' }}
         >
           {/* 作业名称 */}
@@ -274,13 +275,10 @@ const FileDistPage = () => {
           </Form.Item>
 
           <Form.Item label={t('job.targetSource')} required>
-            <Radio.Group
+            <TargetSourceSelector
               value={targetSource}
-              onChange={(e) => handleTargetSourceChange(e.target.value)}
-            >
-              <Radio value="node_manager">{t('job.nodeManager')}</Radio>
-              <Radio value="target_manager">{t('job.targetManager')}</Radio>
-            </Radio.Group>
+              onChange={handleTargetSourceChange}
+            />
           </Form.Item>
 
           {/* 目标主机 */}
@@ -288,18 +286,10 @@ const FileDistPage = () => {
             label={t('job.targetHost')}
             required
           >
-            <div className="flex items-center gap-3">
-              <Button
-                type="dashed"
-                icon={<PlusOutlined />}
-                onClick={() => setHostModalOpen(true)}
-              >
-                {t('job.addTargetHost')}
-              </Button>
-              <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
-                {t('job.selectedHosts').replace('{count}', String(selectedHosts.length))}
-              </span>
-            </div>
+            <AddTargetHostButton
+              count={selectedHosts.length}
+              onClick={() => setHostModalOpen(true)}
+            />
           </Form.Item>
 
           {/* 文件上传 */}
