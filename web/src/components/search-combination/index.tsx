@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Select, Button, Card, Checkbox } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import {
   SearchCombinationProps,
@@ -25,6 +26,7 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
   const [showBooleanOptions, setShowBooleanOptions] = useState(false);
   const [tempEnumValues, setTempEnumValues] = useState<string[]>([]);
   const [tempBooleanValue, setTempBooleanValue] = useState<string>('');
+  const [inputValue, setInputValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const enumDropdownRef = useRef<HTMLDivElement>(null);
@@ -86,12 +88,59 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
   const isEnumField = currentFieldConfig?.lookup_expr === 'in';
   const isBooleanField = currentFieldConfig?.lookup_expr === 'bool';
 
+  const buildFiltersFromTags = useCallback(
+    (nextTags: string[]) => {
+      const filters: SearchFilters = {};
+      nextTags.forEach((tag) => {
+        const [fieldPart, valuePart] = tag.split(': ');
+        const fieldConfig = getFieldConfigs().find(
+          (config) => config.label === fieldPart
+        );
+        if (!fieldConfig) return;
+        const fieldName = fieldConfig.name;
+        if (!filters[fieldName]) {
+          filters[fieldName] = [];
+        }
+        if (fieldConfig.lookup_expr === 'in') {
+          const displayNames = valuePart.split(', ');
+          const ids = displayNames
+            .map(
+              (name: string) =>
+                fieldConfig.options?.find(
+                  (opt: { id: string; name: string }) => opt.name === name
+                )?.id
+            )
+            .filter(Boolean) as string[];
+
+          filters[fieldName].push({
+            lookup_expr: 'in',
+            value: ids,
+          });
+        } else if (fieldConfig.lookup_expr === 'bool') {
+          const boolValue = valuePart === t('common.yes');
+          filters[fieldName].push({
+            lookup_expr: 'exact',
+            value: boolValue,
+          });
+        } else {
+          filters[fieldName].push({
+            lookup_expr: fieldConfig.lookup_expr,
+            value: valuePart,
+          });
+        }
+      });
+      return filters;
+    },
+    [getFieldConfigs, t]
+  );
+
   const handleFieldChange = useCallback((value: string) => {
     setSelectedField(value);
     setShowEnumOptions(false);
     setShowBooleanOptions(false);
     setTempEnumValues([]);
     setTempBooleanValue('');
+    setInputValue('');
     setTimeout(() => {
       selectRef.current?.focus();
     }, 0);
@@ -126,49 +175,9 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
           selectRef.current?.focus();
         }, 0);
       }
-      const filters: SearchFilters = {};
-      uniqueTags.forEach((tag) => {
-        const [fieldPart, valuePart] = tag.split(': ');
-        const fieldConfig = getFieldConfigs().find(
-          (config) => config.label === fieldPart
-        );
-        if (!fieldConfig) return;
-        const fieldName = fieldConfig.name;
-        if (!filters[fieldName]) {
-          filters[fieldName] = [];
-        }
-        if (fieldConfig.lookup_expr === 'in') {
-          const displayNames = valuePart.split(', ');
-          const ids = displayNames
-            .map(
-              (name: string) =>
-                fieldConfig.options?.find(
-                  (opt: { id: string; name: string }) => opt.name === name
-                )?.id
-            )
-            .filter(Boolean) as string[];
-
-          filters[fieldName].push({
-            lookup_expr: 'in',
-            value: ids,
-          });
-        } else if (fieldConfig.lookup_expr === 'bool') {
-          // 布尔字段：将"是"/"否"转换为true/false
-          const boolValue = valuePart === t('common.yes');
-          filters[fieldName].push({
-            lookup_expr: 'exact',
-            value: boolValue,
-          });
-        } else {
-          filters[fieldName].push({
-            lookup_expr: fieldConfig.lookup_expr,
-            value: valuePart,
-          });
-        }
-      });
-      onChange?.(filters);
+      onChange?.(buildFiltersFromTags(uniqueTags));
     },
-    [getFieldConfigs, selectedField, onChange, currentFieldConfig, isEnumField]
+    [buildFiltersFromTags, selectedField, onChange, currentFieldConfig, isEnumField, isBooleanField]
   );
 
   const handleEnumConfirm = useCallback(() => {
@@ -299,6 +308,36 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
     handleBooleanCancel();
   }, [isEnumField, isBooleanField, handleEnumCancel, handleBooleanCancel]);
 
+  const handleSearchSubmit = useCallback(() => {
+    if (isEnumField || isBooleanField) {
+      onChange?.(buildFiltersFromTags(tags));
+      return;
+    }
+
+    const trimmedValue = inputValue.trim();
+    if (!trimmedValue) {
+      return;
+    }
+
+    const fieldLabel = currentFieldConfig?.label || selectedField;
+    const newTag = `${fieldLabel}: ${trimmedValue}`;
+    handleTagsChange([...tags, newTag]);
+    setInputValue('');
+    selectRef.current?.blur();
+  }, [
+    currentFieldConfig,
+    getFieldConfigs,
+    handleTagsChange,
+    inputValue,
+    isBooleanField,
+    isEnumField,
+    onChange,
+    selectedField,
+    t,
+    tags,
+    buildFiltersFromTags,
+  ]);
+
   const optionsDropdown = (
     <Card
       size="small"
@@ -388,35 +427,50 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
             position: relative;
             display: inline-block;
           }
-          
+
           .search-combination-wrapper {
             position: relative;
             z-index: 99;
           }
-          
+
           .search-combination-controls {
             display: flex;
             height: 32px;
           }
-          
+
+          .search-combination-middle {
+            border-radius: 0 !important;
+          }
+
+          .search-combination-middle .ant-select-selector {
+            border-radius: 0 !important;
+          }
+
+          .search-combination-search-button {
+            border-top-left-radius: 0 !important;
+            border-bottom-left-radius: 0 !important;
+            height: 32px;
+            padding-inline: 12px;
+          }
+
           .search-combination-wrapper .search-combination-left .ant-select-selector {
             border-top-right-radius: 0 !important;
             border-bottom-right-radius: 0 !important;
           }
-          
+
           .search-combination-right-wrapper {
             position: absolute;
             top: 0;
             z-index: 99;
           }
-          
+
           .search-combination-wrapper .search-combination-right .ant-select-selector {
             border-top-left-radius: 0 !important;
             border-bottom-left-radius: 0 !important;
             max-height: 200px;
             overflow-y: auto;
           }
-          
+
           .enum-options-dropdown {
             position: absolute;
             top: 100%;
@@ -424,7 +478,7 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
             z-index: 99;
             margin-top: 4px;
           }
-          
+
           .enum-option-item:hover {
             background-color: var(--color-fill-2) !important;
           }
@@ -440,7 +494,7 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
       <div
         className={`search-combination-base ${className}`}
         style={{
-          width: fieldWidth + selectWidth,
+          width: fieldWidth + selectWidth + 68,
           height: 32,
         }}
       >
@@ -471,103 +525,120 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
               className="search-combination-right-wrapper"
               style={{ left: fieldWidth }}
             >
-              <Select
-                ref={selectRef}
-                mode="tags"
-                allowClear
-                style={{ width: selectWidth }}
-                placeholder={
-                  isEnumField ? t('common.select') : t('common.search')
-                }
-                value={tags}
-                onChange={handleTagsChange}
-                onFocus={handleSelectFocus}
-                onBlur={handleSelectBlur}
-                onClear={() => {
-                  if (isEnumField || isBooleanField) {
-                    isClearing.current = true;
-                  }
-                }}
-                onInputKeyDown={(e) => {
-                  if (isEnumField || isBooleanField) {
-                    if (e.key !== 'Backspace' && e.key !== 'Delete') {
-                      e.preventDefault();
+              <div className="search-combination-controls">
+                <Select
+                  ref={selectRef}
+                  mode="tags"
+                  allowClear
+                  style={{ width: selectWidth }}
+                  placeholder={isEnumField ? t('common.select') : t('common.searchKeywordPlaceholder')}
+                  value={tags}
+                  searchValue={inputValue}
+                  onSearch={setInputValue}
+                  onChange={handleTagsChange}
+                  onFocus={handleSelectFocus}
+                  onBlur={handleSelectBlur}
+                  onClear={() => {
+                    setInputValue('');
+                    if (isEnumField || isBooleanField) {
+                      isClearing.current = true;
                     }
-                  }
-                }}
-                suffixIcon={null}
-                open={false}
-                tokenSeparators={isEnumField ? [] : [',']}
-                className="search-combination-right"
-                tagRender={({ value, onClose }) => {
-                  if (!value) {
-                    return <span style={{ display: 'none' }}></span>;
-                  }
-                  const currentIndex = tags.indexOf(value);
-                  if (!isFocused && tags.length > 1) {
-                    if (currentIndex === 0) {
-                    } else if (currentIndex === 1) {
-                      return (
-                        <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            padding: '2px 8px',
-                            background: 'var(--color-fill-2)',
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            marginRight: '4px',
-                            marginBottom: '2px',
-                            color: 'var(--color-primary)',
-                            fontWeight: 500,
-                          }}
-                        >
-                          +{tags.length - 1}
-                        </span>
-                      );
-                    } else {
+                  }}
+                  onInputKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSearchSubmit();
+                      return;
+                    }
+
+                    if (isEnumField || isBooleanField) {
+                      if (e.key !== 'Backspace' && e.key !== 'Delete') {
+                        e.preventDefault();
+                      }
+                    }
+                  }}
+                  suffixIcon={null}
+                  open={false}
+                  tokenSeparators={isEnumField ? [] : [',']}
+                  className="search-combination-right search-combination-middle"
+                  tagRender={({ value, onClose }) => {
+                    if (!value) {
                       return <span style={{ display: 'none' }}></span>;
                     }
-                  }
-                  return (
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        padding: '2px 8px',
-                        marginBottom: '2px',
-                        background: 'var(--color-fill-2)',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        marginRight: '4px',
-                        maxWidth: '125px',
-                      }}
-                      title={handleCustomTagRender(value)}
-                    >
+                    const currentIndex = tags.indexOf(value);
+                    if (!isFocused && tags.length > 1) {
+                      if (currentIndex === 0) {
+                      } else if (currentIndex === 1) {
+                        return (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '2px 8px',
+                              background: 'var(--color-fill-2)',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              marginRight: '4px',
+                              marginBottom: '2px',
+                              color: 'var(--color-primary)',
+                              fontWeight: 500,
+                            }}
+                          >
+                            +{tags.length - 1}
+                          </span>
+                        );
+                      } else {
+                        return <span style={{ display: 'none' }}></span>;
+                      }
+                    }
+                    return (
                       <span
                         style={{
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          maxWidth: '150px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '2px 8px',
+                          marginBottom: '2px',
+                          background: 'var(--color-fill-2)',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          marginRight: '4px',
+                          maxWidth: '125px',
                         }}
+                        title={handleCustomTagRender(value)}
                       >
-                        {handleCustomTagRender(value)}
+                        <span
+                          style={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '150px',
+                          }}
+                        >
+                          {handleCustomTagRender(value)}
+                        </span>
+                        <span
+                          style={{
+                            marginLeft: '4px',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                          }}
+                          onClick={onClose}
+                        >
+                          ×
+                        </span>
                       </span>
-                      <span
-                        style={{
-                          marginLeft: '4px',
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                        }}
-                        onClick={onClose}
-                      >
-                        ×
-                      </span>
-                    </span>
-                  );
-                }}
-              />
+                    );
+                  }}
+                />
+                <Button
+                  type="primary"
+                  icon={<SearchOutlined />}
+                  className="search-combination-search-button"
+                  onClick={handleSearchSubmit}
+                >
+                  {t('common.search')}
+                </Button>
+              </div>
               {(showEnumOptions && isEnumField) ||
               (showBooleanOptions && isBooleanField) ? (
                   <div

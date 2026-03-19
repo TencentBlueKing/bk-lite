@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Button, Input, Select, Switch, Tag, Modal, message, Form } from 'antd';
+import { Button, Input, Select, Switch, Tag, Modal, message, Form, Radio } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
-import { DangerousRule, DangerousRuleFormData, DangerousRuleListResponse, DangerousRuleParams } from '@/app/job/types';
+import { DangerousRule, DangerousRuleFormData, DangerousRuleListResponse, DangerousRuleMatchType, DangerousRuleParams } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
 import SearchCombination from '@/components/search-combination';
@@ -35,6 +35,14 @@ interface DangerousRulePageProps {
   confirmLabel: string;
   strategyHelp: string;
   ruleNamePlaceholder: string;
+  matchTypeLabel?: string;
+  matchTypeOptions?: Array<{
+    label: string;
+    value: DangerousRuleMatchType;
+    help: string;
+    placeholder: string;
+    examples: string[];
+  }>;
   api: DangerousRuleApiMethods;
 }
 
@@ -51,6 +59,8 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
   confirmLabel,
   strategyHelp,
   ruleNamePlaceholder,
+  matchTypeLabel,
+  matchTypeOptions,
   api,
 }) => {
   const { t } = useTranslation();
@@ -71,6 +81,19 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
   const [editingRule, setEditingRule] = useState<DangerousRule | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+  const currentMatchType = Form.useWatch('match_type', form) as DangerousRuleMatchType | undefined;
+
+  const selectedMatchTypeOption = useMemo(() => {
+    if (!matchTypeOptions?.length) return null;
+    return matchTypeOptions.find(option => option.value === currentMatchType) || matchTypeOptions[0];
+  }, [currentMatchType, matchTypeOptions]);
+
+  const resolvedPatternPlaceholder = selectedMatchTypeOption?.placeholder || patternPlaceholder;
+  const resolvedPatternHelp = selectedMatchTypeOption?.help || patternHelp;
+  const resolvedPatternExamples = selectedMatchTypeOption?.examples || patternExamples;
+  const matchTypeLabelMap = useMemo(() => {
+    return new Map((matchTypeOptions || []).map(option => [option.value, option.label]));
+  }, [matchTypeOptions]);
 
   const fetchData = useCallback(
     async (params: { filters?: SearchFilters; current?: number; pageSize?: number } = {}) => {
@@ -146,6 +169,12 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
         { id: 'confirm', name: confirmLabel },
       ],
     },
+    ...(matchTypeOptions?.length ? [{
+      name: 'match_type',
+      label: matchTypeLabel || t('job.matchType'),
+      lookup_expr: 'in',
+      options: matchTypeOptions.map(option => ({ id: option.value, name: option.label })),
+    } satisfies FieldConfig] : []),
     {
       name: 'is_enabled',
       label: t('job.enableStatus'),
@@ -155,7 +184,7 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
         { id: 'false', name: t('common.no') },
       ],
     },
-  ], [patternLabel, t]);
+  ], [confirmLabel, forbiddenLabel, matchTypeLabel, matchTypeOptions, patternLabel, t]);
 
   const handleTableChange = (pag: any) => {
     setPagination(pag);
@@ -203,6 +232,7 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
     form.resetFields();
     form.setFieldsValue({
       level: 'forbidden',
+      ...(matchTypeOptions?.length ? { match_type: matchTypeOptions[0].value } : {}),
     });
     setModalOpen(true);
   };
@@ -214,6 +244,7 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
     form.setFieldsValue({
       name: record.name,
       pattern: record.pattern,
+      match_type: record.match_type || matchTypeOptions?.[0]?.value,
       level: record.level,
       description: record.description,
       team: record.team || [],
@@ -271,6 +302,15 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
         </code>
       ),
     },
+    ...(matchTypeOptions?.length ? [{
+      title: matchTypeLabel || t('job.matchType'),
+      dataIndex: 'match_type',
+      key: 'match_type',
+      width: 120,
+      render: (_: unknown, record: DangerousRule) => (
+        <span>{matchTypeLabelMap.get(record.match_type || matchTypeOptions[0].value) || '-'}</span>
+      ),
+    } satisfies ColumnItem] : []),
     {
       title: t('job.handleStrategy'),
       dataIndex: 'level',
@@ -323,13 +363,13 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
       render: (_: unknown, record: DangerousRule) => (
         <div className="flex items-center gap-3">
           <a
-            className="text-[var(--color-primary)] cursor-pointer"
+            className="text-(--color-primary) cursor-pointer"
             onClick={() => openEditModal(record)}
           >
             {t('job.editRule')}
           </a>
           <a
-            className="text-[var(--color-primary)] cursor-pointer"
+            className="text-(--color-primary) cursor-pointer"
             onClick={() => handleDelete(record)}
           >
             {t('job.deleteRule')}
@@ -343,7 +383,7 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
     <div className="w-full h-full flex flex-col overflow-hidden">
       {/* Header */}
       <div
-        className="rounded-lg px-6 py-4 mb-4 flex-shrink-0"
+        className="rounded-lg px-6 py-4 mb-4 shrink-0"
         style={{
           background: 'var(--color-bg-1)',
           border: '1px solid var(--color-border-1)',
@@ -369,7 +409,7 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
         }}
       >
         {/* Toolbar */}
-        <div className="flex justify-between mb-4 flex-shrink-0">
+        <div className="flex justify-between mb-4 shrink-0">
           <SearchCombination
             fieldConfigs={fieldConfigs}
             onChange={handleSearchChange}
@@ -422,20 +462,34 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
             <Input placeholder={ruleNamePlaceholder} />
           </Form.Item>
 
+          {matchTypeOptions?.length ? (
+            <Form.Item
+              name="match_type"
+              label={matchTypeLabel || t('job.matchType')}
+              rules={[{ required: true, message: t('job.matchTypePlaceholder') }]}
+            >
+              <Radio.Group>
+                {matchTypeOptions.map(option => (
+                  <Radio key={option.value} value={option.value}>{option.label}</Radio>
+                ))}
+              </Radio.Group>
+            </Form.Item>
+          ) : null}
+
           <Form.Item
             name="pattern"
             label={patternLabel}
             rules={[
               {
                 required: true,
-                message: patternPlaceholder,
+                message: resolvedPatternPlaceholder,
               },
             ]}
           >
-            <Input placeholder={patternPlaceholder} />
+            <Input placeholder={resolvedPatternPlaceholder} />
           </Form.Item>
           <div className="text-xs mb-2" style={{ color: 'var(--color-text-3)', marginTop: -16 }}>
-            {patternHelp}
+            {resolvedPatternHelp}
           </div>
           <div
             className="rounded-md px-4 py-3 mb-6 text-xs leading-relaxed bg-[#f5f7fa]"
@@ -443,7 +497,7 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
           >
             <div className="font-medium mb-1">{t('job.matchPatternExamplesTitle')}</div>
             <ul className="list-disc pl-4 m-0 space-y-0.5">
-              {patternExamples.map((example, index) => (
+              {resolvedPatternExamples.map((example, index) => (
                 <li key={index}>{example}</li>
               ))}
             </ul>

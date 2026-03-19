@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signOut, useSession } from "next-auth/react";
 import { clearAuthToken } from '@/utils/crossDomainAuth';
+import { resolveThirdLoginFlag } from '@/utils/authRedirect';
 
 export default function SignoutPage() {
   const { data: session, status } = useSession();
@@ -11,10 +12,21 @@ export default function SignoutPage() {
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
 
+  const buildLoginUrl = () => {
+    const callbackUrl = searchParams.get('callbackUrl') || '/';
+    const thirdLoginFlag = resolveThirdLoginFlag(
+      searchParams.get('thirdLogin'),
+      searchParams.get('third_login'),
+    );
+    const loginUrl = `/auth/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+
+    return thirdLoginFlag ? `${loginUrl}&thirdLogin=true` : loginUrl;
+  };
+
   const handleSignout = async () => {
     try {
       setIsLoading(true);
-      
+
       // Call logout API for server-side cleanup
       await fetch("/api/auth/federated-logout", {
         method: "POST",
@@ -22,17 +34,14 @@ export default function SignoutPage() {
           'Content-Type': 'application/json',
         },
       });
-      
+
       // Clear authentication token
       clearAuthToken();
-      
+
       // Use NextAuth's signOut to clear client session
       await signOut({ redirect: false });
-      
-      // Get callbackUrl parameter and build login page URL
-      const callbackUrl = searchParams.get('callbackUrl') || '/';
-      const loginUrl = `/auth/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`;
-      
+      const loginUrl = buildLoginUrl();
+
       // Redirect to login page
       window.location.href = loginUrl;
     } catch (error) {
@@ -40,15 +49,14 @@ export default function SignoutPage() {
       // Even if API call fails, still clear token and redirect
       clearAuthToken();
       await signOut({ redirect: false });
-      
-      const callbackUrl = searchParams.get('callbackUrl') || '/';
-      const loginUrl = `/auth/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+
+      const loginUrl = buildLoginUrl();
       window.location.href = loginUrl;
     } finally {
       setIsLoading(false);
     }
   };
-  
+
   if (status === 'loading') {
     return (
       <div className="flex justify-center items-center h-screen">

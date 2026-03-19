@@ -37,12 +37,30 @@
                     border-radius: 4px;
                     margin-bottom: 4px;
 
+                    .dragHandle {
+                        color: var(--color-text-3);
+                        opacity: 0;
+                        transition: opacity 0.2s;
+
+                        &:hover {
+                            color: var(--color-primary);
+                        }
+
+                        &:active {
+                            cursor: grabbing;
+                        }
+                    }
+
                     .operate {
                         display: none;
                     }
 
                     &:hover {
                         background: var(--color-fill-1);
+
+                        .dragHandle {
+                            opacity: 1;
+                        }
 
                         .operate {
                             display: flex;

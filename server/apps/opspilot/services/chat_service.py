@@ -147,6 +147,15 @@ class ChatService:
         if kwargs.get("enable_rag_strict_mode"):
             extra_config.update({"enable_rag_strict_mode": kwargs["enable_rag_strict_mode"]})
 
+        if kwargs.get("browser_use_force_task"):
+            extra_config.update(
+                {
+                    "browser_use_base_task": kwargs.get("skill_prompt", ""),
+                    "browser_use_user_message": user_message,
+                    "browser_use_force_task": True,
+                }
+            )
+
         if kwargs["skill_type"] != SkillTypeChoices.KNOWLEDGE_TOOL:
             for tool in kwargs.get("tools", []):
                 for i in tool.get("kwargs", []):

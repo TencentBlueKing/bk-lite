@@ -23,6 +23,7 @@ import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook } from '
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { useUserInfoContext } from '@/context/userInfo';
 
 const EditCronTaskContent = () => {
@@ -426,7 +427,7 @@ const EditCronTaskContent = () => {
         <Form
           form={form}
           layout="vertical"
-          className="max-w-[720px]"
+          className="w-full"
           initialValues={{
             timeout: 300,
             dailyTime: dayjs().hour(2).minute(0),
@@ -450,24 +451,17 @@ const EditCronTaskContent = () => {
           </Form.Item>
 
           <Form.Item label={t('job.targetSource')} required>
-            <Radio.Group
+            <TargetSourceSelector
               value={targetSource}
-              onChange={(e) => handleTargetSourceChange(e.target.value)}
-            >
-              <Radio value="node_manager">{t('job.nodeManager')}</Radio>
-              <Radio value="target_manager">{t('job.targetManager')}</Radio>
-            </Radio.Group>
+              onChange={handleTargetSourceChange}
+            />
           </Form.Item>
 
           <Form.Item label={t('job.targetHost')} required>
-            <div className="flex items-center gap-3">
-              <Button type="dashed" onClick={() => setHostModalOpen(true)}>
-                + {t('job.addTargetHost')}
-              </Button>
-              <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
-                {t('job.selectedHosts').replace('{count}', String(selectedHosts.length || selectedHostKeys.length))}
-              </span>
-            </div>
+            <AddTargetHostButton
+              count={selectedHosts.length || selectedHostKeys.length}
+              onClick={() => setHostModalOpen(true)}
+            />
           </Form.Item>
 
           <Form.Item label={t('job.jobType')} required>
