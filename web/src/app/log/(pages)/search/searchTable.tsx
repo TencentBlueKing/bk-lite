@@ -18,54 +18,66 @@ const SearchTable: React.FC<SearchTableProps> = ({
   scroll,
   fields = [],
   addToQuery,
-  onLoadMore,
+  onLoadMore
 }) => {
   const { t } = useTranslation();
   const { copy } = useCopy();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
 
+  const DEFAULT_FIELDS = ['timestamp', 'message'];
+
   const activeColumns = useMemo(() => {
-    const baseColumns = [
-      {
-        title: 'timestamp',
-        dataIndex: '_time',
-        key: '_time',
-        width: 160,
-        fixed: 'left',
-        render: (val: string) => (
-          <EllipsisWithTooltip
-            text={convertToLocalizedTime(val, 'YYYY-MM-DD HH:mm:ss')}
-            className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
-          ></EllipsisWithTooltip>
-        ),
-      },
-      {
-        title: 'message',
-        dataIndex: '_msg',
-        key: '_msg',
-        render: (val: string) => val || '--',
-        width: 800,
-      },
-    ];
     const storageFileds = localStorage.getItem('logSearchFields');
     const dependentFileds = storageFileds
       ? JSON.parse(storageFileds || '[]')
-      : [];
-    const arr = fields.length ? fields : dependentFileds;
-    const activeColumns = arr
-      .filter((item: string) => !['timestamp', 'message'].includes(item))
-      .map((item: string) => ({
+      : DEFAULT_FIELDS;
+    let orderedFields = fields.length ? fields : dependentFileds;
+
+    // 确保始终包含默认字段
+    DEFAULT_FIELDS.forEach((field) => {
+      if (!orderedFields.includes(field)) {
+        orderedFields = [field, ...orderedFields];
+      }
+    });
+
+    // 根据 fields 顺序动态生成列
+    const columns = orderedFields.map((item: string) => {
+      if (item === 'timestamp') {
+        return {
+          title: 'timestamp',
+          dataIndex: '_time',
+          key: '_time',
+          width: 160,
+          render: (val: string) => (
+            <EllipsisWithTooltip
+              text={convertToLocalizedTime(val, 'YYYY-MM-DD HH:mm:ss')}
+              className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+            ></EllipsisWithTooltip>
+          )
+        };
+      }
+      if (item === 'message') {
+        return {
+          title: 'message',
+          dataIndex: '_msg',
+          key: '_msg',
+          render: (val: string) => val || '--',
+          width: 800
+        };
+      }
+      return {
         title: item,
         dataIndex: item,
         key: item,
         width: 200,
         ellipsis: {
-          showTitle: true,
-        },
-      }));
+          showTitle: true
+        }
+      };
+    });
 
-    return [...baseColumns, ...activeColumns];
+    return columns;
   }, [fields]);
 
   const getRowExpandRender = (record: TableDataItem) => {
@@ -109,7 +121,7 @@ const SearchTable: React.FC<SearchTableProps> = ({
           {Object.entries(record)
             .map(([key, value]) => ({
               label: key,
-              value,
+              value
             }))
             .filter((item) => item.label !== 'id')
             .map((item: TableDataItem, index: number) => (
@@ -194,7 +206,7 @@ const SearchTable: React.FC<SearchTableProps> = ({
         columnWidth: 36,
         expandedRowRender: (record) => getRowExpandRender(record),
         expandedRowKeys: expandedRowKeys,
-        onExpandedRowsChange: (keys) => setExpandedRowKeys(keys as React.Key[]),
+        onExpandedRowsChange: (keys) => setExpandedRowKeys(keys as React.Key[])
       }}
       onScroll={(e: any) => {
         const { scrollTop, scrollHeight, clientHeight } = e.target;

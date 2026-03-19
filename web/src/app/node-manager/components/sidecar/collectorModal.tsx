@@ -3,12 +3,12 @@ import {
   useEffect,
   useImperativeHandle,
   useRef,
-  useState,
+  useState
 } from 'react';
 import {
   ModalRef,
   ModalSuccess,
-  TableDataItem,
+  TableDataItem
 } from '@/app/node-manager/types';
 import { Form, Button, Input, Select, Upload, message } from 'antd';
 import { CloudUploadOutlined } from '@ant-design/icons';
@@ -26,7 +26,7 @@ const initData = {
   description: '',
   service_type: '',
   executable_path: '',
-  execute_parameters: '',
+  execute_parameters: ''
 };
 
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
@@ -46,28 +46,33 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [tags, setTags] = useState<string[]>([]); //编辑时的tags
 
     useImperativeHandle(ref, () => ({
-      showModal: ({ type, form, title, key }) => {
+      showModal: ({ type, form, title, key, appTag }) => {
         console.log(type);
-        const info = cloneDeep(form) as TableDataItem;
+        // 新增时使用初始值，编辑时使用传入的 form 数据
+        const info =
+          type === 'add'
+            ? { ...cloneDeep(initData), appTag }
+            : (cloneDeep(form) as TableDataItem);
         const {
           display_name,
           display_introduction,
           originalTags = [],
-          is_pre,
-        } = form as TableDataItem;
+          is_pre
+        } = (form || {}) as TableDataItem;
         setKey(key as string);
         setId(form?.id as string);
         setType(type);
         setTitle(title as string);
         setVisible(true);
         info.system = info.os || 'linux';
+        info.appTag = appTag; // 保存 appTag 到 formData
         if (is_pre && type === 'edit') {
           info.name = display_name;
           info.description = display_introduction;
         }
         setFormData(info);
         setTags(originalTags);
-      },
+      }
     }));
 
     useEffect(() => {
@@ -87,7 +92,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
 
     const handleObject: Record<string, (param: any) => Promise<any>> = {
       add: addCollector,
-      edit: editCollecttor,
+      edit: editCollecttor
     };
 
     const onSubmit = () => {
@@ -103,7 +108,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             introduction: values.description,
             executable_path: values.executable_path || '',
             execute_parameters: values.execute_parameters || '',
-            tags,
+            tags
           };
           if (type === 'edit' && formData.is_pre) {
             param.name = formData.original_name || param.name;
@@ -145,7 +150,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         os: formData.system,
         type: key,
         object: formData.original_name || formData.name,
-        file: file.originFileObj,
+        file: file.originFileObj
       };
       Object.entries(params).forEach(([k, v]) => {
         fd.append(k, v);
@@ -167,7 +172,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       maxCount: 1,
       fileList: fileList,
       onChange: handleChange,
-      beforeUpload: () => false,
+      beforeUpload: () => false
     };
 
     const validateUpload = async (_: any, value: any) => {
@@ -216,7 +221,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                   label={t('common.name')}
                   name="name"
                   rules={[
-                    { required: true, message: t('common.inputRequired') },
+                    { required: true, message: t('common.inputRequired') }
                   ]}
                 >
                   <Input
@@ -228,14 +233,14 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                   label={t('node-manager.cloudregion.Configuration.system')}
                   name="system"
                   rules={[
-                    { required: true, message: t('common.inputRequired') },
+                    { required: true, message: t('common.inputRequired') }
                   ]}
                 >
                   <Select
                     disabled={type !== 'add'}
                     options={[
                       { value: 'linux', label: 'Linux' },
-                      { value: 'windows', label: 'Windows' },
+                      { value: 'windows', label: 'Windows' }
                     ]}
                     placeholder={t('common.selectMsg')}
                   ></Select>
@@ -244,7 +249,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                   label={t('node-manager.collector.executeFilePath')}
                   name="executable_path"
                   rules={[
-                    { required: true, message: t('common.inputRequired') },
+                    { required: true, message: t('common.inputRequired') }
                   ]}
                 >
                   <Input placeholder={t('common.inputMsg')} />
@@ -253,7 +258,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                   label={t('node-manager.collector.executeParameters')}
                   name="execute_parameters"
                   rules={[
-                    { required: true, message: t('common.inputRequired') },
+                    { required: true, message: t('common.inputRequired') }
                   ]}
                 >
                   <TextArea placeholder={t('common.inputMsg')} />
@@ -264,7 +269,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                   )}
                   name="description"
                   rules={[
-                    { required: true, message: t('common.inputRequired') },
+                    { required: true, message: t('common.inputRequired') }
                   ]}
                 >
                   <TextArea

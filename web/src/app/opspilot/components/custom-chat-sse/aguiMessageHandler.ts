@@ -3,16 +3,16 @@
  * 负责处理不同类型的 AG-UI 消息
  */
 
-import { AGUIMessage, BrowserStepProgressValue } from '@/app/opspilot/types/chat';
+import { AGUIMessage, BrowserStepProgressValue, BrowserTaskReceivedValue } from '@/app/opspilot/types/chat';
 import { CustomChatMessage, BrowserStepProgressData, BrowserStepsHistory } from '@/app/opspilot/types/global';
-import { ToolCallInfo, renderToolCallCard, renderErrorMessage, initToolCallTooltips } from './toolCallRenderer';
+import { ToolCallInfo, renderToolCallCard, renderErrorMessage, initToolCallTooltips, syncActiveToolCallPanel, closeActiveToolCallPanel } from './toolCallRenderer';
 
 export interface MessageUpdateFn {
   (updater: (prevMessages: CustomChatMessage[]) => CustomChatMessage[]): void;
 }
 
 // 内容块类型
-type ContentBlock = 
+type ContentBlock =
   | { type: 'text'; content: string }
   | { type: 'toolCall'; id: string }
   | { type: 'thinking' };
@@ -33,7 +33,7 @@ export class AGUIMessageHandler {
     this.botMessage = botMessage;
     this.updateMessages = updateMessages;
     this.toolCallsRef = toolCallsRef;
-    
+
     if (typeof window !== 'undefined') {
       initToolCallTooltips();
     }
@@ -71,7 +71,7 @@ export class AGUIMessageHandler {
 
     for (const block of this.contentBlocks) {
       let content = '';
-      
+
       if (block.type === 'text') {
         content = block.content;
       } else if (block.type === 'toolCall') {
@@ -152,9 +152,9 @@ export class AGUIMessageHandler {
   handleToolCallStart(toolCallId: string, toolCallName: string) {
     this.clearThinkingPrompt();
     this.flushCurrentTextBlock();
-    
+
     this.contentBlocks.push({ type: 'toolCall', id: toolCallId });
-    
+
     this.toolCallsRef.set(toolCallId, {
       name: toolCallName,
       args: '',
@@ -174,6 +174,20 @@ export class AGUIMessageHandler {
     }
   }
 
+  private findLatestCallingToolCallId(preferredToolName?: string) {
+    const entries = Array.from(this.toolCallsRef.entries()).reverse();
+
+    if (preferredToolName) {
+      const matchedEntry = entries.find(([, toolCall]) => toolCall.status === 'calling' && toolCall.name === preferredToolName);
+      if (matchedEntry) {
+        return matchedEntry[0];
+      }
+    }
+
+    const latestCallingEntry = entries.find(([, toolCall]) => toolCall.status === 'calling');
+    return latestCallingEntry?.[0];
+  }
+
   /**
    * 处理 TOOL_CALL_RESULT 事件
    */
@@ -182,8 +196,22 @@ export class AGUIMessageHandler {
     if (toolCall) {
       toolCall.status = 'completed';
       toolCall.result = content;
+      closeActiveToolCallPanel(toolCallId);
       this.updateMessageContent(this.getFullContent());
     }
+  }
+
+  handleBrowserTaskReceived(value: BrowserTaskReceivedValue) {
+    const preferredToolName = typeof value.tool === 'string' ? value.tool : undefined;
+    const toolCallId = this.findLatestCallingToolCallId(preferredToolName);
+    if (!toolCallId) return;
+
+    const toolCall = this.toolCallsRef.get(toolCallId);
+    if (!toolCall) return;
+
+    toolCall.browserTaskReceived = value;
+    syncActiveToolCallPanel(toolCallId, toolCall);
+    this.updateMessageContent(this.getFullContent());
   }
 
   /**
@@ -211,24 +239,24 @@ export class AGUIMessageHandler {
   handleBrowserStepProgress(value: BrowserStepProgressValue) {
     this.clearThinkingPrompt();
     const stepData = value as BrowserStepProgressData;
-    
+
     const existingIndex = this.browserStepsHistory.findIndex(
       s => s.step_number === stepData.step_number
     );
-    
+
     if (existingIndex >= 0) {
       this.browserStepsHistory[existingIndex] = stepData;
     } else {
       this.browserStepsHistory.push(stepData);
     }
-    
+
     this.browserStepsHistory.sort((a, b) => a.step_number - b.step_number);
-    
+
     const history: BrowserStepsHistory = {
       steps: [...this.browserStepsHistory],
       isRunning: true
     };
-    
+
     this.updateMessageContent(this.getFullContent(), stepData, history);
   }
 
@@ -305,6 +333,8 @@ export class AGUIMessageHandler {
       case 'CUSTOM':
         if (aguiData.name === 'browser_step_progress' && aguiData.value) {
           this.handleBrowserStepProgress(aguiData.value as BrowserStepProgressValue);
+        } else if (aguiData.name === 'browser_task_received' && aguiData.value) {
+          this.handleBrowserTaskReceived(aguiData.value as BrowserTaskReceivedValue);
         }
         return false;
 

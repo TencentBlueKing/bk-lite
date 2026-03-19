@@ -237,6 +237,30 @@ def create_browser_step_callback(
     return step_callback
 
 
+def create_browser_custom_event_callback(
+    event_queue: asyncio.Queue,
+    encoder: EventEncoder,
+) -> Callable[[Dict[str, Any]], None]:
+    """创建浏览器自定义事件回调函数，用于发送 browser_task_received 等事件"""
+
+    def custom_event_callback(event_value: Dict[str, Any]) -> None:
+        try:
+            event = CustomEvent(
+                type=EventType.CUSTOM,
+                name="browser_task_received",
+                value=event_value,
+            )
+            encoded_event = encoder.encode(event)
+            try:
+                event_queue.put_nowait(encoded_event)
+            except asyncio.QueueFull:
+                logger.warning("Browser custom event queue is full, dropping event")
+        except Exception as e:
+            logger.error(f"Error in browser custom event callback: {e}")
+
+    return custom_event_callback
+
+
 class BasicGraph(ABC):
     """基础图执行类，提供流式和非流式执行能力"""
 
@@ -608,6 +632,7 @@ class BasicGraph(ABC):
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
         browser_step_callback = create_browser_step_callback(browser_event_queue, encoder)
+        browser_custom_event_callback = create_browser_custom_event_callback(browser_event_queue, encoder)
         stop_event = asyncio.Event()
 
         try:
@@ -634,6 +659,7 @@ class BasicGraph(ABC):
                     "user_id": request.user_id or "",
                     **request.extra_config,
                     "browser_step_callback": browser_step_callback,
+                    "browser_custom_event_callback": browser_custom_event_callback,
                 },
             }
 

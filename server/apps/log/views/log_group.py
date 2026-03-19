@@ -12,6 +12,27 @@ class LogGroupViewSet(ModelViewSet):
     serializer_class = LogGroupSerializer
     filterset_class = LogGroupFilter
 
+    def _attach_item_permissions(self, items, permission):
+        """为日志分组列表补充实例权限字段。"""
+        instance_permissions = (
+            permission.get("instance", []) if isinstance(permission, dict) else []
+        )
+        instance_permission_map = {}
+        if isinstance(instance_permissions, list):
+            for item in instance_permissions:
+                if not isinstance(item, dict) or "id" not in item:
+                    continue
+                instance_permission_map[str(item["id"])] = (
+                    item.get("permission") or PermissionConstants.DEFAULT_PERMISSION
+                )
+
+        for item in items:
+            item["permission"] = instance_permission_map.get(
+                str(item.get("id")), PermissionConstants.DEFAULT_PERMISSION
+            )
+
+        return items
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -50,16 +71,19 @@ class LogGroupViewSet(ModelViewSet):
         if page_size == "-1":
             # 全量查询，直接返回所有数据
             serializer = self.get_serializer(queryset, many=True)
-            return WebUtils.response_success(serializer.data)
+            results = self._attach_item_permissions(serializer.data, permission)
+            return WebUtils.response_success(results)
 
         # 分页
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            results = self._attach_item_permissions(serializer.data, permission)
+            return self.get_paginated_response(results)
 
         serializer = self.get_serializer(queryset, many=True)
-        return WebUtils.response_success(serializer.data)
+        results = self._attach_item_permissions(serializer.data, permission)
+        return WebUtils.response_success(results)
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)

@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from service.runtime import current_entrypoint_command
+
 
 logger = logging.getLogger(__name__)
 BASE_TASK_DIR = Path(os.getenv("ANSIBLE_WORK_DIR", "/tmp/ansible-executor"))
@@ -369,8 +371,7 @@ def build_adhoc_command(payload: AdhocRequest) -> list[str]:
     }:
         extra_vars["ansible_connection"] = "local"
 
-    cmd = [
-        "ansible",
+    cli_args = [
         payload.hosts,
         "-i",
         payload.inventory,
@@ -378,22 +379,35 @@ def build_adhoc_command(payload: AdhocRequest) -> list[str]:
         payload.module,
     ]
     if payload.module_args:
-        cmd.extend(["-a", payload.module_args])
+        cli_args.extend(["-a", payload.module_args])
     if extra_vars:
-        cmd.extend(["--extra-vars", json.dumps(extra_vars, ensure_ascii=False)])
-    return cmd
+        cli_args.extend(["--extra-vars", json.dumps(extra_vars, ensure_ascii=False)])
+    return [
+        *current_entrypoint_command(),
+        "--internal-ansible-cli",
+        "adhoc",
+        "--",
+        *cli_args,
+    ]
 
 
 def build_playbook_command(payload: PlaybookRequest) -> list[str]:
-    cmd = [
-        "ansible-playbook",
+    cli_args = [
         payload.playbook_path,
         "-i",
         payload.inventory,
     ]
     if payload.extra_vars:
-        cmd.extend(["--extra-vars", json.dumps(payload.extra_vars, ensure_ascii=False)])
-    return cmd
+        cli_args.extend(
+            ["--extra-vars", json.dumps(payload.extra_vars, ensure_ascii=False)]
+        )
+    return [
+        *current_entrypoint_command(),
+        "--internal-ansible-cli",
+        "playbook",
+        "--",
+        *cli_args,
+    ]
 
 
 async def run_command(cmd: list[str], timeout: int) -> tuple[int, str]:

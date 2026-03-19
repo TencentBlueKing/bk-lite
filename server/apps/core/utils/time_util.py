@@ -5,6 +5,8 @@
 
 from datetime import datetime
 
+from croniter import croniter
+
 
 def format_time_iso(time_str: str):
     """
@@ -18,7 +20,7 @@ def format_time_iso(time_str: str):
     dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
 
     # 转换为ISO 8601格式（UTC时区，带毫秒和Z后缀）
-    iso_format = dt.isoformat(timespec='milliseconds') + 'Z'
+    iso_format = dt.isoformat(timespec="milliseconds") + "Z"
 
     return iso_format
 
@@ -32,3 +34,44 @@ def format_timestamp(time_str: str):
     timestamp = dt.timestamp()
     formatted_timestamp = str(int(timestamp))
     return formatted_timestamp
+
+
+def get_crontab_next_runs(
+    crontab_expression: str,
+    count: int = 6,
+    base_time: datetime | None = None,
+) -> list[str]:
+    """
+    Get the next N execution times for a crontab expression.
+
+    Args:
+        crontab_expression: 5-field crontab expression (minute hour day month weekday)
+        count: Number of next execution times to return (default: 6)
+        base_time: Base time to calculate from (default: now)
+
+    Returns:
+        List of datetime strings (YYYY-MM-DD HH:MM:SS) for next executions
+
+    Raises:
+        ValueError: If crontab expression is invalid
+    """
+    if not crontab_expression or not isinstance(crontab_expression, str):
+        raise ValueError("crontab_expression is required and must be a string")
+
+    expression = crontab_expression.strip()
+
+    if not croniter.is_valid(expression):
+        raise ValueError(f"Invalid crontab expression: {expression}")
+
+    if base_time is None:
+        base_time = datetime.now()
+
+    try:
+        cron = croniter(expression, base_time)
+        next_runs = []
+        for _ in range(count):
+            next_time = cron.get_next(datetime)
+            next_runs.append(next_time.strftime("%Y-%m-%d %H:%M:%S"))
+        return next_runs
+    except Exception as e:
+        raise ValueError(f"Failed to calculate next runs: {e}")

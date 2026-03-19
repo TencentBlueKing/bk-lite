@@ -25,7 +25,9 @@ for app_config in apps.get_app_configs():
     except ModuleNotFoundError:
         # App 没有 urls.py 是正常情况，静默跳过
         logger.debug(f"App '{app_name}' has no urls module, skipping")
-    except Exception:
+    except Exception as e:
         # urls.py 存在但有语法/导入错误，中断启动
+        print(e)
+        logger.exception(e)
         logger.exception(f"Failed to load URLs for app '{app_name}'")
         raise

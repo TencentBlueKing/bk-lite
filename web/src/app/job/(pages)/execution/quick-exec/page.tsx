@@ -201,6 +201,8 @@ const QuickExecPage = () => {
 
   const [executeLoading, setExecuteLoading] = useState(false);
 
+  const normalizeScriptContent = (content: string) => content.trim();
+
   // Check script content against dangerous rules
   const checkDangerousRules = async (scriptContent: string): Promise<{ canExecute: boolean; needConfirm: boolean; matchedRules: string[] }> => {
     try {
@@ -235,6 +237,20 @@ const QuickExecPage = () => {
       // If API fails, allow execution
       return { canExecute: true, needConfirm: false, matchedRules: [] };
     }
+  };
+
+  const validateScriptContent = async (_: unknown, value?: Record<ScriptLang, string>) => {
+    const currentScriptContent = normalizeScriptContent(value?.[scriptLang] || '');
+    if (!currentScriptContent) {
+      throw new Error(t('job.scriptContentRequired'));
+    }
+
+    const checkResult = await checkDangerousRules(currentScriptContent);
+    if (!checkResult.canExecute) {
+      throw new Error(`${t('job.forbiddenCommandMessage')} ${checkResult.matchedRules.join('、')}`);
+    }
+
+    return Promise.resolve();
   };
 
   // Execute the actual job
@@ -335,7 +351,11 @@ const QuickExecPage = () => {
           return;
         }
 
-        const scriptContent = scriptContentObj[scriptLang];
+        const scriptContent = normalizeScriptContent(scriptContentObj[scriptLang]);
+        form.setFieldValue('scriptContent', {
+          ...scriptContentObj,
+          [scriptLang]: scriptContent,
+        });
         const checkResult = await checkDangerousRules(scriptContent);
 
         if (!checkResult.canExecute) {
@@ -432,7 +452,7 @@ const QuickExecPage = () => {
         <Form
           form={form}
           layout="vertical"
-          className="max-w-[720px]"
+          className="max-w-180"
           initialValues={{ timeout: '600', scriptContent: DEFAULT_SCRIPT_CONTENT }}
         >
 
@@ -566,19 +586,15 @@ const QuickExecPage = () => {
               <Form.Item
                 label={t('job.scriptContent')}
                 name="scriptContent"
-                rules={[{
-                  required: true,
-                  validator: (_, value) => {
-                    if (!value || !value[scriptLang] || value[scriptLang].trim() === '') {
-                      return Promise.reject(new Error(t('job.scriptContentRequired')));
-                    }
-                    return Promise.resolve();
-                  }
-                }]}
+                validateTrigger="onBlur"
+                rules={[{ validator: validateScriptContent }]}
               >
                 <ScriptEditor
                   activeLang={scriptLang}
                   onLangChange={setScriptLang}
+                  onBlur={() => {
+                    void form.validateFields(['scriptContent']);
+                  }}
                 />
               </Form.Item>
 
@@ -593,7 +609,7 @@ const QuickExecPage = () => {
 
 
           <Form.Item label={t('job.timeout')} name="timeout">
-            <Input className="w-[200px]" />
+            <Input className="w-50" />
           </Form.Item>
           <p className="text-xs -mt-4 mb-6" style={{ color: 'var(--color-text-3)' }}>
             {t('job.timeoutHint')}

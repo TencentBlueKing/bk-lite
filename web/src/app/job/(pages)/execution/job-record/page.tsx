@@ -316,13 +316,9 @@ const JobRecordPage = () => {
       width: 120,
       render: (_: unknown, record: JobRecord) => {
         const source = record.trigger_source || record.source;
-        const display = record.trigger_source_display || record.source_display;
-        if (display) {
-          const config = getSourceConfig(source);
-          return <Tag color={config.color}>{display}</Tag>;
-        }
         const config = getSourceConfig(source);
-        return <Tag color={config.color}>{config.label}</Tag>;
+        const label = record.trigger_source_display || record.source_display || config.label;
+        return <Tag color={config.color}>{label}</Tag>;
       },
     },
     {
@@ -332,12 +328,7 @@ const JobRecordPage = () => {
       width: 120,
       render: (value: JobRecordStatus) => {
         const config = getStatusConfig(value);
-        return (
-          <Tag color={config.color}>
-            {value === 'running' && <span className="inline-block w-2 h-2 rounded-full bg-current mr-1 animate-pulse" />}
-            {config.label}
-          </Tag>
-        );
+        return <Tag color={config.color}>{config.label}</Tag>;
       },
     },
     {
@@ -552,9 +543,6 @@ const JobRecordPage = () => {
                 #{detail.id}
               </span>
               <Tag color={getStatusConfig(detail.status).color}>
-                {detail.status === 'running' && (
-                  <span className="inline-block w-2 h-2 rounded-full bg-current mr-1 animate-pulse" />
-                )}
                 {getStatusConfig(detail.status).label}
               </Tag>
             </div>

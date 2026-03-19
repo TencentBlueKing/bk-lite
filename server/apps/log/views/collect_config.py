@@ -12,6 +12,7 @@ from apps.core.utils.permission_utils import (
     filter_instances_with_permissions,
 )
 from apps.core.utils.web_utils import WebUtils
+from apps.log.constants.collect_type import DISPLAY_CATEGORY_ORDER
 from apps.log.constants.language import LanguageConstants
 from apps.log.constants.permission import PermissionConstants
 from apps.log.models import CollectType, CollectInstance, CollectConfig
@@ -26,6 +27,24 @@ class CollectTypeViewSet(ModelViewSet):
     queryset = CollectType.objects.all()
     serializer_class = CollectTypeSerializer
     filterset_class = CollectTypeFilter
+
+    @action(methods=["get"], detail=False, url_path="display_category_enum")
+    def display_category_enum(self, request, *args, **kwargs):
+        lan = LanguageLoader(
+            app=LanguageConstants.APP, default_lang=request.user.locale
+        )
+
+        categories = []
+        for code in DISPLAY_CATEGORY_ORDER:
+            lang_key = f"{LanguageConstants.DISPLAY_CATEGORY}.{code}"
+            categories.append(
+                {
+                    "id": code,
+                    "name": lan.get(f"{lang_key}.name") or code,
+                }
+            )
+
+        return WebUtils.response_success(categories)
 
     def list(self, request, *args, **kwargs):
         """

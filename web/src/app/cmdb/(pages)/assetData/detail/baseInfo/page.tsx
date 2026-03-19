@@ -5,7 +5,9 @@ import { useModelApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import { useSearchParams } from 'next/navigation';
 import { Spin } from 'antd';
 import { useCommon } from '@/app/cmdb/context/common';
-import { ensureCollectTaskMap } from '@/app/cmdb/utils/collectTask';
+import {
+  ensureCollectTaskMap,
+} from '@/app/cmdb/utils/collectTask';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import {
   AttrFieldType,
@@ -34,8 +36,12 @@ const BaseInfo = () => {
   }, []);
 
   useEffect(() => {
+    // Given 详情页也支持 collect_task 跳转，When 页面进入，Then 预热与列表页一致的映射缓存。
     ensureCollectTaskMap(getCollectTaskNames).catch(() => {
-      useAssetDataStore.getState().setCollectTaskMap({});
+      const store = useAssetDataStore.getState();
+      store.setCollectTaskMap({});
+      store.setCollectTaskRouteMap({});
+      store.setCollectTaskOptions([]);
     });
   }, []);
 

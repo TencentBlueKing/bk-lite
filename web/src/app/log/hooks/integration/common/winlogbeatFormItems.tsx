@@ -197,7 +197,6 @@ const useWinlogbeatFormItems = () => {
           <Form.Item className="mb-[20px]" name="ignore_older">
             <Input
               placeholder="72h"
-              style={{ maxWidth: 200 }}
               disabled={disabledFormItems.ignore_older}
             />
           </Form.Item>

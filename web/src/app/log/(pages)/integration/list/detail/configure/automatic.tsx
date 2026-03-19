@@ -341,12 +341,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = () => {
 
   return (
     <div className="px-[10px]">
-      <Form form={form} name="basic" layout="vertical" className="w-[600px]">
+      <Form form={form} name="basic" layout="vertical">
         <b className="text-[14px] flex mb-[10px] ml-[-10px]">
           {t('log.integration.configuration')}
         </b>
-        {formItems}
-        <div className="w-[calc(100vw-306px)] min-w-[600px]">
+        <div className="w-1/2 min-w-[500px]">{formItems}</div>
+        <div className="w-[calc(100vw-306px)] min-w-[500px]">
           <div className="flex items-center justify-between mb-[10px]">
             <span className="text-[14px]">
               {t('log.integration.MonitoredObject')}

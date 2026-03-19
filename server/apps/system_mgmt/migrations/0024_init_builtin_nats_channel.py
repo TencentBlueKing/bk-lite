@@ -9,7 +9,7 @@ def create_builtin_nats_channel(apps, schema_editor):
     """创建内置的告警中心 NATS Channel"""
     Channel = apps.get_model("system_mgmt", "Channel")
 
-    namespace = os.getenv("NATS_NAMESPACE", "bk_lite")
+    namespace = os.getenv("NATS_NAMESPACE", "bklite")
 
     Channel.objects.get_or_create(
         name="告警中心",
