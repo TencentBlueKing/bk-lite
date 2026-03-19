@@ -11,11 +11,13 @@ import {
   message,
   Modal,
 } from 'antd';
-import { PlusOutlined, InboxOutlined, FileOutlined, CloseOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { InboxOutlined, FileOutlined, CloseOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import useJobApi from '@/app/job/api';
-import HostSelectionModal, { HostItem } from '@/app/job/components/host-selection-modal';
+import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
+import { EnabledDangerousPaths } from '@/app/job/types';
 
 const { Dragger } = Upload;
 
@@ -26,6 +28,7 @@ const FileDistPage = () => {
   const [form] = Form.useForm();
 
   const [hostModalOpen, setHostModalOpen] = useState(false);
+  const [targetSource, setTargetSource] = useState<TargetSourceType>('target_manager');
   const [selectedHostKeys, setSelectedHostKeys] = useState<string[]>([]);
   const [selectedHosts, setSelectedHosts] = useState<HostItem[]>([]);
 
@@ -39,6 +42,12 @@ const FileDistPage = () => {
     setHostModalOpen(false);
   };
 
+  const handleTargetSourceChange = (val: TargetSourceType) => {
+    setTargetSource(val);
+    setSelectedHostKeys([]);
+    setSelectedHosts([]);
+  };
+
   const handleRemoveFile = (index: number) => {
     setLocalFiles((prev) => prev.filter((_, i) => i !== index));
   };
@@ -50,39 +59,34 @@ const FileDistPage = () => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const normalizeTargetPath = (value: string) => value.trim();
+
+  const matchExactPath = (targetPath: string, pattern: string) => normalizeTargetPath(targetPath) === normalizeTargetPath(pattern);
+
+  const matchRegexPath = (targetPath: string, pattern: string) => {
+    try {
+      return new RegExp(pattern).test(normalizeTargetPath(targetPath));
+    } catch {
+      return false;
+    }
+  };
+
+  const collectMatchedRules = (targetPath: string, rules?: EnabledDangerousPaths['confirm']) => {
+    if (!rules) return [] as string[];
+
+    const exactMatches = (rules.exact || []).filter(pattern => matchExactPath(targetPath, pattern));
+    const regexMatches = (rules.regex || []).filter(pattern => matchRegexPath(targetPath, pattern));
+    return [...exactMatches, ...regexMatches];
+  };
+
   // Check target path against dangerous path rules
   const checkDangerousPaths = async (targetPath: string): Promise<{ canExecute: boolean; needConfirm: boolean; matchedRules: string[]; apiError?: boolean }> => {
     try {
-      console.log('[DangerousPath] Calling API...');
       const rules = await getEnabledDangerousPaths();
-      console.log('[DangerousPath] API response:', rules);
-      
-      const matchedForbidden: string[] = [];
-      const matchedConfirm: string[] = [];
 
-      // Helper to extract pattern from rule (could be string or object)
-      const getPattern = (rule: string | { pattern?: string; match_pattern?: string; name?: string }): string => {
-        if (typeof rule === 'string') return rule;
-        return rule.pattern || rule.match_pattern || rule.name || '';
-      };
-
-      // Check forbidden paths - match if path contains or starts with the pattern
-      for (const rule of rules.forbidden || []) {
-        const pattern = getPattern(rule);
-        if (pattern && (targetPath.includes(pattern) || pattern.includes(targetPath) || targetPath.startsWith(pattern))) {
-          matchedForbidden.push(pattern);
-        }
-      }
-
-      // Check confirm paths
-      for (const rule of rules.confirm || []) {
-        const pattern = getPattern(rule);
-        if (pattern && (targetPath.includes(pattern) || pattern.includes(targetPath) || targetPath.startsWith(pattern))) {
-          matchedConfirm.push(pattern);
-        }
-      }
-
-      console.log('[DangerousPath] Matched forbidden:', matchedForbidden, 'confirm:', matchedConfirm);
+      const normalizedTargetPath = normalizeTargetPath(targetPath);
+      const matchedForbidden = collectMatchedRules(normalizedTargetPath, rules.forbidden);
+      const matchedConfirm = collectMatchedRules(normalizedTargetPath, rules.confirm);
 
       if (matchedForbidden.length > 0) {
         return { canExecute: false, needConfirm: false, matchedRules: matchedForbidden };
@@ -93,12 +97,25 @@ const FileDistPage = () => {
       }
 
       return { canExecute: true, needConfirm: false, matchedRules: [] };
-    } catch (error) {
-      console.error('[DangerousPath] API error:', error);
+    } catch {
       // API failed - still allow execution but backend will validate
       message.warning(t('common.networkError') || '无法检查高危路径规则，继续执行');
       return { canExecute: true, needConfirm: false, matchedRules: [], apiError: true };
     }
+  };
+
+  const validateTargetPath = async (_: unknown, value?: string) => {
+    const normalizedTargetPath = normalizeTargetPath(value || '');
+    if (!normalizedTargetPath) {
+      return Promise.resolve();
+    }
+
+    const checkResult = await checkDangerousPaths(normalizedTargetPath);
+    if (!checkResult.canExecute) {
+      throw new Error(`${t('job.forbiddenPathMessage')} ${checkResult.matchedRules.join('、')}`);
+    }
+
+    return Promise.resolve();
   };
 
   // Execute the actual file distribution
@@ -110,7 +127,9 @@ const FileDistPage = () => {
 
     // Convert HostItem to TargetListItem format
     const targetList = selectedHosts.map((h) => ({
-      target_id: Number(h.key),
+      ...(targetSource === 'node_manager'
+        ? { node_id: h.key }
+        : { target_id: Number(h.key) }),
       name: h.hostName,
       ip: h.ipAddress,
       os: h.osType?.toLowerCase() as 'linux' | 'windows',
@@ -119,7 +138,7 @@ const FileDistPage = () => {
     await createFileDistribution({
       name: values.jobName,
       file_ids: fileIds,
-      target_source: 'manual',
+      target_source: targetSource === 'node_manager' ? 'node_mgmt' : 'manual',
       target_list: targetList,
       target_path: values.targetPath,
       timeout: Number(values.timeout) || 600,
@@ -146,9 +165,9 @@ const FileDistPage = () => {
       setSubmitting(true);
 
       // Check dangerous paths first
-      console.log('[FileDistPage] Starting dangerous path check for:', values.targetPath);
-      const checkResult = await checkDangerousPaths(values.targetPath);
-      console.log('[FileDistPage] Check result:', checkResult);
+      const normalizedTargetPath = normalizeTargetPath(values.targetPath);
+      form.setFieldValue('targetPath', normalizedTargetPath);
+      const checkResult = await checkDangerousPaths(normalizedTargetPath);
 
       if (!checkResult.canExecute) {
         // Forbidden: show error and block execution
@@ -191,7 +210,7 @@ const FileDistPage = () => {
           cancelText: t('common.cancel'),
           onOk: async () => {
             try {
-              await doExecute(values);
+              await doExecute({ ...values, targetPath: normalizedTargetPath });
             } catch {
               // error handled by interceptor
             } finally {
@@ -206,7 +225,7 @@ const FileDistPage = () => {
       }
 
       // No dangerous paths: execute directly
-      await doExecute(values);
+      await doExecute({ ...values, targetPath: normalizedTargetPath });
     } catch {
       // validation or API error
     } finally {
@@ -243,7 +262,7 @@ const FileDistPage = () => {
         <Form
           form={form}
           layout="vertical"
-          className="max-w-[720px]"
+          className="w-full"
           initialValues={{ timeout: '600', overwriteStrategy: 'overwrite' }}
         >
           {/* 作业名称 */}
@@ -255,23 +274,22 @@ const FileDistPage = () => {
             <Input placeholder={t('job.jobNamePlaceholder')} />
           </Form.Item>
 
+          <Form.Item label={t('job.targetSource')} required>
+            <TargetSourceSelector
+              value={targetSource}
+              onChange={handleTargetSourceChange}
+            />
+          </Form.Item>
+
           {/* 目标主机 */}
           <Form.Item
             label={t('job.targetHost')}
             required
           >
-            <div className="flex items-center gap-3">
-              <Button
-                type="dashed"
-                icon={<PlusOutlined />}
-                onClick={() => setHostModalOpen(true)}
-              >
-                {t('job.addTargetHost')}
-              </Button>
-              <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
-                {t('job.selectedHosts').replace('{count}', String(selectedHosts.length))}
-              </span>
-            </div>
+            <AddTargetHostButton
+              count={selectedHosts.length}
+              onClick={() => setHostModalOpen(true)}
+            />
           </Form.Item>
 
           {/* 文件上传 */}
@@ -333,7 +351,11 @@ const FileDistPage = () => {
           <Form.Item
             label={t('job.fileDistTargetPath')}
             name="targetPath"
-            rules={[{ required: true, message: t('job.fileDistTargetPathPlaceholder') }]}
+            validateTrigger="onBlur"
+            rules={[
+              { required: true, message: t('job.fileDistTargetPathPlaceholder') },
+              { validator: validateTargetPath },
+            ]}
           >
             <Input placeholder={t('job.fileDistTargetPathPlaceholder')} />
           </Form.Item>
@@ -376,6 +398,7 @@ const FileDistPage = () => {
       <HostSelectionModal
         open={hostModalOpen}
         selectedKeys={selectedHostKeys}
+        source={targetSource}
         onConfirm={handleHostConfirm}
         onCancel={() => setHostModalOpen(false)}
       />

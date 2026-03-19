@@ -91,41 +91,39 @@ class GraphUtils(ChunkHelper):
     def callback(current_count, all_count, task_id):
         from apps.opspilot.tasks import update_graph_task
 
-        update_graph_task.delay(current_count, all_count, task_id)
+        try:
+            update_graph_task(current_count, all_count, task_id)
+        except Exception as e:
+            logger.warning(f"更新图谱进度失败（已忽略）: task_id={task_id}, current={current_count}, total={all_count}, error={e}")
 
     @classmethod
     def create_graph(cls, graph_obj: KnowledgeGraph, doc_list=None):
         """创建图谱"""
-        if doc_list is None:
-            doc_list = graph_obj.doc_list
 
-        embed_config = graph_obj.embed_model.decrypted_embed_config
-        llm_config = graph_obj.llm_model.decrypted_llm_config
-        rerank_config = graph_obj.rerank_model.decrypted_rerank_config_config
-        docs = cls.get_documents(doc_list, graph_obj.knowledge_base.knowledge_index_name())
+        def _prepare_graph_context():
+            current_doc_list = doc_list if doc_list is not None else graph_obj.doc_list
+            embed_config = graph_obj.embed_model.decrypted_embed_config
+            llm_config = graph_obj.llm_model.decrypted_llm_config
+            rerank_config = graph_obj.rerank_model.decrypted_rerank_config_config
+            docs = cls.get_documents(current_doc_list, graph_obj.knowledge_base.knowledge_index_name())
 
-        # 将字典转换为 Document 对象
-        doc_objects = [Document(page_content=doc["page_content"], metadata=doc["metadata"]) for doc in docs]
+            doc_objects = [Document(page_content=doc["page_content"], metadata=doc["metadata"]) for doc in docs]
 
-        # 构建请求对象
-        request = DocumentIngestRequest(
-            openai_api_key=llm_config["openai_api_key"],
-            openai_model=llm_config.get("model", graph_obj.llm_model.name),
-            openai_api_base=llm_config["openai_base_url"],
-            rerank_model_base_url=rerank_config["base_url"],
-            rerank_model_name=rerank_config.get("model", graph_obj.rerank_model.name),
-            rerank_model_api_key=rerank_config["api_key"] or " ",
-            group_id=f"graph-{graph_obj.id}",
-            rebuild_community=graph_obj.rebuild_community,
-            embed_model_base_url=embed_config["base_url"],
-            embed_model_api_key=embed_config["api_key"] or " ",
-            embed_model_name=embed_config.get("model", graph_obj.embed_model.name),
-            docs=doc_objects,
-        )
+            request = DocumentIngestRequest(
+                openai_api_key=llm_config["openai_api_key"],
+                openai_model=llm_config.get("model", graph_obj.llm_model.name),
+                openai_api_base=llm_config["openai_base_url"],
+                rerank_model_base_url=rerank_config["base_url"],
+                rerank_model_name=rerank_config.get("model", graph_obj.rerank_model.name),
+                rerank_model_api_key=rerank_config["api_key"] or " ",
+                group_id=f"graph-{graph_obj.id}",
+                rebuild_community=graph_obj.rebuild_community,
+                embed_model_base_url=embed_config["base_url"],
+                embed_model_api_key=embed_config["api_key"] or " ",
+                embed_model_name=embed_config.get("model", graph_obj.embed_model.name),
+                docs=doc_objects,
+            )
 
-        def _execute_graph_creation():
-            """在同步上下文中执行图谱创建"""
-            rag = GraphitiRAG()
             task_obj = KnowledgeTask.objects.create(
                 created_by=graph_obj.created_by,
                 domain=graph_obj.domain,
@@ -136,8 +134,23 @@ class GraphUtils(ChunkHelper):
                 total_count=len(doc_objects),
             )
 
+            return request, task_obj.id, graph_obj.id
+
+        def _bulk_create_graph_map(mapping: dict, knowledge_graph_id: int):
+            data_list = [
+                GraphChunkMap(graph_id=graph_id, chunk_id=chunk_id, knowledge_graph_id=knowledge_graph_id) for chunk_id, graph_id in mapping.items()
+            ]
+            GraphChunkMap.objects.bulk_create(data_list, batch_size=100)
+
+        def _delete_knowledge_task(task_id: int):
+            KnowledgeTask.objects.filter(id=task_id).delete()
+
+        def _execute_graph_creation_sync():
+            rag = GraphitiRAG()
+            request, task_id, knowledge_graph_id = _prepare_graph_context()
+
             try:
-                res = cls._run_async(rag.ingest(request, cls.callback, task_obj.id))
+                res = cls._run_async(rag.ingest(request, cls.callback, task_id))
                 logger.info("图谱接口调用结束")
 
                 if not res or "mapping" not in res:
@@ -145,25 +158,18 @@ class GraphUtils(ChunkHelper):
                     message = loader.get("error.graph_create_failed") or "Failed to create graph. Please check the server logs."
                     return {"result": False, "message": message}
 
-                # 批量创建映射关系
-                data_list = [
-                    GraphChunkMap(graph_id=graph_id, chunk_id=chunk_id, knowledge_graph_id=graph_obj.id)
-                    for chunk_id, graph_id in res["mapping"].items()
-                ]
-                GraphChunkMap.objects.bulk_create(data_list, batch_size=100)
+                _bulk_create_graph_map(res["mapping"], knowledge_graph_id)
 
                 logger.info(f"图谱创建成功: 成功={res.get('success_count')}, 失败={res.get('failed_count')}, 总数={res.get('total_count')}")
                 return {"result": True}
             finally:
                 # 无论成功或失败都删除任务对象
-                task_obj.delete()
+                _delete_knowledge_task(task_id)
 
         try:
-            # 在单独线程中执行，避免异步上下文问题
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_execute_graph_creation)
+                future = executor.submit(_execute_graph_creation_sync)
                 return future.result()
-
         except Exception as e:
             logger.exception(f"创建图谱失败: {e}")
             return {"result": False, "message": str(e)}

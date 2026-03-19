@@ -173,18 +173,16 @@ const JobHomePage = () => {
       render: (_: unknown, record: JobRecord) => {
         const color = STATUS_COLOR_MAP[record.status] || '#8c8c8c';
         return (
-          <span
-            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded"
-            style={{ backgroundColor: `${color}10` }}
+          <Tag
+            style={{
+              color,
+              backgroundColor: `${color}10`,
+              borderColor: color,
+              margin: 0,
+            }}
           >
-            <span
-              className="inline-block w-2 h-2 rounded-full"
-              style={{ backgroundColor: color }}
-            />
-            <span style={{ color }}>
-              {record.status_display || getStatusText(record.status)}
-            </span>
-          </span>
+            {record.status_display || getStatusText(record.status)}
+          </Tag>
         );
       },
     },
@@ -217,7 +215,7 @@ const JobHomePage = () => {
         {featureCards.map((card, index) => (
           <div
             key={card.key}
-            className="bg-[var(--color-bg)] rounded-lg p-6 shadow-sm border border-[var(--color-border-1)]"
+            className="bg-[var(--color-bg)] rounded-lg p-6 shadow-sm border border-[var(--color-border-1)] flex h-full flex-col"
           >
             <div
               className="w-12 h-12 rounded-lg flex items-center justify-center mb-4"
@@ -233,13 +231,15 @@ const JobHomePage = () => {
             <p className="text-sm text-[var(--color-text-3)] leading-relaxed mb-6">
               {card.description}
             </p>
-            <Button
-              type="primary"
-              block
-              onClick={() => router.push(card.link)}
-            >
-              {t('job.enter')}
-            </Button>
+            <div className="mt-auto">
+              <Button
+                type="primary"
+                block
+                onClick={() => router.push(card.link)}
+              >
+                {t('job.enter')}
+              </Button>
+            </div>
           </div>
         ))}
       </div>

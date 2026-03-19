@@ -16,9 +16,9 @@ ignore_older_secs = {{ ignore_older_secs }}
 {% if read_from %}
 read_from = "{{ read_from }}"
 {% endif %}
-{% if encoding and encoding.charset %}
+{% if encoding_charset %}
 [sources.file_{{ component_suffix }}.encoding]
-charset = "{{ encoding.charset }}"
+charset = "{{ encoding_charset }}"
 {% endif %}
 
 {% if multiline %}
@@ -32,7 +32,7 @@ multiline.timeout_ms = {{ multiline.timeout_ms }}
 {% endif %}
 
 {% set file_input = "file_" ~ component_suffix %}
-{% if parser and parser.type == "json" %}
+{% if parser_type == "json" %}
 # ====================================
 # JSON message 解析（transform 层）
 # ====================================

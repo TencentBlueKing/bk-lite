@@ -5,6 +5,7 @@ import {
   DangerousRuleFormData,
   DangerousRuleListResponse,
   DangerousRule,
+  EnabledDangerousPaths,
   TargetParams,
   TargetListResponse,
   Target,
@@ -124,7 +125,7 @@ const useJobApi = () => {
   // Get enabled dangerous paths for file distribution validation
   const getEnabledDangerousPaths = async (
     config?: AxiosRequestConfig
-  ): Promise<{ confirm: (string | { pattern?: string; match_pattern?: string; name?: string })[]; forbidden: (string | { pattern?: string; match_pattern?: string; name?: string })[] }> => {
+  ): Promise<EnabledDangerousPaths> => {
     return await get('/job_mgmt/api/dangerous_path/enabled_paths/', config);
   };
 
@@ -365,6 +366,16 @@ const useJobApi = () => {
     return await post(`/job_mgmt/api/scheduled_task/${id}/run_now/`);
   };
 
+  interface TemplateParamItem {
+    name: string;
+    value: unknown;
+    is_modified: boolean;
+  }
+
+  interface AdhocParamItem {
+    value: string;
+  }
+
   // Quick Execution
   const quickExecute = async (data: {
     name?: string;
@@ -373,7 +384,7 @@ const useJobApi = () => {
     script_content?: string;
     target_source: ExecutionTargetSource;
     target_list: TargetListItem[];
-    params?: Record<string, unknown> | Array<{ value: string }>;
+    params?: TemplateParamItem[] | AdhocParamItem[];
     timeout?: number;
     team?: number[];
   }): Promise<any> => {
@@ -385,7 +396,7 @@ const useJobApi = () => {
     playbook_id: number;
     target_source: ExecutionTargetSource;
     target_list: TargetListItem[];
-    params?: Record<string, unknown>;
+    params?: TemplateParamItem[];
     timeout?: number;
     team?: number[];
   }): Promise<any> => {

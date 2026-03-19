@@ -3,6 +3,7 @@ import { getAuthOptions } from "@/constants/authOptions";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import SigninClient from "./SigninClient";
+import { buildThirdLoginCallbackUrl, resolveThirdLoginFlag } from "@/utils/authRedirect";
 
 const signinErrors: Record<string | "default", string> = {
   default: "Unable to sign in.",
@@ -21,6 +22,8 @@ interface SignInPageProp {
   searchParams: Promise<{
     callbackUrl: string;
     error: string;
+    third_login?: string;
+    thirdLogin?: string;
   }>;
 }
 
@@ -28,8 +31,19 @@ export default async function SigninPage({ searchParams }: SignInPageProp) {
   const authOptions = await getAuthOptions();
   const session = await getServerSession(authOptions);
   const resolvedSearchParams = await searchParams;
+  const thirdLoginFlag = resolveThirdLoginFlag(
+    resolvedSearchParams.thirdLogin,
+    resolvedSearchParams.third_login,
+  );
+
   if (session && session.user && session.user.id) {
-    redirect(resolvedSearchParams.callbackUrl || "/");
+    redirect(
+      buildThirdLoginCallbackUrl(
+        resolvedSearchParams.callbackUrl,
+        session.user.token,
+        thirdLoginFlag,
+      ),
+    );
   }
   return <SigninClient searchParams={resolvedSearchParams} signinErrors={signinErrors} />;
 }

@@ -3,7 +3,7 @@
  * 用于将历史会话中的 AG-UI 协议消息解析并渲染为 HTML
  */
 
-import { BrowserStepProgressData, BrowserStepsHistory } from '@/app/opspilot/types/global';
+import { BrowserStepProgressData, BrowserStepsHistory, BrowserTaskReceivedData } from '@/app/opspilot/types/global';
 import { renderToolCallCard, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 
 const escapeNewlinesInStrings = (raw: string) => {
@@ -301,6 +301,8 @@ const buildFromEvents = (events: any[], finalize = true) => {
   const parts: string[] = [];
   const toolCalls = new Map<string, ToolCallInfo>();
   let currentText = '';
+  let thinking = '';
+  let isThinking = false;
   let lastBlockType: string | null = null;
   const steps: BrowserStepProgressData[] = [];
   let isRunning = false;
@@ -318,13 +320,38 @@ const buildFromEvents = (events: any[], finalize = true) => {
     isRunning = true;
   };
 
+  const findLatestCallingToolCallId = (preferredToolName?: string) => {
+    const entries = Array.from(toolCalls.entries()).reverse();
+
+    if (preferredToolName) {
+      const matchedEntry = entries.find(([, tool]) => tool.status === 'calling' && tool.name === preferredToolName);
+      if (matchedEntry) {
+        return matchedEntry[0];
+      }
+    }
+
+    const latestCallingEntry = entries.find(([, tool]) => tool.status === 'calling');
+    return latestCallingEntry?.[0] || null;
+  };
+
   events.forEach((msg: any) => {
     switch (msg.type) {
+      case 'RUN_STARTED':
+        isThinking = true;
+        break;
+
+      case 'THINKING':
+        thinking += msg.delta || '';
+        isThinking = true;
+        break;
+
       case 'TEXT_MESSAGE_CONTENT':
+        isThinking = false;
         currentText += msg.delta || '';
         break;
 
       case 'TOOL_CALL_START':
+        isThinking = false;
         if (currentText) {
           if (parts.length > 0 && lastBlockType !== 'text') {
             parts.push('\n\n' + currentText);
@@ -380,6 +407,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
 
       case 'RUN_ERROR':
       case 'ERROR':
+        isThinking = false;
         if (currentText) {
           parts.push(currentText);
           currentText = '';
@@ -395,12 +423,23 @@ const buildFromEvents = (events: any[], finalize = true) => {
         break;
 
       case 'CUSTOM':
+        isThinking = false;
         if (msg.name === 'browser_step_progress' && msg.value) {
           upsertStep(msg.value as BrowserStepProgressData);
+        } else if (msg.name === 'browser_task_received' && msg.value) {
+          const browserTaskReceived = msg.value as BrowserTaskReceivedData;
+          const toolCallId = findLatestCallingToolCallId(typeof browserTaskReceived.tool === 'string' ? browserTaskReceived.tool : undefined);
+          if (toolCallId) {
+            const tool = toolCalls.get(toolCallId);
+            if (tool) {
+              tool.browserTaskReceived = browserTaskReceived;
+            }
+          }
         }
         break;
 
       case 'RUN_FINISHED':
+        isThinking = false;
         if (steps.length > 0) {
           isRunning = false;
         }
@@ -426,6 +465,8 @@ const buildFromEvents = (events: any[], finalize = true) => {
 
   return {
     content: contentText,
+    thinking,
+    isThinking: finalize ? false : isThinking,
     browserStepProgress: lastStep,
     browserStepsHistory
   };
@@ -469,12 +510,16 @@ export const processHistoryMessageWithExtras = (
   role: string
 ): {
   content: string;
+  thinking?: string;
+  isThinking?: boolean;
   browserStepProgress?: BrowserStepProgressData | null;
   browserStepsHistory?: BrowserStepsHistory | null;
 } => {
   if (role !== 'bot') {
     return {
       content: typeof content === 'string' ? content : String(content ?? ''),
+      thinking: '',
+      isThinking: false,
       browserStepProgress: null,
       browserStepsHistory: null
     };
@@ -487,6 +532,8 @@ export const processHistoryMessageWithExtras = (
   if (typeof content !== 'string') {
     return {
       content: content === null || content === undefined ? '' : String(content),
+      thinking: '',
+      isThinking: false,
       browserStepProgress: null,
       browserStepsHistory: null
     };
@@ -496,6 +543,8 @@ export const processHistoryMessageWithExtras = (
   if (!parsedContent) {
     return {
       content,
+      thinking: '',
+      isThinking: false,
       browserStepProgress: null,
       browserStepsHistory: null
     };

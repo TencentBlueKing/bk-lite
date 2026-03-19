@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import {
   Button,
   Form,
@@ -13,21 +13,24 @@ import {
   Segmented,
   message,
   Spin,
+  Alert,
 } from 'antd';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
 import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook } from '@/app/job/types';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
-import HostSelectionModal, { HostItem } from '@/app/job/components/host-selection-modal';
+import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { useUserInfoContext } from '@/context/userInfo';
 
-const EditCronTaskPage = () => {
+const EditCronTaskContent = () => {
   const { t } = useTranslation();
   const router = useRouter();
-  const params = useParams();
-  const taskId = Number(params.id);
+  const searchParams = useSearchParams();
+  const taskId = Number(searchParams.get('id'));
   const { isLoading: isApiReady } = useApiClient();
   const {
     getScheduledTaskDetail,
@@ -51,6 +54,7 @@ const EditCronTaskPage = () => {
 
   // Host selection state
   const [hostModalOpen, setHostModalOpen] = useState(false);
+  const [targetSource, setTargetSource] = useState<TargetSourceType>('target_manager');
   const [selectedHostKeys, setSelectedHostKeys] = useState<string[]>([]);
   const [selectedHosts, setSelectedHosts] = useState<HostItem[]>([]);
 
@@ -141,6 +145,17 @@ const EditCronTaskPage = () => {
       }
 
       // Set host selection from target_list
+      const taskTargetSource = (task as any).target_source;
+      if (taskTargetSource === 'node_mgmt') {
+        setTargetSource('node_manager');
+        if ((task as any).playbook) {
+          setTemplateType('script');
+          form.setFieldValue('playbook', undefined);
+        }
+      } else {
+        setTargetSource('target_manager');
+      }
+
       if ((task as any).target_list) {
         const targetList = (task as any).target_list as { target_id?: number; node_id?: string; name?: string; ip?: string; os?: string }[];
         const hosts = targetList.map((t) => ({
@@ -219,7 +234,7 @@ const EditCronTaskPage = () => {
     }
 
     const parts: string[] = [];
-    
+
     if (cronMonth !== '*') {
       parts.push(t('job.cronDescMonth').replace('{month}', cronMonth));
     }
@@ -296,7 +311,9 @@ const EditCronTaskPage = () => {
 
       // Convert to target_source + target_list format
       const targetList = selectedHosts.map((h) => ({
-        target_id: Number(h.key),
+        ...(targetSource === 'node_manager'
+          ? { node_id: h.key }
+          : { target_id: Number(h.key) }),
         name: h.hostName,
         ip: h.ipAddress,
         os: h.osType?.toLowerCase() as 'linux' | 'windows',
@@ -307,7 +324,7 @@ const EditCronTaskPage = () => {
         description: values.description,
         job_type: jobType,
         ...scheduleData,
-        target_source: 'manual',
+        target_source: targetSource === 'node_manager' ? 'node_mgmt' : 'manual',
         target_list: targetList,
         timeout: values.timeout || 60,
         is_enabled: enableAfterSave,
@@ -340,6 +357,28 @@ const EditCronTaskPage = () => {
     setHostModalOpen(false);
   };
 
+  const handleTargetSourceChange = (val: TargetSourceType) => {
+    setTargetSource(val);
+    setSelectedHostKeys([]);
+    setSelectedHosts([]);
+    if (val === 'node_manager' && templateType === 'playbook') {
+      setTemplateType('script');
+      form.setFieldValue('playbook', undefined);
+    }
+  };
+
+  const handleTemplateTypeChange = (value: string | number) => {
+    if (targetSource === 'node_manager' && value === 'playbook') {
+      return;
+    }
+    setTemplateType(value as 'script' | 'playbook');
+    if (value === 'script') {
+      form.setFieldValue('playbook', undefined);
+    } else {
+      form.setFieldValue('script', undefined);
+    }
+  };
+
   if (pageLoading) {
     return (
       <div className="w-full h-full flex items-center justify-center">
@@ -357,12 +396,25 @@ const EditCronTaskPage = () => {
           border: '1px solid var(--color-border-1)',
         }}
       >
-        <h2 className="text-base font-medium m-0 mb-1" style={{ color: 'var(--color-text-1)' }}>
-          {t('job.editTask')}
-        </h2>
-        <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
-          {t('job.editTaskDesc')}
-        </p>
+        <div className="flex items-center gap-2 mb-1">
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => router.back()}
+            className="!p-1"
+          />
+          <h2 className="text-base font-medium m-0" style={{ color: 'var(--color-text-1)' }}>
+            {t('job.editTask')}
+          </h2>
+        </div>
+        <div className="flex items-start gap-2">
+          <div className="!p-1 invisible">
+            <ArrowLeftOutlined />
+          </div>
+          <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
+            {t('job.editTaskDesc')}
+          </p>
+        </div>
       </div>
 
       <div
@@ -375,7 +427,7 @@ const EditCronTaskPage = () => {
         <Form
           form={form}
           layout="vertical"
-          className="max-w-[720px]"
+          className="w-full"
           initialValues={{
             timeout: 300,
             dailyTime: dayjs().hour(2).minute(0),
@@ -398,15 +450,18 @@ const EditCronTaskPage = () => {
             />
           </Form.Item>
 
+          <Form.Item label={t('job.targetSource')} required>
+            <TargetSourceSelector
+              value={targetSource}
+              onChange={handleTargetSourceChange}
+            />
+          </Form.Item>
+
           <Form.Item label={t('job.targetHost')} required>
-            <div className="flex items-center gap-3">
-              <Button type="dashed" onClick={() => setHostModalOpen(true)}>
-                + {t('job.addTargetHost')}
-              </Button>
-              <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
-                {t('job.selectedHosts').replace('{count}', String(selectedHosts.length || selectedHostKeys.length))}
-              </span>
-            </div>
+            <AddTargetHostButton
+              count={selectedHosts.length || selectedHostKeys.length}
+              onClick={() => setHostModalOpen(true)}
+            />
           </Form.Item>
 
           <Form.Item label={t('job.jobType')} required>
@@ -421,14 +476,22 @@ const EditCronTaskPage = () => {
 
           {jobType === 'script' && (
             <Form.Item label={t('job.selectTemplate')} required>
+              {targetSource === 'node_manager' && (
+                <Alert
+                  className="mb-2"
+                  message={t('job.nodeManagerPlaybookNotSupported')}
+                  type="warning"
+                  showIcon
+                />
+              )}
               <Segmented
                 className="w-fit mb-2"
                 options={[
                   { label: t('job.scriptLibrary'), value: 'script' },
-                  { label: 'Playbook', value: 'playbook' },
+                  { label: 'Playbook', value: 'playbook', disabled: targetSource === 'node_manager' },
                 ]}
                 value={templateType}
-                onChange={(value) => setTemplateType(value as 'script' | 'playbook')}
+                onChange={handleTemplateTypeChange}
               />
               {templateType === 'script' ? (
                 <Form.Item
@@ -616,10 +679,23 @@ const EditCronTaskPage = () => {
       <HostSelectionModal
         open={hostModalOpen}
         selectedKeys={selectedHostKeys}
+        source={targetSource}
         onConfirm={handleHostConfirm}
         onCancel={() => setHostModalOpen(false)}
       />
     </div>
+  );
+};
+
+const EditCronTaskPage = () => {
+  return (
+    <Suspense fallback={
+      <div className="w-full h-full flex items-center justify-center">
+        <Spin size="large" />
+      </div>
+    }>
+      <EditCronTaskContent />
+    </Suspense>
   );
 };
 

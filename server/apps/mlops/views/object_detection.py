@@ -21,6 +21,7 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.services import (
+    get_host_address,
     get_image_by_prefix,
     get_mlflow_train_config,
     get_mlflow_tracking_uri,
@@ -348,6 +349,35 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             # 动态获取训练镜像
             train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
 
+            # 在启动容器前查询 MLflow 当前 run 数量（避免容器启动后查询失败导致僵尸任务）
+            from apps.mlops.tasks.poll_train_job_status import poll_train_job_status
+
+            expected_run_count = 0
+            try:
+                experiment_name = mlflow_service.build_experiment_name(
+                    prefix=self.MLFLOW_PREFIX,
+                    algorithm=train_job.algorithm,
+                    train_job_id=train_job.id,
+                )
+                experiment = mlflow_service.get_experiment_by_name(experiment_name)
+                current_run_count = 0
+                if experiment:
+                    runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
+                    current_run_count = len(runs) if not runs.empty else 0
+                expected_run_count = current_run_count + 1
+            except Exception:
+                logger.warning(
+                    f"MLflow 查询失败，降级 expected_run_count=0: "
+                    f"TrainJob ID={train_job.id}"
+                )
+
+            # 启动前清理可能残留的旧训练容器
+            try:
+                WebhookClient.stop(job_id)
+                logger.info(f"已清理残留的旧训练容器: job_id={job_id}")
+            except (WebhookError, WebhookConnectionError, WebhookTimeoutError):
+                pass  # 容器不存在是正常的
+
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
@@ -365,6 +395,15 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             # 更新任务状态
             train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
+
+            # 启动异步轮询训练状态
+            logger.info(
+                f"触发轮询任务: TrainJob ID={train_job.id}, "
+                f"预期 run 数量: {expected_run_count}"
+            )
+            poll_train_job_status.delay(
+                train_job.id, self.MLFLOW_PREFIX, expected_run_count
+            )
 
             return Response(
                 {
@@ -476,7 +515,6 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                 logger.warning(f"模型未找到版本: {model_name}")
                 return Response({"model_name": model_name, "versions": [], "total": 0})
 
-
             return Response(
                 {
                     "model_name": model_name,
@@ -537,6 +575,14 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
     @HasPermission("object_detection-View")
     def get_run_data_list(self, request, pk=None):
         try:
+            # 获取分页参数
+            page = int(request.GET.get("page", 1))
+            page_size = request.GET.get("page_size")
+            # page_size 为 None、0、-1 时不分页
+            use_pagination = page_size is not None and page_size not in ["0", "-1"]
+            if use_pagination:
+                page_size = int(page_size)
+
             # 获取训练任务
             train_job = self.get_object()
 
@@ -557,7 +603,8 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                         "algorithm": train_job.algorithm,
                         "job_status": train_job.status,
                         "message": "未找到对应的MLflow实验",
-                        "data": [],
+                        "count": 0,
+                        "items": [],
                     }
                 )
 
@@ -572,13 +619,13 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                         "algorithm": train_job.algorithm,
                         "job_status": train_job.status,
                         "message": "未找到训练运行记录",
-                        "data": [],
+                        "count": 0,
+                        "items": [],
                     }
                 )
 
             # 每次运行信息的耗时和名称
             run_datas = []
-            latest_run_status = None
 
             for idx, row in runs.iterrows():
                 # 处理时间计算，避免产生NaN或Infinity
@@ -607,10 +654,6 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                     # 获取状态
                     run_status = row.get("status", "UNKNOWN")
 
-                    # 记录第一条（最新）的运行状态
-                    if idx == 0:
-                        latest_run_status = run_status
-
                     run_data = {
                         "run_id": str(row["run_id"]),
                         "run_name": str(run_name),
@@ -631,13 +674,14 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                     logger.warning(f"解析 run 数据失败: {e}")
                     continue
 
-            # 同步最新运行状态到 TrainJob
-            if latest_run_status and train_job.status == TrainJobStatus.RUNNING:
-                new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(latest_run_status)
-
-                if new_status:
-                    train_job.status = new_status
-                    train_job.save(update_fields=["status"])
+            # 分页处理
+            total_count = len(run_datas)
+            if use_pagination:
+                start_idx = (page - 1) * page_size
+                end_idx = start_idx + page_size
+                paginated_data = run_datas[start_idx:end_idx]
+            else:
+                paginated_data = run_datas
 
             return Response(
                 {
@@ -645,8 +689,8 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                     "train_job_name": train_job.name,
                     "algorithm": train_job.algorithm,
                     "job_status": train_job.status,
-                    "total_runs": len(run_datas),
-                    "data": run_datas,
+                    "count": total_count,
+                    "items": paginated_data,
                 }
             )
         except Exception as e:
@@ -900,7 +944,10 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                 )
 
                 serving.container_info = result
-                serving.save(update_fields=["container_info"])
+                serving.port = (
+                    int(result.get("port", 0)) if result.get("port") else serving.port
+                )
+                serving.save(update_fields=["container_info", "port"])
 
                 response.data["container_info"] = result
                 response.data["message"] = "服务已创建并启动"
@@ -961,11 +1008,6 @@ class ObjectDetectionServingViewSet(ModelViewSet):
         - 容器非 running → 仅更新数据库，用户自行决定是否启动
         """
         instance = self.get_object()
-
-        # 兜底校验：容器未运行时不允许设置 status=active
-        new_status = request.data.get("status")
-        if error_response := validate_serving_status_change(instance, new_status):
-            return error_response
 
         # 保存旧值用于判断变更
         old_port = instance.port
@@ -1039,7 +1081,9 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                 # 从关联训练任务的 hyperopt_config 中提取 device 参数
                 device = None
                 if instance.train_job and instance.train_job.hyperopt_config:
-                    hyperparams = instance.train_job.hyperopt_config.get("hyperparams", {})
+                    hyperparams = instance.train_job.hyperopt_config.get(
+                        "hyperparams", {}
+                    )
                     device = hyperparams.get("device")
 
                 # 动态获取推理镜像
@@ -1059,7 +1103,10 @@ class ObjectDetectionServingViewSet(ModelViewSet):
 
                 # 更新容器信息（status 由用户控制，不修改）
                 instance.container_info = result
-                instance.save(update_fields=["container_info"])
+                instance.port = (
+                    int(result.get("port", 0)) if result.get("port") else instance.port
+                )
+                instance.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据
                 response.data["container_info"] = result
@@ -1130,10 +1177,12 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                     device=device,
                 )
 
-                # 正常启动成功，更新容器信息以及将status设为 'active'
+                # 正常启动成功，更新容器信息
                 serving.container_info = result
-                serving.status = "active"
-                serving.save(update_fields=["container_info", "status"])
+                serving.port = (
+                    int(result.get("port", 0)) if result.get("port") else serving.port
+                )
+                serving.save(update_fields=["container_info", "port"])
 
                 return Response(
                     {
@@ -1199,10 +1248,6 @@ class ObjectDetectionServingViewSet(ModelViewSet):
 
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
-
-            # 停止容器时同时将status改为'inactive'
-            serving.status = "inactive"
-            serving.save(update_fields=["status"])
 
             return Response(
                 {
@@ -1285,7 +1330,7 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("object_detection-Predict")
+    @HasPermission("object_detection-View")
     def predict(self, request, *args, **kwargs):
         """
         调用目标检测 serving 服务进行预测
@@ -1320,24 +1365,25 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                 {"error": "服务端口不可用"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 获取预测参数
-        url = request.data.get("url")
-        image_data = request.data.get("image")
-
-        if not url:
+        # 获取动态服务地址
+        host_address = get_host_address()
+        if not host_address:
             return Response(
-                {"error": "缺少参数: url"}, status=status.HTTP_400_BAD_REQUEST
+                {
+                    "error": "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
+        image_data = request.data.get("image")
         if not image_data:
             return Response(
                 {"error": "缺少参数: image"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         # 构建预测请求URL
-        predict_url = f"{url}:{port}/predict"
+        predict_url = f"http://{host_address}:{port}/predict"
 
         try:
-
             # 调用推理服务
             response = requests.post(
                 predict_url, json={"image": image_data}, timeout=60

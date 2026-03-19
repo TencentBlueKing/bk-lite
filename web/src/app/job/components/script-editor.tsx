@@ -72,6 +72,8 @@ interface ScriptEditorProps {
   onChange?: (value: Record<ScriptLang, string>) => void;
   activeLang?: ScriptLang;
   onLangChange?: (lang: ScriptLang) => void;
+  onBlur?: () => void;
+  readOnly?: boolean;
 }
 
 const ScriptEditor: React.FC<ScriptEditorProps> = ({
@@ -79,6 +81,8 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
   onChange,
   activeLang: controlledLang,
   onLangChange,
+  onBlur,
+  readOnly = false,
 }) => {
   const { t } = useTranslation();
   const [internalLang, setInternalLang] = useState<ScriptLang>('shell');
@@ -165,6 +169,7 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
   };
 
   const handleEditorChange = (newValue: string) => {
+    if (readOnly) return;
     const updated = { ...scripts, [activeLang]: newValue };
     setScripts(updated);
     onChange?.(updated);
@@ -173,7 +178,7 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`border border-[var(--color-border-1)] rounded-md overflow-hidden ${isFullscreen ? 'flex flex-col' : ''}`}
+      className={`border border-(--color-border-1) rounded-md overflow-hidden ${isFullscreen ? 'flex flex-col' : ''}`}
     >
       {/* Tab bar + toolbar */}
       <div
@@ -213,7 +218,7 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
               size="small"
               icon={<CopyOutlined style={{ color: '#969696' }} />}
               onClick={handleCopy}
-              className="hover:!bg-[#3e3e42]"
+              className="hover:bg-[#3e3e42]!"
             />
           </Tooltip>
           <Tooltip
@@ -234,7 +239,7 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
                 )
               }
               onClick={toggleFullscreen}
-              className="hover:!bg-[#3e3e42]"
+              className="hover:bg-[#3e3e42]!"
             />
           </Tooltip>
         </div>
@@ -245,6 +250,8 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
         theme="monokai"
         value={scripts[activeLang]}
         onChange={handleEditorChange}
+        onBlur={onBlur}
+        readOnly={readOnly}
         width="100%"
         height={isFullscreen ? '100%' : '320px'}
         style={isFullscreen ? { flex: 1 } : {}}

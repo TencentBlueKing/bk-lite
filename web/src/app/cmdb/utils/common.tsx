@@ -14,6 +14,7 @@ import {
 } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
+import CollectTaskTreeSelect from '@/app/cmdb/components/collect-task-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
 import UserAvatar from '@/components/user-avatar';
 import React from 'react';
@@ -33,7 +34,9 @@ import {
   TagAttrOption,
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
-import { formatCollectTaskDisplay } from '@/app/cmdb/utils/collectTask';
+import {
+  getCollectTaskLinkMeta,
+} from '@/app/cmdb/utils/collectTask';
 import TableFieldEditor from './tableFieldEditor';
 import TagCascaderEditor from './tagCascaderEditor';
 import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
@@ -46,6 +49,34 @@ export const parseTableValue = (val: any): any[] => {
     try { return JSON.parse(val); } catch { return []; }
   }
   return Array.isArray(val) ? val : [];
+};
+
+const collectTaskLinkClassName =
+  'text-[var(--color-primary)] underline cursor-pointer hover:text-[var(--color-primary-hover,#3a84ff)]';
+
+const renderCollectTaskValue = (value: unknown) => {
+  // Given 实例页需要按任务跳转采集详情，When 拿到 collect_task 值，Then 先解析是否可生成完整路由。
+  const meta = getCollectTaskLinkMeta(value);
+  if (!meta.clickable || !meta.href) {
+    return (
+      <EllipsisWithTooltip
+        className="whitespace-nowrap overflow-hidden text-ellipsis"
+        text={meta.displayText}
+      />
+    );
+  }
+
+  return (
+    <a
+      href={meta.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-block max-w-full whitespace-nowrap overflow-hidden text-ellipsis ${collectTaskLinkClassName}`}
+      title={meta.displayText}
+    >
+      {meta.displayText}
+    </a>
+  );
 };
 
 type UserDisplayContext = 'table' | 'detail';
@@ -464,8 +495,6 @@ export const getAssetColumns = (config: {
           ...columnItem,
           render: (_: unknown, record: any) => {
             const cloudOptions = useAssetDataStore.getState().cloud_list;
-            const collectTaskMap = useAssetDataStore.getState().collectTaskMap;
-
             const modelId = record.model_id;
             if (attrId === 'cloud' && modelId === 'host') {
               const cloudId = +record[attrId];
@@ -482,13 +511,7 @@ export const getAssetColumns = (config: {
             }
 
             if (attrId === 'collect_task') {
-              const displayText = formatCollectTaskDisplay(record[attrId], collectTaskMap);
-              return (
-                <EllipsisWithTooltip
-                  className="whitespace-nowrap overflow-hidden text-ellipsis"
-                  text={displayText}
-                ></EllipsisWithTooltip>
-              );
+              return renderCollectTaskValue(record[attrId]);
             }
 
             return (
@@ -517,6 +540,14 @@ export const getFieldItem = (config: {
 }) => {
   const { disabled, placeholder } = config;
   if (config.isEdit) {
+    if (config.fieldItem.attr_id === 'collect_task') {
+      return (
+        <CollectTaskTreeSelect
+          disabled={disabled}
+          placeholder={placeholder}
+        />
+      );
+    }
     switch (config.fieldItem.attr_type) {
       case 'user':
         return (
@@ -695,8 +726,22 @@ export const getFieldItem = (config: {
       );
     case 'str':
       if (config.fieldItem.attr_id === 'collect_task') {
-        const taskMap = useAssetDataStore.getState().collectTaskMap;
-        return formatCollectTaskDisplay(config.value, taskMap);
+        // Given 详情页字段为只读展示，When collect_task 可解析路由，Then 渲染可点击新标签链接。
+        const meta = getCollectTaskLinkMeta(config.value);
+        if (config.hideUserAvatar || !meta.clickable || !meta.href) {
+          return meta.displayText;
+        }
+        return (
+          <a
+            href={meta.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={collectTaskLinkClassName}
+            title={meta.displayText}
+          >
+            {meta.displayText}
+          </a>
+        );
       }
       return config.value || '--';
     case 'table':

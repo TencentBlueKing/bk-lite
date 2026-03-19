@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Spin, Input, Button, Tag, Empty } from 'antd';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/log/api/integration';
-import { SettingOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import { useCollectTypeInfo } from '@/app/log/hooks/integration/common/getCollectTypeConfig';
@@ -17,7 +17,7 @@ const { Search } = Input;
 
 const Integration = () => {
   const { isLoading } = useApiClient();
-  const { getCollectTypes } = useIntegrationApi();
+  const { getCollectTypes, getDisplayCategoryEnum } = useIntegrationApi();
   const { t } = useTranslation();
   const router = useRouter();
   const { getIcon } = useCollectTypeInfo();
@@ -28,15 +28,40 @@ const Integration = () => {
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
+  const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
 
   const collectTypes = useMemo(() => {
-    if (activeGroup === 'all')
-      return collectTypeList.filter((item) => item.name.includes(searchText));
+    const searchLower = searchText.toLowerCase();
+    if (activeGroup === 'all') {
+      const filtered = collectTypeList.filter((item) =>
+        (item.display_name || item.name).toLowerCase().includes(searchLower)
+      );
+      // Sort by category order from left tree
+      if (categoryOrder.length > 0) {
+        const orderMap = categoryOrder.reduce(
+          (acc, category, index) => {
+            acc[category] = index;
+            return acc;
+          },
+          {} as Record<string, number>
+        );
+        return filtered.sort((a, b) => {
+          const orderA =
+            orderMap[a.display_category] ?? Number.MAX_SAFE_INTEGER;
+          const orderB =
+            orderMap[b.display_category] ?? Number.MAX_SAFE_INTEGER;
+          return orderA - orderB;
+        });
+      }
+      return filtered;
+    }
     return collectTypeList.filter(
       (item) =>
-        item.display_category === activeGroup && item.name.includes(searchText)
+        item.display_category === activeGroup &&
+        (item.display_name || item.name).toLowerCase().includes(searchLower)
     );
-  }, [collectTypeList, activeGroup, searchText]);
+  }, [collectTypeList, activeGroup, searchText, categoryOrder]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -51,10 +76,24 @@ const Integration = () => {
     setPageLoading(true);
     setTreeLoading(isInit);
     try {
-      const data = (await getCollectTypes(rest)) || [];
-      setCollectTypeList(data);
-      if (isInit) {
-        setTreeData(getTreeData(data));
+      const [data, categoryEnum] = await Promise.all([
+        getCollectTypes(rest),
+        isInit ? getDisplayCategoryEnum() : Promise.resolve(null)
+      ]);
+      setCollectTypeList(data || []);
+      if (isInit && categoryEnum) {
+        // Build category id to name map
+        const map = categoryEnum.reduce(
+          (acc: Record<string, string>, item: { id: string; name: string }) => {
+            acc[item.id] = item.name;
+            return acc;
+          },
+          {}
+        );
+        setCategoryMap(map);
+        // Save category order for sorting
+        setCategoryOrder(categoryEnum.map((item: { id: string }) => item.id));
+        setTreeData(getTreeData(data || [], categoryEnum));
         setDefaultSelectObj('all');
       }
     } finally {
@@ -63,38 +102,34 @@ const Integration = () => {
     }
   };
 
-  const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce(
+  const getTreeData = (
+    data: ObjectItem[],
+    categoryEnum: { id: string; name: string }[]
+  ): TreeItem[] => {
+    // Count items per category
+    const categoryCounts = data.reduce(
       (acc, item) => {
         const category = item.display_category || 'other';
-        if (!acc[category]) {
-          acc[category] = {
-            title: category,
-            key: category,
-            children: []
-          };
-        }
-        acc[category].children.push({
-          title: item.name || '--',
-          label: item.name || '--',
-          key: item.id,
-          children: []
-        });
+        acc[category] = (acc[category] || 0) + 1;
         return acc;
       },
-      {} as Record<string, TreeItem>
+      {} as Record<string, number>
     );
+
+    // Build tree from API category enum
+    const categoryNodes: TreeItem[] = categoryEnum.map((item) => ({
+      title: `${item.name}(${categoryCounts[item.id] || 0})`,
+      key: item.id,
+      children: []
+    }));
+
     return [
       {
         title: `${t('common.all')}(${data.length})`,
         key: 'all',
         children: []
       },
-      ...Object.values(groupedData).map((item) => {
-        item.title = `${item.title}(${item.children.length})`;
-        item.children = [];
-        return item;
-      })
+      ...categoryNodes
     ];
   };
 
@@ -104,12 +139,12 @@ const Integration = () => {
 
   const linkToDetial = (app: CollectTypeItem) => {
     const row: TableDataItem = {
-      icon: getIcon(app.name, app.collector),
+      icon: app.icon || getIcon(app.name, app.collector),
       name: app.name,
       collector: app.collector,
       id: app.id,
-      display_name: app.name,
-      description: app.description || '--'
+      display_name: app.display_name || app.name,
+      description: app.display_description || app.description || '--'
     };
     const params = new URLSearchParams(row);
     const targetUrl = `/log/integration/list/detail/configure?${params.toString()}`;
@@ -153,7 +188,7 @@ const Integration = () => {
                   <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
                     <div className="flex items-center space-x-4 my-2">
                       <Icon
-                        type={getIcon(app.name, app.collector)}
+                        type={app.icon || getIcon(app.name, app.collector)}
                         className="text-[48px] min-w-[48px]"
                       />
                       <div
@@ -162,19 +197,23 @@ const Integration = () => {
                         }}
                       >
                         <h2
-                          title={app.name}
+                          title={`${app.display_name || app.name} (${app.collector})`}
                           className="text-xl font-bold m-0 hide-text"
                         >
-                          {app.name || '--'}
+                          {app.display_name || app.name || '--'} (
+                          {app.collector})
                         </h2>
-                        <Tag className="mt-[4px]">{app.display_category}</Tag>
+                        <Tag className="mt-[4px]">
+                          {categoryMap[app.display_category] ||
+                            app.display_category}
+                        </Tag>
                       </div>
                     </div>
                     <p
                       className="mb-[15px] text-[var(--color-text-3)] text-[13px] h-[54px] overflow-hidden line-clamp-3"
-                      title={app.description || '--'}
+                      title={app.display_description || app.description || '--'}
                     >
-                      {app.description || '--'}
+                      {app.display_description || app.description || '--'}
                     </p>
                     <div className="w-full h-[32px] flex justify-center items-end">
                       <Permission
@@ -182,7 +221,7 @@ const Integration = () => {
                         className="w-full"
                       >
                         <Button
-                          icon={<SettingOutlined />}
+                          icon={<PlusOutlined />}
                           type="primary"
                           className="w-full rounded-md transition-opacity duration-300"
                           onClick={(e) => {
@@ -190,7 +229,7 @@ const Integration = () => {
                             linkToDetial(app);
                           }}
                         >
-                          {t('common.setting')}
+                          {t('log.integration.connect')}
                         </Button>
                       </Permission>
                     </div>

@@ -9,6 +9,7 @@ import {
   message,
   Input,
   Drawer,
+  DatePicker,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -31,7 +32,9 @@ import { ColumnItem } from '@/types';
 import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import { useRouter, useSearchParams } from 'next/navigation';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
+
+const { RangePicker } = DatePicker;
 
 const JobRecordPage = () => {
   const { t } = useTranslation();
@@ -45,7 +48,8 @@ const JobRecordPage = () => {
   const [data, setData] = useState<JobRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
-  const [timeRange, setTimeRange] = useState<'today' | '7days' | '30days'>('today');
+  const [timeRange, setTimeRange] = useState<'today' | '7days' | '30days' | 'custom'>('today');
+  const [customRange, setCustomRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [pagination, setPagination] = useState({
     current: 1,
     total: 0,
@@ -62,28 +66,38 @@ const JobRecordPage = () => {
   const [scriptDrawerOpen, setScriptDrawerOpen] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
+  const formatFilterTime = useCallback((value: Dayjs) => value.format('YYYY-MM-DD HH:mm:ss'), []);
+
   const getTimeFilter = useCallback(() => {
     const now = dayjs();
     switch (timeRange) {
       case 'today':
         return {
-          created_at_after: now.startOf('day').toISOString(),
-          created_at_before: now.endOf('day').toISOString(),
+          created_at_after: formatFilterTime(now.startOf('day')),
+          created_at_before: formatFilterTime(now.endOf('day')),
         };
       case '7days':
         return {
-          created_at_after: now.subtract(7, 'day').startOf('day').toISOString(),
-          created_at_before: now.endOf('day').toISOString(),
+          created_at_after: formatFilterTime(now.subtract(7, 'day')),
+          created_at_before: formatFilterTime(now),
         };
       case '30days':
         return {
-          created_at_after: now.subtract(30, 'day').startOf('day').toISOString(),
-          created_at_before: now.endOf('day').toISOString(),
+          created_at_after: formatFilterTime(now.subtract(30, 'day')),
+          created_at_before: formatFilterTime(now),
+        };
+      case 'custom':
+        if (!customRange) {
+          return {};
+        }
+        return {
+          created_at_after: formatFilterTime(customRange[0].startOf('day')),
+          created_at_before: formatFilterTime(customRange[1].endOf('day')),
         };
       default:
         return {};
     }
-  }, [timeRange]);
+  }, [customRange, formatFilterTime, timeRange]);
 
   const fetchData = useCallback(
     async (params: { filters?: SearchFilters; current?: number; pageSize?: number } = {}) => {
@@ -124,7 +138,7 @@ const JobRecordPage = () => {
     setDetailLoading(true);
     try {
       const res = await getJobRecordDetail(id);
-      
+
       // 兼容 API 返回的 execution_results 字段，映射为 execution_targets
       if (!res.execution_targets && res.execution_results) {
         res.execution_targets = res.execution_results.map((result: any, index: number) => ({
@@ -142,7 +156,7 @@ const JobRecordPage = () => {
           error_message: result.error_message || '',
         }));
       }
-      
+
       setDetail(res);
     } finally {
       setDetailLoading(false);
@@ -179,7 +193,7 @@ const JobRecordPage = () => {
         fetchData();
       }
     }
-  }, [isApiReady, timeRange, recordId]);
+  }, [isApiReady, timeRange, customRange, recordId]);
 
   useEffect(() => {
     if (!isApiReady && !recordId) {
@@ -316,13 +330,9 @@ const JobRecordPage = () => {
       width: 120,
       render: (_: unknown, record: JobRecord) => {
         const source = record.trigger_source || record.source;
-        const display = record.trigger_source_display || record.source_display;
-        if (display) {
-          const config = getSourceConfig(source);
-          return <Tag color={config.color}>{display}</Tag>;
-        }
         const config = getSourceConfig(source);
-        return <Tag color={config.color}>{config.label}</Tag>;
+        const label = record.trigger_source_display || record.source_display || config.label;
+        return <Tag color={config.color}>{label}</Tag>;
       },
     },
     {
@@ -332,12 +342,7 @@ const JobRecordPage = () => {
       width: 120,
       render: (value: JobRecordStatus) => {
         const config = getStatusConfig(value);
-        return (
-          <Tag color={config.color}>
-            {value === 'running' && <span className="inline-block w-2 h-2 rounded-full bg-current mr-1 animate-pulse" />}
-            {config.label}
-          </Tag>
-        );
+        return <Tag color={config.color}>{config.label}</Tag>;
       },
     },
     {
@@ -552,9 +557,6 @@ const JobRecordPage = () => {
                 #{detail.id}
               </span>
               <Tag color={getStatusConfig(detail.status).color}>
-                {detail.status === 'running' && (
-                  <span className="inline-block w-2 h-2 rounded-full bg-current mr-1 animate-pulse" />
-                )}
                 {getStatusConfig(detail.status).label}
               </Tag>
             </div>
@@ -939,16 +941,28 @@ const JobRecordPage = () => {
             fieldWidth={120}
             selectWidth={300}
           />
-          <Segmented
-            className="w-fit"
-            options={[
-              { label: t('job.today'), value: 'today' },
-              { label: t('job.last7Days'), value: '7days' },
-              { label: t('job.last30Days'), value: '30days' },
-            ]}
-            value={timeRange}
-            onChange={(value) => setTimeRange(value as 'today' | '7days' | '30days')}
-          />
+          <div className="flex items-center gap-3">
+            {timeRange === 'custom' && (
+              <RangePicker
+                value={customRange}
+                onChange={(value) => {
+                  setCustomRange(value ? [value[0] as Dayjs, value[1] as Dayjs] : null);
+                }}
+                allowClear
+              />
+            )}
+            <Segmented
+              className="w-fit"
+              options={[
+                { label: t('job.today'), value: 'today' },
+                { label: t('job.last7Days'), value: '7days' },
+                { label: t('job.last30Days'), value: '30days' },
+                { label: t('common.timeSelector.custom'), value: 'custom' },
+              ]}
+              value={timeRange}
+              onChange={(value) => setTimeRange(value as 'today' | '7days' | '30days' | 'custom')}
+            />
+          </div>
         </div>
 
         {/* Table */}

@@ -13,6 +13,7 @@ import {
   Segmented,
   message,
   Spin,
+  Alert,
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
@@ -20,7 +21,8 @@ import useJobApi from '@/app/job/api';
 import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook } from '@/app/job/types';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
-import HostSelectionModal, { HostItem } from '@/app/job/components/host-selection-modal';
+import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { useUserInfoContext } from '@/context/userInfo';
 
 const CreateCronTaskPage = () => {
@@ -47,6 +49,7 @@ const CreateCronTaskPage = () => {
 
   // Host selection state (matching HostSelectionModal interface)
   const [hostModalOpen, setHostModalOpen] = useState(false);
+  const [targetSource, setTargetSource] = useState<TargetSourceType>('target_manager');
   const [selectedHostKeys, setSelectedHostKeys] = useState<string[]>([]);
   const [selectedHosts, setSelectedHosts] = useState<HostItem[]>([]);
 
@@ -121,7 +124,7 @@ const CreateCronTaskPage = () => {
     }
 
     const parts: string[] = [];
-    
+
     if (cronMonth !== '*') {
       parts.push(t('job.cronDescMonth').replace('{month}', cronMonth));
     }
@@ -198,7 +201,9 @@ const CreateCronTaskPage = () => {
 
       // Convert to target_source + target_list format
       const targetList = selectedHosts.map((h) => ({
-        target_id: Number(h.key),
+        ...(targetSource === 'node_manager'
+          ? { node_id: h.key }
+          : { target_id: Number(h.key) }),
         name: h.hostName,
         ip: h.ipAddress,
         os: h.osType?.toLowerCase() as 'linux' | 'windows',
@@ -209,7 +214,7 @@ const CreateCronTaskPage = () => {
         description: values.description,
         job_type: jobType,
         ...scheduleData,
-        target_source: 'manual',
+        target_source: targetSource === 'node_manager' ? 'node_mgmt' : 'manual',
         target_list: targetList,
         timeout: values.timeout || 60,
         is_enabled: enableAfterSave,
@@ -242,6 +247,28 @@ const CreateCronTaskPage = () => {
     setHostModalOpen(false);
   };
 
+  const handleTargetSourceChange = (val: TargetSourceType) => {
+    setTargetSource(val);
+    setSelectedHostKeys([]);
+    setSelectedHosts([]);
+    if (val === 'node_manager' && templateType === 'playbook') {
+      setTemplateType('script');
+      form.setFieldValue('playbook', undefined);
+    }
+  };
+
+  const handleTemplateTypeChange = (value: string | number) => {
+    if (targetSource === 'node_manager' && value === 'playbook') {
+      return;
+    }
+    setTemplateType(value as 'script' | 'playbook');
+    if (value === 'script') {
+      form.setFieldValue('playbook', undefined);
+    } else {
+      form.setFieldValue('script', undefined);
+    }
+  };
+
   return (
     <div className="w-full h-full overflow-auto pb-6">
       <div
@@ -269,7 +296,7 @@ const CreateCronTaskPage = () => {
         <Form
           form={form}
           layout="vertical"
-          className="max-w-[720px]"
+          className="w-full"
           initialValues={{
             timeout: 300,
             dailyTime: dayjs().hour(2).minute(0),
@@ -292,15 +319,18 @@ const CreateCronTaskPage = () => {
             />
           </Form.Item>
 
+          <Form.Item label={t('job.targetSource')} required>
+            <TargetSourceSelector
+              value={targetSource}
+              onChange={handleTargetSourceChange}
+            />
+          </Form.Item>
+
           <Form.Item label={t('job.targetHost')} required>
-            <div className="flex items-center gap-3">
-              <Button type="dashed" onClick={() => setHostModalOpen(true)}>
-                + {t('job.addTargetHost')}
-              </Button>
-              <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
-                {t('job.selectedHosts').replace('{count}', String(selectedHosts.length))}
-              </span>
-            </div>
+            <AddTargetHostButton
+              count={selectedHosts.length}
+              onClick={() => setHostModalOpen(true)}
+            />
           </Form.Item>
 
           <Form.Item label={t('job.jobType')} required>
@@ -315,14 +345,22 @@ const CreateCronTaskPage = () => {
 
           {jobType === 'script' && (
             <Form.Item label={t('job.selectTemplate')} required>
+              {targetSource === 'node_manager' && (
+                <Alert
+                  className="mb-2"
+                  message={t('job.nodeManagerPlaybookNotSupported')}
+                  type="warning"
+                  showIcon
+                />
+              )}
               <Segmented
                 className="w-fit mb-2"
                 options={[
                   { label: t('job.scriptLibrary'), value: 'script' },
-                  { label: 'Playbook', value: 'playbook' },
+                  { label: 'Playbook', value: 'playbook', disabled: targetSource === 'node_manager' },
                 ]}
                 value={templateType}
-                onChange={(value) => setTemplateType(value as 'script' | 'playbook')}
+                onChange={handleTemplateTypeChange}
               />
               {templateType === 'script' ? (
                 <Form.Item
@@ -510,6 +548,7 @@ const CreateCronTaskPage = () => {
       <HostSelectionModal
         open={hostModalOpen}
         selectedKeys={selectedHostKeys}
+        source={targetSource}
         onConfirm={handleHostConfirm}
         onCancel={() => setHostModalOpen(false)}
       />

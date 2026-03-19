@@ -40,7 +40,12 @@ type TableRowSelection<T extends object = object> =
 
 const Asset = () => {
   const { isLoading } = useApiClient();
-  const { getInstanceList, deleteLogInstance, getCollectTypes } = useLogApi();
+  const {
+    getInstanceList,
+    deleteLogInstance,
+    getCollectTypes,
+    getDisplayCategoryEnum
+  } = useLogApi();
   const { t } = useTranslation();
   const commonContext = useCommon();
   const authList = useRef(commonContext?.authOrganizations || []);
@@ -67,6 +72,9 @@ const Asset = () => {
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [objectId, setObjectId] = useState<React.Key>('');
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
+  const [collectTypeMap, setCollectTypeMap] = useState<Record<number, string>>(
+    {}
+  );
 
   const handleAssetMenuClick: MenuProps['onClick'] = (e) => {
     openInstanceModal(
@@ -102,7 +110,14 @@ const Asset = () => {
     {
       title: t('log.integration.collectionMethod'),
       dataIndex: 'collect_type__name',
-      key: 'collect_type__name'
+      key: 'collect_type__name',
+      render: (_: string, record: TableDataItem) => {
+        return (
+          collectTypeMap[record.collect_type_id] ||
+          record.collect_type__name ||
+          '--'
+        );
+      }
     },
     {
       title: t('log.integration.collector'),
@@ -225,15 +240,25 @@ const Asset = () => {
     const currentRequestId = ++treeRequestIdRef.current;
     try {
       setTreeLoading(true);
-      const data: ObjectItem[] = await getCollectTypes(
-        {
-          add_instance_count: true
-        },
-        { signal: abortController.signal }
-      );
+      const [data, categoryEnum] = await Promise.all([
+        getCollectTypes(
+          { add_instance_count: true },
+          { signal: abortController.signal }
+        ),
+        getDisplayCategoryEnum()
+      ]);
       // 只有最新请求才处理数据
       if (currentRequestId !== treeRequestIdRef.current) return;
-      setTreeData(getTreeData(data));
+      // 构建 collectType id 到 display_name 的映射
+      const typeMap = (data || []).reduce(
+        (acc: Record<number, string>, item: ObjectItem) => {
+          acc[item.id] = item.display_name || item.name;
+          return acc;
+        },
+        {}
+      );
+      setCollectTypeMap(typeMap);
+      setTreeData(getTreeData(data || [], categoryEnum || []));
     } finally {
       // 只有最新请求才控制 loading
       if (currentRequestId === treeRequestIdRef.current) {
@@ -242,20 +267,32 @@ const Asset = () => {
     }
   };
 
-  const getTreeData = (data: ObjectItem[]): TreeItem[] => {
+  const getTreeData = (
+    data: ObjectItem[],
+    categoryEnum: { id: string; name: string }[]
+  ): TreeItem[] => {
+    // Build category id to name map
+    const categoryMap = categoryEnum.reduce(
+      (acc: Record<string, string>, item) => {
+        acc[item.id] = item.name;
+        return acc;
+      },
+      {}
+    );
+
     const groupedData = data.reduce(
       (acc, item) => {
         const category = item.display_category || 'other';
         if (!acc[category]) {
           acc[category] = {
-            title: category,
+            title: categoryMap[category] || category,
             key: category,
             children: []
           };
         }
         acc[category].children.push({
-          title: `${item.name}(${item.instance_count || 0})`,
-          label: item.name || '--',
+          title: `${item.display_name || item.name}(${item.instance_count || 0})`,
+          label: item.display_name || item.name || '--',
           key: item.id,
           children: []
         });
@@ -263,13 +300,19 @@ const Asset = () => {
       },
       {} as Record<string, TreeItem>
     );
+
+    // Build tree in the order of categoryEnum
+    const orderedTree: TreeItem[] = categoryEnum
+      .filter((cat) => groupedData[cat.id])
+      .map((cat) => groupedData[cat.id]);
+
     return [
       {
         title: t('common.all'),
         key: 'all',
         children: []
       },
-      ...Object.values(groupedData)
+      ...orderedTree
     ];
   };
 
@@ -426,8 +469,9 @@ const Asset = () => {
         showAllMenu
         defaultSelectedKey="all"
         onNodeSelect={handleObjectChange}
+        style={{ width: 230 }}
       />
-      <div className="w-[calc(100vw-240px)] min-w-[1040px] bg-[var(--color-bg-1)] p-[20px]">
+      <div className="w-[calc(100vw-230px)] min-w-[1040px] bg-[var(--color-bg-1)] p-[20px]">
         <div className="flex justify-between items-center mb-[10px]">
           <Input
             allowClear

@@ -103,6 +103,8 @@ app:
   node: Used to centrally manage nodes under various cloud regions and install various
     probes on each node to collect monitoring data, configuration information, logs
     and other information
+  job: Quickly create and execute jobs, unified management of script execution, file
+    distribution and scheduled tasks
 action_type:
   create: Create
   delete: Delete
@@ -111,3 +113,9 @@ action_type:
 status:
   success: Success
   failed: Failed
+tag:
+  # job
+  job_execution: Job Execution
+  script_management: Script Management
+  file_distribution: File Distribution
+  scheduled_task: Scheduled Task

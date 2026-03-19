@@ -2,16 +2,11 @@ from django.db.models import Q
 
 from apps.core.constants import DEFAULT_PERMISSION
 from apps.core.logger import nats_logger as logger
-from apps.core.utils.permission_cache import (
-    get_cached_permission_rules,
-    set_cached_permission_rules,
-)
+from apps.core.utils.permission_cache import get_cached_permission_rules, set_cached_permission_rules
 from apps.rpc.system_mgmt import SystemMgmt
 
 
-def get_permission_rules(
-    user, current_team, app_name, permission_key, include_children=False
-):
+def get_permission_rules(user, current_team, app_name, permission_key, include_children=False):
     """获取某app某类权限的某个对象的规则"""
     # 尝试从缓存获取
     cached = get_cached_permission_rules(
@@ -26,9 +21,7 @@ def get_permission_rules(
         return cached
 
     # 缓存未命中，发起 RPC 调用
-    app, child_module, client, module = set_rules_module_params(
-        app_name, permission_key
-    )
+    app, child_module, client, module = set_rules_module_params(app_name, permission_key)
     try:
         permission_data = client.get_user_rules_by_app(
             int(current_team),
@@ -64,6 +57,7 @@ def set_rules_module_params(app_name, permission_key):
         "console_mgmt": "ops-console",
         "mlops": "mlops",
         "operation_analysis": "ops-analysis",
+        "job_mgmt": "job",
     }
     client = SystemMgmt(is_local_client=True)
     app_name = app_name_map.get(app_name, app_name)
@@ -74,9 +68,7 @@ def set_rules_module_params(app_name, permission_key):
     return app_name, child_module, client, module
 
 
-def get_permissions_rules(
-    user, current_team, app_name, permission_key, include_children=False
-):
+def get_permissions_rules(user, current_team, app_name, permission_key, include_children=False):
     """获取某app某类权限规则"""
     app_name_map = {
         "system_mgmt": "system-manager",
@@ -84,6 +76,7 @@ def get_permissions_rules(
         "console_mgmt": "ops-console",
         "mlops": "mlops",
         "operation_analysis": "ops-analysis",
+        "job_mgmt": "job",
     }
     app_name = app_name_map.get(app_name, app_name)
     module = permission_key
@@ -132,16 +125,12 @@ def permission_filter(model, permission, team_key="teams__id__in", id_key="id__i
 
 
 def delete_instance_rules(app_name, permission_key, instance_id, group_ids):
-    app, child_module, client, module = set_rules_module_params(
-        app_name, permission_key
-    )
+    app, child_module, client, module = set_rules_module_params(app_name, permission_key)
     result = client.delete_rules(group_ids, instance_id, app, module, child_module)
     return result
 
 
-def check_instance_permission(
-    object_type_id, instance_id, teams, permissions, cur_team
-):
+def check_instance_permission(object_type_id, instance_id, teams, permissions, cur_team):
     """
     通用实例权限检查逻辑
 
@@ -181,20 +170,14 @@ def check_instance_permission(
     # 安全获取实例权限，确保类型正确
     instance_data = permission.get("instance", [])
     if isinstance(instance_data, list):
-        inst_permission = {
-            i["id"] for i in instance_data if isinstance(i, dict) and "id" in i
-        }
+        inst_permission = {i["id"] for i in instance_data if isinstance(i, dict) and "id" in i}
     else:
         inst_permission = set()
 
     # 安全获取团队权限，确保类型正确
     team_data = permission.get("team", [])
     if isinstance(team_data, list):
-        team_permission = {
-            i["id"] if isinstance(i, dict) and "id" in i else i
-            for i in team_data
-            if i is not None
-        }
+        team_permission = {i["id"] if isinstance(i, dict) and "id" in i else i for i in team_data if i is not None}
     else:
         team_permission = set()
 
@@ -214,9 +197,7 @@ def check_instance_permission(
     return False
 
 
-def filter_instances_with_permissions(
-    instances_result, policy_permissions, current_teams
-):
+def filter_instances_with_permissions(instances_result, policy_permissions, current_teams):
     """
     过滤实例并返回权限映射
 

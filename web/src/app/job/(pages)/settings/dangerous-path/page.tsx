@@ -34,6 +34,31 @@ const DangerousPathPage = () => {
       confirmLabel={t('job.confirmExecution')}
       strategyHelp={t('job.handleStrategyHelpPath')}
       ruleNamePlaceholder={t('job.ruleNamePathPlaceholder')}
+      matchTypeLabel={t('job.matchType')}
+      matchTypeOptions={[
+        {
+          label: t('job.exactMatch'),
+          value: 'exact',
+          help: t('job.matchPatternHelpPathExact'),
+          placeholder: t('job.matchPatternPathExactPlaceholder'),
+          examples: [
+            t('job.matchPatternPathExactExample1'),
+            t('job.matchPatternPathExactExample2'),
+            t('job.matchPatternPathExactExample3'),
+          ],
+        },
+        {
+          label: t('job.regexExpression'),
+          value: 'regex',
+          help: t('job.matchPatternHelpPathRegex'),
+          placeholder: t('job.matchPatternPathRegexPlaceholder'),
+          examples: [
+            t('job.matchPatternPathRegexExample1'),
+            t('job.matchPatternPathRegexExample2'),
+            t('job.matchPatternPathRegexExample3'),
+          ],
+        },
+      ]}
       api={{
         getList: getDangerousPathList,
         create: createDangerousPath,

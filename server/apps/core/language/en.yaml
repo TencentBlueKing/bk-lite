@@ -33,6 +33,7 @@ app:
   system-manager: Covering user and organizational role permission management, ensuring resource access security through fine-grained permission control while improving operational efficiency. Provides flexible configuration and management to meet different business needs
   node: Used to centrally manage nodes under various cloud regions and install various probes on each node to collect monitoring data, configuration information, logs and other information
   ops-console: Unified operations console for managing and monitoring all operational activities
+  job: Quickly create and execute jobs, unified management of script execution, file distribution and scheduled tasks
 
 # Tag translations (for built-in app tags)
 tag:
@@ -79,3 +80,8 @@ tag:
   dashboard: Dashboard
   canvas: Canvas
   data_integration: Data Integration
+  # job
+  job_execution: Job Execution
+  script_management: Script Management
+  file_distribution: File Distribution
+  scheduled_task: Scheduled Task

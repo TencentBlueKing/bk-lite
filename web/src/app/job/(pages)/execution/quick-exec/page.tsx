@@ -13,13 +13,14 @@ import {
   Alert,
   Modal,
 } from 'antd';
-import { PlusOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
 import { Script, Playbook, ScriptParam } from '@/app/job/types';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import ScriptEditor from '@/app/job/components/script-editor';
 import Password from '@/components/password';
 
@@ -74,6 +75,7 @@ const QuickExecPage = () => {
   const [scriptList, setScriptList] = useState<Script[]>([]);
   const [playbookList, setPlaybookList] = useState<Playbook[]>([]);
   const [templateParams, setTemplateParams] = useState<ScriptParam[]>([]);
+  const [editedTemplateParams, setEditedTemplateParams] = useState<Record<string, boolean>>({});
   const [initialized, setInitialized] = useState(false);
   const [scriptLang, setScriptLang] = useState<ScriptLang>('shell');
 
@@ -101,8 +103,10 @@ const QuickExecPage = () => {
     setSelectedTemplate(id);
     if (!id) {
       setTemplateParams([]);
+      setEditedTemplateParams({});
       return;
     }
+    setEditedTemplateParams({});
     const currentType = type ?? templateType;
     try {
       if (currentType === 'scriptLibrary') {
@@ -171,6 +175,7 @@ const QuickExecPage = () => {
     setContentSource(val);
     setSelectedTemplate(undefined);
     setTemplateParams([]);
+    setEditedTemplateParams({});
   };
 
   const handleTemplateTypeChange = (val: string | number) => {
@@ -180,6 +185,7 @@ const QuickExecPage = () => {
     setTemplateType(val as TemplateType);
     setSelectedTemplate(undefined);
     setTemplateParams([]);
+    setEditedTemplateParams({});
   };
 
   const handleTargetSourceChange = (val: TargetSourceType) => {
@@ -190,10 +196,13 @@ const QuickExecPage = () => {
       setTemplateType('scriptLibrary');
       setSelectedTemplate(undefined);
       setTemplateParams([]);
+      setEditedTemplateParams({});
     }
   };
 
   const [executeLoading, setExecuteLoading] = useState(false);
+
+  const normalizeScriptContent = (content: string) => content.trim();
 
   // Check script content against dangerous rules
   const checkDangerousRules = async (scriptContent: string): Promise<{ canExecute: boolean; needConfirm: boolean; matchedRules: string[] }> => {
@@ -231,21 +240,39 @@ const QuickExecPage = () => {
     }
   };
 
+  const validateScriptContent = async (_: unknown, value?: Record<ScriptLang, string>) => {
+    const currentScriptContent = normalizeScriptContent(value?.[scriptLang] || '');
+    if (!currentScriptContent) {
+      throw new Error(t('job.scriptContentRequired'));
+    }
+
+    const checkResult = await checkDangerousRules(currentScriptContent);
+    if (!checkResult.canExecute) {
+      throw new Error(`${t('job.forbiddenCommandMessage')} ${checkResult.matchedRules.join('、')}`);
+    }
+
+    return Promise.resolve();
+  };
+
   // Execute the actual job
   const doExecute = async (values: any, scriptContent?: string) => {
-    const templateParamsPayload: Record<string, unknown> = {};
-    templateParams.forEach((param) => {
-      const value = values[`param_${param.name}`];
-      templateParamsPayload[param.name] = value ?? '';
+    const templateParamsPayload = templateParams.map((param) => {
+      const currentValue = values[`param_${param.name}`] ?? '';
+      const defaultValue = param.default ?? '';
+      return {
+        name: param.name,
+        value: currentValue,
+        is_modified: currentValue !== defaultValue || !!editedTemplateParams[param.name],
+      };
     });
 
     const timeout = values.timeout ? Number(values.timeout) : 600;
-    
+
     // Convert to target_source + target_list format
     const target_source = targetSource === 'node_manager' ? 'node_mgmt' : 'manual';
     const target_list = selectedHosts.map((h) => ({
-      ...(targetSource === 'node_manager' 
-        ? { node_id: h.key } 
+      ...(targetSource === 'node_manager'
+        ? { node_id: h.key }
         : { target_id: Number(h.key) }),
       name: h.hostName,
       ip: h.ipAddress,
@@ -292,7 +319,7 @@ const QuickExecPage = () => {
   const handleExecute = async () => {
     try {
       const values = await form.validateFields();
-      
+
       if (selectedHosts.length === 0) {
         message.error(t('job.selectTargetHostRequired'));
         return;
@@ -325,7 +352,11 @@ const QuickExecPage = () => {
           return;
         }
 
-        const scriptContent = scriptContentObj[scriptLang];
+        const scriptContent = normalizeScriptContent(scriptContentObj[scriptLang]);
+        form.setFieldValue('scriptContent', {
+          ...scriptContentObj,
+          [scriptLang]: scriptContent,
+        });
         const checkResult = await checkDangerousRules(scriptContent);
 
         if (!checkResult.canExecute) {
@@ -422,7 +453,7 @@ const QuickExecPage = () => {
         <Form
           form={form}
           layout="vertical"
-          className="max-w-[720px]"
+          className="w-full"
           initialValues={{ timeout: '600', scriptContent: DEFAULT_SCRIPT_CONTENT }}
         >
 
@@ -436,13 +467,10 @@ const QuickExecPage = () => {
 
 
           <Form.Item label={t('job.targetSource')} required>
-            <Radio.Group
+            <TargetSourceSelector
               value={targetSource}
-              onChange={(e) => handleTargetSourceChange(e.target.value)}
-            >
-              <Radio value="node_manager">{t('job.nodeManager')}</Radio>
-              <Radio value="target_manager">{t('job.targetManager')}</Radio>
-            </Radio.Group>
+              onChange={handleTargetSourceChange}
+            />
           </Form.Item>
 
 
@@ -450,18 +478,10 @@ const QuickExecPage = () => {
             label={t('job.targetHost')}
             required
           >
-            <div className="flex items-center gap-3">
-              <Button
-                type="dashed"
-                icon={<PlusOutlined />}
-                onClick={() => setHostModalOpen(true)}
-              >
-                {t('job.addTargetHost')}
-              </Button>
-              <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
-                {t('job.selectedHosts').replace('{count}', String(selectedHosts.length))}
-              </span>
-            </div>
+            <AddTargetHostButton
+              count={selectedHosts.length}
+              onClick={() => setHostModalOpen(true)}
+            />
           </Form.Item>
 
 
@@ -531,6 +551,12 @@ const QuickExecPage = () => {
                         <Password
                           placeholder={param.description || param.name}
                           clickToEdit={!!param.default}
+                          onReset={() =>
+                            setEditedTemplateParams((prev) => ({
+                              ...prev,
+                              [param.name]: true,
+                            }))
+                          }
                         />
                       ) : (
                         <Input
@@ -547,22 +573,18 @@ const QuickExecPage = () => {
 
           {contentSource === 'manual' && (
             <>
-              <Form.Item 
-                label={t('job.scriptContent')} 
+              <Form.Item
+                label={t('job.scriptContent')}
                 name="scriptContent"
-                rules={[{ 
-                  required: true, 
-                  validator: (_, value) => {
-                    if (!value || !value[scriptLang] || value[scriptLang].trim() === '') {
-                      return Promise.reject(new Error(t('job.scriptContentRequired')));
-                    }
-                    return Promise.resolve();
-                  }
-                }]}
+                validateTrigger="onBlur"
+                rules={[{ validator: validateScriptContent }]}
               >
-                <ScriptEditor 
+                <ScriptEditor
                   activeLang={scriptLang}
                   onLangChange={setScriptLang}
+                  onBlur={() => {
+                    void form.validateFields(['scriptContent']);
+                  }}
                 />
               </Form.Item>
 
@@ -577,7 +599,7 @@ const QuickExecPage = () => {
 
 
           <Form.Item label={t('job.timeout')} name="timeout">
-            <Input className="w-[200px]" />
+            <Input className="w-full" />
           </Form.Item>
           <p className="text-xs -mt-4 mb-6" style={{ color: 'var(--color-text-3)' }}>
             {t('job.timeoutHint')}

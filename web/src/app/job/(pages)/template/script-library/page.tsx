@@ -24,6 +24,7 @@ import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import ScriptEditor from '@/app/job/components/script-editor';
 import { useRouter } from 'next/navigation';
+import styles from './page.module.scss';
 
 const SCRIPT_TYPE_COLOR: Record<ScriptType, string> = {
   shell: 'blue',
@@ -44,6 +45,7 @@ const ScriptLibraryPage = () => {
   const { isLoading: isApiReady } = useApiClient();
   const {
     getScriptList,
+    getScriptDetail,
     createScript,
     updateScript,
     deleteScript,
@@ -189,44 +191,66 @@ const ScriptLibraryPage = () => {
     setModalType('edit');
     setEditingScript(record);
     form.resetFields();
-    form.setFieldsValue({
-      name: record.name,
-      description: record.description,
-      team: record.team || [],
-    });
-    const lang = record.script_type || 'shell';
-    setScriptLang(lang);
-    setScriptContent({
-      shell: '',
-      bat: '',
-      python: '',
-      powershell: '',
-      [lang]: record.content || '',
-    });
-    setParams(record.params || []);
+    resetEditorState();
     setModalOpen(true);
+
+    void (async () => {
+      try {
+        const detail = await getScriptDetail(record.id);
+        form.setFieldsValue({
+          name: detail.name,
+          description: detail.description,
+          team: detail.team || [],
+        });
+        const lang = detail.script_type || 'shell';
+        setScriptLang(lang);
+        setScriptContent({
+          shell: '',
+          bat: '',
+          python: '',
+          powershell: '',
+          [lang]: detail.content || '',
+        });
+        setParams(detail.params || []);
+        setEditingScript(detail);
+      } catch {
+        message.error(t('common.operationFailed'));
+        setModalOpen(false);
+      }
+    })();
   };
 
   const openViewModal = (record: Script) => {
     setModalType('view');
     setEditingScript(record);
     form.resetFields();
-    form.setFieldsValue({
-      name: record.name,
-      description: record.description,
-      team: record.team || [],
-    });
-    const lang = record.script_type || 'shell';
-    setScriptLang(lang);
-    setScriptContent({
-      shell: '',
-      bat: '',
-      python: '',
-      powershell: '',
-      [lang]: record.content || '',
-    });
-    setParams(record.params || []);
+    resetEditorState();
     setModalOpen(true);
+
+    void (async () => {
+      try {
+        const detail = await getScriptDetail(record.id);
+        form.setFieldsValue({
+          name: detail.name,
+          description: detail.description,
+          team: detail.team || [],
+        });
+        const lang = detail.script_type || 'shell';
+        setScriptLang(lang);
+        setScriptContent({
+          shell: '',
+          bat: '',
+          python: '',
+          powershell: '',
+          [lang]: detail.content || '',
+        });
+        setParams(detail.params || []);
+        setEditingScript(detail);
+      } catch {
+        message.error(t('common.operationFailed'));
+        setModalOpen(false);
+      }
+    })();
   };
 
   const handleDelete = (record: Script) => {
@@ -523,6 +547,7 @@ const ScriptLibraryPage = () => {
               : t('job.viewScript')
         }
         open={modalOpen}
+        destroyOnClose
         confirmLoading={confirmLoading}
         onCancel={() => setModalOpen(false)}
         footer={
@@ -553,7 +578,8 @@ const ScriptLibraryPage = () => {
               value={scriptContent}
               onChange={isViewMode ? undefined : setScriptContent}
               activeLang={scriptLang}
-              onLangChange={isViewMode ? undefined : setScriptLang}
+              onLangChange={setScriptLang}
+              readOnly={isViewMode}
             />
           </Form.Item>
 
@@ -576,20 +602,10 @@ const ScriptLibraryPage = () => {
 
           {/* Parameter Definition */}
           <div className="mb-2">
-            <div className="flex items-center justify-between mb-2">
+            <div className="mb-2">
               <span className="text-sm font-medium" style={{ color: 'var(--color-text-1)' }}>
                 {t('job.paramDefinition')}
               </span>
-              {!isViewMode && (
-                <Button
-                  type="dashed"
-                  size="small"
-                  icon={<PlusOutlined />}
-                  onClick={openAddParamModal}
-                >
-                  {t('job.addParam')}
-                </Button>
-              )}
             </div>
             {params.length > 0 && (
               <Table
@@ -599,6 +615,18 @@ const ScriptLibraryPage = () => {
                 pagination={false}
                 size="small"
               />
+            )}
+            {!isViewMode && (
+              <div className={styles.addParamWrapper}>
+                <Button
+                  type="text"
+                  icon={<PlusOutlined />}
+                  className={styles.addParamButton}
+                  onClick={openAddParamModal}
+                >
+                  {t('job.addParam')}
+                </Button>
+              </div>
             )}
           </div>
         </Form>

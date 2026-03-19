@@ -19,30 +19,67 @@ export const useVectorConfig = () => {
       onTableDataChange?: (data: IntegrationLogInstance[]) => void;
     }) => {
       const disabledForm = {
-        file_path: false
+        include: false
       };
-      const formItems = <>{commonFormItems.getCommonFormItems(disabledForm)}</>;
+      const formItems = (
+        <>
+          {commonFormItems.getCommonFormItems({
+            disabledFormItems: disabledForm
+          })}
+        </>
+      );
       const configs = {
         auto: {
           formItems: commonFormItems.getCommonFormItems(),
           initTableItems: {},
           defaultForm: {
+            include: [],
+            exclude: [],
+            read_from: 'beginning',
+            ignore_older_secs: 86400,
+            encoding_charset: 'utf-8',
+            parser_type: '',
             multiline: {
-              enabled: true,
+              enabled: false,
               mode: 'continue_through',
-              start_pattern: '^(ERROR|WARN|INFO|DEBUG|TRACE|FATAL)\\s\\[',
-              timeout_ms: 3000,
-              condition_pattern: '^(\\s+|Traceback|File\\s+)'
+              start_pattern: '',
+              timeout_ms: 1000,
+              condition_pattern: ''
             }
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
             const dataSource = cloneDeep(config.dataSource || []);
-            delete row.multiline.enabled;
+            const formDataCopy = cloneDeep(row);
+
+            // 构建 content
+            const content: Record<string, unknown> = {
+              include: formDataCopy.include || [],
+              exclude: formDataCopy.exclude || [],
+              read_from: formDataCopy.read_from,
+              ignore_older_secs: formDataCopy.ignore_older_secs,
+              encoding_charset: formDataCopy.encoding_charset
+            };
+
+            // 处理 parser_type
+            if (formDataCopy.parser_type) {
+              content.parser_type = formDataCopy.parser_type;
+            }
+
+            // 处理 multiline
+            if (formDataCopy.multiline?.enabled) {
+              content.multiline = {
+                condition_pattern: formDataCopy.multiline.condition_pattern,
+                mode: formDataCopy.multiline.mode,
+                start_pattern: formDataCopy.multiline.start_pattern,
+                timeout_ms: formDataCopy.multiline.timeout_ms
+              };
+            }
+
             return {
               collector: pluginConfig.collector,
               collect_type: pluginConfig.collect_type,
-              configs: [row],
+              configs: [content],
               instances: dataSource.map((item: TableDataItem) => {
                 return {
                   ...item,
@@ -55,27 +92,62 @@ export const useVectorConfig = () => {
         edit: {
           formItems,
           getDefaultForm: (formData: TableDataItem) => {
-            const sources =
-              formData?.child?.content?.sources?.[
-                pluginConfig.collect_type + '_' + formData.rowId
-              ];
-            const path = sources?.include?.[0] || null;
+            const content = formData?.child?.content || {};
+
+            // Vector 的数据结构: content.sources.file_xxx
+            const sources = content.sources || {};
+            const sourceKey =
+              Object.keys(sources).find((key) => key.startsWith('file_')) || '';
+            const sourceData = sources[sourceKey] || {};
+
             return {
-              file_path: path,
-              multiline: Object.assign(sources?.multiline || {}, {
-                enabled: !!sources?.multiline?.mode
-              })
+              include: sourceData.include || [],
+              exclude: sourceData.exclude || [],
+              read_from: sourceData.read_from || 'beginning',
+              ignore_older_secs: sourceData.ignore_older_secs || 86400,
+              encoding_charset: sourceData.encoding_charset || 'utf-8',
+              parser_type: sourceData.parser_type || '',
+              multiline: {
+                enabled: !!sourceData.multiline?.mode,
+                mode: sourceData.multiline?.mode || 'continue_through',
+                start_pattern: sourceData.multiline?.start_pattern || '',
+                timeout_ms: sourceData.multiline?.timeout_ms || 1000,
+                condition_pattern: sourceData.multiline?.condition_pattern || ''
+              }
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             const originalChild = cloneDeep(configForm?.child || {});
             const formDataCopy = cloneDeep(formData);
-            delete formDataCopy.multiline?.enabled;
+
+            // 构建 content 对象
+            const content: Record<string, unknown> = {
+              include: formDataCopy.include || [],
+              exclude: formDataCopy.exclude || [],
+              read_from: formDataCopy.read_from,
+              ignore_older_secs: formDataCopy.ignore_older_secs,
+              encoding_charset: formDataCopy.encoding_charset
+            };
+
+            // 处理 parser_type
+            if (formDataCopy.parser_type) {
+              content.parser_type = formDataCopy.parser_type;
+            }
+
+            // 处理 multiline
+            if (formDataCopy.multiline?.enabled) {
+              content.multiline = {
+                condition_pattern: formDataCopy.multiline.condition_pattern,
+                mode: formDataCopy.multiline.mode,
+                start_pattern: formDataCopy.multiline.start_pattern,
+                timeout_ms: formDataCopy.multiline.timeout_ms
+              };
+            }
 
             return {
               child: {
                 ...originalChild,
-                content: formDataCopy
+                content
               }
             };
           }

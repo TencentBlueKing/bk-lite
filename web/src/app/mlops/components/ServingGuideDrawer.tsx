@@ -27,6 +27,7 @@ interface ServingGuideDrawerProps {
     container_info?: {
       port?: number;
       state?: string;
+      host?: string;
     };
   } | null;
 }
@@ -54,7 +55,16 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
     setRequestBody(JSON.stringify(config.defaultTestBody, null, 2));
   }, [config.defaultTestBody]);
 
+  // Pre-fill serverUrl when host is available
+  useMemo(() => {
+    const h = serving?.container_info?.host;
+    if (h && !serverUrl) {
+      setServerUrl(`http://${h}`);
+    }
+  }, [serving?.container_info?.host]);
+
   const port = serving?.container_info?.port;
+  const host = serving?.container_info?.host;
 
   // API method mapping
   const apiMethodMap: Record<DatasetType, (servingId: number, params: ReasonParams) => Promise<unknown>> = {
@@ -111,7 +121,7 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
     message.success(t('common.copySuccess'));
   };
 
-  const externalEndpoint = `http://<${t('serving-guide.serverIp')}>:${port || '<port>'}/predict`;
+  const externalEndpoint = `http://${host || `<${t('serving-guide.serverIp')}>`}:${port || '<port>'}/predict`;
   const curlExample = generateCurlExample(externalEndpoint, config.requestExample);
   const requestExample = JSON.stringify(config.requestExample, null, 2);
   const responseExample = JSON.stringify(config.responseExample, null, 2);

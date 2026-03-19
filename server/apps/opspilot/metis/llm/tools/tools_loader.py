@@ -5,7 +5,22 @@ import inspect
 from loguru import logger
 
 # 静态导入所有工具模块
-from apps.opspilot.metis.llm.tools import browser_use, date, fetch, github, jenkins, kubernetes, mssql, postgres, python, search, shell, ssh
+from apps.opspilot.metis.llm.tools import (
+    browser_use,
+    date,
+    elasticsearch,
+    fetch,
+    github,
+    jenkins,
+    kubernetes,
+    mssql,
+    postgres,
+    python,
+    redis,
+    search,
+    shell,
+    ssh,
+)
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
 
@@ -35,6 +50,7 @@ class ToolsLoader:
         # "cmdb": ("apps.opspilot.metis.llm.tools.cmdb", False),  # 临时关闭 CMDB tools
         "current_time": (date, False),
         "duckduckgo": (search, False),
+        "elasticsearch": (elasticsearch, False),
         "fetch": (fetch, False),
         "github": (github, False),
         "jenkins": (jenkins, False),
@@ -42,6 +58,7 @@ class ToolsLoader:
         "mssql": (mssql, False),
         "postgres": (postgres, False),
         "python": (python, False),
+        "redis": (redis, False),
         "shell": (shell, False),
         "ssh": (ssh, False),
     }
