@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from typing import Any, cast
 from rest_framework import mixins
 from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
@@ -18,9 +19,11 @@ from apps.node_mgmt.serializers.node import (
     NodeSerializer,
     BatchBindingNodeConfigurationSerializer,
     BatchOperateNodeCollectorSerializer,
+    TaskNodesQuerySerializer,
 )
 from apps.node_mgmt.services.node import NodeService
 from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar
+from apps.node_mgmt.models.action import CollectorActionTaskNode, CollectorActionTask
 
 
 class NodeFilterHandler:
@@ -377,13 +380,79 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         node_ids = serializer.validated_data["node_ids"]
         collector_id = serializer.validated_data["collector_id"]
         operation = serializer.validated_data["operation"]
-        NodeService.batch_operate_node_collector(node_ids, collector_id, operation)
+        task_id = NodeService.batch_operate_node_collector(
+            node_ids,
+            collector_id,
+            operation,
+            created_by=request.user.username,
+            domain=getattr(request.user, "domain", "domain.com"),
+            updated_by_domain=getattr(request.user, "domain", "domain.com"),
+        )
 
         # 清除cache中的etag
         for node_id in node_ids:
             cache.delete(f"node_etag_{node_id}")
 
-        return WebUtils.response_success()
+        return WebUtils.response_success(dict(task_id=task_id))
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"collector/action/(?P<task_id>[^/.]+)/nodes",
+    )
+    def collector_action_nodes(self, request, task_id):
+        serializer = TaskNodesQuerySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_data = cast(dict[str, Any], serializer.validated_data)
+
+        queryset = CollectorActionTaskNode.objects.filter(
+            task_id=task_id
+        ).select_related("node")
+        status_list = validated_data.get("status")
+        if status_list:
+            queryset = queryset.filter(status__in=status_list)
+
+        page = validated_data.get("page", 1)
+        page_size = validated_data.get("page_size", 20)
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        total = queryset.count()
+        items = queryset.order_by("id")[start:end]
+        data = [
+            {
+                "node_id": obj.node_id,
+                "status": obj.status,
+                "result": obj.result,
+                "ip": obj.node.ip,
+                "os": obj.node.operating_system,
+            }
+            for obj in items
+        ]
+
+        summary_queryset = CollectorActionTaskNode.objects.filter(task_id=task_id)
+        summary = {
+            "total": summary_queryset.count(),
+            "waiting": summary_queryset.filter(status="waiting").count(),
+            "running": summary_queryset.filter(status="running").count(),
+            "success": summary_queryset.filter(status="success").count(),
+            "error": summary_queryset.filter(status="error").count(),
+        }
+
+        task_obj = CollectorActionTask.objects.filter(id=task_id).first()
+        task_status = task_obj.status if task_obj else "waiting"
+
+        return WebUtils.response_success(
+            {
+                "task_id": task_id,
+                "status": task_status,
+                "summary": summary,
+                "items": data,
+                "count": total,
+                "page": page,
+                "page_size": page_size,
+            }
+        )
 
     @action(detail=False, methods=["post"], url_path="node_config_asso")
     def get_node_config_asso(self, request):
