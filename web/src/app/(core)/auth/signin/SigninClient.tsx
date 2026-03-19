@@ -6,11 +6,14 @@ import { Select, Input } from "antd";
 import PasswordResetForm from "./PasswordResetForm";
 import OtpVerificationForm from "./OtpVerificationForm";
 import { saveAuthToken } from "@/utils/crossDomainAuth";
+import { buildOauthCallbackBridgeUrl, buildThirdLoginCallbackUrl, resolveThirdLoginFlag } from "@/utils/authRedirect";
 
 interface SigninClientProps {
   searchParams: {
     callbackUrl: string;
     error: string;
+    third_login?: string;
+    thirdLogin?: string;
   };
   signinErrors: Record<string | "default", string>;
 }
@@ -40,7 +43,8 @@ interface BkSettings {
   url?: string;
 }
 
-export default function SigninClient({ searchParams: { callbackUrl, error }, signinErrors }: SigninClientProps) {
+export default function SigninClient({ searchParams: { callbackUrl, error, third_login, thirdLogin }, signinErrors }: SigninClientProps) {
+  const thirdLoginFlag = resolveThirdLoginFlag(thirdLogin, third_login);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [domain, setDomain] = useState("");
@@ -293,13 +297,14 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
         setFormError(result.error);
         setIsLoading(false);
       } else if (result?.ok) {
-        if (userData.redirect_url) {
-          console.log('Redirecting to server-provided redirect_url:', userData.redirect_url);
-          window.location.href = userData.redirect_url;
-        } else {
-          console.log('SignIn successful, redirecting to:', callbackUrl || "/");
-          window.location.href = callbackUrl || "/";
-        }
+        const targetUrl = buildThirdLoginCallbackUrl(
+          userData.redirect_url || callbackUrl || "/",
+          userData.token,
+          thirdLoginFlag,
+        );
+
+        console.log('SignIn successful, redirecting to:', targetUrl);
+        window.location.href = targetUrl;
       } else {
         console.error('SignIn failed with unknown error');
         setFormError("Authentication failed");
@@ -314,10 +319,12 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
 
   const handleWechatSignIn = async () => {
     console.log("Starting WeChat login process...");
-    console.log("Callback URL:", callbackUrl || "/");
+    const oauthCallbackUrl = buildOauthCallbackBridgeUrl(callbackUrl || "/", thirdLoginFlag);
+
+    console.log("Callback URL:", oauthCallbackUrl);
     
     signIn("wechat", { 
-      callbackUrl: callbackUrl || "/",
+      callbackUrl: oauthCallbackUrl,
       redirect: true
     });
   };
