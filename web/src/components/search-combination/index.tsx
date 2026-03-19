@@ -427,12 +427,12 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
             position: relative;
             display: inline-block;
           }
-          
+
           .search-combination-wrapper {
             position: relative;
             z-index: 99;
           }
-          
+
           .search-combination-controls {
             display: flex;
             height: 32px;
@@ -452,25 +452,25 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
             height: 32px;
             padding-inline: 12px;
           }
-          
+
           .search-combination-wrapper .search-combination-left .ant-select-selector {
             border-top-right-radius: 0 !important;
             border-bottom-right-radius: 0 !important;
           }
-          
+
           .search-combination-right-wrapper {
             position: absolute;
             top: 0;
             z-index: 99;
           }
-          
+
           .search-combination-wrapper .search-combination-right .ant-select-selector {
             border-top-left-radius: 0 !important;
             border-bottom-left-radius: 0 !important;
             max-height: 200px;
             overflow-y: auto;
           }
-          
+
           .enum-options-dropdown {
             position: absolute;
             top: 100%;
@@ -478,7 +478,7 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
             z-index: 99;
             margin-top: 4px;
           }
-          
+
           .enum-option-item:hover {
             background-color: var(--color-fill-2) !important;
           }
