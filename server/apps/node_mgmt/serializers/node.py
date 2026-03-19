@@ -10,7 +10,19 @@ class NodeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Node
-        fields = ['id', 'name', 'ip', 'operating_system', 'status', 'cloud_region', 'updated_at', 'organization', 'install_method', 'node_type', 'versions']
+        fields = [
+            "id",
+            "name",
+            "ip",
+            "operating_system",
+            "status",
+            "cloud_region",
+            "updated_at",
+            "organization",
+            "install_method",
+            "node_type",
+            "versions",
+        ]
 
     @classmethod
     def setup_eager_loading(cls, queryset):
@@ -22,13 +34,13 @@ class NodeSerializer(serializers.ModelSerializer):
         serializer = NodeSerializer(queryset, many=True)
         """
         queryset = queryset.prefetch_related(
-            'nodeorganization_set',
+            "nodeorganization_set",
             Prefetch(
-                'component_versions',
+                "component_versions",
                 queryset=NodeComponentVersion.objects.filter(
-                    component_type='controller'
-                ).order_by('-last_check_at')
-            )
+                    component_type="controller"
+                ).order_by("-last_check_at"),
+            ),
         )
         return queryset
 
@@ -39,34 +51,48 @@ class NodeSerializer(serializers.ModelSerializer):
     def get_versions(self, obj):
         """获取节点关联的控制器版本信息（直接读取已计算好的升级状态）"""
         versions = []
-        component_versions = [v for v in obj.component_versions.all() if v.component_type == 'controller']
+        component_versions = [
+            v for v in obj.component_versions.all() if v.component_type == "controller"
+        ]
 
         for version_info in component_versions:
-            versions.append({
-                'component_type': version_info.component_type,
-                'component_id': version_info.component_id,
-                'version': version_info.version,
-                'latest_version': version_info.latest_version or 'unknown',
-                'upgradeable': version_info.upgradeable,
-                'message': version_info.message,
-                'last_check_at': version_info.last_check_at,
-            })
+            versions.append(
+                {
+                    "component_type": version_info.component_type,
+                    "component_id": version_info.component_id,
+                    "version": version_info.version,
+                    "latest_version": version_info.latest_version or "unknown",
+                    "upgradeable": version_info.upgradeable,
+                    "message": version_info.message,
+                    "last_check_at": version_info.last_check_at,
+                }
+            )
 
         return versions
 
 
 class BatchBindingNodeConfigurationSerializer(serializers.Serializer):
-    node_ids = serializers.ListField(
-        child=serializers.CharField(),
-        required=True
-    )
+    node_ids = serializers.ListField(child=serializers.CharField(), required=True)
     collector_configuration_id = serializers.CharField(required=True)
 
 
 class BatchOperateNodeCollectorSerializer(serializers.Serializer):
-    node_ids = serializers.ListField(
-        child=serializers.CharField(),
-        required=True
-    )
+    node_ids = serializers.ListField(child=serializers.CharField(), required=True)
     collector_id = serializers.CharField(required=True)
-    operation = serializers.ChoiceField(choices=['start', 'restart', 'stop'], required=True)
+    operation = serializers.ChoiceField(
+        choices=["start", "restart", "stop"], required=True
+    )
+
+
+class TaskNodesQuerySerializer(serializers.Serializer):
+    page = serializers.IntegerField(required=False, default=1, min_value=1)
+    page_size = serializers.IntegerField(
+        required=False, default=20, min_value=1, max_value=500
+    )
+    status = serializers.ListField(
+        child=serializers.ChoiceField(
+            choices=["waiting", "running", "success", "error"]
+        ),
+        required=False,
+        allow_empty=False,
+    )

@@ -1,8 +1,11 @@
 from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
+from typing import Any, cast
 
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
+from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode
+from apps.node_mgmt.serializers.node import TaskNodesQuerySerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.tasks.installer import (
     install_controller,
@@ -97,8 +100,58 @@ class InstallerViewSet(ViewSet):
         url_path="collector/install/(?P<task_id>[^/.]+)/nodes",
     )
     def collector_install_nodes(self, request, task_id):
-        data = InstallerService.install_collector_nodes(task_id)
-        return WebUtils.response_success(data)
+        serializer = TaskNodesQuerySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_data = cast(dict[str, Any], serializer.validated_data)
+
+        queryset = CollectorTaskNode.objects.filter(task_id=task_id).select_related(
+            "node"
+        )
+        status_list = validated_data.get("status")
+        if status_list:
+            queryset = queryset.filter(status__in=status_list)
+
+        page = validated_data.get("page", 1)
+        page_size = validated_data.get("page_size", 20)
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        total = queryset.count()
+        items = queryset.order_by("id")[start:end]
+        data = [
+            {
+                "node_id": task_node.node_id,
+                "status": task_node.status,
+                "result": task_node.result,
+                "ip": task_node.node.ip,
+                "os": task_node.node.operating_system,
+            }
+            for task_node in items
+        ]
+
+        summary_queryset = CollectorTaskNode.objects.filter(task_id=task_id)
+        summary = {
+            "total": summary_queryset.count(),
+            "waiting": summary_queryset.filter(status="waiting").count(),
+            "running": summary_queryset.filter(status="running").count(),
+            "success": summary_queryset.filter(status="success").count(),
+            "error": summary_queryset.filter(status="error").count(),
+        }
+
+        task_obj = CollectorTask.objects.filter(id=task_id).first()
+        task_status = task_obj.status if task_obj else "waiting"
+
+        return WebUtils.response_success(
+            {
+                "task_id": task_id,
+                "status": task_status,
+                "summary": summary,
+                "items": data,
+                "count": total,
+                "page": page,
+                "page_size": page_size,
+            }
+        )
 
     # 获取安装命令
     @action(detail=False, methods=["post"], url_path="get_install_command")
