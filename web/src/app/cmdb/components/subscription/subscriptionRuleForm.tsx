@@ -1,12 +1,12 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Form, Input, Radio, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useCommon } from '@/app/cmdb/context/common';
 import { useModelApi } from '@/app/cmdb/api';
-import TriggerTypeConfig from './TriggerTypeConfig';
-import InstanceSelector from './InstanceSelector';
-import RecipientSelector from './RecipientSelector';
+import TriggerTypeConfig from './triggerTypeConfig';
+import InstanceSelector from './instanceSelector';
+import RecipientSelector from './recipientSelector';
 import type {
   QuickSubscribeDefaults,
   SubscriptionRule,

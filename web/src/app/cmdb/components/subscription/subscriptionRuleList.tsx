@@ -25,7 +25,7 @@ const SubscriptionRuleList: React.FC<SubscriptionRuleListProps> = ({
   onEdit,
   onDelete,
   onToggle,
-  tableHeight = 'calc(100vh - 280px)',
+  tableHeight = 'calc(100vh - 260px)',
 }) => {
   const { t } = useTranslation();
   const { flatGroups } = useUserInfoContext();
@@ -53,7 +53,11 @@ const SubscriptionRuleList: React.FC<SubscriptionRuleListProps> = ({
           ellipsis: true,
           render: (_, record) => (
             <Tooltip title={record.name}>
-              <Button type="link" style={{ paddingInline: 0, maxWidth: '100%' }} onClick={() => onEdit(record)}>
+              <Button
+                type="link"
+                style={{ paddingInline: 0, maxWidth: '100%' }}
+                onClick={() => onEdit(record)}
+              >
                 <span className="truncate block">{record.name}</span>
               </Button>
             </Tooltip>
@@ -67,23 +71,33 @@ const SubscriptionRuleList: React.FC<SubscriptionRuleListProps> = ({
           ellipsis: true,
           render: (value) => {
             const text = getOrganizationDisplayText(value, flatGroups);
-            return <Tooltip title={text}><span>{text}</span></Tooltip>;
+            return (
+              <Tooltip title={text}>
+                <span>{text}</span>
+              </Tooltip>
+            );
           },
         },
         {
           title: t('subscription.targetModel'),
           dataIndex: 'model_id',
           key: 'model_id',
-          width: 100,
+          width: 110,
           ellipsis: true,
         },
         {
           title: t('subscription.status'),
           dataIndex: 'is_enabled',
           key: 'is_enabled',
-          width: 60,
+          width: 70,
           render: (_, record) => (
-            <Tooltip title={record.is_enabled ? t('subscription.enabled') : t('subscription.disabled')}>
+            <Tooltip
+              title={
+                record.is_enabled
+                  ? t('subscription.enabled')
+                  : t('subscription.disabled')
+              }
+            >
               <Switch
                 size="small"
                 checked={record.is_enabled}
@@ -97,13 +111,13 @@ const SubscriptionRuleList: React.FC<SubscriptionRuleListProps> = ({
           title: t('subscription.lastTriggeredAt'),
           dataIndex: 'last_triggered_at',
           key: 'last_triggered_at',
-          width: 150,
+          width: 160,
           render: (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-'),
         },
         {
           title: t('common.actions'),
           key: 'actions',
-          width: 80,
+          width: 110,
           render: (_, record) => {
             const editBtn = (
               <Button
@@ -122,7 +136,12 @@ const SubscriptionRuleList: React.FC<SubscriptionRuleListProps> = ({
                 onConfirm={() => onDelete(record.id)}
                 disabled={!record.can_manage}
               >
-                <Button type="link" size="small" style={{ padding: 0 }} danger disabled={!record.can_manage}>
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0 }}
+                  disabled={!record.can_manage}
+                >
                   {t('common.delete')}
                 </Button>
               </Popconfirm>
@@ -130,8 +149,12 @@ const SubscriptionRuleList: React.FC<SubscriptionRuleListProps> = ({
             if (!record.can_manage) {
               return (
                 <Space size={12}>
-                  <Tooltip title={t('subscription.onlyOwnerCanManage')}>{editBtn}</Tooltip>
-                  <Tooltip title={t('subscription.onlyOwnerCanManage')}>{deleteBtn}</Tooltip>
+                  <Tooltip title={t('subscription.onlyOwnerCanManage')}>
+                    {editBtn}
+                  </Tooltip>
+                  <Tooltip title={t('subscription.onlyOwnerCanManage')}>
+                    {deleteBtn}
+                  </Tooltip>
                 </Space>
               );
             }

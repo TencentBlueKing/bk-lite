@@ -203,18 +203,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (isSessionValid) {
-      const userToken = extendedSession.user?.token || null;
-      if (!userToken) {
-        setToken(null);
-        setIsAuthenticated(false);
-        setIsCheckingAuth(false);
-        if (pathname && !authPaths.includes(pathname)) {
-          router.push('/auth/signin');
-        }
-        return;
-      }
-
-      setToken(userToken);
+      setToken(extendedSession.user?.token || extendedSession.user?.id || null);
       setIsAuthenticated(true);
       setIsCheckingAuth(false);
       const userLocale = extendedSession.user?.locale || 'en';

@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import useApiClient from '@/utils/request';
-import { useAuth } from '@/context/auth';
 import { ClientData, AppConfigItem } from '@/types/index';
 
 interface ClientDataContextType {
@@ -53,7 +52,6 @@ const sortClientData = (data: ClientData[]): ClientData[] => {
 
 export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { get, isLoading: apiLoading } = useApiClient();
-  const { token, isAuthenticated, isCheckingAuth } = useAuth();
   const [clientData, setClientData] = useState<ClientData[]>([]);
   const [appConfigList, setAppConfigList] = useState<AppConfigItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +65,7 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       return;
     }
 
-    if (apiLoading || isCheckingAuth || !isAuthenticated || !token) {
+    if (apiLoading) {
       return;
     }
 
@@ -83,14 +81,10 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     } finally {
       setLoading(false);
     }
-  }, [get, apiLoading, isAuthenticated, isCheckingAuth, token]);
+  }, [get, apiLoading]);
 
   // 获取用户配置的应用列表
   const fetchAppConfig = useCallback(async () => {
-    if (apiLoading || isCheckingAuth || !isAuthenticated || !token) {
-      return [];
-    }
-
     try {
       setAppConfigLoading(true);
       const data = await get('/console_mgmt/user_app_sets/current_user_apps/');
@@ -113,13 +107,13 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       return;
     }
 
-    if (apiLoading || isCheckingAuth || !isAuthenticated || !token) {
+    if (apiLoading) {
       return;
     }
 
     await fetchAppConfig();
     appConfigInitializedRef.current = true;
-  }, [apiLoading, fetchAppConfig, isAuthenticated, isCheckingAuth, token]);
+  }, [apiLoading, fetchAppConfig]);
 
   useEffect(() => {
     initialize();
@@ -130,17 +124,13 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, [initializeAppConfig]);
 
   const getAll = useCallback(async () => {
-    if (loading || apiLoading || isCheckingAuth || !isAuthenticated || !token) {
+    if (loading || apiLoading) {
       await initialize();
     }
     return [...clientData];
-  }, [initialize, loading, apiLoading, clientData, isAuthenticated, isCheckingAuth, token]);
+  }, [initialize, loading, apiLoading, clientData]);
 
   const refresh = useCallback(async () => {
-    if (apiLoading || isCheckingAuth || !isAuthenticated || !token) {
-      return [];
-    }
-
     try {
       const data = await get('/core/api/get_client/');
       if (data) {
@@ -151,7 +141,7 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       console.error('Failed to refresh client data:', err);
       return [];
     }
-  }, [apiLoading, get, isAuthenticated, isCheckingAuth, token]);
+  }, [get]);
 
   const refreshAppConfig = useCallback(async () => {
     return await fetchAppConfig();

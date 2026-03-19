@@ -13,46 +13,6 @@ const apiClient = axios.create({
   },
 });
 
-// 全局 token 引用，供 interceptor 使用
-let globalTokenRef: { current: string | null } = { current: null };
-let interceptorsRegistered = false;
-
-// 在模块级别注册 interceptor（只执行一次）
-const setupInterceptors = () => {
-  if (interceptorsRegistered) return;
-  interceptorsRegistered = true;
-
-  apiClient.interceptors.request.use(
-    (config: InternalAxiosRequestConfig) => {
-      if (globalTokenRef.current) {
-        config.headers.Authorization = `Bearer ${globalTokenRef.current}`;
-      }
-      return config;
-    },
-    (error) => Promise.reject(error)
-  );
-
-  apiClient.interceptors.response.use(
-    (response: AxiosResponse) => response,
-    (error) => {
-      if (error.response) {
-        const { status } = error.response;
-        if (status === 401) {
-          signOut({ redirect: false }).then(() => {
-            if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/auth/')) {
-              signIn();
-            }
-          });
-        }
-      }
-      return Promise.reject(error);
-    }
-  );
-};
-
-// 初始化 interceptors
-setupInterceptors();
-
 const handleResponse = (response: AxiosResponse, onError?: () => void) => {
   const { result, message: msg, data } = response.data;
   if (!result) {
@@ -72,52 +32,61 @@ const useApiClient = () => {
   const authContext = useAuth();
   const { data: session } = useSession();
   const token = (session?.user as any)?.token || authContext?.token || null;
-  const isCheckingAuthRef = useRef(authContext?.isCheckingAuth ?? true);
-  const isAuthenticatedRef = useRef(authContext?.isAuthenticated ?? false);
+  const tokenRef = useRef(token);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    globalTokenRef.current = token;
-    isCheckingAuthRef.current = authContext?.isCheckingAuth ?? true;
-    isAuthenticatedRef.current = authContext?.isAuthenticated ?? false;
-    setIsLoading(Boolean(authContext?.isCheckingAuth) || (Boolean(authContext?.isAuthenticated) && !token));
-  }, [authContext?.isAuthenticated, authContext?.isCheckingAuth, token]);
-
-  const waitForAuthReady = useCallback(async () => {
-    if (globalTokenRef.current) {
-      return globalTokenRef.current;
+    tokenRef.current = token;
+    if (token) {
+      setIsLoading(false);
     }
+  }, [token]);
 
-    const startedAt = Date.now();
-
-    while (isCheckingAuthRef.current && Date.now() - startedAt < 10000) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      if (globalTokenRef.current) {
-        return globalTokenRef.current;
+  useEffect(() => {
+    const requestInterceptor = apiClient.interceptors.request.use(
+      (config: InternalAxiosRequestConfig) => {
+        if (!tokenRef.current) {
+          signIn();
+          return Promise.reject(new Error('No token available'));
+        }
+        config.headers.Authorization = `Bearer ${tokenRef.current}`;
+        return config;
+      },
+      (error) => {
+        return Promise.reject(error);
       }
-    }
+    );
 
-    if (globalTokenRef.current) {
-      return globalTokenRef.current;
-    }
+    const responseInterceptor = apiClient.interceptors.response.use(
+      (response: AxiosResponse) => response,
+      (error) => {
+        if (error.response) {
+          const { status } = error.response;
+          const messageText = error.response?.data?.message;
+          if (status === 401) {
+            signOut({ redirect: false }).then(() => {
+              signIn();
+            });
+          } else if ([400, 403].includes(status)) {
+            message.error(messageText);
+            return Promise.reject(new Error(messageText));
+          } else if (status === 500) {
+            message.error(messageText);
+            return Promise.reject(new Error(t('common.serverError')));
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
 
-    const currentToken = (session?.user as any)?.token || authContext?.token || null;
-    if (currentToken) {
-      globalTokenRef.current = currentToken;
-      return currentToken;
-    }
-
-    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/auth/') && !isAuthenticatedRef.current) {
-      signIn();
-    }
-
-    throw new Error('No token available');
-  }, [session, authContext?.token]);
+    return () => {
+      apiClient.interceptors.request.eject(requestInterceptor);
+      apiClient.interceptors.response.eject(responseInterceptor);
+    };
+  }, []);
 
   const get = useCallback(async <T = any>(url: string, config?: AxiosRequestConfig, onError?: () => void): Promise<T> => {
     try {
-      await waitForAuthReady();
       const response = await apiClient.get<T>(url, config);
       if (config?.responseType === 'blob') {
         return response.data;
@@ -126,47 +95,43 @@ const useApiClient = () => {
     } catch (error) {
       throw error;
     }
-  }, [waitForAuthReady]);
+  }, []);
 
   const post = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig, onError?: () => void): Promise<T> => {
     try {
-      await waitForAuthReady();
       const response = await apiClient.post<T>(url, data, config);
       return handleResponse(response, onError);
     } catch (error) {
       throw error;
     }
-  }, [waitForAuthReady]);
+  }, []);
 
   const put = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig, onError?: () => void): Promise<T> => {
     try {
-      await waitForAuthReady();
       const response = await apiClient.put<T>(url, data, config);
       return handleResponse(response, onError);
     } catch (error) {
       throw error;
     }
-  }, [waitForAuthReady]);
+  }, []);
 
   const del = useCallback(async <T = any>(url: string, config?: AxiosRequestConfig, onError?: () => void): Promise<T> => {
     try {
-      await waitForAuthReady();
       const response = await apiClient.delete<T>(url, config);
       return handleResponse(response, onError);
     } catch (error) {
       throw error;
     }
-  }, [waitForAuthReady]);
+  }, []);
 
   const patch = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig, onError?: () => void): Promise<T> => {
     try {
-      await waitForAuthReady();
       const response = await apiClient.patch<T>(url, data, config);
       return handleResponse(response, onError);
     } catch (error) {
       throw error;
     }
-  }, [waitForAuthReady]);
+  }, []);
 
   return { get, post, put, del, patch, isLoading };
 };

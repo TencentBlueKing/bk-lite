@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button, Drawer, Input, Modal, Space } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useSubscriptionList, useSubscriptionMutation } from '@/app/cmdb/hooks/useSubscription';
-import SubscriptionRuleList from './SubscriptionRuleList';
-import SubscriptionRuleForm, { type SubscriptionRuleFormRef } from './SubscriptionRuleForm';
+import SubscriptionRuleList from './subscriptionRuleList';
+import SubscriptionRuleForm, { type SubscriptionRuleFormRef } from './subscriptionRuleForm';
 import type { QuickSubscribeDefaults, SubscriptionRule } from '@/app/cmdb/types/subscription';
 
 interface SubscriptionDrawerProps {
@@ -71,7 +71,7 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
   return (
     <Drawer
       open={open}
-      width={800}
+      width={830}
       onClose={() => {
         setFormOpen(false);
         setEditingRule(undefined);

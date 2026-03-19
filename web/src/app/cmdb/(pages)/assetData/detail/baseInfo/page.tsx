@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import List from './list';
 import { useModelApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import { useSearchParams } from 'next/navigation';
@@ -10,8 +10,8 @@ import {
 } from '@/app/cmdb/utils/collectTask';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { useUserInfoContext } from '@/context/userInfo';
-import SubscriptionDrawer from '@/app/cmdb/components/subscription/SubscriptionDrawer';
-import SubscriptionRuleForm, { type SubscriptionRuleFormRef } from '@/app/cmdb/components/subscription/SubscriptionRuleForm';
+import SubscriptionDrawer from '@/app/cmdb/components/subscription/subscriptionDrawer';
+import SubscriptionRuleForm, { type SubscriptionRuleFormRef } from '@/app/cmdb/components/subscription/subscriptionRuleForm';
 import { useQuickSubscribeDefaults, useSubscriptionMutation } from '@/app/cmdb/hooks/useSubscription';
 import { useTranslation } from '@/utils/i18n';
 import {
