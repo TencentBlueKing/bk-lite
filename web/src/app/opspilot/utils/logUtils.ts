@@ -94,8 +94,10 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
     const shouldProcessOpenAI = normalizedRole === 'bot' && entryType === 'OpenAI';
     const shouldProcessAGUI = normalizedRole === 'bot' && !shouldProcessOpenAI && (entryType === 'AG-UI' || (typeof rawContent === 'string' && rawContent.trim().startsWith('[')));
 
-    let processed: { content: any; browserStepProgress: any; browserStepsHistory: any } = {
+    let processed: { content: any; thinking: any; isThinking: boolean; browserStepProgress: any; browserStepsHistory: any } = {
       content: rawContent,
+      thinking: '',
+      isThinking: false,
       browserStepProgress: null,
       browserStepsHistory: null
     };
@@ -103,13 +105,15 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
       const parsed = processHistoryMessageWithExtras(rawContent, 'bot');
       processed = {
         content: parsed.content,
+        thinking: parsed.thinking ?? '',
+        isThinking: parsed.isThinking ?? false,
         browserStepProgress: parsed.browserStepProgress ?? null,
         browserStepsHistory: parsed.browserStepsHistory ?? null
       };
     } else if (shouldProcessOpenAI) {
       const parsed = typeof rawContent === 'string' ? parseJsonValue(rawContent) : rawContent;
       const extracted = extractOpenAIContent(parsed);
-      processed = { content: extracted || (typeof rawContent === 'string' ? rawContent : String(rawContent ?? '')), browserStepProgress: null, browserStepsHistory: null };
+      processed = { content: extracted || (typeof rawContent === 'string' ? rawContent : String(rawContent ?? '')), thinking: '', isThinking: false, browserStepProgress: null, browserStepsHistory: null };
     }
     let tagDetail;
     if (item.tag_id) {
@@ -140,6 +144,8 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
       updateAt: item.conversation_time ? new Date(item.conversation_time).toISOString() : undefined,
       annotation: annotation,
       knowledgeBase: item.citing_knowledge,
+      thinking: processed.thinking,
+      isThinking: processed.isThinking,
       browserStepProgress: processed.browserStepProgress ?? null,
       browserStepsHistory: processed.browserStepsHistory ?? null,
     } as CustomChatMessage;

@@ -104,6 +104,157 @@
   margin-top: 5px;
 }
 
+.thinkingPanel {
+  margin-bottom: 12px;
+  border: 1px solid rgba(31, 53, 84, 0.12);
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.thinkingPanelActive {
+  border-color: rgba(31, 53, 84, 0.14);
+}
+
+.thinkingPanelDone {
+  background: transparent;
+}
+
+.thinkingToggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-2);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.thinkingArrow {
+  font-size: 13px;
+  color: #263549;
+  transform: rotate(-45deg);
+  transition: transform 0.2s ease;
+  line-height: 1;
+}
+
+.thinkingArrowExpanded {
+  transform: rotate(45deg);
+}
+
+.thinkingMeta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thinkingBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.thinkingBadgeActive {
+  color: #202f44;
+}
+
+.thinkingBadgeDone {
+  color: #202f44;
+}
+
+.thinkingBadgeDot {
+  width: 0;
+  height: 0;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.thinkingAside {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.thinkingIconButton {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.thinkingIconButtonExpanded {
+  background: transparent;
+}
+
+.thinkingDots {
+  display: inline-flex;
+  gap: 4px;
+
+  span {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: #1677ff;
+    animation: thinking-dot 1.4s infinite ease-in-out both;
+  }
+
+  span:nth-child(1) {
+    animation-delay: -0.32s;
+  }
+
+  span:nth-child(2) {
+    animation-delay: -0.16s;
+  }
+}
+
+.thinkingBody {
+  margin: 0 14px 10px;
+  border-top: 1px solid rgba(31, 53, 84, 0.08);
+  padding: 8px 0 0;
+}
+
+.thinkingText {
+  white-space: pre-wrap;
+  line-height: 1.8;
+  font-size: 12px;
+  color: #4a596e;
+}
+
+.thinkingPlaceholder {
+  color: #8a97a7;
+  font-size: 12px;
+}
+
+@keyframes thinking-dot {
+  0%, 80%, 100% {
+    transform: scale(0.65);
+    opacity: 0.45;
+  }
+
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 .fullscreen {
   position: fixed;
   top: 0;
