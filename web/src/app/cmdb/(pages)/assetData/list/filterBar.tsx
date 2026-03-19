@@ -11,6 +11,7 @@ import { useTranslation } from '@/utils/i18n';
 dayjs.extend(customParseFormat);
 import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
 import { useSavedFiltersApi, type SavedFiltersConfigValue, type SavedFilterItem } from '@/app/cmdb/api/userConfig';
+import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
 
 const { RangePicker } = DatePicker;
 
@@ -460,16 +461,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
       default:
         if (fieldType === 'tag') {
           const fieldInfo = getFieldInfo(editingFilter.field);
-          const tagOption = fieldInfo?.option as any;
-          const options = Array.isArray(tagOption?.options) ? tagOption.options : [];
-          const grouped = options.reduce((acc: Record<string, string[]>, item: any) => {
-            const key = String(item.key || '').trim();
-            const val = String(item.value || '').trim();
-            if (!key || !val) return acc;
-            if (!acc[key]) acc[key] = [];
-            acc[key].push(val);
-            return acc;
-          }, {});
 
           return (
             <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectValue') }]}> 
@@ -479,10 +470,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                 allowClear
                 showSearch
                 style={{ width: '100%' }}
-                options={Object.keys(grouped).map((key) => ({
-                  label: key,
-                  options: grouped[key].map((v) => ({ label: `${key}:${v}`, value: `${key}:${v}` })),
-                }))}
+                options={getTagOptions(fieldInfo)}
               />
             </Form.Item>
           );

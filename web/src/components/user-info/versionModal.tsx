@@ -46,7 +46,7 @@ const VersionModal: React.FC<VersionModalProps> = ({ visible, onClose }) => {
 
   return (
     <OperateModal
-      visible={visible}
+      open={visible}
       title={t('common.version')}
       footer={null}
       onCancel={onClose}

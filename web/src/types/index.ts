@@ -53,6 +53,7 @@ export interface UserInfoContextType {
   isSuperUser: boolean;
   isFirstLogin: boolean;
   userId: string;
+  username: string;
   displayName: string;
   setSelectedGroup: (group: Group) => void;
   refreshUserInfo: () => Promise<void>;

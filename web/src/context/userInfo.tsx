@@ -24,6 +24,7 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { isCheckingAuth } = useAuth(); // 添加 auth context
   const [selectedGroup, setSelectedGroupState] = useState<Group | null>(null);
   const [userId, setUserId] = useState<string>('');
+  const [username, setUsername] = useState<string>('');
   const [displayName, setDisplayName] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [roles, setRoles] = useState<string[]>([]);
@@ -51,6 +52,7 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setIsSuperUser(!!is_superuser);
       setIsFirstLogin(!!is_first_login);
       setUserId(user_id || '');
+      setUsername(username || (session?.user as any)?.username || '');
       setDisplayName(display_name || (session?.user as any)?.username || 'User');
 
       if (groupList?.length) {
@@ -99,7 +101,7 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   return (
-    <UserInfoContext.Provider value={{ loading, roles, groups, groupTree, selectedGroup, flatGroups, isSuperUser, isFirstLogin, userId, displayName, setSelectedGroup, refreshUserInfo }}>
+    <UserInfoContext.Provider value={{ loading, roles, groups, groupTree, selectedGroup, flatGroups, isSuperUser, isFirstLogin, userId, username, displayName, setSelectedGroup, refreshUserInfo }}>
       {children}
     </UserInfoContext.Provider>
   );
