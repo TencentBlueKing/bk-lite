@@ -64,7 +64,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
   useEffect(() => {
     const userAgent = navigator.userAgent.toLowerCase();
     setIsWechatBrowser(userAgent.includes('micromessenger') || userAgent.includes('wechat'));
-    
+
     // Fetch WeChat settings, BK settings and domain list
     fetchWechatSettings();
     fetchBkSettings();
@@ -76,13 +76,13 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
       setLoadingDomains(true);
       const response = await fetch('/api/proxy/core/api/get_domain_list/', {
         method: "GET",
-        headers: { 
-          "Content-Type": "application/json" 
+        headers: {
+          "Content-Type": "application/json"
         },
       });
-      
+
       const responseData = await response.json();
-      
+
       if (response.ok && responseData.result && Array.isArray(responseData.data)) {
         setDomainList(responseData.data);
         // Set default domain if available
@@ -106,13 +106,13 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
       setLoadingWechatSettings(true);
       const response = await fetch("/api/proxy/core/api/get_wechat_settings/", {
         method: "GET",
-        headers: { 
-          "Content-Type": "application/json" 
+        headers: {
+          "Content-Type": "application/json"
         },
       });
-      
+
       const responseData = await response.json();
-      
+
       if (response.ok && responseData.result) {
         setWechatSettings({
           enabled: true,
@@ -134,8 +134,8 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
       setLoadingBkSettings(true);
       const response = await fetch('/api/proxy/core/api/get_bk_settings/', {
         method: "GET",
-        headers: { 
-          "Content-Type": "application/json" 
+        headers: {
+          "Content-Type": "application/json"
         },
       });
 
@@ -161,12 +161,12 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
     e.preventDefault();
     setIsLoading(true);
     setFormError("");
-    
+
     try {
       const response = await fetch('/api/proxy/core/api/login/', {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json" 
+        headers: {
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           username,
@@ -174,31 +174,31 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
           domain,
         }),
       });
-      
+
       const responseData = await response.json();
-      
+
       if (!response.ok || !responseData.result) {
         setFormError(responseData.message || "Login failed");
         setIsLoading(false);
         return;
       }
-      
+
       const userData = responseData.data;
       setLoginData(userData);
-      
+
       if (userData.temporary_pwd) {
         setAuthStep('reset-password');
         setIsLoading(false);
         return;
       }
-      
+
       if (userData.enable_otp) {
         if (userData.qrcode) {
           try {
             const qrResponse = await fetch(`/api/proxy/core/api/generate_qr_code/?username=${encodeURIComponent(userData.username)}`, {
               method: "GET",
-              headers: { 
-                "Content-Type": "application/json" 
+              headers: {
+                "Content-Type": "application/json"
               },
             });
             const qrData = await qrResponse.json();
@@ -213,10 +213,10 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
         setIsLoading(false);
         return;
       }
-      
+
       // Complete authentication first, then handle redirect_url
       await completeAuthentication(userData);
-      
+
     } catch (error) {
       console.error("Login error:", error);
       setFormError("An error occurred during login");
@@ -226,14 +226,14 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
 
   const handlePasswordResetComplete = async (updatedLoginData: LoginResponse) => {
     setLoginData(updatedLoginData);
-    
+
     if (updatedLoginData.enable_otp) {
       if (updatedLoginData.qrcode) {
         try {
           const qrResponse = await fetch(`/api/proxy/core/api/generate_qr_code/?username=${encodeURIComponent(updatedLoginData.username || '')}`, {
             method: "GET",
-            headers: { 
-              "Content-Type": "application/json" 
+            headers: {
+              "Content-Type": "application/json"
             },
           });
           const qrData = await qrResponse.json();
@@ -247,7 +247,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
       setAuthStep('otp-verification');
       return;
     }
-    
+
     await completeAuthentication(updatedLoginData);
   };
 
@@ -289,9 +289,9 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
         userData: JSON.stringify(userDataForAuth),
         callbackUrl: callbackUrl || "/",
       }) as any;
-      
+
       console.log('SignIn result:', result);
-      
+
       if (result?.error) {
         console.error('SignIn error:', result.error);
         setFormError(result.error);
@@ -322,8 +322,8 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
     const oauthCallbackUrl = buildOauthCallbackBridgeUrl(callbackUrl || "/", thirdLoginFlag);
 
     console.log("Callback URL:", oauthCallbackUrl);
-    
-    signIn("wechat", { 
+
+    signIn("wechat", {
       callbackUrl: oauthCallbackUrl,
       redirect: true
     });
@@ -357,7 +357,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
           className="w-full"
           size="middle"
           style={{ height: '48px' }}
-          dropdownStyle={{ 
+          dropdownStyle={{
             borderRadius: '8px',
             boxShadow: '0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
           }}
@@ -404,7 +404,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
           className="h-12"
         />
       </div>
-      
+
       <div className="space-y-2">
         <label htmlFor="password" className="text-sm font-medium text-[var(--color-text-1)]">Password</label>
         <Input.Password
@@ -417,9 +417,9 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
           className="h-12"
         />
       </div>
-      
-      <button 
-        type="submit" 
+
+      <button
+        type="submit"
         disabled={isLoading}
         className={`w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg shadow transition-all duration-150 ease-in-out transform hover:-translate-y-0.5 ${isLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
       >
@@ -472,7 +472,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
               <span className="px-2 bg-[var(--color-bg)] text-[var(--color-text-1)]">Or continue with</span>
             </div>
           </div>
-          
+
           <div className="mt-6 space-y-3">
             <div className="w-full h-12 bg-gray-200 rounded-lg animate-pulse"></div>
             {loadingBkSettings && (
@@ -497,7 +497,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
             <span className="px-2 bg-[var(--color-bg)] text-[var(--color-text-1)]">Or continue with</span>
           </div>
         </div>
-        
+
         <div className="mt-6 space-y-3">
           {hasWechat && (
             <button
@@ -507,7 +507,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
               Sign in with WeChat
             </button>
           )}
-          
+
           {hasBkLogin && (
             <button
               onClick={handleBkSignIn}
@@ -517,7 +517,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
             </button>
           )}
         </div>
-        
+
         {isWechatBrowser && hasWechat && (
           <div className="mt-4 text-center text-sm text-green-600">
             You are using WeChat browser, for best experience use the WeChat login.
@@ -529,7 +529,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
 
   return (
     <div className="flex w-[calc(100%+2rem)] h-screen -m-4">
-      <div 
+      <div
         className="w-3/5 hidden md:block bg-gradient-to-br from-blue-500 to-indigo-700"
         style={{
           backgroundImage: "url('/system-login-bg.jpg')",
@@ -538,7 +538,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
         }}
       >
       </div>
-      
+
       <div className="w-full h-full md:w-2/5 flex items-center justify-center p-8 bg-[var(--bg-color-1)] overflow-y-auto">
         <div className="w-full h-full max-w-md">
           <div className="text-center mb-10">
@@ -556,23 +556,23 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
               {authStep === 'otp-verification' && 'Complete the verification process'}
             </p>
           </div>
-          
+
           {error && (
             <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded mb-6">
               <p className="font-medium">{signinErrors[error.toLowerCase()]}</p>
             </div>
           )}
-          
+
           {formError && (
             <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded mb-6">
               <p className="font-medium">{formError}</p>
             </div>
           )}
-          
+
           {authStep === 'login' && renderLoginForm()}
           {authStep === 'reset-password' && renderPasswordResetForm()}
           {authStep === 'otp-verification' && renderOtpVerificationForm()}
-          
+
           {authStep === 'login' && renderWechatLoginSection()}
         </div>
       </div>

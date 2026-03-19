@@ -26,7 +26,7 @@ export default function SignoutPage() {
   const handleSignout = async () => {
     try {
       setIsLoading(true);
-      
+
       // Call logout API for server-side cleanup
       await fetch("/api/auth/federated-logout", {
         method: "POST",
@@ -34,14 +34,14 @@ export default function SignoutPage() {
           'Content-Type': 'application/json',
         },
       });
-      
+
       // Clear authentication token
       clearAuthToken();
-      
+
       // Use NextAuth's signOut to clear client session
       await signOut({ redirect: false });
       const loginUrl = buildLoginUrl();
-      
+
       // Redirect to login page
       window.location.href = loginUrl;
     } catch (error) {
@@ -56,7 +56,7 @@ export default function SignoutPage() {
       setIsLoading(false);
     }
   };
-  
+
   if (status === 'loading') {
     return (
       <div className="flex justify-center items-center h-screen">
