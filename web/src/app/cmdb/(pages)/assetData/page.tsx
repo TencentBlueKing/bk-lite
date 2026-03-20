@@ -854,7 +854,18 @@ const AssetDataContent = () => {
     setCurrentColumns([...orderedColumns, actionColumn]);
   }, [propertyList, displayFieldKeys, propertyListGroups]);
 
+  const showSubscribeAction = selectedRowKeys.length > 0 || storeQueryList.length > 0;
+
   const batchOperateItems: MenuProps['items'] = [
+    {
+      key: 'subscribe',
+      label: (
+        <a onClick={() => openSubscription(selectedRowKeys.length > 0 ? 'list_selection' : 'list_filter')}>
+          {t('subscription.subscribe')}
+        </a>
+      ),
+      disabled: !showSubscribeAction,
+    },
     {
       key: 'batchEdit',
       label: (
@@ -915,8 +926,6 @@ const AssetDataContent = () => {
     { type: 'divider', key: 'divider-export-batch' },
     ...buildPrefixedItems(batchOperateItems, 'batch'),
   ];
-
-  const showSubscribeAction = selectedRowKeys.length > 0 || storeQueryList.length > 0;
 
   return (
     <Spin spinning={loading} wrapperClassName={assetDataStyle.assetLoading}>
@@ -994,13 +1003,6 @@ const AssetDataContent = () => {
                 className={`${assetDataStyle.actionGroup} ${isActionsCollapsed ? assetDataStyle.actionGroupCollapsed : ''}`}
                 aria-hidden={isActionsCollapsed}
               >
-                {showSubscribeAction && (
-                  <Button
-                    onClick={() => openSubscription(selectedRowKeys.length > 0 ? 'list_selection' : 'list_filter')}
-                  >
-                    {t('subscription.subscribe')}
-                  </Button>
-                )}
                 <PermissionWrapper requiredPermissions={['Add']}>
                   <Dropdown menu={{ items: addInstItems }} placement="bottom">
                     <Button type="primary">
@@ -1022,7 +1024,6 @@ const AssetDataContent = () => {
               </div>
               <Dropdown
                 menu={{ items: isActionsCollapsed ? collapsedMoreItems : batchOperateItems }}
-                disabled={!isActionsCollapsed && !selectedRowKeys.length}
                 placement="bottom"
               >
                 <Button>
@@ -1039,11 +1040,6 @@ const AssetDataContent = () => {
           </div>
           <div ref={actionSizerRef} className={assetDataStyle.actionSizer}>
             <Space>
-              {showSubscribeAction && (
-                <Button>
-                  {t('subscription.subscribe')}
-                </Button>
-              )}
               <Button type="primary">
                 <Space>
                   {t('common.addNew')}
