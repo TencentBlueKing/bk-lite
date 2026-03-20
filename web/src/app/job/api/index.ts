@@ -25,6 +25,8 @@ import {
   JobRecordParams,
   JobRecordListResponse,
   JobRecordDetail,
+  DashboardSuccessRateCompare,
+  DashboardTrend,
   ExecutionTargetSource,
   TargetListItem,
 } from '@/app/job/types';
@@ -366,6 +368,26 @@ const useJobApi = () => {
     return await post(`/job_mgmt/api/scheduled_task/${id}/run_now/`);
   };
 
+  const getDashboardTrend = async (
+    days: 7 | 30,
+    config?: AxiosRequestConfig
+  ): Promise<DashboardTrend[]> => {
+    return await get('/job_mgmt/api/dashboard/trend/', {
+      params: { days },
+      ...config,
+    });
+  };
+
+  const getDashboardSuccessRateCompare = async (
+    days: 7 | 30,
+    config?: AxiosRequestConfig
+  ): Promise<DashboardSuccessRateCompare> => {
+    return await get('/job_mgmt/api/dashboard/success_rate_compare/', {
+      params: { days },
+      ...config,
+    });
+  };
+
   interface TemplateParamItem {
     name: string;
     value: unknown;
@@ -478,6 +500,8 @@ const useJobApi = () => {
     patchScheduledTask,
     deleteScheduledTask,
     runScheduledTaskNow,
+    getDashboardTrend,
+    getDashboardSuccessRateCompare,
     getJobRecordList,
     getJobRecordDetail,
     reExecuteJob,
