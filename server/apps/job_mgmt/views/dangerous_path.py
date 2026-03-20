@@ -5,7 +5,7 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.job_mgmt.constants import DangerousLevel
+from apps.job_mgmt.constants import DangerousLevel, MatchType
 from apps.job_mgmt.filters.dangerous_path import DangerousPathFilter
 from apps.job_mgmt.models import DangerousPath
 from apps.job_mgmt.serializers.dangerous_path import DangerousPathCreateSerializer, DangerousPathSerializer, DangerousPathUpdateSerializer
@@ -53,7 +53,18 @@ class DangerousPathViewSet(AuthViewSet):
         """获取当前组启用的所有高危路径规则"""
         current_team = int(request.COOKIES.get("current_team", 0))
         paths = DangerousPath.objects.filter(is_enabled=True, team__contains=current_team)
-        result = {DangerousLevel.CONFIRM: [], DangerousLevel.FORBIDDEN: []}
+
+        result = {
+            DangerousLevel.CONFIRM: {MatchType.EXACT: [], MatchType.REGEX: []},
+            DangerousLevel.FORBIDDEN: {MatchType.EXACT: [], MatchType.REGEX: []},
+        }
         for path in paths:
-            result[path.level].append(path.pattern)
+            level = path.level
+            match_type = path.match_type
+            if level not in result:
+                result[level] = {MatchType.EXACT: [], MatchType.REGEX: []}
+            if match_type not in result[level]:
+                result[level][match_type] = []
+            result[level][match_type].append(path.pattern)
+
         return Response(result)

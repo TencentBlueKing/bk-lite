@@ -25,8 +25,8 @@ executors:
       windows: plugins/inputs/host/host_windows_discover.ps1
 
     collector:
-      module: plugins.script_executor
-      class: SSHPlugin
+      module: plugins.inputs.host.host_info
+      class: HostInfo
 
     # 默认脚本
     default_script: linux

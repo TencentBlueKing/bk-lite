@@ -98,6 +98,60 @@ def _process_think_content(
     return output_content, think_buffer, in_think_block, False, has_think_tags
 
 
+def _split_think_content(
+    content_chunk,
+    think_buffer,
+    in_think_block,
+    is_first_content,
+    has_think_tags,
+):
+    """将内容拆分为可见内容和 think 内容，复用 show_think=False 的识别逻辑"""
+    visible_content = ""
+    thinking_content = ""
+
+    if is_first_content:
+        think_buffer += content_chunk
+        if "<think>" not in think_buffer:
+            return think_buffer, "", "", in_think_block, False, False
+
+        has_think_tags = True
+        think_start = think_buffer.find("<think>")
+        visible_content += think_buffer[:think_start]
+        think_buffer = think_buffer[think_start + 7 :]
+        in_think_block = True
+        is_first_content = False
+
+    if not has_think_tags:
+        return content_chunk, "", think_buffer, in_think_block, False, has_think_tags
+
+    think_buffer += content_chunk
+
+    while think_buffer:
+        if in_think_block:
+            think_end = think_buffer.find("</think>")
+            if think_end == -1:
+                thinking_content += think_buffer
+                think_buffer = ""
+                break
+
+            thinking_content += think_buffer[:think_end]
+            think_buffer = think_buffer[think_end + 8 :]
+            in_think_block = False
+            continue
+
+        think_start = think_buffer.find("<think>")
+        if think_start == -1:
+            visible_content += think_buffer
+            think_buffer = ""
+            break
+
+        visible_content += think_buffer[:think_start]
+        think_buffer = think_buffer[think_start + 7 :]
+        in_think_block = True
+
+    return visible_content, thinking_content, think_buffer, in_think_block, False, has_think_tags
+
+
 def _create_stream_chunk(content, skill_name, finish_reason=None):
     """创建流式响应块"""
     return {
