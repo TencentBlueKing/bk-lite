@@ -419,20 +419,49 @@ const Node = () => {
             collectorTarget,
             installTarget
           );
+
+          // 检查是否有 Ansible-Executor
+          const ansibleExecutorId = 'ansibleexecutor_linux';
+          const ansibleCollectorTarget = (record.status?.collectors || []).find(
+            (item: TableDataItem) => item.collector_id === ansibleExecutorId
+          );
+          const ansibleInstallTarget = (
+            record.status?.collectors_install || []
+          ).find(
+            (item: TableDataItem) => item.collector_id === ansibleExecutorId
+          );
+          const hasAnsibleExecutor =
+            ansibleCollectorTarget || ansibleInstallTarget;
+          const ansibleStatusInfo = hasAnsibleExecutor
+            ? getStatusInfo(ansibleCollectorTarget, ansibleInstallTarget)
+            : null;
+
           return (
-            <>
-              <Tooltip
-                title={`${record.status?.message}`}
-                className="py-1 px-2"
-              >
-                <Tag color={record.active ? 'success' : 'warning'}>Sidecar</Tag>
+            <div className="flex flex-nowrap gap-1">
+              <Tooltip title={`${record.status?.message}`}>
+                <Tag
+                  color={record.active ? 'success' : 'warning'}
+                  className="py-1 px-2"
+                >
+                  Sidecar
+                </Tag>
               </Tooltip>
               <Tooltip title={title}>
                 <Tag color={tagColor} className="py-1 px-2">
                   NATS-Executor
                 </Tag>
               </Tooltip>
-            </>
+              {hasAnsibleExecutor && (
+                <Tooltip title={ansibleStatusInfo?.title}>
+                  <Tag
+                    color={ansibleStatusInfo?.tagColor}
+                    className="py-1 px-2"
+                  >
+                    Ansible-Executor
+                  </Tag>
+                </Tooltip>
+              )}
+            </div>
           );
         }
       },
@@ -508,7 +537,7 @@ const Node = () => {
                 <Tag
                   key={status}
                   color={statusInfo.tagColor}
-                  className="cursor-pointer mr-1 mb-1 py-1 px-2"
+                  className="cursor-pointer py-1 px-2"
                   onClick={() => handleCollectorTagClick(record, allCollectors)}
                 >
                   {statusInfo.text}: {collectors.length}
@@ -517,7 +546,7 @@ const Node = () => {
             }
           );
           return statusTags.length > 0 ? (
-            <div className="flex">{statusTags}</div>
+            <div className="flex flex-nowrap gap-1">{statusTags}</div>
           ) : (
             <span>--</span>
           );
