@@ -169,6 +169,26 @@ export interface Script {
   updated_at: string;
 }
 
+export interface DashboardTrend {
+  date: string;
+  execution_count: number;
+  success_count: number;
+  failed_count: number;
+}
+
+export interface DashboardSuccessRatePeriod {
+  execution_total: number;
+  success_count: number;
+  failed_count: number;
+  success_rate: number;
+}
+
+export interface DashboardSuccessRateCompare {
+  days: number;
+  current_period: DashboardSuccessRatePeriod;
+  success_rate_increase: number;
+}
+
 export interface ScriptListResponse {
   count: number;
   items: Script[];

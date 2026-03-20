@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Form,
   Input,
@@ -11,14 +11,26 @@ import {
   message,
   Modal,
 } from 'antd';
-import { PlusOutlined, InboxOutlined, FileOutlined, CloseOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { InboxOutlined, FileOutlined, CloseOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import useJobApi from '@/app/job/api';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
-import { EnabledDangerousPaths } from '@/app/job/types';
+import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
+import { EnabledDangerousPaths, JobRecordFile } from '@/app/job/types';
 
 const { Dragger } = Upload;
+const FILE_DIST_REPLAY_STORAGE_KEY = 'job.file-dist.replay';
+
+interface FileDistReplayDraft {
+  jobName?: string;
+  timeout?: string;
+  targetSource?: TargetSourceType;
+  selectedHosts?: HostItem[];
+  targetPath?: string;
+  overwriteStrategy?: string;
+  files?: JobRecordFile[];
+}
 
 const FileDistPage = () => {
   const { t } = useTranslation();
@@ -33,7 +45,38 @@ const FileDistPage = () => {
 
   // Store raw File objects on frontend, no upload API call
   const [localFiles, setLocalFiles] = useState<File[]>([]);
+  const [historyFiles, setHistoryFiles] = useState<JobRecordFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const replayDraftRaw = window.sessionStorage.getItem(FILE_DIST_REPLAY_STORAGE_KEY);
+    if (!replayDraftRaw) {
+      return;
+    }
+
+    window.sessionStorage.removeItem(FILE_DIST_REPLAY_STORAGE_KEY);
+
+    try {
+      const replayDraft = JSON.parse(replayDraftRaw) as FileDistReplayDraft;
+      const hosts = replayDraft.selectedHosts || [];
+      setTargetSource(replayDraft.targetSource || 'target_manager');
+      setSelectedHostKeys(hosts.map((host) => host.key));
+      setSelectedHosts(hosts);
+      setHistoryFiles(replayDraft.files || []);
+      form.setFieldsValue({
+        jobName: replayDraft.jobName,
+        targetPath: replayDraft.targetPath,
+        timeout: replayDraft.timeout || '600',
+        overwriteStrategy: replayDraft.overwriteStrategy || 'overwrite',
+      });
+    } catch {
+      // ignore invalid replay payload
+    }
+  }, [form]);
 
   const handleHostConfirm = (keys: string[], hosts: HostItem[]) => {
     setSelectedHostKeys(keys);
@@ -261,7 +304,7 @@ const FileDistPage = () => {
         <Form
           form={form}
           layout="vertical"
-          className="max-w-180"
+          className="w-full"
           initialValues={{ timeout: '600', overwriteStrategy: 'overwrite' }}
         >
           {/* 作业名称 */}
@@ -274,13 +317,10 @@ const FileDistPage = () => {
           </Form.Item>
 
           <Form.Item label={t('job.targetSource')} required>
-            <Radio.Group
+            <TargetSourceSelector
               value={targetSource}
-              onChange={(e) => handleTargetSourceChange(e.target.value)}
-            >
-              <Radio value="node_manager">{t('job.nodeManager')}</Radio>
-              <Radio value="target_manager">{t('job.targetManager')}</Radio>
-            </Radio.Group>
+              onChange={handleTargetSourceChange}
+            />
           </Form.Item>
 
           {/* 目标主机 */}
@@ -288,18 +328,10 @@ const FileDistPage = () => {
             label={t('job.targetHost')}
             required
           >
-            <div className="flex items-center gap-3">
-              <Button
-                type="dashed"
-                icon={<PlusOutlined />}
-                onClick={() => setHostModalOpen(true)}
-              >
-                {t('job.addTargetHost')}
-              </Button>
-              <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
-                {t('job.selectedHosts').replace('{count}', String(selectedHosts.length))}
-              </span>
-            </div>
+            <AddTargetHostButton
+              count={selectedHosts.length}
+              onClick={() => setHostModalOpen(true)}
+            />
           </Form.Item>
 
           {/* 文件上传 */}
@@ -353,6 +385,39 @@ const FileDistPage = () => {
                     />
                   </div>
                 ))}
+              </div>
+            )}
+
+            {historyFiles.length > 0 && localFiles.length === 0 && (
+              <div className="mt-3 flex flex-col gap-2">
+                {historyFiles.map((file, index) => (
+                  <div
+                    key={`${file.file_key}-${index}`}
+                    className="flex items-center justify-between px-4 py-3 rounded-md"
+                    style={{
+                      border: '1px solid var(--color-border-1)',
+                      background: 'var(--color-bg-2)',
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileOutlined style={{ color: 'var(--color-text-3)', fontSize: 16 }} />
+                      <div>
+                        <div className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+                          {file.name}
+                        </div>
+                        <div className="text-xs" style={{ color: 'var(--color-text-3)' }}>
+                          {formatFileSize(file.size)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--color-text-3)' }}>
+                      {t('job.reuploadRequired')}
+                    </div>
+                  </div>
+                ))}
+                <div className="text-xs" style={{ color: 'var(--color-text-3)' }}>
+                  {t('job.reuploadFileHint')}
+                </div>
               </div>
             )}
           </Form.Item>

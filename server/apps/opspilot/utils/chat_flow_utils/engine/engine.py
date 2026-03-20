@@ -1457,14 +1457,41 @@ class ChatFlowEngine:
         """
         next_nodes = []
 
+        # 提取意图结果用于日志
+        intent_result = node_result.get("data", {}).get("intent_result")
+        if intent_result:
+            logger.info(f"[路由决策] 节点 {node_id} 的意图结果: {intent_result!r}")
+
         for edge in self.edges:
             if edge.get("source") != node_id:
                 continue
-            if not self._should_follow_edge(edge, node_result):
-                continue
+            source_handle = edge.get("sourceHandle", "")
             target = edge.get("target")
+            should_follow = self._should_follow_edge(edge, node_result)
+
+            # 记录每条边的匹配情况
+            if intent_result:
+                logger.debug(f"[路由决策] 边 {edge.get('id')}: sourceHandle={source_handle!r}, target={target}, 匹配={should_follow}")
+
+            if not should_follow:
+                continue
             if target:
                 next_nodes.append(target)
+
+        # 记录最终选择的节点
+        if next_nodes:
+            target_nodes_info = []
+            for target_id in next_nodes:
+                target_node = self._get_node_by_id(target_id)
+                if target_node:
+                    node_name = target_node.get("data", {}).get("config", {}).get("agentName", "")
+                    node_type = target_node.get("type", "")
+                    target_nodes_info.append(f"{target_id}(type={node_type}, name={node_name})")
+                else:
+                    target_nodes_info.append(target_id)
+            logger.info(f"[路由决策] 节点 {node_id} -> 下一个节点: {target_nodes_info}")
+        else:
+            logger.info(f"[路由决策] 节点 {node_id} 没有后续节点")
 
         return next_nodes
 

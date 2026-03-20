@@ -24,7 +24,7 @@ class CollectorConstants:
     }
 
     # 容器节点才会默认初始化的采集器配置
-    DEFAULT_CONTAINER_COLLECTOR_CONFIGS = ["Snmptrapd"]
+    DEFAULT_CONTAINER_COLLECTOR_CONFIGS = ["Snmptrapd", "Ansible-Executor"]
 
     IGNORE_ERROR_COLLECTORS = ["Metricbeat", "Auditbeat", "Filebeat", "Packetbeat"]
     IGNORE_ERROR_COLLECTORS_MESSAGES = [
@@ -33,4 +33,4 @@ class CollectorConstants:
     ]
 
     # 忽略的采集器
-    IGNORE_COLLECTORS = ["natsexecutor_windows",  "natsexecutor_linux"]
+    IGNORE_COLLECTORS = ["natsexecutor_windows",  "natsexecutor_linux", "ansibleexecutor_linux"]

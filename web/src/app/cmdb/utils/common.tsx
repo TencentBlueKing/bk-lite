@@ -11,6 +11,9 @@ import {
   Tooltip,
   Table,
   Popover,
+  Button,
+  Space,
+  message,
 } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
@@ -18,6 +21,7 @@ import CollectTaskTreeSelect from '@/app/cmdb/components/collect-task-tree-selec
 import { useUserInfoContext } from '@/context/userInfo';
 import UserAvatar from '@/components/user-avatar';
 import React from 'react';
+import { useTranslation } from '@/utils/i18n';
 import {
   ModelIconItem,
   ColumnItem,
@@ -49,6 +53,140 @@ export const parseTableValue = (val: any): any[] => {
     try { return JSON.parse(val); } catch { return []; }
   }
   return Array.isArray(val) ? val : [];
+};
+
+type TableRowData = Record<string, unknown>;
+
+const getSortedTableColumns = (columns: TableColumnSpec[] = []) =>
+  [...columns].sort((a, b) => a.order - b.order);
+
+const formatTableCellText = (value: unknown): string => {
+  if (value === undefined || value === null || value === '') {
+    return '--';
+  }
+  return String(value);
+};
+
+const getTablePlainText = (
+  tableData: TableRowData[],
+  sortedCols: TableColumnSpec[]
+): string => {
+  const header = sortedCols.map((col) => col.column_name).join('\t');
+  const rows = tableData.map((row) =>
+    sortedCols
+      .map((col) => formatTableCellText(row[col.column_id]))
+      .join('\t')
+  );
+
+  return [header, ...rows].join('\n');
+};
+
+const escapeCsvValue = (value: unknown): string => {
+  const text = value === undefined || value === null ? '' : String(value);
+  const escaped = text.replace(/"/g, '""');
+  return /[",\r\n]/.test(text) ? `"${escaped}"` : escaped;
+};
+
+const downloadTableCsv = (
+  fileName: string,
+  sortedCols: TableColumnSpec[],
+  tableData: TableRowData[]
+) => {
+  const header = sortedCols.map((col) => escapeCsvValue(col.column_name)).join(',');
+  const rows = tableData.map((row) =>
+    sortedCols
+      .map((col) => escapeCsvValue(row[col.column_id]))
+      .join(',')
+  );
+  const csvContent = ['\uFEFF' + header, ...rows].join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = fileName.endsWith('.csv') ? fileName : `${fileName}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const TableFieldReadonlyDisplay: React.FC<{
+  fieldName: string;
+  tableData: TableRowData[];
+  tableColumns: TableColumnSpec[];
+}> = ({ fieldName, tableData, tableColumns }) => {
+  const { t } = useTranslation();
+
+  const sortedCols = React.useMemo(
+    () => getSortedTableColumns(tableColumns),
+    [tableColumns]
+  );
+
+  const viewerColumns = React.useMemo(
+    () =>
+      sortedCols.map((col) => ({
+        title: col.column_name,
+        dataIndex: col.column_id,
+        key: col.column_id,
+        width: col.column_type === 'number' ? 160 : 220,
+        render: (value: unknown) => (
+          <EllipsisWithTooltip
+            text={formatTableCellText(value)}
+            className="block w-full whitespace-nowrap overflow-hidden text-ellipsis"
+          />
+        ),
+      })),
+    [sortedCols]
+  );
+  const tableScrollX = React.useMemo(() => {
+    const totalColumnWidth = sortedCols.reduce((sum, col) => {
+      return sum + (col.column_type === 'number' ? 160 : 220);
+    }, 0);
+
+    return Math.max(totalColumnWidth, 960);
+  }, [sortedCols]);
+
+  const handleExport = () => {
+    try {
+      downloadTableCsv(
+        `${fieldName}_${dayjs().format('YYYYMMDD_HHmmss')}`,
+        sortedCols,
+        tableData
+      );
+      message.success(t('Model.exportSuccess'));
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : t('Model.exportFailed');
+      message.error(errorMessage || t('Model.exportFailed'));
+    }
+  };
+
+  return (
+    <div className="w-full rounded border border-[var(--color-border-1,var(--ant-color-border-secondary))] bg-[var(--color-bg-1)] p-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-xs text-[var(--color-text-3)]">
+          {tableData.length} rows
+        </div>
+        <Space size={4} className="flex-shrink-0">
+          <Button type="link" size="small" onClick={handleExport}>
+            {t('common.export')}
+          </Button>
+        </Space>
+      </div>
+      <Table
+        dataSource={tableData}
+        columns={viewerColumns}
+        pagination={false}
+        size="small"
+        tableLayout="fixed"
+        scroll={{ x: tableScrollX, y: 420 }}
+        style={{ width: '100%' }}
+        rowKey={(_, index) => String(index)}
+        className="[&_.ant-table-thead_th]:!py-2 [&_.ant-table-tbody_td]:!py-2 [&_.ant-table-thead_th]:text-xs [&_.ant-table-thead_th:first-child]:!rounded-none [&_.ant-table-thead_th:last-child]:!rounded-none"
+      />
+    </div>
+  );
 };
 
 const collectTaskLinkClassName =
@@ -424,16 +562,28 @@ export const getAssetColumns = (config: {
             const remainingCount = firstColValues.length - 2;
             
             const fullTableContent = (
-              <Table
-                dataSource={tableData}
-                columns={sortedCols.map(col => ({
-                  title: col.column_name,
-                  dataIndex: col.column_id,
-                  key: col.column_id,
-                }))}
-                pagination={false}
-                size="small"
-              />
+              <div className="max-w-[min(600px,calc(100vw-48px))] max-h-[min(400px,calc(100vh-120px))] overflow-auto">
+                <Table
+                  dataSource={tableData}
+                  columns={sortedCols.map(col => ({
+                    title: col.column_name,
+                    dataIndex: col.column_id,
+                    key: col.column_id,
+                    width: col.column_type === 'number' ? 160 : 220,
+                    render: (value: unknown) => (
+                      <EllipsisWithTooltip
+                        text={formatTableCellText(value)}
+                        className="block w-full whitespace-nowrap overflow-hidden text-ellipsis"
+                      />
+                    ),
+                  }))}
+                  pagination={false}
+                  size="small"
+                  tableLayout="fixed"
+                  scroll={{ x: Math.max(sortedCols.reduce((sum, col) => sum + (col.column_type === 'number' ? 160 : 220), 0), 720), y: 320 }}
+                  rowKey={(_, index) => String(index)}
+                />
+              </div>
             );
             
             return (
@@ -749,24 +899,17 @@ export const getFieldItem = (config: {
       const tableColumns = config.fieldItem.option as TableColumnSpec[];
       if (!tableData.length || !tableColumns?.length) return '--';
 
-      const sortedCols = [...tableColumns].sort((a, b) => a.order - b.order);
-      const tableCols = sortedCols.map((col) => ({
-        title: col.column_name,
-        dataIndex: col.column_id,
-        key: col.column_id,
-        render: (val: any) => (val === undefined || val === null || val === '') ? '--' : val,
-      }));
+      const sortedCols = getSortedTableColumns(tableColumns);
+
+      if (config.hideUserAvatar) {
+        return getTablePlainText(tableData, sortedCols);
+      }
 
       return (
-        <Table
-          dataSource={tableData}
-          columns={tableCols}
-          pagination={false}
-          size="small"
-          tableLayout="fixed"
-          style={{ width: '100%' }}
-          rowKey={(_, index) => String(index)}
-          className="[&_.ant-table-thead_th]:!py-2 [&_.ant-table-tbody_td]:!py-1 [&_.ant-table-thead_th]:text-xs [&_.ant-table-thead_th:first-child]:!rounded-none [&_.ant-table-thead_th:last-child]:!rounded-none"
+        <TableFieldReadonlyDisplay
+          fieldName={config.fieldItem.attr_name}
+          tableData={tableData}
+          tableColumns={tableColumns}
         />
       );
     case 'tag':
