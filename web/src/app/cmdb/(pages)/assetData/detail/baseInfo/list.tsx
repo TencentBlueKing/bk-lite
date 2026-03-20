@@ -18,10 +18,13 @@ import {
 } from '@/app/cmdb/types/assetManage';
 import {
   EditOutlined,
+  BellOutlined,
   CopyOutlined,
   CheckOutlined,
   CloseOutlined,
   CaretRightOutlined,
+  DownOutlined,
+  UpOutlined,
   QuestionCircleOutlined,
 } from '@ant-design/icons';
 import { useInstanceApi } from '@/app/cmdb/api';
@@ -35,12 +38,14 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   userList,
   instDetail,
   onsuccessEdit,
+  onSubscribe,
 }) => {
   const [form] = Form.useForm();
   const [fieldList, setFieldList] = useState<DescriptionsProps['items']>([]);
   const [attrList, setAttrList] = useState<AttrFieldType[]>([]);
   const [isBatchEdit, setIsBatchEdit] = useState<boolean>(false);
   const [isBatchSaving, setIsBatchSaving] = useState<boolean>(false);
+  const [collapsedTableFields, setCollapsedTableFields] = useState<Record<string, boolean>>({});
   const { t } = useTranslation();
   const { flatGroups } = useUserInfoContext();
 
@@ -77,7 +82,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       const newAttrList = deepClone(attrList);
       initData(newAttrList);
     }
-  }, [propertyList, instDetail, userList, attrList]);
+  }, [propertyList, instDetail, userList, attrList, collapsedTableFields]);
 
   const updateInst = async (config: {
     id: string;
@@ -217,6 +222,13 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     }
   };
 
+  const toggleTableFieldCollapse = (fieldKey: string) => {
+    setCollapsedTableFields((prev) => ({
+      ...prev,
+      [fieldKey]: !prev[fieldKey],
+    }));
+  };
+
   const initData = (list: any) => {
     list.forEach((group: any) => {
       const itemList = group.attrs;
@@ -237,16 +249,34 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           }
         }
         item.key = item.attr_id;
+        const isTableFieldCollapsed = !!collapsedTableFields[item.attr_id];
         item.label = (
-          <>
-            {item.attr_name}
-            {item.is_required && <span className={informationList.required}></span>}
-            {item.user_prompt && (
-              <Tooltip title={item.user_prompt}>
-                <QuestionCircleOutlined className="ml-1 text-gray-400 cursor-help" />
-              </Tooltip>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              {item.attr_name}
+              {item.is_required && <span className={informationList.required}></span>}
+              {item.user_prompt && (
+                <Tooltip title={item.user_prompt}>
+                  <QuestionCircleOutlined className="ml-1 text-gray-400 cursor-help" />
+                </Tooltip>
+              )}
+            </div>
+            {item.attr_type === 'table' && !item.isEdit && (
+              <Button
+                type="link"
+                size="small"
+                className="!h-auto !p-0 text-xs whitespace-nowrap"
+                icon={isTableFieldCollapsed ? <DownOutlined /> : <UpOutlined />}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleTableFieldCollapse(item.attr_id);
+                }}
+              >
+                {isTableFieldCollapsed ? t('expandAll') : t('closeAll')}
+              </Button>
             )}
-          </>
+          </div>
         );
         item.isEdit = item.isEdit || false;
         const formInitialValue = normalizeTimeValueForForm(item, item._originalValue ?? item.value);
@@ -290,6 +320,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                   <>
                     {item.attr_type === 'tag' ? (
                       <TagCapsuleGroup value={item.value} maxVisible={2} />
+                    ) : item.attr_type === 'table' && collapsedTableFields[item.attr_id] ? (
+                      <span className="text-[var(--color-text-3)]">--</span>
                     ) : (
                       getFieldItem({
                         fieldItem: item,
@@ -301,7 +333,9 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                   </>
                 )}
               </div>
-              <div className={`flex items-center flex-shrink-0 ${informationList.operateBtn}`}>
+              <div
+                className={`flex flex-shrink-0 ${informationList.operateBtn} ${item.isEdit && item.attr_type === 'table' ? 'items-start self-start' : 'items-center'}`}
+              >
                 {item.isEdit ? (
                   <>
                     {!isBatchEdit && (
@@ -501,18 +535,28 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
               </Button>
             </>
           ) : (
-            <PermissionWrapper
-              requiredPermissions={['Edit']}
-              instPermissions={instDetail.permission}
-            >
+            <>
               <Button
                 size="small"
-                icon={<EditOutlined />}
-                onClick={() => toggleBatchEdit(true)}
+                icon={<BellOutlined />}
+                className="mr-2"
+                onClick={onSubscribe}
               >
-                {t('batchEdit')}
+                {t('subscription.subscribe')}
               </Button>
-            </PermissionWrapper>
+              <PermissionWrapper
+                requiredPermissions={['Edit']}
+                instPermissions={instDetail.permission}
+              >
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => toggleBatchEdit(true)}
+                >
+                  {t('batchEdit')}
+                </Button>
+              </PermissionWrapper>
+            </>
           )}
         </div>
       )}

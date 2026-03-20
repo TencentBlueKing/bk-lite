@@ -124,6 +124,7 @@ export interface AssetDataFieldProps {
   userList: UserItem[];
   instDetail: InstDetail;
   onsuccessEdit: () => void;
+  onSubscribe?: () => void;
 }
 
 export interface InstDetail {
