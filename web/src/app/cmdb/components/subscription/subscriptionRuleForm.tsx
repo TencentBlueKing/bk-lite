@@ -30,6 +30,9 @@ export interface SubscriptionRuleFormRef {
   submit: (isEnabled: boolean) => Promise<void>;
 }
 
+const EMPTY_CONDITION_FILTER = { query_list: [] };
+const EMPTY_INSTANCES_FILTER = { instance_ids: [] };
+
 const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRuleFormProps>(({ 
   initialValues,
   quickDefaults,
@@ -272,10 +275,12 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
   }), [handleSubmit]);
 
   const currentFilterType = watchedFilterType || quickDefaults?.filter_type || initialValues?.filter_type || 'instances';
-  const currentInstanceFilter = watchedInstanceFilter
-    || initialValues?.instance_filter
-    || quickDefaults?.instance_filter
-    || (currentFilterType === 'condition' ? { query_list: [] } : { instance_ids: [] });
+  const currentInstanceFilter = useMemo(() => {
+    if (watchedInstanceFilter) return watchedInstanceFilter;
+    if (initialValues?.instance_filter) return initialValues.instance_filter;
+    if (quickDefaults?.instance_filter) return quickDefaults.instance_filter;
+    return currentFilterType === 'condition' ? EMPTY_CONDITION_FILTER : EMPTY_INSTANCES_FILTER;
+  }, [watchedInstanceFilter, initialValues?.instance_filter, quickDefaults?.instance_filter, currentFilterType]);
 
   const handleInstanceFilterChange = useCallback(
     (v: any) => form.setFieldValue('instance_filter', v),
@@ -336,8 +341,8 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
           <Form.Item name="filter_type" rules={[{ required: true }]} style={{ marginBottom: 8 }}> 
             <Radio.Group
               options={[
-                { label: t('subscription.filterTypeCondition'), value: 'condition' },
                 { label: t('subscription.filterTypeInstances'), value: 'instances' },
+                { label: t('subscription.filterTypeCondition'), value: 'condition' },
               ]}
             />
           </Form.Item>
@@ -421,7 +426,7 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
         {...horizontalLayout}
         layout="horizontal"
       >
-        <Select mode="multiple" options={channelOptions} />
+        <Select mode="multiple" options={channelOptions} maxTagCount="responsive" maxTagTextLength={12} />
       </Form.Item>
 
     </Form>
