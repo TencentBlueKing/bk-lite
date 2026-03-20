@@ -1,4 +1,5 @@
 from datetime import timezone
+from django.utils import timezone as dj_timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.permission_utils import get_permission_rules
@@ -201,6 +202,13 @@ class NodeService:
             batch_size=500,
         )
 
+        task_nodes = {
+            item.node_id: item
+            for item in CollectorActionTaskNode.objects.filter(
+                task_id=task_obj.id, node_id__in=[node.id for node in nodes]
+            )
+        }
+
         # 如果是 start 或 restart 操作，需要检查并创建默认配置
         if operation in ["start", "restart"]:
             try:
@@ -235,6 +243,27 @@ class NodeService:
             action, created = Action.objects.get_or_create(node=node)
             action.action.append(action_data)
             action.save()
+
+            task_node = task_nodes.get(node.id)
+            if task_node and task_node.status == "waiting":
+                task_node.status = "running"
+                task_node.result = {
+                    "overall_status": "running",
+                    "final_message": "Collector action dispatched",
+                    "steps": [
+                        {
+                            "action": "dispatch_command",
+                            "status": "success",
+                            "message": "Collector action command dispatched to sidecar queue",
+                            "timestamp": dj_timezone.now().isoformat(),
+                            "details": {
+                                "collector_id": collector_id,
+                                "operation": operation,
+                            },
+                        }
+                    ],
+                }
+                task_node.save(update_fields=["status", "result"])
 
         timeout_collector_action_task.apply_async(
             args=[task_obj.id],
