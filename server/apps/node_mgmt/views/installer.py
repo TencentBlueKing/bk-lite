@@ -110,8 +110,10 @@ class InstallerViewSet(ViewSet):
         serializer.is_valid(raise_exception=True)
         validated_data = cast(dict[str, Any], serializer.validated_data)
 
-        queryset = CollectorTaskNode.objects.filter(task_id=task_id).select_related(
-            "node"
+        queryset = (
+            CollectorTaskNode.objects.filter(task_id=task_id)
+            .select_related("node")
+            .prefetch_related("node__nodeorganization_set")
         )
         status_list = validated_data.get("status")
         if status_list:
@@ -131,6 +133,12 @@ class InstallerViewSet(ViewSet):
                 "result": task_node.result,
                 "ip": task_node.node.ip,
                 "os": task_node.node.operating_system,
+                "node_name": task_node.node.name,
+                "organizations": [
+                    rel.organization
+                    for rel in task_node.node.nodeorganization_set.all()
+                ],
+                "install_method": task_node.node.install_method,
             }
             for task_node in items
         ]
