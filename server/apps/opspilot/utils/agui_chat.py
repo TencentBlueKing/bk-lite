@@ -72,6 +72,11 @@ def _build_thinking_event(delta: str, timestamp: int | None = None) -> dict:
     }
 
 
+def _supports_thinking_events(request) -> bool:
+    model_name = getattr(request, "model", "") or ""
+    return "qwen" in model_name.lower()
+
+
 def _build_sse_line(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
@@ -138,11 +143,11 @@ def _flush_post_tool_pending_content_split(state: dict) -> list[str]:
     return lines
 
 
-def _handle_text_message_content_event(data_json: dict, state: dict, show_think: bool) -> tuple[str, list[str]]:
+def _handle_text_message_content_event(data_json: dict, state: dict, show_think: bool, enable_thinking_split: bool) -> tuple[str, list[str]]:
     content_chunk = data_json.get("delta", "")
     thinking_content = ""
 
-    if show_think:
+    if show_think and enable_thinking_split:
         (
             output_content,
             thinking_content,
@@ -177,7 +182,7 @@ def _handle_text_message_content_event(data_json: dict, state: dict, show_think:
     thinking_content = _sanitize_think_tag_residue(thinking_content, show_think)
 
     immediate_lines = []
-    if show_think and thinking_content:
+    if show_think and enable_thinking_split and thinking_content:
         immediate_lines.append(_build_sse_line(_build_thinking_event(thinking_content, data_json.get("timestamp"))))
 
     if not output_content:
@@ -191,7 +196,7 @@ def _handle_text_message_content_event(data_json: dict, state: dict, show_think:
     return _build_sse_line(data_json), immediate_lines
 
 
-def _handle_tool_transition_event(event_type: str, data_json: dict, state: dict, show_think: bool) -> list[str]:
+def _handle_tool_transition_event(event_type: str, data_json: dict, state: dict, show_think: bool, enable_thinking_split: bool) -> list[str]:
     if event_type == "TOOL_CALL_START":
         parent_message_id = data_json.get("parent_message_id")
         if state["buffer_pre_tool_content"] and parent_message_id == state["active_message_id"]:
@@ -203,14 +208,14 @@ def _handle_tool_transition_event(event_type: str, data_json: dict, state: dict,
         return []
 
     state["buffer_pre_tool_content"] = True
-    state["emit_pending_as_thinking"] = show_think
+    state["emit_pending_as_thinking"] = show_think and enable_thinking_split
     if event_type == "TOOL_CALL_RESULT":
         state["post_tool_result_seen"] = True
         state["pending_phase"] = "post_tool"
     return []
 
 
-def _handle_text_message_end_event(data_json: dict, state: dict, show_think: bool) -> list[str]:
+def _handle_text_message_end_event(data_json: dict, state: dict, show_think: bool, enable_thinking_split: bool) -> list[str]:
     lines = []
     if not show_think and not state["in_think_block"] and state["think_buffer"]:
         safe_buffer = _sanitize_think_tag_residue(state["think_buffer"], show_think)
@@ -263,13 +268,13 @@ def _handle_text_message_end_event(data_json: dict, state: dict, show_think: boo
     return lines
 
 
-def _handle_agui_data_event(data_json: dict, state: dict, show_think: bool) -> tuple[str, list[str]]:
+def _handle_agui_data_event(data_json: dict, state: dict, show_think: bool, enable_thinking_split: bool) -> tuple[str, list[str]]:
     event_type = data_json.get("type")
     if event_type == "TEXT_MESSAGE_START":
         state["active_message_id"] = data_json.get("message_id")
         state["pending_content_events"].clear()
         state["buffer_pre_tool_content"] = True
-        state["emit_pending_as_thinking"] = show_think
+        state["emit_pending_as_thinking"] = show_think and enable_thinking_split
         state["pending_phase"] = "post_tool" if state["post_tool_result_seen"] else "pre_tool"
         return _build_sse_line(data_json), []
 
@@ -283,13 +288,13 @@ def _handle_agui_data_event(data_json: dict, state: dict, show_think: bool) -> t
         )
 
     if event_type == "TEXT_MESSAGE_CONTENT":
-        return _handle_text_message_content_event(data_json, state, show_think)
+        return _handle_text_message_content_event(data_json, state, show_think, enable_thinking_split)
 
     if event_type in {"TOOL_CALL_START", "TOOL_CALL_END", "TOOL_CALL_RESULT"}:
-        return _build_sse_line(data_json), _handle_tool_transition_event(event_type, data_json, state, show_think)
+        return _build_sse_line(data_json), _handle_tool_transition_event(event_type, data_json, state, show_think, enable_thinking_split)
 
     if event_type == "TEXT_MESSAGE_END":
-        return _build_sse_line(data_json), _handle_text_message_end_event(data_json, state, show_think)
+        return _build_sse_line(data_json), _handle_text_message_end_event(data_json, state, show_think, enable_thinking_split)
 
     return _build_sse_line(data_json), []
 
@@ -302,6 +307,7 @@ async def _generate_agui_stream(
         chunk_index = 0
         accumulated_content = []
         state = _init_agui_stream_state()
+        enable_thinking_split = _supports_thinking_events(request)
 
         async for sse_line in graph.agui_stream(request):
             output_line = sse_line
@@ -309,7 +315,7 @@ async def _generate_agui_stream(
             if sse_line.startswith("data: "):
                 try:
                     data_json = json.loads(sse_line[6:].strip())
-                    output_line, immediate_lines = _handle_agui_data_event(data_json, state, show_think)
+                    output_line, immediate_lines = _handle_agui_data_event(data_json, state, show_think, enable_thinking_split)
                     accumulated_content.append(data_json)
                 except (json.JSONDecodeError, ValueError):
                     pass
