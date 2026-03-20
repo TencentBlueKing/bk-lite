@@ -178,6 +178,14 @@ class ModelManage(object):
         if attr_info.get("attr_type") != "enum":
             return attr_info
 
+        option_value = attr_info.get("option")
+        if isinstance(option_value, dict) and option_value.get("enum_rule_type"):
+            attr_info["enum_rule_type"] = option_value.get("enum_rule_type", "custom")
+            attr_info["public_library_id"] = option_value.get("public_library_id")
+            if "enum_select_mode" in option_value:
+                attr_info["enum_select_mode"] = option_value.get("enum_select_mode")
+            attr_info["option"] = option_value.get("option", [])
+
         enum_rule_type = attr_info.get("enum_rule_type", "custom")
         attr_info["enum_rule_type"] = enum_rule_type
 
@@ -312,7 +320,7 @@ class ModelManage(object):
         if enum_rule_type != "public_library":
             return option if isinstance(option, list) else []
 
-        public_library_id = attr.get("public_library_id")
+        public_library_id = str(attr.get("public_library_id") or "").strip()
         if not public_library_id:
             return option if isinstance(option, list) else []
 
@@ -320,7 +328,8 @@ class ModelManage(object):
             from apps.cmdb.services.public_enum_library import get_library_or_raise
 
             library = get_library_or_raise(public_library_id)
-            return list(library.options)
+            runtime_options = library.options
+            return runtime_options if isinstance(runtime_options, list) else []
         except Exception as e:
             logger.warning(
                 f"[EnumPublicBinding] resolve_runtime_enum_options fallback to snapshot, "
@@ -1344,6 +1353,18 @@ class ModelManage(object):
 
         ASSO_HEADERS_CN = ["源模型", "目标模型", "关联关系", "源-目标约束"]
         ASSO_HEADERS_EN = ["src_model_id", "dst_model_id", "asst_id", "mapping"]
+        PUBLIC_ENUM_LIBRARY_HEADERS_CN = [
+            "公共选项库ID",
+            "公共选项库名称",
+            "组织列表",
+            "选项列表",
+        ]
+        PUBLIC_ENUM_LIBRARY_HEADERS_EN = [
+            "library_id",
+            "name",
+            "team",
+            "options",
+        ]
 
         workbook = Workbook()
 
@@ -1370,6 +1391,22 @@ class ModelManage(object):
         ws_models.append(MODEL_HEADERS_CN)
         ws_models.append(MODEL_HEADERS_EN)
 
+        ws_public_enum_libraries = workbook.create_sheet(title="public_enum_libraries")
+        ws_public_enum_libraries.append(PUBLIC_ENUM_LIBRARY_HEADERS_CN)
+        ws_public_enum_libraries.append(PUBLIC_ENUM_LIBRARY_HEADERS_EN)
+
+        from apps.cmdb.services.public_enum_library import list_libraries
+
+        for library in list_libraries():
+            ws_public_enum_libraries.append(
+                [
+                    library.get("library_id", ""),
+                    library.get("name", ""),
+                    json.dumps(library.get("team", []), ensure_ascii=False),
+                    json.dumps(library.get("options", []), ensure_ascii=False),
+                ]
+            )
+
         models = ModelManage.search_model(language=language)
         for model in models:
             ws_models.append(
@@ -1395,6 +1432,18 @@ class ModelManage(object):
                 if attr.get("is_display_field"):
                     continue
                 option = attr.get("option", {})
+                if attr.get("attr_type") == "enum":
+                    if attr.get("enum_rule_type") == "public_library":
+                        option = {
+                            "enum_rule_type": "public_library",
+                            "public_library_id": attr.get("public_library_id"),
+                            "enum_select_mode": attr.get(
+                                "enum_select_mode", ENUM_SELECT_MODE_DEFAULT
+                            ),
+                            "option": option if isinstance(option, list) else [],
+                        }
+                    elif isinstance(option, list):
+                        option = option
                 option_str = json.dumps(option, ensure_ascii=False) if option else ""
                 ws_attr.append(
                     [
