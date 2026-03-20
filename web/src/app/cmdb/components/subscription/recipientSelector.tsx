@@ -26,6 +26,8 @@ const RecipientSelector: React.FC<RecipientSelectorProps> = ({ value, onChange }
     <Select
       mode="multiple"
       style={{ width: '100%' }}
+      maxTagCount="responsive"
+      maxTagTextLength={12}
       placeholder={t('subscription.selectUsers')}
       value={value?.users || []}
       onChange={(users) => onChange({ users })}

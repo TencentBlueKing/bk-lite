@@ -339,34 +339,39 @@ const InstanceSelector: React.FC<InstanceSelectorProps> = ({
   const [instanceOptions, setInstanceOptions] = useState<{ label: string; value: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const [conditionRows, setConditionRows] = useState<ConditionRow[]>([]);
-  const lastAppliedQueryListRef = useRef('[]');
+  
   const searchInstancesRef = useRef(searchInstances);
+  const onChangeRef = useRef(onChange);
+  const lastSyncedRef = useRef('[]');
+  const userEditedRef = useRef(false);
+
   const conditionValue = (value as ConditionFilter) || { query_list: [] };
   const queryList = conditionValue.query_list || [];
   const instancesValue = (value as InstancesFilter) || { instance_ids: [] };
   const serializedQueryList = useMemo(() => JSON.stringify(queryList), [queryList]);
   const userList = common?.userList || [];
 
-  useEffect(() => {
-    searchInstancesRef.current = searchInstances;
-  }, [searchInstances]);
+  useEffect(() => { searchInstancesRef.current = searchInstances; }, [searchInstances]);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   useEffect(() => {
     if (filterType !== 'condition') {
-      setConditionRows([]);
+      if (conditionRows.length > 0) {
+        setConditionRows([]);
+      }
+      lastSyncedRef.current = '[]';
       return;
     }
 
-    const limitedQueryList = (queryList || []).slice(0, MAX_CONDITION_COUNT);
-    const serialized = JSON.stringify(limitedQueryList);
-    if (serialized !== lastAppliedQueryListRef.current) {
+    if (serializedQueryList !== lastSyncedRef.current) {
+      const limitedQueryList = queryList.slice(0, MAX_CONDITION_COUNT);
       setConditionRows(limitedQueryList.map((item) => toConditionRow(item, modelFields)));
-      lastAppliedQueryListRef.current = serialized;
+      lastSyncedRef.current = serializedQueryList;
     }
-  }, [filterType, modelFields, queryList, serializedQueryList]);
+  }, [filterType, modelFields, serializedQueryList, queryList, conditionRows.length]);
 
   useEffect(() => {
-    if (filterType !== 'condition') {
+    if (filterType !== 'condition' || !userEditedRef.current) {
       return;
     }
 
@@ -376,11 +381,11 @@ const InstanceSelector: React.FC<InstanceSelectorProps> = ({
     const limitedQueryList = nextQueryList.slice(0, MAX_CONDITION_COUNT);
     const serialized = JSON.stringify(limitedQueryList);
 
-    if (serialized !== lastAppliedQueryListRef.current) {
-      onChange({ query_list: limitedQueryList });
-      lastAppliedQueryListRef.current = serialized;
+    if (serialized !== lastSyncedRef.current) {
+      onChangeRef.current({ query_list: limitedQueryList });
+      lastSyncedRef.current = serialized;
     }
-  }, [conditionRows, filterType, modelFields, onChange]);
+  }, [conditionRows, filterType, modelFields]);
 
   useEffect(() => {
     if (!modelId || filterType !== 'instances') {
@@ -425,6 +430,7 @@ const InstanceSelector: React.FC<InstanceSelectorProps> = ({
   }, [instanceOptions, instancesValue.instance_ids]);
 
   const addConditionRow = () => {
+    userEditedRef.current = true;
     setConditionRows((prev) => {
       if (prev.length >= MAX_CONDITION_COUNT) {
         return prev;
@@ -434,10 +440,12 @@ const InstanceSelector: React.FC<InstanceSelectorProps> = ({
   };
 
   const updateConditionRow = (rowId: string, nextValue: Partial<ConditionRow>) => {
+    userEditedRef.current = true;
     setConditionRows((prev) => prev.map((row) => (row.id === rowId ? { ...row, ...nextValue } : row)));
   };
 
   const removeConditionRow = (rowId: string) => {
+    userEditedRef.current = true;
     setConditionRows((prev) => prev.filter((row) => row.id !== rowId));
   };
 
@@ -544,6 +552,8 @@ const InstanceSelector: React.FC<InstanceSelectorProps> = ({
     <Select
       mode="multiple"
       style={{ width: '100%' }}
+      maxTagCount="responsive"
+      maxTagTextLength={12}
       placeholder={t('subscription.selectInstances')}
       options={mergedInstanceOptions}
       loading={loading}
