@@ -150,6 +150,12 @@ class InstallerViewSet(ViewSet):
             "running": summary_queryset.filter(status="running").count(),
             "success": summary_queryset.filter(status="success").count(),
             "error": summary_queryset.filter(status="error").count(),
+            "timeout": summary_queryset.filter(
+                result__overall_status="timeout"
+            ).count(),
+            "cancelled": summary_queryset.filter(
+                result__overall_status="cancelled"
+            ).count(),
         }
 
         task_obj = CollectorTask.objects.filter(id=task_id).first()

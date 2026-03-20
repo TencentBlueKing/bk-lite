@@ -688,7 +688,7 @@ def install_collector(task_id):
         try:
             _add_step(
                 node_obj,
-                "send",
+                "download",
                 "running",
                 f"Starting file download to node {node_obj.node_id}",
             )
@@ -725,7 +725,10 @@ def install_collector(task_id):
 
             if package_obj.os in NodeConstants.LINUX_OS:
                 _add_step(
-                    node_obj, "set_exe", "running", "Setting execution permissions"
+                    node_obj,
+                    "set_executable",
+                    "running",
+                    "Setting execution permissions",
                 )
                 executable_path = f"{collector_install_dir}/{executable_name}"
                 exec_command_to_local(
