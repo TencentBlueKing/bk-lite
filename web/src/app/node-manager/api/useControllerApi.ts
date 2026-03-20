@@ -1,7 +1,7 @@
 import useApiClient from '@/utils/request';
 import {
   ManualInstallController,
-  RetryInstallParams,
+  RetryInstallParams
 } from '../types/controller';
 
 /**
@@ -17,7 +17,7 @@ const useControllerApi = () => {
     search,
     os,
     page,
-    page_size,
+    page_size
   }: {
     name?: string;
     search?: string;
@@ -26,7 +26,7 @@ const useControllerApi = () => {
     page_size?: number;
   }) => {
     return await get('/node_mgmt/api/controller/', {
-      params: { search, os, name, page, page_size },
+      params: { search, os, name, page, page_size }
     });
   };
 
@@ -45,7 +45,9 @@ const useControllerApi = () => {
 
   // 控制器手动安装的节点状态查询
 
-  const getManualInstallStatus = async (params: { node_ids: React.Key[] }) => {
+  const getManualInstallStatus = async (params: {
+    node_ids: React.Key[] | string;
+  }) => {
     return await post(
       '/node_mgmt/api/installer/controller/manual_install_status/',
       params
@@ -66,7 +68,7 @@ const useControllerApi = () => {
     retryInstallController,
     manualInstallController,
     getManualInstallStatus,
-    getInstallCommand,
+    getInstallCommand
   };
 };
 

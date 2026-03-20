@@ -180,6 +180,9 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           nodes: nodeIds,
           collector_package: values.version
         };
+        let extraConfig: { collectorId?: string; collectorPackageId?: number } =
+          {};
+
         switch (type) {
           case 'startCollector':
             params = {
@@ -188,8 +191,9 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               configuration: values.configuration,
               operation: 'start'
             };
+            extraConfig = { collectorId: collector || undefined };
             request = batchOperationCollector;
-            startCollector(request, params);
+            startCollector(request, params, extraConfig);
             return;
           case 'restartCollector':
             params = {
@@ -197,6 +201,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               collector_id: collector,
               operation: 'restart'
             };
+            extraConfig = { collectorId: collector || undefined };
             request = batchOperationCollector;
             break;
           case 'stopCollector':
@@ -205,19 +210,29 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               collector_id: collector,
               operation: 'stop'
             };
+            extraConfig = { collectorId: collector || undefined };
             request = batchOperationCollector;
             break;
+          case 'installCollector':
           default:
+            extraConfig = {
+              collectorId: collector || undefined,
+              collectorPackageId: values.version
+            };
             break;
         }
-        operate(request, params);
+        operate(request, params, false, extraConfig);
       });
     };
 
-    const startCollector = (callback: any, params: any) => {
+    const startCollector = (
+      callback: any,
+      params: any,
+      extraConfig?: { collectorId?: string; collectorPackageId?: number }
+    ) => {
       const { configuration, ...rest } = params;
       Promise.all([
-        operate(callback, rest, !!configuration),
+        operate(callback, rest, !!configuration, extraConfig),
         configuration && handleApply(configuration)
       ])
         .then(() => {
@@ -242,14 +257,17 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const operate = async (
       callback: any,
       params: any,
-      keepLoading?: boolean
+      keepLoading?: boolean,
+      extraConfig?: { collectorId?: string; collectorPackageId?: number }
     ) => {
       try {
         setConfirmLoading(true);
         const data = await callback(params);
         const config = {
           taskId: data.task_id || '',
-          type
+          type,
+          collectorId: extraConfig?.collectorId || collector || '',
+          collectorPackageId: extraConfig?.collectorPackageId
         };
         if (!keepLoading) {
           message.success(t('common.operationSuccessful'));

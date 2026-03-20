@@ -11,7 +11,7 @@ import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
 import nodeStyle from './index.module.scss';
-import CollectorModal from './collectorModal';
+import CollectorModal from './collectorOperation/collectorModal';
 import { useTranslation } from '@/utils/i18n';
 import { ModalRef, TableDataItem, Pagination } from '@/app/node-manager/types';
 import { SearchFilters } from '@/components/search-combination/types';
@@ -30,12 +30,13 @@ import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import ControllerInstall from './controllerInstall';
 import ControllerUninstall from './controllerUninstall';
-import CollectorInstallTable from './controllerTable';
+import UninstallTable from './controllerUninstall/uninstallTable';
+import CollectorOperation from './collectorOperation';
 import { useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
-import CollectorDetailDrawer from './collectorDetailDrawer';
+import CollectorDetailDrawer from './collectorDetail';
 import EditNode from './editNode';
 import { useCommon } from '@/app/node-manager/context/common';
 const { confirm } = Modal;
@@ -70,6 +71,14 @@ const Node = () => {
     useState<boolean>(false);
   const [showInstallCollectorTable, setShowInstallCollectorTable] =
     useState<boolean>(false);
+  const [showCollectorOperation, setShowCollectorOperation] =
+    useState<boolean>(false);
+  const [collectorOperationType, setCollectorOperationType] =
+    useState<string>('');
+  const [collectorId, setCollectorId] = useState<string>('');
+  const [collectorPackageId, setCollectorPackageId] = useState<
+    number | undefined
+  >();
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
   const [pagination, setPagination] = useState<Pagination>({
@@ -110,6 +119,13 @@ const Node = () => {
   const cancelWait = useCallback(() => {
     setShowNodeTable(true);
     setShowInstallCollectorTable(false);
+    getNodes(searchFilters);
+  }, [searchFilters]);
+
+  const cancelCollectorOperation = useCallback(() => {
+    setShowNodeTable(true);
+    setShowCollectorOperation(false);
+    setCollectorOperationType('');
     getNodes(searchFilters);
   }, [searchFilters]);
 
@@ -542,9 +558,33 @@ const Node = () => {
     };
   };
 
-  const handleCollector = (config = { type: '', taskId: '' }) => {
+  const handleCollector = (
+    config = {
+      type: '',
+      taskId: '',
+      collectorId: '',
+      collectorPackageId: undefined as number | undefined
+    }
+  ) => {
     getNodes(searchFilters);
-    if (['installCollector', 'uninstallController'].includes(config.type)) {
+    // 安装组件、启动组件、重启组件、停止组件 - 进入步骤页面
+    const collectorOperationTypes = [
+      'installCollector',
+      'startCollector',
+      'restartCollector',
+      'stopCollector'
+    ];
+    if (collectorOperationTypes.includes(config.type)) {
+      setTaskId(config.taskId);
+      setCollectorOperationType(config.type);
+      setCollectorId(config.collectorId || '');
+      setCollectorPackageId(config.collectorPackageId);
+      setShowNodeTable(false);
+      setShowCollectorOperation(true);
+      return;
+    }
+    // 卸载控制器 - 保持现有逻辑
+    if (config.type === 'uninstallController') {
       setTaskId(config.taskId);
       setTableType(config.type);
       setShowNodeTable(false);
@@ -654,9 +694,18 @@ const Node = () => {
         />
       )}
       {showInstallCollectorTable && (
-        <CollectorInstallTable
+        <UninstallTable
           config={{ taskId, type: tableType }}
           cancel={cancelWait}
+        />
+      )}
+      {showCollectorOperation && (
+        <CollectorOperation
+          operationType={collectorOperationType as any}
+          taskId={taskId}
+          collectorId={collectorId}
+          collectorPackageId={collectorPackageId}
+          cancel={cancelCollectorOperation}
         />
       )}
     </MainLayout>
