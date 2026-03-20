@@ -125,7 +125,7 @@ ALIYUN_COLLECT_CLUSTER = [
 ]
 
 HOST_COLLECT_METRIC = {
-    "host": ["host_info_gauge"],
+    "host": ["host_info_gauge", "host_proc_usage_info_gauge"],
     "physcial_server": ["physcial_server_info_gauge","disk_info_gauge","memory_info_gauge","nic_info_gauge","gpu_info_gauge"],
 }
 

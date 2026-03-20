@@ -7,7 +7,7 @@ class Monitor(object):
     def __init__(self, is_local_client=False):
         is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
         self.client = (
-            AppClient("apps.monitor.nats.monitor.permission") if is_local_client else RpcClient()
+            AppClient("apps.monitor.nats.permission") if is_local_client else RpcClient()
         )
 
     def get_module_data(self, **kwargs):

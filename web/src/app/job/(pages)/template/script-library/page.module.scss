@@ -1,0 +1,23 @@
+.addParamWrapper {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+}
+
+.addParamButton {
+  height: 32px !important;
+  padding: 0 14px !important;
+  border: 1px dashed var(--color-primary) !important;
+  border-radius: 8px !important;
+  color: var(--color-primary) !important;
+  font-weight: 500;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.addParamButton:hover,
+.addParamButton:focus,
+.addParamButton:active {
+  color: var(--color-primary) !important;
+  background: transparent !important;
+}

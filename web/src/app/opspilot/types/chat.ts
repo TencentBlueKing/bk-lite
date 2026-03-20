@@ -1,9 +1,11 @@
 import { ReactNode } from 'react';
 import { ButtonProps } from 'antd';
-import { CustomChatMessage, Annotation, BrowserStepAction, BrowserStepProgressData } from '@/app/opspilot/types/global';
+import { CustomChatMessage, Annotation, BrowserStepAction, BrowserStepProgressData, BrowserTaskReceivedData } from '@/app/opspilot/types/global';
 
 export type { BrowserStepAction, BrowserStepProgressData };
+export type { BrowserTaskReceivedData };
 export type BrowserStepProgressValue = BrowserStepProgressData;
+export type BrowserTaskReceivedValue = BrowserTaskReceivedData;
 
 export interface CustomChatSSEProps {
   handleSendMessage?: (message: string, currentMessages?: any[]) => Promise<{ url: string; payload: any } | null>;
@@ -17,12 +19,12 @@ export interface CustomChatSSEProps {
 }
 
 export type ActionRender = (
-  _: any, 
-  info: { 
-    components: { 
-      SendButton: React.ComponentType<ButtonProps>; 
-      LoadingButton: React.ComponentType<ButtonProps>; 
-    }; 
+  _: any,
+  info: {
+    components: {
+      SendButton: React.ComponentType<ButtonProps>;
+      LoadingButton: React.ComponentType<ButtonProps>;
+    };
   }
 ) => ReactNode;
 
@@ -40,7 +42,7 @@ export interface SSEChunk {
 }
 
 export interface AGUIMessage {
-  type: 'RUN_STARTED' | 'TEXT_MESSAGE_START' | 'TEXT_MESSAGE_CONTENT' | 'TEXT_MESSAGE_END' | 'RUN_FINISHED' | 'TOOL_CALL_START' | 'TOOL_CALL_ARGS' | 'TOOL_CALL_END' | 'TOOL_CALL_RESULT' | 'ERROR' | 'RUN_ERROR' | 'CUSTOM';
+  type: 'RUN_STARTED' | 'THINKING' | 'TEXT_MESSAGE_START' | 'TEXT_MESSAGE_CONTENT' | 'TEXT_MESSAGE_END' | 'RUN_FINISHED' | 'TOOL_CALL_START' | 'TOOL_CALL_ARGS' | 'TOOL_CALL_END' | 'TOOL_CALL_RESULT' | 'ERROR' | 'RUN_ERROR' | 'CUSTOM';
   timestamp: number;
   threadId?: string;
   runId?: string;
@@ -55,7 +57,7 @@ export interface AGUIMessage {
   message?: string;
   code?: string;
   name?: string;
-  value?: BrowserStepProgressValue | Record<string, unknown>;
+  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | Record<string, unknown>;
 }
 
 export interface ReferenceModalState {

@@ -215,7 +215,7 @@ const JobHomePage = () => {
         {featureCards.map((card, index) => (
           <div
             key={card.key}
-            className="bg-[var(--color-bg)] rounded-lg p-6 shadow-sm border border-[var(--color-border-1)]"
+            className="bg-[var(--color-bg)] rounded-lg p-6 shadow-sm border border-[var(--color-border-1)] flex h-full flex-col"
           >
             <div
               className="w-12 h-12 rounded-lg flex items-center justify-center mb-4"
@@ -231,13 +231,15 @@ const JobHomePage = () => {
             <p className="text-sm text-[var(--color-text-3)] leading-relaxed mb-6">
               {card.description}
             </p>
-            <Button
-              type="primary"
-              block
-              onClick={() => router.push(card.link)}
-            >
-              {t('job.enter')}
-            </Button>
+            <div className="mt-auto">
+              <Button
+                type="primary"
+                block
+                onClick={() => router.push(card.link)}
+              >
+                {t('job.enter')}
+              </Button>
+            </div>
           </div>
         ))}
       </div>

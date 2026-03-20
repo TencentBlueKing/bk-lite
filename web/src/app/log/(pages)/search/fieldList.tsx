@@ -1,6 +1,11 @@
 'use client';
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { CloseOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  CloseOutlined,
+  MoreOutlined,
+  PlusOutlined,
+  HolderOutlined
+} from '@ant-design/icons';
 import { Input, Empty, Button } from 'antd';
 import CustomPopover from './customPopover';
 import { useTranslation } from '@/utils/i18n';
@@ -12,42 +17,47 @@ import { cloneDeep } from 'lodash';
 const DEFAULT_FIELDS = ['timestamp', 'message'];
 const DEFAULT_FIELDS_MAP: Record<string, string> = {
   timestamp: '_time',
-  message: '_msg',
+  message: '_msg'
 };
 
-// 虚拟滚动配置
-const ITEM_HEIGHT = 32; // 每个列表项的高度
-const SPACER_HEIGHT = 12; // 间距项的高度
-const BUFFER_SIZE = 8; // 增加缓冲区大小，减少空白闪烁
-const OVERSCAN = 3; // 额外的预渲染项目数
-
-interface VirtualListItem {
-  id: string;
-  type: 'section-title' | 'field-item';
-  data: any;
-  section: 'display' | 'hidden';
-  height?: number; // 动态高度
-}
+// 虚拟滚动配置（仅用于可选字段）
+const ITEM_HEIGHT = 32;
+const BUFFER_SIZE = 8;
+const OVERSCAN = 3;
 
 const FieldList: React.FC<FieldListProps> = ({
   fields,
   className = '',
   style = {},
   addToQuery,
-  changeDisplayColumns,
+  changeDisplayColumns
 }) => {
   const { t } = useTranslation();
   const [searchText, setSearchText] = useState<string>('');
-  const [displayFields, setDisplayFields] = useState<string[]>(
-    localStorage.getItem('logSearchFields')
-      ? JSON.parse(localStorage.getItem('logSearchFields') || '[]')
-      : DEFAULT_FIELDS
-  );
+  const [displayFields, setDisplayFields] = useState<string[]>(() => {
+    const stored = localStorage.getItem('logSearchFields');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // 确保始终包含默认字段
+      const result = [...parsed];
+      DEFAULT_FIELDS.forEach((field) => {
+        if (!result.includes(field)) {
+          result.unshift(field);
+        }
+      });
+      return result;
+    }
+    return DEFAULT_FIELDS;
+  });
 
-  // 虚拟滚动相关状态
+  // 拖拽状态
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  // 虚拟滚动相关状态（仅用于可选字段）
   const [scrollTop, setScrollTop] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const CONTAINER_HEIGHT = +(style.height || '').replace('px', '') || 400; // 容器高度
+  const CONTAINER_HEIGHT =
+    +(style.height || '').toString().replace('px', '') || 400;
 
   const hiddenFields = useMemo(() => {
     return fields.filter(
@@ -73,289 +83,129 @@ const FieldList: React.FC<FieldListProps> = ({
     );
   }, [hiddenFields, searchText]);
 
-  // 构建虚拟列表数据
-  const virtualListData = useMemo(() => {
-    const items: VirtualListItem[] = [];
+  // 计算可选字段区域的高度
+  const displayFieldsHeight = useMemo(() => {
+    return ITEM_HEIGHT + filteredDisplayFields.length * ITEM_HEIGHT + 12;
+  }, [filteredDisplayFields.length]);
 
-    // 添加显示字段部分
-    if (filteredDisplayFields.length > 0) {
-      items.push({
-        id: 'display-title',
-        type: 'section-title',
-        data: { title: t('log.search.displayFields') },
-        section: 'display',
-        height: ITEM_HEIGHT,
-      });
+  const hiddenFieldsContainerHeight = useMemo(() => {
+    const available = CONTAINER_HEIGHT - displayFieldsHeight - ITEM_HEIGHT;
+    return Math.max(100, available);
+  }, [CONTAINER_HEIGHT, displayFieldsHeight]);
 
-      filteredDisplayFields.forEach((field, index) => {
-        items.push({
-          id: `display-${field}-${index}`,
-          type: 'field-item',
-          data: { field, isDisplay: true },
-          section: 'display',
-          height: ITEM_HEIGHT,
-        });
-      });
-    }
+  const totalHiddenHeight = filteredHiddenFields.length * ITEM_HEIGHT;
 
-    // 添加隐藏字段部分
-    if (filteredHiddenFields.length > 0) {
-      // 如果有显示字段，在隐藏字段标题前加一个空白项来实现间距
-      if (filteredDisplayFields.length > 0) {
-        items.push({
-          id: 'spacer',
-          type: 'section-title',
-          data: { title: '', isSpacer: true },
-          section: 'hidden',
-          height: SPACER_HEIGHT,
-        });
-      }
+  // 计算可见的可选字段项目
+  const visibleHiddenItems = useMemo(() => {
+    if (filteredHiddenFields.length === 0) return [];
 
-      items.push({
-        id: 'hidden-title',
-        type: 'section-title',
-        data: { title: t('log.search.hiddenFields') },
-        section: 'hidden',
-        height: ITEM_HEIGHT,
-      });
-
-      filteredHiddenFields.forEach((field, index) => {
-        items.push({
-          id: `hidden-${field}-${index}`,
-          type: 'field-item',
-          data: { field, isDisplay: false },
-          section: 'hidden',
-          height: ITEM_HEIGHT,
-        });
-      });
-    }
-
-    return items;
-  }, [filteredDisplayFields, filteredHiddenFields, t]);
-
-  // 计算每个项目的累积位置
-  const itemPositions = useMemo(() => {
-    const positions: number[] = [];
-    let currentTop = 0;
-
-    virtualListData.forEach((item, index) => {
-      positions[index] = currentTop;
-      currentTop += item.height || ITEM_HEIGHT;
-    });
-
-    return positions;
-  }, [virtualListData]);
-
-  const totalHeight = useMemo(() => {
-    return virtualListData.reduce(
-      (sum, item) => sum + (item.height || ITEM_HEIGHT),
-      0
-    );
-  }, [virtualListData]);
-
-  // 使用二分查找优化可见项计算
-  const findItemIndex = useCallback((targetY: number, positions: number[]) => {
-    let left = 0;
-    let right = positions.length - 1;
-
-    while (left <= right) {
-      const mid = Math.floor((left + right) / 2);
-      const midPosition = positions[mid];
-
-      if (midPosition === targetY) {
-        return mid;
-      } else if (midPosition < targetY) {
-        left = mid + 1;
-      } else {
-        right = mid - 1;
-      }
-    }
-
-    return Math.max(0, right);
-  }, []);
-
-  // 计算可见项目 - 优化版本
-  const visibleItems = useMemo(() => {
-    if (itemPositions.length === 0) return [];
-
-    // 计算更大的缓冲区，减少快速滚动时的空白
     const bufferHeight = BUFFER_SIZE * ITEM_HEIGHT;
     const overscanHeight = OVERSCAN * ITEM_HEIGHT;
 
     const startY = Math.max(0, scrollTop - bufferHeight - overscanHeight);
-    const endY = scrollTop + CONTAINER_HEIGHT + bufferHeight + overscanHeight;
+    const endY =
+      scrollTop + hiddenFieldsContainerHeight + bufferHeight + overscanHeight;
 
-    // 使用二分查找快速定位起始索引
-    const startIndex = findItemIndex(startY, itemPositions);
+    const startIndex = Math.max(0, Math.floor(startY / ITEM_HEIGHT));
+    const endIndex = Math.min(
+      filteredHiddenFields.length - 1,
+      Math.ceil(endY / ITEM_HEIGHT)
+    );
 
-    const visibleItemsData: Array<
-      VirtualListItem & { index: number; top: number }
-    > = [];
-
-    // 从起始索引开始，只遍历可能可见的项目
-    for (let i = startIndex; i < virtualListData.length; i++) {
-      const itemTop = itemPositions[i];
-      const itemBottom = itemTop + (virtualListData[i].height || ITEM_HEIGHT);
-
-      // 如果项目完全超出可见区域，停止遍历
-      if (itemTop > endY) {
-        break;
-      }
-
-      // 判断项目是否在扩展的可见区域内
-      if (itemBottom >= startY) {
-        visibleItemsData.push({
-          ...virtualListData[i],
-          index: i,
-          top: itemTop,
-        });
-      }
+    const items: Array<{ field: string; index: number; top: number }> = [];
+    for (let i = startIndex; i <= endIndex; i++) {
+      items.push({
+        field: filteredHiddenFields[i],
+        index: i,
+        top: i * ITEM_HEIGHT
+      });
     }
 
-    return visibleItemsData;
-  }, [
-    virtualListData,
-    itemPositions,
-    scrollTop,
-    CONTAINER_HEIGHT,
-    findItemIndex,
-  ]);
+    return items;
+  }, [filteredHiddenFields, scrollTop, hiddenFieldsContainerHeight]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const newScrollTop = e.currentTarget.scrollTop;
-    setScrollTop(newScrollTop);
+    setScrollTop(e.currentTarget.scrollTop);
   }, []);
 
-  const operateFields = (type: string, field: string) => {
-    let storageFileds = cloneDeep(displayFields);
-    if (type === 'add') {
-      storageFileds = [...storageFileds, field];
-    } else {
-      const index = storageFileds.findIndex((item) => item === field);
-      if (index !== -1) {
-        storageFileds.splice(index, 1);
+  const operateFields = useCallback(
+    (type: string, field: string) => {
+      let storageFileds = cloneDeep(displayFields);
+      if (type === 'add') {
+        storageFileds = [...storageFileds, field];
+      } else {
+        const index = storageFileds.findIndex((item) => item === field);
+        if (index !== -1) {
+          storageFileds.splice(index, 1);
+        }
       }
+      setDisplayFields(storageFileds);
+      localStorage.setItem('logSearchFields', JSON.stringify(storageFileds));
+      changeDisplayColumns(storageFileds);
+    },
+    [displayFields, changeDisplayColumns]
+  );
+
+  // 原生拖拽事件处理
+  const handleDragStart = useCallback(
+    (e: React.DragEvent<HTMLLIElement>, index: number) => {
+      setDraggedIndex(index);
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', index.toString());
+      // 添加拖拽时的样式
+      if (e.currentTarget) {
+        e.currentTarget.style.opacity = '0.5';
+      }
+    },
+    []
+  );
+
+  const handleDragEnd = useCallback((e: React.DragEvent<HTMLLIElement>) => {
+    setDraggedIndex(null);
+    if (e.currentTarget) {
+      e.currentTarget.style.opacity = '1';
     }
-    setDisplayFields(storageFileds);
-    localStorage.setItem('logSearchFields', JSON.stringify(storageFileds));
-    changeDisplayColumns(storageFileds);
-  };
+  }, []);
 
-  // 渲染列表项
-  const renderListItem = (
-    item: VirtualListItem & { index: number; top: number }
-  ) => {
-    const itemHeight = item.height || ITEM_HEIGHT;
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLLIElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
 
-    if (item.type === 'section-title') {
-      // 如果是间距项，返回空的 div
-      if (item.data.isSpacer) {
-        return (
-          <div
-            key={item.id}
-            style={{
-              position: 'absolute',
-              top: item.top,
-              left: 0,
-              right: 0,
-              height: itemHeight,
-            }}
-          />
-        );
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLLIElement>, dropIndex: number) => {
+      e.preventDefault();
+      const dragIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+
+      if (dragIndex !== dropIndex && !isNaN(dragIndex)) {
+        const newFields = [...displayFields];
+        const [removed] = newFields.splice(dragIndex, 1);
+        newFields.splice(dropIndex, 0, removed);
+
+        setDisplayFields(newFields);
+        localStorage.setItem('logSearchFields', JSON.stringify(newFields));
+        changeDisplayColumns(newFields);
       }
 
-      return (
-        <div
-          key={item.id}
-          className={searchStyle.title}
-          style={{
-            position: 'absolute',
-            top: item.top,
-            left: 0,
-            right: 0,
-            height: itemHeight,
-            display: 'flex',
-            alignItems: 'center',
-          }}
-        >
-          {item.data.title}
-        </div>
+      setDraggedIndex(null);
+    },
+    [displayFields, changeDisplayColumns]
+  );
+
+  const handleAddToQuery = useCallback(
+    (field: string, isDisplay: boolean) => {
+      addToQuery(
+        {
+          label: isDisplay ? DEFAULT_FIELDS_MAP[field] || field : field
+        },
+        'field'
       );
-    }
+    },
+    [addToQuery]
+  );
 
-    const { field, isDisplay } = item.data;
-
-    return (
-      <li
-        key={item.id}
-        className={searchStyle.listItem}
-        style={{
-          position: 'absolute',
-          top: item.top,
-          left: 0,
-          right: 0,
-          height: itemHeight,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <CustomPopover
-          title={field}
-          content={(onClose) => (
-            <ul>
-              <li>
-                <Button
-                  type="link"
-                  size="small"
-                  onClick={() => {
-                    onClose();
-                    addToQuery(
-                      {
-                        label: isDisplay
-                          ? DEFAULT_FIELDS_MAP[field] || field
-                          : field,
-                      },
-                      'field'
-                    );
-                  }}
-                >
-                  {t('log.search.addToQuery')}
-                </Button>
-              </li>
-            </ul>
-          )}
-        >
-          <div className="flex">
-            <EllipsisWithTooltip
-              className={`w-[120px] overflow-hidden text-ellipsis whitespace-nowrap ${searchStyle.label}`}
-              text={field}
-            />
-            <MoreOutlined className={`${searchStyle.operate} cursor-pointer`} />
-          </div>
-        </CustomPopover>
-        <div>
-          {isDisplay ? (
-            !DEFAULT_FIELDS.includes(field) && (
-              <CloseOutlined
-                className={`${searchStyle.operate} ml-[4px] cursor-pointer scale-[0.8]`}
-                onClick={() => {
-                  operateFields('reduce', field);
-                }}
-              />
-            )
-          ) : (
-            <PlusOutlined
-              className={`${searchStyle.operate} ml-[4px] cursor-pointer scale-[0.8]`}
-              onClick={() => {
-                operateFields('add', field);
-              }}
-            />
-          )}
-        </div>
-      </li>
-    );
-  };
+  const hasData =
+    filteredDisplayFields.length > 0 || filteredHiddenFields.length > 0;
 
   return (
     <div className={`${searchStyle.fieldTree} ${className}`}>
@@ -364,34 +214,172 @@ const FieldList: React.FC<FieldListProps> = ({
         placeholder={t('common.searchPlaceHolder')}
         value={searchText}
         onChange={(e) => setSearchText(e.target.value)}
-      ></Input>
+      />
       <div className={searchStyle.fields} style={style}>
-        {virtualListData.length === 0 ? (
+        {!hasData ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <div className={searchStyle.displayFields}>
-            <div
-              ref={containerRef}
-              style={{
-                height: Math.min(CONTAINER_HEIGHT, totalHeight),
-                overflow: 'auto',
-                position: 'relative',
-              }}
-              onScroll={handleScroll}
-            >
-              <ul
-                className={searchStyle.fieldList}
-                style={{
-                  height: totalHeight,
-                  position: 'relative',
-                  margin: 0,
-                  padding: 0,
-                  listStyle: 'none',
-                }}
-              >
-                {visibleItems.map(renderListItem)}
-              </ul>
-            </div>
+            {/* 表格展示字段（带拖拽排序） */}
+            {filteredDisplayFields.length > 0 && (
+              <>
+                <div className={searchStyle.title}>
+                  {t('log.search.displayFields')}
+                </div>
+                <ul className={searchStyle.fieldList}>
+                  {filteredDisplayFields.map((field, index) => {
+                    const isDefault = DEFAULT_FIELDS.includes(field);
+                    const isDragging = draggedIndex === index;
+
+                    return (
+                      <li
+                        key={field}
+                        className={searchStyle.listItem}
+                        draggable={!searchText} // 搜索时禁用拖拽
+                        onDragStart={(e) => handleDragStart(e, index)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, index)}
+                        style={{
+                          opacity: isDragging ? 0.5 : 1
+                        }}
+                      >
+                        <div className="flex items-center flex-1 min-w-0">
+                          {!searchText && (
+                            <HolderOutlined
+                              className={`${searchStyle.dragHandle} cursor-grab mr-[4px]`}
+                            />
+                          )}
+                          <CustomPopover
+                            title={field}
+                            content={(onClose) => (
+                              <ul>
+                                <li>
+                                  <Button
+                                    type="link"
+                                    size="small"
+                                    onClick={() => {
+                                      onClose();
+                                      handleAddToQuery(field, true);
+                                    }}
+                                  >
+                                    {t('log.search.addToQuery')}
+                                  </Button>
+                                </li>
+                              </ul>
+                            )}
+                          >
+                            <div className="flex items-center">
+                              <EllipsisWithTooltip
+                                className={`w-[100px] overflow-hidden text-ellipsis whitespace-nowrap ${searchStyle.label}`}
+                                text={field}
+                              />
+                              <MoreOutlined
+                                className={`${searchStyle.operate} cursor-pointer`}
+                              />
+                            </div>
+                          </CustomPopover>
+                        </div>
+                        {!isDefault && (
+                          <CloseOutlined
+                            className={`${searchStyle.operate} ml-[4px] cursor-pointer scale-[0.8]`}
+                            onClick={() => operateFields('reduce', field)}
+                          />
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+
+            {/* 可选字段（虚拟滚动） */}
+            {filteredHiddenFields.length > 0 && (
+              <>
+                <div
+                  className={searchStyle.title}
+                  style={{
+                    marginTop: filteredDisplayFields.length > 0 ? 12 : 0
+                  }}
+                >
+                  {t('log.search.hiddenFields')}
+                </div>
+                <div
+                  ref={containerRef}
+                  style={{
+                    height: Math.min(
+                      hiddenFieldsContainerHeight,
+                      totalHiddenHeight
+                    ),
+                    overflow: 'auto',
+                    position: 'relative'
+                  }}
+                  onScroll={handleScroll}
+                >
+                  <ul
+                    className={searchStyle.fieldList}
+                    style={{
+                      height: totalHiddenHeight,
+                      position: 'relative',
+                      margin: 0,
+                      padding: 0,
+                      listStyle: 'none'
+                    }}
+                  >
+                    {visibleHiddenItems.map((item) => (
+                      <li
+                        key={item.field}
+                        className={searchStyle.listItem}
+                        style={{
+                          position: 'absolute',
+                          top: item.top,
+                          left: 0,
+                          right: 0,
+                          height: ITEM_HEIGHT,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}
+                      >
+                        <CustomPopover
+                          title={item.field}
+                          content={(onClose) => (
+                            <ul>
+                              <li>
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  onClick={() => {
+                                    onClose();
+                                    handleAddToQuery(item.field, false);
+                                  }}
+                                >
+                                  {t('log.search.addToQuery')}
+                                </Button>
+                              </li>
+                            </ul>
+                          )}
+                        >
+                          <div className="flex">
+                            <EllipsisWithTooltip
+                              className={`w-[120px] overflow-hidden text-ellipsis whitespace-nowrap ${searchStyle.label}`}
+                              text={item.field}
+                            />
+                            <MoreOutlined
+                              className={`${searchStyle.operate} cursor-pointer`}
+                            />
+                          </div>
+                        </CustomPopover>
+                        <PlusOutlined
+                          className={`${searchStyle.operate} ml-[4px] cursor-pointer scale-[0.8]`}
+                          onClick={() => operateFields('add', item.field)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

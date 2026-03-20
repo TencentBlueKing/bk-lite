@@ -1,8 +1,23 @@
+export type DangerousRuleMatchType = 'exact' | 'regex';
+
+export interface DangerousRulePatternItem {
+  pattern?: string;
+  match_pattern?: string;
+  name?: string;
+  match_type?: DangerousRuleMatchType;
+}
+
+export interface DangerousPathMatchTypeGroup {
+  exact?: string[];
+  regex?: string[];
+}
+
 export interface DangerousRule {
   id: number;
   name: string;
   description: string;
   pattern: string;
+  match_type?: DangerousRuleMatchType;
   level: 'confirm' | 'forbidden';
   is_enabled: boolean;
   team: number[];
@@ -22,6 +37,7 @@ export interface DangerousRuleParams {
   page_size?: number;
   search?: string;
   level?: 'confirm' | 'forbidden';
+  match_type?: DangerousRuleMatchType;
   is_enabled?: boolean;
   name?: string;
   pattern?: string;
@@ -32,6 +48,7 @@ export interface DangerousRuleFormData {
   name: string;
   description?: string;
   pattern: string;
+  match_type?: DangerousRuleMatchType;
   level: 'confirm' | 'forbidden';
   is_enabled?: boolean;
   team?: number[];
@@ -39,14 +56,14 @@ export interface DangerousRuleFormData {
 
 // Enabled dangerous rules for script validation
 export interface EnabledDangerousRules {
-  confirm: (string | { pattern?: string; match_pattern?: string; name?: string })[];
-  forbidden: (string | { pattern?: string; match_pattern?: string; name?: string })[];
+  confirm: (string | DangerousRulePatternItem)[];
+  forbidden: (string | DangerousRulePatternItem)[];
 }
 
 // Enabled dangerous paths for file distribution validation
 export interface EnabledDangerousPaths {
-  confirm: (string | { pattern?: string; match_pattern?: string; name?: string })[];
-  forbidden: (string | { pattern?: string; match_pattern?: string; name?: string })[];
+  confirm: DangerousPathMatchTypeGroup;
+  forbidden: DangerousPathMatchTypeGroup;
 }
 
 export type TargetOS = 'linux' | 'windows';

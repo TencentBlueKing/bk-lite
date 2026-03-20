@@ -24,6 +24,7 @@ import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import ScriptEditor from '@/app/job/components/script-editor';
 import { useRouter } from 'next/navigation';
+import styles from './page.module.scss';
 
 const SCRIPT_TYPE_COLOR: Record<ScriptType, string> = {
   shell: 'blue',
@@ -601,20 +602,10 @@ const ScriptLibraryPage = () => {
 
           {/* Parameter Definition */}
           <div className="mb-2">
-            <div className="flex items-center justify-between mb-2">
+            <div className="mb-2">
               <span className="text-sm font-medium" style={{ color: 'var(--color-text-1)' }}>
                 {t('job.paramDefinition')}
               </span>
-              {!isViewMode && (
-                <Button
-                  type="dashed"
-                  size="small"
-                  icon={<PlusOutlined />}
-                  onClick={openAddParamModal}
-                >
-                  {t('job.addParam')}
-                </Button>
-              )}
             </div>
             {params.length > 0 && (
               <Table
@@ -624,6 +615,18 @@ const ScriptLibraryPage = () => {
                 pagination={false}
                 size="small"
               />
+            )}
+            {!isViewMode && (
+              <div className={styles.addParamWrapper}>
+                <Button
+                  type="text"
+                  icon={<PlusOutlined />}
+                  className={styles.addParamButton}
+                  onClick={openAddParamModal}
+                >
+                  {t('job.addParam')}
+                </Button>
+              </div>
             )}
           </div>
         </Form>

@@ -3,8 +3,8 @@ import { message } from 'antd';
 import { useSession } from 'next-auth/react';
 import { useAuth } from '@/context/auth';
 import { useStudioApi } from '../../../api/studio';
-import { AGUIMessage } from '@/app/opspilot/types/chat';
-import { ToolCallInfo } from '../../custom-chat-sse/toolCallRenderer';
+import { AGUIMessage, BrowserTaskReceivedValue } from '@/app/opspilot/types/chat';
+import { ToolCallInfo, syncActiveToolCallPanel, closeActiveToolCallPanel } from '../../custom-chat-sse/toolCallRenderer';
 
 export interface NodeExecutionResult {
   isSSE: boolean;
@@ -16,18 +16,18 @@ export interface NodeExecutionResult {
 
 export const useNodeExecution = (t: any) => {
   const { getExecuteWorkflowSSEUrl } = useStudioApi();
-  
+
   const { data: session } = useSession();
   const authContext = useAuth();
   const token = (session?.user as any)?.token || authContext?.token || null;
-  
+
   const [isExecuteDrawerVisible, setIsExecuteDrawerVisible] = useState(false);
   const [executeNodeId, setExecuteNodeId] = useState<string>('');
   const [executeMessage, setExecuteMessage] = useState<string>('');
   const [executeResult, setExecuteResult] = useState<NodeExecutionResult | null>(null);
   const [executeLoading, setExecuteLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string>('');
-  
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const toolCallsRef = useRef<Map<string, ToolCallInfo>>(new Map());
 
@@ -57,6 +57,20 @@ export const useNodeExecution = (t: any) => {
   }, []);
 
   const handleAGUIMessage = useCallback((aguiData: AGUIMessage, contentRef: { current: string }) => {
+    const findLatestCallingToolCallId = (preferredToolName?: string) => {
+      const entries = Array.from(toolCallsRef.current.entries()).reverse();
+
+      if (preferredToolName) {
+        const matchedEntry = entries.find(([, toolCall]) => toolCall.status === 'calling' && toolCall.name === preferredToolName);
+        if (matchedEntry) {
+          return matchedEntry[0];
+        }
+      }
+
+      const latestCallingEntry = entries.find(([, toolCall]) => toolCall.status === 'calling');
+      return latestCallingEntry?.[0];
+    };
+
     switch (aguiData.type) {
       case 'RUN_STARTED':
         break;
@@ -93,6 +107,22 @@ export const useNodeExecution = (t: any) => {
           if (toolCall) {
             toolCall.status = 'completed';
             toolCall.result = aguiData.content;
+            closeActiveToolCallPanel(aguiData.toolCallId);
+          }
+        }
+        break;
+
+      case 'CUSTOM':
+        if (aguiData.name === 'browser_task_received' && aguiData.value) {
+          const browserTaskReceived = aguiData.value as BrowserTaskReceivedValue;
+          const preferredToolName = typeof browserTaskReceived.tool === 'string' ? browserTaskReceived.tool : undefined;
+          const toolCallId = findLatestCallingToolCallId(preferredToolName);
+          if (toolCallId) {
+            const toolCall = toolCallsRef.current.get(toolCallId);
+            if (toolCall) {
+              toolCall.browserTaskReceived = browserTaskReceived;
+              syncActiveToolCallPanel(toolCallId, toolCall);
+            }
           }
         }
         break;
@@ -122,7 +152,7 @@ export const useNodeExecution = (t: any) => {
   const handleSSEExecution = useCallback(async (botId: string, nodeId: string, msg: string): Promise<'success' | 'aborted'> => {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
-    
+
     const contentRef = { current: '' };
     setStreamingContent('');
     toolCallsRef.current.clear();
@@ -146,7 +176,7 @@ export const useNodeExecution = (t: any) => {
       });
 
       const contentType = response.headers.get('Content-Type') || '';
-      
+
       if (!contentType.includes('text/event-stream')) {
         const jsonData = await response.json();
         if (!jsonData.result) {
@@ -243,7 +273,7 @@ export const useNodeExecution = (t: any) => {
     };
 
     const botId = getBotIdFromUrl();
-    
+
     setExecuteLoading(true);
     setExecuteResult(null);
     setStreamingContent('');
