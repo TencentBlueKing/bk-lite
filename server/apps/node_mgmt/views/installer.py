@@ -12,6 +12,8 @@ from apps.node_mgmt.tasks.installer import (
     install_collector,
     uninstall_controller,
     retry_controller,
+    timeout_controller_install_task,
+    CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
 )
 
 
@@ -25,6 +27,10 @@ class InstallerViewSet(ViewSet):
             request.data["nodes"],
         )
         install_controller.delay(task_id)
+        timeout_controller_install_task.apply_async(
+            args=[task_id],
+            countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
+        )
         return WebUtils.response_success(dict(task_id=task_id))
 
     @action(detail=False, methods=["post"], url_path="controller/uninstall")
