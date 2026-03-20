@@ -20,6 +20,9 @@ from apps.node_mgmt.models.sidecar import (
 )
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
+from apps.node_mgmt.tasks.installer import (
+    converge_controller_install_connectivity_for_node,
+)
 from apps.node_mgmt.utils.sidecar import format_tags_dynamic
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from jinja2 import Template as JinjaTemplate
@@ -280,6 +283,7 @@ class Sidecar:
 
         # 返回响应
         converge_collector_action_task_for_node.delay(node_id)
+        converge_controller_install_connectivity_for_node.delay(node_id)
         return EncryptedJsonResponse(
             status=202, data=response_data, headers={"ETag": new_etag}, request=request
         )
