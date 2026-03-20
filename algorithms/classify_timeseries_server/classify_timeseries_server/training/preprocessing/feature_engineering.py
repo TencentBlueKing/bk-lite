@@ -118,7 +118,7 @@ class TimeSeriesFeatureEngineer:
         self._fit_transformers(df)
 
         self.is_fitted = True
-        logger.info(f"特征工程器拟合完成，特征总数: {len(self.feature_names_)}")
+        logger.info("特征工程器拟合完成，特征名称将在 transform 阶段确定")
 
         return self
 

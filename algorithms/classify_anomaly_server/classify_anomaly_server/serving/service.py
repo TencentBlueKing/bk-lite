@@ -200,10 +200,10 @@ class MLService:
             logger.info(f"⏱️  Detection time: {detect_time:.3f}s")
 
             # 解析检测结果
-            # 期望格式: {'labels': [0,1,0,...], 'scores': [0.1,0.9,0.2,...], 'probabilities': [0.05,0.95,...]}
+            # 期望格式: {'labels': [0,1,0,...], 'scores': [0.1,0.9,0.2,...], 'anomaly_severity': [0.05,0.95,...]}
             labels = detection_result.get("labels", [])
             scores = detection_result.get("scores", [])
-            probabilities = detection_result.get("probabilities", [])
+            anomaly_severity = detection_result.get("anomaly_severity", [])
 
             if len(labels) != len(request.data) or len(scores) != len(request.data):
                 raise ValueError(
@@ -211,10 +211,10 @@ class MLService:
                     f"返回labels={len(labels)}, scores={len(scores)}"
                 )
 
-            # 兼容性处理：如果模型没有返回probabilities，使用scores作为fallback
-            if len(probabilities) != len(request.data):
-                logger.warning("模型未返回probabilities，使用scores作为fallback")
-                probabilities = scores
+            # 兼容性处理：如果模型没有返回anomaly_severity，使用scores作为fallback
+            if len(anomaly_severity) != len(request.data):
+                logger.warning("模型未返回anomaly_severity，使用scores作为fallback")
+                anomaly_severity = scores
 
             # 构造结果点
             result_points = []
@@ -230,7 +230,7 @@ class MLService:
                         value=point.value,
                         label=label,
                         anomaly_score=float(scores[i]),
-                        anomaly_probability=float(probabilities[i]),
+                        anomaly_severity=float(anomaly_severity[i]),
                     )
                 )
 
