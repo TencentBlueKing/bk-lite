@@ -28,7 +28,10 @@ const CollectorOperation: React.FC<CollectorOperationProps> = ({
       installCollector: t('node-manager.cloudregion.node.installCollector'),
       startCollector: t('node-manager.cloudregion.node.startCollector'),
       restartCollector: t('node-manager.cloudregion.node.restartCollector'),
-      stopCollector: t('node-manager.cloudregion.node.stopCollector')
+      stopCollector: t('node-manager.cloudregion.node.stopCollector'),
+      uninstallController: t(
+        'node-manager.cloudregion.node.uninstallController'
+      )
     };
     return nameMap[operationType] || operationType;
   }, [operationType, t]);

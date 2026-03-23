@@ -30,7 +30,6 @@ import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import ControllerInstall from './controllerInstall';
 import ControllerUninstall from './controllerUninstall';
-import UninstallTable from './controllerUninstall/uninstallTable';
 import CollectorOperation from './collectorOperation';
 import { useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
@@ -66,10 +65,7 @@ const Node = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [showNodeTable, setShowNodeTable] = useState<boolean>(true);
   const [taskId, setTaskId] = useState<string>('');
-  const [tableType, setTableType] = useState<string>('');
   const [showInstallController, setShowInstallController] =
-    useState<boolean>(false);
-  const [showInstallCollectorTable, setShowInstallCollectorTable] =
     useState<boolean>(false);
   const [showCollectorOperation, setShowCollectorOperation] =
     useState<boolean>(false);
@@ -113,12 +109,6 @@ const Node = () => {
   const cancelInstall = useCallback(() => {
     setShowNodeTable(true);
     setShowInstallController(false);
-    getNodes(searchFilters);
-  }, [searchFilters]);
-
-  const cancelWait = useCallback(() => {
-    setShowNodeTable(true);
-    setShowInstallCollectorTable(false);
     getNodes(searchFilters);
   }, [searchFilters]);
 
@@ -596,12 +586,13 @@ const Node = () => {
     }
   ) => {
     getNodes(searchFilters);
-    // 安装组件、启动组件、重启组件、停止组件 - 进入步骤页面
+    // 安装组件、启动组件、重启组件、停止组件、卸载控制器 - 进入步骤页面
     const collectorOperationTypes = [
       'installCollector',
       'startCollector',
       'restartCollector',
-      'stopCollector'
+      'stopCollector',
+      'uninstallController'
     ];
     if (collectorOperationTypes.includes(config.type)) {
       setTaskId(config.taskId);
@@ -611,13 +602,6 @@ const Node = () => {
       setShowNodeTable(false);
       setShowCollectorOperation(true);
       return;
-    }
-    // 卸载控制器 - 保持现有逻辑
-    if (config.type === 'uninstallController') {
-      setTaskId(config.taskId);
-      setTableType(config.type);
-      setShowNodeTable(false);
-      setShowInstallCollectorTable(true);
     }
   };
 
@@ -720,12 +704,6 @@ const Node = () => {
             os: getFirstSelectedNodeOS()
           }}
           cancel={cancelInstall}
-        />
-      )}
-      {showInstallCollectorTable && (
-        <UninstallTable
-          config={{ taskId, type: tableType }}
-          cancel={cancelWait}
         />
       )}
       {showCollectorOperation && (
