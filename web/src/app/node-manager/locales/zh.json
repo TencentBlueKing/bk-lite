@@ -101,6 +101,7 @@
         "executorVersion": "Executor版本",
         "btntext3": "创建一个。",
         "failUninstall": "卸载失败",
+        "uninstallTimeout": "卸载超时",
         "log": "日志",
         "ip": "IP",
         "deleteNodeTips": "远程自动安装的节点，建议通过卸载控制器进行删除，手动删除节点后，若后续该节点sidecar正常上报，则会自动更新在该列表中。",
@@ -162,6 +163,8 @@
         "confirmFinishStartContent2": "正在启动中，结束启动后将停止所有启动进程。已启动成功的节点不会受影响。",
         "confirmFinishStopContent2": "正在停止中，结束停止后将停止所有停止进程。已停止成功的节点不会受影响。",
         "confirmFinishRestartContent2": "正在重启中，结束重启后将停止所有重启进程。已重启成功的节点不会受影响。",
+        "confirmFinishUninstallTitle": "确认结束卸载？",
+        "confirmFinishUninstallContent2": "正在卸载中，结束卸载后将停止所有卸载进程。已卸载成功的节点不会受影响。",
         "statusRunning": "进行中",
         "timeout": "超时",
         "installStatus": "安装状态",
@@ -336,7 +339,9 @@
       "operationConfig": "操作配置",
       "operationCompleteTitle": "操作已完成！",
       "operationCompleteDesc": "您已成功完成组件操作流程！",
-      "operationCompleteSubDesc": "您可以在节点列表中查看和管理组件的运行状态。"
+      "operationCompleteSubDesc": "您可以在节点列表中查看和管理组件的运行状态。",
+      "uninstallList": "卸载列表",
+      "finishUninstall": "结束卸载"
     }
   },
   "common": {
