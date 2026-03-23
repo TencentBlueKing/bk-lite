@@ -10,10 +10,10 @@ from apps.mlops.utils.webhook_client import (
     WebhookConnectionError,
     WebhookTimeoutError,
 )
+from apps.mlops.predict_url_builder import build_predict_url
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.validators import validate_serving_status_change
 from apps.mlops.services import (
-    get_host_address,
     get_image_by_prefix,
     get_mlflow_train_config,
     get_mlflow_tracking_uri,
@@ -1278,15 +1278,6 @@ class LogClusteringServingViewSet(ModelViewSet):
         try:
             serving = self.get_object()
 
-            host_address = get_host_address()
-            if not host_address:
-                return Response(
-                    {
-                        "error": "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
             data = request.data.get("data")
 
             if not data:
@@ -1299,15 +1290,16 @@ class LogClusteringServingViewSet(ModelViewSet):
                     {"error": "data 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 防御性处理 container_info 为空的情况
-            port = (serving.container_info or {}).get("port")
-            if not port:
+            try:
+                predict_url = build_predict_url(
+                    serving_id=f"LogClustering_Serving_{serving.id}",
+                    container_info=serving.container_info,
+                )
+            except ValueError as e:
                 return Response(
-                    {"error": "服务端口未配置，请确认服务已启动"},
+                    {"error": str(e)},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
-            predict_url = f"http://{host_address}:{port}/predict"
 
             payload = {"data": data}
 
