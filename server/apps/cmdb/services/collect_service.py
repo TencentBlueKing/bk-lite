@@ -4,6 +4,7 @@
 # @Author: windyzhao
 import copy
 
+from celery import current_app
 from django.conf import settings
 from django.db import transaction
 from django.utils.timezone import now
@@ -26,6 +27,10 @@ from apps.cmdb.tasks.celery_tasks import sync_collect_task
 class CollectModelService(object):
     TASK = "apps.cmdb.tasks.celery_tasks.sync_collect_task"
     NAME = "sync_collect_task"
+    # 周期任务达到该分钟阈值时，触发一次“下发后 4 分钟补跑”
+    DELAY_SYNC_THRESHOLD_MINUTES = 15
+    # 延迟补跑等待时长（秒）
+    DELAY_SYNC_COUNTDOWN_SECONDS = 4 * 60
 
     @staticmethod
     def has_permission(request, instance, view_self):
@@ -93,8 +98,62 @@ class CollectModelService(object):
                 data["credential"]["regions"] = regions
         else:
             old_credential = instance.decrypt_credentials
+            if not isinstance(old_credential, dict):
+                old_credential = {}
+            if credential is None:
+                data["credential"] = old_credential
+                return
+            if not isinstance(credential, dict):
+                raise BaseAppException("采集凭据格式错误！")
             old_credential.update(credential)
             data["credential"] = old_credential
+
+    @classmethod
+    def schedule_delayed_sync_if_needed(cls, instance, is_interval):
+        # 仅对开启周期巡检的任务生效
+        if not is_interval:
+            return
+        # 仅“循环分钟”类型才有明确分钟阈值；定点任务不参与补跑策略
+        if instance.cycle_value_type != "cycle":
+            return
+
+        try:
+            cycle_minutes = int(instance.cycle_value or 0)
+        except (TypeError, ValueError):
+            logger.warning(
+                "采集任务周期值非法，跳过延迟补跑: task_id=%s, cycle_value=%s",
+                instance.id,
+                instance.cycle_value,
+            )
+            return
+
+        if cycle_minutes < cls.DELAY_SYNC_THRESHOLD_MINUTES:
+            return
+
+        # 事务提交后再发 Celery，避免数据库回滚后任务已投递
+        transaction.on_commit(
+            lambda task_id=instance.id: current_app.send_task(
+                cls.TASK,
+                args=[task_id],
+                countdown=cls.DELAY_SYNC_COUNTDOWN_SECONDS,
+            )
+        )
+        logger.info(
+            "已注册采集任务延迟补跑: task_id=%s, countdown=%s, cycle_minutes=%s",
+            instance.id,
+            cls.DELAY_SYNC_COUNTDOWN_SECONDS,
+            cycle_minutes,
+        )
+
+    @staticmethod
+    def is_schedule_config_changed(old_instance, new_instance):
+        # update 仅在调度配置变化时才补跑，避免普通字段编辑导致重复触发
+        return any([
+            old_instance.is_interval != new_instance.is_interval,
+            old_instance.cycle_value_type != new_instance.cycle_value_type,
+            str(old_instance.cycle_value or "") != str(new_instance.cycle_value or ""),
+            str(old_instance.scan_cycle or "") != str(new_instance.scan_cycle or ""),
+        ])
 
 
     @staticmethod
@@ -140,6 +199,8 @@ class CollectModelService(object):
                     task_name = f"{cls.NAME}_{instance.id}"
                     CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=scan_cycle, args=[instance.id],
                                                                task=cls.TASK)
+                    # create 场景满足阈值则注册一次延迟补跑
+                    cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
 
                 # RPC 调用：推送节点参数
                 if not instance.is_k8s:
@@ -182,6 +243,9 @@ class CollectModelService(object):
                 if is_interval:
                     CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=scan_cycle,
                                                                args=[instance.id], task=cls.TASK)
+                    if cls.is_schedule_config_changed(old_instance=old_instance, new_instance=instance):
+                        # update 场景仅在调度参数变更时注册延迟补跑
+                        cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
                 else:
                     CeleryUtils.delete_periodic_task(task_name)
 

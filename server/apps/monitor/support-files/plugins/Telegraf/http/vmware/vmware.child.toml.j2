@@ -6,8 +6,8 @@
     response_timeout = "{{ response_timeout | default(60, true) }}s"
 
     [inputs.prometheus.http_headers]
-        username = "{{ custom_headers.username }}"
-        password = "{{ custom_headers.password }}"
+        username = "{{ username }}"
+        password = "{{ password }}"
         host = "{{ host }}"
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"

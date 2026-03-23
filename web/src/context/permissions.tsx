@@ -78,7 +78,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
       .filter((menu) => {
         if (menu.children && menu.children.length > 0 && !menu.url) {
           const hasChildPermission = menu.children.some((child) =>
-            permissionMap.hasOwnProperty(child.name) || 
+            permissionMap.hasOwnProperty(child.name) ||
             (child.children && child.children.length > 0)
           );
           if (!hasChildPermission) {
@@ -87,7 +87,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
           }
           return true;
         }
-        
+
         const hasParentPermission = parentMenu && menu.withParentPermission;
         const hasChildPermission = menu.children?.some((child) =>
           permissionMap.hasOwnProperty(child.name)
@@ -97,12 +97,12 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
           menu.isNotMenuItem ||
           hasParentPermission ||
           hasChildPermission;
-          
+
         if (!hasPermission) {
           console.warn(`No permission for menu: ${menu.name}`);
           return false;
         }
-        
+
         if (routeClientId && menu.url) {
           const urlContainsClientId = menu.url.includes(`/${routeClientId}/`);
           if (!urlContainsClientId) {
@@ -110,7 +110,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
             return false;
           }
         }
-        
+
         return true;
       })
       .map((menu) => {
@@ -126,7 +126,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
             children: filteredChildren
           };
         }
-        
+
         return {
           ...menu,
           operation: permissionMap[menu.name],
@@ -145,18 +145,17 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
         const clientName = mapClientName(routeClientId);
         let allMenuData: MenuItem[] = [];
         let menusToFilter: MenuItem[] = configMenus;
-        
+
         if (clientName) {
           const menuData = await get('/core/api/get_user_menus/', { params: { name: clientName } });
           allMenuData = menuData || [];
         }
-        
+
         if (routeClientId) {
           try {
-            const customMenuData = await get('/system_mgmt/custom_menu_group/get_menus/', { 
-              params: { app: clientName } 
+            const customMenuData = await get('/system_mgmt/custom_menu_group/get_menus/', {
+              params: { app: clientName }
             });
-            
             if (customMenuData && !customMenuData.is_build_in && customMenuData.menus) {
               menusToFilter = customMenuData.menus;
             }

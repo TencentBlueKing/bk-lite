@@ -8,6 +8,8 @@ import PermissionWrapper from '@/components/permission';
 interface TrainTaskHistoryProps {
   data: any[],
   loading: boolean,
+  pagination: { current: number; total: number; pageSize: number },
+  onChange: (value: { current: number; pageSize: number; total: number }) => void,
   openDetail: (record: any) => void,
   downloadModel: (record: any) => void,
 }
@@ -29,6 +31,8 @@ const RUN_TEXT_MAP: Record<string, string> = {
 const TrainTaskHistory = ({
   data,
   loading,
+  pagination,
+  onChange,
   openDetail,
   downloadModel
 }: TrainTaskHistoryProps) => {
@@ -95,9 +99,12 @@ const TrainTaskHistory = ({
     <div className="w-full h-full p-2">
       <CustomTable
         rowKey="run_id"
+        scroll={{ x: '100%', y: 'calc(100vh - 250px)' }}
         columns={columns}
         dataSource={data}
+        pagination={pagination}
         loading={loading}
+        onChange={onChange}
       />
     </div>
   )

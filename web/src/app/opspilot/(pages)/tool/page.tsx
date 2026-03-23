@@ -8,7 +8,7 @@ import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
-import { Tool, TagOption } from '@/app/opspilot/types/tool';
+import { Tool, TagOption, ToolPayload } from '@/app/opspilot/types/tool';
 import PermissionWrapper from "@/components/permission";
 import styles from '@/app/opspilot/styles/common.module.scss';
 import { useToolApi } from '@/app/opspilot/api/tool';
@@ -52,7 +52,8 @@ const ToolListPage: React.FC = () => {
     try {
       const enable_auth = form.getFieldValue('enable_auth') || false;
       const auth_token = form.getFieldValue('auth_token') || '';
-      const tools = await fetchAvailableTools(url, enable_auth, auth_token);
+      const transport = form.getFieldValue('transport') || 'streamable_http';
+      const tools = await fetchAvailableTools(url, enable_auth, auth_token, transport);
       setAvailableTools(tools || []);
       if (!tools || tools.length === 0) {
         message.info(t('tool.noToolsAvailable'));
@@ -122,6 +123,18 @@ const ToolListPage: React.FC = () => {
       ],
       mode: 'multiple',
       rules: [{ required: true, message: `${t('common.selectMsg')}${t('tool.label')}` }],
+      disabled: isBuiltIn,
+    },
+    {
+      name: 'transport',
+      type: 'select',
+      label: t('tool.transport'),
+      placeholder: `${t('common.selectMsg')}${t('tool.transport')}`,
+      options: [
+        { value: 'streamable_http', label: 'Streamable' },
+        { value: 'sse', label: 'SSE' },
+      ],
+      rules: [{ required: true, message: `${t('common.selectMsg')}${t('tool.transport')}` }],
       disabled: isBuiltIn,
     },
     {
@@ -255,13 +268,15 @@ const ToolListPage: React.FC = () => {
             ...variable,
             value: '',
           }));
-          const { enable_auth, auth_token, ...restValues } = values;
-          const queryParams = {
+          const { enable_auth, auth_token, transport, ...restValues } = values;
+          const queryParams: ToolPayload = {
             ...restValues,
+            name: values.name,
             icon: 'gongjuji',
             params: {
               name: values.name,
               url: values.url,
+              transport: transport || 'streamable_http',
               kwargs,
               enable_auth: enable_auth || false,
               auth_token: auth_token || '',
@@ -335,9 +350,15 @@ const ToolListPage: React.FC = () => {
     Promise.resolve().then(() => {
       const enableAuthValue = tool?.params?.enable_auth || false;
       setEnableAuth(enableAuthValue);
+      // 编辑时：如果 params 存在，transport 默认为 sse（兼容旧数据）
+      // 新增时：transport 默认为 streamable_http
+      const transportValue = tool?.params 
+        ? (tool.params.transport || 'sse') 
+        : 'streamable_http';
       form.setFieldsValue({
         ...tool,
         url: tool?.params?.url,
+        transport: transportValue,
         team: tool ? tool.team : [selectedGroup?.id],
         variables: tool?.params?.kwargs,
         enable_auth: enableAuthValue,

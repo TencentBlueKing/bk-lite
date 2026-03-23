@@ -1,0 +1,98 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "Windows Event Log integration uses Winlogbeat to collect Windows system event logs. Supports System, Security, Application, and custom event channels, helping you monitor Windows host security events, system errors, and application behavior."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "🔒",
+        "title": "Multi-channel Support",
+        "description": "Collect System, Security, Application, and custom event channels"
+      },
+      {
+        "icon": "💻",
+        "title": "Security Auditing",
+        "description": "Monitor login events, privilege changes, security policy modifications"
+      },
+      {
+        "icon": "📱",
+        "title": "Fault Tracking",
+        "description": "Capture service crashes, driver errors, application exceptions"
+      },
+      {
+        "icon": "🎯",
+        "title": "Incremental Collection",
+        "description": "Bookmark mechanism ensures no duplicates or missed events"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "Windows event logs will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Event timestamp"
+        },
+        {
+          "field": "winlog.channel",
+          "type": "keyword",
+          "description": "Event channel (System, Security, Application)"
+        },
+        {
+          "field": "winlog.event_id",
+          "type": "long",
+          "description": "Event ID"
+        },
+        {
+          "field": "log.level",
+          "type": "keyword",
+          "description": "Event level (info, warning, error, critical)"
+        },
+        {
+          "field": "winlog.provider_name",
+          "type": "keyword",
+          "description": "Event provider name"
+        },
+        {
+          "field": "winlog.task",
+          "type": "keyword",
+          "description": "Event task category"
+        },
+        {
+          "field": "winlog.user.name",
+          "type": "keyword",
+          "description": "Related username"
+        },
+        {
+          "field": "winlog.computer_name",
+          "type": "keyword",
+          "description": "Computer name"
+        },
+        {
+          "field": "message",
+          "type": "text",
+          "description": "Event description message"
+        }
+      ]
+    }
+  ],
+  "tips": [
+    {
+      "type": "info",
+      "title": "Privilege Requirements",
+      "content": "Reading Security event logs requires administrator privileges. Ensure the Winlogbeat service runs with appropriate permissions."
+    }
+  ]
+}

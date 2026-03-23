@@ -58,6 +58,37 @@ class CollectModelViewSet(AuthViewSet):
         data = COLLECT_OBJ_TREE
         return WebUtils.response_success(data)
 
+    @HasPermission("auto_collection-View")
+    @action(methods=["get"], detail=False, url_path="collect_task_names")
+    def collect_task_names(self, request, *args, **kwargs):
+        # Given 实例页需要直接拼接采集任务详情链接，When 返回任务列表，Then 提供 id/name/plugin/category。
+        queryset = CollectModels.objects.all().order_by("id")
+        # Given 页面受组织与实例权限控制，When 查询任务名，Then 先应用对象权限过滤。
+        queryset = self.get_queryset_by_permission(request, queryset)
+        task_list = queryset.values("id", "name", "model_id")
+        plugin_meta_map = {
+            str(child.get("id")): {
+                "category": str(item.get("id")),
+                "category_name": item.get("name"),
+                "plugin_name": child.get("name"),
+            }
+            for item in COLLECT_OBJ_TREE
+            for child in item.get("children", [])
+            if child.get("id")
+        }
+        data = [
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "plugin": item["model_id"],
+                "category": plugin_meta_map.get(str(item["model_id"]), {}).get("category"),
+                "plugin_name": plugin_meta_map.get(str(item["model_id"]), {}).get("plugin_name"),
+                "category_name": plugin_meta_map.get(str(item["model_id"]), {}).get("category_name"),
+            }
+            for item in task_list
+        ]
+        return WebUtils.response_success(data)
+
     def get_serializer_class(self):
         if self.action == "list":
             return CollectModelLIstSerializer
@@ -207,6 +238,7 @@ class CollectModelViewSet(AuthViewSet):
                 "domain": request.user.domain,
                 "current_team": request.COOKIES.get("current_team"),
             },
+            "node_type": "container"
         }
         node = NodeMgmt()
         data = node.node_list(query_data)
@@ -242,6 +274,8 @@ class CollectModelViewSet(AuthViewSet):
     def list_regions(self, requests, *args, **kwargs):
         """
         查询云的所有区域
+        TODO 看看未来需不需要使用实例的endpoint和认证信息，目前先使用公共接口，后续如果有需要再调整
+        "host": "ecs.private-cloud.example.com"
         """
         params = requests.data
         cloud_id = requests.data["cloud_id"]

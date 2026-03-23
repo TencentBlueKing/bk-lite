@@ -12,6 +12,10 @@ class AWSManager:
         self.connect_timeout = int(params.get('timeout', 10))
         self.read_timeout = self.connect_timeout * 6
         self.max_attempts = 3
+        
+        # 🆕 支持自定义endpoint（AWS私有云/GovCloud场景）
+        # 从host参数读取endpoint，如: ec2.private-cloud.example.com
+        self.custom_endpoint = params.get("host")
 
     def get_session(self):
         session_args = {}
@@ -30,7 +34,18 @@ class AWSManager:
             read_timeout=self.read_timeout,  # 读取超时
             retries={'max_attempts': self.max_attempts}  # 重试次数
         )
-        return session.client(service, region_name=region, config=config)
+        
+        # 🆕 如果有自定义endpoint，添加到client参数
+        client_kwargs = {"region_name": region, "config": config}
+        if self.custom_endpoint:
+            # 如果endpoint不包含协议前缀，默认添加https://
+            if not self.custom_endpoint.startswith(('http://', 'https://')):
+                endpoint_url = f"https://{self.custom_endpoint}"
+            else:
+                endpoint_url = self.custom_endpoint
+            client_kwargs["endpoint_url"] = endpoint_url
+        
+        return session.client(service, **client_kwargs)
 
     def get_organization_info(self) -> Optional[Dict]:
         try:

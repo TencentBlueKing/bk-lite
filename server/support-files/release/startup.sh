@@ -28,6 +28,7 @@ if [ "$opspilot_installed" = false ]; then
     rm -f /etc/supervisor/conf.d/consumer.conf
 fi
 
+
 # 设置进程数量环境变量默认值
 export APP_WORKERS=${APP_WORKERS:-8}
 export CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-4}

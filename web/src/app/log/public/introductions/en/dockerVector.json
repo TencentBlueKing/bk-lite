@@ -1,0 +1,89 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "Docker container log integration uses Vector to collect standard output (stdout/stderr) logs from containers. Supports automatic container discovery, multi-format log parsing, and automatic labeling of container metadata, helping you implement unified container log management."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "🔍",
+        "title": "Auto Discovery",
+        "description": "Automatically discover and collect logs from running containers"
+      },
+      {
+        "icon": "🎯",
+        "title": "Metadata Enrichment",
+        "description": "Auto-add container name, image, labels and other metadata"
+      },
+      {
+        "icon": "📊",
+        "title": "Multi-format Parsing",
+        "description": "Supports JSON, text, and other log formats"
+      },
+      {
+        "icon": "🏷️",
+        "title": "Flexible Filtering",
+        "description": "Filter containers by name, image, labels and other conditions"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "Docker container logs will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Log timestamp"
+        },
+        {
+          "field": "container.name",
+          "type": "keyword",
+          "description": "Container name"
+        },
+        {
+          "field": "container.id",
+          "type": "keyword",
+          "description": "Container ID"
+        },
+        {
+          "field": "container.image.name",
+          "type": "keyword",
+          "description": "Image name"
+        },
+        {
+          "field": "container.image.tag",
+          "type": "keyword",
+          "description": "Image tag"
+        },
+        {
+          "field": "stream",
+          "type": "keyword",
+          "description": "Output stream (stdout/stderr)"
+        },
+        {
+          "field": "container.labels",
+          "type": "object",
+          "description": "Container labels"
+        },
+        { "field": "message", "type": "text", "description": "Log content" }
+      ]
+    }
+  ],
+  "tips": [
+    {
+      "type": "info",
+      "title": "Docker Socket Access",
+      "content": "Vector needs access to Docker socket to discover containers. Ensure the user running Vector has access to /var/run/docker.sock."
+    }
+  ]
+}

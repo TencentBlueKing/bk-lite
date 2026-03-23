@@ -106,9 +106,9 @@ if [ -n "$DEPLOYMENT_EXISTS" ]; then
 fi
 
 if [ -z "$DELETED_RESOURCES" ]; then
-    # 没有找到任何资源
-    json_error "RESOURCE_NOT_FOUND" "$ID" "No resources found to delete"
-    exit 1
+    # 没有找到任何资源（幂等设计：不存在时返回成功）
+    json_success "$ID" "No resources found (already removed)"
+    exit 0
 fi
 
 # 成功删除

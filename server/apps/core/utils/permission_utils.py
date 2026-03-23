@@ -57,6 +57,7 @@ def set_rules_module_params(app_name, permission_key):
         "console_mgmt": "ops-console",
         "mlops": "mlops",
         "operation_analysis": "ops-analysis",
+        "job_mgmt": "job",
     }
     client = SystemMgmt(is_local_client=True)
     app_name = app_name_map.get(app_name, app_name)
@@ -75,6 +76,7 @@ def get_permissions_rules(user, current_team, app_name, permission_key, include_
         "console_mgmt": "ops-console",
         "mlops": "mlops",
         "operation_analysis": "ops-analysis",
+        "job_mgmt": "job",
     }
     app_name = app_name_map.get(app_name, app_name)
     module = permission_key
@@ -109,7 +111,7 @@ def permission_filter(model, permission, team_key="teams__id__in", id_key="id__i
     per_team_ids = permission.get("team", [])
 
     if not per_instance_ids and not per_team_ids:
-        return qs
+        return qs.none()
 
     # 实例权限过滤
     if per_team_ids and not per_instance_ids:
@@ -157,14 +159,12 @@ def check_instance_permission(object_type_id, instance_id, teams, permissions, c
 
     cur_team = set(cur_team)
 
-    # 普通用户权限检查 - 未设置实例权限时，根据当前组判断
+    # 未设置该对象类型的权限规则时，检查实例组织是否在用户团队中
     permission = permissions.get(str(object_type_id))
     if not permission:
         if cur_team & teams:
-            # 此实例组织在当前组中，有权限
             return True
         else:
-            # 此实例组织不在当前组，无权限
             return False
 
     # 安全获取实例权限，确保类型正确

@@ -76,6 +76,7 @@ app:
   opspilot: OpsPilot 是AI智能平台，基于前沿人工智能技术，融合机器学习与大模型能力，支持多元化场景
   system-manager: 涵盖用户和组织角色权限管理，通过精细化权限控制，确保资源访问安全，同时提升操作效率。提供灵活的配置和管理，满足不同业务需求
   node: 用于集中管理各个云区域下的节点，为各个节点安装各类探针，以便进行监控数据、配置信息、日志等信息的采集
+  job: 快速创建并执行作业，统一管理脚本执行、文件分发和定时任务
 action_type:
   create: 创建
   delete: 删除
@@ -84,3 +85,9 @@ action_type:
 status:
   success: 成功
   failed: 失败
+tag:
+  # job
+  job_execution: 作业执行
+  script_management: 脚本管理
+  file_distribution: 文件分发
+  scheduled_task: 定时任务

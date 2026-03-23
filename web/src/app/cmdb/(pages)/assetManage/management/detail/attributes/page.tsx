@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import AttributesModal from './attributesModal';
+import PublicEnumLibraryModal, { PublicEnumLibraryModalRef } from '../../list/publicEnumLibraryModal';
 import { Tag } from 'antd';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
@@ -38,7 +39,8 @@ const Attributes: React.FC = () => {
 
   const modelId = modelDetail?.model_id;
   const modelPermission = modelDetail?.permission || [];
-  const attrRef = useRef<any>(null);
+const attrRef = useRef<any>(null);
+  const publicEnumLibraryRef = useRef<PublicEnumLibraryModalRef>(null);
   const groupFormRef = useRef<any>(null);
   const [searchText, setSearchText] = useState<string>('');
   const [filterText, setFilterText] = useState<string>('');
@@ -440,6 +442,10 @@ const Attributes: React.FC = () => {
     fetchGroupsAndData();
   };
 
+  const showPublicEnumLibraryModal = (libraryId?: string) => {
+    publicEnumLibraryRef.current?.showModal(libraryId);
+  };
+
   const getGroupedAttrs = () => {
     const grouped: Record<string, AttrItem[]> = {};
 
@@ -465,6 +471,7 @@ const Attributes: React.FC = () => {
   };
 
   const groupedAttrs = getGroupedAttrs();
+  const hasTagAttr = tableData.some((attr) => attr.attr_type === 'tag');
 
   return (
     <div className="h-full flex flex-col">
@@ -614,7 +621,14 @@ const Attributes: React.FC = () => {
         ref={attrRef}
         attrTypeList={ATTR_TYPE_LIST}
         groups={groups}
+        hasTagAttr={hasTagAttr}
         onSuccess={updateAttrList}
+        onManagePublicLibrary={showPublicEnumLibraryModal}
+      />
+
+      <PublicEnumLibraryModal
+        ref={publicEnumLibraryRef}
+        onSuccess={() => attrRef.current?.refreshPublicLibraries()}
       />
 
       <OperateModal

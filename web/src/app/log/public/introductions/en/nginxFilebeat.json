@@ -1,0 +1,116 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "Nginx integration uses the Filebeat Nginx module to automatically collect and parse Nginx HTTP server access logs and error logs. Structured log data helps you analyze traffic patterns, monitor error rates, and optimize web application performance."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "Access Log Parsing",
+        "description": "Parse client IP, request method, URL, status code, response size, response time"
+      },
+      {
+        "icon": "⏱️",
+        "title": "Error Log Analysis",
+        "description": "Capture error levels, error messages, upstream failures, and other information"
+      },
+      {
+        "icon": "🔍",
+        "title": "Geo-IP Enrichment",
+        "description": "Automatic lookup of client IP geographic location"
+      },
+      {
+        "icon": "🌍",
+        "title": "Performance Monitoring",
+        "description": "Extract request_time, upstream_response_time for performance analysis"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Access Log Fields",
+      "description": "Nginx access logs will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Request timestamp"
+        },
+        {
+          "field": "source.address",
+          "type": "ip",
+          "description": "Client IP address"
+        },
+        {
+          "field": "http.request.method",
+          "type": "keyword",
+          "description": "HTTP method (GET, POST, etc.)"
+        },
+        {
+          "field": "url.path",
+          "type": "keyword",
+          "description": "Request URL path"
+        },
+        {
+          "field": "http.response.status_code",
+          "type": "integer",
+          "description": "HTTP status code"
+        },
+        {
+          "field": "http.response.body.bytes",
+          "type": "long",
+          "description": "Response body size (bytes)"
+        },
+        {
+          "field": "nginx.access.request_time",
+          "type": "float",
+          "description": "Request processing time (seconds)"
+        },
+        {
+          "field": "nginx.access.upstream_response_time",
+          "type": "float",
+          "description": "Upstream response time"
+        }
+      ]
+    },
+    {
+      "title": "Error Log Fields",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Error timestamp"
+        },
+        {
+          "field": "log.level",
+          "type": "keyword",
+          "description": "Error level (error, warn, notice, etc.)"
+        },
+        {
+          "field": "nginx.error.connection_id",
+          "type": "long",
+          "description": "Connection ID"
+        },
+        {
+          "field": "message",
+          "type": "text",
+          "description": "Error message content"
+        }
+      ]
+    }
+  ]
+}

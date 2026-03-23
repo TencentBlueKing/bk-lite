@@ -44,6 +44,7 @@ import {
   TaskStatusMap,
 } from '@/app/cmdb/types/autoDiscovery';
 import { useAssetManageStore } from '@/app/cmdb/store';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
@@ -57,6 +58,9 @@ interface PluginCardProps {
 const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
   const collectApi = useCollectApi();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { editingId, setEditingId, copyTaskData: _copyTaskData, setCopyTaskData } = useAssetManageStore();
   const syncStatusConfig = React.useMemo(() => getExecStatusConfig(t), [t]);
@@ -82,6 +86,8 @@ const ProfessionalCollection: React.FC = () => {
   const tableCountRef = useRef<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const statusTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isSyncingTaskDetailRef = useRef(false);
+  const isClosingTaskDetailRef = useRef(false);
   const stateRef = useRef({
     searchText: '',
     pagination: {
@@ -102,6 +108,85 @@ const ProfessionalCollection: React.FC = () => {
     pageSize: 20,
     total: 0,
   });
+
+  const buildTargetUrl = useCallback(
+    (next: {
+      categoryId?: string | null;
+      pluginId?: string | null;
+      taskId?: string | null;
+    }) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next.categoryId !== undefined) {
+        if (next.categoryId) {
+          params.set('category', next.categoryId);
+        } else {
+          params.delete('category');
+        }
+      }
+      if (next.pluginId !== undefined) {
+        if (next.pluginId) {
+          params.set('plugin', next.pluginId);
+        } else {
+          params.delete('plugin');
+        }
+      }
+      if (next.taskId !== undefined) {
+        if (next.taskId) {
+          params.set('taskId', next.taskId);
+        } else {
+          params.delete('taskId');
+        }
+      }
+
+      const query = params.toString();
+      return query ? `${pathname}?${query}` : pathname;
+    },
+    [pathname, searchParams]
+  );
+
+  const syncUrlState = useCallback(
+    (
+      next: {
+        categoryId?: string | null;
+        pluginId?: string | null;
+        taskId?: string | null;
+      },
+      mode: 'replace' | 'push' = 'replace'
+    ) => {
+      const targetUrl = buildTargetUrl(next);
+      const currentQuery = searchParams.toString();
+      const currentUrl = currentQuery ? `${pathname}?${currentQuery}` : pathname;
+
+      if (targetUrl === currentUrl) {
+        return;
+      }
+
+      if (mode === 'push') {
+        router.push(targetUrl, { scroll: false });
+        return;
+      }
+
+      router.replace(targetUrl, { scroll: false });
+    },
+    [buildTargetUrl, pathname, router, searchParams]
+  );
+
+  const openTaskDetailById = useCallback(
+    async (taskId: string) => {
+      if (!taskId) {
+        return;
+      }
+      try {
+        const taskDetail = (await collectApi.getCollectDetail(taskId)) as CollectTask;
+        setCurrentTask(taskDetail);
+        setDetailVisible(true);
+      } catch {
+        message.warning(t('Collection.taskDetail.title'));
+        syncUrlState({ taskId: null }, 'replace');
+      }
+    },
+    [collectApi, syncUrlState, t]
+  );
 
   const currentPlugin = React.useMemo(() => {
     return selectedCategoryRef.current.category?.tabItems?.find(
@@ -193,17 +278,42 @@ const ProfessionalCollection: React.FC = () => {
       setCategoryList([allCategory, ...categories]);
       if (!data.length) return;
 
+      const urlCategoryId = searchParams.get('category') || 'all';
+      const matchedCategory = [allCategory, ...categories].find(
+        (category) => category.id === urlCategoryId
+      );
+      const resolvedCategory = matchedCategory || allCategory;
+
+      const urlPluginId = searchParams.get('plugin') || '';
+      const pluginInCategory = resolvedCategory.tabItems?.find(
+        (item) => item.id === urlPluginId
+      );
+      const resolvedPluginId = pluginInCategory
+        ? pluginInCategory.id
+        : (resolvedCategory.tabItems?.[0]?.id || '');
+
       selectedCategoryRef.current = {
-        categoryId: 'all',
-        category: allCategory,
+        categoryId: resolvedCategory.id,
+        category: resolvedCategory,
       };
 
-      const firstPlugin = allCategory.tabItems?.[0];
-      if (firstPlugin) {
-        setSelectedPluginId(firstPlugin.id);
-        stateRef.current.selectedPluginId = firstPlugin.id;
-        fetchData(true, firstPlugin.id);
+      if (resolvedPluginId) {
+        setSelectedPluginId(resolvedPluginId);
+        stateRef.current.selectedPluginId = resolvedPluginId;
+        await fetchData(true, resolvedPluginId);
+      } else {
+        setSelectedPluginId('');
+        stateRef.current.selectedPluginId = '';
+        setTableData([]);
       }
+
+      syncUrlState(
+        {
+          categoryId: resolvedCategory.id,
+          pluginId: resolvedPluginId || null,
+        },
+        'replace'
+      );
 
       fetchTaskStatus();
     } catch (error) {
@@ -292,11 +402,27 @@ const ProfessionalCollection: React.FC = () => {
         const firstPluginId = category.tabItems[0].id;
         setSelectedPluginId(firstPluginId);
         stateRef.current.selectedPluginId = firstPluginId;
-        fetchData(true, firstPluginId);
+        await fetchData(true, firstPluginId);
+        syncUrlState(
+          {
+            categoryId,
+            pluginId: firstPluginId,
+            taskId: null,
+          },
+          'replace'
+        );
       } else {
         setSelectedPluginId('');
         stateRef.current.selectedPluginId = '';
         setTableData([]);
+        syncUrlState(
+          {
+            categoryId,
+            pluginId: null,
+            taskId: null,
+          },
+          'replace'
+        );
       }
     }
   };
@@ -674,8 +800,33 @@ const ProfessionalCollection: React.FC = () => {
   );
 
   const handleViewDetail = (record: CollectTask) => {
+    const nextTaskId = String(record.id);
+    const currentTaskId = searchParams.get('taskId');
+
     setCurrentTask(record);
     setDetailVisible(true);
+
+    if (currentTaskId === nextTaskId) {
+      return;
+    }
+
+    isSyncingTaskDetailRef.current = true;
+    syncUrlState(
+      {
+        categoryId: selectedCategoryRef.current.categoryId || 'all',
+        pluginId: stateRef.current.selectedPluginId || null,
+        taskId: nextTaskId,
+      },
+      'push'
+    );
+  };
+
+  const handleCloseDetailDrawer = () => {
+    isClosingTaskDetailRef.current = true;
+    isSyncingTaskDetailRef.current = false;
+    setDetailVisible(false);
+    setCurrentTask(null);
+    syncUrlState({ taskId: null }, 'replace');
   };
 
   const getItems = (node: TreeNode) => {
@@ -717,7 +868,47 @@ const ProfessionalCollection: React.FC = () => {
     setDocLoading(false);
 
     fetchData(true, pluginId);
+    syncUrlState(
+      {
+        categoryId: selectedCategoryRef.current.categoryId || 'all',
+        pluginId,
+        taskId: null,
+      },
+      'replace'
+    );
   };
+
+  useEffect(() => {
+    if (!categoryList.length) {
+      return;
+    }
+
+    const taskId = searchParams.get('taskId');
+
+    if (!taskId) {
+      isClosingTaskDetailRef.current = false;
+      if (isSyncingTaskDetailRef.current) {
+        return;
+      }
+      if (detailVisible) {
+        setDetailVisible(false);
+        setCurrentTask(null);
+      }
+      return;
+    }
+
+    if (isClosingTaskDetailRef.current) {
+      return;
+    }
+
+    isSyncingTaskDetailRef.current = false;
+
+    if (currentTask && String(currentTask.id) === taskId && detailVisible) {
+      return;
+    }
+
+    openTaskDetailById(taskId);
+  }, [categoryList.length, currentTask, detailVisible, openTaskDetailById, searchParams]);
 
   const PluginCard: React.FC<PluginCardProps> = ({ tab }) => {
     const isActive = selectedPluginId === tab.id;
@@ -1034,11 +1225,11 @@ const ProfessionalCollection: React.FC = () => {
         title={t('Collection.taskDetail.title')}
         placement="right"
         width={750}
-        onClose={() => setDetailVisible(false)}
+        onClose={handleCloseDetailDrawer}
         open={detailVisible}
         footer={
           <div className="flex justify-start">
-            <Button onClick={() => setDetailVisible(false)}>
+            <Button onClick={handleCloseDetailDrawer}>
               {t('common.close')}
             </Button>
           </div>
@@ -1048,7 +1239,7 @@ const ProfessionalCollection: React.FC = () => {
           <TaskDetail
             task={currentTask}
             modelId={selectedCategoryRef.current.categoryId}
-            onClose={() => setDetailVisible(false)}
+            onClose={handleCloseDetailDrawer}
             onSuccess={fetchData}
           />
         )}

@@ -38,6 +38,11 @@ ADD ./packetbeat ./bin/packetbeat
 ADD ./metricbeat ./bin/metricbeat
 ADD ./auditbeat ./bin/auditbeat
 ADD ./windows /opt/release/windows/fusion-collectors
+
+# exporters
+ADD ./linux/exporters /opt/release/linux/exporters
+# ansible executor
+ADD ./linux/ansible-executor/ ./bin/
 # Suporvisor
 ADD ./service.conf /etc/supervisor/conf.d/service.conf
 

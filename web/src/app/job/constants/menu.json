@@ -1,0 +1,182 @@
+{
+  "zh": [
+    {
+      "title": "首页",
+      "icon": "shouye",
+      "url": "/job/home",
+      "name": "home"
+    },
+    {
+      "title": "作业执行",
+      "icon": "zuoyezhihang",
+      "url": "/job/execution",
+      "name": "execution",
+      "children": [
+        {
+          "title": "快速执行",
+          "url": "/job/execution/quick-exec",
+          "name": "quick_exec"
+        },
+        {
+          "title": "文件分发",
+          "url": "/job/execution/file-dist",
+          "name": "file_dist"
+        },
+        {
+          "title": "定时任务",
+          "url": "/job/execution/cron-task",
+          "name": "cron_task"
+        },
+        {
+          "title": "创建定时任务",
+          "url": "/job/execution/cron-task/create",
+          "name": "cron_task_create",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "编辑定时任务",
+          "url": "/job/execution/cron-task/edit",
+          "name": "cron_task_edit",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "作业记录",
+          "url": "/job/execution/job-record",
+          "name": "job_record"
+        }
+      ]
+    },
+    {
+      "title": "作业模版",
+      "icon": "weihuzuoyemoban",
+      "url": "/job/template",
+      "name": "template",
+      "children": [
+        {
+          "title": "脚本库",
+          "url": "/job/template/script-library",
+          "name": "script_library"
+        },
+        {
+          "title": "Playbook库",
+          "url": "/job/template/playbook-library",
+          "name": "playbook_library"
+        }
+      ]
+    },
+    {
+      "title": "目标管理",
+      "icon": "mubiaoguanli",
+      "url": "/job/target",
+      "name": "target"
+    },
+    {
+      "title": "系统配置",
+      "icon": "settings-fill",
+      "url": "/job/settings",
+      "name": "settings",
+      "children": [
+        {
+          "title": "高危命令",
+          "url": "/job/settings/dangerous-command",
+          "name": "dangerous_command"
+        },
+        {
+          "title": "高危路径",
+          "url": "/job/settings/dangerous-path",
+          "name": "dangerous_path"
+        }
+      ]
+    }
+  ],
+  "en": [
+    {
+      "title": "Home",
+      "icon": "shouye",
+      "url": "/job/home",
+      "name": "home"
+    },
+    {
+      "title": "Execution",
+      "icon": "zuoyezhihang",
+      "url": "/job/execution",
+      "name": "execution",
+      "children": [
+        {
+          "title": "Quick Execution",
+          "url": "/job/execution/quick-exec",
+          "name": "quick_exec"
+        },
+        {
+          "title": "File Distribution",
+          "url": "/job/execution/file-dist",
+          "name": "file_dist"
+        },
+        {
+          "title": "Scheduled Task",
+          "url": "/job/execution/cron-task",
+          "name": "cron_task"
+        },
+        {
+          "title": "Create Scheduled Task",
+          "url": "/job/execution/cron-task/create",
+          "name": "cron_task_create",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Edit Scheduled Task",
+          "url": "/job/execution/cron-task/edit",
+          "name": "cron_task_edit",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Job Records",
+          "url": "/job/execution/job-record",
+          "name": "job_record"
+        }
+      ]
+    },
+    {
+      "title": "Template",
+      "icon": "weihuzuoyemoban",
+      "url": "/job/template",
+      "name": "template",
+      "children": [
+        {
+          "title": "Script Library",
+          "url": "/job/template/script-library",
+          "name": "script_library"
+        },
+        {
+          "title": "Playbook Library",
+          "url": "/job/template/playbook-library",
+          "name": "playbook_library"
+        }
+      ]
+    },
+    {
+      "title": "Target",
+      "icon": "mubiaoguanli",
+      "url": "/job/target",
+      "name": "target"
+    },
+    {
+      "title": "Settings",
+      "icon": "settings-fill",
+      "url": "/job/settings",
+      "name": "settings",
+      "children": [
+        {
+          "title": "Dangerous Commands",
+          "url": "/job/settings/dangerous-command",
+          "name": "dangerous_command"
+        },
+        {
+          "title": "Dangerous Paths",
+          "url": "/job/settings/dangerous-path",
+          "name": "dangerous_path"
+        }
+      ]
+    }
+  ]
+}

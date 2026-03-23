@@ -1,0 +1,101 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "Network Flow integration uses Packetbeat's Flow feature to capture and aggregate network session data. Without configuring each protocol, you can get statistics on all TCP/UDP communications between hosts, helping you with traffic analysis, capacity planning, and security monitoring."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "📊",
+        "title": "Traffic Statistics",
+        "description": "Statistics on traffic distribution and trends by host, port, protocol"
+      },
+      {
+        "icon": "🔗",
+        "title": "Connection Tracking",
+        "description": "Record all network connection establishment, data transfer, and closure"
+      },
+      {
+        "icon": "🌐",
+        "title": "Topology Visualization",
+        "description": "Draw inter-host communication topology based on traffic data"
+      },
+      {
+        "icon": "🛡️",
+        "title": "Anomaly Detection",
+        "description": "Identify abnormal traffic patterns, unauthorized connections, data exfiltration"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "Network flows will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "220px" },
+        { "key": "type", "title": "Type", "width": "100px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Traffic record timestamp"
+        },
+        {
+          "field": "source.ip",
+          "type": "ip",
+          "description": "Source IP address"
+        },
+        {
+          "field": "source.port",
+          "type": "long",
+          "description": "Source port"
+        },
+        {
+          "field": "destination.ip",
+          "type": "ip",
+          "description": "Destination IP address"
+        },
+        {
+          "field": "destination.port",
+          "type": "long",
+          "description": "Destination port"
+        },
+        {
+          "field": "network.transport",
+          "type": "keyword",
+          "description": "Transport protocol (tcp/udp)"
+        },
+        {
+          "field": "source.bytes",
+          "type": "long",
+          "description": "Source bytes sent"
+        },
+        {
+          "field": "destination.bytes",
+          "type": "long",
+          "description": "Destination bytes sent"
+        },
+        {
+          "field": "source.packets",
+          "type": "long",
+          "description": "Source packets sent"
+        },
+        {
+          "field": "destination.packets",
+          "type": "long",
+          "description": "Destination packets sent"
+        },
+        {
+          "field": "event.duration",
+          "type": "long",
+          "description": "Session duration (nanoseconds)"
+        }
+      ]
+    }
+  ]
+}

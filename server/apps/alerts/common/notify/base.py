@@ -36,6 +36,7 @@ class NotifyParamsFormat(object):
         if self.build_in:
             alert = self.alerts[0]
             content += f"告警：{alert.title} \n"
+            content += f"内容：{alert.content} \n"
             content += f"告警时间:：{alert.format_created_at} \n"
             content += f"负责人:：{','.join(self.username_list)} \n"
         else:

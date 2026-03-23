@@ -1,0 +1,21 @@
+{
+  "name": "rabbitmq",
+  "collector": "Filebeat",
+  "config_section": "module",
+  "icon": "rabbitmq",
+  "description": "Collects and parses RabbitMQ log files using Filebeat module",
+  "default_query": "collect_type: rabbitmq | last 1 by (_time) partition by (instance_id)",
+  "attrs": [
+    "collect_type",
+    "collector",
+    "instance_id",
+    "rabbitmq.log.timestamp",
+    "rabbitmq.log.level",
+    "rabbitmq.log.pid",
+    "rabbitmq.log.message",
+    "event.dataset",
+    "event.module",
+    "fileset.name"
+  ],
+  "display_category": "middleware"
+}

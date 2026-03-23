@@ -424,6 +424,10 @@ export const ATTR_TYPE_LIST = [
     name: 'enumeration',
   },
   {
+    id: 'tag',
+    name: 'tag',
+  },
+  {
     id: 'time',
     name: 'time',
   },
@@ -443,12 +447,20 @@ export const ATTR_TYPE_LIST = [
     id: 'organization',
     name: 'organization',
   },
+  {
+    id: 'table',
+    name: 'table',
+  },
 ];
 
 export const CONSTRAINT_List = [
   {
     id: 'n:n',
     name: 'N-N',
+  },
+  {
+    id: 'n:1',
+    name: 'N-1',
   },
   {
     id: '1:n',

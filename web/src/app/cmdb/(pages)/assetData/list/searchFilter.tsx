@@ -10,10 +10,23 @@ import { useTranslation } from '@/utils/i18n';
 import { SearchFilterProps } from '@/app/cmdb/types/assetData';
 import { useAssetDataStore, type SavedFilter } from '@/app/cmdb/store';
 import { useSavedFiltersApi, type SavedFiltersConfigValue } from '@/app/cmdb/api/userConfig';
+import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 
 dayjs.extend(customParseFormat);
+
+export function toTagSearchCondition(
+  field: string,
+  selectedValues: string[],
+): { field: string; type: 'list_any[]'; value: string[]; accurate: true } {
+  return {
+    field,
+    type: 'list_any[]',
+    value: selectedValues,
+    accurate: true,
+  };
+}
 
 const SAVED_FILTERS_CONFIG_KEY = 'cmdb_saved_filters';
 
@@ -85,42 +98,48 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
       value,
     };
     // 排除布尔类型的false || 多选框没选时的空数组
-    if (
-      (!value && value !== false && value !== 0) ||
+      if (
+        (!value && value !== false && value !== 0) ||
       (Array.isArray(value) && !value.length) ||
       (selectedAttr?.attr_type === 'time' && !(value?.[0] && value?.[1]))
-    ) {
+      ) {
       // condition 为 null 时，传递字段信息用于删除对应筛选项
-      condition = { field: searchAttr } as any;
-    } else if (selectedAttr?.attr_id === 'cloud') {
-      condition.type = typeof value === 'number' ? 'int=' : 'str=';
-    } else {
-      switch (selectedAttr?.attr_type) {
-        case 'enum':
-          condition.type = typeof value === 'number' ? 'int=' : 'str=';
-          break;
-        case 'str':
-          condition.type = isExact ? 'str=' : 'str*';
-          break;
-        case 'user':
-          // test4.5:如果为用户字段user，则类型为list（operator 字段的数据类型转换）
-          condition.type = 'list[]';
-          condition.value = Array.isArray(value) ? value : [value];
-          break;
-        case 'int':
-          condition.type = 'int=';
-          condition.value = +condition.value;
-          break;
-        case 'organization':
-          condition.type = 'list[]';
-          break;
-        case 'time':
-          delete condition.value;
-          condition.start = value.at(0);
-          condition.end = value.at(-1);
-          break;
+        condition = { field: searchAttr } as any;
+      } else if (selectedAttr?.attr_id === 'cloud') {
+        condition.type = typeof value === 'number' ? 'int=' : 'str=';
+      } else {
+        switch (selectedAttr?.attr_type) {
+          case 'enum':
+            condition.type = 'list_any[]';
+            condition.value = Array.isArray(value) ? value : [value];
+            break;
+          case 'str':
+            condition.type = isExact ? 'str=' : 'str*';
+            break;
+          case 'user':
+            condition.type = 'list[]';
+            condition.value = Array.isArray(value) ? value : [value];
+            break;
+          case 'int':
+            condition.type = 'int=';
+            condition.value = +condition.value;
+            break;
+          case 'organization':
+            condition.type = 'list[]';
+            break;
+          case 'tag':
+            condition = toTagSearchCondition(
+              searchAttr,
+              Array.isArray(value) ? value : value ? [value] : [],
+            );
+            break;
+          case 'time':
+            delete condition.value;
+            condition.start = value.at(0);
+            condition.end = value.at(-1);
+            break;
+        }
       }
-    }
     onSearch(condition, value);
   };
 
@@ -266,6 +285,37 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
         );
       case 'enum':
         const enumOpts = Array.isArray(selectedAttr.option) ? selectedAttr.option : [];
+        const isMultipleEnum = selectedAttr.enum_select_mode === 'multiple';
+        if (isMultipleEnum) {
+          return (
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              className="value"
+              style={{ minWidth: 200 }}
+              value={Array.isArray(searchValue) ? searchValue : searchValue ? [searchValue] : []}
+              onChange={(e) => onSearchValueChange(e, isExactSearch)}
+              onClear={() => onSearchValueChange([], isExactSearch)}
+              maxTagCount={2}
+              maxTagPlaceholder={(omittedValues) => `+${omittedValues.length}`}
+              filterOption={(input, opt: any) => {
+                if (typeof opt?.children === 'string') {
+                  return opt?.children
+                    ?.toLowerCase()
+                    .includes(input.toLowerCase());
+                }
+                return true;
+              }}
+            >
+              {enumOpts.map((opt) => (
+                <Select.Option key={opt.id} value={opt.id}>
+                  {opt.name}
+                </Select.Option>
+              ))}
+            </Select>
+          );
+        }
         return (
           <Select
             allowClear
@@ -290,6 +340,22 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
               </Select.Option>
             ))}
           </Select>
+        );
+      case 'tag':
+        return (
+          <Select
+            mode="multiple"
+            allowClear
+            showSearch
+            className="value"
+            style={{ minWidth: 260 }}
+            value={Array.isArray(searchValue) ? searchValue : searchValue ? [searchValue] : []}
+            onChange={(e) => onSearchValueChange(e, true)}
+            onClear={() => onSearchValueChange([], true)}
+            maxTagCount={2}
+            maxTagPlaceholder={(omittedValues) => `+${omittedValues.length}`}
+            options={getTagOptions(selectedAttr)}
+          />
         );
       case 'bool':
         return (
@@ -416,7 +482,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             borderBottomLeftRadius: 0,
           }}
         ></Button>
-        {showExactSearch && (
+        {showExactSearch && searchAttr !== 'tag' && (
           <Checkbox onChange={onExactSearchChange}>
             {isCompact ? t('Model.isExactSearch_abbreviation') : t('Model.isExactSearch')}
           </Checkbox>

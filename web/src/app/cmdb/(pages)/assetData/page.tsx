@@ -15,7 +15,7 @@ import {
   Empty,
 } from 'antd';
 import type { MenuProps } from 'antd';
-import { DownOutlined } from '@ant-design/icons';
+import { DownOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
@@ -24,9 +24,12 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
+import {
+  ensureCollectTaskMap,
+} from '@/app/cmdb/utils/collectTask';
 import { useCommon } from '@/app/cmdb/context/common';
 import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
-import { useModelApi, useClassificationApi, useInstanceApi } from '@/app/cmdb/api';
+import { useModelApi, useClassificationApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import {
   GroupItem,
   ModelItem,
@@ -44,6 +47,10 @@ import ImportInst from './list/importInst';
 import FieldModal from './list/fieldModal';
 import SelectInstance from './detail/relationships/selectInstance';
 import ExportModal from './components/exportModal';
+import SubscriptionDrawer from '@/app/cmdb/components/subscription/subscriptionDrawer';
+import SubscriptionRuleForm, { type SubscriptionRuleFormRef } from '@/app/cmdb/components/subscription/subscriptionRuleForm';
+import { useQuickSubscribeDefaults, useSubscriptionMutation } from '@/app/cmdb/hooks/useSubscription';
+import type { QuickSubscribeDefaults, QuickSubscribeSource } from '@/app/cmdb/types/subscription';
 import assetDataStyle from './index.module.scss';
 
 const { confirm } = Modal;
@@ -158,7 +165,7 @@ interface ImportRef {
 
 const AssetDataContent = () => {
   const { t } = useTranslation();
-  const { selectedGroup } = useUserInfoContext();
+  const { selectedGroup, userId } = useUserInfoContext();
   const { getModelAssociationTypes, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
@@ -170,6 +177,7 @@ const AssetDataContent = () => {
     deleteInstance,
     batchDeleteInstances,
   } = useInstanceApi();
+  const { getCollectTaskNames } = useCollectApi();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -207,6 +215,17 @@ const AssetDataContent = () => {
   const [organization, setOrganization] = useState<number[]>([]);
   const [selectedTreeKeys, setSelectedTreeKeys] = useState<string[]>([]);
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<string[]>([]);
+  const [subscriptionDrawerOpen, setSubscriptionDrawerOpen] = useState(false);
+  const [quickSubscribeModalOpen, setQuickSubscribeModalOpen] = useState(false);
+  const [subscriptionSource, setSubscriptionSource] = useState<QuickSubscribeSource>('drawer');
+  const quickSubscribeFormRef = useRef<SubscriptionRuleFormRef>(null);
+  const { submitting: quickSubscribeSubmitting, createRule: quickSubscribeCreateRule } = useSubscriptionMutation();
+  const [quickContext, setQuickContext] = useState<{
+    selectedInstanceIds?: number[];
+    queryList?: any[];
+    currentInstanceId?: number;
+    currentInstanceName?: string;
+  }>({});
   const [proxyOptions, setProxyOptions] = useState<
     { proxy_id: string; proxy_name: string }[]
   >([]);
@@ -286,6 +305,16 @@ const AssetDataContent = () => {
     }
   }, [modelId]);
 
+  useEffect(() => {
+    // Given collect_task 跳转依赖任务映射和模型树，When 页面初始化，Then 并行预热两份缓存。
+    ensureCollectTaskMap(getCollectTaskNames).catch(() => {
+      const store = useAssetDataStore.getState();
+      store.setCollectTaskMap({});
+      store.setCollectTaskRouteMap({});
+      store.setCollectTaskOptions([]);
+    });
+  }, []);
+
   const handleExport = async (
     exportType: 'selected' | 'currentPage' | 'all'
   ) => {
@@ -316,6 +345,43 @@ const AssetDataContent = () => {
       exportType,
       tableData,
     } as any);
+  };
+
+  const currentModelName =
+    modelList.find((m) => m.key === modelId)?.label ||
+    originModels.find((m) => m.model_id === modelId)?.model_name ||
+    '';
+  const quickDefaults: QuickSubscribeDefaults = useQuickSubscribeDefaults(subscriptionSource, {
+    model_id: modelId,
+    model_name: currentModelName,
+    selectedInstanceIds: quickContext.selectedInstanceIds,
+    queryList: quickContext.queryList,
+    currentInstanceId: quickContext.currentInstanceId,
+    currentInstanceName: quickContext.currentInstanceName,
+    currentUser: Number(userId || userList[0]?.id || 0),
+    currentOrganization: Number(selectedGroup?.id || 0),
+  });
+
+  const openSubscription = (source: QuickSubscribeSource) => {
+    setSubscriptionSource(source);
+    if (source === 'list_selection') {
+      setQuickContext({ selectedInstanceIds: selectedRowKeys.map((k) => Number(k)) });
+    } else if (source === 'list_filter') {
+      setQuickContext({ queryList: storeQueryList });
+    } else {
+      setQuickContext({});
+    }
+    
+    if (source === 'drawer') {
+      setSubscriptionDrawerOpen(true);
+    } else {
+      setQuickSubscribeModalOpen(true);
+    }
+  };
+
+  const handleQuickSubscribeSubmit = async (payload: any, enabled: boolean) => {
+    await quickSubscribeCreateRule({ ...payload, is_enabled: enabled });
+    setQuickSubscribeModalOpen(false);
   };
 
   const showImportModal = () => {
@@ -425,7 +491,7 @@ const AssetDataContent = () => {
     router.replace(`/cmdb/assetData?${urlParams.toString()}`);
   };
 
-  const getTableParams = (overrideQueryList?: FilterItem | FilterItem[] | null) => {
+  const getTableParams = (overrideQueryList?: FilterItem | FilterItem[] | null, overridePage?: number) => {
     const activeQueryList = overrideQueryList !== undefined ? overrideQueryList : queryList;
     const orgCondition = organization?.length
       ? [{ field: 'organization', type: 'list[]', value: organization }]
@@ -443,7 +509,7 @@ const AssetDataContent = () => {
 
     return {
       query_list: finalQueryList,
-      page: pagination.current,
+      page: overridePage ?? pagination.current,
       page_size: pagination.pageSize,
       order: '',
       model_id: modelId,
@@ -452,12 +518,12 @@ const AssetDataContent = () => {
     };
   };
 
-  const getInitData = (id: string, overrideQueryList?: FilterItem[] | null) => {
-    const tableParams = getTableParams(overrideQueryList);
+  const getInitData = (id: string, overrideQueryList?: FilterItem[] | null, overridePage?: number) => {
+    const tableParams = getTableParams(overrideQueryList, overridePage);
 
     getModelAttrGroupsFullInfo(id)
       .then((res) => setPropertyListGroups(res.groups))
-      .catch(() => message.error(t('common.getFailed')));
+      .catch(() => message.error('Failed to load attribute groups'));
 
     setLoading(true);
     Promise.all([
@@ -471,12 +537,14 @@ const AssetDataContent = () => {
         setPropertyList(attrList);
         setTableData(instData.insts);
         setPagination(prev => ({ ...prev, total: instData.count }));
-        // 延迟到下一帧再设置
+
+      })
+      .finally(() => {
+        setLoading(false);
         requestAnimationFrame(() => {
           initialDataLoaded.current = true;
         });
-      })
-      .finally(() => setLoading(false));
+      });
   };
 
   const onSelectChange = (selectedKeys: any) => {
@@ -724,6 +792,8 @@ const AssetDataContent = () => {
     const targetGroup = modelGroup.find((group) => group.list.some((item) => item.model_id === key));
     if (!targetGroup) return;
 
+    initialDataLoaded.current = false;
+
     setQueryList(null);
     setSelectedTreeKeys([key]);
     setModelId(key);
@@ -734,7 +804,7 @@ const AssetDataContent = () => {
     setPropertyListGroups([]);
     setPropertyList([]);
     router.push(`/cmdb/assetData?modelId=${key}&classificationId=${targetGroup.classification_id}`);
-    getInitData(key, null);
+    getInitData(key, null, 1);
   };
 
   useEffect(() => {
@@ -784,7 +854,18 @@ const AssetDataContent = () => {
     setCurrentColumns([...orderedColumns, actionColumn]);
   }, [propertyList, displayFieldKeys, propertyListGroups]);
 
+  const showSubscribeAction = selectedRowKeys.length > 0 || storeQueryList.length > 0;
+
   const batchOperateItems: MenuProps['items'] = [
+    {
+      key: 'subscribe',
+      label: (
+        <a onClick={() => openSubscription(selectedRowKeys.length > 0 ? 'list_selection' : 'list_filter')}>
+          {t('subscription.subscribe')}
+        </a>
+      ),
+      disabled: !showSubscribeAction,
+    },
     {
       key: 'batchEdit',
       label: (
@@ -943,7 +1024,6 @@ const AssetDataContent = () => {
               </div>
               <Dropdown
                 menu={{ items: isActionsCollapsed ? collapsedMoreItems : batchOperateItems }}
-                disabled={!isActionsCollapsed && !selectedRowKeys.length}
                 placement="bottom"
               >
                 <Button>
@@ -953,6 +1033,9 @@ const AssetDataContent = () => {
                   </Space>
                 </Button>
               </Dropdown>
+              <Button icon={<UnorderedListOutlined />} onClick={() => openSubscription('drawer')}>
+                {t('subscription.dataSubscription')}
+              </Button>
             </Space>
           </div>
           <div ref={actionSizerRef} className={assetDataStyle.actionSizer}>
@@ -974,6 +1057,9 @@ const AssetDataContent = () => {
                   {t('more')}
                   <DownOutlined />
                 </Space>
+              </Button>
+              <Button icon={<UnorderedListOutlined />}>
+                {t('subscription.dataSubscription')}
               </Button>
             </Space>
           </div>
@@ -1031,6 +1117,59 @@ const AssetDataContent = () => {
             models={originModels}
             assoTypes={assoTypes}
           />
+          <SubscriptionDrawer
+            open={subscriptionDrawerOpen}
+            onClose={() => setSubscriptionDrawerOpen(false)}
+            modelId={modelId}
+            modelName={currentModelName}
+            quickDefaults={quickDefaults}
+          />
+          <Modal
+            open={quickSubscribeModalOpen}
+            width={800}
+            title={t('subscription.createRule')}
+            centered
+            onCancel={() => setQuickSubscribeModalOpen(false)}
+            footer={(
+              <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+                <Button
+                  type="primary"
+                  loading={quickSubscribeSubmitting}
+                  onClick={() => void quickSubscribeFormRef.current?.submit(true)}
+                >
+                  {t('subscription.saveAndEnable')}
+                </Button>
+                <Button
+                  loading={quickSubscribeSubmitting}
+                  onClick={() => void quickSubscribeFormRef.current?.submit(false)}
+                >
+                  {t('subscription.saveOnly')}
+                </Button>
+                <Button onClick={() => setQuickSubscribeModalOpen(false)}>
+                  {t('subscription.cancel')}
+                </Button>
+              </Space>
+            )}
+            destroyOnClose
+            styles={{
+              body: {
+                maxHeight: 'calc(100vh - 220px)',
+                overflowY: 'auto',
+                paddingTop: 24,
+                paddingLeft: 24,
+                paddingRight: 24,
+              },
+            }}
+          >
+            <SubscriptionRuleForm
+              ref={quickSubscribeFormRef}
+              quickDefaults={quickDefaults}
+              modelId={modelId}
+              modelName={currentModelName}
+              onSubmitAndEnable={(data) => handleQuickSubscribeSubmit(data, true)}
+              onSubmitOnly={(data) => handleQuickSubscribeSubmit(data, false)}
+            />
+          </Modal>
         </div>
       </div>
     </Spin>

@@ -8,7 +8,9 @@ from apps.node_mgmt.models import CloudRegion, Node, Collector
 
 class NodeCollectorInstallStatus(models.Model):
     node = models.ForeignKey(Node, on_delete=models.CASCADE, verbose_name="节点")
-    collector = models.ForeignKey(Collector, on_delete=models.CASCADE, verbose_name="采集器")
+    collector = models.ForeignKey(
+        Collector, on_delete=models.CASCADE, verbose_name="采集器"
+    )
     status = models.CharField(max_length=100, verbose_name="状态")
     result = JSONField(default=dict, verbose_name="结果")
 
@@ -18,8 +20,9 @@ class NodeCollectorInstallStatus(models.Model):
 
 
 class ControllerTask(TimeInfo, MaintainerInfo):
-
-    cloud_region = models.ForeignKey(CloudRegion, on_delete=models.CASCADE, verbose_name="云区域")
+    cloud_region = models.ForeignKey(
+        CloudRegion, on_delete=models.CASCADE, verbose_name="云区域"
+    )
     type = models.CharField(max_length=100, verbose_name="任务类型")
     status = models.CharField(max_length=100, verbose_name="任务状态")
     work_node = models.CharField(max_length=100, blank=True, verbose_name="工作节点")
@@ -28,11 +31,15 @@ class ControllerTask(TimeInfo, MaintainerInfo):
     class Meta:
         verbose_name = "控制器任务"
         verbose_name_plural = "控制器任务"
+        indexes = [
+            models.Index(fields=["type", "status"], name="nm_ctrl_task_type_st_idx"),
+        ]
 
 
 class ControllerTaskNode(models.Model):
-
-    task = models.ForeignKey(ControllerTask, on_delete=models.CASCADE, verbose_name="任务")
+    task = models.ForeignKey(
+        ControllerTask, on_delete=models.CASCADE, verbose_name="任务"
+    )
     ip = models.CharField(max_length=100, verbose_name="IP地址")
     node_name = models.CharField(max_length=200, default="", verbose_name="节点名称")
     os = models.CharField(max_length=100, verbose_name="操作系统")
@@ -48,10 +55,13 @@ class ControllerTaskNode(models.Model):
     class Meta:
         verbose_name = "控制器任务节点"
         verbose_name_plural = "控制器任务节点"
+        indexes = [
+            models.Index(fields=["ip", "status"], name="nm_ctrl_node_ip_st_idx"),
+            models.Index(fields=["task", "status"], name="nm_ctrl_tasknode_st_idx"),
+        ]
 
 
 class CollectorTask(TimeInfo, MaintainerInfo):
-
     type = models.CharField(max_length=100, verbose_name="任务类型")
     package_version_id = models.IntegerField(default=0, verbose_name="采集器版本")
     status = models.CharField(max_length=100, verbose_name="任务状态")
@@ -62,8 +72,9 @@ class CollectorTask(TimeInfo, MaintainerInfo):
 
 
 class CollectorTaskNode(models.Model):
-
-    task = models.ForeignKey(CollectorTask, on_delete=models.CASCADE, verbose_name="任务")
+    task = models.ForeignKey(
+        CollectorTask, on_delete=models.CASCADE, verbose_name="任务"
+    )
     node = models.ForeignKey(Node, on_delete=models.CASCADE, verbose_name="节点")
     status = models.CharField(max_length=100, verbose_name="任务状态")
     result = JSONField(default=dict, verbose_name="结果")

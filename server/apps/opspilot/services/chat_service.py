@@ -107,9 +107,10 @@ class ChatService:
         Returns:
             chat_kwargs字典、doc_map字典、title_map字典
         """
+        show_think = kwargs.get("show_think", True)
         title_map = doc_map = {}
         naive_rag_request = []
-        extra_config = {}
+        extra_config = {"show_think": show_think}
 
         # 如果启用RAG，搜索文档
         if kwargs["enable_rag"]:
@@ -146,6 +147,15 @@ class ChatService:
             extra_config.update({"enable_rag_source": True})
         if kwargs.get("enable_rag_strict_mode"):
             extra_config.update({"enable_rag_strict_mode": kwargs["enable_rag_strict_mode"]})
+
+        if kwargs.get("browser_use_force_task"):
+            extra_config.update(
+                {
+                    "browser_use_base_task": kwargs.get("skill_prompt", ""),
+                    "browser_use_user_message": user_message,
+                    "browser_use_force_task": True,
+                }
+            )
 
         if kwargs["skill_type"] != SkillTypeChoices.KNOWLEDGE_TOOL:
             for tool in kwargs.get("tools", []):

@@ -23,7 +23,7 @@ const StrategyOperation = () => {
   const { isLoading } = useApiClient();
   const { getSystemChannelList, getPolicy, createPolicy, updatePolicy } =
     useLogEventApi();
-  const { getCollectTypesById, getLogStreams } = useLogIntegrationApi();
+  const { getLogStreams, getFields } = useLogIntegrationApi();
   const commonContext = useCommon();
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
@@ -32,7 +32,6 @@ const StrategyOperation = () => {
   const userContext = useUserInfoContext();
   const currentGroup = useRef(userContext?.selectedGroup);
   const groupId = [currentGroup?.current?.id || ''];
-  const objId = Number(searchParams.get('objId'));
   const type = searchParams.get('type') || '';
   const detailId = searchParams.get('id') || '';
   const detailName = searchParams.get('name') || '--';
@@ -53,7 +52,7 @@ const StrategyOperation = () => {
     if (!isLoading) {
       setPageLoading(true);
       Promise.all([
-        getFields(),
+        getAllFields(),
         getChannelList(),
         getGroups(),
         detailId && getStragyDetail()
@@ -74,8 +73,7 @@ const StrategyOperation = () => {
         notice: false,
         period: 5,
         schedule: 5,
-        alert_type: 'keyword',
-        collect_type: ''
+        alert_type: 'keyword'
       };
       form.setFieldsValue(initForm);
       setTerm('or');
@@ -90,12 +88,9 @@ const StrategyOperation = () => {
     setChannelList(data);
   };
 
-  const getFields = async () => {
-    const data = await getCollectTypesById({
-      collect_type_id: objId
-    });
-    const fields = data?.attrs || [];
-    setFieldList(fields);
+  const getAllFields = async () => {
+    const data = await getFields();
+    setFieldList(data || []);
   };
 
   const getGroups = async () => {
@@ -156,14 +151,13 @@ const StrategyOperation = () => {
   };
 
   const goBack = () => {
-    const targetUrl = `/log/event/strategy?objId=${objId}`;
+    const targetUrl = `/log/event/strategy`;
     router.push(targetUrl);
   };
 
   const createStrategy = () => {
     form?.validateFields().then((values) => {
       const params = cloneDeep(values);
-      params.collect_type = objId;
       params.schedule = {
         type: unit,
         value: values.schedule

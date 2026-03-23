@@ -99,6 +99,76 @@ export const useModelApi = () => {
   const copyModel = (modelId: string, params: any) =>
     post(`/cmdb/api/model/${modelId}/copy/`, params);
 
+  const exportModelConfig = async (token: string) => {
+    const response = await fetch('/api/proxy/cmdb/api/model/export_model_config', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Export failed');
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'model_config.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  // 导入模型配置
+  const importModelConfig = async (file: File, token: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch('/api/proxy/cmdb/api/model/import_model_config/', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Import failed');
+    }
+    return response.json();
+  };
+
+  // ========== 公共枚举库 API ==========
+  // 获取公共枚举库列表
+  const getPublicEnumLibraries = () =>
+    get('/cmdb/api/public_enum_libraries/');
+
+  // 创建公共枚举库
+  const createPublicEnumLibrary = (params: {
+    name: string;
+    team: (string | number)[];
+    options: { id: string; name: string }[];
+  }) => post('/cmdb/api/public_enum_libraries/', params);
+
+  // 更新公共枚举库
+  const updatePublicEnumLibrary = (
+    libraryId: string,
+    params: {
+      name?: string;
+      team?: (string | number)[];
+      options?: { id: string; name: string }[];
+    }
+  ) => put(`/cmdb/api/public_enum_libraries/${libraryId}/`, params);
+
+  // 删除公共枚举库
+  const deletePublicEnumLibrary = (libraryId: string) =>
+    del(`/cmdb/api/public_enum_libraries/${libraryId}/`);
+
+  // 获取公共枚举库引用列表
+  const getPublicEnumLibraryReferences = (libraryId: string) =>
+    get(`/cmdb/api/public_enum_libraries/${libraryId}/references/`);
+
   return {
     getModelList,
     createModel,
@@ -121,6 +191,13 @@ export const useModelApi = () => {
     moveModelAttrGroup,
     reorderGroupAttrs,
     moveAttrToGroup,
-    copyModel
+    copyModel,
+    getPublicEnumLibraries,
+    createPublicEnumLibrary,
+    updatePublicEnumLibrary,
+    deletePublicEnumLibrary,
+    getPublicEnumLibraryReferences,
+    exportModelConfig,
+    importModelConfig
   };
 };

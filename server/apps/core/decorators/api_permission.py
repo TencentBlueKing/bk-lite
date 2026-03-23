@@ -108,6 +108,7 @@ class HasPermission(object):
             "console_mgmt": "ops-console",
             "alerts": "alarm",
             "operation_analysis": "ops-analysis",
+            "job_mgmt": "job",
         }
         if not self.app_name:
             app_name = app_name_map.get(app_name, app_name)

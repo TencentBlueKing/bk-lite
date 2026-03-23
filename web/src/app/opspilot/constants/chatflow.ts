@@ -40,6 +40,7 @@ export const getDefaultConfig = (nodeType: string) => {
     case 'celery':
       return {
         ...baseConfig,
+        inputParams: 'last_message,message',
         frequency: 'daily',
         time: '00:00',
         message: ''

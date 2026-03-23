@@ -1,10 +1,12 @@
 # -- coding: utf-8 --
+from django.db.models.query import QuerySet
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.fields import empty
 
 from apps.alerts.constants.constants import AlertStatus, NotifyResultStatus
 from apps.alerts.models.models import Alert
+from apps.core.logger import alert_logger as logger
 from apps.system_mgmt.models.user import User
 
 
@@ -32,6 +34,7 @@ class AlertModelSerializer(serializers.ModelSerializer):
         try:
             self.alert_notify_result_map = self.set_alert_notify_result_map(instance)
         except Exception:
+            logger.warning("初始化告警通知结果映射失败", exc_info=True)
             self.alert_notify_result_map = {}
 
     class Meta:
@@ -41,24 +44,27 @@ class AlertModelSerializer(serializers.ModelSerializer):
             # "events": {"write_only": True},  # events 字段只读
             "created_at": {"read_only": True},
             "updated_at": {"read_only": True},
-            "operator": {"write_only": True},
+            # "operator": {"write_only": True},
             "labels": {"write_only": True},
         }
 
     @staticmethod
     def set_alert_notify_result_map(instance):
         result = {}
-        if isinstance(instance, list):
-            # 如果是列表实例，预处理通知状态
-            from apps.alerts.models.models import NotifyResult
+        if isinstance(instance, (list, tuple, QuerySet)):
+            from apps.alerts.models import NotifyResult
 
-            alerts = [i.alert_id for i in instance]
-            notify_result = NotifyResult.objects.filter(notify_type="alert", notify_object__in=alerts).values_list("notify_object", "notify_result")
-            notify_result_map = {i[0]: i[1] for i in notify_result}
-            for alert in instance:
-                alert_result = notify_result_map.get(alert.alert_id)
-                if alert_result:
-                    result.setdefault(alert.alert_id, []).append(alert_result == "success")
+            alerts = [item.alert_id for item in instance if getattr(item, "alert_id", None)]
+            if not alerts:
+                return result
+
+            notify_result = NotifyResult.objects.filter(
+                notify_type="alert",
+                notify_object__in=alerts,
+            ).values_list("notify_object", "notify_result")
+
+            for notify_object, notify_status in notify_result:
+                result.setdefault(notify_object, []).append(notify_status == NotifyResultStatus.SUCCESS)
 
         return result
 
@@ -113,6 +119,7 @@ class AlertModelSerializer(serializers.ModelSerializer):
                     source_names.add(event.source.name)
             return ", ".join(sorted(source_names))
         except Exception:
+            logger.warning("获取告警源名称失败", exc_info=True)
             return ""
 
     @staticmethod
@@ -128,12 +135,15 @@ class AlertModelSerializer(serializers.ModelSerializer):
         try:
             return obj.events.count()
         except Exception:
+            logger.warning("获取告警事件数量失败", exc_info=True)
             return 0
 
-    @staticmethod
-    def get_operator_user(obj):
+    def get_operator_user(self, obj):
         if not obj.operator:
             return ""
+        operator_user_map = self.context.get("operator_user_map")
+        if operator_user_map is not None:
+            return ", ".join(operator_user_map.get(u, u) for u in obj.operator)
         user_name_list = User.objects.filter(username__in=obj.operator).values_list("display_name", flat=True)
         return ", ".join(list(user_name_list))
 
@@ -166,6 +176,5 @@ class AlertModelSerializer(serializers.ModelSerializer):
         if all(alert_result):
             return NotifyResultStatus.SUCCESS
         if any(alert_result):
-            return NotifyResultStatus.FAILED
-        else:
             return NotifyResultStatus.PARTIAL_SUCCESS
+        return NotifyResultStatus.FAILED

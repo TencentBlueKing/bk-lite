@@ -16,11 +16,29 @@ interface UserConfigs {
   [key: string]: unknown;
 }
 
+interface CollectTaskRoute {
+  plugin: string;
+  category: string;
+}
+
+interface CollectTaskOption {
+  id: string;
+  name: string;
+  plugin?: string;
+  category?: string;
+}
+
 interface AssetDataStore {
   query_list: FilterItem[];
   searchAttr: string;
   case_sensitive: boolean;
   cloud_list: { proxy_id: string; proxy_name: string }[];
+  // Given 实例页需要显示采集任务名称，When 仅有 collect_task id，Then 通过该映射展示任务名。
+  collectTaskMap: Record<string, string>;
+  // Given 跳转采集详情依赖 plugin/category，When 拿到 taskId，Then 直接读取路由参数。
+  collectTaskRouteMap: Record<string, CollectTaskRoute>;
+  // Given 编辑控件需要树状选项，When 页面已预取任务列表，Then 直接复用该缓存避免重复请求。
+  collectTaskOptions: CollectTaskOption[];
   user_configs: UserConfigs;
   needRefresh: boolean;
   add: (item: FilterItem) => FilterItem[];
@@ -30,6 +48,9 @@ interface AssetDataStore {
   setCaseSensitive: (value: boolean) => void;
   setQueryList: (items: FilterItem[]) => FilterItem[];
   setCloudList: (list: { proxy_id: string; proxy_name: string }[]) => void;
+  setCollectTaskMap: (map: Record<string, string>) => void;
+  setCollectTaskRouteMap: (map: Record<string, CollectTaskRoute>) => void;
+  setCollectTaskOptions: (items: CollectTaskOption[]) => void;
   setUserConfigs: (configs: UserConfigs) => void;
   updateUserConfig: (key: string, value: unknown) => void;
   getSavedFilters: (modelId: string) => SavedFilterItem[];
@@ -42,6 +63,9 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   searchAttr: "inst_name",
   case_sensitive: false,
   cloud_list: [],
+  collectTaskMap: {},
+  collectTaskRouteMap: {},
+  collectTaskOptions: [],
   user_configs: {},
   needRefresh: false,
 
@@ -76,6 +100,18 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   },
   setCloudList: (list: { proxy_id: string; proxy_name: string }[]) => {
     set({ cloud_list: list });
+  },
+
+  setCollectTaskMap: (map: Record<string, string>) => {
+    set({ collectTaskMap: map });
+  },
+
+  setCollectTaskRouteMap: (map: Record<string, CollectTaskRoute>) => {
+    set({ collectTaskRouteMap: map });
+  },
+
+  setCollectTaskOptions: (items: CollectTaskOption[]) => {
+    set({ collectTaskOptions: items });
   },
 
   setUserConfigs: (configs: UserConfigs) => {

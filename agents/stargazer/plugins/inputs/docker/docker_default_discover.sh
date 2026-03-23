@@ -247,9 +247,8 @@ if ! "$DOCKER_BIN" ps >/dev/null 2>&1; then
   exit 0
 fi
 
-CONTAINER_IDS=$("$DOCKER_BIN" ps -qa 2>/dev/null || true)
+CONTAINER_IDS=$("$DOCKER_BIN" ps -q 2>/dev/null || true)
 if [ -z "$CONTAINER_IDS" ]; then
-  printf '{}\n'
   exit 0
 fi
 

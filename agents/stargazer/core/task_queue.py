@@ -14,7 +14,7 @@ import asyncio
 from typing import Optional, Dict, Any
 from arq import create_pool
 from arq.connections import RedisSettings, ArqRedis
-from arq.jobs import JobStatus, Job
+from arq.jobs import Job
 from sanic import Sanic
 from sanic.log import logger
 from core.redis_config import REDIS_CONFIG, print_redis_config
@@ -152,9 +152,9 @@ class TaskQueue:
         return task_id
 
     async def enqueue_collect_task(
-        self,
-        params: Dict[str, Any],
-        task_id: Optional[str] = None
+            self,
+            params: Dict[str, Any],
+            task_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         将采集任务加入队列
@@ -187,16 +187,32 @@ class TaskQueue:
             # 检查任务是否正在运行
             is_running = await self.pool.get(running_key)
             if is_running:
-                self.metrics["tasks_skipped"] += 1
+                existing_job_id = is_running.decode() if isinstance(is_running, (bytes, bytearray)) else str(is_running)
+
+                # running_key 可能因为异常退出残留；仅当 ARQ 队列或执行锁中仍存在该 job 才判定为活跃
+                in_queue = await self.pool.zscore("arq:queue", existing_job_id) is not None
+                in_progress = await self.pool.exists(f"arq:in-progress:{existing_job_id}")
+
+                if in_queue or in_progress:
+                    self.metrics["tasks_skipped"] += 1
+                    remaining_ttl = await self.pool.ttl(running_key)
+                    logger.warning(
+                        f"Task {task_id} is already running or queued, skipping enqueue "
+                        f"(job_id={existing_job_id}, ttl={remaining_ttl}s)"
+                    )
+                    return {
+                        "task_id": task_id,
+                        "job_id": existing_job_id,
+                        "status": "skipped",
+                        "reason": "Task already running or queued",
+                        "dedupe_ttl": remaining_ttl,
+                        "timestamp": int(time.time() * 1000)
+                    }
+
                 logger.warning(
-                    f"Task {task_id} is already running or queued, skipping enqueue"
+                    f"Detected stale running marker for task {task_id}, clearing and re-enqueueing"
                 )
-                return {
-                    "task_id": task_id,
-                    "status": "skipped",
-                    "reason": "Task already running or queued",
-                    "timestamp": int(time.time() * 1000)
-                }
+                await self.pool.delete(running_key)
 
             # 将任务加入队列
             logger.info(f"[Task Queue] Enqueuing task: {task_id}")
@@ -204,9 +220,9 @@ class TaskQueue:
 
             # ⚠️ 关键：不使用 _job_id，让 ARQ 自动生成唯一的 job_id
             job = await self.pool.enqueue_job(
-                'collect_task',      # 函数名（字符串）
-                params=params,       # kwargs 传递
-                task_id=task_id,     # kwargs 传递（业务 ID）
+                'collect_task',  # 函数名（字符串）
+                params=params,  # kwargs 传递
+                task_id=task_id,  # kwargs 传递（业务 ID）
             )
 
             logger.info(f"[Task Queue] enqueue_job returned: {job}, type: {type(job)}")
@@ -219,7 +235,7 @@ class TaskQueue:
 
             # ✅ 标记任务为运行中（设置 TTL，防止任务失败后永久锁定）
             # TTL 设置为 job_timeout + 60 秒的缓冲时间
-            ttl = int(os.getenv("TASK_JOB_TIMEOUT", "300")) + 60
+            ttl = int(os.getenv("TASK_JOB_TIMEOUT", "600")) + 60
             await self.pool.set(running_key, job.job_id, ex=ttl)
 
             self.metrics["tasks_enqueued"] += 1

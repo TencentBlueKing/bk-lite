@@ -53,9 +53,8 @@ import { useKingBaseConfig } from './objects/database/kingBase';
 
 const loadEnterpriseConfig = (): (() => Record<string, any>) => {
   try {
-    const enterprisePath = '../../enterprise/hooks/integration';
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require(enterprisePath);
+    const mod = require('@/app/monitor/enterprise/hooks/integration');
     return mod.useEnterpriseConfig || (() => ({}));
   } catch {
     return () => ({});

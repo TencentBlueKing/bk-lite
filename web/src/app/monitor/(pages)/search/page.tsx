@@ -1,78 +1,40 @@
 'use client';
-import React, { useEffect, useState, useRef } from 'react';
-import { Spin, Select, Button, Segmented, Input, Tooltip } from 'antd';
-import { BellOutlined, CloseOutlined, PlusOutlined } from '@ant-design/icons';
-import { useConditionList } from '@/app/monitor/hooks';
-import useApiClient from '@/utils/request';
-import useMonitorApi from '@/app/monitor/api';
-import TimeSelector from '@/components/time-selector';
-import Collapse from '@/components/collapse';
-import searchStyle from './index.module.scss';
-import { useTranslation } from '@/utils/i18n';
-import Icon from '@/components/icon';
-import LineChart from '@/app/monitor/components/charts/lineChart';
-import CustomTable from '@/components/custom-table';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Tooltip, Card, Empty, Segmented } from 'antd';
 import {
-  ListItem,
-  ColumnItem,
-  ChartData,
-  TimeSelectorDefaultValue,
-  TreeItem,
-  TimeValuesProps,
-  GroupInfo,
-  MetricItem,
-  IndexViewItem,
-  ObjectItem
-} from '@/app/monitor/types';
+  AppstoreOutlined,
+  BarsOutlined,
+  QuestionCircleFilled
+} from '@ant-design/icons';
+import useApiClient from '@/utils/request';
+import TimeSelector from '@/components/time-selector';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import { useTranslation } from '@/utils/i18n';
+import LineChart from '@/app/monitor/components/charts/lineChart';
+import { TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import { Dayjs } from 'dayjs';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import {
   SearchParams,
-  InstanceItem,
-  SearchTableDataItem,
-  ConditionItem
+  SearchPayload,
+  QueryGroup,
+  QueryPanelRef,
+  ChartItem
 } from '@/app/monitor/types/search';
 import {
   mergeViewQueryKeyValues,
   renderChart,
   getRecentTimeRange
 } from '@/app/monitor/utils/common';
-import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
-import { useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
-import TreeSelector from '@/app/monitor/components/treeSelector';
-import { cloneDeep } from 'lodash';
-const { Option } = Select;
+import QueryPanel from './queryPanel';
 
 const SearchView: React.FC = () => {
-  const { get, isLoading } = useApiClient();
-  const { findUnitNameById } = useUnitTransform();
-  const {
-    getMonitorObject,
-    getMonitorMetrics,
-    getMetricsGroup,
-    getInstanceList
-  } = useMonitorApi();
+  const { get } = useApiClient();
   const { t } = useTranslation();
-  const CONDITION_LIST = useConditionList();
-  const searchParams = useSearchParams();
-  const url_instance_id = searchParams.get('instance_id');
-  const url_obj_id = searchParams.get('monitor_object');
-  const url_metric_id = searchParams.get('metric_id');
-  const [pageLoading, setPageLoading] = useState<boolean>(false);
-  const [objLoading, setObjLoading] = useState<boolean>(false);
-  const [metric, setMetric] = useState<string | null>(url_metric_id || null);
-  const [metrics, setMetrics] = useState<MetricItem[]>([]);
-  const [metricsLoading, setMetricsLoading] = useState<boolean>(false);
-  const [instanceLoading, setInstanceLoading] = useState<boolean>(false);
-  const [instanceId, setInstanceId] = useState<string[]>(
-    url_instance_id ? [url_instance_id] : []
-  );
-  const [instances, setInstances] = useState<InstanceItem[]>([]);
-  const [labels, setLabels] = useState<string[]>([]);
-  const [object, setObject] = useState<React.Key>('');
-  const [objects, setObjects] = useState<ObjectItem[]>([]);
-  const [activeTab, setActiveTab] = useState<string>('area');
-  const [conditions, setConditions] = useState<ConditionItem[]>([]);
+  const { findUnitNameById } = useUnitTransform();
+  const queryPanelRef = useRef<QueryPanelRef>(null);
+  const [layoutMode, setLayoutMode] = useState<'single' | 'double'>('single');
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
     timeRange: [],
     originValue: 15
@@ -82,41 +44,24 @@ const SearchView: React.FC = () => {
       selectValue: 15,
       rangePickerVaule: null
     });
+  const [chartItems, setChartItems] = useState<ChartItem[]>([]);
+  const [frequence, setFrequence] = useState<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const searchAbortControllerRef = useRef<AbortController | null>(null);
   const searchRequestIdRef = useRef<number>(0);
-  const metricsAbortControllerRef = useRef<AbortController | null>(null);
-  const metricsRequestIdRef = useRef<number>(0);
-  const instanceAbortControllerRef = useRef<AbortController | null>(null);
-  const instanceRequestIdRef = useRef<number>(0);
-  const currentObjectIdRef = useRef<React.Key>(object);
-  const [columns, setColumns] = useState<ColumnItem[]>([]);
-  const [tableData, setTableData] = useState<SearchTableDataItem[]>([]);
-  const [chartData, setChartData] = useState<ChartData[]>([]);
-  const [frequence, setFrequence] = useState<number>(0);
-  const [unit, setUnit] = useState<string>('');
-  const isArea: boolean = activeTab === 'area';
-  const [treeData, setTreeData] = useState<TreeItem[]>([]);
-  const [originMetricData, setOriginMetricData] = useState<IndexViewItem[]>([]);
-  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
+  const lastSearchPayloadRef = useRef<SearchPayload | null>(null);
 
-  const cancelAllRequests = () => {
-    searchAbortControllerRef.current?.abort();
-    metricsAbortControllerRef.current?.abort();
-    instanceAbortControllerRef.current?.abort();
+  const clearTimer = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
   };
 
   useEffect(() => {
     return () => {
       clearTimer();
-      cancelAllRequests();
+      searchAbortControllerRef.current?.abort();
     };
   }, []);
-
-  useEffect(() => {
-    if (isLoading) return;
-    getObjects();
-  }, [isLoading]);
 
   useEffect(() => {
     if (!frequence) {
@@ -124,118 +69,35 @@ const SearchView: React.FC = () => {
       return;
     }
     timerRef.current = setInterval(() => {
-      handleSearch('timer', activeTab);
+      handleSearch('timer');
     }, frequence);
     return () => {
       clearTimer();
     };
-  }, [activeTab, frequence, object, metric, conditions, instances, timeValues]);
+  }, [frequence, timeValues]);
 
-  useEffect(() => {
-    if (isLoading) return;
-    if (url_obj_id && metrics.length && instances.length) {
-      handleSearch('refresh', 'area');
-    }
-  }, [url_obj_id, metrics, instances, isLoading]);
-
-  const getObjects = async () => {
-    try {
-      setObjLoading(true);
-      const data: ObjectItem[] = await getMonitorObject({
-        add_instance_count: true
-      });
-      const _treeData = getTreeData(cloneDeep(data));
-      setTreeData(_treeData);
-      setObjects(data);
-      setDefaultSelectObj(url_obj_id ? +url_obj_id : '');
-    } finally {
-      setObjLoading(false);
-    }
+  const handleSearchFromPanel = (payload: SearchPayload) => {
+    lastSearchPayloadRef.current = payload;
+    executeSearch('refresh', timeValues, payload);
   };
 
-  const getMetrics = async (params = {}) => {
-    metricsAbortControllerRef.current?.abort();
-    const abortController = new AbortController();
-    metricsAbortControllerRef.current = abortController;
-    const currentRequestId = ++metricsRequestIdRef.current;
-    try {
-      setMetricsLoading(true);
-      const config = { signal: abortController.signal };
-      const getGroupList = getMetricsGroup(params, config);
-      const getMetrics = getMonitorMetrics(params, config);
-      const res = await Promise.all([getGroupList, getMetrics]);
-      if (currentRequestId !== metricsRequestIdRef.current) {
-        return;
-      }
-      const metricData = cloneDeep(res[1] || []);
-      setMetrics(res[1] || []);
-      const groupData = res[0].map((item: GroupInfo) => ({
-        ...item,
-        child: []
-      }));
-      metricData.forEach((metric: MetricItem) => {
-        const target = groupData.find(
-          (item: GroupInfo) => item.id === metric.metric_group
-        );
-        if (target) {
-          target.child.push(metric);
-        }
-      });
-      const _groupData = groupData.filter(
-        (item: IndexViewItem) => !!item.child?.length
-      );
-      setOriginMetricData(_groupData);
-    } finally {
-      if (currentRequestId === metricsRequestIdRef.current) {
-        setMetricsLoading(false);
-      }
-    }
-  };
-
-  const getInstList = async (id: React.Key) => {
-    instanceAbortControllerRef.current?.abort();
-    const abortController = new AbortController();
-    instanceAbortControllerRef.current = abortController;
-    const currentRequestId = ++instanceRequestIdRef.current;
-    try {
-      setInstanceLoading(true);
-      const data = await getInstanceList(
-        id,
-        {
-          page_size: -1
-        },
-        {
-          signal: abortController.signal
-        }
-      );
-      if (currentRequestId === instanceRequestIdRef.current) {
-        setInstances(data.results || []);
-      }
-    } finally {
-      if (currentRequestId === instanceRequestIdRef.current) {
-        setInstanceLoading(false);
-      }
-    }
-  };
-
-  const canSearch = () => {
-    return !!metric && instanceId?.length;
-  };
-
-  const getParams = (_timeRange: TimeValuesProps): SearchParams => {
-    const metricItem = metrics.find((item) => item.name === metric);
+  const getParams = (
+    group: QueryGroup,
+    _timeRange: TimeValuesProps,
+    payload: SearchPayload
+  ): SearchParams => {
+    const metrics = payload.metricsMap[String(group.object)] || [];
+    const instances = payload.instancesMap[String(group.object)] || [];
+    const metricItem = metrics.find((item) => item.name === group.metric);
     const _query: string = metricItem?.query || '';
     const queryValues: string[][] = instances
-      .filter((item) => instanceId.includes(item.instance_id))
+      .filter((item) => group.instanceIds.includes(item.instance_id))
       .map((item) => item.instance_id_values);
     const querykeys: string[] = metricItem?.instance_id_keys || [];
-    const queryList = [];
-    for (let i = 0; i < queryValues.length; i++) {
-      queryList.push({
-        keys: querykeys,
-        values: queryValues[i]
-      });
-    }
+    const queryList = queryValues.map((values) => ({
+      keys: querykeys,
+      values
+    }));
     const params: SearchParams = {
       query: '',
       source_unit: metricItem?.unit || ''
@@ -244,8 +106,8 @@ const SearchView: React.FC = () => {
     const startTime = recentTimeRange.at(0);
     const endTime = recentTimeRange.at(1);
     if (startTime && endTime) {
-      const MAX_POINTS = 100; // 最大数据点数
-      const DEFAULT_STEP = 360; // 默认步长
+      const MAX_POINTS = 100;
+      const DEFAULT_STEP = 360;
       params.start = startTime;
       params.end = endTime;
       params.step = Math.max(
@@ -256,11 +118,11 @@ const SearchView: React.FC = () => {
       );
     }
     let query = '';
-    if (instanceId?.length) {
+    if (group.instanceIds.length) {
       query += mergeViewQueryKeyValues(queryList);
     }
-    if (conditions?.length) {
-      const conditionQueries = conditions
+    if (group.conditions.length) {
+      const conditionQueries = group.conditions
         .map((condition) => {
           if (condition.label && condition.condition && condition.value) {
             return `${condition.label}${condition.condition}"${condition.value}"`;
@@ -269,176 +131,77 @@ const SearchView: React.FC = () => {
         })
         .filter(Boolean);
       if (conditionQueries.length) {
-        if (query) {
-          query += ',';
-        }
+        if (query) query += ',';
         query += conditionQueries.join(',');
       }
     }
-    params.query = _query.replace(/__\$labels__/g, query);
+    let finalQuery = _query.replace(/__\$labels__/g, query);
+    if (group.aggregation && group.aggregation !== 'AVG') {
+      const aggFunc = group.aggregation.toLowerCase();
+      finalQuery = `${aggFunc}(${finalQuery})`;
+    }
+    params.query = finalQuery;
     return params;
   };
 
-  const onTimeChange = (val: number[], originValue: number | null) => {
-    const timeRange = {
-      timeRange: val,
-      originValue
-    };
-    setTimeValues(timeRange);
-    handleSearch('refresh', activeTab, timeRange);
+  const handleSearch = (type: string, _timeRange = timeValues) => {
+    const payload = lastSearchPayloadRef.current;
+    if (!payload) return;
+    executeSearch(type, _timeRange, payload);
   };
 
-  const clearTimer = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = null;
-  };
-
-  const onFrequenceChange = (val: number) => {
-    setFrequence(val);
-  };
-
-  const onRefresh = () => {
-    handleSearch('refresh', activeTab);
-  };
-
-  const createPolicy = () => {
-    const params = new URLSearchParams({
-      monitorName: objects.find((item) => item.id === object)?.name + '',
-      monitorObjId: object + '',
-      metricId: metric || '',
-      instanceId: instanceId.join(','),
-      type: 'add'
-    });
-    const targetUrl = `/monitor/event/strategy/detail?${params.toString()}`;
-    window.open(targetUrl, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleInstanceChange = (val: string[]) => {
-    setInstanceId(val);
-  };
-
-  const handleMetricChange = (val: string) => {
-    setMetric(val);
-    const target = metrics.find((item) => item.name === val);
-    const _labels = (target?.dimensions || []).map((item) => item.name);
-    setLabels(_labels);
-    setUnit('');
-  };
-
-  const handleObjectChange = (val: string) => {
-    if (object) {
-      cancelAllRequests();
-      setMetrics([]);
-      setLabels([]);
-      setMetric(null);
-      setInstanceId([]);
-      setInstances([]);
-      setConditions([]);
-      setChartData([]);
-      setTableData([]);
-    }
-    // 更新当前活跃的 objectId
-    currentObjectIdRef.current = val;
-    setObject(val);
-    if (val) {
-      getMetrics({
-        monitor_object_id: val
-      });
-      getInstList(val);
-    }
-  };
-
-  const handleLabelChange = (val: string, index: number) => {
-    const _conditions = cloneDeep(conditions);
-    _conditions[index].label = val;
-    setConditions(_conditions);
-  };
-
-  const handleConditionChange = (val: string, index: number) => {
-    const _conditions = cloneDeep(conditions);
-    _conditions[index].condition = val;
-    setConditions(_conditions);
-  };
-
-  const handleValueChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    index: number
-  ) => {
-    const _conditions = cloneDeep(conditions);
-    _conditions[index].value = e.target.value;
-    setConditions(_conditions);
-  };
-
-  const addConditionItem = () => {
-    const _conditions = cloneDeep(conditions);
-    _conditions.push({
-      label: null,
-      condition: null,
-      value: ''
-    });
-    setConditions(_conditions);
-  };
-
-  const deleteConditionItem = (index: number) => {
-    const _conditions = cloneDeep(conditions);
-    _conditions.splice(index, 1);
-    setConditions(_conditions);
-  };
-
-  const searchData = () => {
-    handleSearch('refresh', activeTab);
-  };
-
-  const onTabChange = (val: string) => {
-    setActiveTab(val);
-    handleSearch('refresh', val);
-  };
-
-  const handleSearch = async (
+  const executeSearch = async (
     type: string,
-    tab: string,
-    _timeRange = timeValues
+    _timeRange: TimeValuesProps,
+    payload: SearchPayload
   ) => {
-    if (type !== 'timer') {
-      setChartData([]);
-      setTableData([]);
-    }
-    if (!canSearch()) {
-      return;
-    }
+    const validGroups = payload.queryGroups.filter(
+      (g) => g.metric && g.instanceIds.length > 0
+    );
+    if (!validGroups?.length) return;
     searchAbortControllerRef.current?.abort();
     const abortController = new AbortController();
     searchAbortControllerRef.current = abortController;
     const currentRequestId = ++searchRequestIdRef.current;
-    try {
-      setPageLoading(type === 'refresh');
-      const areaCurrent = tab === 'area';
-      const url = areaCurrent
-        ? '/monitor/api/metrics_instance/query_range/'
-        : '/monitor/api/metrics_instance/query/';
-      let params = getParams(_timeRange);
-      if (!areaCurrent) {
-        params = {
-          time: params.end,
-          query: params.query,
-          source_unit: params.source_unit
-        };
-      }
-      const responseData = await get(url, {
-        params,
-        signal: abortController.signal
-      });
-      if (currentRequestId !== searchRequestIdRef.current) {
-        return;
-      }
-      const data = responseData.data?.result || [];
-      const displayUnit = responseData.data?.unit || '';
-      setUnit(displayUnit);
-      if (areaCurrent) {
+    const initialChartItems: ChartItem[] = validGroups.map((group) => {
+      const metrics = payload.metricsMap[String(group.object)] || [];
+      const metricItem = metrics.find((m) => m.name === group.metric) || null;
+      const objectItem = payload.objectsMap[String(group.object)];
+      return {
+        groupId: group.id,
+        groupName: group.name,
+        metric: metricItem,
+        data: [],
+        unit: '',
+        loading: true,
+        duration: 0,
+        objectName: objectItem?.display_name || '',
+        aggregation: group.aggregation || 'AVG'
+      };
+    });
+    if (type !== 'timer') {
+      setChartItems(initialChartItems);
+    }
+    const requests = validGroups.map(async (group, index) => {
+      const startTime = Date.now();
+      try {
+        const params = getParams(group, _timeRange, payload);
+        const responseData = await get(
+          '/monitor/api/metrics_instance/query_range/',
+          {
+            params,
+            signal: abortController.signal
+          }
+        );
+        if (currentRequestId !== searchRequestIdRef.current) return;
+        const data = responseData.data?.result || [];
+        const displayUnit = responseData.data?.unit || '';
+        const metrics = payload.metricsMap[String(group.object)] || [];
+        const instances = payload.instancesMap[String(group.object)] || [];
         const list = instances
-          .filter((item) => instanceId.includes(item.instance_id))
+          .filter((item) => group.instanceIds.includes(item.instance_id))
           .map((item) => {
-            const targetMetric = metrics.find((item) => item.name === metric);
+            const targetMetric = metrics.find((m) => m.name === group.metric);
             return {
               instance_id_values: item.instance_id_values,
               instance_name: item.instance_name,
@@ -449,45 +212,43 @@ const SearchView: React.FC = () => {
               showInstName: true
             };
           });
-        const _chartData = renderChart(data, list);
-        setChartData(_chartData);
-      } else {
-        const _tableData = data.map(
-          (item: SearchTableDataItem, index: number) => ({
-            ...item.metric,
-            value: item.value[1] ?? '--',
-            index
+        const chartData = renderChart(data, list);
+        const duration = Date.now() - startTime;
+        setChartItems((prev) =>
+          prev.map((item, i) => {
+            if (i === index) {
+              item.data = chartData;
+              item.unit = displayUnit;
+              item.loading = false;
+              item.duration = duration;
+            }
+            return item;
           })
         );
-        const metricTarget =
-          metrics.find((item) => item.name === metric)?.dimensions || [];
-        const colKeys = Array.from(
-          new Set(
-            metricTarget
-              .map((item) => item.name)
-              .concat(['instance_name', 'instance_id', 'value'])
+      } catch {
+        const duration = Date.now() - startTime;
+        setChartItems((prev) =>
+          prev.map((item, i) =>
+            i === index ? { ...item, loading: false, duration } : item
           )
         );
-        const tableColumns = Object.keys(_tableData[0] || {})
-          .filter((item) => colKeys.includes(item))
-          .map((item) => ({
-            title: item,
-            dataIndex: item,
-            key: item,
-            ellipsis: {
-              showTitle: true
-            }
-          }));
-        const _columns: ColumnItem[] = cloneDeep(tableColumns);
-        if (_columns[0]) _columns[0].fixed = 'left';
-        setColumns(_columns);
-        setTableData(_tableData);
       }
-    } finally {
-      if (currentRequestId === searchRequestIdRef.current) {
-        setPageLoading(false);
-      }
-    }
+    });
+    await Promise.all(requests);
+  };
+
+  const onTimeChange = (val: number[], originValue: number | null) => {
+    const timeRange = { timeRange: val, originValue };
+    setTimeValues(timeRange);
+    handleSearch('refresh', timeRange);
+  };
+
+  const onFrequenceChange = (val: number) => {
+    setFrequence(val);
+  };
+
+  const onRefresh = () => {
+    handleSearch('refresh');
   };
 
   const onXRangeChange = (arr: [Dayjs, Dayjs]) => {
@@ -497,289 +258,122 @@ const SearchView: React.FC = () => {
       selectValue: 0
     }));
     const _times = arr.map((item) => dayjs(item).valueOf());
-    const timeRange = {
-      timeRange: _times,
-      originValue: 0
-    };
+    const timeRange = { timeRange: _times, originValue: 0 };
     setTimeValues(timeRange);
-    handleSearch('refresh', activeTab, timeRange);
+    handleSearch('refresh', timeRange);
   };
 
-  const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce(
-      (acc, item) => {
-        if (!acc[item.type]) {
-          acc[item.type] = {
-            title: item.display_type || '--',
-            key: item.type,
-            children: []
-          };
-        }
-        acc[item.type].children.push({
-          title: (item.display_name || '--') + `(${item.instance_count || 0})`,
-          label: item.name || '--',
-          key: item.id,
-          children: []
-        });
-        return acc;
-      },
-      {} as Record<string, TreeItem>
-    );
-    if (groupedData.Other) {
-      groupedData.Other.children = groupedData.Other.children.filter(
-        (item) => item.label !== 'SNMP Trap'
-      );
-    }
-    return Object.values(groupedData);
-  };
+  const getUnit = useCallback(
+    (unit: string) => {
+      const unitName = findUnitNameById(unit);
+      return unitName ? `（${unitName}）` : '';
+    },
+    [findUnitNameById]
+  );
 
   return (
-    <div className={searchStyle.searchWrapper}>
-      <div className={searchStyle.time}>
-        <TimeSelector
-          defaultValue={timeDefaultValue}
-          onChange={onTimeChange}
-          onFrequenceChange={onFrequenceChange}
-          onRefresh={onRefresh}
-        />
-        <Button
-          type="primary"
-          className="ml-[8px]"
-          disabled={!canSearch()}
-          onClick={searchData}
-        >
-          {t('common.search')}
-        </Button>
-      </div>
-      <div className={searchStyle.searchMain}>
-        <div className={searchStyle.tree}>
-          <TreeSelector
-            data={treeData}
-            loading={objLoading}
-            defaultSelectedKey={defaultSelectObj as string}
-            onNodeSelect={handleObjectChange}
-          />
+    <div
+      className="flex h-full"
+      style={{ backgroundColor: 'var(--color-bg-1)' }}
+    >
+      {/* 左侧查询面板 */}
+      <QueryPanel ref={queryPanelRef} onSearch={handleSearchFromPanel} />
+      {/* 右侧内容区 */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* 顶部工具栏 */}
+        <div className="flex items-center justify-end p-5 pb-0">
+          <div className="flex items-center gap-4">
+            <TimeSelector
+              defaultValue={timeDefaultValue}
+              onChange={onTimeChange}
+              onFrequenceChange={onFrequenceChange}
+              onRefresh={onRefresh}
+            />
+            <Segmented
+              value={layoutMode}
+              onChange={(value) => setLayoutMode(value as 'single' | 'double')}
+              options={[
+                {
+                  value: 'single',
+                  title: t('monitor.search.singleColumn'),
+                  icon: <BarsOutlined />
+                },
+                {
+                  value: 'double',
+                  title: t('monitor.search.doubleColumn'),
+                  icon: <AppstoreOutlined />
+                }
+              ]}
+            />
+          </div>
         </div>
-        <div className={searchStyle.search}>
-          <div className={searchStyle.criteria}>
-            <Collapse
-              title={t('monitor.search.searchCriteria')}
-              icon={
-                <Tooltip
-                  placement="topLeft"
-                  title={t('monitor.events.createPolicy')}
-                >
-                  <Button
-                    disabled={!object}
-                    onClick={createPolicy}
-                    type="link"
-                    size="small"
-                    icon={<BellOutlined />}
-                  />
-                </Tooltip>
-              }
+        {/* 图表列表 - 可滚动区域 */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {chartItems.length > 0 ? (
+            <div
+              className={`grid gap-4 ${
+                layoutMode === 'double' ? 'grid-cols-2' : 'grid-cols-1'
+              }`}
             >
-              <div className={searchStyle.condition}>
-                <div className={searchStyle.conditionItem}>
-                  <div className={searchStyle.itemLabel}>
-                    {t('monitor.source')}
-                  </div>
-                  <div className={`${searchStyle.itemOption}`}>
-                    <Select
-                      mode="multiple"
-                      showSearch
-                      placeholder={t('monitor.instance')}
-                      className={`w-[300px] ${searchStyle.sourceObject}`}
-                      maxTagCount="responsive"
-                      loading={instanceLoading}
-                      value={instanceId}
-                      onChange={handleInstanceChange}
-                    >
-                      {instances.map((item) => (
-                        <Option value={item.instance_id} key={item.instance_id}>
-                          {item.instance_name}
-                        </Option>
-                      ))}
-                    </Select>
-                  </div>
-                </div>
-                <div className={searchStyle.conditionItem}>
-                  <div className={searchStyle.itemLabel}>
-                    {t('monitor.metric')}
-                  </div>
-                  <div className={searchStyle.itemOption}>
-                    <Select
-                      className="w-[300px]"
-                      placeholder={t('monitor.metric')}
-                      showSearch
-                      value={metric}
-                      loading={metricsLoading}
-                      options={originMetricData.map((item) => ({
-                        label: item.display_name,
-                        title: item.name,
-                        options: (item.child || []).map((tex) => ({
-                          label: tex.display_name,
-                          value: tex.name
-                        }))
-                      }))}
-                      onChange={handleMetricChange}
+              {chartItems.map((item) => (
+                <Card
+                  key={item.groupId}
+                  size="small"
+                  style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
+                  title={
+                    <div className="flex items-center">
+                      <EllipsisWithTooltip
+                        text={`${item.aggregation}(${item.objectName}-${item.metric?.display_name || '--'})`}
+                        className="font-medium truncate max-w-[calc(100%-150px)]"
+                      />
+                      <span className="font-medium flex-shrink-0">
+                        <span className="text-[var(--color-text-3)] text-[12px]">
+                          {getUnit(item.unit)}
+                        </span>
+                        {item.metric?.display_description && (
+                          <Tooltip title={item.metric.display_description}>
+                            <QuestionCircleFilled
+                              className={`cursor-help text-xs align-super ${getUnit(item.unit) ? 'ml-[-6px]' : ''} text-[var(--color-text-3)]`}
+                            />
+                          </Tooltip>
+                        )}
+                      </span>
+                      {!item.loading && item.duration > 0 && (
+                        <span className="text-xs text-[var(--color-text-3)] font-normal flex-shrink-0 whitespace-nowrap ml-[10px]">
+                          {t('monitor.search.duration')} {item.duration}
+                          {t('monitor.search.ms')}
+                        </span>
+                      )}
+                    </div>
+                  }
+                  loading={item.loading}
+                  styles={{
+                    body: { padding: '12px' }
+                  }}
+                >
+                  <div
+                    className={
+                      layoutMode === 'double' ? 'h-[220px]' : 'h-[280px]'
+                    }
+                  >
+                    <LineChart
+                      metric={item.metric || undefined}
+                      data={item.data}
+                      unit={item.unit}
+                      showDimensionTable={layoutMode === 'single'}
+                      key={layoutMode}
+                      syncId="monitor-search-charts"
+                      onXRangeChange={onXRangeChange}
                     />
                   </div>
-                </div>
-                <div className={searchStyle.conditionItem}>
-                  <div
-                    className={`${searchStyle.itemLabel} ${searchStyle.conditionLabel}`}
-                  >
-                    {t('monitor.filter')}
-                  </div>
-                  <div className="flex">
-                    {conditions.length ? (
-                      <ul className={searchStyle.conditions}>
-                        {conditions.map((conditionItem, index) => (
-                          <li
-                            className={`${searchStyle.itemOption} ${searchStyle.filter}`}
-                            key={index}
-                          >
-                            <Select
-                              className={`w-[150px] ${searchStyle.filterLabel}`}
-                              placeholder={t('monitor.label')}
-                              showSearch
-                              value={conditionItem.label}
-                              onChange={(val) => handleLabelChange(val, index)}
-                            >
-                              {labels.map((item) => (
-                                <Option value={item} key={item}>
-                                  {item}
-                                </Option>
-                              ))}
-                            </Select>
-                            <Select
-                              className="w-[90px]"
-                              placeholder={t('monitor.term')}
-                              value={conditionItem.condition}
-                              onChange={(val) =>
-                                handleConditionChange(val, index)
-                              }
-                            >
-                              {CONDITION_LIST.map((item: ListItem) => (
-                                <Option value={item.id} key={item.id}>
-                                  {item.name}
-                                </Option>
-                              ))}
-                            </Select>
-                            <Input
-                              className="w-[150px]"
-                              placeholder={t('monitor.value')}
-                              value={conditionItem.value}
-                              onChange={(e) => handleValueChange(e, index)}
-                            ></Input>
-                            <Button
-                              icon={<CloseOutlined />}
-                              onClick={() => deleteConditionItem(index)}
-                            />
-                            <Button
-                              icon={<PlusOutlined />}
-                              onClick={addConditionItem}
-                            />
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <Button
-                        className="mt-[10px]"
-                        disabled={!metric}
-                        icon={<PlusOutlined />}
-                        onClick={addConditionItem}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </Collapse>
-          </div>
-          <Spin spinning={pageLoading}>
-            <div className={searchStyle.chart}>
-              <Segmented
-                className="mb-[10px]"
-                value={activeTab}
-                options={[
-                  {
-                    label: (
-                      <div className="flex items-center">
-                        <Icon type="duijimianjitu" className="mr-[8px]" />
-                        {t('monitor.search.area')}
-                      </div>
-                    ),
-                    value: 'area'
-                  },
-                  {
-                    label: (
-                      <div className="flex items-center">
-                        <Icon type="tabulation" className="mr-[8px]" />
-                        {t('monitor.search.table')}
-                      </div>
-                    ),
-                    value: 'table'
-                  }
-                ]}
-                onChange={onTabChange}
-              />
-              {isArea ? (
-                <div className={searchStyle.chartArea}>
-                  {!!metric && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-[14px] relative mb-[10px]">
-                        <span className="font-[600] mr-[2px]">
-                          {metrics.find((item) => item.name === metric)
-                            ?.display_name || '--'}
-                        </span>
-                        <span className="text-[var(--color-text-3)] text-[12px]">
-                          {(() => {
-                            return findUnitNameById(unit) ? `（${unit}）` : '';
-                          })()}
-                        </span>
-                        <Tooltip
-                          placement="topLeft"
-                          title={
-                            metrics.find((item) => item.name === metric)
-                              ?.display_description || ''
-                          }
-                        >
-                          <div
-                            className="absolute cursor-pointer inline-block"
-                            style={{
-                              top: '-3px',
-                              right: '-14px'
-                            }}
-                          >
-                            <Icon
-                              type="a-shuoming2"
-                              className="text-[14px] text-[var(--color-text-3)]"
-                            />
-                          </div>
-                        </Tooltip>
-                      </span>
-                    </div>
-                  )}
-                  <LineChart
-                    metric={metrics.find((item) => item.name === metric)}
-                    data={chartData}
-                    unit={unit}
-                    showDimensionTable
-                    onXRangeChange={onXRangeChange}
-                  />
-                </div>
-              ) : (
-                <CustomTable
-                  scroll={{ x: 'max-content', y: 'calc(100vh - 440px)' }}
-                  columns={columns}
-                  dataSource={tableData}
-                  pagination={false}
-                  rowKey="index"
-                />
-              )}
+                </Card>
+              ))}
             </div>
-          </Spin>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <Empty description={t('monitor.search.noData')} />
+            </div>
+          )}
         </div>
       </div>
     </div>

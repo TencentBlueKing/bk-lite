@@ -6,6 +6,10 @@ from apps.rpc.base import RpcClient, AppClient
 class NodeMgmt(object):
     def __init__(self, is_local_client=False):
         is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
+
+        self.permission_client = (
+            AppClient("apps.node_mgmt.nats.node.permission") if is_local_client else RpcClient()
+        )
         self.client = (
             AppClient("apps.node_mgmt.nats.node") if is_local_client else RpcClient()
         )
@@ -18,7 +22,7 @@ class NodeMgmt(object):
         :param page_size: 页条目数
         :param group_id: 组ID
         """
-        return_data = self.client.run("get_node_module_data", **kwargs)
+        return_data = self.permission_client.run("get_node_module_data", **kwargs)
         return return_data
 
     def get_module_list(self, **kwargs):
@@ -26,7 +30,7 @@ class NodeMgmt(object):
         :param module: 模块
         :return: 模块的枚举值列表
         """
-        return_data = self.client.run("get_node_module_list", **kwargs)
+        return_data = self.permission_client.run("get_node_module_list", **kwargs)
         return return_data
 
     def cloud_region_list(self):

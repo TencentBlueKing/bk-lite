@@ -18,6 +18,12 @@ from apps.node_mgmt.models.sidecar import (
     CollectorConfiguration,
     NodeOrganization,
 )
+from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
+from apps.node_mgmt.models.installer import ControllerTaskNode
+from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
+from apps.node_mgmt.tasks.installer import (
+    converge_controller_install_connectivity_for_node,
+)
 from apps.node_mgmt.utils.sidecar import format_tags_dynamic
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from jinja2 import Template as JinjaTemplate
@@ -26,6 +32,8 @@ from apps.core.logger import node_logger as logger
 
 
 class Sidecar:
+    CONVERGE_DEBOUNCE_SECONDS = 5
+
     @staticmethod
     def generate_etag(data):
         """根据数据生成干净的 ETag，不加引号"""
@@ -51,7 +59,9 @@ class Sidecar:
                 return hashlib.md5(encrypted_content.encode("utf-8")).hexdigest()
             except Exception as e:
                 # 加密失败，记录警告日志并回退到明文内容，使用 Django JSON 编码器处理 datetime
-                logger.warning(f"Failed to encrypt response data for ETag generation: {e}")
+                logger.warning(
+                    f"Failed to encrypt response data for ETag generation: {e}"
+                )
                 json_content = json.dumps(
                     data, ensure_ascii=False, cls=DjangoJSONEncoder
                 )
@@ -113,6 +123,75 @@ class Sidecar:
                 batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
             )
 
+    @staticmethod
+    def _collector_status_signature(status_payload: dict) -> str:
+        collectors = status_payload.get("collectors", []) if status_payload else []
+        if not isinstance(collectors, list):
+            collectors = []
+
+        normalized = []
+        for item in collectors:
+            if not isinstance(item, dict):
+                continue
+            normalized.append(
+                {
+                    "collector_id": item.get("collector_id"),
+                    "status": item.get("status"),
+                }
+            )
+
+        normalized.sort(key=lambda x: str(x.get("collector_id") or ""))
+        payload = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+        return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _is_debounce_elapsed(cache_key: str) -> bool:
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        last_ts = cache.get(cache_key)
+        if (
+            last_ts is not None
+            and now_ts - int(last_ts) < Sidecar.CONVERGE_DEBOUNCE_SECONDS
+        ):
+            return False
+        cache.set(cache_key, now_ts, timeout=Sidecar.CONVERGE_DEBOUNCE_SECONDS * 6)
+        return True
+
+    @staticmethod
+    def trigger_converge_tasks_if_needed(
+        node_id: str, node_ip: str, status_payload: dict
+    ):
+        action_running_exists = CollectorActionTaskNode.objects.filter(
+            node_id=node_id,
+            status="running",
+        ).exists()
+
+        install_running_exists = False
+        if node_ip:
+            install_running_exists = ControllerTaskNode.objects.filter(
+                ip=node_ip,
+                status="running",
+                task__type="install",
+            ).exists()
+
+        if not action_running_exists and not install_running_exists:
+            return
+
+        if action_running_exists:
+            signature = Sidecar._collector_status_signature(status_payload)
+            signature_cache_key = f"node_converge_action_signature_{node_id}"
+            debounce_cache_key = f"node_converge_action_debounce_{node_id}"
+            last_signature = cache.get(signature_cache_key)
+            if signature != last_signature or Sidecar._is_debounce_elapsed(
+                debounce_cache_key
+            ):
+                cache.set(signature_cache_key, signature, timeout=3600)
+                converge_collector_action_task_for_node.delay(node_id)
+
+        if install_running_exists:
+            debounce_cache_key = f"node_converge_install_debounce_{node_id}"
+            if Sidecar._is_debounce_elapsed(debounce_cache_key):
+                converge_controller_install_connectivity_for_node.delay(node_id)
+
     # @staticmethod
     # def update_groups(node_id: str, groups: list):
     #     """
@@ -141,10 +220,19 @@ class Sidecar:
         # 如果缓存的ETag存在且与客户端的相同，则返回304 Not Modified
         if cached_etag and cached_etag == if_none_match:
             # 更新时间, 更新状态
+            node_status = request.data.get("node_details", {}).get("status", {})
             Node.objects.filter(id=node_id).update(
                 updated_at=datetime.now(timezone.utc).isoformat(),
-                status=request.data.get("node_details", {}).get("status", {}),
+                status=node_status,
             )
+
+            node_ip = request.data.get("node_details", {}).get("ip", "")
+            if not node_ip:
+                node_ip = (
+                    Node.objects.filter(id=node_id).values_list("ip", flat=True).first()
+                )
+            Sidecar.trigger_converge_tasks_if_needed(node_id, node_ip, node_status)
+
             response = HttpResponse(status=304)
             response["ETag"] = cached_etag
             return response
@@ -237,6 +325,78 @@ class Sidecar:
         action_obj = new_obj.action_set.first()
         if action_obj:
             response_data.update(actions=action_obj.action)
+
+            for action_item in action_obj.action:
+                task_id = action_item.get("task_id")
+                if not task_id:
+                    continue
+                task_node = CollectorActionTaskNode.objects.filter(
+                    task_id=task_id, node_id=node_id
+                ).first()
+                if task_node and task_node.status == "waiting":
+                    task_node.status = "running"
+                    task_node.result = {
+                        "overall_status": "running",
+                        "final_message": "Collector action consumed by sidecar",
+                        "steps": [
+                            {
+                                "action": "consume_ack",
+                                "status": "success",
+                                "message": "Action delivered to sidecar",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "details": {
+                                    "delivered": True,
+                                    "collector_id": action_item.get("collector_id"),
+                                },
+                            },
+                            {
+                                "action": "execute_command",
+                                "status": "running",
+                                "message": "Collector command is being executed by sidecar",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            },
+                        ],
+                    }
+                    task_node.save(update_fields=["status", "result"])
+
+                elif task_node and task_node.status == "running":
+                    result = task_node.result or {}
+                    steps = result.get("steps", [])
+                    steps.append(
+                        {
+                            "action": "consume_ack",
+                            "status": "success",
+                            "message": "Action delivered to sidecar",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "details": {
+                                "delivered": True,
+                                "collector_id": action_item.get("collector_id"),
+                            },
+                        }
+                    )
+                    if not (
+                        steps
+                        and steps[-1].get("action") == "execute_command"
+                        and steps[-1].get("status") == "running"
+                    ):
+                        steps.append(
+                            {
+                                "action": "execute_command",
+                                "status": "running",
+                                "message": "Collector command is being executed by sidecar",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }
+                        )
+                    result["steps"] = steps
+                    result["overall_status"] = "running"
+                    result["final_message"] = "Collector action consumed by sidecar"
+                    task_node.result = result
+                    task_node.save(update_fields=["result"])
+
+                    CollectorActionTask.objects.filter(
+                        id=task_id, status="waiting"
+                    ).update(status="running")
+
             action_obj.delete()
 
         # 节点配置信息
@@ -255,6 +415,8 @@ class Sidecar:
         cache.set(f"node_etag_{node_id}", new_etag, ControllerConstants.E_CACHE_TIMEOUT)
 
         # 返回响应
+        node_status = request_data.get("status", {})
+        Sidecar.trigger_converge_tasks_if_needed(node_id, new_obj.ip, node_status)
         return EncryptedJsonResponse(
             status=202, data=response_data, headers={"ETag": new_etag}, request=request
         )
@@ -297,14 +459,52 @@ class Sidecar:
 
         # 合并子配置内容到模板
         merged_template = configuration.config_template
-        for child_config in configuration.childconfig_set.all():
-            # 假设子配置的 `content` 是纯文本格式，直接追加
-            merged_template += (
-                f"\n# {child_config.collect_type} - {child_config.config_type}\n"
-            )
-            merged_template += Sidecar.render_template(
-                child_config.content, child_config.env_config
-            )
+
+        collector = configuration.collector
+        section_headers = {}
+        if collector.default_config:
+            section_headers = collector.default_config.get("config_section", {})
+
+        child_configs = list(configuration.childconfig_set.all())
+
+        if child_configs and section_headers:
+            grouped_configs = {}
+            ungrouped_configs = []
+            for child_config in child_configs:
+                if child_config.config_section:
+                    grouped_configs.setdefault(child_config.config_section, []).append(
+                        child_config
+                    )
+                else:
+                    ungrouped_configs.append(child_config)
+
+            for section_key in section_headers.keys():
+                configs = grouped_configs.get(section_key, [])
+                if configs:
+                    header = section_headers.get(section_key, "")
+                    if header:
+                        merged_template += header
+                    for child_config in configs:
+                        merged_template += f"\n# {child_config.collect_type} - {child_config.config_type}\n"
+                        merged_template += Sidecar.render_template(
+                            child_config.content, child_config.env_config
+                        )
+
+            for child_config in ungrouped_configs:
+                merged_template += (
+                    f"\n# {child_config.collect_type} - {child_config.config_type}\n"
+                )
+                merged_template += Sidecar.render_template(
+                    child_config.content, child_config.env_config
+                )
+        else:
+            for child_config in child_configs:
+                merged_template += (
+                    f"\n# {child_config.collect_type} - {child_config.config_type}\n"
+                )
+                merged_template += Sidecar.render_template(
+                    child_config.content, child_config.env_config
+                )
 
         configuration_data = dict(
             id=configuration.id,

@@ -137,6 +137,13 @@ class ChatFlowEngine:
         except Exception as e:
             logger.exception(f"记录节点执行明细失败: execution_id={self.execution_id}, node_id={node_id}, error={str(e)}")
 
+    async def _record_node_execution_result_async(self, node_id: str, context: NodeExecutionContext) -> None:
+        """异步记录节点执行明细（用于 async 上下文）
+
+        使用 sync_to_async 包装同步的 ORM 操作，避免在异步上下文中直接调用同步数据库操作。
+        """
+        await sync_to_async(self._record_node_execution_result, thread_sensitive=True)(node_id, context)
+
     def _get_start_node(self) -> Optional[Dict[str, Any]]:
         """获取起始节点
 
@@ -201,8 +208,6 @@ class ChatFlowEngine:
 
         # 查找目标agents节点及前置节点
         target_agent_node, nodes_to_execute_before = self._find_target_agent_node(start_node, last_node, is_agui_protocol, is_openai_protocol)
-        if not target_agent_node:
-            return self._create_error_response("未找到可执行的agents节点")
 
         # 为入口节点创建执行上下文记录，同时获取映射后的输出数据
         mapped_input_data = input_data
@@ -211,6 +216,26 @@ class ChatFlowEngine:
 
         # 执行前置节点（使用映射后的数据）
         final_input_data = self._execute_prerequisite_nodes(nodes_to_execute_before, mapped_input_data)
+
+        # 如果 target_agent_node 为 None，说明路径中包含意图分类节点，需要动态路由
+        if not target_agent_node:
+            # 检查前置节点中是否有意图分类节点
+            intent_node = None
+            for node in nodes_to_execute_before:
+                if node.get("type") == "intent_classification":
+                    intent_node = node
+                    break
+
+            if intent_node:
+                # 从 final_input_data 中获取意图分类结果
+                intent_result = final_input_data.get("intent_result")
+                if intent_result:
+                    # 根据意图结果找到对应的目标agents节点
+                    target_agent_node = self._find_agent_by_intent(intent_node.get("id"), intent_result)
+                    logger.info(f"[SSE-Engine] 意图分类结果: {intent_result!r}, 目标节点: {target_agent_node.get('id') if target_agent_node else None}")
+
+            if not target_agent_node:
+                return self._create_error_response("未找到可执行的agents节点（意图路由失败）")
 
         # 根据协议类型选择执行方法
         executor = self._get_node_executor(target_agent_node.get("type"))
@@ -236,7 +261,9 @@ class ChatFlowEngine:
 
             # 使用公共方法创建 agents 节点的执行上下文
             agent_node_id = target_agent_node.get("id")
-            agent_context = self._create_node_execution_context(node=target_agent_node, input_data=final_input_data, status=NodeStatus.RUNNING)
+            agent_context = await self._create_node_execution_context_async(
+                node=target_agent_node, input_data=final_input_data, status=NodeStatus.RUNNING
+            )
 
             try:
                 # 同步调用 execute_method,它会返回一个异步生成器
@@ -275,7 +302,7 @@ class ChatFlowEngine:
 
                 # 更新节点执行顺序
                 self._update_node_execution_order(agent_node_id)
-                self._record_node_execution_result(agent_node_id, agent_context)
+                await self._record_node_execution_result_async(agent_node_id, agent_context)
 
                 # 记录系统输出到对话历史
                 if accumulated_content:
@@ -314,7 +341,7 @@ class ChatFlowEngine:
 
                 # 更新节点执行顺序
                 self._update_node_execution_order(agent_node_id)
-                self._record_node_execution_result(agent_node_id, agent_context)
+                await self._record_node_execution_result_async(agent_node_id, agent_context)
 
                 error_data = {"type": "ERROR", "error": f"流处理错误: {str(e)}", "timestamp": int(time.time() * 1000)}
                 yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
@@ -428,6 +455,50 @@ class ChatFlowEngine:
 
         return context
 
+    async def _create_node_execution_context_async(
+        self,
+        node: Dict[str, Any],
+        input_data: Dict[str, Any],
+        status: NodeStatus = NodeStatus.RUNNING,
+    ) -> NodeExecutionContext:
+        """异步创建节点执行上下文并注册变量（用于 async 上下文）
+
+        与 _create_node_execution_context 功能相同，但使用异步方式记录节点执行结果，
+        避免在异步上下文中直接调用同步数据库操作。
+
+        Args:
+            node: 节点配置
+            input_data: 输入数据
+            status: 初始状态，默认 RUNNING
+
+        Returns:
+            NodeExecutionContext: 创建的执行上下文
+        """
+        node_id = node.get("id")
+        node_type = node.get("type")
+        node_name = node.get("data", {}).get("label", "") or node.get("data", {}).get("name", "") or node_id
+
+        # 创建执行上下文
+        context = NodeExecutionContext(node_id=node_id, flow_id=str(self.instance.id))
+        context.start_time = time.time()
+        context.status = status
+        context.input_data = input_data
+
+        # 保存节点信息到变量管理器
+        self.variable_manager.set_variable(f"node_{node_id}_type", node_type)
+        self.variable_manager.set_variable(f"node_{node_id}_name", node_name)
+
+        # 保存输出参数名（用于失败时也使用用户指定的输出参数名）
+        node_config = node.get("data", {}).get("config", {})
+        output_key = node_config.get("outputParams", "last_message")
+        self.variable_manager.set_variable(f"node_{node_id}_output_key", output_key)
+
+        # 注册到 execution_contexts
+        self.execution_contexts[node_id] = context
+        await self._record_node_execution_result_async(node_id, context)
+
+        return context
+
     def _update_node_execution_order(self, node_id: str) -> int:
         """更新节点执行顺序计数器并保存到变量管理器
 
@@ -452,7 +523,12 @@ class ChatFlowEngine:
             return target_agent_node, nodes_to_execute_before
 
     def _find_agent_node_via_bfs(self, start_node):
-        """使用BFS查找从起始节点可达的第一个agents节点"""
+        """使用BFS查找从起始节点可达的第一个agents节点
+
+        注意：如果路径中包含意图分类节点（intent_classification），此方法只会找到
+        意图分类节点并将其加入前置节点列表。实际的目标agents节点需要在执行完意图分类
+        节点后，根据intent_result动态确定。
+        """
         from collections import deque
 
         queue = deque([start_node.get("id")])
@@ -472,7 +548,17 @@ class ChatFlowEngine:
                 if not next_node:
                     continue
 
-                if next_node.get("type") == "agents":
+                node_type = next_node.get("type", "")
+
+                # 如果遇到意图分类节点，将其加入前置节点并停止搜索
+                # 目标agents节点需要在执行完意图分类后动态确定
+                if node_type == "intent_classification":
+                    path_nodes.append(next_node)
+                    logger.info(f"[SSE-Engine] BFS发现意图分类节点: {next_node_id}，需要动态路由")
+                    # 返回 None 作为目标节点，表示需要动态路由
+                    return None, path_nodes
+
+                if node_type == "agents":
                     return next_node, path_nodes
 
                 path_nodes.append(next_node)
@@ -480,6 +566,32 @@ class ChatFlowEngine:
 
         logger.error(f"[SSE-Engine] 起始节点是 {start_node.get('type')}，但未找到后续的 agents 节点")
         return None, []
+
+    def _find_agent_by_intent(self, intent_node_id: str, intent_result: str) -> Optional[Dict[str, Any]]:
+        """根据意图分类结果，查找匹配的目标 agents 节点
+
+        通过遍历 edges，找到 source 为意图分类节点且 sourceHandle 匹配意图结果的边，
+        然后返回该边指向的目标节点。
+
+        Args:
+            intent_node_id: 意图分类节点的ID
+            intent_result: 意图分类结果（如 "alarm_helper"）
+
+        Returns:
+            匹配的目标节点配置，如果未找到返回 None
+        """
+        for edge in self.edges:
+            if edge.get("source") == intent_node_id and edge.get("sourceHandle") == intent_result:
+                target_id = edge.get("target")
+                target_node = self._get_node_by_id(target_id)
+                if target_node:
+                    logger.info(f"[SSE-Engine] 意图路由匹配成功: intent={intent_result!r} -> target_node={target_id} (type={target_node.get('type')})")
+                    return target_node
+
+        # 未找到匹配的边，记录可用的 sourceHandle 供调试
+        available_handles = [edge.get("sourceHandle") for edge in self.edges if edge.get("source") == intent_node_id and edge.get("sourceHandle")]
+        logger.warning(f"[SSE-Engine] 意图路由未找到匹配: intent={intent_result!r}, available_handles={available_handles}")
+        return None
 
     def _execute_prerequisite_nodes(self, nodes_to_execute_before, input_data: Dict[str, Any]):
         """执行前置节点（非流式）"""
@@ -1404,14 +1516,41 @@ class ChatFlowEngine:
         """
         next_nodes = []
 
+        # 提取意图结果用于日志
+        intent_result = node_result.get("data", {}).get("intent_result")
+        if intent_result:
+            logger.info(f"[路由决策] 节点 {node_id} 的意图结果: {intent_result!r}")
+
         for edge in self.edges:
             if edge.get("source") != node_id:
                 continue
-            if not self._should_follow_edge(edge, node_result):
-                continue
+            source_handle = edge.get("sourceHandle", "")
             target = edge.get("target")
+            should_follow = self._should_follow_edge(edge, node_result)
+
+            # 记录每条边的匹配情况
+            if intent_result:
+                logger.debug(f"[路由决策] 边 {edge.get('id')}: sourceHandle={source_handle!r}, target={target}, 匹配={should_follow}")
+
+            if not should_follow:
+                continue
             if target:
                 next_nodes.append(target)
+
+        # 记录最终选择的节点
+        if next_nodes:
+            target_nodes_info = []
+            for target_id in next_nodes:
+                target_node = self._get_node_by_id(target_id)
+                if target_node:
+                    node_name = target_node.get("data", {}).get("config", {}).get("agentName", "")
+                    node_type = target_node.get("type", "")
+                    target_nodes_info.append(f"{target_id}(type={node_type}, name={node_name})")
+                else:
+                    target_nodes_info.append(target_id)
+            logger.info(f"[路由决策] 节点 {node_id} -> 下一个节点: {target_nodes_info}")
+        else:
+            logger.info(f"[路由决策] 节点 {node_id} 没有后续节点")
 
         return next_nodes
 

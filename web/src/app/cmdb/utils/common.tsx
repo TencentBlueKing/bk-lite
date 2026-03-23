@@ -2,12 +2,26 @@ import { BUILD_IN_MODEL, CREDENTIAL_LIST } from '@/app/cmdb/constants/asset';
 import { getSvgIcon } from './utils';
 import dayjs from 'dayjs';
 import { AttrFieldType } from '@/app/cmdb/types/assetManage';
-import { Tag, Select, Input, InputNumber, DatePicker, Tooltip } from 'antd';
+import {
+  Tag,
+  Select,
+  Input,
+  InputNumber,
+  DatePicker,
+  Tooltip,
+  Table,
+  Popover,
+  Button,
+  Space,
+  message,
+} from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
+import CollectTaskTreeSelect from '@/app/cmdb/components/collect-task-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
 import UserAvatar from '@/components/user-avatar';
 import React from 'react';
+import { useTranslation } from '@/utils/i18n';
 import {
   ModelIconItem,
   ColumnItem,
@@ -20,8 +34,188 @@ import {
   StrAttrOption,
   IntAttrOption,
   AttrLike,
+  TableColumnSpec,
+  TagAttrOption,
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
+import {
+  getCollectTaskLinkMeta,
+} from '@/app/cmdb/utils/collectTask';
+import TableFieldEditor from './tableFieldEditor';
+import TagCascaderEditor from './tagCascaderEditor';
+import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
+import { getTagDisplayText } from '@/app/cmdb/utils/tag';
+
+// 解析表格字段值（支持 JSON 字符串或数组）
+export const parseTableValue = (val: any): any[] => {
+  if (!val) return [];
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return []; }
+  }
+  return Array.isArray(val) ? val : [];
+};
+
+type TableRowData = Record<string, unknown>;
+
+const getSortedTableColumns = (columns: TableColumnSpec[] = []) =>
+  [...columns].sort((a, b) => a.order - b.order);
+
+const formatTableCellText = (value: unknown): string => {
+  if (value === undefined || value === null || value === '') {
+    return '--';
+  }
+  return String(value);
+};
+
+const getTablePlainText = (
+  tableData: TableRowData[],
+  sortedCols: TableColumnSpec[]
+): string => {
+  const header = sortedCols.map((col) => col.column_name).join('\t');
+  const rows = tableData.map((row) =>
+    sortedCols
+      .map((col) => formatTableCellText(row[col.column_id]))
+      .join('\t')
+  );
+
+  return [header, ...rows].join('\n');
+};
+
+const escapeCsvValue = (value: unknown): string => {
+  const text = value === undefined || value === null ? '' : String(value);
+  const escaped = text.replace(/"/g, '""');
+  return /[",\r\n]/.test(text) ? `"${escaped}"` : escaped;
+};
+
+const downloadTableCsv = (
+  fileName: string,
+  sortedCols: TableColumnSpec[],
+  tableData: TableRowData[]
+) => {
+  const header = sortedCols.map((col) => escapeCsvValue(col.column_name)).join(',');
+  const rows = tableData.map((row) =>
+    sortedCols
+      .map((col) => escapeCsvValue(row[col.column_id]))
+      .join(',')
+  );
+  const csvContent = ['\uFEFF' + header, ...rows].join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = fileName.endsWith('.csv') ? fileName : `${fileName}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const TableFieldReadonlyDisplay: React.FC<{
+  fieldName: string;
+  tableData: TableRowData[];
+  tableColumns: TableColumnSpec[];
+}> = ({ fieldName, tableData, tableColumns }) => {
+  const { t } = useTranslation();
+
+  const sortedCols = React.useMemo(
+    () => getSortedTableColumns(tableColumns),
+    [tableColumns]
+  );
+
+  const viewerColumns = React.useMemo(
+    () =>
+      sortedCols.map((col) => ({
+        title: col.column_name,
+        dataIndex: col.column_id,
+        key: col.column_id,
+        width: col.column_type === 'number' ? 160 : 220,
+        render: (value: unknown) => (
+          <EllipsisWithTooltip
+            text={formatTableCellText(value)}
+            className="block w-full whitespace-nowrap overflow-hidden text-ellipsis"
+          />
+        ),
+      })),
+    [sortedCols]
+  );
+  const tableScrollX = React.useMemo(() => {
+    const totalColumnWidth = sortedCols.reduce((sum, col) => {
+      return sum + (col.column_type === 'number' ? 160 : 220);
+    }, 0);
+
+    return Math.max(totalColumnWidth, 960);
+  }, [sortedCols]);
+
+  const handleExport = () => {
+    try {
+      downloadTableCsv(
+        `${fieldName}_${dayjs().format('YYYYMMDD_HHmmss')}`,
+        sortedCols,
+        tableData
+      );
+      message.success(t('Model.exportSuccess'));
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : t('Model.exportFailed');
+      message.error(errorMessage || t('Model.exportFailed'));
+    }
+  };
+
+  return (
+    <div className="w-full rounded border border-[var(--color-border-1,var(--ant-color-border-secondary))] bg-[var(--color-bg-1)] p-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-xs text-[var(--color-text-3)]">
+          {tableData.length} rows
+        </div>
+        <Space size={4} className="flex-shrink-0">
+          <Button type="link" size="small" onClick={handleExport}>
+            {t('common.export')}
+          </Button>
+        </Space>
+      </div>
+      <Table
+        dataSource={tableData}
+        columns={viewerColumns}
+        pagination={false}
+        size="small"
+        tableLayout="fixed"
+        scroll={{ x: tableScrollX, y: 420 }}
+        style={{ width: '100%' }}
+        rowKey={(_, index) => String(index)}
+        className="[&_.ant-table-thead_th]:!py-2 [&_.ant-table-tbody_td]:!py-2 [&_.ant-table-thead_th]:text-xs [&_.ant-table-thead_th:first-child]:!rounded-none [&_.ant-table-thead_th:last-child]:!rounded-none"
+      />
+    </div>
+  );
+};
+
+const collectTaskLinkClassName =
+  'text-[var(--color-primary)] underline cursor-pointer hover:text-[var(--color-primary-hover,#3a84ff)]';
+
+const renderCollectTaskValue = (value: unknown) => {
+  // Given 实例页需要按任务跳转采集详情，When 拿到 collect_task 值，Then 先解析是否可生成完整路由。
+  const meta = getCollectTaskLinkMeta(value);
+  if (!meta.clickable || !meta.href) {
+    return (
+      <EllipsisWithTooltip
+        className="whitespace-nowrap overflow-hidden text-ellipsis"
+        text={meta.displayText}
+      />
+    );
+  }
+
+  return (
+    <a
+      href={meta.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-block max-w-full whitespace-nowrap overflow-hidden text-ellipsis ${collectTaskLinkClassName}`}
+      title={meta.displayText}
+    >
+      {meta.displayText}
+    </a>
+  );
+};
 
 type UserDisplayContext = 'table' | 'detail';
 
@@ -338,13 +532,91 @@ export const getAssetColumns = (config: {
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
-            const enumOptions = Array.isArray(item.option) ? item.option : [];
-            return (
-              <>
-                {enumOptions.find((opt: EnumList) => opt.id === record[attrId])
-                  ?.name || '--'}
-              </>
+            const enumOptions = Array.isArray(item.option) ? (item.option as EnumList[]) : [];
+            const rawValue = record[attrId];
+            const valueArray = Array.isArray(rawValue) ? rawValue : (rawValue ? [rawValue] : []);
+            if (valueArray.length === 0) return <>--</>;
+            const displayNames = valueArray
+              .map((val: string) => enumOptions.find((opt: EnumList) => opt.id === val)?.name)
+              .filter(Boolean);
+            return displayNames.length > 0 ? <>{displayNames.join(', ')}</> : <>--</>;
+          },
+        };
+      case 'table': {
+        return {
+          ...columnItem,
+          render: (_: unknown, record: any) => {
+            const tableData = parseTableValue(record[attrId]);
+            
+            const tableColumns = (item.option as TableColumnSpec[]) || [];
+            
+            if (!tableData.length || !tableColumns.length) return <>--</>;
+            
+            const sortedCols = [...tableColumns].sort((a, b) => a.order - b.order);
+            const firstColId = sortedCols[0]?.column_id;
+            
+            if (!firstColId) return <>--</>;
+            
+            const firstColValues = tableData.map(row => row[firstColId]).filter(v => v !== undefined && v !== '');
+            const displayValues = firstColValues.slice(0, 2);
+            const remainingCount = firstColValues.length - 2;
+            
+            const fullTableContent = (
+              <div className="max-w-[min(600px,calc(100vw-48px))] max-h-[min(400px,calc(100vh-120px))] overflow-auto">
+                <Table
+                  dataSource={tableData}
+                  columns={sortedCols.map(col => ({
+                    title: col.column_name,
+                    dataIndex: col.column_id,
+                    key: col.column_id,
+                    width: col.column_type === 'number' ? 160 : 220,
+                    render: (value: unknown) => (
+                      <EllipsisWithTooltip
+                        text={formatTableCellText(value)}
+                        className="block w-full whitespace-nowrap overflow-hidden text-ellipsis"
+                      />
+                    ),
+                  }))}
+                  pagination={false}
+                  size="small"
+                  tableLayout="fixed"
+                  scroll={{ x: Math.max(sortedCols.reduce((sum, col) => sum + (col.column_type === 'number' ? 160 : 220), 0), 720), y: 320 }}
+                  rowKey={(_, index) => String(index)}
+                />
+              </div>
             );
+            
+            return (
+              <Popover
+                content={fullTableContent}
+                trigger="hover"
+                placement="bottomLeft"
+              >
+                <div className="flex items-center gap-1 flex-wrap cursor-pointer">
+                  {displayValues.map((val, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-block px-2 py-0.5 text-xs rounded bg-[var(--color-bg-4)] text-[var(--color-text-1)]"
+                    >
+                      {String(val)}
+                    </span>
+                  ))}
+                  {remainingCount > 0 && (
+                    <span className="ml-2 text-xs text-[var(--color-primary)]">
+                      +{remainingCount}
+                    </span>
+                  )}
+                </div>
+              </Popover>
+            );
+          },
+        };
+      }
+      case 'tag':
+        return {
+          ...columnItem,
+          render: (_: unknown, record: any) => {
+            return <TagCapsuleGroup value={record[attrId]} maxVisible={2} compact />;
           },
         };
       case 'time': {
@@ -373,7 +645,6 @@ export const getAssetColumns = (config: {
           ...columnItem,
           render: (_: unknown, record: any) => {
             const cloudOptions = useAssetDataStore.getState().cloud_list;
-
             const modelId = record.model_id;
             if (attrId === 'cloud' && modelId === 'host') {
               const cloudId = +record[attrId];
@@ -386,7 +657,11 @@ export const getAssetColumns = (config: {
                   className="whitespace-nowrap overflow-hidden text-ellipsis"
                   text={displayText as string}
                 ></EllipsisWithTooltip>
-              )
+              );
+            }
+
+            if (attrId === 'collect_task') {
+              return renderCollectTaskValue(record[attrId]);
             }
 
             return (
@@ -394,12 +669,13 @@ export const getAssetColumns = (config: {
                 className="whitespace-nowrap overflow-hidden text-ellipsis"
                 text={record[attrId] || '--'}
               ></EllipsisWithTooltip>
-            )
+            );
           },
         };
     }
   });
 };
+
 
 export const getFieldItem = (config: {
   fieldItem: AttrFieldType;
@@ -410,9 +686,18 @@ export const getFieldItem = (config: {
   disabled?: boolean;
   placeholder?: string;
   flatGroups?: Array<{ id: string; name: string; parentId?: string }>;
+  inModal?: boolean;
 }) => {
   const { disabled, placeholder } = config;
   if (config.isEdit) {
+    if (config.fieldItem.attr_id === 'collect_task') {
+      return (
+        <CollectTaskTreeSelect
+          disabled={disabled}
+          placeholder={placeholder}
+        />
+      );
+    }
     switch (config.fieldItem.attr_type) {
       case 'user':
         return (
@@ -442,9 +727,13 @@ export const getFieldItem = (config: {
           </Select>
         );
       case 'enum':
-        const enumOpts = Array.isArray(config.fieldItem.option) ? config.fieldItem.option : [];
+        const enumOpts = Array.isArray(config.fieldItem.option)
+          ? config.fieldItem.option
+          : [];
+        const isMultipleEnum = config.fieldItem.enum_select_mode === 'multiple';
         return (
           <Select
+            mode={isMultipleEnum ? 'multiple' : undefined}
             showSearch
             disabled={disabled}
             placeholder={placeholder}
@@ -485,7 +774,15 @@ export const getFieldItem = (config: {
         const showTime = displayFormat === 'datetime';
         const format =
           displayFormat === 'datetime' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD';
-        return <DatePicker showTime={showTime} format={format} disabled={disabled} placeholder={placeholder} style={{ width: '100%' }} />;
+        return (
+          <DatePicker
+            showTime={showTime}
+            format={format}
+            disabled={disabled}
+            placeholder={placeholder}
+            style={{ width: '100%' }}
+          />
+        );
       case 'int':
         const intOption = config.fieldItem.option as IntAttrOption;
         return (
@@ -493,15 +790,47 @@ export const getFieldItem = (config: {
             style={{ width: '100%' }}
             disabled={disabled}
             placeholder={placeholder}
-            min={intOption?.min_value !== '' ? Number(intOption?.min_value) : undefined}
-            max={intOption?.max_value !== '' ? Number(intOption?.max_value) : undefined}
+            min={
+              ![undefined, '', null].includes(intOption?.min_value as string)
+                ? Number(intOption.min_value)
+                : undefined
+            }
+            max={
+              ![undefined, '', null].includes(intOption?.max_value as string)
+                ? Number(intOption.max_value)
+                : undefined
+            }
           />
         );
+      case 'table':
+        return (
+          <TableFieldEditor
+            columns={config.fieldItem.option as TableColumnSpec[]}
+            disabled={disabled}
+            inModal={config.inModal}
+          />
+        );
+      case 'tag': {
+        const tagOption = (config.fieldItem.option || {}) as TagAttrOption;
+        return (
+          <TagCascaderEditor
+            option={tagOption}
+            disabled={disabled}
+            placeholder={placeholder}
+          />
+        );
+      }
       default:
         if (config.fieldItem.attr_type === 'str') {
           const strOption = config.fieldItem.option as StrAttrOption;
           if (strOption?.widget_type === 'multi_line') {
-            return <Input.TextArea rows={3} disabled={disabled} placeholder={placeholder} />;
+            return (
+              <Input.TextArea
+                rows={3}
+                disabled={disabled}
+                placeholder={placeholder}
+              />
+            );
           }
         }
         return <Input disabled={disabled} placeholder={placeholder} />;
@@ -513,7 +842,7 @@ export const getFieldItem = (config: {
         config.value,
         config.userList || [],
         'detail',
-        config.hideUserAvatar
+        config.hideUserAvatar,
       );
     case 'organization':
       if (config.hideUserAvatar && config.flatGroups) {
@@ -528,24 +857,63 @@ export const getFieldItem = (config: {
     case 'bool':
       return config.value ? 'Yes' : 'No';
     case 'enum':
-      const enumOptions = Array.isArray(config.fieldItem.option) ? config.fieldItem.option : [];
+      const enumOptions = Array.isArray(config.fieldItem.option)
+        ? (config.fieldItem.option as EnumList[])
+        : [];
       if (Array.isArray(config.value)) {
         if (config.value.length === 0) return '--';
         const enumNames = config.value
           .map((val: any) => {
-            return enumOptions.find(
-              (item: EnumList) => item.id === val
-            )?.name;
+            return enumOptions.find((item: EnumList) => item.id === val)?.name;
           })
           .filter((name) => name !== undefined)
           .join('，');
         return enumNames || '--';
       }
       return (
-        enumOptions.find(
-          (item: EnumList) => item.id === config.value,
-        )?.name || '--'
+        enumOptions.find((item: EnumList) => item.id === config.value)?.name ||
+        '--'
       );
+    case 'str':
+      if (config.fieldItem.attr_id === 'collect_task') {
+        // Given 详情页字段为只读展示，When collect_task 可解析路由，Then 渲染可点击新标签链接。
+        const meta = getCollectTaskLinkMeta(config.value);
+        if (config.hideUserAvatar || !meta.clickable || !meta.href) {
+          return meta.displayText;
+        }
+        return (
+          <a
+            href={meta.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={collectTaskLinkClassName}
+            title={meta.displayText}
+          >
+            {meta.displayText}
+          </a>
+        );
+      }
+      return config.value || '--';
+    case 'table':
+      const tableData = parseTableValue(config.value);
+      const tableColumns = config.fieldItem.option as TableColumnSpec[];
+      if (!tableData.length || !tableColumns?.length) return '--';
+
+      const sortedCols = getSortedTableColumns(tableColumns);
+
+      if (config.hideUserAvatar) {
+        return getTablePlainText(tableData, sortedCols);
+      }
+
+      return (
+        <TableFieldReadonlyDisplay
+          fieldName={config.fieldItem.attr_name}
+          tableData={tableData}
+          tableColumns={tableColumns}
+        />
+      );
+    case 'tag':
+      return getTagDisplayText(config.value);
     default:
       if (config.fieldItem.attr_type === 'time' && config.value) {
         const timeOpt = config.fieldItem.option as TimeAttrOption;
@@ -658,12 +1026,12 @@ export const getStringValidationRule = (item: AttrLike, t: (key: string) => stri
 
 export const getNumberRangeRule = (item: AttrLike, t: (key: string) => string) => {
   const intOption = item.option as IntAttrOption;
-  const hasMin = intOption?.min_value !== undefined && intOption?.min_value !== '' && intOption?.min_value !== null;
-  const hasMax = intOption?.max_value !== undefined && intOption?.max_value !== '' && intOption?.max_value !== null;
+  const hasMin = ![undefined, '', null].includes(intOption?.min_value as string);
+  const hasMax = ![undefined, '', null].includes(intOption?.max_value as string);
   if (!hasMin && !hasMax) return null;
   return {
     validator: (_: unknown, value: unknown) => {
-      if (value === undefined || value === null || value === '') {
+      if ([undefined, null, ''].includes(value as string)) {
         return Promise.resolve();
       }
       const numValue = Number(value);
@@ -711,3 +1079,6 @@ export const normalizeTimeValueForSubmit = (item: AttrLike, value: unknown) => {
   }
   return value;
 };
+
+
+export { TableFieldEditor, TagCascaderEditor };

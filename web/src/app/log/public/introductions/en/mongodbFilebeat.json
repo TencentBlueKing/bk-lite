@@ -1,0 +1,72 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "MongoDB integration uses the Filebeat MongoDB module to automatically collect and parse MongoDB database logs. It helps you monitor database operations, analyze slow queries, track replication status, and troubleshoot connection issues."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "📋",
+        "title": "Query Analysis",
+        "description": "Parse query statements, execution plans, scan document counts"
+      },
+      {
+        "icon": "🐢",
+        "title": "Slow Query Detection",
+        "description": "Identify queries exceeding slowMs threshold for optimization"
+      },
+      {
+        "icon": "🔄",
+        "title": "Replication Monitoring",
+        "description": "Track replica set member status, sync lag, elections"
+      },
+      {
+        "icon": "🏷️",
+        "title": "Connection Management",
+        "description": "Monitor client connections, connection pool usage, timeouts"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "MongoDB logs will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Log timestamp"
+        },
+        {
+          "field": "mongodb.log.severity",
+          "type": "keyword",
+          "description": "Log severity (D, I, W, E, F)"
+        },
+        {
+          "field": "mongodb.log.component",
+          "type": "keyword",
+          "description": "Component (NETWORK, COMMAND, STORAGE, etc.)"
+        },
+        {
+          "field": "mongodb.log.context",
+          "type": "keyword",
+          "description": "Log context (connection ID, etc.)"
+        },
+        { "field": "mongodb.log.id", "type": "long", "description": "Log ID" },
+        {
+          "field": "message",
+          "type": "text",
+          "description": "Log message content"
+        }
+      ]
+    }
+  ]
+}

@@ -210,17 +210,16 @@ def get_client(client_id="", username="", domain="domain.com"):
         user = User.objects.filter(username=username, domain=domain).first()
         if not user:
             return {"result": False, "message": "User not found"}
-
         # 获取用户所有角色（个人角色 + 组角色）
         all_role_ids = get_user_all_roles(user)
-
-        app_name_list = list(Role.objects.filter(id__in=all_role_ids).values_list("app", flat=True).distinct())
-
-        if "" not in app_name_list:
-            app_list = app_list.filter(name__in=app_name_list)
-
+        role_list = Role.objects.filter(id__in=all_role_ids)
+        role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
+        is_superuser = "admin" in role_names or "system-manager--admin" in role_names
+        if not is_superuser:
+            app_name_list = list(Role.objects.filter(id__in=all_role_ids).values_list("app", flat=True).distinct())
+            if "" not in app_name_list:
+                app_list = app_list.filter(name__in=app_name_list)
     return_data = list(app_list.order_by("id").values())
-
     return {"result": True, "data": return_data}
 
 
@@ -276,21 +275,13 @@ def search_users(query_params):
     page = int(query_params.get("page", 1))
     page_size = int(query_params.get("page_size", 10))
     search = query_params.get("search", "")
-
     queryset = User.objects.filter(Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search))
-
     start = (page - 1) * page_size
     end = page * page_size
-
     total = queryset.count()
-
     display_fields = User.display_fields() + ["group_list"]
-
     data = queryset.values(*display_fields)[start:end]
-
-    result_list = list(data)
-
-    return {"result": True, "data": {"count": total, "users": result_list}}
+    return {"result": True, "data": {"count": total, "users": list(data)}}
 
 
 @nats_client.register
@@ -603,7 +594,9 @@ def get_user_rules_by_module(group_id, username, domain, app, module, include_ch
 
     rules = UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(base_filter & module_filter)
     if not rules:
-        return {"result": True, "data": all_permission, "team": admin_teams}
+        # 普通用户无权限规则时，返回空数据，但保留 team 用于组织过滤
+        # 注意：不返回 all_permission，避免被误认为管理员权限
+        return {"result": True, "data": {}, "team": admin_teams}
 
     result = {}
     group_list = {i.group_rule.group_id for i in rules}
@@ -618,22 +611,10 @@ def get_user_rules_by_module(group_id, username, domain, app, module, include_ch
             if isinstance(sub_modules, dict):
                 # 嵌套结构（如 provider.llm_model）
                 for sub_module_id, rule_data in sub_modules.items():
-                    _accumulate_rule_result(
-                        result,
-                        sub_module_id,
-                        rule_data,
-                        rule.group_rule.group_id,
-                        all_permission_team,
-                    )
+                    _accumulate_rule_result(result, sub_module_id, rule_data, rule.group_rule.group_id, all_permission_team)
             else:
                 # 扁平结构（如 skill、bot）
-                _accumulate_rule_result(
-                    result,
-                    category,
-                    sub_modules,
-                    rule.group_rule.group_id,
-                    all_permission_team,
-                )
+                _accumulate_rule_result(result, category, sub_modules, rule.group_rule.group_id, all_permission_team)
 
     return {"result": True, "data": result, "team": admin_teams}
 
@@ -669,7 +650,7 @@ def get_user_rules_by_app(group_id, username, domain, app, module, child_module=
     module_filter = Q(group_rule__rules__has_key=module)
 
     # 如果指定了子模块，不在数据库层面过滤，在Python层面处理复杂嵌套
-    rules = UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(base_filter & module_filter)
+    rules = list(UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(base_filter & module_filter))
 
     if not rules:
         return {"instance": [], "team": admin_teams}

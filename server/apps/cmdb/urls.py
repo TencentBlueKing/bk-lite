@@ -7,6 +7,8 @@ from apps.cmdb.views.model import ModelViewSet
 from apps.cmdb.views.collect import CollectModelViewSet, OidModelViewSet
 from apps.cmdb.views.field_group import FieldGroupViewSet
 from apps.cmdb.views.user_personal_config import UserPersonalConfigViewSet
+from apps.cmdb.views.public_enum_library import PublicEnumLibraryViewSet
+from apps.cmdb.views.subscription import SubscriptionViewSet
 
 router = routers.DefaultRouter()
 router.register(r"api/classification", ClassificationViewSet, basename="classification")
@@ -17,5 +19,11 @@ router.register(r"api/collect", CollectModelViewSet, basename="collect")
 router.register(r"api/oid", OidModelViewSet, basename="oid")
 router.register(r"api/field_groups", FieldGroupViewSet, basename="field_groups")
 router.register(r"api/user_configs", UserPersonalConfigViewSet, basename="user_configs")
+router.register(
+    r"api/public_enum_libraries",
+    PublicEnumLibraryViewSet,
+    basename="public_enum_libraries",
+)
+router.register(r"api/subscription", SubscriptionViewSet, basename="subscription")
 
 urlpatterns = router.urls

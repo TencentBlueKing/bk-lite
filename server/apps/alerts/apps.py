@@ -19,7 +19,7 @@ class AlertsConfig(AppConfig):
         if not is_running_migrations:
             # 注册告警源适配器
             adapters()
-            import apps.alerts.nats  # noqa
+            import apps.alerts.nats.nats # noqa
 
 
 def adapters():
@@ -31,5 +31,5 @@ def adapters():
         AlertSourceAdapterFactory.register_adapter('restful', RestFulAdapter)
         AlertSourceAdapterFactory.register_adapter("nats", NatsAdapter)
     except Exception as e:
-        logger.error(f"Failed to register alert source adapter: {e}")
-        pass
+        logger.error(f"Failed to register alert source adapter: {e}", exc_info=True)
+        raise

@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from apps.cmdb.constants.constants import (
     CLASSIFICATION,
@@ -13,6 +14,11 @@ from apps.cmdb.constants.constants import (
     USER,
     OPERATOR_MODEL,
     DISPLAY_FIELD_CONFIG,
+    ENUM_SELECT_MODE_DEFAULT,
+)
+from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
+from apps.cmdb.validators.field_validator import (
+    normalize_tag_field_option as normalize_tag_field_option_config,
 )
 from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFIX
@@ -26,8 +32,112 @@ from apps.core.services.user_group import UserGroup
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.core.logger import cmdb_logger as logger
 
+FIELD_GROUP_MANAGER: Any = getattr(FieldGroup, "objects")
+
 
 class ModelManage(object):
+    @staticmethod
+    def _normalize_attr_constraints(attrs: list[dict]) -> list[dict]:
+        normalized: list[dict] = []
+        for attr in attrs:
+            item = dict(attr)
+            item.setdefault("is_only", False)
+            item.setdefault("is_required", False)
+            item.setdefault("editable", True)
+            item.setdefault("option", {})
+            item.setdefault("user_prompt", "")
+            normalized.append(item)
+        return normalized
+
+    @staticmethod
+    def _is_tag_attr(attr: dict) -> bool:
+        return attr.get("attr_type") == "tag" or attr.get("attr_id") == TAG_ATTR_ID
+
+    @staticmethod
+    def validate_tag_attr_definition(attrs: list[dict], incoming_attr: dict) -> None:
+        attr_type = incoming_attr.get("attr_type")
+        incoming_attr_id = incoming_attr.get("attr_id")
+
+        if attr_type == "tag" and incoming_attr_id != TAG_ATTR_ID:
+            raise BaseAppException("tag 字段 attr_id 必须固定为 tag")
+
+        if incoming_attr_id == TAG_ATTR_ID and attr_type != "tag":
+            raise BaseAppException("attr_id 为 tag 的字段类型必须为 tag")
+
+        if attr_type != "tag":
+            return
+
+        tag_count = sum(1 for attr in attrs if ModelManage._is_tag_attr(attr))
+        if tag_count >= 1:
+            raise BaseAppException("单模型最多允许一个 tag 字段")
+
+    @staticmethod
+    def normalize_tag_field_option(option: dict | list[Any] | None) -> dict:
+        if isinstance(option, list):
+            option = {"mode": TAG_MODE_FREE, "options": option}
+        config = normalize_tag_field_option_config(option)
+        return {
+            "mode": config.mode,
+            "options": [
+                {"key": item.key, "value": item.value} for item in config.options
+            ],
+        }
+
+    @staticmethod
+    def merge_tag_options_from_values(model_id: str, values: list[str]) -> None:
+        if not values:
+            return
+        model_info = ModelManage.search_model_info(model_id)
+        if not model_info:
+            return
+        attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        tag_attr = next(
+            (attr for attr in attrs if ModelManage._is_tag_attr(attr)), None
+        )
+        if not tag_attr:
+            return
+
+        option = ModelManage.normalize_tag_field_option(tag_attr.get("option") or {})
+        if option.get("mode") != TAG_MODE_FREE:
+            return
+
+        existing = {
+            (str(item.get("key", "")).strip(), str(item.get("value", "")).strip())
+            for item in option.get("options", [])
+            if isinstance(item, dict)
+        }
+        changed = False
+        for raw in values:
+            if not isinstance(raw, str) or raw.count(":") != 1:
+                continue
+            key, value = [part.strip() for part in raw.split(":", 1)]
+            if not key or not value:
+                continue
+            pair = (key, value)
+            if pair in existing:
+                continue
+            existing.add(pair)
+            option["options"].append({"key": key, "value": value})
+            changed = True
+
+        if not changed:
+            return
+
+        for attr in attrs:
+            if ModelManage._is_tag_attr(attr):
+                attr["option"] = option
+                break
+
+        with GraphClient() as ag:
+            ag.set_entity_properties(
+                MODEL,
+                [model_info["_id"]],
+                {"attrs": json.dumps(attrs, ensure_ascii=False)},
+                {},
+                [],
+                False,
+            )
+
     @staticmethod
     def _validate_attr_id(attr_id: str):
         if not IdentifierValidator.is_valid(attr_id):
@@ -37,6 +147,195 @@ class ModelManage(object):
     def _validate_model_id(model_id: str):
         if not IdentifierValidator.is_valid(model_id):
             raise BaseAppException(IdentifierValidator.get_error_message("模型ID"))
+
+    @staticmethod
+    def normalize_enum_public_binding(
+        attr_info: dict, current_attr: dict | None = None
+    ) -> dict:
+        """
+        规范化 enum 公共选项库绑定信息并回填 option 快照。
+
+        处理逻辑：
+        1. 若 attr_type != enum，直接返回原 attr_info，不做处理。
+        2. enum_rule_type 默认为 custom。
+        3. 若 enum_rule_type == public_library：
+           - 校验 public_library_id 必填
+           - 从公共库拉取最新 options 并写入 option 字段（快照）
+        4. 若 enum_rule_type == custom：
+           - 清空 public_library_id
+           - 保持 option 不变
+
+        Args:
+            attr_info: 前端传入的属性配置
+            current_attr: 当前已存在的属性（更新场景下传入）
+
+        Returns:
+            dict: 规范化后的 attr_info（原地修改并返回）
+
+        Raises:
+            BaseAppException: 公共库不存在或配置不合法时抛出
+        """
+        if attr_info.get("attr_type") != "enum":
+            return attr_info
+
+        option_value = attr_info.get("option")
+        if isinstance(option_value, dict) and option_value.get("enum_rule_type"):
+            attr_info["enum_rule_type"] = option_value.get("enum_rule_type", "custom")
+            attr_info["public_library_id"] = option_value.get("public_library_id")
+            if "enum_select_mode" in option_value:
+                attr_info["enum_select_mode"] = option_value.get("enum_select_mode")
+            attr_info["option"] = option_value.get("option", [])
+
+        enum_rule_type = attr_info.get("enum_rule_type", "custom")
+        attr_info["enum_rule_type"] = enum_rule_type
+
+        if enum_rule_type == "public_library":
+            public_library_id = attr_info.get("public_library_id")
+            if not public_library_id:
+                raise BaseAppException("绑定公共选项库时 public_library_id 必填")
+
+            from apps.cmdb.services.public_enum_library import get_library_or_raise
+
+            library = get_library_or_raise(public_library_id)
+            attr_info["option"] = library.options
+            attr_info["public_library_id"] = public_library_id
+
+            logger.info(
+                f"[EnumPublicBinding] normalized attr_id={attr_info.get('attr_id')}, "
+                f"enum_rule_type={enum_rule_type}, public_library_id={public_library_id}"
+            )
+        else:
+            attr_info["enum_rule_type"] = "custom"
+            attr_info["public_library_id"] = None
+
+        return attr_info
+
+    @staticmethod
+    def validate_enum_rule_immutable(current_attr: dict, incoming_attr: dict) -> None:
+        """
+        校验字段创建后 enum_rule_type 不可切换。
+
+        规则：
+        - 仅对 attr_type == enum 的字段生效
+        - 创建时：任意 enum_rule_type（custom / public_library）均可
+        - 更新时：不允许从 custom 切换到 public_library，或反之
+
+        Args:
+            current_attr: 当前已存储的属性定义
+            incoming_attr: 本次请求传入的属性定义
+
+        Raises:
+            BaseAppException: 规则类型切换时抛出
+        """
+        if current_attr.get("attr_type") != "enum":
+            return
+        if incoming_attr.get("attr_type") != "enum":
+            return
+
+        current_rule = current_attr.get("enum_rule_type", "custom")
+        incoming_rule = incoming_attr.get("enum_rule_type", "custom")
+
+        if current_rule != incoming_rule:
+            raise BaseAppException(
+                f"枚举字段创建后规则类型不可切换（当前: {current_rule}）"
+            )
+
+    @staticmethod
+    def ensure_enum_select_mode(attr_info: dict) -> dict:
+        """
+        确保枚举字段具有 enum_select_mode 属性。
+
+        规则：
+        - 仅对 attr_type == enum 的字段生效
+        - 若未提供 enum_select_mode，则默认设置为 single
+
+        Args:
+            attr_info: 属性配置字典
+
+        Returns:
+            dict: 规范化后的 attr_info（原地修改并返回）
+        """
+        if attr_info.get("attr_type") != "enum":
+            return attr_info
+
+        if "enum_select_mode" not in attr_info:
+            attr_info["enum_select_mode"] = ENUM_SELECT_MODE_DEFAULT
+
+        return attr_info
+
+    @staticmethod
+    def validate_enum_select_mode_immutable(
+        current_attr: dict, incoming_attr: dict
+    ) -> None:
+        """
+        校验字段创建后 enum_select_mode 不可切换。
+
+        规则：
+        - 仅对 attr_type == enum 的字段生效
+        - 创建时：任意 enum_select_mode（single / multiple）均可
+        - 更新时：不允许从 single 切换到 multiple，或反之
+
+        Args:
+            current_attr: 当前已存储的属性定义
+            incoming_attr: 本次请求传入的属性定义
+
+        Raises:
+            BaseAppException: 选择模式切换时抛出
+        """
+        if current_attr.get("attr_type") != "enum":
+            return
+        if incoming_attr.get("attr_type") != "enum":
+            return
+
+        current_mode = current_attr.get("enum_select_mode", ENUM_SELECT_MODE_DEFAULT)
+        incoming_mode = incoming_attr.get("enum_select_mode", current_mode)
+
+        if current_mode != incoming_mode:
+            raise BaseAppException(
+                f"枚举字段创建后选择模式不可切换（当前: {current_mode}）"
+            )
+
+    @staticmethod
+    def resolve_runtime_enum_options(attr: dict) -> list[dict]:
+        """
+        运行时解析枚举选项。
+
+        口径：
+        - 若 enum_rule_type == public_library，优先从公共库实时拉取
+        - 若公共库不存在或查询失败，回退到字段快照（attr.option）
+        - 若 enum_rule_type == custom，直接返回 attr.option
+
+        Args:
+            attr: 字段属性定义
+
+        Returns:
+            list[dict]: 枚举选项列表 [{"id": str, "name": str}, ...]
+        """
+        if attr.get("attr_type") != "enum":
+            return []
+
+        enum_rule_type = attr.get("enum_rule_type", "custom")
+        option = attr.get("option", [])
+
+        if enum_rule_type != "public_library":
+            return option if isinstance(option, list) else []
+
+        public_library_id = str(attr.get("public_library_id") or "").strip()
+        if not public_library_id:
+            return option if isinstance(option, list) else []
+
+        try:
+            from apps.cmdb.services.public_enum_library import get_library_or_raise
+
+            library = get_library_or_raise(public_library_id)
+            runtime_options = library.options
+            return runtime_options if isinstance(runtime_options, list) else []
+        except Exception as e:
+            logger.warning(
+                f"[EnumPublicBinding] resolve_runtime_enum_options fallback to snapshot, "
+                f"public_library_id={public_library_id}, error={e}"
+            )
+            return option if isinstance(option, list) else []
 
     @staticmethod
     def _add_display_field_to_attrs(
@@ -154,12 +453,11 @@ class ModelManage(object):
         """
 
         attrs = list(INST_NAME_INFOS)  # 复制默认字段列表
+        model_id = str(data.get("model_id", ""))
 
         # 为默认字段中的目标类型添加 _display 字段定义
         for attr in list(attrs):  # 使用 list() 避免迭代时修改列表
-            ModelManage._add_display_field_to_attrs(
-                attrs, attr, data.get("model_id"), is_pre=True
-            )
+            ModelManage._add_display_field_to_attrs(attrs, attr, model_id, is_pre=True)
 
         data.update(attrs=json.dumps(attrs))
 
@@ -188,7 +486,7 @@ class ModelManage(object):
         ExcludeFieldsCache.update_on_model_change(data["model_id"])
 
         # 为新建模型创建默认字段分组
-        FieldGroup.objects.create(
+        FIELD_GROUP_MANAGER.create(
             model_id=data["model_id"],
             group_name="default",
             order=1,
@@ -218,9 +516,9 @@ class ModelManage(object):
         src_model_id: str,
         new_model_id: str,
         new_model_name: str,
-        classification_id: str = None,
-        group: list = None,
-        icn: str = None,
+        classification_id: str | None = None,
+        group: list | None = None,
+        icn: str | None = None,
         copy_attributes: bool = False,
         copy_relationships: bool = False,
         username="admin",
@@ -309,11 +607,11 @@ class ModelManage(object):
             # 处理字段分组复制
             if copy_attributes:
                 # 复制源模型的字段分组配置
-                src_field_groups = FieldGroup.objects.filter(
+                src_field_groups = FIELD_GROUP_MANAGER.filter(
                     model_id=src_model_id
                 ).order_by("order")
                 for src_group in src_field_groups:
-                    FieldGroup.objects.create(
+                    FIELD_GROUP_MANAGER.create(
                         model_id=new_model_id,
                         group_name=src_group.group_name,
                         attr_orders=src_group.attr_orders or [],
@@ -321,7 +619,7 @@ class ModelManage(object):
                     )
             else:
                 # 不复制属性时，为新模型创建默认分组
-                FieldGroup.objects.create(
+                FIELD_GROUP_MANAGER.create(
                     model_id=new_model_id,
                     group_name="default",
                     order=1,
@@ -443,7 +741,7 @@ class ModelManage(object):
         order_type: str = "ASC",
         order: str = "id",
         permissions_map: dict | None = None,
-        classification_ids: list = None,
+        classification_ids: list | None = None,
         creator: str = "",
     ):
         """
@@ -517,6 +815,19 @@ class ModelManage(object):
         创建模型属性
         """
         with GraphClient() as ag:
+            if attr_info.get("attr_type") == "tag":
+                attr_info["attr_id"] = TAG_ATTR_ID
+                attr_info["editable"] = True
+                attr_info["is_only"] = False
+                attr_info["is_required"] = False
+                attr_info["option"] = ModelManage.normalize_tag_field_option(
+                    attr_info.get("option") or {}
+                )
+
+            if attr_info.get("attr_type") == "enum":
+                ModelManage.normalize_enum_public_binding(attr_info)
+                ModelManage.ensure_enum_select_mode(attr_info)
+
             ModelManage._validate_attr_id(attr_info["attr_id"])
             model_query = {"field": "model_id", "type": "str=", "value": model_id}
             models, _ = ag.query_entity(MODEL, [model_query])
@@ -525,11 +836,11 @@ class ModelManage(object):
                 raise BaseAppException("model not present")
             model_info = models[0]
             attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+            ModelManage.validate_tag_attr_definition(attrs, attr_info)
             if attr_info["attr_id"] in {i["attr_id"] for i in attrs}:
                 raise BaseAppException("model attr repetition")
             attrs.append(attr_info)
 
-            # 如果新增字段是 organization/user/enum 类型,自动添加 _display 字段定义
             ModelManage._add_display_field_to_attrs(attrs, attr_info, model_id)
 
             result = ag.set_entity_properties(
@@ -577,23 +888,60 @@ class ModelManage(object):
             attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
             if attr_info["attr_id"] not in {i["attr_id"] for i in attrs}:
                 raise BaseAppException("model attr not present")
+
+            current_attr = next(
+                (attr for attr in attrs if attr["attr_id"] == attr_info["attr_id"]),
+                None,
+            )
+            if not current_attr:
+                raise BaseAppException("model attr not present")
+
+            is_tag_attr = ModelManage._is_tag_attr(current_attr)
+            if is_tag_attr:
+                if attr_info.get("attr_id") != TAG_ATTR_ID:
+                    raise BaseAppException("tag 字段 attr_id 不允许修改")
+                attr_info["attr_type"] = "tag"
+                attr_info["editable"] = True
+                attr_info["is_only"] = False
+                attr_info["is_required"] = False
+                attr_info["option"] = ModelManage.normalize_tag_field_option(
+                    attr_info.get("option") or current_attr.get("option") or {}
+                )
+
+            is_enum_attr = current_attr.get("attr_type") == "enum"
+            if is_enum_attr:
+                ModelManage.validate_enum_rule_immutable(current_attr, attr_info)
+                ModelManage.validate_enum_select_mode_immutable(current_attr, attr_info)
+                ModelManage.normalize_enum_public_binding(attr_info, current_attr)
+
             for attr in attrs:
                 if attr_info["attr_id"] != attr["attr_id"]:
                     continue
                 attr.update(
                     attr_group=attr_info["attr_group"],
                     attr_name=attr_info["attr_name"],
-                    is_required=attr_info["is_required"],
-                    editable=attr_info["editable"],
+                    is_required=False if is_tag_attr else attr_info["is_required"],
+                    editable=True if is_tag_attr else attr_info["editable"],
                     option=attr_info["option"],
                     user_prompt=attr_info["user_prompt"],
                 )
+                if is_enum_attr:
+                    attr["enum_rule_type"] = attr_info.get("enum_rule_type", "custom")
+                    attr["public_library_id"] = attr_info.get("public_library_id")
+                    attr["enum_select_mode"] = current_attr.get(
+                        "enum_select_mode", ENUM_SELECT_MODE_DEFAULT
+                    )
 
             result = ag.set_entity_properties(
                 MODEL, [model_info["_id"]], dict(attrs=json.dumps(attrs)), {}, [], False
             )
 
         attrs = ModelManage.parse_attrs(result[0].get("attrs", "[]"))
+
+        # 更新排除字段缓存
+        from apps.cmdb.display_field import ExcludeFieldsCache
+
+        ExcludeFieldsCache.update_on_model_change(model_id)
 
         attr = None
         for attr in attrs:
@@ -780,7 +1128,9 @@ class ModelManage(object):
         查询模型属性
         """
         model_info = ModelManage.search_model_info(model_id)
-        attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        attrs = ModelManage._normalize_attr_constraints(
+            ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        )
         # TODO 语言包
         # lan = SettingLanguage(language)
         # model_attr = lan.get_val("ATTR", model_id)
@@ -797,7 +1147,9 @@ class ModelManage(object):
         查询模型属性
         """
         model_info = ModelManage.search_model_info(model_id)
-        attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        attrs = ModelManage._normalize_attr_constraints(
+            ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        )
         attr_types = {attr["attr_type"] for attr in attrs}
         system_mgmt_client = SystemMgmt()
 
@@ -962,3 +1314,175 @@ class ModelManage(object):
                     False,
                 )
         return True
+
+    @staticmethod
+    def export_model_config(language):
+        """导出模型配置为Excel (按model_config.xlsx模板格式)"""
+        from io import BytesIO
+
+        from openpyxl import Workbook
+
+        CLASSIFICATION_HEADERS_CN = ["模型分类ID", "模型分类名称"]
+        CLASSIFICATION_HEADERS_EN = ["classification_id", "classification_name"]
+
+        MODEL_HEADERS_CN = ["模型ID", "模型名称", "模型图标", "模型分类ID"]
+        MODEL_HEADERS_EN = ["model_id", "model_name", "icn", "classification_id"]
+
+        ATTR_HEADERS_CN = [
+            "英文名",
+            "名称",
+            "类型",
+            "数据配置",
+            "分组",
+            "是否唯一",
+            "是否可编辑",
+            "是否必填",
+            "用户提示",
+        ]
+        ATTR_HEADERS_EN = [
+            "attr_id",
+            "attr_name",
+            "attr_type",
+            "option",
+            "attr_group",
+            "is_only",
+            "editable",
+            "is_required",
+            "user_prompt",
+        ]
+
+        ASSO_HEADERS_CN = ["源模型", "目标模型", "关联关系", "源-目标约束"]
+        ASSO_HEADERS_EN = ["src_model_id", "dst_model_id", "asst_id", "mapping"]
+        PUBLIC_ENUM_LIBRARY_HEADERS_CN = [
+            "公共选项库ID",
+            "公共选项库名称",
+            "组织列表",
+            "选项列表",
+        ]
+        PUBLIC_ENUM_LIBRARY_HEADERS_EN = [
+            "library_id",
+            "name",
+            "team",
+            "options",
+        ]
+
+        workbook = Workbook()
+
+        ws_classifications = workbook.active
+        if ws_classifications is None:
+            ws_classifications = workbook.create_sheet(title="classifications")
+        else:
+            ws_classifications.title = "classifications"
+        ws_classifications.append(CLASSIFICATION_HEADERS_CN)
+        ws_classifications.append(CLASSIFICATION_HEADERS_EN)
+
+        classifications = ClassificationManage.search_model_classification(
+            language=language
+        )
+        for classification in classifications:
+            ws_classifications.append(
+                [
+                    classification.get("classification_id", ""),
+                    classification.get("classification_name", ""),
+                ]
+            )
+
+        ws_models = workbook.create_sheet(title="models")
+        ws_models.append(MODEL_HEADERS_CN)
+        ws_models.append(MODEL_HEADERS_EN)
+
+        ws_public_enum_libraries = workbook.create_sheet(title="public_enum_libraries")
+        ws_public_enum_libraries.append(PUBLIC_ENUM_LIBRARY_HEADERS_CN)
+        ws_public_enum_libraries.append(PUBLIC_ENUM_LIBRARY_HEADERS_EN)
+
+        from apps.cmdb.services.public_enum_library import list_libraries
+
+        for library in list_libraries():
+            ws_public_enum_libraries.append(
+                [
+                    library.get("library_id", ""),
+                    library.get("name", ""),
+                    json.dumps(library.get("team", []), ensure_ascii=False),
+                    json.dumps(library.get("options", []), ensure_ascii=False),
+                ]
+            )
+
+        models = ModelManage.search_model(language=language)
+        for model in models:
+            ws_models.append(
+                [
+                    model.get("model_id", ""),
+                    model.get("model_name", ""),
+                    model.get("icn", ""),
+                    model.get("classification_id", ""),
+                ]
+            )
+
+        for model in models:
+            model_id = model.get("model_id", "")
+            if not model_id:
+                continue
+
+            ws_attr = workbook.create_sheet(title=f"attr-{model_id}")
+            ws_attr.append(ATTR_HEADERS_CN)
+            ws_attr.append(ATTR_HEADERS_EN)
+
+            attrs = ModelManage.parse_attrs(model.get("attrs", "[]"))
+            for attr in attrs:
+                if attr.get("is_display_field"):
+                    continue
+                option = attr.get("option", {})
+                if attr.get("attr_type") == "enum":
+                    if attr.get("enum_rule_type") == "public_library":
+                        option = {
+                            "enum_rule_type": "public_library",
+                            "public_library_id": attr.get("public_library_id"),
+                            "enum_select_mode": attr.get(
+                                "enum_select_mode", ENUM_SELECT_MODE_DEFAULT
+                            ),
+                            "option": option if isinstance(option, list) else [],
+                        }
+                    elif isinstance(option, list):
+                        option = option
+                option_str = json.dumps(option, ensure_ascii=False) if option else ""
+                ws_attr.append(
+                    [
+                        attr.get("attr_id", ""),
+                        attr.get("attr_name", ""),
+                        attr.get("attr_type", ""),
+                        option_str,
+                        attr.get("attr_group", ""),
+                        attr.get("is_only", False),
+                        attr.get("editable", True),
+                        attr.get("is_required", False),
+                        attr.get("user_prompt", ""),
+                    ]
+                )
+
+            associations = ModelManage.model_association_search(model_id)
+            if associations:
+                ws_asso = workbook.create_sheet(title=f"asso-{model_id}")
+                ws_asso.append(ASSO_HEADERS_CN)
+                ws_asso.append(ASSO_HEADERS_EN)
+                for asso in associations:
+                    ws_asso.append(
+                        [
+                            asso.get("src_model_id", ""),
+                            asso.get("dst_model_id", ""),
+                            asso.get("asst_id", ""),
+                            asso.get("mapping", ""),
+                        ]
+                    )
+
+        file_stream = BytesIO()
+        workbook.save(file_stream)
+        file_stream.seek(0)
+
+        return file_stream
+
+    @staticmethod
+    def import_model_config(file):
+        from apps.cmdb.model_migrate.migrete_service import ModelMigrate
+
+        migrator = ModelMigrate(file_source=file, is_pre=False)
+        migrator.main()

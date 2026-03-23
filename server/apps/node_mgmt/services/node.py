@@ -1,5 +1,7 @@
 from datetime import timezone
+from django.utils import timezone as dj_timezone
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
@@ -10,6 +12,11 @@ from apps.node_mgmt.models.sidecar import (
     Collector,
     CollectorConfiguration,
     Action,
+)
+from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
+from apps.node_mgmt.tasks.action_task import (
+    timeout_collector_action_task,
+    ACTION_TASK_TIMEOUT_SECONDS,
 )
 from apps.node_mgmt.serializers.node import NodeSerializer
 from datetime import datetime, timedelta
@@ -150,10 +157,57 @@ class NodeService:
             return False, "采集器配置不存在。"
 
     @staticmethod
-    def batch_operate_node_collector(node_ids, collector_id, operation):
+    def batch_operate_node_collector(
+        node_ids,
+        collector_id,
+        operation,
+        created_by="",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    ):
         """批量操作节点采集器"""
         # 一次性查询所有节点，避免重复查询
         nodes = Node.objects.filter(id__in=node_ids).select_related("cloud_region")
+        total_count = nodes.count()
+        if total_count == 0:
+            raise BaseAppException("No valid nodes found for collector operation")
+
+        cloud_region = None
+        first_node = nodes.first()
+        if first_node:
+            cloud_region = first_node.cloud_region
+
+        task_obj = CollectorActionTask.objects.create(
+            collector_id=collector_id,
+            cloud_region=cloud_region,
+            action=operation,
+            status="waiting",
+            total_count=total_count,
+            created_by=created_by,
+            updated_by=created_by,
+            domain=domain,
+            updated_by_domain=updated_by_domain,
+        )
+
+        CollectorActionTaskNode.objects.bulk_create(
+            [
+                CollectorActionTaskNode(
+                    task=task_obj,
+                    node_id=node.id,
+                    status="waiting",
+                    result={},
+                )
+                for node in nodes
+            ],
+            batch_size=500,
+        )
+
+        task_nodes = {
+            item.node_id: item
+            for item in CollectorActionTaskNode.objects.filter(
+                task_id=task_obj.id, node_id__in=[node.id for node in nodes]
+            )
+        }
 
         # 如果是 start 或 restart 操作，需要检查并创建默认配置
         if operation in ["start", "restart"]:
@@ -184,10 +238,39 @@ class NodeService:
             action_data = {
                 "collector_id": collector_id,
                 "properties": {operation: True},
+                "task_id": task_obj.id,
             }
             action, created = Action.objects.get_or_create(node=node)
             action.action.append(action_data)
             action.save()
+
+            task_node = task_nodes.get(node.id)
+            if task_node and task_node.status == "waiting":
+                task_node.status = "running"
+                task_node.result = {
+                    "overall_status": "running",
+                    "final_message": "Collector action dispatched",
+                    "steps": [
+                        {
+                            "action": "dispatch_command",
+                            "status": "success",
+                            "message": "Collector action command dispatched to sidecar queue",
+                            "timestamp": dj_timezone.now().isoformat(),
+                            "details": {
+                                "collector_id": collector_id,
+                                "operation": operation,
+                            },
+                        }
+                    ],
+                }
+                task_node.save(update_fields=["status", "result"])
+
+        timeout_collector_action_task.apply_async(
+            args=[task_obj.id],
+            countdown=ACTION_TASK_TIMEOUT_SECONDS,
+        )
+
+        return task_obj.id
 
     @staticmethod
     def _create_collector_default_config(node, collector):

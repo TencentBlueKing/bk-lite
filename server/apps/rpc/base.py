@@ -1,7 +1,11 @@
 import asyncio
 import os
 
+from django.conf import settings
+
 import nats_client
+
+DEFAULT_REQUEST_TIMEOUT = 60
 
 
 class RpcClient(object):
@@ -9,12 +13,19 @@ class RpcClient(object):
         if namespace is None:
             # Default namespace is set to 'bk_lite' if not provided
             # This can be overridden by the environment variable NATS_NAMESPACE
-            namespace = os.getenv("NATS_NAMESPACE", "bk_lite")
+            namespace = os.getenv("NATS_NAMESPACE", "bklite")
         self.namespace = namespace
 
     def run(self, method_name, *args, **kwargs):
-        return_data = asyncio.run(nats_client.request(self.namespace, method_name, *args, **kwargs))
-        return return_data
+        timeout = kwargs.get("_timeout")
+        effective_timeout = timeout if timeout is not None else getattr(settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT)
+        try:
+            request_coro = nats_client.request(self.namespace, method_name, *args, **kwargs)
+            if effective_timeout and effective_timeout > 0:
+                request_coro = asyncio.wait_for(request_coro, timeout=effective_timeout)
+            return asyncio.run(request_coro)
+        except TimeoutError:
+            raise TimeoutError(f"RPC request timeout: namespace={self.namespace}, method={method_name}, timeout={effective_timeout}s")
 
     def request(self, method_name, **kwargs):
         return_data = asyncio.run(nats_client.nat_request(self.namespace, method_name, **kwargs))
@@ -45,8 +56,7 @@ class OperationAnalysisRpc(RpcClient):
         self.server = kwargs.pop("server", "")
 
     def run(self, method_name, *args, **kwargs):
-        return_data = asyncio.run(
-            nats_client.request_v2(self.namespace, method_name, server=self.server, *args, **kwargs))
+        return_data = asyncio.run(nats_client.request_v2(self.namespace, method_name, server=self.server, *args, **kwargs))
         return return_data
 
 

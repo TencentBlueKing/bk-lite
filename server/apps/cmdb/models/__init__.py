@@ -3,3 +3,5 @@ from apps.cmdb.models.show_field import *  # noqa
 from apps.cmdb.models.collect_model import *  # noqa
 from apps.cmdb.models.field_group import *  # noqa
 from apps.cmdb.models.user_personal_config import *  # noqa
+from apps.cmdb.models.public_enum_library import *  # noqa
+from apps.cmdb.models.subscription_rule import *  # noqa

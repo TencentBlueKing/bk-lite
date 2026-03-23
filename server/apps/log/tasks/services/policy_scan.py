@@ -3,7 +3,7 @@ import uuid
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.database import DatabaseConstants
-from apps.log.constants.web import  WebConstants
+from apps.log.constants.web import WebConstants
 
 from apps.log.models.policy import Alert, Event, EventRawData, AlertSnapshot
 from apps.log.tasks.utils.policy import period_to_seconds
@@ -33,7 +33,9 @@ class LogPolicyScan:
             query = alert_condition.get("query", "")
 
             if not query:
-                logger.warning(f"policy {self.policy.id} has empty query for keyword alert")
+                logger.warning(
+                    f"policy {self.policy.id} has empty query for keyword alert"
+                )
                 return events
 
             # 应用日志分组规则
@@ -44,23 +46,27 @@ class LogPolicyScan:
                 query=final_query,
                 start=start_timestamp,
                 end=end_timestamp,
-                limit=alert_condition.get("limit", 1000)
+                limit=alert_condition.get("limit", 1000),
             )
 
             if logs:
                 # 关键字告警按策略聚合，所有匹配日志合并到一个告警中
                 source_id = f"policy_{self.policy.id}"
                 content = f"{self.policy.alert_name}: 检测到 {len(logs)} 条匹配日志"
-                events.append({
-                    "source_id": source_id,
-                    "level": self.policy.alert_level,
-                    "content": content,
-                    "value": len(logs),
-                    "raw_data": logs[:10]  # 只保留前10条日志作为原始数据
-                })
+                events.append(
+                    {
+                        "source_id": source_id,
+                        "level": self.policy.alert_level,
+                        "content": content,
+                        "value": len(logs),
+                        "raw_data": logs[:10],  # 只保留前10条日志作为原始数据
+                    }
+                )
 
         except Exception as e:
-            logger.error(f"keyword alert detection failed for policy {self.policy.id}: {e}")
+            logger.error(
+                f"keyword alert detection failed for policy {self.policy.id}: {e}"
+            )
 
         return events
 
@@ -81,22 +87,28 @@ class LogPolicyScan:
 
             # 验证必要参数
             if not rule.get("conditions"):
-                logger.warning(f"policy {self.policy.id} has no rule conditions for aggregate alert")
+                logger.warning(
+                    f"policy {self.policy.id} has no rule conditions for aggregate alert"
+                )
                 return events
 
             # 应用日志分组规则
             base_query_with_groups = self._build_query_with_log_groups(base_query)
 
             # 构建LogSQL聚合查询语句
-            aggregation_query = self._build_aggregation_query(base_query_with_groups, group_by, rule)
-            logger.info(f"Executing aggregation query for policy {self.policy.id}: {aggregation_query}")
+            aggregation_query = self._build_aggregation_query(
+                base_query_with_groups, group_by, rule
+            )
+            logger.info(
+                f"Executing aggregation query for policy {self.policy.id}: {aggregation_query}"
+            )
 
             # 执行聚合查询
             aggregation_results = self.vlogs_api.query(
                 query=aggregation_query,
                 start=start_timestamp,
                 end=end_timestamp,
-                limit=1000  # 聚合结果通常数量较少
+                limit=1000,  # 聚合结果通常数量较少
             )
 
             if not aggregation_results:
@@ -116,16 +128,24 @@ class LogPolicyScan:
                     group_key = self._build_group_key(result, group_by)
                     source_id = f"policy_{self.policy.id}_{group_key}"
 
-                    events.append({
-                        "source_id": source_id,
-                        "level": self.policy.alert_level,
-                        "content": rendered_alert_name,
-                        "value": aggregate_data.get("count", 0),
-                        "raw_data": {"aggregate_result": aggregate_data, "rule": rule, "query_result": result}
-                    })
+                    events.append(
+                        {
+                            "source_id": source_id,
+                            "level": self.policy.alert_level,
+                            "content": rendered_alert_name,
+                            "value": aggregate_data.get("count", 0),
+                            "raw_data": {
+                                "aggregate_result": aggregate_data,
+                                "rule": rule,
+                                "query_result": result,
+                            },
+                        }
+                    )
 
         except Exception as e:
-            logger.error(f"aggregate alert detection failed for policy {self.policy.id}: {e}")
+            logger.error(
+                f"aggregate alert detection failed for policy {self.policy.id}: {e}"
+            )
 
         return events
 
@@ -140,20 +160,22 @@ class LogPolicyScan:
         """
         try:
             # 获取策略配置的日志分组
-            log_groups = getattr(self.policy, 'log_groups', [])
+            log_groups = getattr(self.policy, "log_groups", [])
 
             if not log_groups:
                 # 没有配置日志分组，使用原有逻辑（添加采集类型过滤）
                 return self._add_collect_type_filter(base_query)
 
             # 使用日志分组查询构建器
-            query_with_groups, group_info = LogGroupQueryBuilder.build_query_with_groups(
-                base_query, log_groups
+            query_with_groups, group_info = (
+                LogGroupQueryBuilder.build_query_with_groups(base_query, log_groups)
             )
 
             # 记录应用的日志分组信息
             if group_info:
-                logger.info(f"Policy {self.policy.id} applied log groups: {[g['name'] for g in group_info]}")
+                logger.info(
+                    f"Policy {self.policy.id} applied log groups: {[g['name'] for g in group_info]}"
+                )
 
             # 添加采集类型过滤
             final_query = self._add_collect_type_filter(query_with_groups)
@@ -161,12 +183,17 @@ class LogPolicyScan:
             return final_query
 
         except Exception as e:
-            logger.warning(f"Failed to apply log groups for policy {self.policy.id}: {e}")
+            logger.warning(
+                f"Failed to apply log groups for policy {self.policy.id}: {e}"
+            )
             # 发生错误时回退到原有逻辑
             return self._add_collect_type_filter(base_query)
 
     def _add_collect_type_filter(self, query):
         """添加采集类型过滤条件"""
+        if not self.policy.collect_type:
+            return query or "*"
+
         collect_type_filter = f'collect_type:"{self.policy.collect_type.name}"'
 
         if not query or query.strip() == "*":
@@ -253,9 +280,13 @@ class LogPolicyScan:
                 raw_value = result.get(alias, result.get("total_count", 0))
                 # count函数结果转换为整数
                 try:
-                    numeric_value = int(float(str(raw_value))) if raw_value not in [None, ""] else 0
+                    numeric_value = (
+                        int(float(str(raw_value))) if raw_value not in [None, ""] else 0
+                    )
                 except (ValueError, TypeError):
-                    logger.warning(f"Failed to convert count value '{raw_value}' to integer, using 0")
+                    logger.warning(
+                        f"Failed to convert count value '{raw_value}' to integer, using 0"
+                    )
                     numeric_value = 0
 
                 aggregate_data[f"{func}_{field}"] = numeric_value
@@ -267,9 +298,13 @@ class LogPolicyScan:
                 raw_value = result.get(alias, 0)
                 # 数值聚合函数结果转换为浮点数
                 try:
-                    numeric_value = float(str(raw_value)) if raw_value not in [None, ""] else 0.0
+                    numeric_value = (
+                        float(str(raw_value)) if raw_value not in [None, ""] else 0.0
+                    )
                 except (ValueError, TypeError):
-                    logger.warning(f"Failed to convert {func} value '{raw_value}' to float, using 0.0")
+                    logger.warning(
+                        f"Failed to convert {func} value '{raw_value}' to float, using 0.0"
+                    )
                     numeric_value = 0.0
 
                 aggregate_data[f"{func}_{field}"] = numeric_value
@@ -304,7 +339,7 @@ class LogPolicyScan:
 
         try:
             # 将${field}格式转换为Django模板格式{{field}}
-            template_content = alert_name.replace('${', '{{').replace('}', '}}')
+            template_content = alert_name.replace("${", "{{").replace("}", "}}")
 
             # 创建模板和上下文
             template = Template(template_content)
@@ -315,7 +350,9 @@ class LogPolicyScan:
 
             # 确保渲染结果不为空
             if not rendered_name.strip():
-                logger.warning(f"Rendered alert name is empty for template '{alert_name}', using fallback")
+                logger.warning(
+                    f"Rendered alert name is empty for template '{alert_name}', using fallback"
+                )
                 return alert_name
 
             return rendered_name.strip()
@@ -383,7 +420,9 @@ class LogPolicyScan:
             comparison_result = self._compare_values(actual_value, op, expected_value)
             condition_results.append(comparison_result)
 
-            logger.debug(f"condition check: {key}={actual_value} {op} {expected_value} -> {comparison_result}")
+            logger.debug(
+                f"condition check: {key}={actual_value} {op} {expected_value} -> {comparison_result}"
+            )
 
         if not condition_results:
             return False
@@ -404,14 +443,20 @@ class LogPolicyScan:
             if op in [">", "<", "=", "!=", ">=", "<="]:
                 try:
                     # 尝试将两个值都转换为数值类型
-                    if isinstance(actual_value, str) and actual_value.replace('.', '').replace('-', '').isdigit():
+                    if (
+                        isinstance(actual_value, str)
+                        and actual_value.replace(".", "").replace("-", "").isdigit()
+                    ):
                         actual_numeric = float(actual_value)
                     elif isinstance(actual_value, (int, float)):
                         actual_numeric = float(actual_value)
                     else:
                         actual_numeric = None
 
-                    if isinstance(expected_value, str) and expected_value.replace('.', '').replace('-', '').isdigit():
+                    if (
+                        isinstance(expected_value, str)
+                        and expected_value.replace(".", "").replace("-", "").isdigit()
+                    ):
                         expected_numeric = float(expected_value)
                     elif isinstance(expected_value, (int, float)):
                         expected_numeric = float(expected_value)
@@ -425,7 +470,9 @@ class LogPolicyScan:
                         elif op == "<":
                             return actual_numeric < expected_numeric
                         elif op == "=":
-                            return abs(actual_numeric - expected_numeric) < 1e-10  # 浮点数相等比较
+                            return (
+                                abs(actual_numeric - expected_numeric) < 1e-10
+                            )  # 浮点数相等比较
                         elif op == "!=":
                             return abs(actual_numeric - expected_numeric) >= 1e-10
                         elif op == ">=":
@@ -435,12 +482,15 @@ class LogPolicyScan:
 
                 except (ValueError, TypeError) as e:
                     logger.debug(
-                        f"Failed to convert values to numeric for comparison: {actual_value} {op} {expected_value}, error: {e}")
+                        f"Failed to convert values to numeric for comparison: {actual_value} {op} {expected_value}, error: {e}"
+                    )
                     # 如果数值转换失败，继续使用原始值比较
                     pass
 
             # 原有逻辑：直接比较（用于字符串和其他类型）
-            if isinstance(expected_value, (int, float)) and isinstance(actual_value, (int, float)):
+            if isinstance(expected_value, (int, float)) and isinstance(
+                actual_value, (int, float)
+            ):
                 if op == ">":
                     return actual_value > expected_value
                 elif op == "<":
@@ -470,7 +520,9 @@ class LogPolicyScan:
                 return False
 
         except Exception as e:
-            logger.error(f"Error comparing values: {actual_value} {op} {expected_value}, error: {e}")
+            logger.error(
+                f"Error comparing values: {actual_value} {op} {expected_value}, error: {e}"
+            )
             return False
 
     def create_events(self, events):
@@ -484,7 +536,7 @@ class LogPolicyScan:
             existing_alerts_qs = Alert.objects.filter(
                 policy_id=self.policy.id,
                 source_id__in=source_ids,
-                status=AlertConstants.STATUS_NEW
+                status=AlertConstants.STATUS_NEW,
             )
 
             # 手动构建映射表，因为source_id不是唯一字段
@@ -492,10 +544,15 @@ class LogPolicyScan:
             existing_alerts = {}
             for alert in existing_alerts_qs:
                 source_id = alert.source_id
-                if source_id not in existing_alerts or alert.created_at > existing_alerts[source_id].created_at:
+                if (
+                    source_id not in existing_alerts
+                    or alert.created_at > existing_alerts[source_id].created_at
+                ):
                     existing_alerts[source_id] = alert
 
-            logger.debug(f"Found {len(existing_alerts)} existing alerts for policy {self.policy.id}")
+            logger.debug(
+                f"Found {len(existing_alerts)} existing alerts for policy {self.policy.id}"
+            )
 
             # 2. 分类处理：需要更新的告警和需要创建的告警
             alerts_to_update = []
@@ -530,7 +587,7 @@ class LogPolicyScan:
                         status=AlertConstants.STATUS_NEW,
                         start_event_time=self.policy.last_run_time,
                         end_event_time=self.policy.last_run_time,
-                        operator=""
+                        operator="",
                     )
                     alerts_to_create.append(alert_obj)
                     # 更新映射表，供后续事件关联使用
@@ -551,27 +608,35 @@ class LogPolicyScan:
                         value=event.get("value"),
                         level=event["level"],
                         content=event["content"],
-                        notice_result=[]
+                        notice_result=[],
                     )
                 )
 
             # 3. 批量执行数据库操作
             # 批量创建新告警
             if alerts_to_create:
-                Alert.objects.bulk_create(alerts_to_create, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
-                logger.debug(f"Created {len(alerts_to_create)} new alerts for policy {self.policy.id}")
+                Alert.objects.bulk_create(
+                    alerts_to_create, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
+                )
+                logger.debug(
+                    f"Created {len(alerts_to_create)} new alerts for policy {self.policy.id}"
+                )
 
             # 批量更新现有告警
             if alerts_to_update:
                 Alert.objects.bulk_update(
                     alerts_to_update,
-                    ['value', 'content', 'level', 'end_event_time'],
-                    batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
+                    ["value", "content", "level", "end_event_time"],
+                    batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
                 )
-                logger.debug(f"Updated {len(alerts_to_update)} existing alerts for policy {self.policy.id}")
+                logger.debug(
+                    f"Updated {len(alerts_to_update)} existing alerts for policy {self.policy.id}"
+                )
 
             # 批量创建事件记录
-            event_objs = Event.objects.bulk_create(create_events, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+            event_objs = Event.objects.bulk_create(
+                create_events, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
+            )
 
             # 批量创建事件原始数据记录（关联到已创建的事件对象）
             if event_id_to_raw_data:
@@ -588,10 +653,14 @@ class LogPolicyScan:
                 # 逐个保存原始数据记录以确保 S3JSONField 能正确上传数据
                 for raw_data_obj in create_raw_data:
                     raw_data_obj.save()
-                logger.debug(f"Created {len(create_raw_data)} raw data records for policy {self.policy.id}")
+                logger.debug(
+                    f"Created {len(create_raw_data)} raw data records for policy {self.policy.id}"
+                )
 
             # 为告警创建或更新快照（传递原始数据映射）
-            self._create_snapshots_for_alerts(event_objs, alerts_to_create, events, event_id_to_raw_data)
+            self._create_snapshots_for_alerts(
+                event_objs, alerts_to_create, events, event_id_to_raw_data
+            )
 
             logger.info(f"Created {len(event_objs)} events for policy {self.policy.id}")
             return event_objs
@@ -600,9 +669,11 @@ class LogPolicyScan:
             logger.error(f"create events failed for policy {self.policy.id}: {e}")
             return []
 
-    def _create_snapshots_for_alerts(self, event_objs, new_alerts, raw_events, event_id_to_raw_data=None):
+    def _create_snapshots_for_alerts(
+        self, event_objs, new_alerts, raw_events, event_id_to_raw_data=None
+    ):
         """为告警创建或更新快照数据
-        
+
         Args:
             event_objs: 创建的事件对象列表
             new_alerts: 新创建的告警对象列表
@@ -624,7 +695,7 @@ class LogPolicyScan:
                     for event in raw_events
                     if event.get("raw_data")
                 }
-                
+
                 # 建立事件ID到原始数据的映射
                 event_raw_data_map = {
                     event_obj.id: source_raw_data_map.get(event_obj.source_id, {})
@@ -633,6 +704,7 @@ class LogPolicyScan:
 
             # 建立告警ID到事件对象的映射（使用 defaultdict 优化）
             from collections import defaultdict
+
             alert_events_map = defaultdict(list)
             for event_obj in event_objs:
                 alert_events_map[event_obj.alert_id].append(event_obj)
@@ -641,7 +713,7 @@ class LogPolicyScan:
             for alert_id, related_events in alert_events_map.items():
                 # 获取第一个事件对象用于获取告警信息
                 first_event = related_events[0]
-                
+
                 # 更新告警快照
                 self._update_alert_snapshot(
                     alert_id=alert_id,
@@ -649,7 +721,7 @@ class LogPolicyScan:
                     source_id=first_event.source_id,
                     event_objs=related_events,
                     event_raw_data_map=event_raw_data_map,
-                    snapshot_time=self.policy.last_run_time
+                    snapshot_time=self.policy.last_run_time,
                 )
 
             logger.debug(f"Updated snapshots for {len(alert_events_map)} alerts")
@@ -657,7 +729,15 @@ class LogPolicyScan:
         except Exception as e:
             logger.error(f"Failed to create snapshots for alerts: {e}")
 
-    def _update_alert_snapshot(self, alert_id, policy_id, source_id, event_objs, event_raw_data_map, snapshot_time):
+    def _update_alert_snapshot(
+        self,
+        alert_id,
+        policy_id,
+        source_id,
+        event_objs,
+        event_raw_data_map,
+        snapshot_time,
+    ):
         """更新告警的快照数据
 
         Args:
@@ -673,18 +753,19 @@ class LogPolicyScan:
             snapshot_obj, created = AlertSnapshot.objects.get_or_create(
                 alert_id=alert_id,
                 defaults={
-                    'policy_id': policy_id,
-                    'source_id': source_id,
-                    'snapshots': [],
-                }
+                    "policy_id": policy_id,
+                    "source_id": source_id,
+                    "snapshots": [],
+                },
             )
 
             # 如果有事件数据，添加到snapshots列表末尾
             if event_objs:
                 # 优化：获取已存在的事件ID集合，避免重复查询
                 existing_event_ids = {
-                    s.get('event_id') for s in snapshot_obj.snapshots
-                    if s.get('type') == 'event' and s.get('event_id')
+                    s.get("event_id")
+                    for s in snapshot_obj.snapshots
+                    if s.get("type") == "event" and s.get("event_id")
                 }
 
                 # 批量构建快照数据
@@ -698,11 +779,13 @@ class LogPolicyScan:
                     raw_data = event_raw_data_map.get(event_obj.id, {})
 
                     event_snapshot = {
-                        'type': 'event',
-                        'event_id': event_obj.id,
-                        'event_time': event_obj.event_time.isoformat() if event_obj.event_time else None,
-                        'snapshot_time': snapshot_time.isoformat(),
-                        'raw_data': raw_data,
+                        "type": "event",
+                        "event_id": event_obj.id,
+                        "event_time": event_obj.event_time.isoformat()
+                        if event_obj.event_time
+                        else None,
+                        "snapshot_time": snapshot_time.isoformat(),
+                        "raw_data": raw_data,
                     }
                     new_snapshots.append(event_snapshot)
 
@@ -710,7 +793,7 @@ class LogPolicyScan:
                 if new_snapshots:
                     snapshot_obj.snapshots.extend(new_snapshots)
                     # 保存更新
-                    snapshot_obj.save(update_fields=['snapshots', 'updated_at'])
+                    snapshot_obj.save(update_fields=["snapshots", "updated_at"])
 
         except Exception as e:
             logger.error(f"Failed to update alert snapshot for alert {alert_id}: {e}")
@@ -730,7 +813,7 @@ class LogPolicyScan:
             f"时间：{event_obj.event_time}",
             f"告警内容：{event_obj.content}",
             f"策略名称：{self.policy.name}",
-            f'查看告警详情：<a href=f"{url}">点击查看详情</a>'
+            f'查看告警详情：<a href=f"{url}">点击查看详情</a>',
         ]
 
         content = "\n".join(content_parts)
@@ -755,7 +838,9 @@ class LogPolicyScan:
                 logger.error(msg)
                 return False, result
             else:
-                logger.info(f"send notice success for policy {self.policy.id}: {result}")
+                logger.info(
+                    f"send notice success for policy {self.policy.id}: {result}"
+                )
                 return True, result
         except Exception as e:
             msg = f"send notice exception for policy {self.policy.id}: {e}"
@@ -769,7 +854,6 @@ class LogPolicyScan:
             return
 
         try:
-
             alerts = []
 
             for event in event_objs:
@@ -783,12 +867,20 @@ class LogPolicyScan:
                     alerts.append((event.alert_id, is_notice))
 
             # 批量更新通知结果
-            Event.objects.bulk_update(event_objs, ["notice_result"], batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+            Event.objects.bulk_update(
+                event_objs,
+                ["notice_result"],
+                batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
+            )
             logger.info(f"Completed notification for {len(event_objs)} events")
 
             # 批量更新告警的通知状态
             if alerts:
-                Alert.objects.bulk_update([Alert(id=i[0], notice=i[1]) for i in alerts], ["notice"], batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+                Alert.objects.bulk_update(
+                    [Alert(id=i[0], notice=i[1]) for i in alerts],
+                    ["notice"],
+                    batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
+                )
 
         except Exception as e:
             logger.error(f"notice failed for policy {self.policy.id}: {e}")
@@ -804,14 +896,18 @@ class LogPolicyScan:
             elif self.policy.alert_type == AlertConstants.TYPE_AGGREGATE:
                 events = self.aggregate_alert_detection()
             else:
-                logger.warning(f"Unknown alert type: {self.policy.alert_type} for policy {self.policy.id}")
+                logger.warning(
+                    f"Unknown alert type: {self.policy.alert_type} for policy {self.policy.id}"
+                )
                 return
 
             if not events:
                 logger.info(f"No alert events detected for policy {self.policy.id}")
                 return
 
-            logger.info(f"Detected {len(events)} alert events for policy {self.policy.id}")
+            logger.info(
+                f"Detected {len(events)} alert events for policy {self.policy.id}"
+            )
 
             # 创建事件记录
             event_objs = self.create_events(events)

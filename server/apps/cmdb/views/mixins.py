@@ -12,6 +12,8 @@ Usage:
         ...
 """
 
+from typing import Optional
+
 from rest_framework import status
 
 from apps.cmdb.constants.constants import (
@@ -102,6 +104,17 @@ class CmdbPermissionMixin:
             True if user has permission, False otherwise
         """
         user_groups = {i["id"] for i in request.user.group_list}
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            current_team = get_current_team_from_request(request, required=False)
+            if current_team:
+                child_groups = get_organization_and_children_ids(
+                    tree_data=request.user.group_tree, target_id=current_team
+                )
+                if child_groups:
+                    user_groups = set(child_groups)
+                else:
+                    user_groups = {current_team}
         organizations = list(set(instance.get("organization", [])) & user_groups)
         if not organizations:
             return False
@@ -124,7 +137,7 @@ class CmdbPermissionMixin:
         request,
         model_info: dict,
         operator: str = VIEW,
-        default_group_id: int = None,
+        default_group_id: Optional[int] = None,
     ) -> bool:
         """
         Check if user has permission to perform an operation on a model.
@@ -162,7 +175,7 @@ class CmdbPermissionMixin:
         request,
         instance: dict,
         operator: str = VIEW,
-        error_message: str = None,
+        error_message: Optional[str] = None,
     ):
         """
         Check instance permission and return error response if denied.
@@ -200,8 +213,8 @@ class CmdbPermissionMixin:
         request,
         model_info: dict,
         operator: str = VIEW,
-        default_group_id: int = None,
-        error_message: str = None,
+        default_group_id: Optional[int] = None,
+        error_message: Optional[str] = None,
     ):
         """
         Check model permission and return error response if denied.

@@ -20,6 +20,7 @@ from django.db import transaction
 from django.http import FileResponse
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.validators import validate_serving_status_change
+from apps.mlops.predict_url_builder import build_predict_url
 from apps.mlops.utils.webhook_client import (
     WebhookClient,
     WebhookError,
@@ -368,6 +369,35 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             # 动态获取训练镜像
             train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
 
+            # 在启动容器前查询 MLflow 当前 run 数量（避免容器启动后查询失败导致僵尸任务）
+            from apps.mlops.tasks.poll_train_job_status import poll_train_job_status
+
+            expected_run_count = 0
+            try:
+                experiment_name = mlflow_service.build_experiment_name(
+                    prefix=self.MLFLOW_PREFIX,
+                    algorithm=train_job.algorithm,
+                    train_job_id=train_job.id,
+                )
+                experiment = mlflow_service.get_experiment_by_name(experiment_name)
+                current_run_count = 0
+                if experiment:
+                    runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
+                    current_run_count = len(runs) if not runs.empty else 0
+                expected_run_count = current_run_count + 1
+            except Exception:
+                logger.warning(
+                    f"MLflow 查询失败，降级 expected_run_count=0: "
+                    f"TrainJob ID={train_job.id}"
+                )
+
+            # 启动前清理可能残留的旧训练容器
+            try:
+                WebhookClient.stop(job_id)
+                logger.info(f"已清理残留的旧训练容器: job_id={job_id}")
+            except (WebhookError, WebhookConnectionError, WebhookTimeoutError):
+                pass  # 容器不存在是正常的
+
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
@@ -385,6 +415,15 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             # 更新任务状态
             train_job.status = TrainJobStatus.RUNNING
             train_job.save(update_fields=["status"])
+
+            # 启动异步轮询训练状态
+            logger.info(
+                f"触发轮询任务: TrainJob ID={train_job.id}, "
+                f"预期 run 数量: {expected_run_count}"
+            )
+            poll_train_job_status.delay(
+                train_job.id, self.MLFLOW_PREFIX, expected_run_count
+            )
 
             return Response(
                 {
@@ -444,7 +483,6 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             train_job.status = TrainJobStatus.PENDING
             train_job.save(update_fields=["status"])
 
-
             return Response(
                 {
                     "message": "训练任务已停止",
@@ -496,7 +534,6 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             if not version_data:
                 logger.warning(f"模型未找到版本: {model_name}")
                 return Response({"model_name": model_name, "versions": [], "total": 0})
-
 
             return Response(
                 {
@@ -558,6 +595,14 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
     @HasPermission("image_classification-View")
     def get_run_data_list(self, request, pk=None):
         try:
+            # 获取分页参数
+            page = int(request.GET.get("page", 1))
+            page_size = request.GET.get("page_size")
+            # page_size 为 None、0、-1 时不分页
+            use_pagination = page_size is not None and page_size not in ["0", "-1"]
+            if use_pagination:
+                page_size = int(page_size)
+
             # 获取训练任务
             train_job = self.get_object()
 
@@ -578,7 +623,8 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
                         "algorithm": train_job.algorithm,
                         "job_status": train_job.status,
                         "message": "未找到对应的MLflow实验",
-                        "data": [],
+                        "count": 0,
+                        "items": [],
                     }
                 )
 
@@ -593,13 +639,13 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
                         "algorithm": train_job.algorithm,
                         "job_status": train_job.status,
                         "message": "未找到训练运行记录",
-                        "data": [],
+                        "count": 0,
+                        "items": [],
                     }
                 )
 
             # 每次运行信息的耗时和名称
             run_datas = []
-            latest_run_status = None
 
             for idx, row in runs.iterrows():
                 # 处理时间计算，避免产生NaN或Infinity
@@ -628,10 +674,6 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
                     # 获取状态
                     run_status = row.get("status", "UNKNOWN")
 
-                    # 记录第一条（最新）的运行状态
-                    if idx == 0:
-                        latest_run_status = run_status
-
                     run_data = {
                         "run_id": str(row["run_id"]),
                         "run_name": str(run_name),
@@ -652,13 +694,14 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
                     logger.warning(f"解析 run 数据失败: {e}")
                     continue
 
-            # 同步最新运行状态到 TrainJob
-            if latest_run_status and train_job.status == TrainJobStatus.RUNNING:
-                new_status = MLflowRunStatus.TO_TRAIN_JOB_STATUS.get(latest_run_status)
-
-                if new_status:
-                    train_job.status = new_status
-                    train_job.save(update_fields=["status"])
+            # 分页处理
+            total_count = len(run_datas)
+            if use_pagination:
+                start_idx = (page - 1) * page_size
+                end_idx = start_idx + page_size
+                paginated_data = run_datas[start_idx:end_idx]
+            else:
+                paginated_data = run_datas
 
             return Response(
                 {
@@ -666,8 +709,8 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
                     "train_job_name": train_job.name,
                     "algorithm": train_job.algorithm,
                     "job_status": train_job.status,
-                    "total_runs": len(run_datas),
-                    "data": run_datas,
+                    "count": total_count,
+                    "items": paginated_data,
                 }
             )
         except Exception as e:
@@ -925,7 +968,10 @@ class ImageClassificationServingViewSet(ModelViewSet):
                 )
 
                 serving.container_info = result
-                serving.save(update_fields=["container_info"])
+                serving.port = (
+                    int(result.get("port", 0)) if result.get("port") else serving.port
+                )
+                serving.save(update_fields=["container_info", "port"])
 
                 response.data["container_info"] = result
                 response.data["message"] = "服务已创建并启动"
@@ -986,11 +1032,6 @@ class ImageClassificationServingViewSet(ModelViewSet):
         - 容器非 running → 仅更新数据库，用户自行决定是否启动
         """
         instance = self.get_object()
-
-        # 兜底校验：容器未运行时不允许设置 status=active
-        new_status = request.data.get("status")
-        if error_response := validate_serving_status_change(instance, new_status):
-            return error_response
 
         # 保存旧值用于判断变更
         old_port = instance.port
@@ -1064,7 +1105,9 @@ class ImageClassificationServingViewSet(ModelViewSet):
                 # 从关联训练任务的 hyperopt_config 中提取 device 参数
                 device = None
                 if instance.train_job and instance.train_job.hyperopt_config:
-                    hyperparams = instance.train_job.hyperopt_config.get("hyperparams", {})
+                    hyperparams = instance.train_job.hyperopt_config.get(
+                        "hyperparams", {}
+                    )
                     device = hyperparams.get("device")
 
                 # 动态获取推理镜像
@@ -1084,7 +1127,10 @@ class ImageClassificationServingViewSet(ModelViewSet):
 
                 # 更新容器信息（status 由用户控制，不修改）
                 instance.container_info = result
-                instance.save(update_fields=["container_info"])
+                instance.port = (
+                    int(result.get("port", 0)) if result.get("port") else instance.port
+                )
+                instance.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据
                 response.data["container_info"] = result
@@ -1157,8 +1203,10 @@ class ImageClassificationServingViewSet(ModelViewSet):
 
                 # 正常启动成功，更新容器信息以及将status设为 'active'
                 serving.container_info = result
-                serving.status = "active"
-                serving.save(update_fields=["container_info", "status"])
+                serving.port = (
+                    int(result.get("port", 0)) if result.get("port") else serving.port
+                )
+                serving.save(update_fields=["container_info", "port"])
 
                 return Response(
                     {
@@ -1224,10 +1272,6 @@ class ImageClassificationServingViewSet(ModelViewSet):
 
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
-
-            # 停止容器时同时将status改为'inactive'
-            serving.status = "inactive"
-            serving.save(update_fields=["status"])
 
             return Response(
                 {
@@ -1310,7 +1354,7 @@ class ImageClassificationServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("image_classification-Predict")
+    @HasPermission("image_classification-View")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行图片分类预测
@@ -1322,38 +1366,23 @@ class ImageClassificationServingViewSet(ModelViewSet):
         try:
             serving = self.get_object()
 
-            # 校验服务状态
-            if serving.status != "active":
-                return Response(
-                    {"error": "服务未发布，请先发布服务"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # 获取参数
-            url = request.data.get("url")
             image = request.data.get("image")
-
-            # 参数校验
-            if not url:
-                return Response(
-                    {"error": "url 参数不能为空"}, status=status.HTTP_400_BAD_REQUEST
-                )
 
             if not image:
                 return Response(
                     {"error": "image 参数不能为空"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 获取实际运行端口，防御性处理 container_info 为空的情况
-            port = (serving.container_info or {}).get("port")
-            if not port:
+            try:
+                predict_url = build_predict_url(
+                    serving_id=f"ImageClassification_Serving_{serving.id}",
+                    container_info=serving.container_info,
+                )
+            except ValueError as e:
                 return Response(
-                    {"error": "服务端口未配置，请确认服务已启动"},
+                    {"error": str(e)},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
-            # 构建预测服务 URL
-            predict_url = f"{url.rstrip('/')}:{port}/predict"
 
             # 构建请求体
             payload = {"image": image}

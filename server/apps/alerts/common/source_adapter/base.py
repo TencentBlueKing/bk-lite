@@ -15,8 +15,8 @@ from apps.alerts.common.shield import execute_shield_check_for_events
 from apps.alerts.constants.constants import LevelType, EventAction
 from apps.alerts.constants.init_data import INIT_ALERT_ENRICH
 from apps.alerts.models.sys_setting import SystemSetting
-from apps.alerts.models.models import  Event, Level
-from apps.alerts.models.alert_source import  AlertSource
+from apps.alerts.models.models import Event, Level
+from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.common.source_adapter import logger
 from apps.alerts.utils.util import split_list
 from apps.rpc.cmdb import CMDB
@@ -148,12 +148,12 @@ class AlertSourceAdapter(ABC):
     def bulk_save_events(events: List[Event]):
         """
         批量保存事件（性能优化版）
-        
+
         优化点：
         1. 使用 bulk_create 批量入库
         2. 立即查询返回带 pk 的对象（避免后续重复查询）
         3. 保持分批逻辑（每批 100 个）
-        
+
         Returns:
             List[List[Event]]: 分批后的事件列表（带 pk）
         """
@@ -247,7 +247,7 @@ class AlertSourceAdapter(ABC):
     def get_active_shields():
         """
         获取所有活跃的屏蔽策略（优化：一次性查询，全局复用）
-        
+
         Returns:
             QuerySet 或 None
         """
@@ -265,7 +265,7 @@ class AlertSourceAdapter(ABC):
     def event_operator(self, events_list):
         """
         event的自动屏蔽（性能优化版）
-        
+
         Args:
             events_list: 事件批次列表
         """
@@ -279,7 +279,7 @@ class AlertSourceAdapter(ABC):
                     [i.event_id for i in event_list],
                     active_shields=active_shields
                 )
-            except Exception as err: # noqa
+            except Exception as err:  # noqa
                 import traceback
                 logger.error(f"Shield check failed for events:{traceback.format_exc()}")
 
@@ -297,7 +297,7 @@ class AlertSourceAdapter(ABC):
     def handle_recovery_events(bulk_events):
         """
         处理恢复事件：将 RECOVERY/CLOSED 事件关联到对应的 Alert
-        
+
         Args:
             bulk_events: 批量创建的事件列表（分批后的列表）
         """

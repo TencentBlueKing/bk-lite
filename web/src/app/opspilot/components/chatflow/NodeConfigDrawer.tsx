@@ -159,6 +159,15 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
       }
 
       if (node.data.type === 'celery') {
+        const inputParams = String(values.inputParams || '')
+          .split(',')
+          .map((param: string) => param.trim())
+          .filter(Boolean);
+        if (!inputParams.includes('message')) {
+          inputParams.push('message');
+        }
+        configData.inputParams = inputParams.join(',');
+
         configData.time = values.times || [];
         delete configData.times;
 

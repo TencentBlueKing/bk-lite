@@ -2,9 +2,10 @@ import useApiClient from '@/utils/request';
 import type {
   ControllerInstallFields,
   NodeItem,
-  UpdateConfigReq,
+  UpdateConfigReq
 } from '../types/cloudregion';
-import { NodeParams, SearchFilters } from '../types/node';
+import { NodeParams } from '../types/node';
+import { SearchFilters } from '@/components/search-combination/types';
 
 /**
  * 节点管理API Hook
@@ -78,16 +79,42 @@ const useNodeApi = () => {
   };
 
   // 获取控制器节点信息
-  const getControllerNodes = async (params: { taskId: number }) => {
-    return await post(
+  const getControllerNodes = async (params: { taskId: string | number }) => {
+    const res = await post(
       `/node_mgmt/api/installer/controller/task/${params.taskId}/nodes/`
+    );
+    return res?.data || res?.items || res || [];
+  };
+
+  // 获取采集器安装节点信息（返回完整响应，包含status和summary）
+  const getCollectorNodes = async (params: { taskId: string | number }) => {
+    const res = await post(
+      `/node_mgmt/api/installer/collector/install/${params.taskId}/nodes/`
+    );
+    // 返回完整响应，让调用方处理 status 和 summary
+    return (
+      res || {
+        items: [],
+        status: 'running',
+        summary: { total: 0, waiting: 0, running: 0, success: 0, error: 0 }
+      }
     );
   };
 
-  // 获取采集器节点信息
-  const getCollectorNodes = async (params: { taskId: number }) => {
-    return await post(
-      `/node_mgmt/api/installer/collector/install/${params.taskId}/nodes/`
+  // 获取采集器操作节点信息（启动、停止、重启，返回完整响应，包含status和summary）
+  const getCollectorOperationNodes = async (params: {
+    taskId: string | number;
+  }) => {
+    const res = await post(
+      `/node_mgmt/api/node/collector/action/${params.taskId}/nodes/`
+    );
+    // 返回完整响应，让调用方处理 status 和 summary
+    return (
+      res || {
+        items: [],
+        status: 'running',
+        summary: { total: 0, waiting: 0, running: 0, success: 0, error: 0 }
+      }
     );
   };
 
@@ -121,9 +148,10 @@ const useNodeApi = () => {
     installCollector,
     getControllerNodes,
     getCollectorNodes,
+    getCollectorOperationNodes,
     batchBindCollector,
     batchOperationCollector,
-    updateNode,
+    updateNode
   };
 };
 

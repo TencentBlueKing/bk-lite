@@ -1,23 +1,54 @@
-__all__ = ["nat_request", "request", "request_sync", "publish", "publish_sync", "js_publish", "js_publish_sync",
-           "request_v2"]
+__all__ = ["nat_request", "request", "request_sync", "publish", "publish_sync", "js_publish", "js_publish_sync", "request_v2"]
 
 import asyncio
 import functools
 import json
+from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import jsonpickle
 from django.conf import settings
 from nats.aio.client import Client
 
+from apps.core.logger import nats_logger as logger
+
 from .exceptions import NatsClientException
 from .types import ResponseType
 from .utils import parse_arguments
-from apps.core.logger import nats_logger as logger
 
 DEFAULT_REQUEST_TIMEOUT = 60
 
 
-async def nat_request(namespace: str, method_name: str, _timeout: float = None, _raw=False, **kwargs) -> ResponseType:
+def _mask_server_url(server_url: str) -> str:
+    """脱敏 NATS server URL，避免日志泄露用户名/密码"""
+    if not server_url:
+        return server_url
+    try:
+        parsed = urlsplit(server_url)
+        if parsed.username or parsed.password:
+            host = parsed.hostname or ""
+            if parsed.port:
+                host = f"{host}:{parsed.port}"
+            netloc = f"***:***@{host}"
+            return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+    except Exception:
+        return "***"
+    return server_url
+
+
+def _mask_servers(servers) -> str:
+    if isinstance(servers, (list, tuple)):
+        return ",".join(_mask_server_url(str(s)) for s in servers)
+    return _mask_server_url(str(servers))
+
+
+async def nat_request(
+    namespace: str,
+    method_name: str,
+    _timeout: float = 0,
+    _raw=False,
+    **kwargs,
+) -> ResponseType:
     payload = json.dumps(kwargs).encode()
     nc = await get_nc_client()
     timeout = _timeout or getattr(settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT)
@@ -36,7 +67,7 @@ def get_default_nats_server():
     return servers
 
 
-async def get_nc_client(nc: Client = None, server: str = "") -> Client:
+async def get_nc_client(nc=None, server: str = "") -> Client:
     if nc is None:
         nc = Client()
     if not server:
@@ -46,15 +77,18 @@ async def get_nc_client(nc: Client = None, server: str = "") -> Client:
 
     options = getattr(settings, "NATS_OPTIONS", {})
 
-    await nc.connect(servers=servers, **options)
+    # 连接超时保护：避免 connect 阶段无上限阻塞
+    connect_timeout = options.pop("connect_timeout", getattr(settings, "NATS_CONNECT_TIMEOUT", 10))
+    try:
+        await asyncio.wait_for(nc.connect(servers=servers, **options), timeout=connect_timeout)
+    except Exception as e:
+        logger.error("NATS connect failed, servers=%s, error=%s", _mask_servers(servers), str(e))
+        raise
     return nc
 
 
-async def request(
-        namespace: str, method_name: str, *args, _timeout: float = None, _raw=False, **kwargs
-) -> ResponseType:
+async def request(namespace: str, method_name: str, *args, _timeout: Optional[float] = None, _raw=False, **kwargs) -> ResponseType:
     payload = parse_arguments(args, kwargs)
-
     nc = await get_nc_client()
 
     timeout = _timeout or getattr(settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT)
@@ -65,7 +99,6 @@ async def request(
 
     data = response.data.decode()
     parsed = json.loads(data)
-
     if _raw:
         parsed.pop("pickled_exc", None)
         return parsed
@@ -78,12 +111,17 @@ async def request(
             if "result" in parsed and parsed["result"]:
                 error_message += f" | Output: {parsed['result']}"
             exc = NatsClientException(error_message)
+        elif "result" in parsed and parsed["result"]:
+            # 兼容仅返回 result 的服务端实现
+            exc = NatsClientException(str(parsed["result"]))
         else:
             # 向后兼容：尝试使用旧的pickled_exc格式
             try:
-                exc = jsonpickle.decode(parsed["pickled_exc"])
+                decoded_exc = jsonpickle.decode(parsed["pickled_exc"])
+                exc = NatsClientException(str(decoded_exc))
             except (TypeError, KeyError):
-                # 最后的降级方案
+                # 最后的降级方案：打印完整响应便于排查
+                logger.error(f"NATS error response missing error details, full response: {parsed}")
                 fallback_message = parsed.get("message", "Unknown error occurred")
                 exc = NatsClientException(fallback_message)
 
@@ -96,7 +134,7 @@ async def request(
 
 
 async def request_v2(
-        namespace: str, method_name: str, server: str = "", *args, _timeout: float = None, _raw=False, **kwargs
+    namespace: str, method_name: str, server: str = "", *args, _timeout: Optional[float] = None, _raw=False, **kwargs
 ) -> ResponseType:
     payload = parse_arguments(args, kwargs)
 
@@ -104,6 +142,7 @@ async def request_v2(
         nc = await get_nc_client(server=server)
     except Exception as e:  # noqa
         import traceback
+
         logger.error("==request_v2 nast connect method_name={}, error={}".format(method_name, traceback.format_exc()))
         raise NatsClientException(f"Cannot connect to NATS server: {server}")
 
@@ -128,12 +167,17 @@ async def request_v2(
             if "result" in parsed and parsed["result"]:
                 error_message += f" | Output: {parsed['result']}"
             exc = NatsClientException(error_message)
+        elif "result" in parsed and parsed["result"]:
+            # 兼容仅返回 result 的服务端实现
+            exc = NatsClientException(str(parsed["result"]))
         else:
             # 向后兼容：尝试使用旧的pickled_exc格式
             try:
-                exc = jsonpickle.decode(parsed["pickled_exc"])
+                decoded_exc = jsonpickle.decode(parsed["pickled_exc"])
+                exc = NatsClientException(str(decoded_exc))
             except (TypeError, KeyError):
-                # 最后的降级方案
+                # 最后的降级方案：打印完整响应便于排查
+                logger.error(f"NATS error response missing error details, full response: {parsed}")
                 fallback_message = parsed.get("message", "Unknown error occurred")
                 exc = NatsClientException(fallback_message)
 

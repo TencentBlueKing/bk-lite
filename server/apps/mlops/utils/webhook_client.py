@@ -423,5 +423,5 @@ class WebhookClient:
             error_msg = result.get("message", "未知错误")
             raise WebhookError(error_msg)
 
-        # 返回 results 数组（单个容器的 error 状态不算整体失败）
-        return result.get("results", [])
+        results = result.get("results", []) 
+        return results

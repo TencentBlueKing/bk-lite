@@ -124,6 +124,7 @@ export interface AssetDataFieldProps {
   userList: UserItem[];
   instDetail: InstDetail;
   onsuccessEdit: () => void;
+  onSubscribe?: () => void;
 }
 
 export interface InstDetail {
@@ -155,6 +156,25 @@ export interface IntAttrOption {
   max_value: string | number;
 }
 
+export interface TableColumnSpec {
+  column_id: string;
+  column_name: string;
+  column_type: 'str' | 'number';
+  order: number;
+}
+
+export type TableAttrOption = TableColumnSpec[];
+
+export interface TagOptionItem {
+  key: string;
+  value: string;
+}
+
+export interface TagAttrOption {
+  mode: 'free' | 'strict';
+  options: TagOptionItem[];
+}
+
 // 属性字段最小结构（用于工具函数）
 export interface AttrLike {
   attr_type: string;
@@ -163,7 +183,7 @@ export interface AttrLike {
 }
 
 // 属性 option 联合类型
-export type AttrOption = EnumList[] | StrAttrOption | TimeAttrOption | IntAttrOption | Record<string, unknown>;
+export type AttrOption = EnumList[] | StrAttrOption | TimeAttrOption | IntAttrOption | TableAttrOption | TagAttrOption | Record<string, unknown>;
 
 export interface CredentialListItem {
   classification_name: string;
@@ -316,4 +336,26 @@ export interface ModelFullInfoResponse {
   data: ModelFullInfo;
   result: boolean;
   message: string;
+}
+
+export type EnumRuleType = 'custom' | 'public_library';
+
+export interface PublicEnumOption {
+  id: string;
+  name: string;
+}
+
+export interface PublicEnumLibraryItem {
+  library_id: string;
+  name: string;
+  team: (string | number)[];
+  options: PublicEnumOption[];
+  editable: boolean;
+}
+
+export interface LibraryReferenceItem {
+  model_id: string;
+  model_name: string;
+  attr_id: string;
+  attr_name: string;
 }

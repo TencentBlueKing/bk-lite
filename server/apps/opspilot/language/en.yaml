@@ -190,6 +190,8 @@ error:
   crontab_expression_required: crontab_expression is required
   invalid_crontab_expression: 'Invalid crontab expression: {expression}'
   crontab_preview_failed: 'Failed to calculate next runs: {detail}'
+  knowledge_graph_pending_or_training_no_update: Knowledge graph is pending or training, cannot update
+  knowledge_graph_already_exists: Knowledge graph already exists for this knowledge base
 tools:
   kubernetes:
     name: Kubernetes Tools

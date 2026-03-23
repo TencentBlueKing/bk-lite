@@ -7,7 +7,7 @@ class Monitor(object):
     def __init__(self, is_local_client=False):
         is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
         self.client = (
-            AppClient("apps.monitor.nats.monitor") if is_local_client else RpcClient()
+            AppClient("apps.monitor.nats.permission") if is_local_client else RpcClient()
         )
 
     def get_module_data(self, **kwargs):
@@ -28,10 +28,6 @@ class Monitor(object):
         """
         return_data = self.client.run("get_monitor_module_list", **kwargs)
         return return_data
-
-    def monitor_objects(self):
-        """查询监控对象列表"""
-        return self.client.run("monitor_objects")
 
 
 class MonitorOperationAnaRpc(BaseOperationAnaRpc):

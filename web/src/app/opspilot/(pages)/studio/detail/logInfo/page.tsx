@@ -226,7 +226,7 @@ const StudioLogsPage: React.FC = () => {
   const handleWorkflowDetailClick = async (record: WorkflowTaskResult) => {
     setSelectedWorkflow(record);
     setWorkflowDrawerVisible(true);
-    
+
     // 如果有 execution_id，则从接口获取详情数据
     if (record.execution_id) {
       setWorkflowDetailLoading(true);

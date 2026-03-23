@@ -9,7 +9,7 @@ class PermissionManage:
         group_ids = [group["id"] for group in self.user_groups]
         if not group_ids:
             return []
-        return [{"field": ORGANIZATION, "type": "list[]", "value": group_ids}]
+        return [{"field": ORGANIZATION, "type": "list_any[]", "value": group_ids}]
 
     def get_permission_params(self):
         """获取基础权限条件，用于列表页查询（作为必须的组织权限过滤）admin用户也会受到他当前组的限制"""

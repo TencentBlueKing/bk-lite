@@ -1,0 +1,103 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "Linux File Integrity Monitoring integration uses the Auditbeat FIM module to monitor file and directory changes in real-time. By tracking file creation, modification, deletion, and permission changes, it helps you detect unauthorized modifications, meet compliance requirements, and implement security auditing."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "🔍",
+        "title": "Real-time Monitoring",
+        "description": "Instant detection of file changes using inotify/fsnotify"
+      },
+      {
+        "icon": "🔐",
+        "title": "Hash Verification",
+        "description": "Calculate MD5/SHA256 hash values to detect file tampering"
+      },
+      {
+        "icon": "📄",
+        "title": "Change Detail Tracking",
+        "description": "Record specific change content: permissions, owner, size"
+      },
+      {
+        "icon": "📂",
+        "title": "Recursive Monitoring",
+        "description": "Support recursive monitoring of entire directory trees"
+      }
+    ]
+  },
+  "fieldTables": [
+    {
+      "title": "Parsed Fields",
+      "description": "File change events will be parsed into the following structured fields:",
+      "columns": [
+        { "key": "field", "title": "Field Name", "width": "200px" },
+        { "key": "type", "title": "Type", "width": "120px" },
+        { "key": "description", "title": "Description" }
+      ],
+      "data": [
+        {
+          "field": "@timestamp",
+          "type": "date",
+          "description": "Event timestamp"
+        },
+        {
+          "field": "file.path",
+          "type": "keyword",
+          "description": "File full path"
+        },
+        {
+          "field": "event.action",
+          "type": "keyword",
+          "description": "Event action (created, updated, deleted, moved)"
+        },
+        {
+          "field": "file.hash.sha256",
+          "type": "keyword",
+          "description": "File SHA256 hash"
+        },
+        {
+          "field": "file.hash.md5",
+          "type": "keyword",
+          "description": "File MD5 hash"
+        },
+        {
+          "field": "file.owner",
+          "type": "keyword",
+          "description": "File owner username"
+        },
+        {
+          "field": "file.group",
+          "type": "keyword",
+          "description": "File group name"
+        },
+        {
+          "field": "file.mode",
+          "type": "keyword",
+          "description": "File permission mode"
+        },
+        {
+          "field": "file.size",
+          "type": "long",
+          "description": "File size (bytes)"
+        },
+        {
+          "field": "file.type",
+          "type": "keyword",
+          "description": "File type (file, dir, symlink)"
+        }
+      ]
+    }
+  ],
+  "tips": [
+    {
+      "type": "info",
+      "title": "Performance Considerations",
+      "content": "Enabling real-time monitoring on directories with large numbers of files may affect performance. It's recommended to monitor only important system and configuration directories."
+    }
+  ]
+}
