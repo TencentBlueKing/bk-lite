@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Drawer, Button, Input, message, Tabs } from 'antd';
 import { CopyOutlined, SendOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -36,7 +36,6 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
   const { t } = useTranslation();
   const api = useMlopsModelReleaseApi();
   const [loading, setLoading] = useState(false);
-  const [serverUrl, setServerUrl] = useState<string>('');
   const [requestBody, setRequestBody] = useState<string>('');
   const [response, setResponse] = useState<string>('');
   const [responseStatus, setResponseStatus] = useState<'success' | 'error' | null>(null);
@@ -51,20 +50,9 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
   }), [algorithmType]);
 
   // Initialize request body when drawer opens or algorithm type changes
-  useMemo(() => {
+  useEffect(() => {
     setRequestBody(JSON.stringify(config.defaultTestBody, null, 2));
   }, [config.defaultTestBody]);
-
-  // Pre-fill serverUrl when host is available
-  useMemo(() => {
-    const h = serving?.container_info?.host;
-    if (h && !serverUrl) {
-      setServerUrl(`http://${h}`);
-    }
-  }, [serving?.container_info?.host]);
-
-  const port = serving?.container_info?.port;
-  const host = serving?.container_info?.host;
 
   // API method mapping
   const apiMethodMap: Record<DatasetType, (servingId: number, params: ReasonParams) => Promise<unknown>> = {
@@ -86,10 +74,6 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
   };
 
   const handleTest = async () => {
-    if (!serverUrl.trim()) {
-      message.error(t('serving-guide.serverUrlRequired'));
-      return;
-    }
     const data = getRequestData();
     if (!data) {
       message.error(t('serving-guide.invalidJson'));
@@ -101,10 +85,7 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
     setResponseStatus(null);
     try {
       const apiMethod = apiMethodMap[algorithmType];
-      const result = await apiMethod(serving!.id, {
-        url: serverUrl.trim(),
-        ...data
-      });
+      const result = await apiMethod(serving!.id, data);
       setResponse(JSON.stringify(result, null, 2));
       setResponseStatus('success');
     } catch (e: unknown) {
@@ -121,7 +102,9 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
     message.success(t('common.copySuccess'));
   };
 
-  const externalEndpoint = `http://${host || `<${t('serving-guide.serverIp')}>`}:${port || '<port>'}/predict`;
+  const externalEndpoint = typeof window === 'undefined'
+    ? `/api/mlops/predict/${algorithmType}/${serving?.id ?? '<servingId>'}`
+    : `${window.location.origin}/api/mlops/predict/${algorithmType}/${serving?.id ?? '<servingId>'}`;
   const curlExample = generateCurlExample(externalEndpoint, config.requestExample);
   const requestExample = JSON.stringify(config.requestExample, null, 2);
   const responseExample = JSON.stringify(config.responseExample, null, 2);
@@ -148,7 +131,7 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
               <span className="bg-blue-500 text-white px-1.5 py-0.5 rounded text-[11px] font-semibold">POST</span>
               <code className="flex-1 font-mono text-[13px] break-all">{externalEndpoint}</code>
             </div>
-            <div className="text-xs text-gray-400 mt-2">{t('serving-guide.endpointTip')}</div>
+            {/* <div className="text-xs text-gray-400 mt-2">{t('serving-guide.endpointTip')}</div> */}
           </div>
 
           {/* cURL 示例 */}
@@ -204,21 +187,6 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
       label: t('serving-guide.capabilityTest'),
       children: (
         <div className="pt-2">
-          {/* 服务器地址 */}
-          <div className="pb-5 mb-5 border-b border-gray-200">
-            <div className="text-[13px] font-semibold mb-3">
-              <span>{t('serving-guide.serverUrl')}</span>
-              <span className="text-red-500 ml-0.5">*</span>
-            </div>
-            <Input
-              className="font-mono! text-sm!"
-              value={serverUrl}
-              onChange={(e) => setServerUrl(e.target.value)}
-              placeholder={t('serving-guide.serverUrlPlaceholder')}
-            />
-            <div className="text-xs text-gray-400 mt-2">{t('serving-guide.serverUrlTip')}</div>
-          </div>
-
           {/* 请求体 */}
           <div className="pb-5 mb-5 border-b border-gray-200">
             <div className="text-[13px] font-semibold mb-3">

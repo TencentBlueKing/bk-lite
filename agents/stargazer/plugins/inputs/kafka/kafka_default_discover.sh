@@ -8,7 +8,7 @@ get_jdk_version() {
     echo ${version:-"unknown"}  # 输出版本号或unknown
 }
 
-# 获取Kafka版本
+# 获取Kafka版本（兼容 2.x/3.x jar 命名 kafka_2.13-3.6.0 与 4.x kafka-4.0.x）
 get_kafka_version() {
     installpath=$1
     [[ -z "$installpath" || ! -d "$installpath" ]] && { echo "unknown"; return; }
@@ -16,7 +16,38 @@ get_kafka_version() {
     lib_path="${installpath}libs"
     [[ -d "$lib_path" ]] || { echo "unknown"; return; }
     version=$(find "$lib_path" -name 'kafka_*.jar' 2>/dev/null | head -1 | grep -oE 'kafka_[^-]+-[^-]+' | sed 's/^kafka_//;s/[.]jar$//')
+    [[ -z "$version" ]] && version=$(find "$lib_path" -name 'kafka-*.jar' 2>/dev/null | head -1 | grep -oE 'kafka-[0-9]+\.[0-9]+\.[0-9]+[^.]*' | sed 's/^kafka-//')
     echo ${version:-"unknown"}
+}
+
+# 从进程命令行 classpath 回退解析 Kafka 版本
+get_kafka_version_from_command_classpath() {
+    local cmd="$1"
+    local cp_value=""
+    local cp_entry=""
+    local install_guess=""
+    local version=""
+
+    cp_value=$(echo "$cmd" | grep -oP -- '(?:-cp|-classpath)\s+\K\S+')
+    [[ -z "$cp_value" ]] && { echo "unknown"; return; }
+
+    IFS=':' read -ra cp_entries <<< "$cp_value"
+    for cp_entry in "${cp_entries[@]}"; do
+        # 典型项为 /opt/kafka/libs/*，提取到安装目录 /opt/kafka
+        cp_entry="${cp_entry%%\*}"
+        cp_entry="${cp_entry%/}"
+        [[ "$cp_entry" == */libs* ]] || continue
+
+        install_guess="${cp_entry%%/libs*}"
+        [[ -n "$install_guess" ]] || continue
+        install_guess=$(readlink -f "$install_guess" 2>/dev/null)
+        [[ -d "$install_guess" ]] || continue
+
+        version=$(get_kafka_version "$install_guess")
+        [[ "$version" != "unknown" ]] && { echo "$version"; return; }
+    done
+
+    echo "unknown"
 }
 
 # 解析配置文件
@@ -35,6 +66,15 @@ parse_config() {
         fi
     done < "$cfg_path"
     declare -p config_dict
+}
+
+# 从 kraft.properties 读取 node.id（KRaft 模式）
+get_node_id_from_kraft() {
+    local cpath=$1
+    [[ -z "$cpath" ]] && return
+    local kpath="$(dirname "$cpath")/kraft.properties"
+    [[ -f "$kpath" ]] || return
+    grep -E '^[[:space:]]*node\.id[[:space:]]*=' "$kpath" 2>/dev/null | head -1 | cut -d'=' -f2- | awk '{$1=$1;print}'
 }
 
 # 主函数
@@ -118,8 +158,8 @@ main() {
                 fi
             done
         fi
-        [[ "$port" == "unknown" ]] && port="${config_dict[port]}"
-        [[ "$port" == "unknown" ]] && port="${config_dict[listeners]}" | awk -F: '{print $NF}'
+        [[ -z "$port" ]] && port="${config_dict[port]}"
+        [[ -z "$port" && -n "${config_dict[listeners]}" ]] && port=$(echo "${config_dict[listeners]}" | awk -F: '{print $NF}' | tr -d ']' | cut -d'-' -f1)
 
         # 获取安装路径
         classpath=$(echo "$command" | grep -oP -- '-cp\s+\K\S+')
@@ -128,7 +168,11 @@ main() {
         if [[ -n "$classpath" ]]; then
             path=$(echo "$classpath" | awk -F: '{print $1}')
             install_path=$(dirname "$path" | sed 's/\/libs$//;s/\/bin$//')
-            install_path=$(readlink -f "$install_path")
+            install_path=$(readlink -f "$install_path" 2>/dev/null)
+        fi
+        # 从配置路径回退安装目录（兼容 4.x 等 classpath 结构变化）
+        if [[ -z "$install_path" || "$install_path" == "/" ]] && [[ -f "$cfg_path" && "$cfg_path" == */config/* ]]; then
+            install_path=$(readlink -f "$(dirname "$(dirname "$cfg_path")")" 2>/dev/null)
         fi
 
         # 获取日志路径
@@ -142,8 +186,9 @@ main() {
         xms=$(echo "$command" | grep -oP -- '-Xms\K\S+')
         xmx=$(echo "$command" | grep -oP -- '-Xmx\K\S+')
 
-        # 获取其他配置参数
-        broker_id="${config_dict[broker.id]:-unknown}"
+        # 获取其他配置参数（ZooKeeper: broker.id；KRaft: node.id 或 kraft.properties）
+        broker_id="${config_dict[broker.id]:-${config_dict[node.id]:-$(get_node_id_from_kraft "$cfg_path")}}"
+        broker_id="${broker_id:-unknown}"
         io_threads="${config_dict[num.io.threads]:-unknown}"
         network_threads="${config_dict[num.network.threads]:-unknown}"
         socket_receive="${config_dict[socket.receive.buffer.bytes]:-unknown}"
@@ -157,6 +202,7 @@ main() {
 
         # 获取版本信息
         kafka_version=$(get_kafka_version "$install_path")
+        [[ "$kafka_version" == "unknown" ]] && kafka_version=$(get_kafka_version_from_command_classpath "$command")
         java_version=$(get_jdk_version "$exe")  # java_version通过调用get_jdk_version函数获取，传入exe路径
 
         # 生成实例名

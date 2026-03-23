@@ -5,7 +5,12 @@
 from django.db import models
 from django.db.models import JSONField
 
-from apps.alerts.constants.constants import AlarmStrategyType, AlertShieldMatchType, AlertAssignmentMatchType, NotifyResultStatus
+from apps.alerts.constants.constants import (
+    AlarmStrategyType,
+    AlertShieldMatchType,
+    AlertAssignmentMatchType,
+    NotifyResultStatus,
+)
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 
@@ -118,6 +123,9 @@ class AlarmStrategy(MaintainerInfo, TimeInfo):
     params = JSONField(
         default=dict, help_text="策略参数"
     )  # {"type":[],"window_size":10}
+    last_execute_time = models.DateTimeField(
+        null=True, blank=True, help_text="所有策略通用的最后执行时间"
+    )
     auto_close = models.BooleanField(default=True, help_text="是否自动关闭告警")
     close_minutes = models.IntegerField(default=120, help_text="自动关闭时间(分钟)")
 
@@ -157,5 +165,3 @@ class NotifyResult(models.Model):
 
     def __str__(self):
         return f"NotifyResult for {self.notify_object} at {self.notify_time} - {self.notify_result}"
-
-

@@ -72,6 +72,24 @@ export interface AlarmStrategyParams {
     time_minutes?: number;
 }
 
+export interface HeartbeatAlertTemplate {
+    title: string;
+    level: string;
+    description: string;
+}
+
+export interface HeartbeatParams {
+    check_mode: 'cron';
+    cron_expr: string;
+    grace_period: number;
+    activation_mode: 'first_heartbeat' | 'immediate';
+    auto_recovery: boolean;
+    heartbeat_status?: 'waiting' | 'monitoring' | 'alerting';
+    last_heartbeat_time?: string | null;
+    last_heartbeat_context?: Record<string, string | null> | null;
+    alert_template: HeartbeatAlertTemplate;
+}
+
 export interface CorrelationRule {
     id: number;
     created_at: string;
@@ -83,7 +101,7 @@ export interface CorrelationRule {
     team?: number[];
     dispatch_team?: number[];
     match_rules?: FilterRule[][];
-    params?: AlarmStrategyParams;
+    params?: AlarmStrategyParams | HeartbeatParams;
     auto_close?: boolean;
     close_minutes?: number;
 }

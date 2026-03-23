@@ -14,6 +14,7 @@ from django.db import transaction
 from django.http import FileResponse
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.validators import validate_serving_status_change
+from apps.mlops.predict_url_builder import build_predict_url
 from apps.mlops.utils.webhook_client import (
     WebhookClient,
     WebhookError,
@@ -21,7 +22,6 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 from apps.mlops.services import (
-    get_host_address,
     get_image_by_prefix,
     get_mlflow_train_config,
     get_mlflow_tracking_uri,
@@ -1358,30 +1358,18 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 获取端口
-        port = serving.container_info.get("port")
-        if not port:
-            return Response(
-                {"error": "服务端口不可用"}, status=status.HTTP_400_BAD_REQUEST
+        try:
+            predict_url = build_predict_url(
+                serving_id=f"ObjectDetection_Serving_{serving.id}",
+                container_info=serving.container_info,
             )
-
-        # 获取动态服务地址
-        host_address = get_host_address()
-        if not host_address:
-            return Response(
-                {
-                    "error": "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         image_data = request.data.get("image")
         if not image_data:
             return Response(
                 {"error": "缺少参数: image"}, status=status.HTTP_400_BAD_REQUEST
             )
-
-        # 构建预测请求URL
-        predict_url = f"http://{host_address}:{port}/predict"
 
         try:
             # 调用推理服务

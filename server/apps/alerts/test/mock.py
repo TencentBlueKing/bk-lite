@@ -386,7 +386,7 @@ def generate_website_monitoring_events(num_websites=3):
 
 if __name__ == "__main__":
     # 生成100个mock事件
-    mock_data = generate_mock_events(50)
+    mock_data = generate_mock_events(5)
 
     with open("mock_monitor_events.json", "w") as f:
         json.dump(mock_data, f, indent=2)
