@@ -107,7 +107,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                 (sc: any) => sc.collector_id === c.collector_id
               ) && !collectorIds.has(c.collector_id)
           )
-        ];
+        ].filter((c: any) => c.collector_id !== 'ansibleexecutor_linux'); // 过滤掉 Ansible-Executor
         setCollectors(filteredCollectors);
         setForm(row);
         if (filteredCollectors.length > 0) {

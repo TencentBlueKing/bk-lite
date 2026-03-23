@@ -16,7 +16,6 @@ export interface ReasonLabelData {
 
 // 异常检测推理参数（通过后端代理）
 export interface AnomalyDetectionReasonParams {
-  url: string;  // 服务器地址，如 http://192.168.1.100
   data: Array<{ timestamp: number; value: number }>;  // 时序数据
   config?: {
     threshold?: number;
@@ -25,7 +24,6 @@ export interface AnomalyDetectionReasonParams {
 
 // 时序预测推理参数
 export interface TimeseriesPredictReasonParams {
-  url: string;
   data: Array<{ timestamp: number; value: number }>;
   config: {
     steps: number;  // 预测步数（必填）
@@ -34,7 +32,6 @@ export interface TimeseriesPredictReasonParams {
 
 // 日志聚类推理参数
 export interface LogClusteringReasonParams {
-  url: string;
   data: string[];  // 日志文本数组
   config?: {
     return_details?: boolean;
@@ -45,7 +42,6 @@ export interface LogClusteringReasonParams {
 
 // 文本分类推理参数
 export interface ClassificationReasonParams {
-  url: string;
   texts: string[];  // 待分类文本数组
   config?: {
     top_k?: number;
@@ -56,7 +52,6 @@ export interface ClassificationReasonParams {
 
 // 图片分类推理参数
 export interface ImageClassificationReasonParams {
-  url: string;
   images: string[];  // base64 编码的图片数组
   config?: {
     top_k?: number;
@@ -65,7 +60,6 @@ export interface ImageClassificationReasonParams {
 
 // 目标检测推理参数
 export interface ObjectDetectionReasonParams {
-  url: string;
   images: string[];  // base64 编码的图片数组
   config?: {
     conf_threshold?: number;

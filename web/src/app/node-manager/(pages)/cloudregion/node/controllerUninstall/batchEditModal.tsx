@@ -6,7 +6,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
   useEffect,
-  useCallback,
+  useCallback
 } from 'react';
 import { Input, Button, Form, Select, InputNumber } from 'antd';
 import OperateModal from '@/components/operate-modal';
@@ -14,7 +14,7 @@ import type { FormInstance } from 'antd';
 import {
   ModalRef,
   SegmentedItem,
-  TableDataItem,
+  TableDataItem
 } from '@/app/node-manager/types';
 import { ControllerInstallFields } from '@/app/node-manager/types/cloudregion';
 import { BATCH_FIELD_MAPS } from '@/app/node-manager/constants/cloudregion';
@@ -56,7 +56,7 @@ const BatchEditModal = forwardRef<ModalRef, ModalProps>(
           type === 'password' ? authType || 'password' : undefined
         );
         setUploadedFileName(undefined);
-      },
+      }
     }));
 
     useEffect(() => {
@@ -81,7 +81,7 @@ const BatchEditModal = forwardRef<ModalRef, ModalProps>(
                   style={{
                     fontSize: 16,
                     color: 'var(--color-primary)',
-                    fontWeight: 'bold',
+                    fontWeight: 'bold'
                   }}
                   onClick={() => {
                     setUploadedFileName(undefined);
@@ -213,8 +213,8 @@ const BatchEditModal = forwardRef<ModalRef, ModalProps>(
                     return value
                       ? Promise.resolve()
                       : Promise.reject(new Error(t('common.required')));
-                  },
-                },
+                  }
+                }
               ]}
             >
               {renderFormItem()}
