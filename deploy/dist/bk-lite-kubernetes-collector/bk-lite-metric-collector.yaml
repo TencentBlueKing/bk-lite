@@ -26,7 +26,7 @@ spec:
       serviceAccountName: cadvisor
       containers:
       - name: cadvisor
-        image: gcr.io/cadvisor/cadvisor:latest
+        image: bk-lite.tencentcloudcr.com/bklite/cadvisor:0.56.2
         resources:
           requests:
             memory: 400Mi
