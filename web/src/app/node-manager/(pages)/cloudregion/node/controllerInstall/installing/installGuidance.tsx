@@ -5,7 +5,8 @@ import { Steps, Tag } from 'antd';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
-  LoadingOutlined
+  LoadingOutlined,
+  ClockCircleFilled
 } from '@ant-design/icons';
 import OperateDrawer from '@/app/node-manager/components/operate-drawer';
 import { ModalRef } from '@/app/node-manager/types';
@@ -76,6 +77,13 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
           borderColor: '#ff4d4f',
           stepStatus: 'finish',
           icon: <CloseCircleFilled style={{ color: '#ff4d4f' }} />
+        },
+        timeout: {
+          text: t('node-manager.cloudregion.node.timeout'),
+          tagColor: 'warning',
+          borderColor: '#faad14',
+          stepStatus: 'finish',
+          icon: <ClockCircleFilled style={{ color: '#faad14' }} />
         },
         running: {
           text: t('node-manager.cloudregion.node.statusRunning'),
