@@ -1,10 +1,10 @@
 from django.contrib.auth.hashers import make_password
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F, Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
-from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_cache import clear_user_permission_cache, clear_users_permission_cache

@@ -1,13 +1,13 @@
 # -- coding: utf-8 --
-from django.utils import timezone
 from django.db.models.query import QuerySet
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.fields import empty
 
 from apps.alerts.constants.constants import AlertStatus, NotifyResultStatus
 from apps.alerts.models.models import Alert
-from apps.system_mgmt.models.user import User
 from apps.core.logger import alert_logger as logger
+from apps.system_mgmt.models.user import User
 
 
 class AlertModelSerializer(serializers.ModelSerializer):
@@ -24,12 +24,8 @@ class AlertModelSerializer(serializers.ModelSerializer):
     # 格式化时间字段
     created_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
     updated_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
-    first_event_time = serializers.DateTimeField(
-        format="%Y-%m-%d %H:%M:%S", read_only=True
-    )
-    last_event_time = serializers.DateTimeField(
-        format="%Y-%m-%d %H:%M:%S", read_only=True
-    )
+    first_event_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    last_event_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
     incident_name = serializers.SerializerMethodField()
     notify_status = serializers.SerializerMethodField()
 
@@ -58,9 +54,7 @@ class AlertModelSerializer(serializers.ModelSerializer):
         if isinstance(instance, (list, tuple, QuerySet)):
             from apps.alerts.models import NotifyResult
 
-            alerts = [
-                item.alert_id for item in instance if getattr(item, "alert_id", None)
-            ]
+            alerts = [item.alert_id for item in instance if getattr(item, "alert_id", None)]
             if not alerts:
                 return result
 
@@ -70,9 +64,7 @@ class AlertModelSerializer(serializers.ModelSerializer):
             ).values_list("notify_object", "notify_result")
 
             for notify_object, notify_status in notify_result:
-                result.setdefault(notify_object, []).append(
-                    notify_status == NotifyResultStatus.SUCCESS
-                )
+                result.setdefault(notify_object, []).append(notify_status == NotifyResultStatus.SUCCESS)
 
         return result
 
@@ -152,9 +144,7 @@ class AlertModelSerializer(serializers.ModelSerializer):
         operator_user_map = self.context.get("operator_user_map")
         if operator_user_map is not None:
             return ", ".join(operator_user_map.get(u, u) for u in obj.operator)
-        user_name_list = User.objects.filter(username__in=obj.operator).values_list(
-            "display_name", flat=True
-        )
+        user_name_list = User.objects.filter(username__in=obj.operator).values_list("display_name", flat=True)
         return ", ".join(list(user_name_list))
 
     @staticmethod
@@ -162,11 +152,19 @@ class AlertModelSerializer(serializers.ModelSerializer):
         """
         获取关联的事故标题
         """
-
-        if hasattr(obj, "incident_title_annotated"):
+        # 如果使用了注解（推荐，PostgreSQL）
+        if hasattr(obj, "incident_title_annotated") and obj.incident_title_annotated:
             return obj.incident_title_annotated
 
-        return ""
+        # fallback: 通过预加载的关联查询获取（其他数据库）
+        try:
+            incident_titles = set()
+            for incident in obj.incident_set.all():
+                if incident.title:
+                    incident_titles.add(incident.title)
+            return ", ".join(sorted(incident_titles))
+        except Exception:
+            return ""
 
     def get_notify_status(self, obj):
         """

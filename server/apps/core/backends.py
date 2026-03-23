@@ -3,7 +3,6 @@ from typing import Any, Dict, Optional
 
 import pytz
 from django.contrib.auth.backends import ModelBackend
-from django.core.cache import caches
 from django.db import IntegrityError
 from django.utils import timezone as django_timezone
 from django.utils import translation
@@ -12,7 +11,6 @@ from apps.base.models import User, UserAPISecret
 from apps.rpc.system_mgmt import SystemMgmt
 
 logger = logging.getLogger("app")
-cache = caches["db"]
 
 # 常量定义
 DEFAULT_LOCALE = "en"
