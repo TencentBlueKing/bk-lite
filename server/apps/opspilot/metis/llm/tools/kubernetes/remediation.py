@@ -1,27 +1,29 @@
 """Kubernetes故障自愈工具 - 操作类工具"""
+
 import json
 import time
 from datetime import datetime, timezone
-from typing import Optional
+
+from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from kubernetes import client
 from loguru import logger
+
 from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
 
 
 def _log_operation(operation: str, namespace: str, resource_type: str, resource_name: str):
     """记录操作到审计日志"""
     logger.warning(
-        f"K8S操作执行",
+        "K8S操作执行",
         extra={
             "operation": operation,
             "namespace": namespace,
             "resource_type": resource_type,
             "resource_name": resource_name,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
     )
 
 
@@ -93,21 +95,14 @@ def restart_pod(pod_name, namespace, wait_for_ready=True, timeout=60, config: Ru
             pod = core_v1.read_namespaced_pod(pod_name, namespace)
         except ApiException as e:
             if e.status == 404:
-                return json.dumps({
-                    "success": False,
-                    "error": f"Pod不存在: {namespace}/{pod_name}"
-                })
+                return json.dumps({"success": False, "error": f"Pod不存在: {namespace}/{pod_name}"})
             raise
 
         # 2. 记录Pod的控制器信息
         owner_info = None
         if pod.metadata.owner_references:
             owner_ref = pod.metadata.owner_references[0]
-            owner_info = {
-                "kind": owner_ref.kind,
-                "name": owner_ref.name,
-                "uid": owner_ref.uid
-            }
+            owner_info = {"kind": owner_ref.kind, "name": owner_ref.name, "uid": owner_ref.uid}
 
         old_pod_uid = pod.metadata.uid
 
@@ -116,14 +111,11 @@ def restart_pod(pod_name, namespace, wait_for_ready=True, timeout=60, config: Ru
             core_v1.delete_namespaced_pod(
                 name=pod_name,
                 namespace=namespace,
-                grace_period_seconds=30  # 优雅删除
+                grace_period_seconds=30,  # 优雅删除
             )
             logger.info(f"Pod已删除: {namespace}/{pod_name}")
         except ApiException as e:
-            return json.dumps({
-                "success": False,
-                "error": f"删除Pod失败: {str(e)}"
-            })
+            return json.dumps({"success": False, "error": f"删除Pod失败: {str(e)}"})
 
         result = {
             "success": True,
@@ -131,7 +123,7 @@ def restart_pod(pod_name, namespace, wait_for_ready=True, timeout=60, config: Ru
             "namespace": namespace,
             "old_pod_uid": old_pod_uid,
             "owner_controller": owner_info,
-            "restart_time": datetime.now(timezone.utc).isoformat()
+            "restart_time": datetime.now(timezone.utc).isoformat(),
         }
 
         # 4. 等待新Pod就绪
@@ -179,12 +171,7 @@ def restart_pod(pod_name, namespace, wait_for_ready=True, timeout=60, config: Ru
 
     except Exception as e:
         logger.error(f"重启Pod失败: {namespace}/{pod_name}, 错误: {str(e)}")
-        return json.dumps({
-            "success": False,
-            "error": f"重启Pod失败: {str(e)}",
-            "pod_name": pod_name,
-            "namespace": namespace
-        })
+        return json.dumps({"success": False, "error": f"重启Pod失败: {str(e)}", "pod_name": pod_name, "namespace": namespace})
 
 
 @tool()
@@ -255,11 +242,7 @@ def scale_deployment(deployment_name, namespace, replicas, config: RunnableConfi
 
             # 更新副本数
             deployment.spec.replicas = replicas
-            apps_v1.patch_namespaced_deployment(
-                name=deployment_name,
-                namespace=namespace,
-                body=deployment
-            )
+            apps_v1.patch_namespaced_deployment(name=deployment_name, namespace=namespace, body=deployment)
 
         except ApiException as e:
             if e.status == 404:
@@ -271,17 +254,10 @@ def scale_deployment(deployment_name, namespace, replicas, config: RunnableConfi
 
                     # 更新副本数
                     statefulset.spec.replicas = replicas
-                    apps_v1.patch_namespaced_stateful_set(
-                        name=deployment_name,
-                        namespace=namespace,
-                        body=statefulset
-                    )
+                    apps_v1.patch_namespaced_stateful_set(name=deployment_name, namespace=namespace, body=statefulset)
                 except ApiException as e2:
                     if e2.status == 404:
-                        return json.dumps({
-                            "success": False,
-                            "error": f"未找到Deployment或StatefulSet: {namespace}/{deployment_name}"
-                        })
+                        return json.dumps({"success": False, "error": f"未找到Deployment或StatefulSet: {namespace}/{deployment_name}"})
                     raise e2
             else:
                 raise
@@ -294,7 +270,7 @@ def scale_deployment(deployment_name, namespace, replicas, config: RunnableConfi
             "previous_replicas": current_replicas,
             "target_replicas": replicas,
             "operation": "scale_up" if replicas > current_replicas else "scale_down",
-            "scale_time": datetime.now(timezone.utc).isoformat()
+            "scale_time": datetime.now(timezone.utc).isoformat(),
         }
 
         logger.info(f"扩缩容成功: {namespace}/{deployment_name}, {current_replicas} -> {replicas}")
@@ -302,12 +278,7 @@ def scale_deployment(deployment_name, namespace, replicas, config: RunnableConfi
 
     except Exception as e:
         logger.error(f"扩缩容失败: {namespace}/{deployment_name}, 错误: {str(e)}")
-        return json.dumps({
-            "success": False,
-            "error": f"扩缩容失败: {str(e)}",
-            "resource_name": deployment_name,
-            "namespace": namespace
-        })
+        return json.dumps({"success": False, "error": f"扩缩容失败: {str(e)}", "resource_name": deployment_name, "namespace": namespace})
 
 
 @tool()
@@ -365,10 +336,7 @@ def get_deployment_revision_history(deployment_name, namespace, config: Runnable
 
         # 获取关联的ReplicaSet
         label_selector = ",".join([f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()])
-        replica_sets = apps_v1.list_namespaced_replica_set(
-            namespace,
-            label_selector=label_selector
-        )
+        replica_sets = apps_v1.list_namespaced_replica_set(namespace, label_selector=label_selector)
 
         # 整理历史版本
         revisions = []
@@ -382,8 +350,10 @@ def get_deployment_revision_history(deployment_name, namespace, config: Runnable
                     "creation_time": rs.metadata.creation_timestamp.isoformat() if rs.metadata.creation_timestamp else None,
                     "replicas": rs.spec.replicas,
                     "ready_replicas": rs.status.ready_replicas or 0,
-                    "is_current": (rs.metadata.name == deployment.status.conditions[0].message.split()[-1] if deployment.status.conditions else False),
-                    "image": rs.spec.template.spec.containers[0].image if rs.spec.template.spec.containers else None
+                    "is_current": (
+                        rs.metadata.name == deployment.status.conditions[0].message.split()[-1] if deployment.status.conditions else False
+                    ),
+                    "image": rs.spec.template.spec.containers[0].image if rs.spec.template.spec.containers else None,
                 }
                 revisions.append(revision_info)
 
@@ -399,7 +369,7 @@ def get_deployment_revision_history(deployment_name, namespace, config: Runnable
             "current_revision": int(current_revision) if current_revision else None,
             "total_revisions": len(revisions),
             "revisions": revisions,
-            "rollback_limit": deployment.spec.revision_history_limit or 10
+            "rollback_limit": deployment.spec.revision_history_limit or 10,
         }
 
         logger.info(f"获取发布历史成功: {len(revisions)}个版本")
@@ -408,12 +378,8 @@ def get_deployment_revision_history(deployment_name, namespace, config: Runnable
     except ApiException as e:
         logger.error(f"获取发布历史失败: {str(e)}")
         if e.status == 404:
-            return json.dumps({
-                "error": f"Deployment不存在: {namespace}/{deployment_name}"
-            })
-        return json.dumps({
-            "error": f"获取发布历史失败: {str(e)}"
-        })
+            return json.dumps({"error": f"Deployment不存在: {namespace}/{deployment_name}"})
+        return json.dumps({"error": f"获取发布历史失败: {str(e)}"})
 
 
 @tool()
@@ -484,10 +450,7 @@ def rollback_deployment(deployment_name, namespace, revision=None, config: Runna
         if revision is None:
             # 获取历史版本
             label_selector = ",".join([f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()])
-            replica_sets = apps_v1.list_namespaced_replica_set(
-                namespace,
-                label_selector=label_selector
-            )
+            replica_sets = apps_v1.list_namespaced_replica_set(namespace, label_selector=label_selector)
 
             revisions_list = []
             for rs in replica_sets.items:
@@ -497,10 +460,7 @@ def rollback_deployment(deployment_name, namespace, revision=None, config: Runna
 
             revisions_list.sort(reverse=True)
             if len(revisions_list) < 2:
-                return json.dumps({
-                    "success": False,
-                    "error": "没有可回滚的历史版本"
-                })
+                return json.dumps({"success": False, "error": "没有可回滚的历史版本"})
 
             # 回滚到前一个版本
             revision = revisions_list[1]
@@ -510,13 +470,6 @@ def rollback_deployment(deployment_name, namespace, revision=None, config: Runna
         try:
             # 方式1: 使用kubectl rollback等效的API
             # 注意: 某些K8S版本可能不支持DeploymentRollback API
-            rollback_body = {
-                "name": deployment_name,
-                "rollbackTo": {
-                    "revision": revision
-                }
-            }
-
             # 直接更新deployment的template到目标revision的template
             # 找到目标revision的ReplicaSet
             target_rs = None
@@ -527,10 +480,7 @@ def rollback_deployment(deployment_name, namespace, revision=None, config: Runna
                     break
 
             if not target_rs:
-                return json.dumps({
-                    "success": False,
-                    "error": f"未找到revision {revision}对应的ReplicaSet"
-                })
+                return json.dumps({"success": False, "error": f"未找到revision {revision}对应的ReplicaSet"})
 
             # 更新Deployment的template为目标版本的template
             deployment.spec.template = target_rs.spec.template
@@ -540,11 +490,7 @@ def rollback_deployment(deployment_name, namespace, revision=None, config: Runna
                 deployment.metadata.annotations = {}
             deployment.metadata.annotations["kubernetes.io/change-cause"] = f"Rollback to revision {revision}"
 
-            apps_v1.patch_namespaced_deployment(
-                name=deployment_name,
-                namespace=namespace,
-                body=deployment
-            )
+            apps_v1.patch_namespaced_deployment(name=deployment_name, namespace=namespace, body=deployment)
 
             result = {
                 "success": True,
@@ -553,29 +499,20 @@ def rollback_deployment(deployment_name, namespace, revision=None, config: Runna
                 "previous_revision": int(current_revision) if current_revision else None,
                 "target_revision": revision,
                 "rollback_time": datetime.now(timezone.utc).isoformat(),
-                "target_image": target_rs.spec.template.spec.containers[0].image if target_rs.spec.template.spec.containers else None
+                "target_image": target_rs.spec.template.spec.containers[0].image if target_rs.spec.template.spec.containers else None,
             }
 
             logger.info(f"回滚成功: {namespace}/{deployment_name}, revision {current_revision} -> {revision}")
             return json.dumps(result, ensure_ascii=False, indent=2)
 
         except Exception as e:
-            return json.dumps({
-                "success": False,
-                "error": f"回滚失败: {str(e)}"
-            })
+            return json.dumps({"success": False, "error": f"回滚失败: {str(e)}"})
 
     except ApiException as e:
         logger.error(f"回滚Deployment失败: {str(e)}")
         if e.status == 404:
-            return json.dumps({
-                "success": False,
-                "error": f"Deployment不存在: {namespace}/{deployment_name}"
-            })
-        return json.dumps({
-            "success": False,
-            "error": f"回滚失败: {str(e)}"
-        })
+            return json.dumps({"success": False, "error": f"Deployment不存在: {namespace}/{deployment_name}"})
+        return json.dumps({"success": False, "error": f"回滚失败: {str(e)}"})
 
 
 @tool()
@@ -615,7 +552,7 @@ def delete_kubernetes_resource(resource_type, resource_name, namespace, grace_pe
         - delete_time: 删除时间戳
 
     **注意事项：**
-    - ⚠️ 删除操作不可逆，请谨慎使用
+    - [警告] 删除操作不可逆，请谨慎使用
     - 删除Pod：如果有控制器，会自动重建
     - 删除Deployment：会删除所有关联的ReplicaSet和Pod
     - 删除Service：不会删除后端Pod
@@ -639,38 +576,23 @@ def delete_kubernetes_resource(resource_type, resource_name, namespace, grace_pe
 
         # 根据资源类型调用相应的删除API
         if resource_type == "pod":
-            core_v1.delete_namespaced_pod(
-                name=resource_name,
-                namespace=namespace,
-                grace_period_seconds=grace_period
-            )
+            core_v1.delete_namespaced_pod(name=resource_name, namespace=namespace, grace_period_seconds=grace_period)
         elif resource_type == "deployment":
-            apps_v1.delete_namespaced_deployment(
-                name=resource_name,
-                namespace=namespace,
-                grace_period_seconds=grace_period
-            )
+            apps_v1.delete_namespaced_deployment(name=resource_name, namespace=namespace, grace_period_seconds=grace_period)
         elif resource_type == "service":
-            core_v1.delete_namespaced_service(
-                name=resource_name,
-                namespace=namespace
-            )
+            core_v1.delete_namespaced_service(name=resource_name, namespace=namespace)
         elif resource_type == "configmap":
-            core_v1.delete_namespaced_config_map(
-                name=resource_name,
-                namespace=namespace
-            )
+            core_v1.delete_namespaced_config_map(name=resource_name, namespace=namespace)
         elif resource_type == "secret":
-            core_v1.delete_namespaced_secret(
-                name=resource_name,
-                namespace=namespace
-            )
+            core_v1.delete_namespaced_secret(name=resource_name, namespace=namespace)
         else:
-            return json.dumps({
-                "success": False,
-                "error": f"不支持的资源类型: {resource_type}",
-                "supported_types": ["pod", "deployment", "service", "configmap", "secret"]
-            })
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": f"不支持的资源类型: {resource_type}",
+                    "supported_types": ["pod", "deployment", "service", "configmap", "secret"],
+                }
+            )
 
         result = {
             "success": True,
@@ -678,7 +600,7 @@ def delete_kubernetes_resource(resource_type, resource_name, namespace, grace_pe
             "resource_name": resource_name,
             "namespace": namespace,
             "grace_period_seconds": grace_period,
-            "delete_time": datetime.now(timezone.utc).isoformat()
+            "delete_time": datetime.now(timezone.utc).isoformat(),
         }
 
         logger.info(f"资源删除成功: {namespace}/{resource_type}/{resource_name}")
@@ -687,14 +609,8 @@ def delete_kubernetes_resource(resource_type, resource_name, namespace, grace_pe
     except ApiException as e:
         logger.error(f"删除资源失败: {str(e)}")
         if e.status == 404:
-            return json.dumps({
-                "success": False,
-                "error": f"资源不存在: {namespace}/{resource_type}/{resource_name}"
-            })
-        return json.dumps({
-            "success": False,
-            "error": f"删除失败: {str(e)}"
-        })
+            return json.dumps({"success": False, "error": f"资源不存在: {namespace}/{resource_type}/{resource_name}"})
+        return json.dumps({"success": False, "error": f"删除失败: {str(e)}"})
 
 
 @tool()
@@ -766,45 +682,33 @@ def wait_for_pod_ready(pod_name, namespace, timeout=60, config: RunnableConfig =
                                 "status": "ready",
                                 "wait_time_seconds": wait_time,
                                 "pod_ip": pod.status.pod_ip,
-                                "node": pod.spec.node_name
+                                "node": pod.spec.node_name,
                             }
                             logger.info(f"Pod已就绪: {namespace}/{pod_name}, 等待时间: {wait_time}秒")
                             return json.dumps(result, ensure_ascii=False, indent=2)
 
                 elif pod.status.phase in ["Failed", "Unknown"]:
-                    return json.dumps({
-                        "success": False,
-                        "pod_name": pod_name,
-                        "namespace": namespace,
-                        "status": pod.status.phase,
-                        "error": f"Pod处于失败状态: {pod.status.phase}"
-                    })
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "pod_name": pod_name,
+                            "namespace": namespace,
+                            "status": pod.status.phase,
+                            "error": f"Pod处于失败状态: {pod.status.phase}",
+                        }
+                    )
 
                 time.sleep(2)
 
             except ApiException as e:
                 if e.status == 404:
-                    return json.dumps({
-                        "success": False,
-                        "error": f"Pod不存在: {namespace}/{pod_name}"
-                    })
+                    return json.dumps({"success": False, "error": f"Pod不存在: {namespace}/{pod_name}"})
                 raise
 
         # 超时
         logger.warning(f"等待Pod就绪超时: {namespace}/{pod_name}")
-        return json.dumps({
-            "success": False,
-            "pod_name": pod_name,
-            "namespace": namespace,
-            "status": "timeout",
-            "error": f"Pod在{timeout}秒内未就绪"
-        })
+        return json.dumps({"success": False, "pod_name": pod_name, "namespace": namespace, "status": "timeout", "error": f"Pod在{timeout}秒内未就绪"})
 
     except Exception as e:
         logger.error(f"等待Pod就绪失败: {str(e)}")
-        return json.dumps({
-            "success": False,
-            "error": f"等待Pod就绪失败: {str(e)}",
-            "pod_name": pod_name,
-            "namespace": namespace
-        })
+        return json.dumps({"success": False, "error": f"等待Pod就绪失败: {str(e)}", "pod_name": pod_name, "namespace": namespace})

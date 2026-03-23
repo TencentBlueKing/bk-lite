@@ -1,0 +1,292 @@
+FEISHU WEBHOOK BOT API - COMPLETE DOCUMENTATION SUMMARY
+======================================================
+
+Official Source: https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot
+
+1. WEBHOOK URL FORMAT
+=====================
+
+Base URL:
+https://open.feishu.cn/open-apis/bot/v2/hook/{webhook_token}
+
+Example:
+https://open.feishu.cn/open-apis/bot/v2/hook/a21843-1c6e-4a51-8c22-aaa123abc9d
+
+Getting Webhook URL:
+1. Open Feishu/Lark application
+2. Go to target group chat
+3. Click "..." menu → "Add Bot" → "Custom Bot"
+4. Configure bot name, avatar, description
+5. Click "Add" to create
+6. Copy the webhook URL from confirmation page
+
+
+2. MESSAGE TYPES & JSON PAYLOAD STRUCTURES
+===========================================
+
+A) TEXT MESSAGE
+{
+  "msg_type": "text",
+  "content": {
+    "text": "Hello, this is a text message!"
+  }
+}
+
+B) MARKDOWN/RICH TEXT MESSAGE (post type)
+{
+  "msg_type": "post",
+  "content": {
+    "post": {
+      "zh_cn": {
+        "title": "Notification Title",
+        "content": [
+          [
+            {
+              "tag": "text",
+              "text": "This is a "
+            },
+            {
+              "tag": "a",
+              "text": "link",
+              "href": "https://example.com"
+            },
+            {
+              "tag": "text",
+              "text": " example."
+            }
+          ]
+        ]
+      }
+    }
+  }
+}
+
+Supported tags in post content:
+- text: Plain text
+- a: Hyperlinks (with href attribute)
+- br: Line breaks
+- img: Images (requires image_key)
+- at: Mentions (user, group, or everyone)
+
+Language keys: zh_cn (Chinese), en_us (English)
+
+C) INTERACTIVE CARDS (Rich UI Components)
+{
+  "msg_type": "interactive",
+  "card": {
+    "config": {
+      "wide_screen_mode": true,
+      "enable_forward": true
+    },
+    "header": {
+      "title": {
+        "content": "Card Title",
+        "tag": "plain_text"
+      },
+      "template": "blue"
+    },
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "**Bold** text"
+      },
+      {
+        "tag": "button",
+        "text": {
+          "content": "Click Me",
+          "tag": "plain_text"
+        },
+        "type": "primary",
+        "action": {
+          "type": "open_url",
+          "url": "https://example.com"
+        }
+      }
+    ]
+  }
+}
+
+Card templates: blue, wathet, turquoise, green, yellow, orange, red, carmine, pink, purple, indigo, grey
+
+D) IMAGE MESSAGE
+{
+  "msg_type": "image",
+  "content": {
+    "image_key": "img_xxxxxxxxxxxxxxxxxxxxx"
+  }
+}
+
+E) SHARED CHAT CARD
+{
+  "msg_type": "share_chat",
+  "content": {
+    "chat_id": "oc_52ad0e7cebd54a5d6dcd6e36c5e41c45"
+  }
+}
+
+
+3. AUTHENTICATION & SIGNATURE VERIFICATION
+============================================
+
+Request Headers from Feishu:
+X-Lark-Request-Timestamp: 1234567890
+X-Lark-Request-Signature: base64_encoded_signature
+
+Signature Verification Algorithm:
+1. Extract X-Lark-Request-Timestamp header value
+2. Get your bot's secret key from security settings
+3. Create signature_string = "{timestamp}\n{secret_key}"
+4. Calculate HMAC-SHA256 of empty string "" with signature_string as key
+5. Encode result as Base64
+6. Compare with X-Lark-Request-Signature header
+
+Python Example:
+import hmac, hashlib, base64
+timestamp = request.headers.get('X-Lark-Request-Timestamp')
+signature = request.headers.get('X-Lark-Request-Signature')
+SECRET_KEY = "your_secret_key"
+signature_string = f"{timestamp}\n{SECRET_KEY}"
+calculated = base64.b64encode(
+    hmac.new(signature_string.encode(), b'', hashlib.sha256).digest()
+).decode()
+if calculated != signature:
+    return error
+
+JavaScript Example:
+const crypto = require('crypto');
+const timestamp = req.headers['x-lark-request-timestamp'];
+const signature = req.headers['x-lark-request-signature'];
+const signatureString = `${timestamp}\n${SECRET_KEY}`;
+const calculated = crypto
+  .createHmac('sha256', signatureString)
+  .update('')
+  .digest('base64');
+if (calculated !== signature) return error;
+
+Go Example:
+import "crypto/hmac"
+signatureString := fmt.Sprintf("%s\n%s", timestamp, SECRET_KEY)
+h := hmac.New(sha256.New, []byte(signatureString))
+h.Write([]byte(""))
+calculated := base64.StdEncoding.EncodeToString(h.Sum(nil))
+
+
+4. CURL EXAMPLES
+================
+
+Send Text Message:
+curl -X POST https://open.feishu.cn/open-apis/bot/v2/hook/your_token \
+  -H 'Content-Type: application/json' \
+  -d '{"msg_type":"text","content":{"text":"Hello!"}}'
+
+Send Card with Button:
+curl -X POST https://open.feishu.cn/open-apis/bot/v2/hook/your_token \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "msg_type": "interactive",
+    "card": {
+      "header": {"title": {"content": "Title", "tag": "plain_text"}},
+      "elements": [{
+        "tag": "button",
+        "text": {"content": "Click", "tag": "plain_text"},
+        "type": "primary",
+        "action": {"type": "open_url", "url": "https://example.com"}
+      }]
+    }
+  }'
+
+
+5. SECURITY SETTINGS
+====================
+
+Signature Verification:
+- In bot settings → Security Settings → Signature Verification
+- Copy the secret key and store securely
+- Use for HMAC-SHA256 verification in receiving webhooks
+
+IP Whitelist:
+- Security Settings → IP Whitelist
+- Add server IP addresses
+- Only requests from whitelisted IPs accepted
+- Multiple IPs separated by commas
+
+Keyword Filter:
+- Security Settings → Custom Keywords
+- Add required keywords
+- Messages must contain keyword to be accepted
+
+
+6. IMPORTANT DETAILS
+====================
+
+Rate Limiting:
+- Approximately 10 requests per second per webhook
+- Use exponential backoff for retries
+
+Timeout:
+- Request must complete within 3-5 seconds
+- Move heavy processing to asynchronous tasks
+
+Payload Size:
+- Maximum approximately 20 KB
+- Split large messages if needed
+
+Challenge Verification:
+When setting up webhook URL, Feishu sends challenge:
+Request: {"type":"url_verification","challenge":"abc123def456"}
+Response: {"challenge":"abc123def456"}
+
+Success Response:
+{"code":0,"msg":"ok","data":{}}
+
+Error Codes:
+- 9499: Invalid webhook token
+- 9500: Rate limit exceeded
+- 13000: Internal server error
+- 21050: Missing required fields
+
+
+7. OFFICIAL DOCUMENTATION LINKS
+================================
+
+Custom Bot Usage Guide:
+https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot
+
+Bot Overview:
+https://open.feishu.cn/document/client-docs/bot-v3/bot-overview
+
+Send Message Cards with Custom Bot:
+https://open.feishu.cn/document/feishu-cards/quick-start/send-message-cards-with-custom-bot
+
+Message Content Structure:
+https://open.feishu.cn/document/server-docs/im-v1/message-content-description/create_json
+
+Event Verification:
+https://open.feishu.cn/document/server-docs/event-subscription-guides/event-verification
+
+API Explorer:
+https://open.feishu.cn/api-explorer
+
+Message FAQ:
+https://open.feishu.cn/document/server-docs/im-v1/faq
+
+
+8. QUICK MESSAGE TEMPLATES
+===========================
+
+Minimal Text:
+{"msg_type":"text","content":{"text":"Message"}}
+
+Minimal Card:
+{"msg_type":"interactive","card":{"elements":[{"tag":"markdown","content":"Content"}]}}
+
+Minimal Rich Text:
+{"msg_type":"post","content":{"post":{"zh_cn":{"title":"T","content":[[{"tag":"text","text":"C"}]]}}}}
+
+With Signature (timestamp and sign fields):
+{
+  "msg_type": "text",
+  "content": {"text": "Message"},
+  "timestamp": "1234567890",
+  "sign": "base64_hmac_sha256"
+}

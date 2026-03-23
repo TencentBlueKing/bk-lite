@@ -2,7 +2,9 @@ package local
 
 import (
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestExecute(t *testing.T) {
@@ -104,4 +106,89 @@ func TestExecuteTimeout(t *testing.T) {
 		t.Error("Expected timeout but command succeeded")
 	}
 	t.Logf("Error: %s", response.Error)
+}
+
+func TestExecuteFailureIncludesExitCodeAndOutput(t *testing.T) {
+	req := ExecuteRequest{
+		Command:        "printf 'boom'; exit 7",
+		ExecuteTimeout: 5,
+		Shell:          "sh",
+	}
+
+	response := Execute(req, "test-failure")
+
+	if response.Success {
+		t.Fatal("expected command to fail")
+	}
+
+	if !strings.Contains(response.Error, "exit code 7") {
+		t.Fatalf("expected exit code in error, got: %s", response.Error)
+	}
+
+	if !strings.Contains(response.Output, "boom") {
+		t.Fatalf("expected command output to be preserved, got: %q", response.Output)
+	}
+}
+
+func TestExecuteUsesCustomShellBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping custom shell binary test on Windows")
+	}
+
+	req := ExecuteRequest{
+		Command:        "printf custom-shell",
+		ExecuteTimeout: 5,
+		Shell:          "/bin/sh",
+	}
+
+	response := Execute(req, "test-custom-shell")
+	if !response.Success {
+		t.Fatalf("custom shell execution failed: %s", response.Error)
+	}
+
+	if response.Output != "custom-shell" {
+		t.Fatalf("unexpected output: %q", response.Output)
+	}
+}
+
+func TestContains(t *testing.T) {
+	if !contains("prefix-scp-suffix", "scp") {
+		t.Fatal("expected substring to be found")
+	}
+
+	if contains("prefix-suffix", "scp") {
+		t.Fatal("did not expect missing substring to be found")
+	}
+}
+
+func BenchmarkContains(b *testing.B) {
+	input := strings.Repeat("abcdefghij", 128) + "sshpass"
+	b.ReportAllocs()
+	for b.Loop() {
+		if !contains(input, "sshpass") {
+			b.Fatal("expected substring")
+		}
+	}
+}
+
+func TestExecuteTimeoutReturnsQuickly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping timing-sensitive shell test on Windows")
+	}
+
+	start := time.Now()
+	response := Execute(ExecuteRequest{
+		Command:        "sleep 2",
+		ExecuteTimeout: 1,
+		Shell:          "sh",
+	}, "test-timeout-fast")
+	elapsed := time.Since(start)
+
+	if response.Success {
+		t.Fatal("expected timeout response")
+	}
+
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("timeout handling took too long: %v", elapsed)
+	}
 }
