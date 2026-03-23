@@ -1,27 +1,29 @@
 """Kubernetes批量操作工具 - P1效率提升"""
+
 import json
 import time
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+
+from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from kubernetes import client
 from loguru import logger
+
 from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
 
 
 def _log_operation(operation: str, namespace: str, resource_type: str, count: int):
     """记录批量操作到审计日志"""
     logger.warning(
-        f"K8S批量操作",
+        "K8S批量操作",
         extra={
             "operation": operation,
             "namespace": namespace,
             "resource_type": resource_type,
             "count": count,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
     )
 
 
@@ -71,7 +73,7 @@ def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_
     - 重启后验证 → 使用 check_pod_distribution
 
     **注意事项：**
-    - ⚠️ 批量重启会导致服务短暂不可用
+    - [警告] 批量重启会导致服务短暂不可用
     - 建议逐步重启，避免一次重启太多Pod
     - 对于关键服务，建议设置PodDisruptionBudget
     - 重启会丢失emptyDir中的临时数据
@@ -99,9 +101,7 @@ def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_
 
         # 参数验证
         if not label_selector and not pod_names:
-            return json.dumps({
-                "error": "必须提供 label_selector 或 pod_names 之一"
-            })
+            return json.dumps({"error": "必须提供 label_selector 或 pod_names 之一"})
 
         # 获取要重启的Pod列表
         pods_to_restart = []
@@ -126,7 +126,7 @@ def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_
             "failed_pods": [],
             "skipped_pods": [],
             "wait_for_ready": wait_for_ready,
-            "restart_time": datetime.now(timezone.utc).isoformat()
+            "restart_time": datetime.now(timezone.utc).isoformat(),
         }
 
         if len(pods_to_restart) == 0:
@@ -143,34 +143,20 @@ def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_
             has_controller = pod.metadata.owner_references and len(pod.metadata.owner_references) > 0
 
             if not has_controller:
-                result["skipped_pods"].append({
-                    "pod_name": pod_name,
-                    "reason": "孤立Pod（无控制器），跳过重启"
-                })
+                result["skipped_pods"].append({"pod_name": pod_name, "reason": "孤立Pod（无控制器），跳过重启"})
                 logger.warning(f"跳过孤立Pod: {pod_name}")
                 continue
 
             # 删除Pod触发重启
             try:
-                core_v1.delete_namespaced_pod(
-                    name=pod_name,
-                    namespace=namespace,
-                    grace_period_seconds=30
-                )
+                core_v1.delete_namespaced_pod(name=pod_name, namespace=namespace, grace_period_seconds=30)
 
-                result["restarted_pods"].append({
-                    "pod_name": pod_name,
-                    "old_uid": pod.metadata.uid,
-                    "status": "deleted"
-                })
+                result["restarted_pods"].append({"pod_name": pod_name, "old_uid": pod.metadata.uid, "status": "deleted"})
 
                 logger.info(f"已重启Pod: {namespace}/{pod_name}")
 
             except ApiException as e:
-                result["failed_pods"].append({
-                    "pod_name": pod_name,
-                    "error": str(e)
-                })
+                result["failed_pods"].append({"pod_name": pod_name, "error": str(e)})
                 logger.error(f"重启Pod失败: {namespace}/{pod_name}, 错误: {str(e)}")
 
         # 如果需要等待就绪
@@ -207,7 +193,7 @@ def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_
 
                 time.sleep(3)
 
-            result["all_ready"] = (ready_count == len(result["restarted_pods"]))
+            result["all_ready"] = ready_count == len(result["restarted_pods"])
             result["ready_count"] = ready_count
 
         logger.info(f"批量重启完成: 成功{len(result['restarted_pods'])}个, 失败{len(result['failed_pods'])}个, 跳过{len(result['skipped_pods'])}个")
@@ -215,10 +201,38 @@ def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_
 
     except Exception as e:
         logger.error(f"批量重启Pod失败: {str(e)}")
-        return json.dumps({
-            "error": f"批量重启失败: {str(e)}",
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"批量重启失败: {str(e)}", "namespace": namespace})
+
+
+def _check_volume_uses_configmap(pod, configmap_name):
+    """检查Pod的Volume是否挂载了指定ConfigMap，并检测subPath使用"""
+    if not pod.spec.volumes:
+        return False, False
+
+    uses_configmap = False
+
+    for volume in pod.spec.volumes:
+        if not (volume.config_map and volume.config_map.name == configmap_name):
+            continue
+
+        uses_configmap = True
+        # 检查是否使用了subPath，找到即返回
+        for container in pod.spec.containers or []:
+            for vm in container.volume_mounts or []:
+                if vm.name == volume.name and vm.sub_path:
+                    return True, True
+
+    return uses_configmap, False
+
+
+def _check_env_uses_configmap(pod, configmap_name):
+    """检查Pod的环境变量是否引用了指定ConfigMap"""
+    for container in pod.spec.containers or []:
+        for env in container.env or []:
+            config_map_ref = getattr(getattr(env, "value_from", None), "config_map_key_ref", None)
+            if getattr(config_map_ref, "name", None) == configmap_name:
+                return True
+    return False
 
 
 @tool()
@@ -305,7 +319,7 @@ def find_configmap_consumers(configmap_name, namespace, config: RunnableConfig =
             "consumers": [],
             "affected_controllers": [],
             "total_consumers": 0,
-            "recommendations": []
+            "recommendations": [],
         }
 
         if not configmap_exists:
@@ -319,89 +333,61 @@ def find_configmap_consumers(configmap_name, namespace, config: RunnableConfig =
 
         for pod in pods.items:
             pod_name = pod.metadata.name
-            uses_configmap = False
             mount_types = []
-            uses_subpath = False
 
             # 检查Volume挂载
-            if pod.spec.volumes:
-                for volume in pod.spec.volumes:
-                    if volume.config_map and volume.config_map.name == configmap_name:
-                        uses_configmap = True
-                        mount_types.append("volume")
-
-                        # 检查是否使用了subPath
-                        if pod.spec.containers:
-                            for container in pod.spec.containers:
-                                if container.volume_mounts:
-                                    for vm in container.volume_mounts:
-                                        if vm.name == volume.name and vm.sub_path:
-                                            uses_subpath = True
+            volume_uses, uses_subpath = _check_volume_uses_configmap(pod, configmap_name)
+            if volume_uses:
+                mount_types.append("volume")
 
             # 检查环境变量引用
-            if pod.spec.containers:
-                for container in pod.spec.containers:
-                    if container.env:
-                        for env in container.env:
-                            if env.value_from and env.value_from.config_map_key_ref:
-                                if env.value_from.config_map_key_ref.name == configmap_name:
-                                    uses_configmap = True
-                                    if "env" not in mount_types:
-                                        mount_types.append("env")
+            if _check_env_uses_configmap(pod, configmap_name):
+                if "env" not in mount_types:
+                    mount_types.append("env")
 
-            if uses_configmap:
-                # 获取控制器信息
-                controller_info = None
-                if pod.metadata.owner_references:
-                    owner_ref = pod.metadata.owner_references[0]
-                    controller_info = f"{owner_ref.kind}/{owner_ref.name}"
-                    controllers_set.add(controller_info)
+            if not mount_types:
+                continue
 
-                # 判断是否需要重启
-                needs_restart = uses_subpath or ("env" in mount_types)
+            # 获取控制器信息
+            controller_info = None
+            if pod.metadata.owner_references:
+                owner_ref = pod.metadata.owner_references[0]
+                controller_info = f"{owner_ref.kind}/{owner_ref.name}"
+                controllers_set.add(controller_info)
 
-                consumer_info = {
-                    "pod_name": pod_name,
-                    "mount_types": mount_types,
-                    "uses_subpath": uses_subpath,
-                    "controller": controller_info,
-                    "needs_restart": needs_restart
-                }
+            # 判断是否需要重启
+            needs_restart = uses_subpath or ("env" in mount_types)
 
-                result["consumers"].append(consumer_info)
-                result["total_consumers"] += 1
+            consumer_info = {
+                "pod_name": pod_name,
+                "mount_types": mount_types,
+                "uses_subpath": uses_subpath,
+                "controller": controller_info,
+                "needs_restart": needs_restart,
+            }
+
+            result["consumers"].append(consumer_info)
+            result["total_consumers"] += 1
 
         result["affected_controllers"] = list(controllers_set)
 
         # 生成建议
         if result["total_consumers"] == 0:
-            result["recommendations"].append(
-                f"ConfigMap {configmap_name} 当前没有被任何Pod使用，可以安全修改或删除"
-            )
+            result["recommendations"].append(f"ConfigMap {configmap_name} 当前没有被任何Pod使用，可以安全修改或删除")
         else:
             pods_need_restart = [c for c in result["consumers"] if c["needs_restart"]]
             if len(pods_need_restart) > 0:
-                result["recommendations"].append(
-                    f"有{len(pods_need_restart)}个Pod使用了subPath或环境变量，修改ConfigMap后需要重启这些Pod"
-                )
-                result["recommendations"].append(
-                    f"建议使用 batch_restart_pods 批量重启：{[p['pod_name'] for p in pods_need_restart]}"
-                )
+                result["recommendations"].append(f"有{len(pods_need_restart)}个Pod使用了subPath或环境变量，修改ConfigMap后需要重启这些Pod")
+                result["recommendations"].append(f"建议使用 batch_restart_pods 批量重启：{[p['pod_name'] for p in pods_need_restart]}")
             else:
-                result["recommendations"].append(
-                    f"所有Pod都是Volume挂载（无subPath），ConfigMap更新会自动生效（有延迟）"
-                )
+                result["recommendations"].append("所有Pod都是Volume挂载（无subPath），ConfigMap更新会自动生效（有延迟）")
 
         logger.info(f"ConfigMap消费者查找完成: {result['total_consumers']}个消费者")
         return json.dumps(result, ensure_ascii=False, indent=2)
 
     except Exception as e:
         logger.error(f"查找ConfigMap消费者失败: {str(e)}")
-        return json.dumps({
-            "error": f"查找失败: {str(e)}",
-            "configmap_name": configmap_name,
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"查找失败: {str(e)}", "configmap_name": configmap_name, "namespace": namespace})
 
 
 @tool()
@@ -449,7 +435,7 @@ def cleanup_failed_pods(namespace=None, include_evicted=True, config: RunnableCo
     - Completed: Job Pod成功完成（exitCode=0）
 
     **注意事项：**
-    - ⚠️ 清理操作不可逆，请谨慎使用
+    - [警告] 清理操作不可逆，请谨慎使用
     - Failed Pod可能包含重要的故障信息（日志、退出码）
     - 建议清理前先用 get_kubernetes_pod_logs 保存日志
     - Evicted Pod通常是资源不足导致，清理后要解决根本问题
@@ -490,7 +476,7 @@ def cleanup_failed_pods(namespace=None, include_evicted=True, config: RunnableCo
             "failed_cleanups": [],
             "total_cleaned": 0,
             "total_failed": 0,
-            "cleanup_time": datetime.now(timezone.utc).isoformat()
+            "cleanup_time": datetime.now(timezone.utc).isoformat(),
         }
 
         pods_to_clean = []
@@ -518,12 +504,7 @@ def cleanup_failed_pods(namespace=None, include_evicted=True, config: RunnableCo
                     reason = "Evicted"
 
             if should_clean:
-                pods_to_clean.append({
-                    "name": pod_name,
-                    "namespace": pod_namespace,
-                    "reason": reason,
-                    "phase": pod_phase
-                })
+                pods_to_clean.append({"name": pod_name, "namespace": pod_namespace, "reason": reason, "phase": pod_phase})
 
         if len(pods_to_clean) == 0:
             result["message"] = "没有需要清理的Pod"
@@ -537,7 +518,7 @@ def cleanup_failed_pods(namespace=None, include_evicted=True, config: RunnableCo
                 core_v1.delete_namespaced_pod(
                     name=pod_info["name"],
                     namespace=pod_info["namespace"],
-                    grace_period_seconds=0  # 立即删除
+                    grace_period_seconds=0,  # 立即删除
                 )
 
                 result["cleaned_pods"].append(pod_info)
@@ -546,11 +527,7 @@ def cleanup_failed_pods(namespace=None, include_evicted=True, config: RunnableCo
                 logger.info(f"已清理Pod: {pod_info['namespace']}/{pod_info['name']} ({pod_info['reason']})")
 
             except ApiException as e:
-                result["failed_cleanups"].append({
-                    "pod_name": pod_info["name"],
-                    "namespace": pod_info["namespace"],
-                    "error": str(e)
-                })
+                result["failed_cleanups"].append({"pod_name": pod_info["name"], "namespace": pod_info["namespace"], "error": str(e)})
                 result["total_failed"] += 1
                 logger.error(f"清理Pod失败: {pod_info['namespace']}/{pod_info['name']}, 错误: {str(e)}")
 
@@ -559,7 +536,4 @@ def cleanup_failed_pods(namespace=None, include_evicted=True, config: RunnableCo
 
     except Exception as e:
         logger.error(f"批量清理失败: {str(e)}")
-        return json.dumps({
-            "error": f"批量清理失败: {str(e)}",
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"批量清理失败: {str(e)}", "namespace": namespace})
