@@ -475,6 +475,62 @@ func TestExecuteReturnsInvalidRequestCodeWhenNoAuthProvided(t *testing.T) {
 	}
 }
 
+func TestExecuteRejectsInvalidRequestFieldsBeforeDial(t *testing.T) {
+	originalDial := sshDialFn
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		t.Fatal("sshDialFn should not be called for invalid requests")
+		return nil, nil
+	}
+	defer func() { sshDialFn = originalDial }()
+
+	tests := []struct {
+		name string
+		req  ExecuteRequest
+		want string
+	}{
+		{
+			name: "missing command",
+			req:  ExecuteRequest{ExecuteTimeout: 5, Host: "10.0.0.1", Port: 22, User: "root", Password: "secret"},
+			want: "command is required",
+		},
+		{
+			name: "missing host",
+			req:  ExecuteRequest{Command: "uptime", ExecuteTimeout: 5, Port: 22, User: "root", Password: "secret"},
+			want: "host is required",
+		},
+		{
+			name: "missing user",
+			req:  ExecuteRequest{Command: "uptime", ExecuteTimeout: 5, Host: "10.0.0.1", Port: 22, Password: "secret"},
+			want: "user is required",
+		},
+		{
+			name: "invalid port",
+			req:  ExecuteRequest{Command: "uptime", ExecuteTimeout: 5, Host: "10.0.0.1", Port: 0, User: "root", Password: "secret"},
+			want: "port must be greater than 0",
+		},
+		{
+			name: "invalid timeout",
+			req:  ExecuteRequest{Command: "uptime", ExecuteTimeout: 0, Host: "10.0.0.1", Port: 22, User: "root", Password: "secret"},
+			want: "execute timeout must be greater than 0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := Execute(tt.req, "instance-1")
+			if response.Success {
+				t.Fatalf("expected invalid request failure: %+v", response)
+			}
+			if response.Code != utils.ErrorCodeInvalidRequest {
+				t.Fatalf("unexpected code: %+v", response)
+			}
+			if !strings.Contains(response.Error, tt.want) {
+				t.Fatalf("unexpected error: %+v", response)
+			}
+		})
+	}
+}
+
 func TestExecuteReturnsInvalidRequestCodeWhenPrivateKeyParseFails(t *testing.T) {
 	originalParse := parsePrivateKeyFn
 	parsePrivateKeyFn = func(pemBytes []byte) (gossh.Signer, error) {

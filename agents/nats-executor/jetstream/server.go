@@ -6,6 +6,7 @@ import (
 	"nats-executor/logger"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nats-io/nats.go"
 )
@@ -45,6 +46,10 @@ func NewJetStreamClient(nc *nats.Conn, bucketName string) (*JetStreamClient, err
 }
 
 func (jsc *JetStreamClient) DownloadToFile(fileKey, targetPath, fileName string) error {
+	if err := validateTargetFileName(fileName); err != nil {
+		return err
+	}
+
 	obj, err := jsc.objectStore.Get(fileKey)
 	if err != nil {
 		return fmt.Errorf("failed to get object from store with key %s: %v", fileKey, err)
@@ -65,5 +70,13 @@ func (jsc *JetStreamClient) DownloadToFile(fileKey, targetPath, fileName string)
 	}
 
 	logger.Debugf("[JetStream] File successfully downloaded to %s (%d bytes)", fullPath, written)
+	return nil
+}
+
+func validateTargetFileName(fileName string) error {
+	trimmed := strings.TrimSpace(fileName)
+	if trimmed == "." || trimmed == ".." || filepath.IsAbs(trimmed) || strings.ContainsAny(trimmed, `/\`) {
+		return fmt.Errorf("illegal file name: %s", fileName)
+	}
 	return nil
 }

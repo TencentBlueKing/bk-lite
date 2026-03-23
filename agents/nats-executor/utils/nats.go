@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"nats-executor/jetstream"
 	"nats-executor/logger"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -30,6 +31,9 @@ type DownloadFileRequest struct {
 func DownloadFile(req DownloadFileRequest, nc *nats.Conn) error {
 	if strings.TrimSpace(req.BucketName) == "" || strings.TrimSpace(req.FileKey) == "" || strings.TrimSpace(req.FileName) == "" || strings.TrimSpace(req.TargetPath) == "" {
 		return fmt.Errorf("bucket_name, file_key, file_name, and target_path are required")
+	}
+	if err := validateDownloadFileName(req.FileName); err != nil {
+		return err
 	}
 
 	if req.ExecuteTimeout <= 0 {
@@ -64,5 +68,13 @@ func DownloadFile(req DownloadFileRequest, nc *nats.Conn) error {
 	}
 
 	logger.Debugf("[DownloadFile] Download completed successfully!")
+	return nil
+}
+
+func validateDownloadFileName(fileName string) error {
+	trimmed := strings.TrimSpace(fileName)
+	if trimmed == "." || trimmed == ".." || filepath.IsAbs(trimmed) || strings.ContainsAny(trimmed, `/\`) {
+		return fmt.Errorf("file_name must not contain path separators or be absolute")
+	}
 	return nil
 }

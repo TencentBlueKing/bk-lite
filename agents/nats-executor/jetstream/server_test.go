@@ -149,3 +149,27 @@ func TestDownloadToFilePropagatesCopyError(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestDownloadToFileRejectsUnsafeFileName(t *testing.T) {
+	client := &JetStreamClient{
+		objectStore: stubObjectStore{
+			get: func(name string, opts ...nats.GetObjectOpt) (nats.ObjectResult, error) {
+				t.Fatal("object store should not be queried for unsafe file names")
+				return nil, nil
+			},
+		},
+	}
+
+	tests := []string{"../evil.txt", "/tmp/evil.txt", "nested/evil.txt", `..\evil.txt`}
+	for _, fileName := range tests {
+		t.Run(fileName, func(t *testing.T) {
+			err := client.DownloadToFile("demo-key", t.TempDir(), fileName)
+			if err == nil {
+				t.Fatal("expected unsafe file name to be rejected")
+			}
+			if !strings.Contains(err.Error(), "illegal file name") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"nats-executor/logger"
 	"nats-executor/utils"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -168,7 +169,46 @@ func respondLocalExecuteMessage(msg responseMsg, data []byte, instanceId string)
 	return true
 }
 
+func normalizeShell(shell string) string {
+	if strings.TrimSpace(shell) == "" {
+		return ShellTypeSh
+	}
+
+	return strings.ToLower(strings.TrimSpace(shell))
+}
+
+func isSupportedShell(shell string) bool {
+	switch shell {
+	case ShellTypeSh, ShellTypeBash, ShellTypeBat, ShellTypeCmd, ShellTypePowerShell, ShellTypePwsh:
+		return true
+	default:
+		return false
+	}
+}
+
+func invalidExecuteResponse(instanceId, message string) ExecuteResponse {
+	return ExecuteResponse{
+		Output:     message,
+		InstanceId: instanceId,
+		Success:    false,
+		Code:       utils.ErrorCodeInvalidRequest,
+		Error:      message,
+	}
+}
+
 func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
+	if strings.TrimSpace(req.Command) == "" {
+		return invalidExecuteResponse(instanceId, "command is required")
+	}
+	if req.ExecuteTimeout <= 0 {
+		return invalidExecuteResponse(instanceId, "execute timeout must be greater than 0")
+	}
+
+	shell := normalizeShell(req.Shell)
+	if !isSupportedShell(shell) {
+		return invalidExecuteResponse(instanceId, fmt.Sprintf("unsupported shell: %s", strings.TrimSpace(req.Shell)))
+	}
+
 	commandForLog := req.Command
 	if req.LogCommand != "" {
 		commandForLog = req.LogCommand
@@ -182,11 +222,6 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	defer cancel()
 
 	var cmd *exec.Cmd
-	shell := req.Shell
-	if shell == "" {
-		shell = "sh"
-	}
-
 	switch shell {
 	case "bat", "cmd":
 		cmd = exec.CommandContext(ctx, "cmd", "/c", req.Command)

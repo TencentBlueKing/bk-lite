@@ -87,6 +87,40 @@ func TestUnzipToDirRejectsAbsolutePathEntries(t *testing.T) {
 	}
 }
 
+func TestUnzipToDirRejectsSymlinkEntries(t *testing.T) {
+	zipFilePath := filepath.Join(t.TempDir(), "symlink.zip")
+	f, err := os.Create(zipFilePath)
+	if err != nil {
+		t.Fatalf("failed to create zip file: %v", err)
+	}
+
+	writer := zip.NewWriter(f)
+	header := &zip.FileHeader{Name: "testdir/link"}
+	header.SetMode(os.ModeSymlink | 0o777)
+	entry, err := writer.CreateHeader(header)
+	if err != nil {
+		t.Fatalf("failed to create symlink entry: %v", err)
+	}
+	if _, err := entry.Write([]byte("/etc/passwd")); err != nil {
+		t.Fatalf("failed to write symlink target: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to close zip writer: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("failed to close zip file: %v", err)
+	}
+
+	_, err = UnzipToDir(UnzipRequest{ZipPath: zipFilePath, DestDir: filepath.Join(t.TempDir(), "dest")})
+	if err == nil {
+		t.Fatal("expected symlink payload to be rejected")
+	}
+
+	if !strings.Contains(err.Error(), "unsupported file type in zip") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestUnzipToDirReplacesExistingDirectoryWithFile(t *testing.T) {
 	baseDir := t.TempDir()
 	zipFilePath := filepath.Join(baseDir, "replace.zip")

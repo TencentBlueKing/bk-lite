@@ -345,7 +345,38 @@ func addLegacySCPOptions(command string) string {
 	return command[:portFlagIndex] + legacyOptions + command[portFlagIndex:]
 }
 
+func invalidSSHExecuteResponse(instanceId, message string) ExecuteResponse {
+	return ExecuteResponse{
+		InstanceId: instanceId,
+		Success:    false,
+		Output:     message,
+		Code:       utils.ErrorCodeInvalidRequest,
+		Error:      message,
+	}
+}
+
+func validateExecuteRequest(req ExecuteRequest) string {
+	switch {
+	case strings.TrimSpace(req.Command) == "":
+		return "command is required"
+	case strings.TrimSpace(req.Host) == "":
+		return "host is required"
+	case strings.TrimSpace(req.User) == "":
+		return "user is required"
+	case req.Port == 0:
+		return "port must be greater than 0"
+	case req.ExecuteTimeout <= 0:
+		return "execute timeout must be greater than 0"
+	default:
+		return ""
+	}
+}
+
 func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
+	if validationErr := validateExecuteRequest(req); validationErr != "" {
+		return invalidSSHExecuteResponse(instanceId, validationErr)
+	}
+
 	logger.Debugf("[SSH Execute] Instance: %s, Starting SSH connection to %s@%s:%d", instanceId, req.User, req.Host, req.Port)
 	logger.Debugf("[SSH Execute] Instance: %s, Command: %s, Timeout: %ds", instanceId, req.Command, req.ExecuteTimeout)
 

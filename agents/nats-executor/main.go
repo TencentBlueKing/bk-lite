@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -17,6 +18,8 @@ import (
 	"nats-executor/logger"
 	"nats-executor/ssh"
 )
+
+const version = "3.0.0"
 
 type Config struct {
 	NATSUrls        string `yaml:"nats_urls"`
@@ -100,15 +103,37 @@ func parseString(s string) string {
 	return strings.TrimSpace(s)
 }
 
-func main() {
-	configPath := flag.String("config", "", "Path to the config file (YAML format)")
-	flag.Parse()
+func parseCLIArgs(args []string) (configPath string, showVersion bool, err error) {
+	if len(args) > 0 && args[0] == "version" {
+		return "", true, nil
+	}
 
-	if *configPath == "" {
+	fs := flag.NewFlagSet("nats-executor", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	config := fs.String("config", "", "Path to the config file (YAML format)")
+	if err := fs.Parse(args); err != nil {
+		return "", false, err
+	}
+
+	return *config, false, nil
+}
+
+func main() {
+	configPath, showVersion, err := parseCLIArgs(os.Args[1:])
+	if err != nil {
+		logger.Fatalf("Failed to parse arguments: %v", err)
+	}
+	if showVersion {
+		fmt.Println(version)
+		return
+	}
+
+	if configPath == "" {
 		logger.Fatal("Please specify the config file path using --config")
 	}
 
-	cfg, err := loadConfig(*configPath)
+	cfg, err := loadConfig(configPath)
 	if err != nil {
 		logger.Fatalf("Failed to load config: %v", err)
 	}

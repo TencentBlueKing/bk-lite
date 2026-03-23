@@ -50,6 +50,10 @@ func UnzipToDir(req UnzipRequest) (string, error) {
 			return "", fmt.Errorf("illegal file path: %s", fpath)
 		}
 
+		if f.Mode()&os.ModeType != 0 && !f.FileInfo().IsDir() {
+			return "", fmt.Errorf("unsupported file type in zip: %s", f.Name)
+		}
+
 		if f.FileInfo().IsDir() {
 			// 创建目录
 			if err := os.MkdirAll(fpath, 0755); err != nil {

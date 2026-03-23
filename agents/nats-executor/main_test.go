@@ -101,3 +101,36 @@ func TestParseString(t *testing.T) {
 		t.Fatalf("template placeholder should be cleared, got %q", got)
 	}
 }
+
+func TestParseCLIArgsSupportsVersionSubcommand(t *testing.T) {
+	configPath, showVersion, err := parseCLIArgs([]string{"version"})
+	if err != nil {
+		t.Fatalf("parseCLIArgs returned error: %v", err)
+	}
+	if !showVersion {
+		t.Fatal("expected version subcommand to enable version mode")
+	}
+	if configPath != "" {
+		t.Fatalf("unexpected config path: %q", configPath)
+	}
+}
+
+func TestParseCLIArgsSupportsConfigFlag(t *testing.T) {
+	configPath, showVersion, err := parseCLIArgs([]string{"--config", "/tmp/config.yaml"})
+	if err != nil {
+		t.Fatalf("parseCLIArgs returned error: %v", err)
+	}
+	if showVersion {
+		t.Fatal("did not expect version mode for config startup")
+	}
+	if configPath != "/tmp/config.yaml" {
+		t.Fatalf("unexpected config path: %q", configPath)
+	}
+}
+
+func TestParseCLIArgsRejectsUnknownFlag(t *testing.T) {
+	_, _, err := parseCLIArgs([]string{"--unknown"})
+	if err == nil {
+		t.Fatal("expected unknown flag to return error")
+	}
+}
