@@ -71,6 +71,22 @@ func TestUnzipToDirRejectsZipSlip(t *testing.T) {
 	}
 }
 
+func TestUnzipToDirRejectsAbsolutePathEntries(t *testing.T) {
+	zipFilePath := filepath.Join(t.TempDir(), "absolute.zip")
+	createZipFile(t, zipFilePath, map[string]string{
+		"/tmp/evil.txt": "pwned",
+	})
+
+	_, err := UnzipToDir(UnzipRequest{ZipPath: zipFilePath, DestDir: filepath.Join(t.TempDir(), "dest")})
+	if err == nil {
+		t.Fatal("expected absolute path payload to be rejected")
+	}
+
+	if !strings.Contains(err.Error(), "illegal file path") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestUnzipToDirReplacesExistingDirectoryWithFile(t *testing.T) {
 	baseDir := t.TempDir()
 	zipFilePath := filepath.Join(baseDir, "replace.zip")

@@ -12,6 +12,17 @@ import (
 	"nats-executor/utils"
 )
 
+type stubResponseMsg struct {
+	respond func(payload []byte) error
+}
+
+func (s stubResponseMsg) Respond(payload []byte) error {
+	if s.respond == nil {
+		return nil
+	}
+	return s.respond(payload)
+}
+
 func TestHandleSSHExecuteMessageRejectsMalformedJSON(t *testing.T) {
 	response, ok := handleSSHExecuteMessage([]byte("bad-json"), "instance-1")
 	if !ok {
@@ -57,6 +68,48 @@ func TestHandleSSHExecuteMessageReturnsExecutionResponse(t *testing.T) {
 	}
 	if result.Code != "" {
 		t.Fatalf("success response should not contain code: %+v", result)
+	}
+}
+
+func TestRespondSSHExecuteMessageSendsExecutionResponse(t *testing.T) {
+	original := sshDialFn
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		return stubSSHClient{newSession: func() (sshSession, error) {
+			return &stubSSHSession{run: func(cmd string) error { return nil }, stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}, nil
+		}}, nil
+	}
+	defer func() { sshDialFn = original }()
+
+	payload := []byte(`{"args":[{"command":"uptime","execute_timeout":5,"host":"10.0.0.1","port":22,"user":"root","password":"x"}],"kwargs":{}}`)
+	var got ExecuteResponse
+	msg := stubResponseMsg{respond: func(response []byte) error {
+		return json.Unmarshal(response, &got)
+	}}
+
+	if ok := respondSSHExecuteMessage(msg, payload, "instance-1"); !ok {
+		t.Fatal("expected SSH response to be sent successfully")
+	}
+	if !got.Success || got.InstanceId != "instance-1" {
+		t.Fatalf("unexpected response payload: %+v", got)
+	}
+}
+
+func TestRespondSSHExecuteMessageReturnsFalseWhenRespondFails(t *testing.T) {
+	original := sshDialFn
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		return stubSSHClient{newSession: func() (sshSession, error) {
+			return &stubSSHSession{run: func(cmd string) error { return nil }, stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}, nil
+		}}, nil
+	}
+	defer func() { sshDialFn = original }()
+
+	payload := []byte(`{"args":[{"command":"uptime","execute_timeout":5,"host":"10.0.0.1","port":22,"user":"root","password":"x"}],"kwargs":{}}`)
+	msg := stubResponseMsg{respond: func(response []byte) error {
+		return errors.New("nats unavailable")
+	}}
+
+	if ok := respondSSHExecuteMessage(msg, payload, "instance-1"); ok {
+		t.Fatal("expected respond failure to return false")
 	}
 }
 
@@ -324,6 +377,87 @@ func TestSSHExecuteResponseIncludesExecutionFailureCode(t *testing.T) {
 	}
 	if result.Code != utils.ErrorCodeExecutionFailure {
 		t.Fatalf("unexpected error code: %+v", result)
+	}
+}
+
+func TestExecuteRetriesWithLegacyProfileAfterModernNegotiationFailure(t *testing.T) {
+	originalDial := sshDialFn
+	attempts := 0
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		attempts++
+		switch attempts {
+		case 1:
+			if got := config.HostKeyAlgorithms; len(got) == 0 || got[0] != gossh.KeyAlgoED25519 {
+				t.Fatalf("expected modern host key algorithms first, got %v", got)
+			}
+			return nil, errors.New("no matching host key type found")
+		case 2:
+			if got := config.HostKeyAlgorithms; len(got) == 0 || got[0] != gossh.KeyAlgoRSA {
+				t.Fatalf("expected legacy host key algorithms on retry, got %v", got)
+			}
+			return stubSSHClient{newSession: func() (sshSession, error) {
+				return &stubSSHSession{run: func(cmd string) error { return nil }}, nil
+			}}, nil
+		default:
+			t.Fatalf("unexpected extra dial attempt: %d", attempts)
+			return nil, nil
+		}
+	}
+	defer func() { sshDialFn = originalDial }()
+
+	response := Execute(ExecuteRequest{
+		Command:        "uptime",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+	}, "instance-1")
+
+	if !response.Success {
+		t.Fatalf("expected legacy retry to succeed, got %+v", response)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected two dial attempts, got %d", attempts)
+	}
+}
+
+func TestExecuteReturnsDependencyFailureWhenLegacyRetryAlsoFails(t *testing.T) {
+	originalDial := sshDialFn
+	attempts := 0
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		attempts++
+		if attempts == 1 {
+			return nil, errors.New("unable to negotiate")
+		}
+		if attempts == 2 {
+			if got := config.HostKeyAlgorithms; len(got) == 0 || got[0] != gossh.KeyAlgoRSA {
+				t.Fatalf("expected legacy host key algorithms on retry, got %v", got)
+			}
+			return nil, errors.New("legacy retry failed")
+		}
+		t.Fatalf("unexpected extra dial attempt: %d", attempts)
+		return nil, nil
+	}
+	defer func() { sshDialFn = originalDial }()
+
+	response := Execute(ExecuteRequest{
+		Command:        "uptime",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+	}, "instance-1")
+
+	if response.Success {
+		t.Fatal("expected legacy retry failure")
+	}
+	if response.Code != utils.ErrorCodeDependencyFailure {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected two dial attempts, got %d", attempts)
 	}
 }
 

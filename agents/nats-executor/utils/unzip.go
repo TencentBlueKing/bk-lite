@@ -39,6 +39,10 @@ func UnzipToDir(req UnzipRequest) (string, error) {
 	parentDir := parts[0]
 
 	for _, f := range reader.File {
+		if filepath.IsAbs(f.Name) {
+			return "", fmt.Errorf("illegal file path: %s", f.Name)
+		}
+
 		fpath := filepath.Join(req.DestDir, f.Name)
 
 		// 防止 ZipSlip 漏洞

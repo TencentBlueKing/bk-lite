@@ -16,10 +16,27 @@ func TestRenderEnvVars(t *testing.T) {
 	}
 }
 
+func TestRenderEnvVarsSupportsShortForm(t *testing.T) {
+	t.Setenv("NATS_HOST", "127.0.0.1")
+	t.Setenv("NATS_PORT", "4222")
+
+	rendered := renderEnvVars("nats://$NATS_HOST:$NATS_PORT")
+	if rendered != "nats://127.0.0.1:4222" {
+		t.Fatalf("unexpected rendered value: %s", rendered)
+	}
+}
+
 func TestRenderEnvVarsKeepsMissingPlaceholder(t *testing.T) {
 	rendered := renderEnvVars("nats://${MISSING_HOST}:4222")
 	if rendered != "nats://${MISSING_HOST}:4222" {
 		t.Fatalf("missing placeholder should be preserved, got: %s", rendered)
+	}
+}
+
+func TestRenderEnvVarsKeepsMissingShortFormPlaceholder(t *testing.T) {
+	rendered := renderEnvVars("nats://$MISSING_HOST:4222")
+	if rendered != "nats://$MISSING_HOST:4222" {
+		t.Fatalf("missing short-form placeholder should be preserved, got: %s", rendered)
 	}
 }
 

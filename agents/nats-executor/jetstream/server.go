@@ -5,14 +5,21 @@ import (
 	"io"
 	"nats-executor/logger"
 	"os"
+	"path/filepath"
 
 	"github.com/nats-io/nats.go"
 )
 
+type objectStoreGetter interface {
+	Get(name string, opts ...nats.GetObjectOpt) (nats.ObjectResult, error)
+}
+
+var createDownloadFile = os.Create
+
 type JetStreamClient struct {
 	nc          *nats.Conn
 	js          nats.JetStreamContext
-	objectStore nats.ObjectStore
+	objectStore objectStoreGetter
 }
 
 func NewJetStreamClient(nc *nats.Conn, bucketName string) (*JetStreamClient, error) {
@@ -44,9 +51,9 @@ func (jsc *JetStreamClient) DownloadToFile(fileKey, targetPath, fileName string)
 	}
 	defer obj.Close()
 
-	fullPath := fmt.Sprintf("%s/%s", targetPath, fileName)
+	fullPath := filepath.Join(targetPath, fileName)
 
-	file, err := os.Create(fullPath)
+	file, err := createDownloadFile(fullPath)
 	if err != nil {
 		return fmt.Errorf("failed to create file at %s: %v", fullPath, err)
 	}

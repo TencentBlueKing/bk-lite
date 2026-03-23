@@ -3,6 +3,7 @@ package ssh
 import (
 	"bytes"
 	"errors"
+	"nats-executor/local"
 	"os"
 	"path/filepath"
 	"strings"
@@ -736,6 +737,131 @@ func TestExecuteSignalsAndClosesResourcesOnTimeout(t *testing.T) {
 	}
 	if !signaled || !sessionClosed || !clientClosed {
 		t.Fatalf("expected signal and cleanup, signaled=%v sessionClosed=%v clientClosed=%v", signaled, sessionClosed, clientClosed)
+	}
+}
+
+func TestExecuteSCPWithFallbackReturnsInitialSuccessWithoutRetry(t *testing.T) {
+	original := executeLocalSCPCommand
+	callCount := 0
+	executeLocalSCPCommand = func(req local.ExecuteRequest, instanceId string) local.ExecuteResponse {
+		callCount++
+		return local.ExecuteResponse{Success: true, Output: "done", InstanceId: instanceId}
+	}
+	defer func() { executeLocalSCPCommand = original }()
+
+	response := executeSCPWithFallback("instance-1", local.ExecuteRequest{
+		Command:        "scp -o StrictHostKeyChecking=no -P 22 -r /src user@host:/dst",
+		ExecuteTimeout: 5,
+	})
+
+	if !response.Success {
+		t.Fatalf("expected success, got %+v", response)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected one execution attempt, got %d", callCount)
+	}
+}
+
+func TestExecuteSCPWithFallbackRetriesWithLegacyOptions(t *testing.T) {
+	original := executeLocalSCPCommand
+	callCount := 0
+	commands := make([]string, 0, 2)
+	executeLocalSCPCommand = func(req local.ExecuteRequest, instanceId string) local.ExecuteResponse {
+		callCount++
+		commands = append(commands, req.Command)
+		if callCount == 1 {
+			return local.ExecuteResponse{
+				Success:    false,
+				Output:     "no matching host key type found",
+				Error:      "no matching host key type found",
+				InstanceId: instanceId,
+			}
+		}
+		return local.ExecuteResponse{Success: true, Output: "done", InstanceId: instanceId}
+	}
+	defer func() { executeLocalSCPCommand = original }()
+
+	response := executeSCPWithFallback("instance-1", local.ExecuteRequest{
+		Command:        "scp -o StrictHostKeyChecking=no -P 22 -r /src user@host:/dst",
+		ExecuteTimeout: 5,
+	})
+
+	if !response.Success {
+		t.Fatalf("expected legacy retry to succeed, got %+v", response)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected two execution attempts, got %d", callCount)
+	}
+	if strings.Contains(commands[0], "PubkeyAcceptedAlgorithms=+ssh-rsa") {
+		t.Fatalf("did not expect legacy options on first attempt: %s", commands[0])
+	}
+	if !strings.Contains(commands[1], "PubkeyAcceptedAlgorithms=+ssh-rsa") || !strings.Contains(commands[1], "HostKeyAlgorithms=+ssh-rsa") {
+		t.Fatalf("expected legacy options on retry, got: %s", commands[1])
+	}
+}
+
+func TestExecuteSCPWithFallbackDoesNotRetryOnUnrelatedFailure(t *testing.T) {
+	original := executeLocalSCPCommand
+	callCount := 0
+	executeLocalSCPCommand = func(req local.ExecuteRequest, instanceId string) local.ExecuteResponse {
+		callCount++
+		return local.ExecuteResponse{
+			Success:    false,
+			Output:     "permission denied",
+			Error:      "permission denied",
+			InstanceId: instanceId,
+		}
+	}
+	defer func() { executeLocalSCPCommand = original }()
+
+	response := executeSCPWithFallback("instance-1", local.ExecuteRequest{
+		Command:        "scp -o StrictHostKeyChecking=no -P 22 -r /src user@host:/dst",
+		ExecuteTimeout: 5,
+	})
+
+	if response.Success {
+		t.Fatalf("expected failure without retry, got %+v", response)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected one execution attempt, got %d", callCount)
+	}
+}
+
+func TestExecuteSCPWithFallbackReturnsLegacyFailure(t *testing.T) {
+	original := executeLocalSCPCommand
+	callCount := 0
+	executeLocalSCPCommand = func(req local.ExecuteRequest, instanceId string) local.ExecuteResponse {
+		callCount++
+		if callCount == 1 {
+			return local.ExecuteResponse{
+				Success:    false,
+				Output:     "unable to negotiate",
+				Error:      "unable to negotiate",
+				InstanceId: instanceId,
+			}
+		}
+		return local.ExecuteResponse{
+			Success:    false,
+			Output:     "legacy retry failed",
+			Error:      "legacy retry failed",
+			InstanceId: instanceId,
+		}
+	}
+	defer func() { executeLocalSCPCommand = original }()
+
+	response := executeSCPWithFallback("instance-1", local.ExecuteRequest{
+		Command:        "scp -o StrictHostKeyChecking=no -P 22 -r /src user@host:/dst",
+		ExecuteTimeout: 5,
+	})
+
+	if response.Success {
+		t.Fatalf("expected legacy retry to fail, got %+v", response)
+	}
+	if response.Error != "legacy retry failed" {
+		t.Fatalf("unexpected fallback response: %+v", response)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected two execution attempts, got %d", callCount)
 	}
 }
 

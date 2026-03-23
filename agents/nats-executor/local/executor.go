@@ -13,6 +13,9 @@ import (
 )
 
 type downloadConn interface{}
+type responseMsg interface {
+	Respond([]byte) error
+}
 
 var (
 	executeLocalCommand = Execute
@@ -147,6 +150,22 @@ func handleHealthCheckMessage(instanceId string) []byte {
 	}
 	responseContent, _ := json.Marshal(response)
 	return responseContent
+}
+
+func respondLocalExecuteMessage(msg responseMsg, data []byte, instanceId string) bool {
+	responseContent, ok := handleLocalExecuteMessage(data, instanceId)
+	if !ok {
+		logger.Errorf("[Local Subscribe] Instance: %s, Error unmarshalling incoming message", instanceId)
+		return false
+	}
+
+	if err := msg.Respond(responseContent); err != nil {
+		logger.Errorf("[Local Subscribe] Instance: %s, Error responding to request: %v", instanceId, err)
+		return false
+	}
+
+	logger.Debugf("[Local Subscribe] Instance: %s, Response sent successfully, size: %d bytes", instanceId, len(responseContent))
+	return true
 }
 
 func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
@@ -289,18 +308,7 @@ func SubscribeLocalExecutor(nc *nats.Conn, instanceId *string) {
 
 	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
 		logger.Debugf("[Local Subscribe] Instance: %s, Received message, size: %d bytes", *instanceId, len(msg.Data))
-
-		responseContent, ok := handleLocalExecuteMessage(msg.Data, *instanceId)
-		if !ok {
-			logger.Errorf("[Local Subscribe] Instance: %s, Error unmarshalling incoming message", *instanceId)
-			return
-		}
-
-		if err := msg.Respond(responseContent); err != nil {
-			logger.Errorf("[Local Subscribe] Instance: %s, Error responding to request: %v", *instanceId, err)
-		} else {
-			logger.Debugf("[Local Subscribe] Instance: %s, Response sent successfully, size: %d bytes", *instanceId, len(responseContent))
-		}
+		respondLocalExecuteMessage(msg, msg.Data, *instanceId)
 	})
 
 	if err != nil {
