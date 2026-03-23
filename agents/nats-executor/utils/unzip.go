@@ -16,6 +16,10 @@ type UnzipRequest struct {
 
 // UnzipToDir 解压 .zip 文件到指定目录，返回父目录名称
 func UnzipToDir(req UnzipRequest) (string, error) {
+	if strings.TrimSpace(req.DestDir) == "" {
+		return "", fmt.Errorf("destination directory is required")
+	}
+
 	reader, err := zip.OpenReader(req.ZipPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open zip file: %w", err)
