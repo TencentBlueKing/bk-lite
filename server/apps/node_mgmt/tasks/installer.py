@@ -33,6 +33,9 @@ from apps.node_mgmt.utils.token_auth import generate_node_token
 from config.components.nats import NATS_NAMESPACE
 
 
+CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS = 300
+
+
 def _add_step(node_obj, action, status, message, timestamp=None, details=None):
     """添加执行步骤记录并立即持久化"""
     step = {
@@ -117,6 +120,30 @@ def _save_node_result(node_obj, overall_status, final_message):
     node_obj.status = "success" if overall_status == "success" else "error"
     node_obj.result = result
     node_obj.save(update_fields=["status", "result"])
+
+
+def _save_node_pending_connectivity(node_obj, final_message):
+    """保存节点待连通确认状态"""
+    result = node_obj.result or {}
+    result["overall_status"] = "running"
+    result["final_message"] = final_message
+    node_obj.status = "running"
+    node_obj.result = result
+    node_obj.save(update_fields=["status", "result"])
+
+
+def _reconcile_controller_task_status(task_id):
+    """根据节点状态收敛控制器任务状态"""
+    task_obj = ControllerTask.objects.filter(id=task_id).first()
+    if not task_obj:
+        return
+
+    running_or_waiting_exists = task_obj.controllertasknode_set.filter(
+        status__in=["waiting", "running"]
+    ).exists()
+
+    task_obj.status = "running" if running_or_waiting_exists else "finished"
+    task_obj.save(update_fields=["status"])
 
 
 def _parse_exception_details(error_message, exception_obj=None):
@@ -353,12 +380,19 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             _handle_step_exception(node_obj, str(e), e)
             overall_status = "error"
 
-        final_message = (
-            "All steps completed successfully"
-            if overall_status == "success"
-            else "Installation failed"
-        )
-        _save_node_result(node_obj, overall_status, final_message)
+        if overall_status == "success":
+            _add_step(
+                node_obj,
+                "connectivity_check",
+                "running",
+                "Waiting for sidecar callback to confirm connectivity",
+            )
+            _save_node_pending_connectivity(
+                node_obj,
+                "Installation command succeeded, waiting connectivity confirmation",
+            )
+        else:
+            _save_node_result(node_obj, "error", "Installation failed")
 
 
 @shared_task
@@ -379,10 +413,91 @@ def install_controller(task_id):
     # 安装控制器
     install_controller_on_nodes(task_obj, nodes, package_obj)
 
-    # 更新任务状态并清理密码
-    task_obj.status = "finished"
-    task_obj.save()
+    # 根据节点收敛状态更新任务状态并清理密码
+    _reconcile_controller_task_status(task_id)
     nodes.update(password="", private_key="", passphrase="")
+
+
+@shared_task
+def converge_controller_install_connectivity_for_node(node_id):
+    """根据 sidecar 回调收敛控制器安装任务连通状态"""
+    node = Node.objects.filter(id=node_id).first()
+    if not node:
+        return
+
+    running_task_nodes = ControllerTaskNode.objects.filter(
+        ip=node.ip,
+        status="running",
+        task__type="install",
+    ).select_related("task")
+
+    affected_task_ids = set()
+
+    for task_node in running_task_nodes:
+        result = task_node.result or {}
+        steps = result.get("steps", [])
+        if not steps:
+            continue
+
+        last_step = steps[-1]
+        if not (
+            last_step.get("action") == "connectivity_check"
+            and last_step.get("status") == "running"
+        ):
+            continue
+
+        _update_step_status(
+            task_node,
+            "success",
+            "Sidecar connectivity confirmed",
+        )
+        _save_node_result(task_node, "success", "All steps completed successfully")
+        affected_task_ids.add(task_node.task_id)
+
+    for task_id in affected_task_ids:
+        _reconcile_controller_task_status(task_id)
+
+
+@shared_task
+def timeout_controller_install_task(task_id):
+    """控制器安装任务连通检测超时兜底"""
+    task_obj = ControllerTask.objects.filter(id=task_id).first()
+    if not task_obj:
+        return
+
+    if task_obj.type != "install":
+        return
+
+    if task_obj.status not in ["waiting", "running"]:
+        return
+
+    pending_nodes = ControllerTaskNode.objects.filter(
+        task_id=task_id,
+        status="running",
+    )
+
+    for task_node in pending_nodes:
+        result = task_node.result or {}
+        steps = result.get("steps", [])
+        if not steps:
+            continue
+
+        last_step = steps[-1]
+        if not (
+            last_step.get("action") == "connectivity_check"
+            and last_step.get("status") == "running"
+        ):
+            continue
+
+        _update_step_status(
+            task_node,
+            "error",
+            "Connectivity check timeout",
+            details={"timeout": True},
+        )
+        _save_node_result(task_node, "error", "Connectivity check timeout")
+
+    _reconcile_controller_task_status(task_id)
 
 
 @shared_task
@@ -573,7 +688,7 @@ def install_collector(task_id):
         try:
             _add_step(
                 node_obj,
-                "send",
+                "download",
                 "running",
                 f"Starting file download to node {node_obj.node_id}",
             )
@@ -610,7 +725,10 @@ def install_collector(task_id):
 
             if package_obj.os in NodeConstants.LINUX_OS:
                 _add_step(
-                    node_obj, "set_exe", "running", "Setting execution permissions"
+                    node_obj,
+                    "set_executable",
+                    "running",
+                    "Setting execution permissions",
                 )
                 executable_path = f"{collector_install_dir}/{executable_name}"
                 exec_command_to_local(

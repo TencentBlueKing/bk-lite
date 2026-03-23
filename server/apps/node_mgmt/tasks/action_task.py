@@ -1,4 +1,5 @@
 from celery import shared_task
+from django.utils import timezone
 
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
 from apps.node_mgmt.models.sidecar import Node
@@ -8,6 +9,48 @@ RUNNING_STATUS = 0
 FAILED_STATUS = 2
 STOPPED_STATUS = {3, 4}
 ACTION_TASK_TIMEOUT_SECONDS = 300
+
+
+def _now_iso():
+    return timezone.now().isoformat()
+
+
+def _add_step(task_node, action, status, message, details=None):
+    result = task_node.result or {}
+    steps = result.get("steps", [])
+    step = {
+        "action": action,
+        "status": status,
+        "message": message,
+        "timestamp": _now_iso(),
+    }
+    if details:
+        step["details"] = details
+    steps.append(step)
+    result["steps"] = steps
+    task_node.result = result
+
+
+def _update_last_running_step(task_node, status, message, details=None):
+    result = task_node.result or {}
+    steps = result.get("steps", [])
+    if steps and steps[-1].get("status") == "running":
+        steps[-1]["status"] = status
+        steps[-1]["message"] = message
+        steps[-1]["timestamp"] = _now_iso()
+        if details:
+            steps[-1]["details"] = details
+        result["steps"] = steps
+        task_node.result = result
+
+
+def _save_node_result(task_node, node_status, overall_status, final_message):
+    result = task_node.result or {}
+    result["overall_status"] = overall_status
+    result["final_message"] = final_message
+    task_node.status = node_status
+    task_node.result = result
+    task_node.save(update_fields=["status", "result"])
 
 
 def _is_expected_status(action, collector_status):
@@ -57,13 +100,33 @@ def converge_collector_action_task_for_node(node_id):
 
         expected_node_status = _is_expected_status(task_obj.action, collector_status)
         if expected_node_status in ["success", "error"]:
-            task_node.status = expected_node_status
-            task_node.result = {
-                "message": "Status converged by node collector state",
-                "collector_status": collector_status,
-                "action": task_obj.action,
-            }
-            task_node.save(update_fields=["status", "result"])
+            _update_last_running_step(
+                task_node,
+                expected_node_status,
+                "Collector command execution finished",
+                details={
+                    "collector_status": collector_status,
+                    "operation": task_obj.action,
+                },
+            )
+            _add_step(
+                task_node,
+                "state_converge",
+                expected_node_status,
+                "Status converged by node collector state",
+                details={
+                    "collector_status": collector_status,
+                    "operation": task_obj.action,
+                },
+            )
+            _save_node_result(
+                task_node,
+                expected_node_status,
+                expected_node_status,
+                "Collector action completed"
+                if expected_node_status == "success"
+                else "Collector action failed",
+            )
             affected_task_ids.add(task_obj.id)
 
     for task_id in affected_task_ids:
@@ -98,14 +161,25 @@ def timeout_collector_action_task(task_id):
     )
 
     for task_node in pending_nodes:
-        current_result = task_node.result or {}
-        task_node.status = "error"
-        task_node.result = {
-            **current_result,
-            "message": "Action task timeout",
-            "timeout": True,
-        }
-        task_node.save(update_fields=["status", "result"])
+        _update_last_running_step(
+            task_node,
+            "timeout",
+            "Collector command execution timeout",
+            details={"timeout": True},
+        )
+        _add_step(
+            task_node,
+            "callback_or_timeout",
+            "timeout",
+            "Action task timeout",
+            details={"timeout": True},
+        )
+        _save_node_result(
+            task_node,
+            "error",
+            "timeout",
+            "Collector action timeout",
+        )
 
     task_nodes = CollectorActionTaskNode.objects.filter(task_id=task_id)
     success_count = task_nodes.filter(status="success").count()

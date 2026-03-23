@@ -11,11 +11,11 @@ from apps.mlops.utils.webhook_client import (
     WebhookConnectionError,
     WebhookTimeoutError,
 )
+from apps.mlops.predict_url_builder import build_predict_url
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.validators import validate_serving_status_change
 from apps.mlops.services import (
     get_image_by_prefix,
-    get_host_address,
     get_mlflow_train_config,
     get_mlflow_tracking_uri,
     ConfigurationError,
@@ -1210,7 +1210,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         请求参数:
             url: 预测服务主机地址（如 http://192.168.1.100，不含端口）
             data: 历史时间序列数据数组 [{"timestamp": "...", "value": ...}, ...]
-            steps: 预测步数（默认 10）
+            config: { "steps": 预测步长 }
 
         返回格式:
             预测服务的响应（通常为 {"success": true, "history": [...], "prediction": [...], "metadata": {...}, "error": null}）
@@ -1220,7 +1220,8 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
 
             # 获取参数
             data = request.data.get("data")
-            steps = request.data.get("steps", 10)
+            config = request.data.get("config", {})
+            steps = config.get("steps", 5)
 
             # 参数校验
             if not data:
@@ -1233,24 +1234,16 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                     {"error": "data 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 获取实际运行端口，防御性处理 container_info 为空的情况
-            port = (serving.container_info or {}).get("port")
-            if not port:
+            try:
+                predict_url = build_predict_url(
+                    serving_id=f"TimeseriesPredict_Serving_{serving.id}",
+                    container_info=serving.container_info,
+                )
+            except ValueError as e:
                 return Response(
-                    {"error": "服务端口未配置，请确认服务已启动"},
+                    {"error": str(e)},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
-            # 构建预测服务 URL
-            host_address = get_host_address()
-            if not host_address:
-                return Response(
-                    {
-                        "error": "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            predict_url = f"http://{host_address}:{port}/predict"
 
             # 构建请求体
             payload = {"data": data, "config": {"steps": steps}}

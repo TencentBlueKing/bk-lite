@@ -5,13 +5,13 @@ import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { ModalRef, TableDataItem } from '@/app/node-manager/types';
 import { ControllerInstallProps } from '@/app/node-manager/types/cloudregion';
-import controllerInstallSyle from './index.module.scss';
+import controllerInstallSyle from '../index.module.scss';
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import { useGroupNames, useInstallMap } from '@/app/node-manager/hooks/node';
 import CustomTable from '@/components/custom-table';
 import useNodeManagerApi from '@/app/node-manager/api';
-import InstallGuidance from './installGuidance';
+import InstallGuidance from '../controllerInstall/installing/installGuidance';
 
 const ControllerTable: React.FC<ControllerInstallProps> = ({
   cancel,
@@ -126,21 +126,15 @@ const ControllerTable: React.FC<ControllerInstallProps> = ({
   };
 
   const checkDetail = (type: string, row: TableDataItem) => {
-    let str = '';
-    if (row.status === 'error') {
-      const { steps = [] } = row.result || {};
-      str = steps.reduce((pre: string, cur: TableDataItem, index: number) => {
-        const { action, message } = cur || {};
-        const isLast = index === steps.length - 1;
-        return (pre += `${action ? action + ': ' : ''}${message}${
-          isLast ? '' : '\n'
-        }`);
-      }, '');
-    }
+    const logs = row.result?.steps || [];
     guidance.current?.showModal({
       title: t('node-manager.cloudregion.node.log'),
       type,
-      form: { message: str || '--' }
+      form: {
+        logs,
+        ip: row.ip,
+        nodeName: row.node_name
+      }
     });
   };
 

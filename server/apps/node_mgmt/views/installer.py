@@ -12,6 +12,8 @@ from apps.node_mgmt.tasks.installer import (
     install_collector,
     uninstall_controller,
     retry_controller,
+    timeout_controller_install_task,
+    CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
 )
 
 
@@ -25,6 +27,10 @@ class InstallerViewSet(ViewSet):
             request.data["nodes"],
         )
         install_controller.delay(task_id)
+        timeout_controller_install_task.apply_async(
+            args=[task_id],
+            countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
+        )
         return WebUtils.response_success(dict(task_id=task_id))
 
     @action(detail=False, methods=["post"], url_path="controller/uninstall")
@@ -104,8 +110,10 @@ class InstallerViewSet(ViewSet):
         serializer.is_valid(raise_exception=True)
         validated_data = cast(dict[str, Any], serializer.validated_data)
 
-        queryset = CollectorTaskNode.objects.filter(task_id=task_id).select_related(
-            "node"
+        queryset = (
+            CollectorTaskNode.objects.filter(task_id=task_id)
+            .select_related("node")
+            .prefetch_related("node__nodeorganization_set")
         )
         status_list = validated_data.get("status")
         if status_list:
@@ -125,6 +133,12 @@ class InstallerViewSet(ViewSet):
                 "result": task_node.result,
                 "ip": task_node.node.ip,
                 "os": task_node.node.operating_system,
+                "node_name": task_node.node.name,
+                "organizations": [
+                    rel.organization
+                    for rel in task_node.node.nodeorganization_set.all()
+                ],
+                "install_method": task_node.node.install_method,
             }
             for task_node in items
         ]
@@ -136,6 +150,12 @@ class InstallerViewSet(ViewSet):
             "running": summary_queryset.filter(status="running").count(),
             "success": summary_queryset.filter(status="success").count(),
             "error": summary_queryset.filter(status="error").count(),
+            "timeout": summary_queryset.filter(
+                result__overall_status="timeout"
+            ).count(),
+            "cancelled": summary_queryset.filter(
+                result__overall_status="cancelled"
+            ).count(),
         }
 
         task_obj = CollectorTask.objects.filter(id=task_id).first()

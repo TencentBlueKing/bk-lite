@@ -405,9 +405,11 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         serializer.is_valid(raise_exception=True)
         validated_data = cast(dict[str, Any], serializer.validated_data)
 
-        queryset = CollectorActionTaskNode.objects.filter(
-            task_id=task_id
-        ).select_related("node")
+        queryset = (
+            CollectorActionTaskNode.objects.filter(task_id=task_id)
+            .select_related("node")
+            .prefetch_related("node__nodeorganization_set")
+        )
         status_list = validated_data.get("status")
         if status_list:
             queryset = queryset.filter(status__in=status_list)
@@ -426,6 +428,11 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
                 "result": obj.result,
                 "ip": obj.node.ip,
                 "os": obj.node.operating_system,
+                "node_name": obj.node.name,
+                "organizations": [
+                    rel.organization for rel in obj.node.nodeorganization_set.all()
+                ],
+                "install_method": obj.node.install_method,
             }
             for obj in items
         ]
@@ -437,6 +444,12 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
             "running": summary_queryset.filter(status="running").count(),
             "success": summary_queryset.filter(status="success").count(),
             "error": summary_queryset.filter(status="error").count(),
+            "timeout": summary_queryset.filter(
+                result__overall_status="timeout"
+            ).count(),
+            "cancelled": summary_queryset.filter(
+                result__overall_status="cancelled"
+            ).count(),
         }
 
         task_obj = CollectorActionTask.objects.filter(id=task_id).first()

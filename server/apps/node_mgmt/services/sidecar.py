@@ -20,6 +20,9 @@ from apps.node_mgmt.models.sidecar import (
 )
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
+from apps.node_mgmt.tasks.installer import (
+    converge_controller_install_connectivity_for_node,
+)
 from apps.node_mgmt.utils.sidecar import format_tags_dynamic
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from jinja2 import Template as JinjaTemplate
@@ -252,10 +255,62 @@ class Sidecar:
                 if task_node and task_node.status == "waiting":
                     task_node.status = "running"
                     task_node.result = {
-                        "message": "Action delivered to sidecar",
-                        "delivered": True,
+                        "overall_status": "running",
+                        "final_message": "Collector action consumed by sidecar",
+                        "steps": [
+                            {
+                                "action": "consume_ack",
+                                "status": "success",
+                                "message": "Action delivered to sidecar",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "details": {
+                                    "delivered": True,
+                                    "collector_id": action_item.get("collector_id"),
+                                },
+                            },
+                            {
+                                "action": "execute_command",
+                                "status": "running",
+                                "message": "Collector command is being executed by sidecar",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            },
+                        ],
                     }
                     task_node.save(update_fields=["status", "result"])
+
+                elif task_node and task_node.status == "running":
+                    result = task_node.result or {}
+                    steps = result.get("steps", [])
+                    steps.append(
+                        {
+                            "action": "consume_ack",
+                            "status": "success",
+                            "message": "Action delivered to sidecar",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "details": {
+                                "delivered": True,
+                                "collector_id": action_item.get("collector_id"),
+                            },
+                        }
+                    )
+                    if not (
+                        steps
+                        and steps[-1].get("action") == "execute_command"
+                        and steps[-1].get("status") == "running"
+                    ):
+                        steps.append(
+                            {
+                                "action": "execute_command",
+                                "status": "running",
+                                "message": "Collector command is being executed by sidecar",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }
+                        )
+                    result["steps"] = steps
+                    result["overall_status"] = "running"
+                    result["final_message"] = "Collector action consumed by sidecar"
+                    task_node.result = result
+                    task_node.save(update_fields=["result"])
 
                     CollectorActionTask.objects.filter(
                         id=task_id, status="waiting"
@@ -280,6 +335,7 @@ class Sidecar:
 
         # 返回响应
         converge_collector_action_task_for_node.delay(node_id)
+        converge_controller_install_connectivity_for_node.delay(node_id)
         return EncryptedJsonResponse(
             status=202, data=response_data, headers={"ETag": new_etag}, request=request
         )

@@ -506,7 +506,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
-    { name = "setuptools", specifier = ">=68.0.0" },
+    { name = "setuptools", specifier = "==80.9.0" },
     { name = "sktime", specifier = ">=0.30.0" },
     { name = "statsmodels", specifier = ">=0.14.4" },
     { name = "tqdm", specifier = ">=4.67.1" },
