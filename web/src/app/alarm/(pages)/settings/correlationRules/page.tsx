@@ -10,9 +10,11 @@ import { CorrelationRule } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { Button, Input, Modal, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
 const CorrelationRulesPage: React.FC = () => {
   const { t } = useTranslation();
+  const { convertToLocalizedTime } = useLocalizedTime();
   const { getCorrelationRuleList, deleteCorrelationRule } = useSettingApi();
   const listCount = useRef<number>(0);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
@@ -151,12 +153,14 @@ const CorrelationRulesPage: React.FC = () => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
+      render: (value: string) => <span>{value ? convertToLocalizedTime(value) : '-'}</span>,
     },
     {
       title: t('settings.correlation.lastUpdateTime'),
       dataIndex: 'updated_at',
       key: 'updated_at',
       width: 180,
+      render: (value: string) => <span>{value ? convertToLocalizedTime(value) : '-'}</span>,
     },
     {
       title: t('settings.assignActions'),
@@ -185,7 +189,7 @@ const CorrelationRulesPage: React.FC = () => {
         </div>
       ),
     },
-  ], [t, handleEdit, handleDelete]);
+  ], [t, handleEdit, handleDelete, convertToLocalizedTime]);
 
   return (
     <>
