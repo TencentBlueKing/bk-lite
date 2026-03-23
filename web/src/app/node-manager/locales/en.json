@@ -101,6 +101,7 @@
         "executorVersion": "Executor Version",
         "btntext3": "to create one.",
         "failUninstall": "Uninstallation failed",
+        "uninstallTimeout": "Uninstallation timeout",
         "log": "Log",
         "ip": "IP",
         "deleteNodeTips": "For nodes that are automatically installed, it is recommended to uninstall the controller for deletion. After manually deleting the node, if the node's side car reports normally in the future, it will be automatically updated in the list.",
@@ -162,6 +163,8 @@
         "confirmFinishStartContent2": "are being started. Ending the start will stop all start processes. Successfully started nodes will not be affected.",
         "confirmFinishStopContent2": "are being stopped. Ending the stop will stop all stop processes. Successfully stopped nodes will not be affected.",
         "confirmFinishRestartContent2": "are being restarted. Ending the restart will stop all restart processes. Successfully restarted nodes will not be affected.",
+        "confirmFinishUninstallTitle": "Confirm to finish uninstalling?",
+        "confirmFinishUninstallContent2": "are being uninstalled. Ending the uninstallation will stop all uninstallation processes. Successfully uninstalled nodes will not be affected.",
         "statusRunning": "Running",
         "timeout": "Timeout",
         "installStatus": "Install Status",
@@ -336,7 +339,9 @@
       "operationConfig": "Operation Configuration",
       "operationCompleteTitle": "Operation Completed!",
       "operationCompleteDesc": "You have successfully completed the component operation!",
-      "operationCompleteSubDesc": "You can view and manage the component status in the node list."
+      "operationCompleteSubDesc": "You can view and manage the component status in the node list.",
+      "uninstallList": "Uninstallation List",
+      "finishUninstall": "Finish Uninstallation"
     }
   },
   "common": {
