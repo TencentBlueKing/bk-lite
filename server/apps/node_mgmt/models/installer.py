@@ -31,6 +31,9 @@ class ControllerTask(TimeInfo, MaintainerInfo):
     class Meta:
         verbose_name = "控制器任务"
         verbose_name_plural = "控制器任务"
+        indexes = [
+            models.Index(fields=["type", "status"], name="nm_ctrl_task_type_st_idx"),
+        ]
 
 
 class ControllerTaskNode(models.Model):
@@ -52,6 +55,10 @@ class ControllerTaskNode(models.Model):
     class Meta:
         verbose_name = "控制器任务节点"
         verbose_name_plural = "控制器任务节点"
+        indexes = [
+            models.Index(fields=["ip", "status"], name="nm_ctrl_node_ip_st_idx"),
+            models.Index(fields=["task", "status"], name="nm_ctrl_tasknode_st_idx"),
+        ]
 
 
 class CollectorTask(TimeInfo, MaintainerInfo):

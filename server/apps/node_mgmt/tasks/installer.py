@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from celery import shared_task
+from django.db.models import Count, Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -144,6 +145,34 @@ def _reconcile_controller_task_status(task_id):
 
     task_obj.status = "running" if running_or_waiting_exists else "finished"
     task_obj.save(update_fields=["status"])
+
+
+def _reconcile_controller_task_statuses(task_ids):
+    if not task_ids:
+        return
+
+    pending_by_task = {
+        item["task_id"]: item["pending_count"]
+        for item in ControllerTaskNode.objects.filter(task_id__in=task_ids)
+        .values("task_id")
+        .annotate(
+            pending_count=Count("id", filter=Q(status__in=["waiting", "running"]))
+        )
+    }
+
+    running_ids = []
+    finished_ids = []
+
+    for task_id in task_ids:
+        if pending_by_task.get(task_id, 0):
+            running_ids.append(task_id)
+        else:
+            finished_ids.append(task_id)
+
+    if running_ids:
+        ControllerTask.objects.filter(id__in=running_ids).update(status="running")
+    if finished_ids:
+        ControllerTask.objects.filter(id__in=finished_ids).update(status="finished")
 
 
 def _parse_exception_details(error_message, exception_obj=None):
@@ -454,8 +483,7 @@ def converge_controller_install_connectivity_for_node(node_id):
         _save_node_result(task_node, "success", "All steps completed successfully")
         affected_task_ids.add(task_node.task_id)
 
-    for task_id in affected_task_ids:
-        _reconcile_controller_task_status(task_id)
+    _reconcile_controller_task_statuses(affected_task_ids)
 
 
 @shared_task
