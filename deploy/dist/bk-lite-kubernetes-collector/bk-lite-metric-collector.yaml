@@ -95,7 +95,7 @@ spec:
     spec:
       containers:
         - name: telegraf
-          image: telegraf:1.29.4
+          image: bk-lite.tencentcloudcr.com/bklite/telegraf:1.29.5
           resources:
             requests:
               memory: 128Mi
