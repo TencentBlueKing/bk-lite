@@ -26,7 +26,7 @@ spec:
       serviceAccountName: cadvisor
       containers:
       - name: cadvisor
-        image: gcr.io/cadvisor/cadvisor:latest
+        image: bk-lite.tencentcloudcr.com/bklite/cadvisor:0.56.2
         resources:
           requests:
             memory: 400Mi
@@ -95,7 +95,7 @@ spec:
     spec:
       containers:
         - name: telegraf
-          image: telegraf:1.29.4
+          image: bk-lite.tencentcloudcr.com/bklite/telegraf:1.29.5
           resources:
             requests:
               memory: 128Mi
@@ -158,7 +158,7 @@ spec:
       automountServiceAccountToken: true
       containers:
       - name: kube-state-metrics
-        image: bitnamilegacy/kube-state-metrics:2.13.0
+        image: bk-lite.tencentcloudcr.com/bklite/kube-state-metrics:2.13.0
         resources:
           requests:
             memory: 64Mi
@@ -219,7 +219,7 @@ spec:
     spec:    
       containers:
         - name: telegraf
-          image: telegraf:1.29.4
+          image: bk-lite.tencentcloudcr.com/bklite/telegraf:1.29.5
           resources:
             requests:
               memory: 128Mi
@@ -274,7 +274,7 @@ spec:
       serviceAccountName: vmagent    
       containers:
         - name: vmagent
-          image: victoriametrics/vmagent
+          image: bk-lite.tencentcloudcr.com/bklite/vmagent
           resources:
             requests:
               memory: 128Mi
