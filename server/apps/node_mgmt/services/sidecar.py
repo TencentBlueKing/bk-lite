@@ -19,6 +19,7 @@ from apps.node_mgmt.models.sidecar import (
     NodeOrganization,
 )
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
+from apps.node_mgmt.models.installer import ControllerTaskNode
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 from apps.node_mgmt.tasks.installer import (
     converge_controller_install_connectivity_for_node,
@@ -31,6 +32,8 @@ from apps.core.logger import node_logger as logger
 
 
 class Sidecar:
+    CONVERGE_DEBOUNCE_SECONDS = 5
+
     @staticmethod
     def generate_etag(data):
         """根据数据生成干净的 ETag，不加引号"""
@@ -120,6 +123,75 @@ class Sidecar:
                 batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
             )
 
+    @staticmethod
+    def _collector_status_signature(status_payload: dict) -> str:
+        collectors = status_payload.get("collectors", []) if status_payload else []
+        if not isinstance(collectors, list):
+            collectors = []
+
+        normalized = []
+        for item in collectors:
+            if not isinstance(item, dict):
+                continue
+            normalized.append(
+                {
+                    "collector_id": item.get("collector_id"),
+                    "status": item.get("status"),
+                }
+            )
+
+        normalized.sort(key=lambda x: str(x.get("collector_id") or ""))
+        payload = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+        return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _is_debounce_elapsed(cache_key: str) -> bool:
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        last_ts = cache.get(cache_key)
+        if (
+            last_ts is not None
+            and now_ts - int(last_ts) < Sidecar.CONVERGE_DEBOUNCE_SECONDS
+        ):
+            return False
+        cache.set(cache_key, now_ts, timeout=Sidecar.CONVERGE_DEBOUNCE_SECONDS * 6)
+        return True
+
+    @staticmethod
+    def trigger_converge_tasks_if_needed(
+        node_id: str, node_ip: str, status_payload: dict
+    ):
+        action_running_exists = CollectorActionTaskNode.objects.filter(
+            node_id=node_id,
+            status="running",
+        ).exists()
+
+        install_running_exists = False
+        if node_ip:
+            install_running_exists = ControllerTaskNode.objects.filter(
+                ip=node_ip,
+                status="running",
+                task__type="install",
+            ).exists()
+
+        if not action_running_exists and not install_running_exists:
+            return
+
+        if action_running_exists:
+            signature = Sidecar._collector_status_signature(status_payload)
+            signature_cache_key = f"node_converge_action_signature_{node_id}"
+            debounce_cache_key = f"node_converge_action_debounce_{node_id}"
+            last_signature = cache.get(signature_cache_key)
+            if signature != last_signature or Sidecar._is_debounce_elapsed(
+                debounce_cache_key
+            ):
+                cache.set(signature_cache_key, signature, timeout=3600)
+                converge_collector_action_task_for_node.delay(node_id)
+
+        if install_running_exists:
+            debounce_cache_key = f"node_converge_install_debounce_{node_id}"
+            if Sidecar._is_debounce_elapsed(debounce_cache_key):
+                converge_controller_install_connectivity_for_node.delay(node_id)
+
     # @staticmethod
     # def update_groups(node_id: str, groups: list):
     #     """
@@ -148,10 +220,19 @@ class Sidecar:
         # 如果缓存的ETag存在且与客户端的相同，则返回304 Not Modified
         if cached_etag and cached_etag == if_none_match:
             # 更新时间, 更新状态
+            node_status = request.data.get("node_details", {}).get("status", {})
             Node.objects.filter(id=node_id).update(
                 updated_at=datetime.now(timezone.utc).isoformat(),
-                status=request.data.get("node_details", {}).get("status", {}),
+                status=node_status,
             )
+
+            node_ip = request.data.get("node_details", {}).get("ip", "")
+            if not node_ip:
+                node_ip = (
+                    Node.objects.filter(id=node_id).values_list("ip", flat=True).first()
+                )
+            Sidecar.trigger_converge_tasks_if_needed(node_id, node_ip, node_status)
+
             response = HttpResponse(status=304)
             response["ETag"] = cached_etag
             return response
@@ -334,8 +415,8 @@ class Sidecar:
         cache.set(f"node_etag_{node_id}", new_etag, ControllerConstants.E_CACHE_TIMEOUT)
 
         # 返回响应
-        converge_collector_action_task_for_node.delay(node_id)
-        converge_controller_install_connectivity_for_node.delay(node_id)
+        node_status = request_data.get("status", {})
+        Sidecar.trigger_converge_tasks_if_needed(node_id, new_obj.ip, node_status)
         return EncryptedJsonResponse(
             status=202, data=response_data, headers={"ETag": new_etag}, request=request
         )

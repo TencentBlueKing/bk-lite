@@ -1,4 +1,5 @@
 from celery import shared_task
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
@@ -66,6 +67,48 @@ def _is_expected_status(action, collector_status):
     return "running"
 
 
+def _reconcile_collector_action_tasks(task_ids):
+    if not task_ids:
+        return
+
+    stats = (
+        CollectorActionTaskNode.objects.filter(task_id__in=task_ids)
+        .values("task_id")
+        .annotate(
+            success_count=Count("id", filter=Q(status="success")),
+            error_count=Count("id", filter=Q(status="error")),
+            pending_count=Count("id", filter=Q(status__in=["waiting", "running"])),
+        )
+    )
+
+    running_ids = []
+    finished_ids = []
+    success_count_map = {}
+    error_count_map = {}
+
+    for item in stats:
+        task_id = item["task_id"]
+        success_count_map[task_id] = item["success_count"]
+        error_count_map[task_id] = item["error_count"]
+        if item["pending_count"]:
+            running_ids.append(task_id)
+        else:
+            finished_ids.append(task_id)
+
+    if running_ids:
+        CollectorActionTask.objects.filter(id__in=running_ids).update(status="running")
+    if finished_ids:
+        CollectorActionTask.objects.filter(id__in=finished_ids).update(
+            status="finished"
+        )
+
+    for task_id in task_ids:
+        CollectorActionTask.objects.filter(id=task_id).update(
+            success_count=success_count_map.get(task_id, 0),
+            error_count=error_count_map.get(task_id, 0),
+        )
+
+
 @shared_task
 def converge_collector_action_task_for_node(node_id):
     node = Node.objects.filter(id=node_id).first()
@@ -129,21 +172,7 @@ def converge_collector_action_task_for_node(node_id):
             )
             affected_task_ids.add(task_obj.id)
 
-    for task_id in affected_task_ids:
-        task_nodes = CollectorActionTaskNode.objects.filter(task_id=task_id)
-        success_count = task_nodes.filter(status="success").count()
-        error_count = task_nodes.filter(status="error").count()
-        running_or_waiting_exists = task_nodes.filter(
-            status__in=["waiting", "running"]
-        ).exists()
-
-        task_status = "running" if running_or_waiting_exists else "finished"
-
-        CollectorActionTask.objects.filter(id=task_id).update(
-            status=task_status,
-            success_count=success_count,
-            error_count=error_count,
-        )
+    _reconcile_collector_action_tasks(affected_task_ids)
 
 
 @shared_task
@@ -181,12 +210,4 @@ def timeout_collector_action_task(task_id):
             "Collector action timeout",
         )
 
-    task_nodes = CollectorActionTaskNode.objects.filter(task_id=task_id)
-    success_count = task_nodes.filter(status="success").count()
-    error_count = task_nodes.filter(status="error").count()
-
-    CollectorActionTask.objects.filter(id=task_id).update(
-        status="finished",
-        success_count=success_count,
-        error_count=error_count,
-    )
+    _reconcile_collector_action_tasks({task_id})

@@ -37,6 +37,9 @@ class CollectorActionTask(TimeInfo, MaintainerInfo):
     class Meta:
         verbose_name = "采集器动作任务"
         verbose_name_plural = "采集器动作任务"
+        indexes = [
+            models.Index(fields=["status"], name="nm_action_task_status_idx"),
+        ]
 
 
 class CollectorActionTaskNode(models.Model):
@@ -53,3 +56,9 @@ class CollectorActionTaskNode(models.Model):
         verbose_name = "采集器动作任务节点"
         verbose_name_plural = "采集器动作任务节点"
         unique_together = ("task", "node")
+        indexes = [
+            models.Index(fields=["node", "status"], name="nm_action_node_status_idx"),
+            models.Index(
+                fields=["task", "status"], name="nm_action_tasknode_status_idx"
+            ),
+        ]
