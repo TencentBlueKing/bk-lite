@@ -14,12 +14,14 @@ type ExecuteRequest struct {
 	Command        string `json:"command"`
 	ExecuteTimeout int    `json:"execute_timeout"`
 	Shell          string `json:"shell,omitempty"` // 脚本类型，支持：sh, bash, bat, cmd, powershell, pwsh，默认 "sh"
+	LogCommand     string `json:"-"`
 }
 
 type ExecuteResponse struct {
 	Output     string `json:"result"`
 	InstanceId string `json:"instance_id"`
 	Success    bool   `json:"success"`
+	Code       string `json:"code,omitempty"`
 	Error      string `json:"error,omitempty"` // 添加错误字段，omitempty表示为空时不序列化
 }
 
