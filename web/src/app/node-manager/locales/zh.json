@@ -163,6 +163,7 @@
         "confirmFinishStopContent2": "正在停止中，结束停止后将停止所有停止进程。已停止成功的节点不会受影响。",
         "confirmFinishRestartContent2": "正在重启中，结束重启后将停止所有重启进程。已重启成功的节点不会受影响。",
         "statusRunning": "进行中",
+        "timeout": "超时",
         "installStatus": "安装状态",
         "installTimeout": "安装超时",
         "retry": "重试",

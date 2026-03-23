@@ -386,6 +386,15 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
     timerRef.current = null;
   };
 
+  // 重新启动轮询（重试成功后调用）
+  const restartPolling = () => {
+    clearTimer();
+    getNodeList('refresh');
+    timerRef.current = setInterval(() => {
+      getNodeList('timer');
+    }, 5000);
+  };
+
   const checkDetail = (type: string, row: TableDataItem) => {
     const logs = row.result?.steps || [];
     currentViewingNodeRef.current = row;
@@ -679,7 +688,8 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       notification.success({
         message: t('node-manager.cloudregion.node.retrySuccess')
       });
-      getNodeList('refresh');
+      // 重试成功后重新启动轮询
+      restartPolling();
     } finally {
       setRetryingNodeIds((prev) => prev.filter((id) => id !== String(nodeId)));
     }
@@ -719,7 +729,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         <>
           <RetryInstallModal
             ref={retryModalRef}
-            onSuccess={() => getNodeList('refresh')}
+            onSuccess={() => restartPolling()}
           />
           <OperationGuidance ref={operationGuidanceRef} />
         </>
