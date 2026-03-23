@@ -63,16 +63,14 @@ class QAPairsViewSet(MaintainerViewSet):
                 return JsonResponse({"result": False, "message": msg})
         question_llm = LLMModel.objects.get(id=params["llm_model_id"])
         answer_llm = LLMModel.objects.get(id=params["answer_llm_model_id"])
-        question_config = question_llm.decrypted_llm_config
-        answer_config = answer_llm.decrypted_llm_config
         return_data = []
         for i in chunk_data:
             kwargs = {
                 "content": i["content"],
                 "size": params.get("qa_count", 1) or 1,
-                "openai_api_base": question_config["openai_base_url"],
-                "openai_api_key": question_config["openai_api_key"],
-                "model": question_config["model"] or question_llm.name,
+                "openai_api_base": question_llm.openai_api_base,
+                "openai_api_key": question_llm.openai_api_key,
+                "model": question_llm.model_name,
                 "extra_prompt": params.get("question_prompt", ""),
             }
             res = client.generate_question(kwargs)
@@ -83,9 +81,9 @@ class QAPairsViewSet(MaintainerViewSet):
                 answer_kwargs = {
                     "context": i["content"],
                     "content": u["question"],
-                    "openai_api_base": answer_config["openai_base_url"],
-                    "openai_api_key": answer_config["openai_api_key"],
-                    "model": answer_config["model"] or answer_llm.name,
+                    "openai_api_base": answer_llm.openai_api_base,
+                    "openai_api_key": answer_llm.openai_api_key,
+                    "model": answer_llm.model_name,
                     "extra_prompt": params.get("answer_prompt", ""),
                 }
                 answer_res = client.generate_answer(answer_kwargs)
@@ -120,9 +118,9 @@ class QAPairsViewSet(MaintainerViewSet):
                 chunk_data = chunk_data[:10]  # 限制最多10条数据
                 break
         llm_model = LLMModel.objects.get(id=params["llm_model_id"])
-        openai_api_base = llm_model.decrypted_llm_config["openai_base_url"]
-        openai_api_key = llm_model.decrypted_llm_config["openai_api_key"]
-        model = llm_model.decrypted_llm_config["model"] or llm_model.name
+        openai_api_base = llm_model.openai_api_base
+        openai_api_key = llm_model.openai_api_key
+        model = llm_model.model_name
         return_data = []
         for i in chunk_data:
             kwargs = {
@@ -146,9 +144,9 @@ class QAPairsViewSet(MaintainerViewSet):
     def generate_answer(self, request):
         params = request.data
         llm_model = LLMModel.objects.get(id=params["answer_llm_model_id"])
-        openai_api_base = llm_model.decrypted_llm_config["openai_base_url"]
-        openai_api_key = llm_model.decrypted_llm_config["openai_api_key"]
-        model = llm_model.decrypted_llm_config["model"] or llm_model.name
+        openai_api_base = llm_model.openai_api_base
+        openai_api_key = llm_model.openai_api_key
+        model = llm_model.model_name
         return_data = []
         for i in params["question_data"]:
             kwargs = {
@@ -345,8 +343,11 @@ class QAPairsViewSet(MaintainerViewSet):
         index_name = qa_paris.knowledge_base.knowledge_index_name()
         question = params["question"]
         answer = params["answer"]
-        embed_config = qa_paris.knowledge_base.embed_model.decrypted_embed_config
-        embed_config["model"] = embed_config.get("model", qa_paris.knowledge_base.embed_model.name)
+        embed_config = {
+            "base_url": qa_paris.knowledge_base.embed_model.base_url,
+            "api_key": qa_paris.knowledge_base.embed_model.api_key,
+            "model": qa_paris.knowledge_base.embed_model.model_name,
+        }
         result = ChunkHelper.create_one_qa_pairs(embed_config, index_name, params["qa_pairs_id"], question, answer)
         if result["result"]:
             qa_paris.generate_count += 1

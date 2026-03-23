@@ -9,6 +9,14 @@ from apps.opspilot.serializers.model_type_serializer import CustomProviderSerial
 class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
     permission_key = "provider.llm_model"
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if not attrs.get("vendor") and not getattr(self.instance, "vendor_id", None):
+            raise serializers.ValidationError({"vendor": "供应商不能为空"})
+        if not attrs.get("model") and not getattr(self.instance, "model", None):
+            raise serializers.ValidationError({"model": "模型不能为空"})
+        return attrs
+
     class Meta:
         model = LLMModel
         fields = "__all__"
