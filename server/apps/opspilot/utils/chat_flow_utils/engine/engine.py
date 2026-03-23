@@ -261,14 +261,20 @@ class ChatFlowEngine:
 
             # 使用公共方法创建 agents 节点的执行上下文
             agent_node_id = target_agent_node.get("id")
+
+            # 构建 agents 节点的输入数据（仿照 _execute_single_node 的逻辑）
+            agent_input_data = self._build_agent_input_data(target_agent_node, final_input_data)
+
             agent_context = await self._create_node_execution_context_async(
-                node=target_agent_node, input_data=final_input_data, status=NodeStatus.RUNNING
+                node=target_agent_node,
+                input_data=agent_input_data,
+                status=NodeStatus.RUNNING,
             )
 
             try:
                 # 同步调用 execute_method,它会返回一个异步生成器
                 async_execute = sync_to_async(execute_method, thread_sensitive=False)
-                stream_generator = await async_execute(target_agent_node.get("id"), target_agent_node, final_input_data)
+                stream_generator = await async_execute(target_agent_node.get("id"), target_agent_node, agent_input_data)
 
                 chunk_index = 0
                 # 直接迭代异步生成器
@@ -307,7 +313,14 @@ class ChatFlowEngine:
                 # 记录系统输出到对话历史
                 if accumulated_content:
                     threading.Thread(
-                        target=lambda: self._record_conversation_history(user_id, accumulated_content, "bot", entry_type, node_id, session_id),
+                        target=lambda: self._record_conversation_history(
+                            user_id,
+                            accumulated_content,
+                            "bot",
+                            entry_type,
+                            node_id,
+                            session_id,
+                        ),
                         daemon=True,
                     ).start()
 
@@ -324,7 +337,12 @@ class ChatFlowEngine:
                     captured_start_node_type = start_node.get("type", "") if start_node else None
 
                     threading.Thread(
-                        target=lambda: self._record_execution_result(input_data, captured_final_message, True, captured_start_node_type),
+                        target=lambda: self._record_execution_result(
+                            input_data,
+                            captured_final_message,
+                            True,
+                            captured_start_node_type,
+                        ),
                         daemon=True,
                     ).start()
 
@@ -647,6 +665,51 @@ class ChatFlowEngine:
                 raise
 
         return temp_engine_data
+
+    def _build_agent_input_data(self, agent_node: Dict[str, Any], base_input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """构建 agents 节点的输入数据
+
+        仿照 _execute_single_node 的逻辑，确保 agents 节点获取正确的输入参数，
+        特别是从意图分类节点路由过来时。
+
+        Args:
+            agent_node: agents 节点配置
+            base_input_data: 基础输入数据（来自前置节点执行结果）
+
+        Returns:
+            构建好的 agents 节点输入数据
+        """
+        agent_config = agent_node.get("data", {}).get("config", {})
+        input_key = agent_config.get("inputParams", "last_message")
+
+        # 检查是否是从意图分类节点路由过来的（intent_previous_output）
+        intent_previous_output = self.variable_manager.get_variable("intent_previous_output")
+        if intent_previous_output is not None:
+            # 当前节点是意图分类后的目标节点，使用保存的前置节点输出
+            input_value = intent_previous_output
+            # 清除标记，避免影响后续节点
+            self.variable_manager.delete_variable("intent_previous_output")
+            # 截断日志输出，避免过长
+            log_value = input_value[:100] + "..." if isinstance(input_value, str) and len(input_value) > 100 else input_value
+            logger.info(f"[SSE-Engine] 使用 intent_previous_output: {log_value}")
+        else:
+            # 优先从 variable_manager 获取，其次从 base_input_data 获取
+            input_value = self.variable_manager.get_variable(input_key)
+            if input_value is None:
+                input_value = base_input_data.get(input_key, "")
+
+        # 构建精确的输入数据，确保包含正确的 input_key
+        agent_input_data = {input_key: input_value}
+        # 保留其他必要字段（如 user_id, session_id, flow_input 等），但不覆盖 input_key
+        for k, v in base_input_data.items():
+            if k not in agent_input_data:
+                agent_input_data[k] = v
+
+        # 日志输出
+        log_input = input_value[:100] + "..." if isinstance(input_value, str) and len(input_value) > 100 else input_value
+        logger.info(f"[SSE-Engine] agents输入 keys={list(agent_input_data.keys())}, {input_key}={log_input}")
+
+        return agent_input_data
 
     def _create_error_response(self, error_message: str):
         """创建错误的 StreamingHttpResponse"""
