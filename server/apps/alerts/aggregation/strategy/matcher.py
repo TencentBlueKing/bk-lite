@@ -1,5 +1,5 @@
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from django.db.models import Q
 from apps.core.logger import alert_logger as logger
 
@@ -140,7 +140,7 @@ class StrategyMatcher:
         return final_q
 
     @staticmethod
-    def _build_condition_q(condition: Dict) -> Q | None:
+    def _build_condition_q(condition: Dict) -> Optional[Q]:
         """
         将单个条件转换为Q对象
 

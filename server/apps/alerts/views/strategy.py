@@ -48,7 +48,7 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
                         "operator": "eq"
                     },
                     {
-                        "key": "content",
+                        "key": "description",
                         "operator": "re",
                         "value": "2"
                     }
@@ -156,6 +156,7 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
             from apps.alerts.aggregation.recovery.timeout_checker import (
                 TimeoutChecker,
             )
+
             closed_count = TimeoutChecker.close_observing_session_alerts_by_strategy(
                 instance_id
             )
