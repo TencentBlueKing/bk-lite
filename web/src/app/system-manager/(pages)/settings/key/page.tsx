@@ -92,8 +92,21 @@ const ScrectKeyPage: React.FC = () => {
   };
 
   const handleCopy = (key: string) => {
-    navigator.clipboard.writeText(key);
-    message.success(t('settings.secret.copied'));
+    try {
+      if (navigator?.clipboard?.writeText) {
+        navigator.clipboard.writeText(key);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = key;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      message.success(t('settings.secret.copied'));
+    } catch {
+      message.error(t('common.copyFailed'));
+    }
   };
 
   const handleCreate = async () => {

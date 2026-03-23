@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"nats-executor/utils"
 )
 
 func TestExecute(t *testing.T) {
@@ -131,10 +133,6 @@ func TestExecuteFailureIncludesExitCodeAndOutput(t *testing.T) {
 }
 
 func TestExecuteUsesCustomShellBinary(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping custom shell binary test on Windows")
-	}
-
 	req := ExecuteRequest{
 		Command:        "printf custom-shell",
 		ExecuteTimeout: 5,
@@ -142,12 +140,52 @@ func TestExecuteUsesCustomShellBinary(t *testing.T) {
 	}
 
 	response := Execute(req, "test-custom-shell")
-	if !response.Success {
-		t.Fatalf("custom shell execution failed: %s", response.Error)
+	if response.Success {
+		t.Fatalf("expected unsupported custom shell to be rejected: %+v", response)
 	}
 
-	if response.Output != "custom-shell" {
-		t.Fatalf("unexpected output: %q", response.Output)
+	if response.Code != utils.ErrorCodeInvalidRequest {
+		t.Fatalf("unexpected response code: %+v", response)
+	}
+
+	if !strings.Contains(response.Error, "unsupported shell") {
+		t.Fatalf("unexpected error: %+v", response)
+	}
+}
+
+func TestExecuteRejectsEmptyCommand(t *testing.T) {
+	response := Execute(ExecuteRequest{
+		Command:        "   ",
+		ExecuteTimeout: 5,
+		Shell:          "sh",
+	}, "test-empty-command")
+
+	if response.Success {
+		t.Fatal("expected empty command to be rejected")
+	}
+	if response.Code != utils.ErrorCodeInvalidRequest {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+	if !strings.Contains(response.Error, "command is required") {
+		t.Fatalf("unexpected error: %+v", response)
+	}
+}
+
+func TestExecuteRejectsNonPositiveTimeout(t *testing.T) {
+	response := Execute(ExecuteRequest{
+		Command:        "echo hi",
+		ExecuteTimeout: 0,
+		Shell:          "sh",
+	}, "test-invalid-timeout")
+
+	if response.Success {
+		t.Fatal("expected non-positive timeout to be rejected")
+	}
+	if response.Code != utils.ErrorCodeInvalidRequest {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+	if !strings.Contains(response.Error, "execute timeout must be greater than 0") {
+		t.Fatalf("unexpected error: %+v", response)
 	}
 }
 

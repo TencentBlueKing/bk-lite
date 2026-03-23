@@ -16,10 +16,27 @@ func TestRenderEnvVars(t *testing.T) {
 	}
 }
 
+func TestRenderEnvVarsSupportsShortForm(t *testing.T) {
+	t.Setenv("NATS_HOST", "127.0.0.1")
+	t.Setenv("NATS_PORT", "4222")
+
+	rendered := renderEnvVars("nats://$NATS_HOST:$NATS_PORT")
+	if rendered != "nats://127.0.0.1:4222" {
+		t.Fatalf("unexpected rendered value: %s", rendered)
+	}
+}
+
 func TestRenderEnvVarsKeepsMissingPlaceholder(t *testing.T) {
 	rendered := renderEnvVars("nats://${MISSING_HOST}:4222")
 	if rendered != "nats://${MISSING_HOST}:4222" {
 		t.Fatalf("missing placeholder should be preserved, got: %s", rendered)
+	}
+}
+
+func TestRenderEnvVarsKeepsMissingShortFormPlaceholder(t *testing.T) {
+	rendered := renderEnvVars("nats://$MISSING_HOST:4222")
+	if rendered != "nats://$MISSING_HOST:4222" {
+		t.Fatalf("missing short-form placeholder should be preserved, got: %s", rendered)
 	}
 }
 
@@ -82,5 +99,38 @@ func TestParseString(t *testing.T) {
 
 	if got := parseString("{{SECRET}}"); got != "" {
 		t.Fatalf("template placeholder should be cleared, got %q", got)
+	}
+}
+
+func TestParseCLIArgsSupportsVersionSubcommand(t *testing.T) {
+	configPath, showVersion, err := parseCLIArgs([]string{"version"})
+	if err != nil {
+		t.Fatalf("parseCLIArgs returned error: %v", err)
+	}
+	if !showVersion {
+		t.Fatal("expected version subcommand to enable version mode")
+	}
+	if configPath != "" {
+		t.Fatalf("unexpected config path: %q", configPath)
+	}
+}
+
+func TestParseCLIArgsSupportsConfigFlag(t *testing.T) {
+	configPath, showVersion, err := parseCLIArgs([]string{"--config", "/tmp/config.yaml"})
+	if err != nil {
+		t.Fatalf("parseCLIArgs returned error: %v", err)
+	}
+	if showVersion {
+		t.Fatal("did not expect version mode for config startup")
+	}
+	if configPath != "/tmp/config.yaml" {
+		t.Fatalf("unexpected config path: %q", configPath)
+	}
+}
+
+func TestParseCLIArgsRejectsUnknownFlag(t *testing.T) {
+	_, _, err := parseCLIArgs([]string{"--unknown"})
+	if err == nil {
+		t.Fatal("expected unknown flag to return error")
 	}
 }

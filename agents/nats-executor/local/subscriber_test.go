@@ -10,6 +10,17 @@ import (
 	"nats-executor/utils"
 )
 
+type stubResponseMsg struct {
+	respond func(payload []byte) error
+}
+
+func (s stubResponseMsg) Respond(payload []byte) error {
+	if s.respond == nil {
+		return nil
+	}
+	return s.respond(payload)
+}
+
 func TestExecuteResponseIncludesErrorCodeForTimeout(t *testing.T) {
 	response := Execute(ExecuteRequest{
 		Command:        "sleep 2",
@@ -146,6 +157,44 @@ func TestHandleLocalExecuteMessageIntegrationTimeout(t *testing.T) {
 	}
 	if result.Success || result.Code != utils.ErrorCodeTimeout {
 		t.Fatalf("unexpected response: %+v", result)
+	}
+}
+
+func TestRespondLocalExecuteMessageSendsExecutionResponse(t *testing.T) {
+	original := executeLocalCommand
+	executeLocalCommand = func(req ExecuteRequest, instanceId string) ExecuteResponse {
+		return ExecuteResponse{Output: "hello", InstanceId: instanceId, Success: true}
+	}
+	defer func() { executeLocalCommand = original }()
+
+	payload := []byte(`{"args":[{"command":"echo hello","execute_timeout":5}],"kwargs":{}}`)
+	var got ExecuteResponse
+	msg := stubResponseMsg{respond: func(response []byte) error {
+		return json.Unmarshal(response, &got)
+	}}
+
+	if ok := respondLocalExecuteMessage(msg, payload, "instance-1"); !ok {
+		t.Fatal("expected response to be sent successfully")
+	}
+	if !got.Success || got.Output != "hello" || got.InstanceId != "instance-1" {
+		t.Fatalf("unexpected response payload: %+v", got)
+	}
+}
+
+func TestRespondLocalExecuteMessageReturnsFalseWhenRespondFails(t *testing.T) {
+	original := executeLocalCommand
+	executeLocalCommand = func(req ExecuteRequest, instanceId string) ExecuteResponse {
+		return ExecuteResponse{Output: "hello", InstanceId: instanceId, Success: true}
+	}
+	defer func() { executeLocalCommand = original }()
+
+	payload := []byte(`{"args":[{"command":"echo hello","execute_timeout":5}],"kwargs":{}}`)
+	msg := stubResponseMsg{respond: func(response []byte) error {
+		return errors.New("nats unavailable")
+	}}
+
+	if ok := respondLocalExecuteMessage(msg, payload, "instance-1"); ok {
+		t.Fatal("expected respond failure to return false")
 	}
 }
 

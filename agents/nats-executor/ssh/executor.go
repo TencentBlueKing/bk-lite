@@ -20,6 +20,9 @@ import (
 var sshpassPasswordPattern = regexp.MustCompile(`sshpass -p '(?:[^']|'"'"')*'`)
 
 type sshConn interface{}
+type responseMsg interface {
+	Respond([]byte) error
+}
 
 type sshClient interface {
 	NewSession() (sshSession, error)
@@ -45,6 +48,7 @@ var (
 	}
 	buildSCPCommandFn               = buildSCPCommand
 	executeSCPCommand               = executeSCPWithFallback
+	executeLocalSCPCommand          = local.Execute
 	parsePrivateKeyFn               = ssh.ParsePrivateKey
 	parsePrivateKeyWithPassphraseFn = ssh.ParsePrivateKeyWithPassphrase
 	sshDialFn                       = func(network, addr string, config *ssh.ClientConfig) (sshClient, error) {
@@ -222,6 +226,20 @@ func handleUploadToRemoteMessage(data []byte, instanceId string) ([]byte, bool) 
 	return responseContent, true
 }
 
+func respondSSHExecuteMessage(msg responseMsg, data []byte, instanceId string) bool {
+	responseContent, ok := handleSSHExecuteMessage(data, instanceId)
+	if !ok {
+		logger.Errorf("[SSH Subscribe] Instance: %s, Error unmarshalling incoming message", instanceId)
+		return false
+	}
+	if err := msg.Respond(responseContent); err != nil {
+		logger.Errorf("[SSH Subscribe] Instance: %s, Error responding to SSH request: %v", instanceId, err)
+		return false
+	}
+	logger.Debugf("[SSH Subscribe] Instance: %s, Response sent successfully, size: %d bytes", instanceId, len(responseContent))
+	return true
+}
+
 func buildSCPCommand(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
 	var cleanup func()
 	var scpCommand string
@@ -283,7 +301,7 @@ func buildSCPCommand(user, host, password, privateKey string, port uint, sourceP
 }
 
 func executeSCPWithFallback(instanceId string, request local.ExecuteRequest) local.ExecuteResponse {
-	response := local.Execute(request, instanceId)
+	response := executeLocalSCPCommand(request, instanceId)
 	if response.Success {
 		return response
 	}
@@ -301,7 +319,7 @@ func executeSCPWithFallback(instanceId string, request local.ExecuteRequest) loc
 	legacyRequest := request
 	legacyRequest.Command = legacyCommand
 
-	legacyResponse := local.Execute(legacyRequest, instanceId)
+	legacyResponse := executeLocalSCPCommand(legacyRequest, instanceId)
 	if legacyResponse.Success {
 		logger.Warnf("[SCP Execute] Instance: %s, SCP succeeded with legacy fallback profile", instanceId)
 	}
@@ -327,7 +345,38 @@ func addLegacySCPOptions(command string) string {
 	return command[:portFlagIndex] + legacyOptions + command[portFlagIndex:]
 }
 
+func invalidSSHExecuteResponse(instanceId, message string) ExecuteResponse {
+	return ExecuteResponse{
+		InstanceId: instanceId,
+		Success:    false,
+		Output:     message,
+		Code:       utils.ErrorCodeInvalidRequest,
+		Error:      message,
+	}
+}
+
+func validateExecuteRequest(req ExecuteRequest) string {
+	switch {
+	case strings.TrimSpace(req.Command) == "":
+		return "command is required"
+	case strings.TrimSpace(req.Host) == "":
+		return "host is required"
+	case strings.TrimSpace(req.User) == "":
+		return "user is required"
+	case req.Port == 0:
+		return "port must be greater than 0"
+	case req.ExecuteTimeout <= 0:
+		return "execute timeout must be greater than 0"
+	default:
+		return ""
+	}
+}
+
 func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
+	if validationErr := validateExecuteRequest(req); validationErr != "" {
+		return invalidSSHExecuteResponse(instanceId, validationErr)
+	}
+
 	logger.Debugf("[SSH Execute] Instance: %s, Starting SSH connection to %s@%s:%d", instanceId, req.User, req.Host, req.Port)
 	logger.Debugf("[SSH Execute] Instance: %s, Command: %s, Timeout: %ds", instanceId, req.Command, req.ExecuteTimeout)
 
@@ -541,17 +590,7 @@ func SubscribeSSHExecutor(nc *nats.Conn, instanceId *string) {
 
 	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
 		logger.Debugf("[SSH Subscribe] Instance: %s, Received message, size: %d bytes", *instanceId, len(msg.Data))
-
-		responseContent, ok := handleSSHExecuteMessage(msg.Data, *instanceId)
-		if !ok {
-			logger.Errorf("[SSH Subscribe] Instance: %s, Error unmarshalling incoming message", *instanceId)
-			return
-		}
-		if err := msg.Respond(responseContent); err != nil {
-			logger.Errorf("[SSH Subscribe] Instance: %s, Error responding to SSH request: %v", *instanceId, err)
-		} else {
-			logger.Debugf("[SSH Subscribe] Instance: %s, Response sent successfully, size: %d bytes", *instanceId, len(responseContent))
-		}
+		respondSSHExecuteMessage(msg, msg.Data, *instanceId)
 	})
 
 	if err != nil {

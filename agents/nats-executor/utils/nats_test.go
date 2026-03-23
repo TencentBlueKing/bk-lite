@@ -82,6 +82,37 @@ func TestDownloadFileRejectsMissingRequiredFields(t *testing.T) {
 	}
 }
 
+func TestDownloadFileRejectsUnsafeFileName(t *testing.T) {
+	tests := []string{"../evil.txt", "/tmp/evil.txt", "nested/evil.txt", `..\evil.txt`}
+
+	for _, fileName := range tests {
+		t.Run(fileName, func(t *testing.T) {
+			called := false
+			withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
+				called = true
+				return stubDownloader{}, nil
+			})
+
+			err := DownloadFile(DownloadFileRequest{
+				BucketName:     "bucket",
+				FileKey:        "key",
+				FileName:       fileName,
+				TargetPath:     "/tmp",
+				ExecuteTimeout: 1,
+			}, nil)
+			if err == nil {
+				t.Fatal("expected unsafe file_name to be rejected")
+			}
+			if !strings.Contains(err.Error(), "file_name must not contain path separators or be absolute") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if called {
+				t.Fatal("downloader should not be constructed for unsafe file names")
+			}
+		})
+	}
+}
+
 func TestDownloadFilePropagatesClientCreationError(t *testing.T) {
 	withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
 		return nil, errors.New("boom")

@@ -39,11 +39,19 @@ func UnzipToDir(req UnzipRequest) (string, error) {
 	parentDir := parts[0]
 
 	for _, f := range reader.File {
+		if filepath.IsAbs(f.Name) {
+			return "", fmt.Errorf("illegal file path: %s", f.Name)
+		}
+
 		fpath := filepath.Join(req.DestDir, f.Name)
 
 		// 防止 ZipSlip 漏洞
 		if !strings.HasPrefix(fpath, filepath.Clean(req.DestDir)+string(os.PathSeparator)) {
 			return "", fmt.Errorf("illegal file path: %s", fpath)
+		}
+
+		if f.Mode()&os.ModeType != 0 && !f.FileInfo().IsDir() {
+			return "", fmt.Errorf("unsupported file type in zip: %s", f.Name)
 		}
 
 		if f.FileInfo().IsDir() {
