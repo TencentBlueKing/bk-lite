@@ -207,7 +207,6 @@ class CollectRunStatusType(object):
     TIME_OUT = 4
     WRITING = 5
     FORCE_STOP = 6
-    EXAMINE = 7  # 审批 但是不做枚举
 
     CHOICE = (
         (NOT_START, "未执行"),
@@ -215,7 +214,6 @@ class CollectRunStatusType(object):
         (SUCCESS, "成功"),
         (ERROR, "异常"),
         (TIME_OUT, "超时"),
-        (EXAMINE, "待审批"),
         (WRITING, "正在写入"),
         (FORCE_STOP, "强制终止"),
     )
