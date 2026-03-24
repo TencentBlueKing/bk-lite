@@ -7,7 +7,9 @@ class Monitor(object):
     def __init__(self, is_local_client=False):
         is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
         self.client = (
-            AppClient("apps.monitor.nats.permission") if is_local_client else RpcClient()
+            AppClient("apps.monitor.nats.permission")
+            if is_local_client
+            else RpcClient()
         )
 
     def get_module_data(self, **kwargs):
@@ -44,7 +46,7 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
     def monitor_object_instances(self, monitor_obj_id: str, **kwargs):
         """查询监控对象实例列表
         monitor_obj_id: 监控对象ID
-        permission_data: {
+        user_info: {
             team: 当前组织ID
             user: 用户对象或用户名
         }
@@ -53,18 +55,56 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
             "monitor_object_instances", monitor_obj_id=monitor_obj_id, **kwargs
         )
 
+    def monitor_instance_metrics(self, query_data: dict, **kwargs):
+        """查询实例已监控指标清单
+        query_data: {
+            "monitor_obj_id": str,
+            "instance_id": str,
+            "only_with_data": bool,
+            "lookback": str | int,
+            "page": int,
+            "page_size": int,
+        }
+        user_info: {
+            team: 当前组织ID
+            user: 用户对象或用户名
+        }
+        """
+        return self.client.run(
+            "monitor_instance_metrics", query_data=query_data, **kwargs
+        )
+
     def query_monitor_data_by_metric(self, query_data: dict, **kwargs):
         """查询监控数据
         query_data: {
-            "monitor_object_id": str,
+            "monitor_obj_id": str,
             "metric": str,
-            "start_time": int,
-            "end_time": int,
-            "step": int
+            "start": int,
+            "end": int,
+            "step": str | int,
+            "instance_ids": list[str],
+            "dimensions": dict[str, str]
         }
-        permission_data: {
+        返回: {
+            "result": bool,
+            "data": VictoriaMetrics query_range 原始结果,
+            "message": str,
+        }
+        兼容历史字段:
+            monitor_object_id -> monitor_obj_id
+            start_time -> start
+            end_time -> end
+        user_info: {
             team: 当前组织ID
             user: 用户对象或用户名
+        }
+        返回 data: {
+            "monitor_obj_id": str,
+            "instance_id": str,
+            "count": int,
+            "page": int,
+            "page_size": int,
+            "items": list,
         }
         """
         return self.client.run(
@@ -89,3 +129,33 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
         time: 查询时间点（UTC时间戳），默认为当前时间
         """
         return self.client.run("mm_query", query=query, step=step, **kwargs)
+
+    def query_monitor_alert_segments(self, query_data: dict, **kwargs):
+        """查询监控模块策略产生的异常段
+        query_data: {
+            "monitor_obj_id": str,
+            "start": str | int,
+            "end": str | int,
+            "instance_id": str,
+            "instance_ids": list[str],
+            "status": str | list[str],
+            "level": str | list[str],
+            "alert_type": str | list[str],
+            "page": int,
+            "page_size": int,
+        }
+        user_info: {
+            team: 当前组织ID
+            user: 用户对象或用户名
+            include_children: 是否包含子组织
+        }
+        返回 data: {
+            "count": int,
+            "page": int,
+            "page_size": int,
+            "items": list,
+        }
+        """
+        return self.client.run(
+            "query_monitor_alert_segments", query_data=query_data, **kwargs
+        )

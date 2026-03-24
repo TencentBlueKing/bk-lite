@@ -9,7 +9,13 @@
 import datetime
 from typing import Dict, Any
 from django.db.models import Count, Q
-from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncHour, TruncMinute
+from django.db.models.functions import (
+    TruncDate,
+    TruncWeek,
+    TruncMonth,
+    TruncHour,
+    TruncMinute,
+)
 from django.utils import timezone
 
 import nats_client
@@ -66,12 +72,12 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
         return {
             "result": False,
             "data": [],
-            "message": "start_time and end_time are required."
+            "message": "start_time and end_time are required.",
         }
     start_time, end_time = time
     # 解析时间字符串
-    start_dt = datetime.datetime.strptime(start_time, '%Y-%m-%d %H:%M:%S')
-    end_dt = datetime.datetime.strptime(end_time, '%Y-%m-%d %H:%M:%S')
+    start_dt = datetime.datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
+    end_dt = datetime.datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
     # 转换为时区感知时间
     aware_start = timezone.make_aware(start_dt)
     aware_end = timezone.make_aware(end_dt)
@@ -83,13 +89,13 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
     # 构建查询条件
     query_conditions = Q(created_at__gte=aware_start, created_at__lt=aware_end)
 
-    alert_model_fields = Alert.model_fields()
+    alert_model_fields = set(Alert.model_fields())
     # 应用过滤条件
     for key, value in kwargs.items():
         if key not in alert_model_fields:
             logger.warning(f"Invalid field '{key}' in filter conditions.")
             continue
-        query_conditions &= Q(**{key: value})
+        query_conditions = Q(query_conditions, Q(**{key: value}))
 
     # 查询并按时间分组统计
     queryset = (
@@ -114,7 +120,9 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
             current += datetime.timedelta(hours=1)
     elif group_by == "day":
         num_periods = (end_dt.date() - start_dt.date()).days + 1
-        all_periods = [start_dt.date() + datetime.timedelta(days=i) for i in range(num_periods)]
+        all_periods = [
+            start_dt.date() + datetime.timedelta(days=i) for i in range(num_periods)
+        ]
     elif group_by == "week":
         current = start_dt
         while current < end_dt:
@@ -156,22 +164,22 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
 def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
     """
     通过 NATS 接收告警事件数据
-    
+
     内部 NATS 传递数据，无需认证。记录推送来源以便追踪。
-    
+
     Args:
         kwargs: 包含以下字段
             - source_id: 告警源ID（可选 默认nats）
             - events: 事件列表（必填）
             - pusher: 推送者标识，如系统名称或服务名（必填）如 lite-monitor
-    
+
     Returns:
         {
             "result": bool,
             "data": dict,
             "message": str
         }
-    
+
     Example NATS 调用:
         subject: "default.receive_alert_events"
         payload: {
@@ -220,26 +228,20 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         # 参数校验
         if not source_id:
             logger.warning("Missing source_id in NATS alert event")
-            return {
-                "result": False,
-                "data": {},
-                "message": "Missing source_id."
-            }
+            return {"result": False, "data": {}, "message": "Missing source_id."}
 
         if not events:
-            logger.warning(f"Missing events from source_id: {source_id}, pusher: {pusher}")
-            return {
-                "result": False,
-                "data": {},
-                "message": "Missing events."
-            }
+            logger.warning(
+                f"Missing events from source_id: {source_id}, pusher: {pusher}"
+            )
+            return {"result": False, "data": {}, "message": "Missing events."}
 
         if not pusher:
             logger.warning(f"Missing pusher identifier from source_id: {source_id}")
             return {
                 "result": False,
                 "data": {},
-                "message": "Missing pusher identifier."
+                "message": "Missing pusher identifier.",
             }
 
         event_source = AlertSource.objects.filter(source_id=source_id).first()
@@ -248,7 +250,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             return {
                 "result": False,
                 "data": {},
-                "message": f"Invalid source_id: {source_id}"
+                "message": f"Invalid source_id: {source_id}",
             }
 
         # 创建适配器（内部调用无需密钥验证）
@@ -276,22 +278,18 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 "processed_events": len(events),
                 "source_id": source_id,
                 "pusher": pusher,
-                "timestamp": timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+                "timestamp": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
             },
-            "message": "Events received and processed successfully."
+            "message": "Events received and processed successfully.",
         }
 
     except Exception as e:
         logger.error(
             f"Error processing alert events via NATS from pusher: {kwargs.get('pusher', 'unknown')}, "
             f"source_id: {kwargs.get('source_id', 'unknown')}, error: {e}",
-            exc_info=True
+            exc_info=True,
         )
-        return {
-            "result": False,
-            "data": {},
-            "message": f"Error: {str(e)}"
-        }
+        return {"result": False, "data": {}, "message": f"Error: {str(e)}"}
 
 
 @nats_client.register
