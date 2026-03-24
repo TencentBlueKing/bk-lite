@@ -1,13 +1,12 @@
 """PostgreSQL动态SQL查询工具 - 安全的动态查询生成和执行"""
+
+import re
 from typing import Optional
+
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.opspilot.metis.llm.tools.postgres.utils import (
-    execute_readonly_query,
-    safe_json_dumps,
-    format_size,
-)
-import re
+
+from apps.opspilot.metis.llm.tools.postgres.utils import execute_readonly_query, safe_json_dumps
 
 
 def validate_sql_safety(sql: str) -> tuple[bool, str]:
@@ -25,41 +24,55 @@ def validate_sql_safety(sql: str) -> tuple[bool, str]:
 
     # 禁止的关键字列表 - 任何写操作
     forbidden_keywords = [
-        'insert', 'update', 'delete', 'drop', 'create', 'alter',
-        'truncate', 'grant', 'revoke', 'rename', 'replace',
-        'merge', 'call', 'execute', 'copy', 'set', 'reset',
-        'vacuum', 'analyze', 'cluster', 'reindex', 'lock',
-        'pg_terminate_backend', 'pg_cancel_backend',
+        "insert",
+        "update",
+        "delete",
+        "drop",
+        "create",
+        "alter",
+        "truncate",
+        "grant",
+        "revoke",
+        "rename",
+        "replace",
+        "merge",
+        "call",
+        "execute",
+        "copy",
+        "set",
+        "reset",
+        "vacuum",
+        "analyze",
+        "cluster",
+        "reindex",
+        "lock",
+        "pg_terminate_backend",
+        "pg_cancel_backend",
     ]
 
     for keyword in forbidden_keywords:
         # 使用单词边界检查,避免误判(如 inserted_at 字段名)
-        pattern = r'\b' + keyword + r'\b'
+        pattern = r"\b" + keyword + r"\b"
         if re.search(pattern, sql_lower):
             return False, f"SQL包含禁止的关键字: {keyword}"
 
     # 必须以SELECT开头
-    if not sql_lower.startswith('select') and not sql_lower.startswith('with'):
+    if not sql_lower.startswith("select") and not sql_lower.startswith("with"):
         return False, "SQL必须以SELECT或WITH开头"
 
     # 禁止分号分隔的多条语句
-    if sql.count(';') > 1 or (sql.count(';') == 1 and not sql.strip().endswith(';')):
+    if sql.count(";") > 1 or (sql.count(";") == 1 and not sql.strip().endswith(";")):
         return False, "禁止执行多条SQL语句"
 
     # 禁止注释注入
-    if '--' in sql or '/*' in sql:
+    if "--" in sql or "/*" in sql:
         return False, "SQL不允许包含注释符号"
 
     return True, ""
 
 
 @tool()
-def get_table_schema_details(
-    table_name: str,
-    schema_name: str = "public",
-    database: Optional[str] = None,
-    config: RunnableConfig = None
-):
+def get_table_schema_details(table_name: str, schema_name: str = "public", database: Optional[str] = None, config: RunnableConfig = None):
     """
     获取表的详细结构信息,用于构建动态查询和理解数据关系
 
@@ -98,7 +111,7 @@ def get_table_schema_details(
     """
     query = """
     WITH table_info AS (
-        SELECT 
+        SELECT
             c.relname as table_name,
             c.reltuples::bigint as estimated_rows,
             pg_size_pretty(pg_total_relation_size(c.oid)) as total_size
@@ -107,14 +120,14 @@ def get_table_schema_details(
         WHERE n.nspname = %s AND c.relname = %s
     ),
     columns_info AS (
-        SELECT 
+        SELECT
             a.attname as column_name,
             a.attnum as column_position,
             pg_catalog.format_type(a.atttypid, a.atttypmod) as data_type,
             NOT a.attnotnull as is_nullable,
             pg_get_expr(d.adbin, d.adrelid) as column_default,
             col_description(a.attrelid, a.attnum) as column_comment,
-            CASE 
+            CASE
                 WHEN pk.conkey IS NOT NULL AND a.attnum = ANY(pk.conkey) THEN true
                 ELSE false
             END as is_primary_key
@@ -123,14 +136,14 @@ def get_table_schema_details(
         JOIN pg_namespace n ON c.relnamespace = n.oid
         LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
         LEFT JOIN pg_constraint pk ON pk.conrelid = c.oid AND pk.contype = 'p'
-        WHERE n.nspname = %s 
+        WHERE n.nspname = %s
             AND c.relname = %s
-            AND a.attnum > 0 
+            AND a.attnum > 0
             AND NOT a.attisdropped
         ORDER BY a.attnum
     ),
     indexes_info AS (
-        SELECT 
+        SELECT
             i.relname as index_name,
             ix.indisunique as is_unique,
             ix.indisprimary as is_primary,
@@ -144,7 +157,7 @@ def get_table_schema_details(
         GROUP BY i.relname, ix.indisunique, ix.indisprimary
     ),
     foreign_keys AS (
-        SELECT 
+        SELECT
             con.conname as constraint_name,
             array_agg(att.attname) as columns,
             fn.nspname as foreign_schema,
@@ -157,12 +170,12 @@ def get_table_schema_details(
         JOIN pg_class fc ON con.confrelid = fc.oid
         JOIN pg_namespace fn ON fc.relnamespace = fn.oid
         JOIN pg_attribute fatt ON fatt.attrelid = fc.oid AND fatt.attnum = ANY(con.confkey)
-        WHERE n.nspname = %s 
+        WHERE n.nspname = %s
             AND c.relname = %s
             AND con.contype = 'f'
         GROUP BY con.conname, fn.nspname, fc.relname
     )
-    SELECT 
+    SELECT
         json_build_object(
             'table_info', (SELECT row_to_json(t) FROM table_info t),
             'columns', (SELECT json_agg(row_to_json(c)) FROM columns_info c),
@@ -174,32 +187,22 @@ def get_table_schema_details(
     try:
         result = execute_readonly_query(
             query,
-            params=(schema_name, table_name, schema_name, table_name,
-                    schema_name, table_name, schema_name, table_name),
+            params=(schema_name, table_name, schema_name, table_name, schema_name, table_name, schema_name, table_name),
             config=config,
-            database=database
+            database=database,
         )
 
         if not result:
-            return safe_json_dumps({
-                "error": f"表 {schema_name}.{table_name} 不存在"
-            })
+            return safe_json_dumps({"error": f"表 {schema_name}.{table_name} 不存在"})
 
         return safe_json_dumps(result[0]["schema_details"])
 
     except Exception as e:
-        return safe_json_dumps({
-            "error": f"获取表结构失败: {str(e)}"
-        })
+        return safe_json_dumps({"error": f"获取表结构失败: {str(e)}"})
 
 
 @tool()
-def search_tables_by_keyword(
-    keyword: str,
-    search_in_comments: bool = True,
-    database: Optional[str] = None,
-    config: RunnableConfig = None
-):
+def search_tables_by_keyword(keyword: str, search_in_comments: bool = True, database: Optional[str] = None, config: RunnableConfig = None):
     """
     根据关键字搜索相关的表和列,帮助发现业务实体及其数据存储位置
 
@@ -252,7 +255,7 @@ def search_tables_by_keyword(
             c.relname as table_name,
             obj_description(c.oid, 'pg_class') as table_comment,
             c.reltuples::bigint as estimated_rows,
-            CASE 
+            CASE
                 WHEN c.relname ILIKE %s THEN 'table_name'
                 WHEN obj_description(c.oid, 'pg_class') ILIKE %s THEN 'table_comment'
                 ELSE 'column'
@@ -269,13 +272,13 @@ def search_tables_by_keyword(
             )
     ),
     matching_columns AS (
-        SELECT 
+        SELECT
             n.nspname as schema_name,
             c.relname as table_name,
             a.attname as column_name,
             pg_catalog.format_type(a.atttypid, a.atttypmod) as data_type,
             col_description(a.attrelid, a.attnum) as column_comment,
-            CASE 
+            CASE
                 WHEN a.attname ILIKE %s THEN 'column_name'
                 WHEN col_description(a.attrelid, a.attnum) ILIKE %s THEN 'column_comment'
                 ELSE 'other'
@@ -285,14 +288,14 @@ def search_tables_by_keyword(
         JOIN pg_namespace n ON c.relnamespace = n.oid
         WHERE c.relkind = 'r'
             AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-            AND a.attnum > 0 
+            AND a.attnum > 0
             AND NOT a.attisdropped
             AND (
                 a.attname ILIKE %s
-                {('OR col_description(a.attrelid, a.attnum) ILIKE %s' if search_in_comments else '')}
+                {("OR col_description(a.attrelid, a.attnum) ILIKE %s" if search_in_comments else "")}
             )
     )
-    SELECT 
+    SELECT
         mt.schema_name,
         mt.table_name,
         mt.table_comment,
@@ -317,46 +320,43 @@ def search_tables_by_keyword(
     search_pattern = f"%{keyword}%"
     if search_in_comments:
         params = (
-            search_pattern, search_pattern,  # match_type条件
-            search_pattern, search_pattern, search_pattern, search_pattern,  # WHERE条件
-            search_pattern, search_pattern,  # matching_columns的match_type
-            search_pattern, search_pattern  # matching_columns的WHERE
+            search_pattern,
+            search_pattern,  # match_type条件
+            search_pattern,
+            search_pattern,
+            search_pattern,
+            search_pattern,  # WHERE条件
+            search_pattern,
+            search_pattern,  # matching_columns的match_type
+            search_pattern,
+            search_pattern,  # matching_columns的WHERE
         )
     else:
         params = (
-            search_pattern, search_pattern,  # match_type条件
-            search_pattern, search_pattern,  # WHERE条件
-            search_pattern, search_pattern,  # matching_columns的match_type
-            search_pattern  # matching_columns的WHERE
+            search_pattern,
+            search_pattern,  # match_type条件
+            search_pattern,
+            search_pattern,  # WHERE条件
+            search_pattern,
+            search_pattern,  # matching_columns的match_type
+            search_pattern,  # matching_columns的WHERE
         )
 
     try:
-        results = execute_readonly_query(
-            query, params=params, config=config, database=database)
+        results = execute_readonly_query(query, params=params, config=config, database=database)
 
-        return safe_json_dumps({
-            "keyword": keyword,
-            "total_matches": len(results),
-            "tables": results
-        })
+        return safe_json_dumps({"keyword": keyword, "total_matches": len(results), "tables": results})
 
     except Exception as e:
-        return safe_json_dumps({
-            "error": f"搜索失败: {str(e)}"
-        })
+        return safe_json_dumps({"error": f"搜索失败: {str(e)}"})
 
 
 @tool()
-def execute_safe_select(
-    sql: str,
-    limit: int = 100,
-    database: Optional[str] = None,
-    config: RunnableConfig = None
-):
+def execute_safe_select(sql: str, limit: int = 100, database: Optional[str] = None, config: RunnableConfig = None):
     """
     执行安全的SELECT查询,支持聚合统计、多表关联等复杂查询
 
-    **⚠️ 安全要求 - 构建SQL时必须遵守:**
+    **[警告] 安全要求 - 构建SQL时必须遵守:**
     1. **禁止SELECT ***: 必须明确列出需要的列名
     2. **避免敏感字段**: 不要查询password, secret, token, key, hash, otp等敏感字段
     3. **最小化查询**: 只查询回答问题所需的最少列和行
@@ -389,12 +389,12 @@ def execute_safe_select(
 
     **SQL编写规范:**
 
-    ✅ **明细查询示例:**
+    [正确] **明细查询示例:**
     ```sql
     SELECT id, name, created_at FROM knowledge_base WHERE status = 'active'
     ```
 
-    ✅ **聚合统计示例:**
+    [正确] **聚合统计示例:**
     ```sql
     SELECT kb.id, kb.name, COUNT(d.id) as doc_count
     FROM knowledge_base kb
@@ -402,9 +402,9 @@ def execute_safe_select(
     GROUP BY kb.id, kb.name
     ```
 
-    ✅ **多层关联示例:**
+    [正确] **多层关联示例:**
     ```sql
-    SELECT 
+    SELECT
         kb.id as kb_id,
         kb.name as kb_name,
         COUNT(DISTINCT d.id) as doc_count,
@@ -415,7 +415,7 @@ def execute_safe_select(
     GROUP BY kb.id, kb.name
     ```
 
-    ❌ **错误示例:**
+    [错误] **错误示例:**
     - `SELECT * FROM users` (包含敏感字段)
     - `SELECT password, otp_secret FROM users` (查询敏感字段)
     - `SELECT id FROM large_table` (缺少WHERE过滤,数据量过大)
@@ -442,78 +442,63 @@ def execute_safe_select(
         - data: 查询结果数组
     """
     # 检测SELECT *
-    sql_normalized = ' '.join(sql.lower().split())  # 规范化空白字符
-    if re.search(r'\bselect\s+\*\s+from\b', sql_normalized):
-        return safe_json_dumps({
-            "error": "安全限制: 禁止使用SELECT *,必须明确指定需要查询的列名",
-            "sql": sql,
-            "suggestion": "请先使用get_table_schema_details查看表结构,然后明确指定需要的列。例如: SELECT id, name, created_at FROM table_name"
-        })
+    sql_normalized = " ".join(sql.lower().split())  # 规范化空白字符
+    if re.search(r"\bselect\s+\*\s+from\b", sql_normalized):
+        return safe_json_dumps(
+            {
+                "error": "安全限制: 禁止使用SELECT *,必须明确指定需要查询的列名",
+                "sql": sql,
+                "suggestion": "请先使用get_table_schema_details查看表结构,然后明确指定需要的列。例如: SELECT id, name, created_at FROM table_name",
+            }
+        )
 
     # 检测敏感字段关键词
-    SENSITIVE_KEYWORDS = ['password', 'secret',
-                          'token', 'key', 'hash', 'otp', 'credential']
+    SENSITIVE_KEYWORDS = ["password", "secret", "token", "key", "hash", "otp", "credential"]
     for keyword in SENSITIVE_KEYWORDS:
         # 检测是否在SELECT子句中出现敏感关键词
-        if re.search(rf'\bselect\b.*\b{keyword}\b.*\bfrom\b', sql_normalized):
-            return safe_json_dumps({
-                "error": f"安全限制: SQL中可能包含敏感字段 '{keyword}',请移除敏感字段",
-                "sql": sql,
-                "suggestion": "请确保只查询非敏感字段,如id, name, email, status, created_at等"
-            })
+        if re.search(rf"\bselect\b.*\b{keyword}\b.*\bfrom\b", sql_normalized):
+            return safe_json_dumps(
+                {
+                    "error": f"安全限制: SQL中可能包含敏感字段 '{keyword}',请移除敏感字段",
+                    "sql": sql,
+                    "suggestion": "请确保只查询非敏感字段,如id, name, email, status, created_at等",
+                }
+            )
 
     # 安全验证
     is_safe, error_msg = validate_sql_safety(sql)
     if not is_safe:
-        return safe_json_dumps({
-            "error": f"SQL安全检查失败: {error_msg}",
-            "sql": sql
-        })
+        return safe_json_dumps({"error": f"SQL安全检查失败: {error_msg}", "sql": sql})
 
     # 限制返回行数
     limit = min(max(1, limit), 1000)  # 1-1000之间
 
     # 移除末尾分号
-    sql = sql.rstrip().rstrip(';')
+    sql = sql.rstrip().rstrip(";")
 
     # 检查是否已有LIMIT子句
     sql_lower = sql.lower()
-    if 'limit' not in sql_lower:
+    if "limit" not in sql_lower:
         sql = f"{sql} LIMIT {limit}"
     else:
         # 如果已有LIMIT,确保不超过最大值
-        limit_match = re.search(r'limit\s+(\d+)', sql_lower)
+        limit_match = re.search(r"limit\s+(\d+)", sql_lower)
         if limit_match:
             existing_limit = int(limit_match.group(1))
             if existing_limit > limit:
-                sql = re.sub(r'limit\s+\d+',
-                             f'LIMIT {limit}', sql, flags=re.IGNORECASE)
+                sql = re.sub(r"limit\s+\d+", f"LIMIT {limit}", sql, flags=re.IGNORECASE)
 
     try:
         results = execute_readonly_query(sql, config=config, database=database)
 
-        return safe_json_dumps({
-            "success": True,
-            "row_count": len(results),
-            "limit": limit,
-            "sql": sql,
-            "data": results
-        })
+        return safe_json_dumps({"success": True, "row_count": len(results), "limit": limit, "sql": sql, "data": results})
 
     except Exception as e:
-        return safe_json_dumps({
-            "error": f"查询执行失败: {str(e)}",
-            "sql": sql
-        })
+        return safe_json_dumps({"error": f"查询执行失败: {str(e)}", "sql": sql})
 
 
 @tool()
-def explain_query_plan(
-    sql: str,
-    analyze: bool = False,
-    database: Optional[str] = None,
-    config: RunnableConfig = None
-):
+def explain_query_plan(sql: str, analyze: bool = False, database: Optional[str] = None, config: RunnableConfig = None):
     """
     获取查询的执行计划,用于优化动态生成的查询
 
@@ -541,13 +526,10 @@ def explain_query_plan(
     # 安全验证
     is_safe, error_msg = validate_sql_safety(sql)
     if not is_safe:
-        return safe_json_dumps({
-            "error": f"SQL安全检查失败: {error_msg}",
-            "sql": sql
-        })
+        return safe_json_dumps({"error": f"SQL安全检查失败: {error_msg}", "sql": sql})
 
     # 移除末尾分号
-    sql = sql.rstrip().rstrip(';')
+    sql = sql.rstrip().rstrip(";")
 
     # 构建EXPLAIN查询
     if analyze:
@@ -556,16 +538,11 @@ def explain_query_plan(
         explain_sql = f"EXPLAIN (VERBOSE, FORMAT JSON) {sql}"
 
     try:
-        results = execute_readonly_query(
-            explain_sql, config=config, database=database)
+        results = execute_readonly_query(explain_sql, config=config, database=database)
 
         plan = results[0]["QUERY PLAN"][0]
 
-        response = {
-            "success": True,
-            "sql": sql,
-            "execution_plan": plan
-        }
+        response = {"success": True, "sql": sql, "execution_plan": plan}
 
         # 提取关键指标
         if "Plan" in plan:
@@ -577,20 +554,19 @@ def explain_query_plan(
             }
 
             if analyze:
-                response["summary"].update({
-                    "actual_time_ms": plan_info.get("Actual Total Time"),
-                    "actual_rows": plan_info.get("Actual Rows"),
-                    "execution_time_ms": plan.get("Execution Time"),
-                    "planning_time_ms": plan.get("Planning Time"),
-                })
+                response["summary"].update(
+                    {
+                        "actual_time_ms": plan_info.get("Actual Total Time"),
+                        "actual_rows": plan_info.get("Actual Rows"),
+                        "execution_time_ms": plan.get("Execution Time"),
+                        "planning_time_ms": plan.get("Planning Time"),
+                    }
+                )
 
         return safe_json_dumps(response)
 
     except Exception as e:
-        return safe_json_dumps({
-            "error": f"执行计划获取失败: {str(e)}",
-            "sql": sql
-        })
+        return safe_json_dumps({"error": f"执行计划获取失败: {str(e)}", "sql": sql})
 
 
 @tool()
@@ -600,12 +576,12 @@ def get_sample_data(
     limit: int = 5,
     columns: Optional[str] = None,
     database: Optional[str] = None,
-    config: RunnableConfig = None
+    config: RunnableConfig = None,
 ):
     """
     获取表的示例数据,帮助理解数据格式和内容
 
-    **⚠️ 安全要求 - 必须遵守:**
+    **[警告] 安全要求 - 必须遵守:**
     1. **禁止返回敏感字段**: password, secret, token, key, credential, hash, salt, otp等
     2. **必须明确指定列**: 永远不要使用SELECT *,必须在columns参数中列出需要的具体列名
     3. **最小化数据**: 只查询回答问题所需的最少列数
@@ -643,46 +619,65 @@ def get_sample_data(
     limit = min(max(1, limit), 100)
 
     # 验证表名和schema名(防止SQL注入)
-    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
-        return safe_json_dumps({
-            "error": "无效的表名"
-        })
-    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', schema_name):
-        return safe_json_dumps({
-            "error": "无效的schema名"
-        })
+    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", table_name):
+        return safe_json_dumps({"error": "无效的表名"})
+    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", schema_name):
+        return safe_json_dumps({"error": "无效的schema名"})
 
     # 敏感字段黑名单(小写)
     SENSITIVE_KEYWORDS = {
-        'password', 'passwd', 'pwd', 'secret', 'token', 'key', 'credential',
-        'hash', 'salt', 'otp', 'api_key', 'apikey', 'access_token', 'refresh_token',
-        'private_key', 'session_key', 'encryption_key', 'auth_token', 'bearer',
-        'jwt', 'certificate', 'cert', 'passphrase', 'pin', 'cvv', 'ssn',
-        'credit_card', 'bank_account', 'routing_number'
+        "password",
+        "passwd",
+        "pwd",
+        "secret",
+        "token",
+        "key",
+        "credential",
+        "hash",
+        "salt",
+        "otp",
+        "api_key",
+        "apikey",
+        "access_token",
+        "refresh_token",
+        "private_key",
+        "session_key",
+        "encryption_key",
+        "auth_token",
+        "bearer",
+        "jwt",
+        "certificate",
+        "cert",
+        "passphrase",
+        "pin",
+        "cvv",
+        "ssn",
+        "credit_card",
+        "bank_account",
+        "routing_number",
     }
 
     # 处理列名
-    if not columns or columns.strip() == '*':
-        return safe_json_dumps({
-            "error": "安全限制: 必须明确指定需要查询的列名,禁止使用SELECT *。请使用get_table_schema_details查看表结构后,明确指定非敏感列。",
-            "suggestion": "例如: columns='id,name,created_at,updated_at'"
-        })
+    if not columns or columns.strip() == "*":
+        return safe_json_dumps(
+            {
+                "error": "安全限制: 必须明确指定需要查询的列名,禁止使用SELECT *。请使用get_table_schema_details查看表结构后,明确指定非敏感列。",
+                "suggestion": "例如: columns='id,name,created_at,updated_at'",
+            }
+        )
 
     # 验证列名并检测敏感字段
-    column_list = [c.strip() for c in columns.split(',')]
+    column_list = [c.strip() for c in columns.split(",")]
     sensitive_columns = []
     valid_columns = []
 
     for col in column_list:
-        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', col):
-            return safe_json_dumps({
-                "error": f"无效的列名: {col}"
-            })
+        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", col):
+            return safe_json_dumps({"error": f"无效的列名: {col}"})
 
         # 检查是否为敏感字段
         col_lower = col.lower()
-        is_sensitive = any(
-            keyword in col_lower for keyword in SENSITIVE_KEYWORDS)
+        is_sensitive = any(keyword in col_lower for keyword in SENSITIVE_KEYWORDS)
 
         if is_sensitive:
             sensitive_columns.append(col)
@@ -691,19 +686,19 @@ def get_sample_data(
 
     # 如果有敏感字段,返回警告
     if sensitive_columns:
-        return safe_json_dumps({
-            "error": f"安全限制: 禁止查询敏感字段: {', '.join(sensitive_columns)}",
-            "sensitive_fields_detected": sensitive_columns,
-            "valid_fields": valid_columns if valid_columns else "请指定其他非敏感字段",
-            "suggestion": "请移除敏感字段,只查询必要的非敏感信息"
-        })
+        return safe_json_dumps(
+            {
+                "error": f"安全限制: 禁止查询敏感字段: {', '.join(sensitive_columns)}",
+                "sensitive_fields_detected": sensitive_columns,
+                "valid_fields": valid_columns if valid_columns else "请指定其他非敏感字段",
+                "suggestion": "请移除敏感字段,只查询必要的非敏感信息",
+            }
+        )
 
     if not valid_columns:
-        return safe_json_dumps({
-            "error": "未指定任何有效的非敏感列"
-        })
+        return safe_json_dumps({"error": "未指定任何有效的非敏感列"})
 
-    column_expr = ', '.join(valid_columns)
+    column_expr = ", ".join(valid_columns)
 
     # 使用参数化查询防止注入
     # 注意: 表名和列名不能参数化,但已通过正则验证
@@ -714,19 +709,11 @@ def get_sample_data(
     """
 
     try:
-        results = execute_readonly_query(query, params=(
-            limit,), config=config, database=database)
+        results = execute_readonly_query(query, params=(limit,), config=config, database=database)
 
-        return safe_json_dumps({
-            "success": True,
-            "table": f"{schema_name}.{table_name}",
-            "row_count": len(results),
-            "limit": limit,
-            "sample_data": results
-        })
+        return safe_json_dumps(
+            {"success": True, "table": f"{schema_name}.{table_name}", "row_count": len(results), "limit": limit, "sample_data": results}
+        )
 
     except Exception as e:
-        return safe_json_dumps({
-            "error": f"获取示例数据失败: {str(e)}",
-            "table": f"{schema_name}.{table_name}"
-        })
+        return safe_json_dumps({"error": f"获取示例数据失败: {str(e)}", "table": f"{schema_name}.{table_name}"})

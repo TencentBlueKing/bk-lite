@@ -29,11 +29,12 @@ class AlertModelFilter(FilterSet):
     created_at_before = CharFilter(field_name="created_at", lookup_expr="lte", label="创建时间（结束）")
     incident_id = CharFilter(field_name="incident__id", lookup_expr="exact", label="事故ID")
     has_incident = CharFilter(method="filter_incident", label="是否有事故")
+    rule_id = CharFilter(field_name="rule_id", label="是否有事故")
 
     class Meta:
         model = Alert
         fields = ["title", "content", "alert_id", "activate", "my_alert", "level", "status", "source_name",
-                  "created_at_after", "created_at_before", "incident_id"]
+                  "created_at_after", "created_at_before", "incident_id", "rule_id"]
 
     @staticmethod
     def filter_activate(qs, field_name, value):

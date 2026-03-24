@@ -176,39 +176,6 @@ class CollectModelViewSet(AuthViewSet):
         result = CollectModelService.exec_task(instance=instance, request=request, view_self=self)
         return result
 
-    @action(methods=["POST"], detail=True)
-    @HasPermission("auto_collection-Add")
-    @transaction.atomic
-    def approval(self, request, *args, **kwargs):
-        """
-        任务审批
-        """
-        instance = self.get_object()
-        CollectModelService.has_permission(instance=instance, request=request, view_self=self)
-        if instance.exec_status != CollectRunStatusType.EXAMINE and not instance.input_method:
-            return WebUtils.response_error(error_message="任务状态错误或录入方式不正确，无法审批！", status_code=400)
-        if instance.examine:
-            return WebUtils.response_error(error_message="任务已审批！无法再次审批！", status_code=400)
-
-        data = request.data
-        instances = data.get("instances")
-        if not isinstance(instances, list) or not instances:
-            return WebUtils.response_error(
-                error_message="instances 必须是非空数组",
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
-        if any(
-            not isinstance(instance, dict) or not instance.get("model_id")
-            for instance in instances
-        ):
-            return WebUtils.response_error(
-                error_message="instances 参数非法，必须包含 model_id",
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
-
-        model_map = {instance['model_id']: instance for instance in instances}
-        CollectModelService.collect_controller(instance, model_map)
-        return WebUtils.response_success()
 
     @action(methods=["GET"], detail=False)
     @HasPermission("auto_collection-View")

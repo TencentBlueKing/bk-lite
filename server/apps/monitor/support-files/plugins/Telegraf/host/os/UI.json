@@ -82,21 +82,6 @@
       }
     },
     {
-      "name": "ip",
-      "label": "IP",
-      "type": "input",
-      "required": true,
-      "visible_in": "edit",
-      "editable": false,
-      "description": "监控的目标主机的 IP 地址，用于标识被采集数据的来源",
-      "widget_props": {
-        "placeholder": ""
-      },
-      "transform_on_edit": {
-        "origin_path": "child.content.config.tags.instance_id"
-      }
-    },
-    {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",

@@ -373,17 +373,17 @@ def http_get(
     - 返回响应内容和元信息
     - 支持Bearer Token认证（通过独立参数传递）
 
-    **🔐 Bearer Token 认证（推荐使用独立参数）：**
+    **[凭据] Bearer Token 认证（推荐使用独立参数）：**
     当需要Bearer Token认证时，必须使用 bearer_token 参数，不要写在 headers 里：
 
     ```python
-    # ✅ 正确示例
+    # [OK] 正确示例
     http_get(
         url="https://api.example.com/data",
         bearer_token="your_token_here"  # ← Token 放这里
     )
 
-    # ❌ 错误示例 - 不要这样做
+    # [X] 错误示例 - 不要这样做
     http_get(
         url="https://api.example.com/data",
         headers={"Authorization": "Bearer your_token"}  # ← Token 可能被脱敏！
@@ -423,7 +423,7 @@ def http_get(
     - 默认会跟随重定向
     - 超时时间过短可能导致请求失败
     - 对于大文件，建议增加超时时间
-    - 🔐 Bearer Token 必须通过 bearer_token 参数传递，不要写在 headers 中
+    - [凭据] Bearer Token 必须通过 bearer_token 参数传递，不要写在 headers 中
     """
     return _http_get_impl(
         url=url,
@@ -463,11 +463,11 @@ def http_post(
     - 自动设置Content-Type
     - 支持Bearer Token认证（通过独立参数传递）
 
-    **🔐 Bearer Token 认证（推荐使用独立参数）：**
+    **[凭据] Bearer Token 认证（推荐使用独立参数）：**
     当需要Bearer Token认证时，必须使用 bearer_token 参数：
 
     ```python
-    # ✅ 正确示例
+    # [OK] 正确示例
     http_post(
         url="https://api.example.com/users",
         json_data={"name": "John"},
@@ -501,7 +501,7 @@ def http_post(
     - data和json_data参数不能同时使用
     - json_data参数会自动设置Content-Type为application/json
     - data参数默认Content-Type为application/x-www-form-urlencoded
-    - 🔐 Bearer Token 必须通过 bearer_token 参数传递
+    - [凭据] Bearer Token 必须通过 bearer_token 参数传递
     """
     return _http_post_impl(
         url=url,

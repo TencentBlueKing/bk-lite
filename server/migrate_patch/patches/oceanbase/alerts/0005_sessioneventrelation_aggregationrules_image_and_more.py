@@ -1,0 +1,174 @@
+# OceanBase 数据库兼容补丁
+# 原始文件: apps/alerts/migrations/0005_sessioneventrelation_aggregationrules_image_and_more.py
+# 问题:
+#   1. SessionEventRelation.event 是 ForeignKey，Django 已自动创建索引
+#      AddIndex 再次创建索引导致 OceanBase 报错 "Duplicate key name"
+#   2. AlterField 将 description 从 TextField 改为 JSONField
+#      OceanBase 不支持 "Alter non string type not supported" (错误码 1235)
+# 方案:
+#   - 使用 FakeAddIndex 跳过重复的索引创建
+#   - 使用 FakeAlterField 跳过不支持的类型变更
+
+import django.db.models.deletion
+from django.db import migrations, models
+
+
+class FakeAddIndex(migrations.AddIndex):
+    """跳过重复索引创建，避免 OceanBase 数据库报错"""
+
+    def database_forwards(self, *args, **kwargs):
+        pass
+
+    def database_backwards(self, *args, **kwargs):
+        pass
+
+
+class FakeAlterField(migrations.AlterField):
+    """跳过不支持的字段类型变更，OceanBase 不支持 TextField → JSONField"""
+
+    def database_forwards(self, *args, **kwargs):
+        pass
+
+    def database_backwards(self, *args, **kwargs):
+        pass
+
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ("alerts", "0004_operatorlog"),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name="SessionEventRelation",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("assigned_at", models.DateTimeField(auto_now_add=True, help_text="分配时间")),
+                (
+                    "event",
+                    models.ForeignKey(help_text="事件", on_delete=django.db.models.deletion.CASCADE, to="alerts.event"),
+                ),
+            ],
+            options={
+                "db_table": "alerts_session_event_relation",
+                "ordering": ["assigned_at"],
+            },
+        ),
+        migrations.AddField(
+            model_name="aggregationrules",
+            name="image",
+            field=models.TextField(blank=True, help_text="规则图标base64", null=True),
+        ),
+        migrations.AddField(
+            model_name="correlationrules",
+            name="alignment",
+            field=models.CharField(
+                choices=[("day", "天对齐"), ("hour", "小时对齐"), ("minute", "分钟对齐")],
+                default="minute",
+                help_text="固定窗口对齐方式",
+                max_length=10,
+            ),
+        ),
+        migrations.AddField(
+            model_name="correlationrules",
+            name="max_window_size",
+            field=models.CharField(blank=True, help_text="最大窗口大小限制", max_length=20, null=True),
+        ),
+        migrations.AddField(
+            model_name="correlationrules",
+            name="session_key_fields",
+            field=models.JSONField(default=list, help_text="会话窗口分组字段，空数组表示使用事件指纹"),
+        ),
+        migrations.AddField(
+            model_name="correlationrules",
+            name="session_timeout",
+            field=models.CharField(default="10min", help_text="会话窗口超时时间", max_length=20),
+        ),
+        migrations.AddField(
+            model_name="correlationrules",
+            name="slide_interval",
+            field=models.CharField(default="1min", help_text="滑动窗口滑动间隔", max_length=20),
+        ),
+        migrations.AddField(
+            model_name="correlationrules",
+            name="window_size",
+            field=models.CharField(default="10min", help_text="窗口大小，如10min、1h、30s", max_length=20),
+        ),
+        migrations.AddField(
+            model_name="correlationrules",
+            name="window_type",
+            field=models.CharField(
+                choices=[("sliding", "滑动窗口"), ("fixed", "固定窗口"), ("session", "会话窗口")],
+                default="sliding",
+                help_text="聚合窗口类型",
+                max_length=20,
+            ),
+        ),
+        # --- 跳过 AlterField: OceanBase 不支持 TextField → JSONField 类型变更 ---
+        # 原始操作: migrations.AlterField(model_name="aggregationrules", name="description", ...)
+        # 注意: 0001_initial.py 中 description 已定义为 TextField
+        #       此变更需要在 0001 补丁中直接定义为 JSONField，而非在此处 Alter
+        FakeAlterField(
+            model_name="aggregationrules",
+            name="description",
+            field=models.JSONField(blank=True, default=dict, help_text="规则描述", null=True),
+        ),
+        migrations.CreateModel(
+            name="SessionWindow",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="Created Time")),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Updated Time")),
+                ("session_id", models.CharField(db_index=True, help_text="会话ID", max_length=100, unique=True)),
+                ("session_key", models.CharField(db_index=True, help_text="会话分组键", max_length=200)),
+                ("rule_id", models.CharField(db_index=True, help_text="关联规则ID", max_length=100)),
+                ("session_start", models.DateTimeField(help_text="会话开始时间")),
+                ("last_activity", models.DateTimeField(help_text="最后活动时间")),
+                ("session_timeout", models.IntegerField(help_text="会话超时时间(秒)")),
+                ("is_active", models.BooleanField(db_index=True, default=True, help_text="是否活跃")),
+                ("session_data", models.JSONField(default=dict, help_text="会话数据和元数据")),
+                (
+                    "events",
+                    models.ManyToManyField(
+                        help_text="会话关联的事件",
+                        related_name="session_windows",
+                        through="alerts.SessionEventRelation",
+                        to="alerts.event",
+                    ),
+                ),
+            ],
+            options={
+                "db_table": "alerts_session_window",
+            },
+        ),
+        migrations.AddField(
+            model_name="sessioneventrelation",
+            name="session",
+            field=models.ForeignKey(help_text="会话", on_delete=django.db.models.deletion.CASCADE, to="alerts.sessionwindow"),
+        ),
+        migrations.AddIndex(
+            model_name="sessionwindow",
+            index=models.Index(fields=["session_key", "rule_id", "is_active"], name="alerts_sess_session_646e45_idx"),
+        ),
+        migrations.AddIndex(
+            model_name="sessionwindow",
+            index=models.Index(fields=["is_active", "last_activity"], name="alerts_sess_is_acti_d23529_idx"),
+        ),
+        migrations.AddIndex(
+            model_name="sessionwindow",
+            index=models.Index(fields=["rule_id", "is_active"], name="alerts_sess_rule_id_d81d74_idx"),
+        ),
+        migrations.AddIndex(
+            model_name="sessioneventrelation",
+            index=models.Index(fields=["session", "assigned_at"], name="alerts_sess_session_76b0b9_idx"),
+        ),
+        # event 字段是 ForeignKey，Django 已自动创建索引，跳过重复创建
+        FakeAddIndex(
+            model_name="sessioneventrelation",
+            index=models.Index(fields=["event"], name="alerts_sess_event_i_5ab59a_idx"),
+        ),
+        migrations.AlterUniqueTogether(
+            name="sessioneventrelation",
+            unique_together={("session", "event")},
+        ),
+    ]
