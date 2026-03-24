@@ -648,7 +648,7 @@ class ClassificationServingViewSet(ModelViewSet):
         return mlflow_service.resolve_model_uri(model_name, "latest")
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("classification-View")
+    @HasPermission("classification-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行分类预测

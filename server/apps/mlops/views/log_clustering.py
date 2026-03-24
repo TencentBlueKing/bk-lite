@@ -1266,7 +1266,7 @@ class LogClusteringServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("log_clustering-View")
+    @HasPermission("log_clustering-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行日志聚类

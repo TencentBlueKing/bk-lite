@@ -1200,7 +1200,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("timeseries_predict-View")
+    @HasPermission("timeseries_predict-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行时间序列预测

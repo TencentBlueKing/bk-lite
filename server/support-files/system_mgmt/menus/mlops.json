@@ -148,12 +148,12 @@
       "name": "normal",
       "role_name": "mlops_normal",
       "menus": [
-        "anomaly_detection-View",
-        "timeseries_predict-View",
-        "log_clustering-View",
-        "classification-View",
-        "image_classification-View",
-        "object_detection-View"
+        "anomaly_detection-View", "anomaly_detection-Predict",
+        "timeseries_predict-View", "timeseries_predict-Predict",
+        "log_clustering-View", "log_clustering-Predict",
+        "classification-View", "classification-Predict",
+        "image_classification-View", "image_classification-Predict",
+        "object_detection-View", "object_detection-Predict"
       ]
     }
   ]

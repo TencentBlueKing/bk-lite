@@ -1330,7 +1330,7 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("object_detection-View")
+    @HasPermission("object_detection-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用目标检测 serving 服务进行预测
