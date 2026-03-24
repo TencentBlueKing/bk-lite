@@ -104,6 +104,7 @@ export interface CorrelationRule {
     params?: AlarmStrategyParams | HeartbeatParams;
     auto_close?: boolean;
     close_minutes?: number;
+    last_execute_time?: string;
 }
 
 
