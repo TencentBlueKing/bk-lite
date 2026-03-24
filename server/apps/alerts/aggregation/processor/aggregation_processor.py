@@ -79,7 +79,7 @@ class AggregationProcessor:
         )
 
     @staticmethod
-    def get_events_for_strategy(strategy: AlarmStrategy):
+    def get_events_for_strategy(strategy: AlarmStrategy, now: datetime):
         """
         根据策略配置获取事件
         每个策略有自己的时间窗口和过滤条件
@@ -87,7 +87,7 @@ class AggregationProcessor:
         params = cast(Dict[str, Any], strategy.params or {})
         window_size = params.get("window_size", 10)
 
-        cutoff_time = timezone.now() - timedelta(minutes=window_size)
+        cutoff_time = now - timedelta(minutes=window_size)
 
         logger.info(
             f"策略 {strategy.name}: 查询时间窗口={window_size}分钟, "
@@ -115,7 +115,7 @@ class AggregationProcessor:
             return
 
         try:
-            events = self.get_events_for_strategy(strategy)
+            events = self.get_events_for_strategy(strategy, now)
 
             if not events.exists():
                 logger.info(f"策略 {strategy.name}: 无事件需要处理")
@@ -133,7 +133,7 @@ class AggregationProcessor:
             dimensions = params.get("group_by", []) or ["event_id"]
             logger.info(f"策略 {strategy.name}: 聚合维度={dimensions}")
 
-            if self._aggregate_for_dimensions(strategy, matched_events, dimensions):
+            if self._aggregate_for_dimensions(strategy, matched_events, dimensions, now):
                 logger.info(f"策略 {strategy.name}: 维度 {dimensions} 聚合成功")
 
         except Exception as e:  # noqa
@@ -481,7 +481,11 @@ class AggregationProcessor:
         return timezone.localtime(value, target_tz)
 
     def _aggregate_for_dimensions(
-        self, strategy: AlarmStrategy, events, dimensions: List[str]
+        self,
+        strategy: AlarmStrategy,
+        events,
+        dimensions: List[str],
+        now: datetime,
     ) -> bool:
         """对指定维度执行聚合"""
         try:
@@ -515,7 +519,9 @@ class AggregationProcessor:
 
             logger.info(f"策略 {strategy.name}: 聚合完成, 生成 {len(results)} 个告警组")
 
-            self._create_or_update_alerts(results, strategy, dimensions)
+            success_count = self._create_or_update_alerts(results, strategy, dimensions)
+            if success_count > 0:
+                self._mark_strategy_executed(strategy, now)
             return True
 
         except Exception as e:
@@ -529,7 +535,7 @@ class AggregationProcessor:
         aggregation_results: List[Dict[str, Any]],
         strategy: AlarmStrategy,
         dimensions: List[str],
-    ):
+    ) -> int:
         """创建或更新告警"""
 
         logger.info(
@@ -600,6 +606,13 @@ class AggregationProcessor:
         # 异步执行新创建告警的自动分配（不阻塞聚合流程）
         if new_alert_ids:
             self._schedule_auto_assignment(new_alert_ids)
+
+        return success_count
+
+    @staticmethod
+    def _mark_strategy_executed(strategy: AlarmStrategy, now: datetime) -> None:
+        strategy.last_execute_time = now
+        strategy.save(update_fields=["last_execute_time", "updated_at"])
 
     @staticmethod
     def _normalize_fingerprint(result: Dict[str, Any], alert_levels) -> None:
