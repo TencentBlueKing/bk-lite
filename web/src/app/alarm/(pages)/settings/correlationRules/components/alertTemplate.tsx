@@ -12,10 +12,17 @@ const AlertTemplate: React.FC = () => {
   const { levelList } = useCommon();
   const labelClassName = 'w-[56px] shrink-0 pr-2 pt-[5px] text-right text-sm text-gray-600';
 
+  const RequiredLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <>
+      <span className="text-red-500 mr-1">*</span>
+      {children}
+    </>
+  );
+
   return (
     <div className="space-y-3">
       <div className="flex items-start">
-        <div className={labelClassName}>{t('settings.correlation.alertTitle')}</div>
+        <div className={labelClassName}><RequiredLabel>{t('settings.correlation.alertTitle')}</RequiredLabel></div>
         <div className="w-full max-w-[660px]">
           <Form.Item
             name="md_alert_title"
@@ -28,7 +35,7 @@ const AlertTemplate: React.FC = () => {
       </div>
 
       <div className="flex items-start">
-        <div className={labelClassName}>{t('settings.correlation.alertLevel')}</div>
+        <div className={labelClassName}><RequiredLabel>{t('settings.correlation.alertLevel')}</RequiredLabel></div>
         <div className="w-full max-w-[660px]">
           <Form.Item
             name="md_alert_level"
@@ -44,7 +51,7 @@ const AlertTemplate: React.FC = () => {
       </div>
 
       <div className="flex items-start">
-        <div className={labelClassName}>{t('settings.correlation.alertDescription')}</div>
+        <div className={labelClassName}><RequiredLabel>{t('settings.correlation.alertDescription')}</RequiredLabel></div>
         <div className="w-full max-w-[660px]">
           <Form.Item
             name="md_alert_description"
