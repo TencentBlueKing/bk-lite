@@ -61,15 +61,33 @@ export interface AggregationRule {
 export interface FilterRule {
     key: string;
     operator: string;
-    value: string;
+    value: string | number;
 }
 
 export interface AlarmStrategyParams {
     policy?: 'service' | 'location' | 'resource_name' | 'other';
-    group_by?: string[];
+    group_by?: Array<'service' | 'location' | 'resource_name' | 'item'>;
     window_size?: number;
     time_out?: boolean;
     time_minutes?: number;
+}
+
+export interface HeartbeatAlertTemplate {
+    title: string;
+    level: string;
+    description: string;
+}
+
+export interface HeartbeatParams {
+    check_mode: 'cron';
+    cron_expr: string;
+    grace_period: number;
+    activation_mode: 'first_heartbeat' | 'immediate';
+    auto_recovery: boolean;
+    heartbeat_status?: 'waiting' | 'monitoring' | 'alerting';
+    last_heartbeat_time?: string | null;
+    last_heartbeat_context?: Record<string, string | null> | null;
+    alert_template: HeartbeatAlertTemplate;
 }
 
 export interface CorrelationRule {
@@ -80,10 +98,10 @@ export interface CorrelationRule {
     updated_by: string;
     name: string;
     strategy_type?: 'smart_denoise' | 'missing_detection';
-    team?: number[];
-    dispatch_team?: number[];
+    team?: string[];
+    dispatch_team?: string[];
     match_rules?: FilterRule[][];
-    params?: AlarmStrategyParams;
+    params?: AlarmStrategyParams | HeartbeatParams;
     auto_close?: boolean;
     close_minutes?: number;
 }

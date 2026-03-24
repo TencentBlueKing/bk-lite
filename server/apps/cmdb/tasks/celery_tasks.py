@@ -50,12 +50,8 @@ def sync_collect_task(instance_id):
             # 协议采集
             collect = ProtocolCollect(task=instance)
             result, format_data = collect.main()
-        task_exec_status = (
-            CollectRunStatusType.EXAMINE
-            if instance.input_method
-            else CollectRunStatusType.SUCCESS
-        )
-        instance.exec_status = task_exec_status
+
+        instance.exec_status = CollectRunStatusType.SUCCESS
 
     except Exception as err:
         import traceback

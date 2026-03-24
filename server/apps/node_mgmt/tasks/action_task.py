@@ -1,9 +1,14 @@
 from celery import shared_task
 from django.db.models import Count, Q
-from django.utils import timezone
 
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
 from apps.node_mgmt.models.sidecar import Node
+from apps.node_mgmt.utils.step_tracker import (
+    append_step,
+    now_iso,
+    update_last_running_step,
+    update_step_by_action,
+)
 
 
 RUNNING_STATUS = 0
@@ -12,37 +17,36 @@ STOPPED_STATUS = {3, 4}
 ACTION_TASK_TIMEOUT_SECONDS = 300
 
 
-def _now_iso():
-    return timezone.now().isoformat()
-
-
 def _add_step(task_node, action, status, message, details=None):
     result = task_node.result or {}
-    steps = result.get("steps", [])
-    step = {
-        "action": action,
-        "status": status,
-        "message": message,
-        "timestamp": _now_iso(),
-    }
-    if details:
-        step["details"] = details
-    steps.append(step)
-    result["steps"] = steps
+    append_step(result, action, status, message, timestamp=now_iso(), details=details)
     task_node.result = result
+
+
+def _update_step_by_action(task_node, action, status, message, details=None):
+    result = task_node.result or {}
+    updated = update_step_by_action(
+        result,
+        action,
+        status,
+        message,
+        details=details,
+        timestamp=now_iso(),
+    )
+    task_node.result = result
+    return updated
 
 
 def _update_last_running_step(task_node, status, message, details=None):
     result = task_node.result or {}
-    steps = result.get("steps", [])
-    if steps and steps[-1].get("status") == "running":
-        steps[-1]["status"] = status
-        steps[-1]["message"] = message
-        steps[-1]["timestamp"] = _now_iso()
-        if details:
-            steps[-1]["details"] = details
-        result["steps"] = steps
-        task_node.result = result
+    update_last_running_step(
+        result,
+        status,
+        message,
+        details=details,
+        timestamp=now_iso(),
+    )
+    task_node.result = result
 
 
 def _save_node_result(task_node, node_status, overall_status, final_message):
@@ -65,6 +69,33 @@ def _is_expected_status(action, collector_status):
         return "success"
 
     return "running"
+
+
+def _extract_collector_message(collector_item):
+    if not isinstance(collector_item, dict):
+        return ""
+
+    message = collector_item.get("message")
+    verbose_message = collector_item.get("verbose_message")
+
+    message_text = ""
+    if isinstance(message, dict):
+        message_text = (
+            message.get("final_message")
+            or message.get("message")
+            or message.get("detail")
+            or ""
+        )
+    elif isinstance(message, str):
+        message_text = message
+
+    if message_text:
+        return message_text
+
+    if isinstance(verbose_message, str):
+        return verbose_message
+
+    return ""
 
 
 def _reconcile_collector_action_tasks(task_ids):
@@ -123,10 +154,9 @@ def converge_collector_action_task_for_node(node_id):
     collector_status_map = {}
     for collector_item in collectors:
         collector_id = collector_item.get("collector_id")
-        collector_status = collector_item.get("status")
         if collector_id is None:
             continue
-        collector_status_map[collector_id] = collector_status
+        collector_status_map[collector_id] = collector_item
 
     running_task_nodes = CollectorActionTaskNode.objects.filter(
         node_id=node_id,
@@ -137,12 +167,26 @@ def converge_collector_action_task_for_node(node_id):
 
     for task_node in running_task_nodes:
         task_obj = task_node.task
-        collector_status = collector_status_map.get(task_obj.collector_id)
+        collector_item = collector_status_map.get(task_obj.collector_id)
+        if not collector_item:
+            continue
+
+        collector_status = collector_item.get("status")
         if collector_status is None:
             continue
 
+        collector_message = _extract_collector_message(collector_item)
+
         expected_node_status = _is_expected_status(task_obj.action, collector_status)
         if expected_node_status in ["success", "error"]:
+            state_message = (
+                collector_message or "Status converged by node collector state"
+            )
+            final_message = (
+                "Collector action completed"
+                if expected_node_status == "success"
+                else (collector_message or "Collector action failed")
+            )
             _update_last_running_step(
                 task_node,
                 expected_node_status,
@@ -152,23 +196,30 @@ def converge_collector_action_task_for_node(node_id):
                     "operation": task_obj.action,
                 },
             )
-            _add_step(
+            state_details = {
+                "collector_status": collector_status,
+                "operation": task_obj.action,
+                "collector_message": collector_message,
+            }
+            if not _update_step_by_action(
                 task_node,
                 "state_converge",
                 expected_node_status,
-                "Status converged by node collector state",
-                details={
-                    "collector_status": collector_status,
-                    "operation": task_obj.action,
-                },
-            )
+                state_message,
+                details=state_details,
+            ):
+                _add_step(
+                    task_node,
+                    "state_converge",
+                    expected_node_status,
+                    state_message,
+                    details=state_details,
+                )
             _save_node_result(
                 task_node,
                 expected_node_status,
                 expected_node_status,
-                "Collector action completed"
-                if expected_node_status == "success"
-                else "Collector action failed",
+                final_message,
             )
             affected_task_ids.add(task_obj.id)
 

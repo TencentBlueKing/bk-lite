@@ -24,6 +24,7 @@ from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_
 from apps.node_mgmt.tasks.installer import (
     converge_controller_install_connectivity_for_node,
 )
+from apps.node_mgmt.utils.step_tracker import build_step, now_iso, update_step_by_action
 from apps.node_mgmt.utils.sidecar import format_tags_dynamic
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from jinja2 import Template as JinjaTemplate
@@ -339,22 +340,28 @@ class Sidecar:
                         "overall_status": "running",
                         "final_message": "Collector action consumed by sidecar",
                         "steps": [
-                            {
-                                "action": "consume_ack",
-                                "status": "success",
-                                "message": "Action delivered to sidecar",
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                                "details": {
+                            build_step(
+                                "consume_ack",
+                                "success",
+                                "Action delivered to sidecar",
+                                timestamp=now_iso(),
+                                details={
                                     "delivered": True,
                                     "collector_id": action_item.get("collector_id"),
                                 },
-                            },
-                            {
-                                "action": "execute_command",
-                                "status": "running",
-                                "message": "Collector command is being executed by sidecar",
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            },
+                            ),
+                            build_step(
+                                "execute_command",
+                                "running",
+                                "Collector command is being executed by sidecar",
+                                timestamp=now_iso(),
+                            ),
+                            build_step(
+                                "state_converge",
+                                "waiting",
+                                "Waiting for collector state convergence",
+                                timestamp=now_iso(),
+                            ),
                         ],
                     }
                     task_node.save(update_fields=["status", "result"])
@@ -362,30 +369,57 @@ class Sidecar:
                 elif task_node and task_node.status == "running":
                     result = task_node.result or {}
                     steps = result.get("steps", [])
-                    steps.append(
-                        {
-                            "action": "consume_ack",
-                            "status": "success",
-                            "message": "Action delivered to sidecar",
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "details": {
+                    consume_ack_step = next(
+                        (step for step in steps if step.get("action") == "consume_ack"),
+                        None,
+                    )
+                    if consume_ack_step and consume_ack_step.get("status") == "running":
+                        update_step_by_action(
+                            result,
+                            "consume_ack",
+                            "success",
+                            "Action delivered to sidecar",
+                            details={
                                 "delivered": True,
                                 "collector_id": action_item.get("collector_id"),
                             },
-                        }
+                            timestamp=now_iso(),
+                        )
+
+                    execute_step = next(
+                        (
+                            step
+                            for step in steps
+                            if step.get("action") == "execute_command"
+                        ),
+                        None,
                     )
-                    if not (
-                        steps
-                        and steps[-1].get("action") == "execute_command"
-                        and steps[-1].get("status") == "running"
-                    ):
+                    if not execute_step:
                         steps.append(
-                            {
-                                "action": "execute_command",
-                                "status": "running",
-                                "message": "Collector command is being executed by sidecar",
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            }
+                            build_step(
+                                "execute_command",
+                                "running",
+                                "Collector command is being executed by sidecar",
+                                timestamp=now_iso(),
+                            )
+                        )
+
+                    state_converge_step = next(
+                        (
+                            step
+                            for step in steps
+                            if step.get("action") == "state_converge"
+                        ),
+                        None,
+                    )
+                    if not state_converge_step:
+                        steps.append(
+                            build_step(
+                                "state_converge",
+                                "waiting",
+                                "Waiting for collector state convergence",
+                                timestamp=now_iso(),
+                            )
                         )
                     result["steps"] = steps
                     result["overall_status"] = "running"
