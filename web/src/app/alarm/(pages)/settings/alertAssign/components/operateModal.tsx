@@ -183,6 +183,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
       width={740}
       open={open}
       onClose={handleClose}
+      maskClosable={false}
       footer={
         <div style={{ textAlign: 'right' }}>
           <Button

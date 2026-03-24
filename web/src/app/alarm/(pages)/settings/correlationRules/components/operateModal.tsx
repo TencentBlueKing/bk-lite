@@ -546,6 +546,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       open={open}
       onClose={onClose}
       destroyOnClose
+      maskClosable={false}
       footer={
         <div className="flex justify-end gap-2">
           <Button onClick={onClose} disabled={submitLoading}>

@@ -17,6 +17,7 @@ const OperateModal: React.FC<CustomModalProps> = ({
   centered = true,
   subTitle = '',
   customHeaderClass = customModalStyle.customModalHeader,
+  maskClosable = false,
   ...modalProps
 }) => {
   return (
@@ -48,6 +49,7 @@ const OperateModal: React.FC<CustomModalProps> = ({
       }
       footer={footer}
       centered={centered}
+      maskClosable={maskClosable}
       {...modalProps}
     />
   );
