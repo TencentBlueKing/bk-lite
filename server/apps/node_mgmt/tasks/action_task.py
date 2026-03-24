@@ -179,8 +179,10 @@ def converge_collector_action_task_for_node(node_id):
 
         expected_node_status = _is_expected_status(task_obj.action, collector_status)
         if expected_node_status in ["success", "error"]:
-            state_message = (
-                collector_message or "Status converged by node collector state"
+            step_message = (
+                "Collector command execution finished"
+                if expected_node_status == "success"
+                else (collector_message or "Collector action failed")
             )
             final_message = (
                 "Collector action completed"
@@ -190,31 +192,12 @@ def converge_collector_action_task_for_node(node_id):
             _update_last_running_step(
                 task_node,
                 expected_node_status,
-                "Collector command execution finished",
+                step_message,
                 details={
                     "collector_status": collector_status,
                     "operation": task_obj.action,
                 },
             )
-            state_details = {
-                "collector_status": collector_status,
-                "operation": task_obj.action,
-                "collector_message": collector_message,
-            }
-            if not _update_step_by_action(
-                task_node,
-                "state_converge",
-                expected_node_status,
-                state_message,
-                details=state_details,
-            ):
-                _add_step(
-                    task_node,
-                    "state_converge",
-                    expected_node_status,
-                    state_message,
-                    details=state_details,
-                )
             _save_node_result(
                 task_node,
                 expected_node_status,
