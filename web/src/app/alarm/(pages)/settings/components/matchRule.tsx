@@ -24,9 +24,16 @@ interface PolicyItem {
 interface MatchRuleProps {
   value?: PolicyItem[][];
   onChange?: (val: PolicyItem[][]) => void;
+  ruleOptions?: { name: string; verbose_name: string }[];
+  conditionOptions?: Record<string, { name: string; desc: string }[]>;
 }
 
-const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange }) => {
+const RulesMatch: React.FC<MatchRuleProps> = ({
+  value,
+  onChange,
+  ruleOptions,
+  conditionOptions,
+}) => {
   const { getAlertSources } = useSourceApi();
   const { levelListEvent } = useCommon();
   const { t } = useTranslation();
@@ -138,7 +145,7 @@ const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange }) => {
                           placeholder={`${t('common.selectTip')}`}
                           onChange={(value) => changeSelect(value, index, ind)}
                         >
-                          {ruleList.map((item) => (
+                          {(ruleOptions || ruleList).map((item) => (
                             <Option key={item.name} value={item.name}>
                               {item.verbose_name}
                             </Option>
@@ -157,7 +164,7 @@ const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange }) => {
                             onChange?.(updatedPolicyList);
                           }}
                         >
-                          {(initialConditionLists[i.key as string] || []).map(
+                          {((conditionOptions || initialConditionLists)[i.key as string] || []).map(
                             (item) => (
                               <Option key={item.name} value={item.name}>
                                 {item.desc}
