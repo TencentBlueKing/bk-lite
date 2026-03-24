@@ -24,17 +24,17 @@ import {
   Select,
   Radio,
   InputNumber,
+  Typography,
   message,
   Tooltip,
   Switch,
   Slider,
   Tag,
   Button,
-  Typography,
 } from 'antd';
 import GroupTreeSelect from '@/components/group-tree-select';
 import RulesMatch from '../../components/matchRule';
-import CheckPeriod from './checkPeriod';
+import CheckPeriod from './cron/checkPeriod';
 import AlertTemplate from './alertTemplate';
 import {
   DndContext,
@@ -68,9 +68,9 @@ type FilterType = 'all' | 'filter';
 
 interface FormValues {
   name: string;
-  organization: number[];
-  assign_organization?: number;
-  filter_rules: Array<Array<{ key?: string; operator?: string; value?: string | number }>>;
+  organization: string[];
+  assign_organization?: string;
+  filter_rules: Array<Array<{ key: string; operator: string; value: string | number }>>;
   self_healing_observation_time?: number;
   auto_close_time?: number;
   md_cron_expr?: string;
@@ -82,7 +82,7 @@ interface FormValues {
   md_activation_mode?: 'first_heartbeat' | 'immediate';
 }
 
-const SectionTitle: React.FC<{ title: string }> = ({ title }) => (
+const SectionTitle: React.FC<{ title: React.ReactNode }> = ({ title }) => (
   <div className="mb-3 mt-5 flex items-center">
     <div className="mr-2 h-[16px] w-[3px] rounded-sm bg-blue-500" />
     <span className="text-[15px] font-medium text-gray-700">{title}</span>
@@ -190,11 +190,11 @@ const DEFAULT_MISSING_VALUES: Pick<
   | 'md_auto_recovery'
   | 'md_activation_mode'
 > = {
-  md_cron_expr: '',
-  md_grace_period: 5,
-  md_alert_title: '{{service}} 心跳缺失',
+  md_cron_expr: '0 9 * * *',
+  md_grace_period: 20,
+  md_alert_title: '',
   md_alert_level: undefined,
-  md_alert_description: '期望事件未按时到达',
+  md_alert_description: '',
   md_auto_recovery: true,
   md_activation_mode: 'first_heartbeat',
 };
@@ -296,6 +296,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const { t } = useTranslation();
   const { selectedGroup } = useUserInfoContext();
   const [form] = Form.useForm<FormValues>();
+  const activationMode =
+    Form.useWatch('md_activation_mode', form) ?? DEFAULT_MISSING_VALUES.md_activation_mode;
   const [submitLoading, setSubmitLoading] = useState(false);
   const { createCorrelationRule, updateCorrelationRule } = useSettingApi();
 
@@ -342,6 +344,19 @@ const OperateModal: React.FC<OperateModalProps> = ({
       },
     ],
     []
+  );
+
+  const defaultFormValues = useMemo(
+    () => ({
+      name: '',
+      organization: selectedGroup ? [selectedGroup.id] : [],
+      assign_organization: selectedGroup?.id,
+      filter_rules: DEFAULT_FILTER_RULES,
+      self_healing_observation_time: 60,
+      auto_close_time: 120,
+      ...DEFAULT_MISSING_VALUES,
+    }),
+    [selectedGroup]
   );
 
   useEffect(() => {
@@ -411,22 +426,25 @@ const OperateModal: React.FC<OperateModalProps> = ({
     setAutoCloseEnabled(true);
     setDetailExpanded(false);
 
-    form.setFieldsValue({
-      name: '',
-      organization: selectedGroup ? [selectedGroup.id] : [],
-      assign_organization: selectedGroup?.id,
-      filter_rules: DEFAULT_FILTER_RULES,
-      self_healing_observation_time: 60,
-      auto_close_time: 120,
-      ...DEFAULT_MISSING_VALUES,
-    });
+    form.setFieldsValue(defaultFormValues);
   }, [open, currentRow, form, selectedGroup]);
 
-  useEffect(() => {
-    if (strategyType === 'missing_detection') {
-      setFilterType('filter');
+  const handleStrategyTypeChange = (nextType: StrategyType) => {
+    if (nextType === strategyType) {
+      return;
     }
-  }, [strategyType]);
+
+    form.resetFields();
+    setStrategyType(nextType);
+    setFilterType(nextType === 'missing_detection' ? 'filter' : 'all');
+    setPolicy('service');
+    setDimensions(['service', 'location', 'resource_name', 'item']);
+    setDetectionWindow(2);
+    setSelfHealingEnabled(false);
+    setAutoCloseEnabled(true);
+    setDetailExpanded(false);
+    form.setFieldsValue(defaultFormValues);
+  };
 
   const handlePolicyChange = (newPolicy: PolicyType) => {
     setPolicy(newPolicy);
@@ -528,6 +546,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       open={open}
       onClose={onClose}
       destroyOnClose
+      maskClosable={false}
       footer={
         <div className="flex justify-end gap-2">
           <Button onClick={onClose} disabled={submitLoading}>
@@ -558,7 +577,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                     : 'border-gray-200 bg-white hover:border-blue-200 hover:shadow-sm'
                 }`}
                 style={{ width: 'calc(50% - 6px)' }}
-                onClick={() => setStrategyType(value)}
+                onClick={() => handleStrategyTypeChange(value)}
               >
                 {isSelected && (
                   <div className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 shadow-sm">
@@ -643,17 +662,20 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
         <SectionTitle
           title={
-            strategyType === 'missing_detection'
-              ? t('settings.correlation.defineMonitorTarget')
-              : t('settings.correlation.defineEventScope')
+            strategyType === 'missing_detection' ? (
+              t('settings.correlation.defineMonitorTarget')
+            ) : (
+              t('settings.correlation.defineEventScope')
+            )
           }
         />
         <div className="mb-4 pl-3">
-          {strategyType === 'missing_detection' ? (
-            <Typography.Text type="secondary">
+          {strategyType === 'missing_detection' && (
+            <Typography.Text type="secondary" className="mb-3 block text-sm leading-5">
               {t('settings.correlation.expectedEventGuide')}
             </Typography.Text>
-          ) : (
+          )}
+          {strategyType === 'missing_detection' ? null : (
             <Radio.Group
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
@@ -878,34 +900,14 @@ const OperateModal: React.FC<OperateModalProps> = ({
           </>
         ) : (
           <>
-            <SectionTitle title={t('settings.correlation.checkPeriodAndThreshold')} />
+            <SectionTitle title={t('settings.correlation.checkPeriod')} />
             <div className="pl-3">
-              <CheckPeriod form={form} />
+              <CheckPeriod />
             </div>
 
-            <SectionTitle title={t('settings.correlation.alertGenerationSettings')} />
+            <SectionTitle title={t('settings.correlation.activationRules')} />
             <div className="pl-3">
-              <AlertTemplate />
-            </div>
-
-            <SectionTitle title={t('settings.correlation.recoveryAndActivation')} />
-            <div className="space-y-4 pl-3">
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-600">
-                  {t('settings.correlation.autoRecovery')}
-                </span>
-                <Form.Item
-                  name="md_auto_recovery"
-                  valuePropName="checked"
-                  className="mb-0"
-                >
-                  <Switch size="small" />
-                </Form.Item>
-              </div>
               <div className="space-y-2">
-                <div className="text-sm text-gray-600">
-                  {t('settings.correlation.activationMode')}
-                </div>
                 <Form.Item
                   name="md_activation_mode"
                   rules={[{ required: true, message: t('common.selectTip') }]}
@@ -918,12 +920,42 @@ const OperateModal: React.FC<OperateModalProps> = ({
                     <Radio value="immediate">
                       {t('settings.correlation.immediateActivation')}
                     </Radio>
-                  </Radio.Group>
+                    </Radio.Group>
                 </Form.Item>
-                <Typography.Text type="secondary">
-                  {t('settings.correlation.coldStartTip')}
+                <Typography.Text type="secondary" className="mt-1 block text-sm leading-5">
+                  {t(
+                    activationMode === 'immediate'
+                      ? 'settings.correlation.immediateActivationTip'
+                      : 'settings.correlation.firstHeartbeatActivationTip'
+                  )}
                 </Typography.Text>
               </div>
+            </div>
+
+            <SectionTitle title={t('settings.correlation.recoveryRules')} />
+            <div className="pl-3">
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center text-sm text-gray-600">
+                    {t('settings.correlation.autoRecovery')}
+                    <Tooltip title={t('settings.correlation.autoRecoveryTip')}>
+                      <QuestionCircleOutlined className="ml-1 cursor-help text-xs text-gray-400" />
+                    </Tooltip>
+                  </span>
+                  <Form.Item
+                    name="md_auto_recovery"
+                    valuePropName="checked"
+                    className="mb-0"
+                  >
+                    <Switch size="small" />
+                  </Form.Item>
+                </div>
+              </div>
+            </div>
+
+            <SectionTitle title={t('settings.correlation.alertTemplate')} />
+            <div className="pl-3">
+              <AlertTemplate />
             </div>
           </>
         )}

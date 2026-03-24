@@ -1,8 +1,8 @@
+from django.core.cache import cache
 from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
-from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.viewset_utils import LanguageViewSet

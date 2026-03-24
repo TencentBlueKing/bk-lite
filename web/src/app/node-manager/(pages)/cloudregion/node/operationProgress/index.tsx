@@ -26,6 +26,7 @@ import Icon from '@/components/icon';
 // 操作类型
 export type OperationType =
   | 'installController'
+  | 'uninstallController'
   | 'installCollector'
   | 'startCollector'
   | 'restartCollector'
@@ -86,6 +87,10 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
 
   // 是否是安装控制器操作
   const isInstallController = operationType === 'installController';
+  // 是否是卸载控制器操作
+  const isUninstallController = operationType === 'uninstallController';
+  // 是否是控制器相关操作（安装或卸载）
+  const isControllerOperation = isInstallController || isUninstallController;
 
   // 获取默认文案配置
   const defaultTextConfig: OperationTextConfig = useMemo(() => {
@@ -98,12 +103,19 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         finishButton: t('node-manager.controller.finishInstall')
       };
     }
+    if (isUninstallController) {
+      return {
+        listTitle: t('node-manager.controller.uninstallList'),
+        statusColumn,
+        finishButton: t('node-manager.controller.finishUninstall')
+      };
+    }
     return {
       listTitle: t('node-manager.controller.operationList'),
       statusColumn,
       finishButton: t('node-manager.controller.finishOperation')
     };
-  }, [isInstallController, t]);
+  }, [isInstallController, isUninstallController, t]);
 
   // 合并文案配置
   const mergedTextConfig: OperationTextConfig = {
@@ -127,6 +139,12 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         error: t('node-manager.cloudregion.node.installError'),
         timeout: t('node-manager.cloudregion.node.installTimeout'),
         running: t('node-manager.cloudregion.node.remoteInstalling')
+      },
+      uninstallController: {
+        success: t('node-manager.cloudregion.node.successUninstall'),
+        error: t('node-manager.cloudregion.node.failUninstall'),
+        timeout: t('node-manager.cloudregion.node.uninstallTimeout'),
+        running: t('node-manager.cloudregion.node.uninstalling')
       },
       installCollector: {
         success: t('node-manager.cloudregion.node.installSuccess'),
@@ -252,26 +270,26 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
     ];
 
     // 所有操作类型都显示安装方式列
-    baseColumns.push({
-      title: t('node-manager.cloudregion.node.installationMethod'),
-      dataIndex: 'install_method',
-      width: 100,
-      key: 'install_method',
-      ellipsis: true,
-      render: () => {
-        const installWay =
-          installMethod === 'manualInstall'
-            ? t('node-manager.cloudregion.node.manualInstall')
-            : t('node-manager.cloudregion.node.remoteInstall');
-        return <>{installWay}</>;
-      }
-    });
+    // baseColumns.push({
+    //   title: t('node-manager.cloudregion.node.installationMethod'),
+    //   dataIndex: 'install_method',
+    //   width: 100,
+    //   key: 'install_method',
+    //   ellipsis: true,
+    //   render: () => {
+    //     const installWay =
+    //       installMethod === 'manualInstall'
+    //         ? t('node-manager.cloudregion.node.manualInstall')
+    //         : t('node-manager.cloudregion.node.remoteInstall');
+    //     return <>{installWay}</>;
+    //   }
+    // });
 
     // 状态列
     baseColumns.push({
       title: mergedTextConfig.statusColumn,
       dataIndex: 'status',
-      width: 200,
+      width: 150,
       key: 'status',
       ellipsis: true,
       render: (value: string) => {
@@ -303,7 +321,9 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         const isManualInstall = installMethod === 'manualInstall';
         const isWindows = row.os === 'windows';
         const nodeId = row.node_id || row.id;
-        const showRetry = ['error', 'timeout'].includes(row.status);
+        // 卸载控制器不显示重试按钮
+        const showRetry =
+          ['error', 'timeout'].includes(row.status) && !isUninstallController;
 
         // 只有安装控制器才显示手动安装相关操作
         if (isInstallController && isManualInstall) {
@@ -362,6 +382,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
     copyingNodeIds,
     retryingNodeIds,
     isInstallController,
+    isUninstallController,
     operationType,
     collectorId,
     collectorPackageId,
@@ -422,11 +443,13 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         error: number;
       } | null = null;
 
-      if (isInstallController) {
-        // 安装控制器的逻辑
-        if (installMethod === 'remoteInstall') {
+      if (isControllerOperation) {
+        // 控制器操作的逻辑（安装或卸载）
+        if (installMethod === 'remoteInstall' || isUninstallController) {
+          // 远程安装或卸载控制器，都使用 getControllerNodes 接口
           data = await getControllerNodes({ taskId: taskIds });
         } else {
+          // 手动安装控制器
           if (manualTaskList.length > 0) {
             const statusData = await getManualInstallStatus({
               node_ids: taskIds
@@ -494,8 +517,8 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       }
 
       // 检查是否完成并自动进入下一步
-      if (isInstallController) {
-        // 安装控制器：检查所有节点都操作成功
+      if (isControllerOperation) {
+        // 控制器操作（安装或卸载）：检查所有节点都操作成功
         const allSuccess = newTableData.every((item: TableDataItem) =>
           ['success', 'installed'].includes(item.status)
         );
@@ -542,6 +565,13 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           'node-manager.cloudregion.node.confirmFinishInstallContent2'
         )
       },
+      uninstallController: {
+        title: t('node-manager.cloudregion.node.confirmFinishUninstallTitle'),
+        content1: t('node-manager.cloudregion.node.confirmFinishContent1'),
+        content2: t(
+          'node-manager.cloudregion.node.confirmFinishUninstallContent2'
+        )
+      },
       installCollector: {
         title: t('node-manager.cloudregion.node.confirmFinishInstallTitle'),
         content1: t('node-manager.cloudregion.node.confirmFinishContent1'),
@@ -575,6 +605,14 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       (item) =>
         !['error', 'success', 'installed', 'timeout'].includes(item.status)
     ).length;
+
+    // 如果没有进行中的节点，直接返回，不需要二次确认
+    if (installingCount === 0) {
+      clearTimer();
+      cancel();
+      return;
+    }
+
     const confirmText = getFinishConfirmText;
     Modal.confirm({
       title: confirmText.title,

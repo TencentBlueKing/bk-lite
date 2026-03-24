@@ -5,10 +5,20 @@ import (
 	"fmt"
 	"nats-executor/jetstream"
 	"nats-executor/logger"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
 )
+
+type fileDownloader interface {
+	DownloadToFile(fileKey, targetPath, fileName string) error
+}
+
+var newJetStreamClient = func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
+	return jetstream.NewJetStreamClient(nc, bucketName)
+}
 
 type DownloadFileRequest struct {
 	BucketName     string `json:"bucket_name"`
@@ -19,24 +29,52 @@ type DownloadFileRequest struct {
 }
 
 func DownloadFile(req DownloadFileRequest, nc *nats.Conn) error {
+	if strings.TrimSpace(req.BucketName) == "" || strings.TrimSpace(req.FileKey) == "" || strings.TrimSpace(req.FileName) == "" || strings.TrimSpace(req.TargetPath) == "" {
+		return fmt.Errorf("bucket_name, file_key, file_name, and target_path are required")
+	}
+	if err := validateDownloadFileName(req.FileName); err != nil {
+		return err
+	}
+
+	if req.ExecuteTimeout <= 0 {
+		return fmt.Errorf("execute timeout must be greater than 0")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(req.ExecuteTimeout)*time.Second)
 	defer cancel()
 
 	logger.Debugf("[DownloadFile] Starting download with file_key: %s, target_path: %s, file_name: %s, timeout: %d seconds", req.FileKey, req.TargetPath, req.FileName, req.ExecuteTimeout)
 
-	client, err := jetstream.NewJetStreamClient(nc, req.BucketName)
+	client, err := newJetStreamClient(nc, req.BucketName)
 	if err != nil {
 		return fmt.Errorf("failed to create JetStream client: %w", err)
 	}
 
-	if err := client.DownloadToFile(req.FileKey, req.TargetPath, req.FileName); err != nil {
-		return fmt.Errorf("failed to download file: %w", err)
-	}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- client.DownloadToFile(req.FileKey, req.TargetPath, req.FileName)
+	}()
 
-	if ctx.Err() == context.DeadlineExceeded {
-		return fmt.Errorf("download operation timed out")
+	select {
+	case <-ctx.Done():
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("download operation timed out")
+		}
+		return fmt.Errorf("download operation canceled: %w", ctx.Err())
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("failed to download file: %w", err)
+		}
 	}
 
 	logger.Debugf("[DownloadFile] Download completed successfully!")
+	return nil
+}
+
+func validateDownloadFileName(fileName string) error {
+	trimmed := strings.TrimSpace(fileName)
+	if trimmed == "." || trimmed == ".." || filepath.IsAbs(trimmed) || strings.ContainsAny(trimmed, `/\`) {
+		return fmt.Errorf("file_name must not contain path separators or be absolute")
+	}
 	return nil
 }

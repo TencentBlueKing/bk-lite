@@ -260,7 +260,13 @@ class NodeService:
                                 "collector_id": collector_id,
                                 "operation": operation,
                             },
-                        }
+                        },
+                        {
+                            "action": "consume_ack",
+                            "status": "running",
+                            "message": "Waiting for sidecar to consume action",
+                            "timestamp": dj_timezone.now().isoformat(),
+                        },
                     ],
                 }
                 task_node.save(update_fields=["status", "result"])

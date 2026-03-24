@@ -1,7 +1,6 @@
 # -- coding: utf-8 --
-from django.contrib.postgres.aggregates import StringAgg
+from django.db import connection, transaction
 from django.db.models import Count
-from django.db import transaction
 from rest_framework.decorators import action
 
 from apps.alerts.constants.constants import SessionStatus
@@ -28,14 +27,19 @@ class AlertModelViewSet(ModelViewSet):
     def get_queryset(self):
         queryset = Alert.objects.annotate(
             event_count_annotated=Count("events"),
-            # 通过事件获取告警源名称（去重）
-            source_names_annotated=StringAgg(
-                "events__source__name", delimiter=", ", distinct=True
-            ),
-            incident_title_annotated=StringAgg(
-                "incident__title", delimiter=", ", distinct=True
-            ),
-        ).prefetch_related("events__source")
+        ).prefetch_related("events__source", "incident_set")
+
+        # StringAgg 是 PostgreSQL 专属函数，其他数据库通过 serializer fallback 处理
+        if connection.vendor == "postgresql":
+            from django.contrib.postgres.aggregates import StringAgg
+
+            queryset = Alert.objects.annotate(
+                event_count_annotated=Count("events"),
+                # 通过事件获取告警源名称（去重）
+                source_names_annotated=StringAgg("events__source__name", delimiter=", ", distinct=True),
+                incident_title_annotated=StringAgg("incident__title", delimiter=", ", distinct=True),
+            ).prefetch_related("events__source")
+
         return queryset
 
     @staticmethod
@@ -46,11 +50,7 @@ class AlertModelViewSet(ModelViewSet):
                 operator_usernames.update(alert.operator)
         if not operator_usernames:
             return {}
-        return dict(
-            User.objects.filter(username__in=operator_usernames).values_list(
-                "username", "display_name"
-            )
-        )
+        return dict(User.objects.filter(username__in=operator_usernames).values_list("username", "display_name"))
 
     @HasPermission("Alarms-View")
     def list(self, request, *args, **kwargs):
@@ -103,9 +103,7 @@ class AlertModelViewSet(ModelViewSet):
         result_list = {}
         status_list = []
         for alert_id in alert_id_list:
-            result = operator.operate(
-                action=operator_action, alert_id=alert_id, data=request.data
-            )
+            result = operator.operate(action=operator_action, alert_id=alert_id, data=request.data)
             result_list[alert_id] = result
             status_list.append(result["result"])
 
@@ -118,6 +116,4 @@ class AlertModelViewSet(ModelViewSet):
                 status_code=500,
             )
         else:
-            return WebUtils.response_success(
-                response_data=result_list, message="部分操作成功"
-            )
+            return WebUtils.response_success(response_data=result_list, message="部分操作成功")

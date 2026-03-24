@@ -15,6 +15,7 @@ type ExecuteResponse struct {
 	Output     string `json:"result"`
 	InstanceId string `json:"instance_id"`
 	Success    bool   `json:"success"`
+	Code       string `json:"code,omitempty"`
 	Error      string `json:"error,omitempty"` // 添加错误字段
 }
 
