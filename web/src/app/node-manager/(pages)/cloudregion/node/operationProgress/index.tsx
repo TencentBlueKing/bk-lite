@@ -270,26 +270,26 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
     ];
 
     // 所有操作类型都显示安装方式列
-    baseColumns.push({
-      title: t('node-manager.cloudregion.node.installationMethod'),
-      dataIndex: 'install_method',
-      width: 100,
-      key: 'install_method',
-      ellipsis: true,
-      render: () => {
-        const installWay =
-          installMethod === 'manualInstall'
-            ? t('node-manager.cloudregion.node.manualInstall')
-            : t('node-manager.cloudregion.node.remoteInstall');
-        return <>{installWay}</>;
-      }
-    });
+    // baseColumns.push({
+    //   title: t('node-manager.cloudregion.node.installationMethod'),
+    //   dataIndex: 'install_method',
+    //   width: 100,
+    //   key: 'install_method',
+    //   ellipsis: true,
+    //   render: () => {
+    //     const installWay =
+    //       installMethod === 'manualInstall'
+    //         ? t('node-manager.cloudregion.node.manualInstall')
+    //         : t('node-manager.cloudregion.node.remoteInstall');
+    //     return <>{installWay}</>;
+    //   }
+    // });
 
     // 状态列
     baseColumns.push({
       title: mergedTextConfig.statusColumn,
       dataIndex: 'status',
-      width: 200,
+      width: 150,
       key: 'status',
       ellipsis: true,
       render: (value: string) => {
