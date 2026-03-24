@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("alerts", "0009_remove_correlationrules_aggregation_rules_and_more"),
+        ("alerts", "0010_remove_alert_alert_created_btree_and_more"),
     ]
 
     operations = [
