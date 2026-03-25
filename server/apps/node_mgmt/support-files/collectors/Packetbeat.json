@@ -2,7 +2,7 @@
   {
     "id": "Packetbeat_linux",
     "name": "Packetbeat",
-    "controller_default_run": false,
+    "controller_default_run": true,
     "icon": "",
     "node_operating_system": "linux",
     "service_type": "exec",
