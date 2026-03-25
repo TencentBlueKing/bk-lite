@@ -1,3 +1,4 @@
+from django.db.models import Case, IntegerField, Value, When
 from django.http import JsonResponse, StreamingHttpResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
@@ -9,7 +10,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
-from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools
+from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools, UserPin
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
@@ -37,14 +38,30 @@ class LLMViewSet(AuthViewSet):
     permission_key = "skill"
 
     def query_by_groups(self, request, queryset):
-        """重写排序逻辑：置顶优先，再按 ID 倒序"""
+        """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
         new_queryset = self.get_queryset_by_permission(request, queryset)
-        return self._list(new_queryset.order_by("-is_pinned", "-id"))
+        username = request.user.username
+        domain = getattr(request.user, "domain", "")
+        pinned_ids = list(
+            UserPin.objects.filter(
+                username=username,
+                domain=domain,
+                content_type=UserPin.CONTENT_TYPE_SKILL,
+            ).values_list("object_id", flat=True)
+        )
+        new_queryset = new_queryset.annotate(
+            is_pinned_for_user=Case(
+                When(id__in=pinned_ids, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        )
+        return self._list(new_queryset.order_by("-is_pinned_for_user", "-id"))
 
     @action(methods=["POST"], detail=True)
     @HasPermission("skill_setting-Edit")
     def toggle_pin(self, request, pk=None):
-        """切换技能置顶状态"""
+        """切换技能置顶状态（个人行为）"""
         instance = self.get_object()
         if not request.user.is_superuser:
             current_team = request.COOKIES.get("current_team", "0")
@@ -53,9 +70,20 @@ class LLMViewSet(AuthViewSet):
             if not has_permission:
                 message = self.loader.get("error.permission_update_denied") if self.loader else "You do not have permission to update this instance"
                 return JsonResponse({"result": False, "message": message})
-        instance.is_pinned = not instance.is_pinned
-        instance.save(update_fields=["is_pinned"])
-        return JsonResponse({"result": True, "data": {"is_pinned": instance.is_pinned}})
+        username = request.user.username
+        domain = getattr(request.user, "domain", "")
+        pin_obj, created = UserPin.objects.get_or_create(
+            username=username,
+            domain=domain,
+            content_type=UserPin.CONTENT_TYPE_SKILL,
+            object_id=instance.id,
+        )
+        if created:
+            is_pinned = True
+        else:
+            pin_obj.delete()
+            is_pinned = False
+        return JsonResponse({"result": True, "data": {"is_pinned": is_pinned}})
 
     @action(methods=["GET"], detail=False)
     @HasPermission("skill_list-View")
@@ -325,6 +353,7 @@ class LLMViewSet(AuthViewSet):
 class ObjFilter(FilterSet):
     name = filters.CharFilter(field_name="name", lookup_expr="icontains")
     enabled = filters.CharFilter(method="filter_enabled")
+    vendor = filters.NumberFilter(field_name="vendor_id", lookup_expr="exact")
 
     @staticmethod
     def filter_enabled(qs, field_name, value):

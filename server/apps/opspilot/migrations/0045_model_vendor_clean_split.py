@@ -39,7 +39,6 @@ class Migration(migrations.Migration):
                 ("team", models.JSONField(default=list, verbose_name="组织")),
                 ("description", models.TextField(blank=True, default="", null=True, verbose_name="简介")),
                 ("is_build_in", models.BooleanField(default=False)),
-                ("index", models.IntegerField(default=0, verbose_name="排序")),
             ],
             options={"verbose_name": "供应商", "verbose_name_plural": "供应商", "db_table": "opspilot_modelvendor"},
         ),

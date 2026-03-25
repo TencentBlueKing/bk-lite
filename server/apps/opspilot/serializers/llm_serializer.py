@@ -1,9 +1,10 @@
 from rest_framework import serializers
+from rest_framework.fields import empty
 
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import AuthSerializer, TeamSerializer
-from apps.opspilot.models import LLMModel, LLMSkill, SkillRequestLog, SkillTools
-from apps.opspilot.serializers.model_type_serializer import CustomProviderSerializer
+from apps.opspilot.models import LLMModel, LLMSkill, SkillRequestLog, SkillTools, UserPin
+from apps.opspilot.serializers.model_vendor_serializer import CustomProviderSerializer
 
 
 class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
@@ -27,6 +28,23 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
 
     rag_score_threshold = serializers.SerializerMethodField()
     llm_model_name = serializers.SerializerMethodField()
+    is_pinned = serializers.SerializerMethodField()
+
+    def __init__(self, instance=None, data=empty, **kwargs):
+        super().__init__(instance=instance, data=data, **kwargs)
+        self.pinned_skill_ids = set()
+        request = self.context.get("request")
+        if not request or not request.user:
+            return
+        username = request.user.username
+        domain = getattr(request.user, "domain", "")
+        self.pinned_skill_ids = set(
+            UserPin.objects.filter(
+                username=username,
+                domain=domain,
+                content_type=UserPin.CONTENT_TYPE_SKILL,
+            ).values_list("object_id", flat=True)
+        )
 
     class Meta:
         model = LLMSkill
@@ -38,6 +56,10 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
 
     def get_llm_model_name(self, instance: LLMSkill):
         return instance.llm_model.name if instance.llm_model is not None else ""
+
+    def get_is_pinned(self, instance: LLMSkill) -> bool:
+        """获取当前用户对此 LLMSkill 的置顶状态"""
+        return instance.id in self.pinned_skill_ids
 
 
 class SkillRequestLogSerializer(serializers.ModelSerializer):

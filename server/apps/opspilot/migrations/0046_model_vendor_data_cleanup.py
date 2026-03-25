@@ -1,4 +1,4 @@
-from django.db import migrations
+from django.db import migrations, models
 
 PLACEHOLDER_API_KEY = "your_openai_api_key"
 
@@ -176,4 +176,32 @@ class Migration(migrations.Migration):
         migrations.RemoveField(model_name="rerankprovider", name="model_type"),
         migrations.RemoveField(model_name="rerankprovider", name="rerank_config"),
         migrations.DeleteModel(name="ModelType"),
+        migrations.CreateModel(
+            name="UserPin",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("username", models.CharField(db_index=True, max_length=150, verbose_name="用户名")),
+                ("domain", models.CharField(db_index=True, max_length=255, verbose_name="域")),
+                (
+                    "content_type",
+                    models.CharField(choices=[("bot", "工作台"), ("skill", "技能")], db_index=True, max_length=20, verbose_name="内容类型"),
+                ),
+                ("object_id", models.IntegerField(db_index=True, verbose_name="对象ID")),
+            ],
+            options={
+                "verbose_name": "用户置顶",
+                "verbose_name_plural": "用户置顶",
+                "db_table": "opspilot_user_pin",
+                "indexes": [models.Index(fields=["username", "domain", "content_type"], name="opspilot_us_usernam_54aa63_idx")],
+                "unique_together": {("username", "domain", "content_type", "object_id")},
+            },
+        ),
+        migrations.RemoveField(
+            model_name="bot",
+            name="is_pinned",
+        ),
+        migrations.RemoveField(
+            model_name="llmskill",
+            name="is_pinned",
+        ),
     ]
