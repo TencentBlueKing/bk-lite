@@ -1,0 +1,2419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsPilot - 供应商详情</title>
+    <style>
+        :root {
+            --color-primary: #155AEF;
+            --color-primary-bg-active: #E1EDFC;
+            --color-text-1: #1E252E;
+            --color-text-2: #475468;
+            --color-text-3: #7588A3;
+            --color-border: #EAECF0;
+            --color-border-1: #EDEFF3;
+            --color-border-2: #E6E9EE;
+            --color-fill-1: #F6F8F9;
+            --color-fill-2: #F4F5F8;
+            --color-success: #27C274;
+            --shadow-soft: 0 16px 40px rgba(15, 23, 42, 0.06);
+            --shadow-hover: 0 16px 36px rgba(15, 23, 42, 0.10);
+            --page-bg: url('../../../../web/public/system-bg.jpg');
+        }
+
+        * {
+            box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: var(--color-border-2) transparent;
+        }
+
+        *::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        *::-webkit-scrollbar-thumb {
+            border-radius: 999px;
+            background: var(--color-border-2);
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            min-width: 1440px;
+            min-height: 100%;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+
+        body {
+            color: var(--color-text-1);
+            background:
+                linear-gradient(180deg, rgba(242, 244, 247, 0.88) 0%, rgba(242, 244, 247, 0.95) 42%, rgba(242, 244, 247, 1) 100%),
+                var(--page-bg) center / cover no-repeat fixed;
+        }
+
+        button,
+        input,
+        select,
+        textarea {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-header {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            height: 56px;
+            padding: 0 18px;
+            border-bottom: 1px solid rgba(230, 233, 238, 0.9);
+            background: rgba(255, 255, 255, 0.82);
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 30px rgba(15, 23, 42, 0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .brand .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #155AEF 0%, #4F8CFF 50%, #7EB5FF 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(21, 90, 239, 0.25);
+            flex-shrink: 0;
+        }
+
+        .brand strong {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .main-nav {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .main-nav a {
+            padding: 8px 14px;
+            border-radius: 10px;
+            color: var(--color-text-2);
+            font-size: 14px;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            text-decoration: none;
+        }
+
+        .main-nav a:hover {
+            background: rgba(21, 90, 239, 0.04);
+            color: var(--color-primary);
+        }
+
+        .main-nav a.active {
+            color: var(--color-primary);
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: 0 8px 24px rgba(21, 90, 239, 0.08);
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .badge-chip {
+            padding: 7px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(21, 90, 239, 0.12);
+            background: rgba(255, 255, 255, 0.88);
+            color: var(--color-primary);
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #155AEF 0%, #4F8CFF 100%);
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            box-shadow: 0 8px 20px rgba(21, 90, 239, 0.2);
+        }
+
+        .workspace {
+            padding: 22px 36px;
+            min-height: calc(100vh - 56px);
+        }
+
+        .page-panel {
+            min-height: calc(100vh - 88px);
+            padding: 24px 28px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.80);
+            border: 1px solid rgba(230, 233, 238, 0.9);
+            backdrop-filter: blur(16px);
+            box-shadow: var(--shadow-soft);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .page-header-main {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .breadcrumb {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--color-text-3);
+        }
+
+        .breadcrumb strong {
+            color: var(--color-text-1);
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .header-title h1 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .sub-text {
+            color: var(--color-text-3);
+            font-size: 13px;
+        }
+
+        .btn {
+            height: 38px;
+            padding: 0 14px;
+            border-radius: 10px;
+            border: 1px solid var(--color-border);
+            background: #ffffff;
+            color: var(--color-text-2);
+            font-weight: 600;
+        }
+
+        .btn:hover {
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+        }
+
+        .btn.primary {
+            border-color: var(--color-primary);
+            background: var(--color-primary);
+            color: #ffffff;
+            box-shadow: 0 8px 16px rgba(21, 90, 239, 0.2);
+        }
+
+        .btn.danger {
+            background: #F43B2C;
+            color: #ffffff;
+            border-color: #F43B2C;
+        }
+
+        .btn.danger:hover {
+            background: #d93427;
+            color: #ffffff;
+            border-color: #d93427;
+        }
+
+        .top-tabs {
+            display: flex;
+            align-items: center;
+            gap: 28px;
+            border-bottom: 1px solid var(--color-border-1);
+            padding: 0 4px;
+        }
+
+        .top-tab {
+            position: relative;
+            height: 44px;
+            border: none;
+            background: transparent;
+            color: var(--color-text-2);
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .top-tab::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: -1px;
+            height: 3px;
+            border-radius: 999px 999px 0 0;
+            background: transparent;
+        }
+
+        .top-tab.active {
+            color: var(--color-primary);
+        }
+
+        .top-tab.active::after {
+            background: var(--color-primary);
+        }
+
+        .tab-pages {
+            display: block;
+        }
+
+        .tab-page {
+            display: none;
+        }
+
+        .tab-page.active {
+            display: block;
+        }
+
+        .panel-card {
+            border: 1px solid var(--color-border-2);
+            border-radius: 14px;
+            background: linear-gradient(180deg, #FFFFFF 0%, #FCFDFF 100%);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+        }
+
+        .panel-header {
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--color-border-1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .panel-header h2 {
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .panel-body {
+            padding: 18px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group.full {
+            grid-column: 1 / -1;
+        }
+
+        .form-group label {
+            font-size: 13px;
+            color: var(--color-text-2);
+            font-weight: 600;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            background: var(--color-fill-1);
+            padding: 10px 12px;
+            outline: none;
+            font-size: 14px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            border-color: var(--color-primary);
+            background: #ffffff;
+        }
+
+        /* Multi-select dropdown styles */
+        .multi-select {
+            position: relative;
+            width: 100%;
+        }
+
+        .multi-select-trigger {
+            width: 100%;
+            min-height: 42px;
+            padding: 8px 36px 8px 12px;
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            background: var(--color-fill-1);
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%237588A3' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            outline: none;
+        }
+
+        .multi-select-trigger:focus {
+            border-color: var(--color-primary);
+            background-color: #ffffff;
+        }
+
+        .multi-select-placeholder {
+            color: var(--color-text-4);
+            font-size: 14px;
+        }
+
+        .multi-select-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: rgba(21, 90, 239, 0.08); /* Fallback */
+            background: var(--color-primary-bg-active, rgba(21, 90, 239, 0.08));
+            color: var(--color-primary);
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .multi-select-tag-remove {
+            width: 14px;
+            height: 14px;
+            border: none;
+            background: transparent;
+            color: var(--color-primary);
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            line-height: 1;
+            opacity: 0.7;
+        }
+
+        .multi-select-tag-remove:hover {
+            opacity: 1;
+        }
+
+        .multi-select-dropdown {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            max-height: 200px;
+            overflow-y: auto;
+            background: #ffffff;
+            border: 1px solid var(--color-border-1);
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+            z-index: 100;
+            display: none;
+        }
+
+        .multi-select-dropdown.open {
+            display: block;
+        }
+
+        .multi-select-option {
+            padding: 10px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--color-text-2);
+        }
+
+        .multi-select-option:hover {
+            background: var(--color-fill-1);
+        }
+
+        .multi-select-option.selected {
+            color: var(--color-primary);
+            background: var(--color-primary-bg-active, rgba(21, 90, 239, 0.04));
+        }
+
+        .multi-select-checkbox {
+            width: 16px;
+            height: 16px;
+            border: 1px solid var(--color-border-3);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            background: #ffffff;
+        }
+
+        .multi-select-checkbox svg {
+            display: none;
+        }
+
+        .multi-select-option.selected .multi-select-checkbox {
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+            color: #ffffff;
+        }
+
+        .multi-select-option.selected .multi-select-checkbox svg {
+            display: block;
+        }
+
+        .hint {
+            font-size: 12px;
+            color: var(--color-text-3);
+        }
+
+        .status-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: rgba(21, 90, 239, 0.12);
+            color: var(--color-primary);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .status-chip.off {
+            background: rgba(244, 59, 44, 0.12);
+            color: #F43B2C;
+        }
+
+        .switch-btn {
+            width: 44px;
+            height: 24px;
+            border: none;
+            border-radius: 999px;
+            background: #D1D7E1;
+            position: relative;
+            transition: background 0.2s ease;
+            padding: 0;
+        }
+
+        .switch-btn::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.2);
+            transition: transform 0.2s ease;
+        }
+
+        .switch-btn.active {
+            background: var(--color-primary);
+        }
+
+        .switch-btn.active::after {
+            transform: translateX(20px);
+        }
+
+        .switch-btn.model-switch {
+            width: 38px;
+            height: 20px;
+        }
+
+        .switch-btn.model-switch::after {
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+        }
+
+        .switch-btn.model-switch.active::after {
+            transform: translateX(18px);
+        }
+
+        .model-section-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+        }
+
+        .model-page-header-wrap {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .model-page-intro {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .model-page-intro h2 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .model-page-intro p {
+            margin: 0;
+            color: var(--color-text-3);
+            font-size: 13px;
+        }
+
+        .model-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .model-search-input {
+            width: 240px;
+            height: 34px;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            background: #ffffff;
+            padding: 0 10px;
+            outline: none;
+            font-size: 13px;
+            color: var(--color-text-2);
+        }
+
+        .model-search-input:focus {
+            border-color: var(--color-primary);
+        }
+
+        .btn.search-model {
+            height: 34px;
+            padding: 0 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            border-color: rgba(21, 90, 239, 0.16);
+            background: rgba(21, 90, 239, 0.06);
+            color: var(--color-primary);
+        }
+
+        .btn.search-model:hover {
+            border-color: var(--color-primary);
+            background: rgba(21, 90, 239, 0.1);
+            color: var(--color-primary);
+        }
+
+        .model-card {
+            border: 1px solid var(--color-border-1);
+            border-radius: 14px;
+            background: linear-gradient(180deg, #FFFFFF 0%, #FBFCFE 100%);
+            height: 314px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+        }
+
+        .model-card-head {
+            padding: 15px 18px 12px;
+            border-bottom: 1px solid var(--color-border-1);
+            background: linear-gradient(180deg, rgba(247, 249, 252, 0.9) 0%, rgba(255, 255, 255, 0.96) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .model-card-heading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .model-card-title {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1.2;
+            color: var(--color-text-1);
+        }
+
+        .model-card-count {
+            font-size: 14px;
+            color: var(--color-text-2);
+            font-weight: 500;
+            background: rgba(15, 23, 42, 0.04);
+            padding: 2px 8px;
+            border-radius: 999px;
+            line-height: 1.4;
+        }
+
+        .model-add-btn {
+            height: 30px;
+            border: 1px solid rgba(21, 90, 239, 0.16);
+            border-radius: 8px;
+            background: rgba(21, 90, 239, 0.06);
+            color: var(--color-primary);
+            padding: 0 10px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .model-add-btn:hover {
+            border-color: var(--color-primary);
+            background: rgba(21, 90, 239, 0.1);
+        }
+
+        .model-card-body {
+            padding: 16px 16px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .model-table-head {
+            min-height: 34px;
+            display: grid;
+            grid-template-columns: minmax(120px, 1.5fr) minmax(120px, 1.5fr) 100px 60px 80px;
+            align-items: center;
+            gap: 16px;
+            padding: 2px 12px 10px;
+            border-bottom: 1px solid var(--color-border-1);
+               font-size: 13px;
+            font-weight: 500;
+            color: var(--color-text-3);
+            letter-spacing: 0.02em;
+        }
+
+        .model-table-head span {
+            justify-self: start;
+            text-align: left;
+        }
+
+        .model-row {
+            min-height: 48px;
+            border-bottom: 1px solid var(--color-border-1);
+            display: grid;
+            grid-template-columns: minmax(120px, 1.5fr) minmax(120px, 1.5fr) 100px 60px 80px;
+            align-items: center;
+            gap: 16px;
+            padding: 8px 12px;
+        }
+
+        .model-row:last-child {
+            border-bottom: none;
+        }
+
+        .model-cell {
+            min-width: 0;
+            margin: 0;
+            font-size: 13px;
+            font-weight: 400;
+            color: var(--color-text-2);
+            line-height: 1.25;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            justify-self: start;
+            text-align: left;
+        }
+
+        .model-cell.name {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--color-text-1);
+        }
+
+        .model-cell.id {
+            font-size: 13px;
+            color: var(--color-text-2);
+            font-family: inherit;
+            font-weight: 400;
+        }
+
+        .model-cell.org {
+            font-size: 13px;
+            color: var(--color-text-2);
+            font-weight: 400;
+        }
+
+        .model-cell.org.empty {
+            color: var(--color-text-3);
+        }
+
+        .model-row-start {
+            justify-self: start;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .model-row-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+            justify-self: end;
+        }
+
+        .icon-btn {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #99A3B5;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .icon-btn:hover {
+            background: var(--color-fill-2);
+        }
+
+        .icon-btn svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .icon-btn.default {
+            color: #C5CEDB;
+        }
+
+        .icon-btn.default.active {
+            color: #F5B301;
+            background: rgba(245, 179, 1, 0.12);
+        }
+
+        .icon-btn[data-tip]::after {
+            content: attr(data-tip);
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 6px);
+            transform: translateX(-50%) translateY(2px);
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: rgba(30, 37, 46, 0.95);
+            color: #ffffff;
+            font-size: 11px;
+            line-height: 1;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            z-index: 5;
+        }
+
+        .icon-btn[data-tip]:hover::after {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .icon-btn.default:hover {
+            color: #d39a00;
+            background: rgba(245, 179, 1, 0.12);
+        }
+
+        .icon-btn.edit:hover {
+            color: var(--color-primary);
+            background: rgba(21, 90, 239, 0.08);
+        }
+
+        .icon-btn.remove {
+            color: #F43B2C;
+        }
+
+        .icon-btn.remove:hover {
+            background: rgba(244, 59, 44, 0.08);
+        }
+
+        .delete-confirm-popover {
+            position: fixed;
+            left: 0;
+            top: 0;
+            transform: none;
+            min-width: 164px;
+            padding: 10px;
+            border: 1px solid var(--color-border-2);
+            border-radius: 10px;
+            background: #ffffff;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+            z-index: 12;
+        }
+
+        .delete-confirm-text {
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: var(--color-text-2);
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .delete-confirm-actions {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+        }
+
+        .delete-confirm-btn {
+            height: 26px;
+            padding: 0 8px;
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            background: #ffffff;
+            color: var(--color-text-2);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .delete-confirm-btn.confirm {
+            border-color: #f43b2c;
+            background: #f43b2c;
+            color: #ffffff;
+        }
+
+        .model-empty {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 12px;
+            color: var(--color-text-3);
+        }
+
+        .empty-folder-icon {
+            width: 36px;
+            height: 36px;
+            color: #C7D0DD;
+        }
+
+        .empty-folder-icon svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        @media (max-width: 1100px) {
+            .workspace {
+                padding: 16px;
+            }
+
+            .page-panel {
+                padding: 18px;
+            }
+
+            .model-section-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 1280px) {
+            .model-page-intro h2 {
+                font-size: 18px;
+            }
+
+            .model-page-intro p {
+                font-size: 13px;
+            }
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 60;
+            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(4px);
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+        }
+
+        .modal-overlay.open {
+            display: flex;
+        }
+
+        .modal {
+            width: 660px;
+            max-width: 100%;
+            border-radius: 12px;
+            background: #ffffff;
+            border: 1px solid var(--color-border-1);
+            box-shadow: 0 18px 36px rgba(15, 23, 42, 0.18);
+            overflow: visible;
+        }
+
+        .modal.confirm-modal {
+            width: 420px;
+        }
+
+        .modal-header {
+            padding: 18px 18px 12px;
+            border-bottom: 1px solid var(--color-border-1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .modal-close {
+            width: 44px;
+            height: 44px;
+            border: 1px solid var(--color-border-1);
+            border-radius: 8px;
+            background: #f3f4f6;
+            color: #3f4a59;
+            font-size: 30px;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            background: #e8ebef;
+            color: #1f2937;
+        }
+
+        .modal-body {
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .modal-field {
+            display: grid;
+            grid-template-columns: 126px minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+        }
+
+        .modal-field.full {
+            grid-column: auto;
+        }
+
+        .modal-field label {
+            font-size: 16px;
+            color: #1f2a37;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .modal-field .required, .basic-info-label .required {
+            color: #f43b2c;
+            margin-right: 2px;
+        }
+
+        .help-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 1px solid #c8cfda;
+            color: #9aa5b5;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            font-weight: 700;
+        }
+
+        .modal-input {
+            width: 100%;
+            height: 42px;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            background: #ffffff;
+            padding: 0 14px;
+            outline: none;
+            font-size: 16px;
+            color: #101828;
+        }
+
+        .modal-input::placeholder {
+            color: #b6bfcc;
+        }
+
+        .modal-input:focus {
+            border-color: var(--color-primary);
+        }
+
+        .modal-footer {
+            padding: 8px 18px 22px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 0;
+        }
+
+        .btn.add-model {
+            height: 40px;
+            border: none;
+            border-radius: 9px;
+            background: #14b86e;
+            color: #ffffff;
+            font-size: 15px;
+            font-weight: 600;
+            padding: 0 20px;
+        }
+
+        .btn.add-model:hover {
+            background: #0ca45f;
+            color: #ffffff;
+        }
+
+        .toast-wrap {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            z-index: 40;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toast {
+            min-width: 220px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: rgba(30, 37, 46, 0.94);
+            color: #ffffff;
+            font-size: 13px;
+            box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+            animation: fade-in 0.2s ease;
+        }
+
+        .top-notice-wrap {
+            position: fixed;
+            top: 76px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 70;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        .top-notice {
+            min-width: 260px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 13px;
+            box-shadow: 0 16px 32px rgba(15, 23, 42, 0.2);
+            animation: fade-in 0.2s ease;
+        }
+
+        .top-notice.success {
+            background: rgba(39, 194, 116, 0.95);
+        }
+
+        .top-notice.fail {
+            background: rgba(245, 63, 63, 0.96);
+        }
+
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .basic-info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .basic-info-item {
+            padding: 16px;
+            border: 1px solid var(--color-border-1);
+            border-radius: 12px;
+            background: var(--color-fill-1);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .basic-info-item.full {
+            grid-column: 1 / -1;
+        }
+
+        .basic-info-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-text-2);
+        }
+
+        .basic-info-value {
+            width: 100%;
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            background: #ffffff;
+            padding: 9px 11px;
+            font-size: 14px;
+            color: var(--color-text-1);
+            outline: none;
+        }
+
+        .basic-info-value:focus {
+            border-color: var(--color-primary);
+        }
+
+        .api-key-field-wrap {
+            position: relative;
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+
+        .api-key-clear-btn {
+            position: absolute;
+            right: 34px;
+            width: 16px;
+            height: 16px;
+            border: none;
+            border-radius: 50%;
+            background: var(--color-fill-4);
+            color: #5f6e82;
+            font-size: 12px;
+            line-height: 1;
+            padding: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .api-key-clear-btn:hover {
+            background: #d5dce7;
+        }
+
+        .api-key-clear-btn.visible {
+            display: inline-flex;
+        }
+
+        textarea.basic-info-value {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .model-row-input {
+            width: 100%;
+            height: 28px;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            background: transparent;
+            padding: 0 8px;
+            font-size: 12px;
+            color: var(--color-text-2);
+            outline: none;
+        }
+
+        .model-row-input:hover {
+            border-color: var(--color-border-1);
+            background: #ffffff;
+        }
+
+        .model-row-input:focus {
+            border-color: var(--color-primary);
+            background: #ffffff;
+        }
+
+        .page-footer {
+            margin-top: 24px;
+            display: flex;
+            justify-content: flex-end;
+            padding: 14px 4px 0;
+            border-top: 1px dashed #d4dbe6;
+        }
+
+        .btn.save-all {
+            height: 42px;
+            padding: 0 32px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            background: var(--color-primary);
+            color: #ffffff;
+            border: none;
+            box-shadow: 0 8px 16px rgba(21, 90, 239, 0.2);
+            transition: all 0.2s ease;
+        }
+
+        .btn.save-all:hover {
+            box-shadow: 0 12px 24px rgba(21, 90, 239, 0.3);
+            transform: translateY(-1px);
+            background: #0d46d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="top-header">
+            <div class="brand">
+                <div class="logo-icon">BK</div>
+                <strong>BlueKing Lite</strong>
+            </div>
+            <nav class="main-nav">
+                <a href="../工作台/工作台.html">工作台</a>
+                <a href="../智能体/智能体.html">智能体</a>
+                <a href="../知识库/知识库.html">知识库</a>
+                <a href="../工具/工具.html">工具</a>
+                <a class="active" href="./模型.html">模型</a>
+            </nav>
+            <div class="header-actions">
+                <span class="badge-chip">测试环境</span>
+                <div class="avatar">BK</div>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <section class="page-panel">
+                <div class="page-header">
+                    <div class="page-header-main">
+                        <div class="breadcrumb">
+                            <span>供应商</span>
+                            <span>/</span>
+                            <strong id="breadcrumbProviderName">OpenAI</strong>
+                        </div>
+                        <div class="header-title">
+                            <button class="btn" id="backBtn" type="button">返回</button>
+                            <h1 id="providerTitle">OpenAI</h1>
+                        </div>
+                    </div>
+                    <div class="sub-text" id="providerTypeText">类型: -</div>
+                </div>
+
+                <div class="top-tabs">
+                    <button class="top-tab" type="button" data-tab-page="2">基础信息</button>
+                    <button class="top-tab active" type="button" data-tab-page="1">模型管理</button>
+                </div>
+
+                <div class="tab-pages">
+                    <article class="tab-page active" data-page="1">
+                        <div class="model-page-header-wrap">
+                            <div class="model-page-intro">
+                                <h2>模型管理</h2>
+                                <p>按模型类型管理，支持设置默认模型</p>
+                            </div>
+                            <div class="model-toolbar">
+                                <input class="model-search-input" id="modelSearchInput" type="text" placeholder="搜索模型ID或名称">
+                                <button class="btn search-model" id="modelSearchBtn" type="button">搜索模型</button>
+                                <button class="btn sync-model" id="syncModelBtn" type="button" style="display: flex; align-items: center; height: 34px;">
+                                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" style="margin-right: 4px;">
+                                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"></path>
+                                        <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="model-section-grid" id="modelSectionGrid"></div>
+                    </article>
+
+                    <article class="tab-page" data-page="2">
+                        <div class="model-page-header-wrap">
+                            <div class="model-page-intro">
+                                <h2>基础信息</h2>
+                                <p>展示供应商接入信息</p>
+                            </div>
+                        </div>
+                        <div class="basic-info-grid">
+                                    <div class="basic-info-item">
+                                        <span class="basic-info-label"><span class="required">*</span>名称</span>
+                                        <input class="basic-info-value" id="providerNameInput" type="text" value="OpenAI">
+                                    </div>
+                                    <div class="basic-info-item">
+                                        <span class="basic-info-label"><span class="required">*</span>类型</span>
+                                        <select class="basic-info-value" id="providerTypeInput">
+                                            <option value="openai">OpenAI</option>
+                                            <option value="azure">Azure</option>
+                                            <option value="aliyun">阿里云</option>
+                                            <option value="zhipu">智谱</option>
+                                            <option value="baidu">百度</option>
+                                            <option value="anthropic">Anthropic</option>
+                                            <option value="deepseek">DeepSeek</option>
+                                            <option value="openai_compatible">其他</option>
+                                        </select>
+                                    </div>
+                                    <div class="basic-info-item full">
+                                        <span class="basic-info-label"><span class="required">*</span>API 地址</span>
+                                        <input class="basic-info-value" id="providerEndpointInput" type="text" value="https://api.openai.com/v1">
+                                    </div>
+                                    <div class="basic-info-item full">
+                                        <span class="basic-info-label"><span class="required">*</span>API Key</span>
+                                        <div style="display: flex; gap: 8px; align-items: center;">
+                                            <div class="api-key-field-wrap">
+                                                <input class="basic-info-value" id="providerApiKeyInput" type="password" value="sk-abcdefghijklmnopqrstuvwxyz123456" style="padding-right: 62px;">
+                                                <button id="clearApiKeyBtn" class="api-key-clear-btn" type="button" aria-label="清空 API Key">×</button>
+                                                <button id="toggleApiKeyVisibilityBtn" type="button" style="position: absolute; right: 10px; background: none; border: none; cursor: pointer; color: var(--color-text-3); font-size: 16px; padding: 0; display: inline-flex;" title="显示/隐藏密钥">
+                                                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                                </button>
+                                            </div>
+                                            <button class="btn" id="testApiConnectionBtn" type="button" style="height: 38px; white-space: nowrap;">测试连接</button>
+                                        </div>
+                                    </div>
+                                    <div class="basic-info-item full">
+                                        <span class="basic-info-label">说明</span>
+                                        <textarea class="basic-info-value" id="providerDescriptionInput">用于接入 OpenAI 官方模型服务，支持对话生成、向量嵌入与多模态能力。</textarea>
+                                    </div>
+                                    <div class="basic-info-item">
+                                        <span class="basic-info-label">启用</span>
+                                        <div style="display: flex; align-items: center; min-height: 40px; padding-left: 4px;">
+                                            <button class="switch-btn active" id="basicInfoStatusSwitch" type="button"></button>
+                                        </div>
+                                    </div>
+                                </div>
+                    </article>
+                </div>
+
+                <div class="page-footer">
+                    <button class="btn primary save-all" id="saveGlobalBtn" type="button">保存</button>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div class="toast-wrap" id="toastWrap"></div>
+    <div class="top-notice-wrap" id="topNoticeWrap"></div>
+
+    <div class="modal-overlay" id="addModelModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="addModelTitle">添加模型</h3>
+                <button class="modal-close" type="button" data-action="close-add-model">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-field">
+                    <label><span class="required">*</span>模型 ID</label>
+                    <input class="modal-input" id="addModelIdInput" type="text" placeholder="必填 例如 gpt-3.5-turbo">
+                </div>
+                <div class="modal-field">
+                    <label>模型名称</label>
+                    <input class="modal-input" id="addModelNameInput" type="text" placeholder="例如 GPT-4">
+                </div>
+                <div class="modal-field">
+                    <label>可用组织</label>
+                    <div class="multi-select" id="addModelGroupSelect">
+                        <div class="multi-select-trigger" id="addModelGroupTrigger">
+                            <span class="multi-select-placeholder">请选择组织...</span>
+                        </div>
+                        <div class="multi-select-dropdown" id="addModelGroupDropdown">
+                            <div class="multi-select-option" data-value="all">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                全部
+                            </div>
+                            <div class="multi-select-option" data-value="tech">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                技术部
+                            </div>
+                            <div class="multi-select-option" data-value="product">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                产品部
+                            </div>
+                            <div class="multi-select-option" data-value="ops">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                运维组
+                            </div>
+                            <div class="multi-select-option" data-value="ai">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                AI平台组
+                            </div>
+                            <div class="multi-select-option" data-value="data">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                数据中心
+                            </div>
+                            <div class="multi-select-option" data-value="security">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                安全部
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn add-model" id="confirmAddModelBtn" type="button">添加模型</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="editModelModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>编辑模型</h3>
+                <button class="modal-close" type="button" data-action="close-edit-model">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-field">
+                    <label><span class="required">*</span>模型 ID</label>
+                    <input class="modal-input" id="editModelIdInput" type="text" placeholder="必填 例如 gpt-3.5-turbo">
+                </div>
+                <div class="modal-field">
+                    <label>模型名称</label>
+                    <input class="modal-input" id="editModelNameInput" type="text" placeholder="例如 GPT-4">
+                </div>
+                <div class="modal-field">
+                    <label>可用组织</label>
+                    <div class="multi-select" id="editModelGroupSelect">
+                        <div class="multi-select-trigger" id="editModelGroupTrigger">
+                            <span class="multi-select-placeholder">请选择组织...</span>
+                        </div>
+                        <div class="multi-select-dropdown" id="editModelGroupDropdown">
+                            <div class="multi-select-option" data-value="all">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                全部组织
+                            </div>
+                            <div class="multi-select-option" data-value="tech">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                技术部
+                            </div>
+                            <div class="multi-select-option" data-value="product">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                产品部
+                            </div>
+                            <div class="multi-select-option" data-value="ops">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                运维组
+                            </div>
+                            <div class="multi-select-option" data-value="ai">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                AI平台组
+                            </div>
+                            <div class="multi-select-option" data-value="data">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                数据中心
+                            </div>
+                            <div class="multi-select-option" data-value="security">
+                                <div class="multi-select-checkbox">
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="hidden">
+                                        <path d="M2.5 5.5L4 7L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                安全部
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" type="button" data-action="close-edit-model" style="margin-right: 12px;">取消</button>
+                <button class="btn add-model" id="confirmEditModelBtn" type="button">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const state = {
+            provider: {
+                name: 'OpenAI官方',
+                type: 'openai',
+                endpoint: 'https://api.openai.com/v1',
+                apiKey: 'sk-************************************',
+                description: '用于接入 OpenAI 官方模型服务，支持对话生成、向量嵌入与多模态能力。'
+            },
+            modelConfigs: [
+                {
+                    typeKey: 'llm',
+                    typeLabel: 'LLM模型',
+                    addLabel: '+ 新增',
+                    models: [
+                        { id: 'gpt-4o', name: 'GPT-4o', org: ['ai'], isDefault: true, started: true },
+                        { id: 'gpt-3.5-turbo', name: 'GPT-3.5涡轮', org: [], isDefault: false, started: false },
+                        { id: 'gpt-4o-mini', name: 'GPT-4o迷你版', org: ['product'], isDefault: false, started: false },
+                        { id: 'gpt-4-turbo', name: 'GPT-4涡轮', org: ['ops'], isDefault: false, started: false },
+                        { id: 'gpt-5-nano', name: 'GPT-5-纳诺', org: ['data'], isDefault: false, started: false }
+                    ]
+                },
+                {
+                    typeKey: 'vector',
+                    typeLabel: '向量模型',
+                    addLabel: '+ 新增',
+                    models: [
+                        { id: 'text-embedding-3-small', name: '文本嵌入', org: ['ai'], isDefault: true, started: true },
+                        { id: 'text-embedding-3-large', name: '文本嵌入3', org: ['security'], isDefault: false, started: false }
+                    ]
+                },
+                {
+                    typeKey: 'rerank',
+                    typeLabel: '重排模型',
+                    addLabel: '+ 新增',
+                    models: []
+                },
+                {
+                    typeKey: 'image',
+                    typeLabel: '图像模型',
+                    addLabel: '+ 新增',
+                    models: []
+                }
+            ],
+            currentPage: 1,
+            providerEnabled: true,
+            modelSearchKeyword: '',
+            editingModel: {
+                typeKey: '',
+                oldModelId: ''
+            },
+            addModelForm: {
+                typeKey: ''
+            },
+            deleteConfirm: {
+                typeKey: '',
+                modelId: ''
+            }
+        };
+
+        const organizations = [
+            { id: 'all', name: '全部' },
+            { id: 'tech', name: '技术部' },
+            { id: 'product', name: '产品部' },
+            { id: 'ops', name: '运维组' },
+            { id: 'ai', name: 'AI平台组' },
+            { id: 'data', name: '数据中心' },
+            { id: 'security', name: '安全部' }
+        ];
+
+        const providerTypeNameMap = {
+            openai: 'OpenAI',
+            azure: 'Azure',
+            aliyun: '阿里云',
+            zhipu: '智谱',
+            baidu: '百度',
+            anthropic: 'Anthropic',
+            deepseek: 'DeepSeek',
+            openai_compatible: '其他'
+        };
+
+        const modelTypeNameMap = {
+            llm: 'LLM',
+            vector: '向量',
+            rerank: '重排',
+            image: '图像'
+        };
+
+        const toastWrap = document.getElementById('toastWrap');
+        const topNoticeWrap = document.getElementById('topNoticeWrap');
+        const addModelModal = document.getElementById('addModelModal');
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            toastWrap.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                toast.style.transition = 'all 0.2s ease';
+                setTimeout(() => toast.remove(), 200);
+            }, 2200);
+        }
+
+        function showTopNotice(message, type = 'success') {
+            const notice = document.createElement('div');
+            notice.className = `top-notice ${type === 'fail' ? 'fail' : 'success'}`;
+            notice.textContent = message;
+            topNoticeWrap.appendChild(notice);
+            setTimeout(() => {
+                notice.style.opacity = '0';
+                notice.style.transform = 'translateY(-8px)';
+                notice.style.transition = 'all 0.2s ease';
+                setTimeout(() => notice.remove(), 200);
+            }, 2200);
+        }
+
+        function getStarIcon() {
+            return `
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <path d="M7.15 1.49a.9.9 0 0 1 1.7 0l1.33 3.2 3.46.28a.9.9 0 0 1 .51 1.58l-2.64 2.26.81 3.37a.9.9 0 0 1-1.34.98L8 11.2l-2.98 1.96a.9.9 0 0 1-1.34-.98l.81-3.37L1.85 6.55a.9.9 0 0 1 .51-1.58l3.46-.28 1.33-3.2Z"></path>
+                </svg>
+            `;
+        }
+
+        function getTrashIcon() {
+            return `
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M5.5 2.5h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path>
+                    <path d="M2.5 4h11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path>
+                    <path d="M6.2 1.9h3.6a.7.7 0 0 1 .7.7V4H5.5V2.6a.7.7 0 0 1 .7-.7Z" stroke="currentColor" stroke-width="1.2"></path>
+                    <path d="M4.2 4h7.6l-.55 8.06a1.2 1.2 0 0 1-1.19 1.11H5.95a1.2 1.2 0 0 1-1.19-1.11L4.2 4Z" stroke="currentColor" stroke-width="1.2"></path>
+                    <path d="M6.55 6.4v4.1M9.45 6.4v4.1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path>
+                </svg>
+            `;
+        }
+
+        function getEmptyFolderIcon() {
+            return `
+                <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                    <path d="M6 15.5A3.5 3.5 0 0 1 9.5 12h9.08a3.5 3.5 0 0 1 2.47 1.03l2.6 2.47H38.5A3.5 3.5 0 0 1 42 19v16.5A4.5 4.5 0 0 1 37.5 40h-27A4.5 4.5 0 0 1 6 35.5v-20Z" stroke="currentColor" stroke-width="2"></path>
+                    <path d="M6 19h36" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+                </svg>
+            `;
+        }
+
+        function renderHeader() {
+            document.getElementById('providerTitle').textContent = state.provider.name;
+            document.getElementById('breadcrumbProviderName').textContent = state.provider.name;
+            document.getElementById('providerTypeText').textContent = `类型: ${providerTypeNameMap[state.provider.type] || state.provider.type}`;
+        }
+
+        function renderBaseInfo() {
+            document.getElementById('providerNameInput').value = state.provider.name;
+            document.getElementById('providerTypeInput').value = state.provider.type;
+            document.getElementById('providerEndpointInput').value = state.provider.endpoint;
+            document.getElementById('providerApiKeyInput').value = state.provider.apiKey;
+            document.getElementById('providerDescriptionInput').value = state.provider.description;
+            updateApiKeyClearBtn();
+        }
+
+        function updateApiKeyClearBtn() {
+            const apiKeyInput = document.getElementById('providerApiKeyInput');
+            const clearApiKeyBtn = document.getElementById('clearApiKeyBtn');
+            if (!apiKeyInput || !clearApiKeyBtn) {
+                return;
+            }
+            clearApiKeyBtn.classList.toggle('visible', Boolean(apiKeyInput.value));
+        }
+
+        function getOrgDisplayName(orgValue) {
+            if (!orgValue || (Array.isArray(orgValue) && orgValue.length === 0) || !String(orgValue).trim()) {
+                return '未设置';
+            }
+            if (orgValue === '请选择组织') {
+                return '请选择组织';
+            }
+            
+            if (Array.isArray(orgValue)) {
+                if (orgValue.includes('all')) {
+                    return '全部组织';
+                }
+                return orgValue.map(val => {
+                    const orgItem = organizations.find((org) => org.id === val);
+                    return orgItem ? orgItem.name : val;
+                }).join(' / ');
+            } else {
+                const orgItem = organizations.find((org) => org.id === orgValue);
+                return orgItem ? orgItem.name : orgValue;
+            }
+        }
+
+        function renderModels() {
+            const modelList = document.getElementById('modelSectionGrid');
+            const keyword = state.modelSearchKeyword.trim().toLowerCase();
+            modelList.innerHTML = state.modelConfigs.map((modelConfig, index) => {
+                const displayModels = keyword
+                    ? modelConfig.models.filter((modelItem) => {
+                        const idText = (modelItem.id || '').toLowerCase();
+                        const nameText = (modelItem.name || '').toLowerCase();
+                        return idText.includes(keyword) || nameText.includes(keyword);
+                    })
+                    : modelConfig.models;
+                let rowHtml = '';
+                if (displayModels.length === 0) {
+                    rowHtml = `
+                        <div class="model-empty">
+                            <span class="empty-folder-icon">${getEmptyFolderIcon()}</span>
+                            <span>暂无模型，点击 + 新增</span>
+                        </div>
+                    `;
+                } else {
+                    rowHtml = `
+                        <div class="model-table-head">
+                            <span>模型名称</span>
+                            <span>模型ID</span>
+                            <span>可用组织</span>
+                            <span>启停</span>
+                            <span style="justify-self: end;">编辑</span>
+                        </div>
+                    ` + displayModels.map((modelItem) => `
+                        <div class="model-row">
+                            <p class="model-cell name">${modelItem.name}</p>
+                            <p class="model-cell id">${modelItem.id}</p>
+                            <p class="model-cell org ${!modelItem.org || (Array.isArray(modelItem.org) && modelItem.org.length === 0) || modelItem.org === '请选择组织' ? 'empty' : ''}">${getOrgDisplayName(modelItem.org)}</p>
+                            <div class="model-row-start" style="justify-self: start;">
+                                <button class="switch-btn model-switch ${modelItem.started ? 'active' : ''}" type="button" role="switch" aria-checked="${modelItem.started ? 'true' : 'false'}" data-action="toggle-start" data-type-key="${modelConfig.typeKey}" data-model-id="${modelItem.id}"></button>
+                            </div>
+                            <div class="model-row-actions">
+                                <button class="icon-btn edit" type="button" title="编辑" data-tip="编辑" data-action="edit-model" data-type-key="${modelConfig.typeKey}" data-model-id="${modelItem.id}">✎</button>
+                                <button class="icon-btn remove" type="button" title="删除" data-tip="删除" data-action="remove-model" data-type-key="${modelConfig.typeKey}" data-model-id="${modelItem.id}">${getTrashIcon()}</button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+                return `
+                <section class="model-card" data-type-key="${modelConfig.typeKey}">
+                    <div class="model-card-head">
+                        <div class="model-card-heading">
+                            <h3 class="model-card-title">${modelConfig.typeLabel}</h3>
+                            <span class="model-card-count">共${displayModels.length}个</span>
+                        </div>
+                        <button class="model-add-btn" type="button" data-action="add-model" data-type-key="${modelConfig.typeKey}">+新增</button>
+                    </div>
+                    <div class="model-card-body">
+                        ${rowHtml}
+                    </div>
+                </section>
+            `;
+            }).join('');
+        }
+
+        function renderTabs() {
+            document.querySelectorAll('.tab-page').forEach((pageEl) => {
+                pageEl.classList.toggle('active', Number(pageEl.dataset.page) === state.currentPage);
+            });
+
+            document.querySelectorAll('.top-tab').forEach((tabEl) => {
+                tabEl.classList.toggle('active', Number(tabEl.dataset.tabPage) === state.currentPage);
+            });
+        }
+
+        function setTab(page) {
+            state.currentPage = Math.max(1, Math.min(2, page));
+            renderTabs();
+        }
+
+        function openAddModelModal(typeKey) {
+            state.addModelForm.typeKey = typeKey;
+
+            document.getElementById('addModelTitle').textContent = '添加模型';
+            document.getElementById('addModelIdInput').value = '';
+            document.getElementById('addModelNameInput').value = '';
+            
+            const addModelGroupSelect = document.getElementById('addModelGroupSelect');
+            const addModelGroupTrigger = document.getElementById('addModelGroupTrigger');
+            addModelGroupSelect.querySelectorAll('.multi-select-option').forEach(opt => opt.classList.remove('selected'));
+            addModelGroupTrigger.innerHTML = '<span class="multi-select-placeholder">请选择组织...</span>';
+
+            addModelModal.classList.add('open');
+        }
+
+        function closeAddModelModal() {
+            addModelModal.classList.remove('open');
+        }
+
+        function clearInlineDeleteConfirm() {
+            document.querySelectorAll('.delete-confirm-popover').forEach((el) => el.remove());
+            state.deleteConfirm = { typeKey: '', modelId: '' };
+        }
+
+        function positionInlineDeleteConfirm(popover, triggerBtn) {
+            if (!popover || !triggerBtn) {
+                return;
+            }
+
+            const triggerRect = triggerBtn.getBoundingClientRect();
+            const popoverRect = popover.getBoundingClientRect();
+            const gap = 8;
+            const viewportPadding = 8;
+
+            let left = triggerRect.left + (triggerRect.width - popoverRect.width) / 2;
+            left = Math.max(viewportPadding, Math.min(left, window.innerWidth - popoverRect.width - viewportPadding));
+
+            let top = triggerRect.top - popoverRect.height - gap;
+            top = Math.max(viewportPadding, top);
+
+            popover.style.left = `${left}px`;
+            popover.style.top = `${top}px`;
+        }
+
+        function showInlineDeleteConfirm(triggerBtn, typeKey, modelId) {
+            const existing = document.querySelector('.delete-confirm-popover');
+            const isSameTarget = state.deleteConfirm.typeKey === typeKey && state.deleteConfirm.modelId === modelId;
+            clearInlineDeleteConfirm();
+            if (existing && isSameTarget) {
+                return;
+            }
+
+            const popover = document.createElement('div');
+            popover.className = 'delete-confirm-popover';
+            popover.innerHTML = `
+                <div class="delete-confirm-text">删除二次确认</div>
+                <div class="delete-confirm-actions">
+                    <button class="delete-confirm-btn" type="button" data-action="cancel-remove-model" data-type-key="${typeKey}">取消</button>
+                    <button class="delete-confirm-btn confirm" type="button" data-action="confirm-remove-model" data-type-key="${typeKey}" data-model-id="${modelId}">确认删除</button>
+                </div>
+            `;
+            document.body.appendChild(popover);
+            state.deleteConfirm = { typeKey, modelId };
+            positionInlineDeleteConfirm(popover, triggerBtn);
+        }
+
+        function initMultiSelect(selectId, triggerId, dropdownId) {
+            const select = document.getElementById(selectId);
+            const trigger = document.getElementById(triggerId);
+            const dropdown = document.getElementById(dropdownId);
+            
+            trigger.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const isOpen = dropdown.classList.contains('open');
+                document.querySelectorAll('.multi-select-dropdown').forEach(d => d.classList.remove('open'));
+                if (!isOpen) {
+                    dropdown.classList.add('open');
+                }
+            });
+
+            dropdown.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const option = e.target.closest('.multi-select-option');
+                if (option) {
+                    const isAllOption = option.dataset.value === 'all';
+                    if (isAllOption) {
+                        const specificOptions = Array.from(dropdown.querySelectorAll('.multi-select-option:not([data-value="all"])'));
+                        const hasUnchecked = specificOptions.some((opt) => !opt.classList.contains('selected'));
+                        option.classList.toggle('selected', hasUnchecked);
+                        specificOptions.forEach((opt) => {
+                            opt.classList.toggle('selected', hasUnchecked);
+                        });
+                    } else {
+                        option.classList.toggle('selected');
+                        const allOption = dropdown.querySelector('.multi-select-option[data-value="all"]');
+                        if (allOption) {
+                            const specificOptions = Array.from(dropdown.querySelectorAll('.multi-select-option:not([data-value="all"])'));
+                            const allSpecificSelected = specificOptions.length > 0 && specificOptions.every((opt) => opt.classList.contains('selected'));
+                            allOption.classList.toggle('selected', allSpecificSelected);
+                        }
+                    }
+                    updateMultiSelectTrigger(select, trigger);
+                }
+            });
+        }
+
+        function updateMultiSelectTrigger(select, trigger) {
+            let selectedOptions = Array.from(select.querySelectorAll('.multi-select-option.selected'));
+            const allSelectedOption = selectedOptions.find((opt) => opt.dataset.value === 'all');
+            if (allSelectedOption) {
+                selectedOptions = [allSelectedOption];
+            }
+            if (selectedOptions.length === 0) {
+                trigger.innerHTML = '<span class="multi-select-placeholder">请选择组织...</span>';
+            } else {
+                trigger.innerHTML = selectedOptions.map(opt => `
+                    <span class="multi-select-tag" data-value="${opt.dataset.value}">
+                        <span>${opt.textContent.trim()}</span>
+                        <button type="button" class="multi-select-tag-remove" aria-label="移除组织">×</button>
+                    </span>
+                `).join('');
+                
+                trigger.querySelectorAll('.multi-select-tag-remove').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const tag = e.target.closest('.multi-select-tag');
+                        const value = tag.dataset.value;
+                        if (value === 'all') {
+                            select.querySelectorAll('.multi-select-option.selected').forEach((opt) => opt.classList.remove('selected'));
+                            updateMultiSelectTrigger(select, trigger);
+                            return;
+                        }
+                        const option = select.querySelector(`.multi-select-option[data-value="${value}"]`);
+                        if (option) {
+                            option.classList.remove('selected');
+                            const allOption = select.querySelector('.multi-select-option[data-value="all"]');
+                            if (allOption) {
+                                allOption.classList.remove('selected');
+                            }
+                            updateMultiSelectTrigger(select, trigger);
+                        }
+                    });
+                });
+            }
+        }
+
+        function bindEvents() {
+            const applyModelSearch = () => {
+                const searchInput = document.getElementById('modelSearchInput');
+                state.modelSearchKeyword = searchInput ? searchInput.value.trim() : '';
+                renderModels();
+            };
+
+            document.getElementById('backBtn').addEventListener('click', () => {
+                window.location.href = './模型.html';
+            });
+
+            const basicInfoStatusSwitch = document.getElementById('basicInfoStatusSwitch');
+            if (basicInfoStatusSwitch) {
+                basicInfoStatusSwitch.addEventListener('click', () => {
+                    basicInfoStatusSwitch.classList.toggle('active');
+                });
+            }
+
+            document.querySelectorAll('.top-tab').forEach((tabEl) => {
+                tabEl.addEventListener('click', () => {
+                    setTab(Number(tabEl.dataset.tabPage));
+                });
+            });
+
+            document.getElementById('modelSectionGrid').addEventListener('click', (event) => {
+                const actionEl = event.target.closest('[data-action]');
+                if (!actionEl) {
+                    return;
+                }
+
+                const action = actionEl.dataset.action;
+                const typeKey = actionEl.dataset.typeKey;
+                const modelConfig = state.modelConfigs.find((item) => item.typeKey === typeKey);
+                if (!modelConfig) {
+                    return;
+                }
+
+                if (action === 'add-model') {
+                    openAddModelModal(typeKey);
+                    return;
+                }
+
+                if (action === 'edit-model') {
+                    const modelId = actionEl.dataset.modelId;
+                    const model = modelConfig.models.find(m => m.id === modelId);
+                    if (model) {
+                        state.editingModel = { typeKey, oldModelId: modelId };
+                        document.getElementById('editModelIdInput').value = model.id;
+                        document.getElementById('editModelNameInput').value = model.name;
+
+                        // Reset select
+                        const editModelGroupSelect = document.getElementById('editModelGroupSelect');
+                        const editModelGroupTrigger = document.getElementById('editModelGroupTrigger');
+                        const editOptions = editModelGroupSelect.querySelectorAll('.multi-select-option');
+                        
+                        editOptions.forEach(opt => opt.classList.remove('selected'));
+                        editModelGroupTrigger.innerHTML = '<span class="multi-select-placeholder">请选择组织...</span>';
+
+                        if (model.org && model.org !== '请选择组织') {
+                            const orgArray = Array.isArray(model.org) ? model.org : [model.org];
+                            
+                            orgArray.forEach(val => {
+                                const option = Array.from(editOptions).find(opt => opt.dataset.value === val);
+                                if (option) {
+                                    option.classList.add('selected');
+                                }
+                            });
+                            
+                            updateMultiSelectTrigger(editModelGroupSelect, editModelGroupTrigger);
+                        }
+
+                        document.getElementById('editModelModal').classList.add('open');
+                    }
+                    return;
+                }
+
+                if (action === 'toggle-start') {
+                    const modelId = actionEl.dataset.modelId;
+                    modelConfig.models = modelConfig.models.map((item) => (
+                        item.id === modelId
+                            ? { ...item, started: !item.started }
+                            : item
+                    ));
+                    const nextModel = modelConfig.models.find((item) => item.id === modelId);
+                    showTopNotice(nextModel && nextModel.started ? `已启动模型 ${modelId}` : `已关闭模型 ${modelId}`, 'success');
+                    renderModels();
+                    return;
+                }
+
+                if (action === 'remove-model') {
+                    event.stopPropagation();
+                    const modelId = actionEl.dataset.modelId;
+                    state.deleteConfirm = { typeKey, modelId };
+                    showInlineDeleteConfirm(actionEl, typeKey, modelId);
+                    return;
+                }
+
+                if (action === 'cancel-remove-model') {
+                    event.stopPropagation();
+                    clearInlineDeleteConfirm();
+                    return;
+                }
+
+                if (action === 'confirm-remove-model') {
+                    event.stopPropagation();
+                    const modelId = actionEl.dataset.modelId;
+                    const modelConfig = state.modelConfigs.find((item) => item.typeKey === typeKey);
+                    if (modelConfig) {
+                        modelConfig.models = modelConfig.models.filter((item) => item.id !== modelId);
+                        if (modelConfig.models.length > 0 && !modelConfig.models.some((item) => item.isDefault)) {
+                            modelConfig.models[0].isDefault = true;
+                        }
+                        renderModels();
+                        showTopNotice(`已删除模型 ${modelId}`, 'success');
+                    }
+                    clearInlineDeleteConfirm();
+                    return;
+                }
+
+                if (action === 'set-default') {
+                    const modelId = actionEl.dataset.modelId;
+                    modelConfig.models = modelConfig.models.map((item) => ({
+                        ...item,
+                        isDefault: item.id === modelId
+                    }));
+                    renderModels();
+                }
+            });
+
+            document.getElementById('providerNameInput').addEventListener('input', (event) => {
+                state.provider.name = event.target.value.trim() || 'OpenAI';
+                renderHeader();
+            });
+
+            document.getElementById('providerTypeInput').addEventListener('change', (event) => {
+                state.provider.type = event.target.value;
+                renderHeader();
+            });
+
+            document.getElementById('providerEndpointInput').addEventListener('input', (event) => {
+                state.provider.endpoint = event.target.value;
+            });
+
+            document.getElementById('providerApiKeyInput').addEventListener('input', (event) => {
+                state.provider.apiKey = event.target.value;
+                updateApiKeyClearBtn();
+            });
+
+            document.getElementById('providerDescriptionInput').addEventListener('input', (event) => {
+                state.provider.description = event.target.value;
+            });
+
+            document.getElementById('modelSearchBtn').addEventListener('click', applyModelSearch);
+
+            const syncModelBtn = document.getElementById('syncModelBtn');
+            if (syncModelBtn) {
+                syncModelBtn.addEventListener('click', () => {
+                    showTopNotice('正在同步模型...', 'success');
+                    syncModelBtn.disabled = true;
+                    // Optional: You could make the icon spin here, or just wait
+                    setTimeout(() => {
+                        showTopNotice('模型同步成功', 'success');
+                        syncModelBtn.disabled = false;
+                    }, 1200);
+                });
+            }
+
+            document.getElementById('modelSearchInput').addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    applyModelSearch();
+                }
+            });
+
+            document.querySelectorAll('[data-action="close-add-model"]').forEach((btn) => {
+                btn.addEventListener('click', closeAddModelModal);
+            });
+
+            document.getElementById('confirmAddModelBtn').addEventListener('click', () => {
+                const typeKey = state.addModelForm.typeKey;
+                const targetConfig = state.modelConfigs.find((item) => item.typeKey === typeKey);
+                if (!targetConfig) {
+                    return;
+                }
+
+                const modelId = document.getElementById('addModelIdInput').value.trim();
+                const modelName = document.getElementById('addModelNameInput').value.trim();
+                const selectedOrgs = Array.from(document.getElementById('addModelGroupSelect').querySelectorAll('.multi-select-option.selected')).map(el => el.dataset.value);
+                const org = selectedOrgs.length > 0 ? selectedOrgs : '请选择组织';
+
+                if (!modelId) {
+                    showTopNotice('请填写模型ID', 'fail');
+                    return;
+                }
+                if (targetConfig.models.some((item) => item.id === modelId)) {
+                    showTopNotice('模型ID已存在', 'fail');
+                    return;
+                }
+
+                targetConfig.models.push({
+                    id: modelId,
+                    name: modelName || modelId,
+                    org,
+                    isDefault: targetConfig.models.length === 0,
+                    started: false
+                });
+
+                closeAddModelModal();
+                showTopNotice(`已新增${modelTypeNameMap[typeKey] || ''}模型`, 'success');
+                renderModels();
+            });
+
+            addModelModal.addEventListener('click', (event) => {
+                if (event.target === addModelModal) {
+                    closeAddModelModal();
+                }
+            });
+
+            function closeEditModelModal() {
+                document.getElementById('editModelModal').classList.remove('open');
+            }
+
+            document.querySelectorAll('[data-action="close-edit-model"]').forEach((btn) => {
+                btn.addEventListener('click', closeEditModelModal);
+            });
+
+            document.getElementById('confirmEditModelBtn').addEventListener('click', () => {
+                const { typeKey, oldModelId } = state.editingModel;
+                const targetConfig = state.modelConfigs.find((item) => item.typeKey === typeKey);
+                if (!targetConfig) return;
+
+                const newId = document.getElementById('editModelIdInput').value.trim();
+                const newName = document.getElementById('editModelNameInput').value.trim();
+                const selectedOrgs = Array.from(document.getElementById('editModelGroupSelect').querySelectorAll('.multi-select-option.selected')).map(el => el.dataset.value);
+                const org = selectedOrgs.length > 0 ? selectedOrgs : '请选择组织';
+
+                if (!newId) {
+                    showTopNotice('请填写模型ID', 'fail');
+                    return;
+                }
+                if (newId !== oldModelId && targetConfig.models.some((item) => item.id === newId)) {
+                    showTopNotice('模型ID已存在', 'fail');
+                    return;
+                }
+
+                targetConfig.models = targetConfig.models.map(m => {
+                    if (m.id === oldModelId) {
+                        return { ...m, id: newId, name: newName || newId, org };
+                    }
+                    return m;
+                });
+
+                closeEditModelModal();
+                showTopNotice(`已修改模型 ${newId}`, 'success');
+                renderModels();
+            });
+
+            const editModelModal = document.getElementById('editModelModal');
+            editModelModal.addEventListener('click', (event) => {
+                if (event.target === editModelModal) {
+                    closeEditModelModal();
+                }
+            });
+
+            document.addEventListener('click', (event) => {
+                if (!event.target.closest('.delete-confirm-popover') && !event.target.closest('.icon-btn.remove')) {
+                    clearInlineDeleteConfirm();
+                }
+            });
+
+            window.addEventListener('resize', clearInlineDeleteConfirm);
+            window.addEventListener('scroll', clearInlineDeleteConfirm, true);
+
+            document.getElementById('saveGlobalBtn').addEventListener('click', () => {
+                showTopNotice('已保存全部配置', 'success');
+            });
+
+            const toggleBtn = document.getElementById('toggleApiKeyVisibilityBtn');
+            const apiKeyInput = document.getElementById('providerApiKeyInput');
+            if (toggleBtn && apiKeyInput) {
+                toggleBtn.addEventListener('click', () => {
+                    if (apiKeyInput.type === 'password') {
+                        apiKeyInput.type = 'text';
+                        toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+                    } else {
+                        apiKeyInput.type = 'password';
+                        toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+                    }
+                });
+            }
+
+            const clearApiKeyBtn = document.getElementById('clearApiKeyBtn');
+            if (clearApiKeyBtn && apiKeyInput) {
+                clearApiKeyBtn.addEventListener('click', () => {
+                    apiKeyInput.value = '';
+                    state.provider.apiKey = '';
+                    updateApiKeyClearBtn();
+                    apiKeyInput.focus();
+                });
+                updateApiKeyClearBtn();
+            }
+
+            const testConnBtn = document.getElementById('testApiConnectionBtn');
+            if (testConnBtn) {
+                testConnBtn.addEventListener('click', () => {
+                    const failCodes = ['401_INVALID_API_KEY', '403_NO_PERMISSION', '429_RATE_LIMIT', 'ETIMEDOUT', 'ECONNREFUSED'];
+                    testConnBtn.disabled = true;
+                    setTimeout(() => {
+                        const isSuccess = Math.random() >= 0.35;
+                        if (isSuccess) {
+                            showTopNotice('测试成功', 'success');
+                        } else {
+                            const failCode = failCodes[Math.floor(Math.random() * failCodes.length)];
+                            showTopNotice(`测试失败（${failCode}）`, 'fail');
+                        }
+                        testConnBtn.disabled = false;
+                    }, 1500);
+                });
+            }
+        }
+
+        // Initialize state from URL params
+        function initFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const providerName = params.get('name');
+            const providerType = params.get('type');
+            const tabParam = params.get('tab');
+            
+            if (tabParam) {
+                state.currentPage = Number(tabParam);
+            }
+            if (providerName) {
+                state.provider.name = providerName;
+            }
+            if (providerType) {
+                state.provider.type = providerType;
+                // Optional: set a default endpoint for some provider types if needed
+                const endpoints = {
+                    'openai': 'https://api.openai.com/v1',
+                    'azure': 'https://{resource}.openai.azure.com/openai/deployments/{deployment}',
+                    'aliyun': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+                    'zhipu': 'https://open.bigmodel.cn/api/paas/v4',
+                    'baidu': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1',
+                    'anthropic': 'https://api.anthropic.com/v1',
+                    'deepseek': 'https://api.deepseek.com/v1'
+                };
+                if (endpoints[providerType]) {
+                    state.provider.endpoint = endpoints[providerType];
+                }
+            }
+        }
+
+        initFromUrl();
+        renderHeader();
+        renderBaseInfo();
+        renderModels();
+        renderTabs();
+        bindEvents();
+        
+        initMultiSelect('addModelGroupSelect', 'addModelGroupTrigger', 'addModelGroupDropdown');
+        initMultiSelect('editModelGroupSelect', 'editModelGroupTrigger', 'editModelGroupDropdown');
+        
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.multi-select')) {
+                document.querySelectorAll('.multi-select-dropdown').forEach(d => d.classList.remove('open'));
+            }
+        });
+    </script>
+</body>
+</html>

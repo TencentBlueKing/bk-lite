@@ -1,0 +1,2430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsPilot - 工作台详情</title>
+    <style>
+        :root {
+            --color-primary: #155AEF;
+            --color-primary-soft: #E7F0FF;
+            --color-text-1: #1E252E;
+            --color-text-2: #475468;
+            --color-text-3: #7588A3;
+            --color-text-4: #A5B2C5;
+            --color-border: #E6E9EE;
+            --color-border-2: #DCE2EC;
+            --color-fill-1: #F6F8FB;
+            --color-fill-2: #F2F5FA;
+            --shadow-soft: 0 10px 28px rgba(15, 23, 42, 0.06);
+            --canvas-dot: #E9EEF6;
+            --page-bg: #EEF3FA;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100%;
+            min-width: 1360px;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: var(--color-text-1);
+            background: var(--page-bg);
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        button,
+        input {
+            font: inherit;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-header {
+            height: 52px;
+            border-bottom: 1px solid #dde5ef;
+            background: #ecf2fa;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 12px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #5b6880;
+        }
+
+        .brand img {
+            height: 22px;
+            display: block;
+        }
+
+        .brand strong {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .switcher {
+            width: 22px;
+            height: 22px;
+            border-radius: 7px;
+            border: 1px solid #d6dfeb;
+            background: #f5f8fd;
+            color: #7f8da2;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            margin-left: 2px;
+        }
+
+        .main-nav {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .main-nav a {
+            color: var(--color-text-2);
+            font-size: 13px;
+            padding: 7px 10px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .main-nav a.active {
+            color: var(--color-primary);
+            background: #F1F6FF;
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            color: var(--color-text-2);
+            font-size: 13px;
+        }
+
+        .icon-link {
+            opacity: 0.9;
+        }
+
+        .user-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .user-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .workspace {
+            padding: 10px;
+            min-height: calc(100vh - 52px);
+        }
+
+        .main-card {
+            background: #f2f4f8;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 10px;
+            min-height: calc(100vh - 72px);
+        }
+
+        .title-row {
+            display: grid;
+            grid-template-columns: 148px 1fr;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .title-block {
+            background: #fff;
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
+            padding: 9px 10px;
+            min-height: 58px;
+        }
+
+        .title-block strong {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 17px;
+            font-weight: 700;
+        }
+
+        .title-block span {
+            color: var(--color-text-3);
+            font-size: 11px;
+        }
+
+        .title-info {
+            background: #fff;
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
+            padding: 9px 12px;
+            color: var(--color-text-2);
+            font-size: 11px;
+            display: grid;
+            gap: 3px;
+        }
+
+        .title-info strong {
+            font-size: 13px;
+            color: var(--color-text-1);
+        }
+
+        .detail-layout {
+            display: grid;
+            grid-template-columns: 148px 1fr;
+            gap: 10px;
+            min-height: calc(100vh - 165px);
+        }
+
+        .builder-pane {
+            min-width: 0;
+            min-height: 100%;
+            background: #fff;
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
+            padding: 8px;
+            display: grid;
+            grid-template-columns: 242px 1fr;
+            gap: 10px;
+        }
+
+        .menu-pane,
+        .node-pane {
+            background: #fff;
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
+        }
+
+        .menu-pane {
+            justify-content: space-between;
+        }
+
+        .menu-item {
+            height: 29px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            font-size: 12px;
+            color: var(--color-text-2);
+            cursor: pointer;
+            gap: 6px;
+        }
+
+        .menu-item.active {
+            background: #EEF4FF;
+            color: var(--color-primary);
+            font-weight: 600;
+        }
+
+        .menu-item + .menu-item {
+            margin-top: 4px;
+        }
+
+        .node-title {
+            margin: 2px 0 8px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--color-text-2);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .info-panel {
+            border-bottom: 1px solid #e6ebf3;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+        }
+
+        .info-title {
+            margin-bottom: 10px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--color-text-2);
+        }
+
+        .info-item {
+            margin-bottom: 8px;
+        }
+
+        .info-label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 11px;
+            color: #51637d;
+        }
+
+        .info-label .required {
+            color: #f45d5d;
+            margin-right: 2px;
+        }
+
+        .info-input,
+        .info-textarea {
+            width: 100%;
+            border: 1px solid #d8e0eb;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #445873;
+            background: #fff;
+            outline: none;
+        }
+
+        .info-input {
+            height: 24px;
+            padding: 0 8px;
+        }
+
+        .info-textarea {
+            min-height: 56px;
+            padding: 6px 8px;
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        .info-select {
+            width: 100%;
+            height: 24px;
+            border: 1px solid #d8e0eb;
+            border-radius: 4px;
+            background: #fff;
+            color: #445873;
+            font-size: 11px;
+            padding: 0 20px 0 8px;
+            outline: none;
+        }
+
+        .node-group-title {
+            margin: 12px 0 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--color-text-3);
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .node-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+        .node-chip {
+            height: 24px;
+            border: 1px solid #dce3ef;
+            border-radius: 4px;
+            font-size: 11px;
+            color: var(--color-text-2);
+            background: #f8fbff;
+            display: inline-flex;
+            align-items: center;
+            padding: 0 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            gap: 5px;
+            cursor: grab;
+            user-select: none;
+        }
+
+        .node-chip:active {
+            cursor: grabbing;
+        }
+
+        .pane-bottom {
+            margin-top: auto;
+            padding-top: 14px;
+        }
+
+        .back-button {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 1px solid var(--color-border-2);
+            color: var(--color-text-3);
+            background: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .canvas-pane {
+            background: #fff;
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .log-pane {
+            display: none;
+            flex-direction: column;
+            min-width: 0;
+            background: #fff;
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
+            overflow: hidden;
+            grid-column: 2 / 3;
+        }
+
+        .api-pane {
+            display: none;
+            flex-direction: column;
+            min-width: 0;
+            background: #fff;
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
+            overflow: hidden;
+            grid-column: 2 / 3;
+        }
+
+        .api-scroll {
+            height: 100%;
+            overflow: auto;
+            padding: 14px 16px 18px;
+            color: #3e516d;
+            font-size: 13px;
+            line-height: 1.75;
+        }
+
+        .api-scroll h2 {
+            margin: 0 0 10px;
+            font-size: 38px;
+            line-height: 1.15;
+            color: #3a4f6b;
+            font-weight: 700;
+        }
+
+        .api-scroll h3 {
+            margin: 16px 0 8px;
+            font-size: 34px;
+            line-height: 1.2;
+            color: #3a4f6b;
+            font-weight: 700;
+        }
+
+        .api-scroll p {
+            margin: 0 0 10px;
+        }
+
+        .api-scroll .em {
+            font-weight: 700;
+            color: #2f4667;
+        }
+
+        .api-scroll .line {
+            margin: 10px 0;
+            border-top: 1px solid #e8edf4;
+        }
+
+        .api-scroll .example {
+            margin: 10px 0 8px;
+            color: #61758f;
+        }
+
+        .api-scroll code {
+            color: #2f4f7d;
+            background: #f5f8fe;
+            border: 1px solid #e4ebf7;
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 12px;
+        }
+
+        .api-scroll a {
+            color: #1f63f5;
+            text-decoration: none;
+        }
+
+        .api-code {
+            margin: 10px 0 4px;
+            padding: 12px;
+            border: 1px solid #e2e9f4;
+            border-radius: 6px;
+            background: #f8fbff;
+            overflow-x: auto;
+        }
+
+        .api-code code {
+            background: transparent;
+            border: none;
+            padding: 0;
+            color: #35557f;
+            font-size: 12px;
+            line-height: 1.6;
+            display: block;
+            white-space: pre;
+        }
+
+        .log-toolbar {
+            height: 46px;
+            padding: 0 12px;
+            border-bottom: 1px solid #edf1f6;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .log-tabs {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            background: #f3f5f8;
+            border-radius: 5px;
+            padding: 2px;
+        }
+
+        .log-tab {
+            height: 24px;
+            padding: 0 10px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: #6e7d93;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .log-tab.active {
+            background: #ffffff;
+            color: #2c3f5b;
+            box-shadow: 0 1px 2px rgba(28, 41, 61, 0.08);
+        }
+
+        .log-filters {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .search-wrap {
+            height: 30px;
+            width: 174px;
+            border: 1px solid #d8e0eb;
+            border-radius: 4px;
+            overflow: hidden;
+            display: inline-flex;
+            align-items: center;
+            background: #fff;
+        }
+
+        .search-wrap input {
+            flex: 1;
+            border: none;
+            outline: none;
+            height: 100%;
+            padding: 0 8px;
+            font-size: 12px;
+            color: #53657e;
+        }
+
+        .search-wrap input::placeholder {
+            color: #9aabc0;
+        }
+
+        .search-wrap button {
+            width: 34px;
+            border: none;
+            height: 100%;
+            color: #fff;
+            background: #1f63f5;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .refresh-btn,
+        .date-btn {
+            height: 30px;
+            border: 1px solid #d8e0eb;
+            border-radius: 4px;
+            background: #fff;
+            color: #71839b;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .refresh-btn {
+            width: 30px;
+        }
+
+        .date-btn {
+            min-width: 108px;
+            padding: 0 10px;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .date-filter {
+            position: relative;
+        }
+
+        .date-btn.open {
+            border-color: #5c8ff7;
+            box-shadow: 0 0 0 1px rgba(47, 116, 247, 0.2);
+            color: #556f92;
+        }
+
+        .date-dropdown {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            width: 170px;
+            background: #fff;
+            border: 1px solid #dce3ee;
+            border-radius: 8px;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+            padding: 8px 0;
+            max-height: 230px;
+            overflow-y: auto;
+            z-index: 20;
+            display: none;
+        }
+
+        .date-dropdown.open {
+            display: block;
+        }
+
+        .date-option {
+            height: 30px;
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            color: #2f425d;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .date-option:hover {
+            background: #f3f7ff;
+        }
+
+        .date-option.active {
+            background: #e8f0fc;
+            color: #1f63f5;
+            font-weight: 600;
+        }
+
+        .log-table-wrap {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            min-height: 0;
+        }
+
+        .log-table-head {
+            height: 34px;
+            margin: 10px 12px 0;
+            border: 1px solid #edf1f6;
+            border-bottom: none;
+            background: #f5f7fa;
+            display: grid;
+            grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1fr;
+            align-items: center;
+            padding: 0 10px;
+            color: #2c3f5b;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .log-table-body {
+            margin: 0 12px;
+            border: 1px solid #edf1f6;
+            border-top: none;
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
+        }
+
+        .log-table-row {
+            min-height: 40px;
+            display: grid;
+            grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1fr;
+            align-items: center;
+            padding: 8px 10px;
+            border-bottom: 1px solid #edf1f6;
+            color: #3f5472;
+            font-size: 12px;
+        }
+
+        .log-table-row:last-child {
+            border-bottom: none;
+        }
+
+        .log-tag,
+        .status-tag {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 18px;
+            padding: 0 7px;
+            border-radius: 3px;
+            font-size: 11px;
+            line-height: 1;
+            width: fit-content;
+            border: 1px solid #b6e08f;
+            color: #59a021;
+            background: #f4ffe9;
+        }
+
+        .status-tag {
+            border-color: #c7e8a5;
+            background: #f3fce8;
+        }
+
+        .log-action-link {
+            color: #2f74f7;
+            cursor: pointer;
+        }
+
+        .log-pagination {
+            height: 44px;
+            margin: 0 12px 10px;
+            border: 1px solid #edf1f6;
+            border-top: none;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 0 10px;
+            color: #556b88;
+            font-size: 12px;
+        }
+
+        .log-page-list {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .log-page-item {
+            min-width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            border: 1px solid transparent;
+            color: #455a77;
+            background: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 0 6px;
+        }
+
+        .log-page-item.active {
+            border-color: #7ea5f7;
+            color: #2f74f7;
+            background: #f3f8ff;
+        }
+
+        .log-page-item.ellipsis {
+            cursor: default;
+            color: #93a4ba;
+        }
+
+        .log-page-size {
+            height: 24px;
+            border: 1px solid #d8e0eb;
+            border-radius: 6px;
+            background: #f8fafc;
+            color: #5b708e;
+            display: inline-flex;
+            align-items: center;
+            padding: 0 8px;
+            gap: 6px;
+        }
+
+        .log-empty {
+            margin: 0 12px 12px;
+            border: 1px solid #edf1f6;
+            border-top: none;
+            flex: 1;
+            min-height: 420px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 64px;
+            color: #a8b5c7;
+            font-size: 12px;
+        }
+
+        .log-empty-inner {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .log-empty-icon {
+            width: 30px;
+            height: 22px;
+            border: 1px solid #dce4ee;
+            border-radius: 4px;
+            position: relative;
+            opacity: 0.75;
+        }
+
+        .log-empty-icon::before {
+            content: '';
+            position: absolute;
+            left: 6px;
+            right: 6px;
+            top: -7px;
+            height: 7px;
+            border: 1px solid #dce4ee;
+            border-bottom: none;
+            border-radius: 4px 4px 0 0;
+            background: #fff;
+        }
+
+        .detail-layout.log-mode {
+            grid-template-columns: 148px 1fr;
+        }
+
+        .detail-layout.log-mode .builder-pane,
+        .detail-layout.log-mode .api-pane {
+            display: none;
+        }
+
+        .detail-layout.log-mode .log-pane {
+            display: flex;
+            grid-column: 2 / 3;
+        }
+
+        .detail-layout.api-mode {
+            grid-template-columns: 148px 1fr;
+        }
+
+        .detail-layout.api-mode .builder-pane,
+        .detail-layout.api-mode .log-pane {
+            display: none;
+        }
+
+        .detail-layout.api-mode .api-pane {
+            display: flex;
+            grid-column: 2 / 3;
+        }
+
+        .canvas-header {
+            height: 34px;
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 10px;
+            font-size: 12px;
+            color: var(--color-text-2);
+        }
+
+        .canvas-title-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .canvas-title {
+            font-weight: 700;
+            color: var(--color-text-1);
+        }
+
+        .trash-icon {
+            color: #97a6ba;
+            font-size: 13px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .canvas-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .minor-btn,
+        .primary-btn {
+            height: 22px;
+            border-radius: 4px;
+            border: 1px solid var(--color-border);
+            background: #fff;
+            color: var(--color-text-3);
+            font-size: 11px;
+            padding: 0 7px;
+            cursor: pointer;
+        }
+
+        .primary-btn {
+            border-color: var(--color-primary);
+            background: var(--color-primary);
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .setting-popover {
+            position: fixed;
+            width: 250px;
+            border: 1px solid #dfe5ef;
+            border-radius: 8px;
+            background: #ffffff;
+            box-shadow: 0 14px 32px rgba(15, 23, 42, 0.16);
+            padding: 10px;
+            z-index: 80;
+            display: none;
+        }
+
+        .setting-popover.open {
+            display: block;
+        }
+
+        .setting-popover p {
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.65;
+            color: #8a99ad;
+            padding: 0 0 10px;
+        }
+
+        .popover-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .popover-primary,
+        .popover-ghost {
+            width: 100%;
+            height: 30px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid transparent;
+            cursor: pointer;
+        }
+
+        .popover-primary {
+            background: #1f63f5;
+            color: #fff;
+        }
+
+        .popover-ghost {
+            background: #fff;
+            color: #546880;
+            border-color: #d7e0ec;
+        }
+
+        .node-config-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.26);
+            z-index: 95;
+            display: none;
+        }
+
+        .node-config-mask.active {
+            display: block;
+        }
+
+        .node-config-drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 350px;
+            height: 100vh;
+            background: #f7f9fc;
+            border-left: 1px solid #e2e8f1;
+            box-shadow: -6px 0 20px rgba(15, 23, 42, 0.1);
+            z-index: 110;
+            transform: translateX(100%);
+            transition: transform 0.2s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .node-config-drawer.active {
+            transform: translateX(0);
+        }
+
+        .node-config-head {
+            height: 42px;
+            border-bottom: 1px solid #e6ebf3;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 12px;
+            color: #2f425d;
+            font-size: 14px;
+            font-weight: 600;
+            background: #ffffff;
+        }
+
+        .node-config-close {
+            border: none;
+            background: transparent;
+            color: #8a9bb1;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .node-config-body {
+            flex: 1;
+            overflow: auto;
+            padding: 12px;
+        }
+
+        .drawer-item {
+            margin-bottom: 10px;
+        }
+
+        .drawer-label {
+            margin-bottom: 5px;
+            color: #4a5f7a;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .drawer-label .required {
+            color: #f05d67;
+            margin-right: 2px;
+        }
+
+        .drawer-input,
+        .drawer-select,
+        .drawer-textarea {
+            width: 100%;
+            border: 1px solid #d9e1ec;
+            border-radius: 4px;
+            background: #fff;
+            color: #3d5370;
+            font-size: 12px;
+            outline: none;
+        }
+
+        .drawer-input,
+        .drawer-select {
+            height: 30px;
+            padding: 0 8px;
+        }
+
+        .drawer-textarea {
+            min-height: 72px;
+            resize: vertical;
+            padding: 8px;
+            font-family: inherit;
+        }
+
+        .drawer-tip {
+            border-radius: 4px;
+            background: #eaf3ff;
+            color: #2f67bf;
+            font-size: 11px;
+            line-height: 1.55;
+            padding: 8px;
+            margin: 8px 0;
+        }
+
+        .time-row {
+            display: grid;
+            grid-template-columns: 1fr 24px;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .time-plus {
+            border: none;
+            background: transparent;
+            color: #2ebf5f;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .node-config-foot {
+            border-top: 1px solid #e6ebf3;
+            padding: 8px 12px;
+            background: #ffffff;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .drawer-btn-danger,
+        .drawer-btn-ghost,
+        .drawer-btn-primary {
+            height: 30px;
+            min-width: 58px;
+            border-radius: 5px;
+            font-size: 12px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            padding: 0 12px;
+        }
+
+        .drawer-btn-danger {
+            color: #f05d67;
+            border-color: #f5c6cb;
+            background: #fff;
+        }
+
+        .drawer-btn-ghost {
+            color: #5f728b;
+            border-color: #d8e0eb;
+            background: #fff;
+        }
+
+        .drawer-btn-primary {
+            color: #fff;
+            background: #1f63f5;
+        }
+
+        .run-node-drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 350px;
+            height: 100vh;
+            background: #f7f9fc;
+            border-left: 1px solid #e2e8f1;
+            box-shadow: -6px 0 20px rgba(15, 23, 42, 0.1);
+            z-index: 111;
+            transform: translateX(100%);
+            transition: transform 0.2s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .run-node-drawer.active {
+            transform: translateX(0);
+        }
+
+        .run-node-body {
+            flex: 1;
+            overflow: auto;
+            padding: 12px;
+        }
+
+        .run-node-name {
+            font-size: 12px;
+            color: #6e819a;
+            margin-bottom: 12px;
+        }
+
+        .run-node-foot {
+            border-top: 1px solid #e6ebf3;
+            padding: 8px 12px;
+            background: #ffffff;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .run-btn-ghost,
+        .run-btn-primary {
+            height: 30px;
+            min-width: 58px;
+            border-radius: 5px;
+            font-size: 12px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            padding: 0 12px;
+        }
+
+        .run-btn-ghost {
+            color: #5f728b;
+            border-color: #d8e0eb;
+            background: #fff;
+        }
+
+        .run-btn-primary {
+            color: #fff;
+            background: #1f63f5;
+        }
+
+        .agent-select-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .agent-add-link {
+            color: #2f74f7;
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .knowledge-upload-box {
+            border: 1px dashed #d8e0eb;
+            border-radius: 6px;
+            background: #fcfdff;
+            min-height: 110px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #8798af;
+            font-size: 12px;
+            line-height: 1.6;
+            text-align: center;
+            padding: 10px;
+        }
+
+        .knowledge-upload-icon {
+            font-size: 26px;
+            line-height: 1;
+            color: #2f74f7;
+            margin-bottom: 8px;
+        }
+
+        .canvas-board {
+            position: relative;
+            flex: 1;
+            min-height: 560px;
+            background-color: #fff;
+            background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+            background-size: 8px 8px;
+        }
+
+        .canvas-board.drag-over {
+            background-color: #f9fbff;
+        }
+
+        .canvas-node {
+            position: absolute;
+            width: 160px;
+            min-height: 78px;
+            border: 1px solid #dbe2ee;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+            padding: 8px;
+            color: #4b607c;
+        }
+
+        .canvas-node:hover {
+            border-color: #4b83ff;
+            box-shadow: 0 0 0 1px rgba(75, 131, 255, 0.25);
+        }
+
+        .canvas-node-head {
+            height: 26px;
+            border-radius: 4px;
+            background: #eceff3;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 8px;
+        }
+
+        .canvas-node-title {
+            font-size: 12px;
+            color: #334b69;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .canvas-node-icon {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            position: relative;
+            flex: 0 0 auto;
+        }
+
+        .canvas-node-icon::after {
+            content: '';
+            position: absolute;
+            left: 4px;
+            top: 3px;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: #fff;
+            opacity: 0.92;
+        }
+
+        .canvas-node-icon.icon-red {
+            background: #f05a67;
+        }
+
+        .canvas-node-icon.icon-green {
+            background: #6abf69;
+        }
+
+        .canvas-node-icon.icon-blue {
+            background: #5295ff;
+        }
+
+        .canvas-node-icon.icon-cyan {
+            background: #19b9c8;
+        }
+
+        .canvas-node-icon.icon-purple {
+            background: #9a78ff;
+        }
+
+        .canvas-node-play {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 1px solid #2fcb72;
+            color: #2fcb72;
+            font-size: 9px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        .canvas-node-sub {
+            margin-top: 8px;
+            height: 24px;
+            border-radius: 4px;
+            background: #eef1f5;
+            color: #6f829b;
+            font-size: 11px;
+            display: inline-flex;
+            align-items: center;
+            padding: 0 8px;
+            width: 100%;
+        }
+
+        .canvas-node-port {
+            position: absolute;
+            right: -9px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #39c66d;
+            box-shadow: 0 0 0 2px #f4f8ff;
+        }
+
+        .canvas-node-port.port-purple {
+            background: #b06cff;
+        }
+
+        .canvas-node-port.port-blue {
+            background: #4b83ff;
+        }
+
+        .canvas-node-port.port-cyan {
+            background: #27c2d6;
+        }
+
+        .canvas-node-delete {
+            position: absolute;
+            right: -9px;
+            top: -9px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: none;
+            background: #42464d;
+            color: #fff;
+            font-size: 14px;
+            line-height: 1;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .canvas-node:hover .canvas-node-delete {
+            display: inline-flex;
+        }
+
+        .icon-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            color: #fff;
+            flex: 0 0 auto;
+        }
+
+        .red {
+            background: #f45d5d;
+        }
+
+        .green {
+            background: #62bf62;
+        }
+
+        .blue {
+            background: #3a93ff;
+        }
+
+        .minor-btn {
+            color: #a4b0c0;
+            border-color: #dfe5ee;
+            background: #fafbfd;
+            cursor: default;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .minor-btn::before {
+            content: '';
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            border: 1px solid #d2dae6;
+            background: #fff;
+        }
+
+        .cyan {
+            background: #14b8a6;
+        }
+
+        .violet {
+            background: #8b6bff;
+        }
+
+        .pink {
+            background: #f68ab5;
+        }
+
+        .orange {
+            background: #f6a362;
+        }
+
+        .split-handle {
+            position: absolute;
+            left: -13px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 1px solid #87b0f8;
+            background: #f7fbff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #5f8fdd;
+            font-size: 10px;
+        }
+
+        .zoom-tools {
+            position: absolute;
+            left: 24px;
+            bottom: 44px;
+            border: 1px solid var(--color-border);
+            border-radius: 3px;
+            overflow: hidden;
+            background: #fff;
+            box-shadow: 0 5px 16px rgba(15, 23, 42, 0.08);
+        }
+
+        .zoom-tools button {
+            width: 24px;
+            height: 24px;
+            border: none;
+            border-bottom: 1px solid var(--color-border);
+            background: #fff;
+            color: var(--color-text-3);
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .zoom-tools button:last-child {
+            border-bottom: none;
+        }
+
+        .mini-map {
+            position: absolute;
+            right: 20px;
+            bottom: 20px;
+            width: 128px;
+            height: 86px;
+            border: 1px solid #dfe5ee;
+            border-radius: 3px;
+            background: rgba(246, 248, 251, 0.98);
+        }
+
+        .mini-map::after {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            right: 10px;
+            bottom: 10px;
+            border: 1px solid #e2e7f0;
+            background: #f1f3f7;
+            border-radius: 2px;
+        }
+
+        @media (max-width: 1500px) {
+            .detail-layout {
+                grid-template-columns: 140px 1fr;
+            }
+
+            .builder-pane {
+                grid-template-columns: 220px 1fr;
+            }
+
+            .detail-layout.log-mode {
+                grid-template-columns: 140px 1fr;
+            }
+
+            .detail-layout.api-mode {
+                grid-template-columns: 140px 1fr;
+            }
+
+            .node-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 1280px) {
+            .detail-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .menu-pane,
+            .builder-pane,
+            .log-pane,
+            .api-pane {
+                min-height: auto;
+                grid-column: auto;
+            }
+
+            .builder-pane {
+                grid-template-columns: 1fr;
+            }
+
+            .menu-pane {
+                flex-direction: row;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .menu-pane .menu-item {
+                margin-top: 0;
+                flex: 1;
+                justify-content: center;
+            }
+
+            .menu-pane .pane-bottom {
+                margin-top: 0;
+                padding-top: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="top-header">
+            <div class="brand">
+                <img src="../../../../web/public/logo-site.png" alt="BlueKing Lite">
+                <strong>BlueKing Lite</strong>
+                <span class="switcher">◆</span>
+            </div>
+            <nav class="main-nav">
+                <a class="active" href="./工作台.html">工作台</a>
+                <a href="../智能体/智能体.html">智能体</a>
+                <a href="../知识库/知识库.html">知识库</a>
+                <a href="../工具/工具.html">工具</a>
+                <a href="../模型/模型.html">模型</a>
+            </nav>
+            <div class="header-actions">
+                <span class="icon-link">◦</span>
+                <span class="icon-link">◫</span>
+                <span class="user-wrap"><span class="user-dot">A</span> admin ▾</span>
+            </div>
+        </header>
+
+        <main class="workspace">
+            <section class="main-card">
+                <div class="title-row">
+                    <div class="title-block">
+                        <strong id="studioName">备份监控</strong>
+                        <span id="studioSummary">检查部署前状态，确保备份链路健康。</span>
+                    </div>
+                    <div class="title-info">
+                        <strong>设置</strong>
+                        <span>选择对应的智能体、配置提示信息，然后发布。</span>
+                    </div>
+                </div>
+
+                <div class="detail-layout">
+                    <aside class="menu-pane">
+                        <div class="menu-item active" data-view="setting">◉ 设置</div>
+                        <div class="menu-item" data-view="log">○ 日志</div>
+                        <div class="menu-item" data-view="api">≋ 接口说明</div>
+
+                        <div class="pane-bottom">
+                            <button class="back-button" type="button" id="goBack">‹</button>
+                        </div>
+                    </aside>
+
+                    <section class="builder-pane">
+                        <aside class="node-pane">
+
+                            <div class="info-panel">
+                                <div class="info-title">▼ 信息</div>
+
+                                <div class="info-item">
+                                    <label class="info-label"><span class="required">*</span>名称:</label>
+                                    <input class="info-input" id="nodeInfoName" type="text" value="备份监控">
+                                </div>
+
+                                <div class="info-item">
+                                    <label class="info-label"><span class="required">*</span>分组:</label>
+                                    <select class="info-select" id="nodeInfoGroup">
+                                        <option value="Default" selected>Default</option>
+                                        <option value="Guest">Guest</option>
+                                        <option value="OpsPilotGuest">OpsPilotGuest</option>
+                                        <option value="umr">umr</option>
+                                        <option value="test01">test01</option>
+                                        <option value="test">test</option>
+                                        <option value="aa">aa</option>
+                                        <option value="weops产研">weops产研</option>
+                                    </select>
+                                </div>
+
+                                <div class="info-item" style="margin-bottom:0;">
+                                    <label class="info-label"><span class="required">*</span>简介:</label>
+                                    <textarea class="info-textarea" id="nodeInfoDesc">检查部署前状态，确保备份链路健康。</textarea>
+                                </div>
+                            </div>
+
+                            <div class="node-title">▼ 节点</div>
+
+                            <div class="node-group-title">▼ 触发方式</div>
+                            <div class="node-grid">
+                                <div class="node-chip" draggable="true"><span class="icon-dot red"></span>定时触发</div>
+                                <div class="node-chip" draggable="true"><span class="icon-dot green"></span>RESTful API</div>
+                                <div class="node-chip" draggable="true"><span class="icon-dot blue"></span>OpenAI API</div>
+                                <div class="node-chip" draggable="true"><span class="icon-dot cyan"></span>AG-UI</div>
+                            </div>
+
+                            <div class="node-group-title">应用</div>
+                            <div class="node-grid">
+                                <div class="node-chip" draggable="true"><span class="icon-dot blue"></span>嵌入式对话</div>
+                                <div class="node-chip" draggable="true"><span class="icon-dot cyan"></span>Web对话</div>
+                                <div class="node-chip" draggable="true"><span class="icon-dot blue"></span>移动端</div>
+                                <div class="node-chip" draggable="true"><span class="icon-dot blue"></span>企微触发</div>
+                                <div class="node-chip" draggable="true"><span class="icon-dot blue"></span>钉钉触发</div>
+                                <div class="node-chip" draggable="true"><span class="icon-dot blue"></span>公众号触发</div>
+                            </div>
+
+                            <div class="node-group-title">智能体</div>
+                            <div class="node-grid">
+                                <div class="node-chip" draggable="true"><span class="icon-dot violet"></span>智能体</div>
+                            </div>
+
+                            <div class="node-group-title">逻辑判断</div>
+                            <div class="node-grid">
+                                <div class="node-chip" draggable="true"><span class="icon-dot pink"></span>条件分支</div>
+                                <div class="node-chip" draggable="true"><span class="icon-dot orange"></span>意图分类</div>
+                            </div>
+
+                            <div class="node-group-title">动作</div>
+                            <div class="node-grid">
+                                <div class="node-chip" draggable="true"><span class="icon-dot blue"></span>HTTP请求</div>
+                                <div class="node-chip" draggable="true"><span class="icon-dot blue"></span>对外通知</div>
+                            </div>
+                        </aside>
+
+                        <section class="canvas-pane">
+                            <div class="canvas-header">
+                                <div class="canvas-title-wrap">
+                                    <span class="canvas-title">画布</span>
+                                    <span class="trash-icon">⌦</span>
+                                </div>
+                                <div class="canvas-actions">
+                                    <button class="minor-btn" type="button">下载</button>
+                                    <button class="primary-btn" type="button" id="openSettingModalBtn">设置 ▾</button>
+                                </div>
+                            </div>
+                            <div class="canvas-board">
+                                <span class="split-handle">◁</span>
+                                <div class="zoom-tools">
+                                    <button type="button">+</button>
+                                    <button type="button">−</button>
+                                    <button type="button">⤢</button>
+                                    <button type="button">⌁</button>
+                                    <button type="button">↔</button>
+                                </div>
+                                <div class="mini-map"></div>
+                            </div>
+                        </section>
+                    </section>
+
+                    <section class="log-pane" id="logPane">
+                        <div class="log-toolbar">
+                            <div class="log-tabs">
+                                <button class="log-tab active" type="button">触发日志</button>
+                                <button class="log-tab" type="button">对话日志</button>
+                            </div>
+                            <div class="log-filters">
+                                <div class="search-wrap">
+                                    <input type="text" placeholder="请输入用户名进行搜索...">
+                                    <button type="button">⌕</button>
+                                </div>
+                                <button class="refresh-btn" type="button">⟳</button>
+                                <div class="date-filter" id="dateFilter">
+                                    <button class="date-btn" id="dateBtn" type="button"><span id="dateBtnText">最近1天</span><span>🗓</span></button>
+                                    <div class="date-dropdown" id="dateDropdown">
+                                        <div class="date-option" data-range="最近15分钟">最近15分钟</div>
+                                        <div class="date-option" data-range="最近30分钟">最近30分钟</div>
+                                        <div class="date-option" data-range="最近1小时">最近1小时</div>
+                                        <div class="date-option" data-range="最近6小时">最近6小时</div>
+                                        <div class="date-option" data-range="最近12小时">最近12小时</div>
+                                        <div class="date-option active" data-range="最近1天">最近1天</div>
+                                        <div class="date-option" data-range="最近7天">最近7天</div>
+                                        <div class="date-option" data-range="最近30天">最近30天</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="log-table-wrap" id="logTableWrap">
+                            <div class="log-table-head">
+                                <span>时间</span>
+                                <span>触发方式</span>
+                                <span>执行状态</span>
+                                <span>执行耗时</span>
+                                <span>操作</span>
+                            </div>
+                            <div class="log-table-body">
+                                <div class="log-table-row"><span>2026-03-25 14:11:03</span><span><span class="log-tag">OPENAI</span></span><span><span class="status-tag">成功</span></span><span>0ms</span><span class="log-action-link">详情</span></div>
+                                <div class="log-table-row"><span>2026-03-25 10:09:56</span><span><span class="log-tag">OPENAI</span></span><span><span class="status-tag">成功</span></span><span>0ms</span><span class="log-action-link">详情</span></div>
+                                <div class="log-table-row"><span>2026-03-24 14:09:52</span><span><span class="log-tag">OPENAI</span></span><span><span class="status-tag">成功</span></span><span>0ms</span><span class="log-action-link">详情</span></div>
+                                <div class="log-table-row"><span>2026-03-24 10:11:43</span><span><span class="log-tag">OPENAI</span></span><span><span class="status-tag">成功</span></span><span>0ms</span><span class="log-action-link">详情</span></div>
+                                <div class="log-table-row"><span>2026-03-23 14:07:32</span><span><span class="log-tag">OPENAI</span></span><span><span class="status-tag">成功</span></span><span>0ms</span><span class="log-action-link">详情</span></div>
+                                <div class="log-table-row"><span>2026-03-23 10:34:09</span><span><span class="log-tag">OPENAI</span></span><span><span class="status-tag">成功</span></span><span>0ms</span><span class="log-action-link">详情</span></div>
+                                <div class="log-table-row"><span>2026-03-22 21:11:06</span><span><span class="log-tag">OPENAI</span></span><span><span class="status-tag">成功</span></span><span>0ms</span><span class="log-action-link">详情</span></div>
+                                <div class="log-table-row"><span>2026-03-22 20:43:53</span><span><span class="log-tag">OPENAI</span></span><span><span class="status-tag">成功</span></span><span>0ms</span><span class="log-action-link">详情</span></div>
+                                <div class="log-table-row"><span>2026-03-21 16:42:42</span><span><span class="log-tag">OPENAI</span></span><span><span class="status-tag">成功</span></span><span>0ms</span><span class="log-action-link">详情</span></div>
+                                <div class="log-table-row"><span>2026-03-21 10:09:26</span><span><span class="log-tag">OPENAI</span></span><span><span class="status-tag">成功</span></span><span>0ms</span><span class="log-action-link">详情</span></div>
+                            </div>
+                            <div class="log-pagination">
+                                <span>共 255 项</span>
+                                <div class="log-page-list">
+                                    <span class="log-page-item active">1</span>
+                                    <span class="log-page-item">2</span>
+                                    <span class="log-page-item">3</span>
+                                    <span class="log-page-item">4</span>
+                                    <span class="log-page-item">5</span>
+                                    <span class="log-page-item ellipsis">...</span>
+                                    <span class="log-page-item">26</span>
+                                    <span class="log-page-item">›</span>
+                                </div>
+                                <span class="log-page-size">10 / page ▾</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="api-pane" id="apiPane">
+                        <div class="api-scroll">
+                            <h2>OpsPilot ChatFlow 接入文档</h2>
+                            <p>
+                                触发方式是启动一个 Chatflow（聊天工作流）的“开关”。选择不同的触发方式，决定了工作流如何启动、由谁启动以及适用的场景。
+                                <span class="em">定时触发、RESTful API、OpenAI API、AG-UI</span>这些方式相辅相成，使得 Chatflow 能够适应从简单自动化到复杂系统集成的各种需求。
+                            </p>
+
+                            <h3>触发方式1：定时触发</h3>
+                            <div class="line"></div>
+                            <p>
+                                定时触发是自动化工作流中非常强大和常用的一种触发方式。它允许您的工作流（Chatflow）
+                                <span class="em">在特定的时间点或按照固定的时间间隔</span>自动启动运行，而无需任何人工手动操作。
+                                是用一个时间计划（类似于调钟或 cron 作业）来作为启动工作流的“开关”。当系统时间满足您预设的条件时，
+                                系统就会自动创建一个新的工作流实例并开始执行。
+                            </p>
+
+                            <h3>触发方式2：RESTful API</h3>
+                            <div class="line"></div>
+                            <p>
+                                RESTful API 允许将工作流（Chatflow）<span class="em">发布为一个标准的 API 接口</span>，
+                                从而可以被任何能够发送 HTTP 请求的系统、应用或服务所调用。简单来说，它是为 Chatflow 生成一个唯一的 URL 地址
+                                （通常称为 Webhook URL 或 Endpoint）。拥有这个 chatflow 工作台权限的用户发起 post 请求，都会立即触发该 workflow 执行。
+                            </p>
+                            <p class="example">示例：</p>
+                            <p>body 传递参数：<code>{"user_message":"帮我检查下服务器状态"}</code></p>
+                            <p>
+                                RESTful API 请求地址：
+                                <a href="#">http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/${bot_id}/${node_id}/</a>
+                            </p>
+                            <p>（触发节点的请求地址，请在画布保存后在对应节点查看）</p>
+
+                            <h3>触发方式3：OpenAI API</h3>
+                            <div class="line"></div>
+                            <p>
+                                OpenAI API 本质上是将 Chatflow 直接接入到 OpenAI 的模型生态系统中，允许通过调用 OpenAI 的 API（如 ChatGPT、GPT-4）来触发并运行工作流。
+                                简单来说，它允许创建一个自定义的 GPT 动作（Action）或一个可供 OpenAI API 调用的专用模型。
+                            </p>
+                            <p class="example">示例：</p>
+                            <p>body 传递参数：<code>{"user_message":"帮我检查下服务器状态"}</code></p>
+                            <p>
+                                OpenAI API 请求地址：
+                                <a href="#">http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/${bot_id}/${node_id}/</a>
+                            </p>
+                            <p>（触发节点的请求地址，请在画布保存后在对应节点查看）</p>
+
+                            <h3>触发方式4：AG-UI</h3>
+                            <div class="line"></div>
+                            <p>
+                                AG-UI（Agent User Interface）是一种面向智能体应用的标准交互方式，能够将 Chatflow 无缝集成到统一对话界面中。
+                                用户通过 AG-UI 发起请求后，系统会自动识别意图、调用对应流程节点并返回结果。
+                                它适用于需要统一会话体验、多渠道接入和可视化编排的业务场景。
+                            </p>
+                            <p class="example">示例：</p>
+                            <p>body 传递参数：<code>{"user_message":"帮我检查下服务器状态"}</code></p>
+                            <p>
+                                AG-UI 请求地址：
+                                <a href="#">http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/${bot_id}/${node_id}/</a>
+                            </p>
+                            <p>（触发节点的请求地址，请在画布保存后在对应节点查看）</p>
+
+                            <h3>触发方式5：嵌入式对话</h3>
+                            <div class="line"></div>
+                            <p>
+                                嵌入式对话用于将 Chatflow 以页面组件方式快速接入到现有系统。
+                                只需在目标页面引入一段脚本，即可在任意位置展示对话入口，支持在业务页面中直接调用工作流能力。
+                                适合门户、运维平台、知识中心等需要低成本集成智能交互的场景。
+                            </p>
+
+                            <h3>嵌入代码示例</h3>
+                            <div class="line"></div>
+                            <p>将以下代码添加到您的网页 HTML 中（建议放在 <code>&lt;/body&gt;</code> 标签之前）：</p>
+                            <pre class="api-code"><code>&lt;script&gt;
+!(function () {
+    let e = document.createElement("link"),
+            s = document.createElement("script"),
+            t = document.head || document.getElementsByTagName("head")[0];
+
+    // 加载样式
+    (e.rel = "stylesheet"),
+    (e.href = "https://cdn.example.com/webchat/dist/browser/style.css"),
+    t.appendChild(e);
+
+    // 加载脚本
+    (s.src = "https://cdn.example.com/webchat/dist/browser/webchat.js"),
+    (s.async = !0),
+    (s.onload = () =&gt; {
+        if (window.WebChat &amp;&amp; window.WebChat.default) {
+            window.WebChat.default(
+                {
+                    useUri: "http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=1&amp;node_id=abcdef",
+                    title: "智能助手",
+                    theme: "light", // 可选: light / dark
+                    customData: { page: document.title }
+                },
+                null // null = 浮动按钮模式，或传入 DOM 元素实现内嵌
+            );
+        }
+    }),
+    (s.onerror = () =&gt; {
+        console.error("Failed to load WebChat");
+    }),
+    t.appendChild(s);
+})();
+&lt;/script&gt;</code></pre>
+
+                            <h3>配置说明</h3>
+                            <div class="line"></div>
+                            <p><span class="em">sseUri:</span> Chatflow 的 SSE 流式请求地址（触发节点的请求地址，请在画布保存后在对应节点查看）</p>
+                            <p><span class="em">title:</span> 对话窗口标题</p>
+                            <p><span class="em">theme:</span> 主题样式，支持 <code>light</code>（浅色）或 <code>dark</code>（深色）</p>
+                            <p><span class="em">customData:</span> 自定义数据，会随请求发送到 Chatflow</p>
+                            <p><span class="em">第二个参数：</span></p>
+                            <p><code>null</code>：以浮动按钮形式显示在页面右下角</p>
+                            <p>DOM 元素：将对话窗口内嵌入到指定的 HTML 元素中</p>
+
+                            <h3>使用场景</h3>
+                            <div class="line"></div>
+                            <p>企业官网的在线客服</p>
+                            <p>产品文档的智能问答助手</p>
+                            <p>内部系统的操作引导</p>
+                            <p>电商网站的购物咨询</p>
+                            <p>SaaS 产品的用户支持</p>
+                        </div>
+                    </section>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="setting-popover" id="settingPopover" role="dialog" aria-modal="false">
+        <p>机器人发布后，会在选定的渠道上进行更新。请确保已配置选定渠道的参数。</p>
+        <div class="popover-actions">
+            <button class="popover-primary" type="button" id="publishSaveBtn">保存 & 发布</button>
+            <button class="popover-ghost" type="button" id="saveOnlyBtn">仅保存</button>
+        </div>
+    </div>
+
+    <div class="node-config-mask" id="nodeConfigMask"></div>
+    <aside class="node-config-drawer" id="nodeConfigDrawer" aria-label="节点配置抽屉">
+        <div class="node-config-head">
+            <button class="node-config-close" id="nodeConfigClose" type="button">×</button>
+            <span id="nodeConfigTitle">定时触发</span>
+        </div>
+        <div class="node-config-body">
+            <div class="drawer-item">
+                <div class="drawer-label"><span class="required">*</span>节点名称</div>
+                <input class="drawer-input" id="drawerNodeName" type="text" value="定时触发">
+            </div>
+
+            <div class="drawer-item">
+                <div class="drawer-label"><span class="required">*</span>输入参数</div>
+                <input class="drawer-input" type="text" value="last_message,message">
+            </div>
+
+            <div class="drawer-item">
+                <div class="drawer-label"><span class="required">*</span>输出参数</div>
+                <input class="drawer-input" type="text" value="last_message">
+            </div>
+
+            <div class="drawer-item">
+                <div class="drawer-label"><span class="required">*</span>触发频率</div>
+                <select class="drawer-select">
+                    <option selected>每日</option>
+                    <option>每周</option>
+                    <option>每月</option>
+                </select>
+                <div class="drawer-tip">每天触发，请在下方设置具体时间（可添加多个时间点，如：7:00、14:00、18:00）</div>
+            </div>
+
+            <div class="drawer-item">
+                <div class="drawer-label"><span class="required">*</span>触发时间</div>
+                <div class="time-row">
+                    <input class="drawer-input" type="text" value="00:00">
+                    <button class="time-plus" type="button">+</button>
+                </div>
+            </div>
+
+            <div class="drawer-item">
+                <div class="drawer-label">触发输入语</div>
+                <textarea class="drawer-textarea" placeholder="请输入初始消息内容..."></textarea>
+            </div>
+        </div>
+        <div class="node-config-foot">
+            <button class="drawer-btn-danger" id="drawerDelete" type="button">删除</button>
+            <button class="drawer-btn-ghost" id="drawerCancel" type="button">取消</button>
+            <button class="drawer-btn-primary" id="drawerConfirm" type="button">确认</button>
+        </div>
+    </aside>
+
+    <aside class="run-node-drawer" id="runNodeDrawer" aria-label="执行节点抽屉">
+        <div class="node-config-head">
+            <button class="node-config-close" id="runNodeClose" type="button">×</button>
+            <span>执行节点</span>
+        </div>
+        <div class="run-node-body">
+            <div class="run-node-name">节点名称: <span id="runNodeName">celery-1774426396521</span></div>
+            <div class="drawer-item">
+                <div class="drawer-label">执行消息</div>
+                <textarea class="drawer-textarea" id="runNodeMessage" placeholder="请输入执行消息（可选）..." style="min-height:72px;"></textarea>
+            </div>
+        </div>
+        <div class="run-node-foot">
+            <button class="run-btn-ghost" id="runNodeCancel" type="button">取消</button>
+            <button class="run-btn-primary" id="runNodeExec" type="button">执行</button>
+        </div>
+    </aside>
+
+    <script>
+        function loadStudioInfo() {
+            const raw = sessionStorage.getItem('selectedStudio');
+            if (!raw) return;
+
+            try {
+                const studio = JSON.parse(raw);
+                const titleEl = document.getElementById('studioName');
+                const summaryEl = document.getElementById('studioSummary');
+                const infoNameEl = document.getElementById('nodeInfoName');
+                const infoDescEl = document.getElementById('nodeInfoDesc');
+                const infoGroupEl = document.getElementById('nodeInfoGroup');
+                if (studio && studio.name) {
+                    titleEl.textContent = studio.name;
+                    if (infoNameEl) {
+                        infoNameEl.value = studio.name;
+                    }
+                }
+                if (studio) {
+                    const groupValue = studio.group || studio.groupName || studio.group_name;
+                    if (groupValue && infoGroupEl) {
+                        const exists = Array.from(infoGroupEl.options).some((option) => option.value === groupValue);
+                        if (exists) {
+                            infoGroupEl.value = groupValue;
+                        }
+                    }
+                    const summary = studio.introduction || studio.desc;
+                    if (summary) {
+                        summaryEl.textContent = summary;
+                        if (infoDescEl) {
+                            infoDescEl.value = summary;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('无法解析 selectedStudio:', error);
+            }
+        }
+
+        document.getElementById('goBack').addEventListener('click', () => {
+            window.location.href = './工作台.html';
+        });
+
+        const detailLayout = document.querySelector('.detail-layout');
+        const menuItems = document.querySelectorAll('.menu-pane .menu-item[data-view]');
+        const logPane = document.getElementById('logPane');
+        const apiPane = document.getElementById('apiPane');
+        const titleInfo = document.querySelector('.title-info strong');
+        const titleDesc = document.querySelector('.title-info span');
+        const openSettingModalBtn = document.getElementById('openSettingModalBtn');
+        const settingPopover = document.getElementById('settingPopover');
+        const publishSaveBtn = document.getElementById('publishSaveBtn');
+        const saveOnlyBtn = document.getElementById('saveOnlyBtn');
+        const dateFilter = document.getElementById('dateFilter');
+        const dateBtn = document.getElementById('dateBtn');
+        const dateBtnText = document.getElementById('dateBtnText');
+        const dateDropdown = document.getElementById('dateDropdown');
+        const dateOptions = document.querySelectorAll('.date-option');
+        const canvasBoard = document.querySelector('.canvas-board');
+        const draggableNodes = document.querySelectorAll('.node-chip[draggable="true"]');
+        const nodeConfigMask = document.getElementById('nodeConfigMask');
+        const nodeConfigDrawer = document.getElementById('nodeConfigDrawer');
+        const nodeConfigClose = document.getElementById('nodeConfigClose');
+        const drawerCancel = document.getElementById('drawerCancel');
+        const drawerConfirm = document.getElementById('drawerConfirm');
+        const drawerDelete = document.getElementById('drawerDelete');
+        const nodeConfigTitle = document.getElementById('nodeConfigTitle');
+        const nodeConfigBody = document.querySelector('.node-config-body');
+        const runNodeDrawer = document.getElementById('runNodeDrawer');
+        const runNodeClose = document.getElementById('runNodeClose');
+        const runNodeCancel = document.getElementById('runNodeCancel');
+        const runNodeExec = document.getElementById('runNodeExec');
+        const runNodeName = document.getElementById('runNodeName');
+        let draggingNodeName = '';
+        let activeDrawerNode = null;
+
+        function getCanvasNodeMeta(nodeName) {
+            if (nodeName === '定时触发') {
+                return {
+                    subtitle: '每日 00:00',
+                    iconClass: 'icon-red',
+                    portClass: 'port-green'
+                };
+            }
+
+            if (nodeName === 'RESTful API') {
+                return {
+                    subtitle: 'API接口',
+                    iconClass: 'icon-green',
+                    portClass: 'port-purple'
+                };
+            }
+
+            if (nodeName === 'OpenAI API') {
+                return {
+                    subtitle: 'API接口',
+                    iconClass: 'icon-blue',
+                    portClass: 'port-blue'
+                };
+            }
+
+            if (nodeName === 'AG-UI') {
+                return {
+                    subtitle: 'API接口',
+                    iconClass: 'icon-purple',
+                    portClass: 'port-cyan'
+                };
+            }
+
+            return {
+                subtitle: '节点配置',
+                iconClass: 'icon-cyan',
+                portClass: 'port-blue'
+            };
+        }
+
+        function clearCanvasSelection() {
+            canvasBoard.querySelectorAll('.canvas-node.selected').forEach((node) => {
+                node.classList.remove('selected');
+            });
+        }
+
+        function getNodeDrawerTemplate(nodeName) {
+            if (nodeName === '智能体') {
+                return `
+                    <div class="drawer-item">
+                        <div class="drawer-label"><span class="required">*</span>节点名称</div>
+                        <input class="drawer-input" id="drawerNodeName" type="text" value="智能体">
+                    </div>
+
+                    <div class="drawer-item">
+                        <div class="drawer-label"><span class="required">*</span>输入参数</div>
+                        <input class="drawer-input" type="text" value="last_message">
+                    </div>
+
+                    <div class="drawer-item">
+                        <div class="drawer-label"><span class="required">*</span>输出参数</div>
+                        <input class="drawer-input" type="text" value="last_message">
+                    </div>
+
+                    <div class="drawer-item">
+                        <div class="agent-select-row">
+                            <div class="drawer-label" style="margin-bottom:0;"><span class="required">*</span>选择智能体</div>
+                            <span class="agent-add-link">+ 新增智能体</span>
+                        </div>
+                        <select class="drawer-select">
+                            <option selected disabled>请选择智能体</option>
+                            <option>巡检助手</option>
+                            <option>数据汇总</option>
+                        </select>
+                    </div>
+
+                    <div class="drawer-item">
+                        <div class="drawer-label">Prompt</div>
+                        <textarea class="drawer-textarea" placeholder="请输入Prompt内容..." style="min-height:72px;"></textarea>
+                    </div>
+
+                    <div class="drawer-item">
+                        <div class="drawer-label">上传知识</div>
+                        <div class="knowledge-upload-box">
+                            <div class="knowledge-upload-icon">⎘</div>
+                            <div>点击或拖拽文件到此区域上传</div>
+                            <div style="font-size:11px;">支持单个或批量上传，仅支持.md格式文件</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="drawer-item">
+                    <div class="drawer-label"><span class="required">*</span>节点名称</div>
+                    <input class="drawer-input" id="drawerNodeName" type="text" value="定时触发">
+                </div>
+
+                <div class="drawer-item">
+                    <div class="drawer-label"><span class="required">*</span>输入参数</div>
+                    <input class="drawer-input" type="text" value="last_message,message">
+                </div>
+
+                <div class="drawer-item">
+                    <div class="drawer-label"><span class="required">*</span>输出参数</div>
+                    <input class="drawer-input" type="text" value="last_message">
+                </div>
+
+                <div class="drawer-item">
+                    <div class="drawer-label"><span class="required">*</span>触发频率</div>
+                    <select class="drawer-select">
+                        <option selected>每日</option>
+                        <option>每周</option>
+                        <option>每月</option>
+                    </select>
+                    <div class="drawer-tip">每天触发，请在下方设置具体时间（可添加多个时间点，如：7:00、14:00、18:00）</div>
+                </div>
+
+                <div class="drawer-item">
+                    <div class="drawer-label"><span class="required">*</span>触发时间</div>
+                    <div class="time-row">
+                        <input class="drawer-input" type="text" value="00:00">
+                        <button class="time-plus" type="button">+</button>
+                    </div>
+                </div>
+
+                <div class="drawer-item">
+                    <div class="drawer-label">触发输入语</div>
+                    <textarea class="drawer-textarea" placeholder="请输入初始消息内容..."></textarea>
+                </div>
+            `;
+        }
+
+        function openNodeDrawer(nodeEl, nodeName) {
+            runNodeDrawer.classList.remove('active');
+            activeDrawerNode = nodeEl;
+            nodeConfigTitle.textContent = nodeName;
+            nodeConfigBody.innerHTML = getNodeDrawerTemplate(nodeName);
+            const drawerNodeName = document.getElementById('drawerNodeName');
+            if (drawerNodeName) {
+                drawerNodeName.value = nodeName;
+            }
+            nodeConfigMask.classList.add('active');
+            nodeConfigDrawer.classList.add('active');
+        }
+
+        function closeNodeDrawer() {
+            activeDrawerNode = null;
+            nodeConfigDrawer.classList.remove('active');
+            if (!runNodeDrawer.classList.contains('active')) {
+                nodeConfigMask.classList.remove('active');
+            }
+        }
+
+        function openRunNodeDrawer() {
+            nodeConfigDrawer.classList.remove('active');
+            runNodeName.textContent = `celery-${Date.now()}`;
+            nodeConfigMask.classList.add('active');
+            runNodeDrawer.classList.add('active');
+        }
+
+        function closeRunNodeDrawer() {
+            runNodeDrawer.classList.remove('active');
+            if (!nodeConfigDrawer.classList.contains('active')) {
+                nodeConfigMask.classList.remove('active');
+            }
+        }
+
+        function createCanvasNode(nodeName, x, y) {
+            const meta = getCanvasNodeMeta(nodeName);
+            const nodeEl = document.createElement('div');
+            nodeEl.className = 'canvas-node';
+            nodeEl.style.left = `${x}px`;
+            nodeEl.style.top = `${y}px`;
+            nodeEl.innerHTML = `
+                <div class="canvas-node-head">
+                    <div class="canvas-node-title"><span class="canvas-node-icon ${meta.iconClass}"></span>${nodeName}</div>
+                    <button class="canvas-node-play" type="button">▷</button>
+                </div>
+                <div class="canvas-node-sub">${meta.subtitle}</div>
+                <span class="canvas-node-port ${meta.portClass}"></span>
+                <button class="canvas-node-delete" type="button">×</button>
+            `;
+
+            nodeEl.addEventListener('click', (event) => {
+                event.stopPropagation();
+                clearCanvasSelection();
+                nodeEl.classList.add('selected');
+                if (nodeName === '定时触发' || nodeName === '智能体') {
+                    openNodeDrawer(nodeEl, nodeName);
+                }
+            });
+
+            nodeEl.querySelector('.canvas-node-delete').addEventListener('click', (event) => {
+                event.stopPropagation();
+                nodeEl.remove();
+            });
+
+            nodeEl.querySelector('.canvas-node-play').addEventListener('click', (event) => {
+                event.stopPropagation();
+                openRunNodeDrawer();
+            });
+
+            canvasBoard.appendChild(nodeEl);
+            clearCanvasSelection();
+            nodeEl.classList.add('selected');
+        }
+
+        canvasBoard.addEventListener('click', () => {
+            clearCanvasSelection();
+        });
+
+        nodeConfigClose.addEventListener('click', closeNodeDrawer);
+        drawerCancel.addEventListener('click', closeNodeDrawer);
+        drawerConfirm.addEventListener('click', closeNodeDrawer);
+        runNodeClose.addEventListener('click', closeRunNodeDrawer);
+        runNodeCancel.addEventListener('click', closeRunNodeDrawer);
+        runNodeExec.addEventListener('click', closeRunNodeDrawer);
+        nodeConfigMask.addEventListener('click', () => {
+            closeNodeDrawer();
+            closeRunNodeDrawer();
+        });
+        drawerDelete.addEventListener('click', () => {
+            if (activeDrawerNode) {
+                activeDrawerNode.remove();
+            }
+            closeNodeDrawer();
+        });
+
+        draggableNodes.forEach((chip) => {
+            chip.addEventListener('dragstart', (event) => {
+                draggingNodeName = chip.textContent.trim();
+                event.dataTransfer.setData('text/plain', draggingNodeName);
+                event.dataTransfer.effectAllowed = 'copy';
+            });
+
+            chip.addEventListener('dragend', () => {
+                draggingNodeName = '';
+                canvasBoard.classList.remove('drag-over');
+            });
+        });
+
+        canvasBoard.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+            canvasBoard.classList.add('drag-over');
+        });
+
+        canvasBoard.addEventListener('dragleave', () => {
+            canvasBoard.classList.remove('drag-over');
+        });
+
+        canvasBoard.addEventListener('drop', (event) => {
+            event.preventDefault();
+            canvasBoard.classList.remove('drag-over');
+
+            const nodeName = event.dataTransfer.getData('text/plain') || draggingNodeName;
+            if (!nodeName) {
+                return;
+            }
+
+            const rect = canvasBoard.getBoundingClientRect();
+            const nodeWidth = 160;
+            const nodeHeight = 74;
+            const rawX = event.clientX - rect.left - nodeWidth / 2;
+            const rawY = event.clientY - rect.top - nodeHeight / 2;
+            const x = Math.max(8, Math.min(rawX, rect.width - nodeWidth - 8));
+            const y = Math.max(8, Math.min(rawY, rect.height - nodeHeight - 8));
+
+            createCanvasNode(nodeName, x, y);
+        });
+
+        function openSettingPopover() {
+            const rect = openSettingModalBtn.getBoundingClientRect();
+            settingPopover.style.top = `${rect.bottom + 8}px`;
+            settingPopover.style.left = `${rect.right - 250}px`;
+            settingPopover.classList.add('open');
+        }
+
+        function closeSettingPopover() {
+            settingPopover.classList.remove('open');
+        }
+
+        function switchView(view) {
+            menuItems.forEach((item) => {
+                item.classList.toggle('active', item.dataset.view === view);
+            });
+
+            if (view === 'log') {
+                detailLayout.classList.remove('api-mode');
+                detailLayout.classList.add('log-mode');
+                titleInfo.textContent = '设置';
+                titleDesc.textContent = '选择对应的智能体、配置提示信息，然后发布。';
+                return;
+            }
+
+            if (view === 'api') {
+                detailLayout.classList.remove('log-mode');
+                detailLayout.classList.add('api-mode');
+                titleInfo.textContent = '接口说明';
+                titleDesc.textContent = '详细说明触发方式、请求示例与接入地址。';
+                return;
+            }
+
+            detailLayout.classList.remove('api-mode');
+            detailLayout.classList.remove('log-mode');
+            titleInfo.textContent = '设置';
+            titleDesc.textContent = '选择对应的智能体、配置提示信息，然后发布。';
+        }
+
+        menuItems.forEach((item) => {
+            item.addEventListener('click', () => {
+                switchView(item.dataset.view);
+            });
+        });
+
+        openSettingModalBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (settingPopover.classList.contains('open')) {
+                closeSettingPopover();
+                return;
+            }
+            openSettingPopover();
+        });
+
+        publishSaveBtn.addEventListener('click', () => {
+            closeSettingPopover();
+            alert('已保存并发布');
+        });
+
+        saveOnlyBtn.addEventListener('click', () => {
+            closeSettingPopover();
+            alert('已保存');
+        });
+
+        dateBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const isOpen = dateDropdown.classList.contains('open');
+            dateDropdown.classList.toggle('open', !isOpen);
+            dateBtn.classList.toggle('open', !isOpen);
+        });
+
+        dateOptions.forEach((option) => {
+            option.addEventListener('click', () => {
+                dateOptions.forEach((item) => item.classList.remove('active'));
+                option.classList.add('active');
+                dateBtnText.textContent = option.dataset.range || option.textContent.trim();
+                dateDropdown.classList.remove('open');
+                dateBtn.classList.remove('open');
+            });
+        });
+
+        document.addEventListener('click', (event) => {
+            if (settingPopover.classList.contains('open') && !event.target.closest('#settingPopover') && !event.target.closest('#openSettingModalBtn')) {
+                closeSettingPopover();
+            }
+
+            if (dateDropdown.classList.contains('open') && !event.target.closest('#dateFilter')) {
+                dateDropdown.classList.remove('open');
+                dateBtn.classList.remove('open');
+            }
+        });
+
+        switchView('setting');
+
+        loadStudioInfo();
+    </script>
+</body>
+</html>

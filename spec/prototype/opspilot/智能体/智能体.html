@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsPilot - 智能体</title>
+    <style>
+        :root {
+            --color-primary: #2b5bff;
+            --color-primary-2: #3f79ff;
+            --color-text-1: #1f2d3d;
+            --color-text-2: #4f5f75;
+            --color-text-3: #8c9bb0;
+            --color-border: #dfe6ef;
+            --color-fill: #f4f7fc;
+            --color-page-bg: #f2f5fb;
+            --shadow-card: 0 6px 16px rgba(20, 38, 70, 0.08);
+            --shadow-hover: 0 10px 20px rgba(20, 38, 70, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            color: var(--color-text-1);
+            background: var(--color-page-bg);
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        button,
+        input,
+        select {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            height: 56px;
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #e5ebf4;
+            background: #edf3fb;
+        }
+
+        .brand {
+            min-width: 230px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #5a6880;
+        }
+
+        .brand img {
+            width: 22px;
+            height: 22px;
+        }
+
+        .brand .switcher {
+            margin-left: 4px;
+            border: 1px solid var(--color-border);
+            color: #6f7f95;
+            background: #f7faff;
+            border-radius: 8px;
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .main-nav {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+
+        .main-nav a {
+            height: 34px;
+            padding: 0 12px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: #4f5e73;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .main-nav a:hover {
+            background: #e7eef8;
+        }
+
+        .main-nav a.active {
+            color: var(--color-primary);
+            background: #e5efff;
+            font-weight: 600;
+        }
+
+        .nav-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.75;
+        }
+
+        .header-actions {
+            min-width: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+            color: #6f7f95;
+            font-size: 13px;
+        }
+
+        .icon-action {
+            border: none;
+            background: transparent;
+            color: inherit;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .icon-action:hover {
+            background: #e3eaf5;
+        }
+
+        .avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .workspace {
+            padding: 8px 10px 14px;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .filter-select,
+        .search-input {
+            height: 30px;
+            border: 1px solid var(--color-border);
+            border-radius: 5px;
+            background: #fff;
+            color: #6c7b90;
+            font-size: 12px;
+            padding: 0 9px;
+            outline: none;
+        }
+
+        .filter-select {
+            width: 132px;
+        }
+
+        .search-input {
+            width: 168px;
+        }
+
+        .search-button {
+            width: 34px;
+            border: none;
+            border-radius: 5px;
+            background: var(--color-primary);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .create-card,
+        .skill-card {
+            border: 1px solid #d8e0ec;
+            border-radius: 10px;
+            background: #fff;
+            overflow: hidden;
+            box-shadow: var(--shadow-card);
+            transition: all 0.18s ease;
+        }
+
+        .create-card:hover,
+        .skill-card:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-hover);
+            border-color: #c7d4e6;
+        }
+
+        .create-card {
+            min-height: 136px;
+            padding: 20px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .create-action {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #4f5f75;
+            cursor: pointer;
+        }
+
+        .create-action:hover {
+            color: var(--color-primary);
+        }
+
+        .create-icon {
+            width: 16px;
+            text-align: center;
+            color: #3f4f66;
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        .skill-card {
+            position: relative;
+            min-height: 136px;
+            cursor: pointer;
+        }
+
+        .card-banner {
+            position: relative;
+            height: 34px;
+            background: linear-gradient(110deg, #cfd9ef 0%, #bac9e7 45%, #9bb3e2 100%);
+            border-bottom: 1px solid rgba(205, 215, 232, 0.95);
+        }
+
+        .banner-strong {
+            background: linear-gradient(110deg, #4249e7 0%, #0b92ff 100%);
+        }
+
+        .pin-btn {
+            position: absolute;
+            left: 8px;
+            top: 8px;
+            width: 14px;
+            height: 14px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.28);
+            color: #fff;
+            font-size: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.6;
+        }
+
+        .pin-btn.active {
+            opacity: 1;
+            background: rgba(38, 70, 130, 0.45);
+        }
+
+        .menu-wrap {
+            position: absolute;
+            right: 7px;
+            top: 6px;
+            z-index: 3;
+        }
+
+        .menu-btn {
+            width: 18px;
+            height: 18px;
+            border: none;
+            border-radius: 4px;
+            color: #3b4f6f;
+            background: transparent;
+            font-size: 15px;
+            line-height: 1;
+            padding: 0;
+        }
+
+        .menu-btn:hover {
+            background: #edf3ff;
+            color: #2b5bff;
+        }
+
+        .dropdown {
+            position: absolute;
+            top: 24px;
+            right: 0;
+            min-width: 74px;
+            background: #fff;
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            padding: 4px;
+            box-shadow: 0 10px 20px rgba(20, 38, 70, 0.18);
+            display: none;
+            z-index: 6;
+        }
+
+        .dropdown.open {
+            display: block;
+        }
+
+        .dropdown button {
+            width: 100%;
+            height: 28px;
+            border: none;
+            background: transparent;
+            text-align: left;
+            padding: 0 10px;
+            border-radius: 6px;
+            color: #2f405a;
+            font-size: 13px;
+        }
+
+        .dropdown button:hover {
+            background: #edf3ff;
+            color: #2b5bff;
+        }
+
+        .avatar-badge {
+            position: absolute;
+            top: 18px;
+            right: 46px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 4px solid #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f08a25;
+            color: #1f2d3d;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(32, 42, 62, 0.15);
+        }
+
+        .avatar-badge.robot {
+            background: #f3f7ff;
+            color: #2d63ff;
+        }
+
+        .card-body {
+            padding: 12px 10px 10px;
+        }
+
+        .card-title {
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.25;
+            font-weight: 700;
+            color: #1f2d3d;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-desc {
+            margin: 6px 0 0;
+            font-size: 11px;
+            color: #7f90a8;
+            line-height: 1.25;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tag-row {
+            margin-top: 9px;
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            height: 16px;
+            padding: 0 4px;
+            border-radius: 3px;
+            border: 1px solid;
+            font-size: 9px;
+            line-height: 14px;
+            white-space: nowrap;
+        }
+
+        .tag-model {
+            border-color: #8bb5ff;
+            color: #2d6fff;
+            background: #edf4ff;
+        }
+
+        .tag-skill {
+            border-color: #cba9ff;
+            color: #7d56cc;
+            background: #f6f0ff;
+        }
+
+        .card-footer {
+            margin-top: 8px;
+            text-align: right;
+            font-size: 10px;
+            color: #9aa8bc;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .empty-state {
+            display: none;
+            min-height: 220px;
+            border: 1px dashed #c6d3e5;
+            border-radius: 10px;
+            background: #f9fbff;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: #7f90a8;
+            font-size: 13px;
+        }
+
+        .empty-state strong {
+            margin-bottom: 6px;
+            color: #4d5e75;
+            font-size: 15px;
+        }
+
+        .modal-mask {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(14, 25, 43, 0.34);
+            z-index: 20;
+            padding: 16px;
+        }
+
+        .modal-mask.open {
+            display: flex;
+        }
+
+        .modal {
+            width: 900px;
+            max-width: 100%;
+            background: #fff;
+            border: 1px solid var(--color-border);
+            border-radius: 12px;
+            padding: 14px;
+            max-height: calc(100vh - 36px);
+            overflow: auto;
+        }
+
+        .modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .close-btn {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 6px;
+            background: #eef3fb;
+            color: #4f5f75;
+            font-size: 16px;
+        }
+
+        .template-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .template-tab {
+            height: 30px;
+            border: 1px solid var(--color-border);
+            background: #fff;
+            border-radius: 8px;
+            padding: 0 10px;
+            color: #5c6d84;
+            font-size: 12px;
+        }
+
+        .template-tab.active {
+            border-color: #c5d8ff;
+            background: #eaf1ff;
+            color: var(--color-primary);
+            font-weight: 600;
+        }
+
+        .template-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 10px;
+        }
+
+        .template-card {
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            padding: 10px;
+        }
+
+        .template-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #edf4ff;
+            color: var(--color-primary);
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .template-card strong {
+            display: block;
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+
+        .template-card p {
+            margin: 0 0 10px;
+            font-size: 12px;
+            color: #73859d;
+            line-height: 1.45;
+        }
+
+        .primary-button {
+            height: 30px;
+            border: none;
+            border-radius: 8px;
+            padding: 0 12px;
+            color: #fff;
+            background: var(--color-primary);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .toast-wrap {
+            position: fixed;
+            right: 14px;
+            bottom: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 24;
+        }
+
+        .toast {
+            min-width: 180px;
+            max-width: 360px;
+            padding: 10px 12px;
+            background: rgba(18, 31, 50, 0.93);
+            color: #fff;
+            border-radius: 8px;
+            font-size: 12px;
+            box-shadow: 0 10px 26px rgba(12, 24, 44, 0.25);
+            animation: fade-in 0.2s ease;
+        }
+
+        @media (max-width: 1400px) {
+            .card-grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 1140px) {
+            .top-header {
+                height: auto;
+                padding: 8px 10px;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .brand,
+            .header-actions {
+                min-width: auto;
+            }
+
+            .main-nav {
+                order: 3;
+                width: 100%;
+                justify-content: flex-start;
+                overflow-x: auto;
+                padding-bottom: 4px;
+            }
+
+            .card-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 780px) {
+            .toolbar {
+                justify-content: stretch;
+                flex-wrap: wrap;
+            }
+
+            .filter-select,
+            .search-input {
+                width: calc(50% - 4px);
+                min-width: 140px;
+            }
+
+            .search-button {
+                flex: 1;
+                min-width: 84px;
+            }
+
+            .card-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 520px) {
+            .card-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="top-header">
+            <div class="brand">
+                <img src="../../../../web/public/logo-site.png" alt="BlueKing Lite">
+                <strong>BlueKing Lite</strong>
+                <span class="switcher">◆</span>
+            </div>
+            <nav class="main-nav">
+                <a href="../工作台/工作台.html"><span class="nav-dot"></span>工作台</a>
+                <a class="active" href="./智能体.html"><span class="nav-dot"></span>智能体</a>
+                <a href="../知识库/知识库.html"><span class="nav-dot"></span>知识库</a>
+                <a href="../工具/工具.html"><span class="nav-dot"></span>工具</a>
+                <a href="../模型/模型.html"><span class="nav-dot"></span>模型</a>
+            </nav>
+            <div class="header-actions">
+                <button class="icon-action" type="button" data-toast="通知中心为原型占位。">◌</button>
+                <button class="icon-action" type="button" data-toast="任务列表为原型占位。">▤</button>
+                <span class="avatar">A</span>
+                <span>admin</span>
+                <span>∨</span>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <section class="page-panel">
+                <div class="toolbar">
+                    <select class="filter-select" id="typeSelect">
+                        <option value="all">选择</option>
+                    </select>
+                    <input class="search-input" id="searchInput" type="text" placeholder="搜索......">
+                    <button class="search-button" id="searchButton" type="button">⌕</button>
+                </div>
+
+                <div class="card-grid" id="cardGrid"></div>
+                <div class="empty-state" id="emptyState">
+                    <strong>未找到符合条件的智能体</strong>
+                    <div>请调整筛选条件或搜索关键词后重试。</div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div class="modal-mask" id="templateModal">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-head">
+                <strong>选择模板</strong>
+                <button class="close-btn" id="closeTemplateModal" type="button">×</button>
+            </div>
+            <div class="template-tabs" id="templateTabs"></div>
+            <div class="template-grid" id="templateGrid"></div>
+        </div>
+    </div>
+
+    <div class="toast-wrap" id="toastWrap"></div>
+
+    <script>
+        const skillTypeOptions = [
+            { value: 'all', label: '选择' },
+            { value: 'qa', label: '知识问答' },
+            { value: 'tool', label: '基础工具' },
+            { value: 'plan', label: '计划分解' },
+            { value: 'complex', label: '决策树' }
+        ];
+
+        const skills = [
+            {
+                id: 'skill-1',
+                name: 'rex-test',
+                introduction: 'rex-test',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '知识问答',
+                typeKey: 'qa',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-2',
+                name: '备份监控',
+                introduction: '检查数据库备份状态，请保证备份成功。',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'qwen-3.5-35b',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-3',
+                name: 'monitor应用巡检助手',
+                introduction: 'monitor应用巡检助手',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'qwen-3.5-35b',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-4',
+                name: '[内置]k8s分析小助手',
+                introduction: 'k8s分析小助手',
+                owner: 'admin',
+                group: 'OpsPilotGuest.weops',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '计划分解',
+                typeKey: 'plan',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-5',
+                name: 'essay_adjust_content',
+                introduction: 'essay_adjust_content',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '知识问答',
+                typeKey: 'qa',
+                badge: '🤖',
+                strong: true,
+                robot: true
+            },
+            {
+                id: 'skill-6',
+                name: 'change_tone',
+                introduction: 'change_tone',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '知识问答',
+                typeKey: 'qa',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-7',
+                name: 'tidy_content',
+                introduction: 'tidy_content',
+                owner: 'admin',
+                group: 'Default',
+                pinned: true,
+                modelName: 'GPT-4o',
+                skillType: '知识问答',
+                typeKey: 'qa',
+                badge: '🤖',
+                strong: true,
+                robot: true
+            },
+            {
+                id: 'skill-8',
+                name: 'write_by_example',
+                introduction: 'write_by_example',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '知识问答',
+                typeKey: 'qa',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-9',
+                name: 'summary_ticket',
+                introduction: 'summary_ticket',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '知识问答',
+                typeKey: 'qa',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-10',
+                name: 'weops意图分类智能体',
+                introduction: 'weops意图分类智能体',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '知识问答',
+                typeKey: 'qa',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-11',
+                name: '数据库和代理服务状态监控',
+                introduction: '检查数据库和代理服务状态，请保证正常。',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'qwen-3.5-35b',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🤖',
+                strong: true,
+                robot: true
+            },
+            {
+                id: 'skill-12',
+                name: 'SQL Server 代理作业监控',
+                introduction: '检查数据库作业，请保证执行成功。',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-13',
+                name: '发布监控',
+                introduction: '检查数据库大小增长，确保磁盘空间足够。',
+                owner: 'admin',
+                group: 'Default',
+                pinned: true,
+                modelName: 'GPT-4o',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🤖',
+                strong: true,
+                robot: true
+            },
+            {
+                id: 'skill-14',
+                name: '死锁监控',
+                introduction: '检查死锁会话，确保系统运行稳定。',
+                owner: 'admin',
+                group: 'Default',
+                pinned: true,
+                modelName: 'qwen-3.5-35b',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🤖',
+                strong: true,
+                robot: true
+            },
+            {
+                id: 'skill-15',
+                name: 'monitor测试',
+                introduction: '11',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'qwen-3.5-35b',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-16',
+                name: 'weops-mcp-test',
+                introduction: 'weops-mcp-test',
+                owner: 'admin',
+                group: 'WeOps',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-17',
+                name: 'weops知识库',
+                introduction: 'weops知识库',
+                owner: 'admin',
+                group: 'WeOps',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🤖',
+                strong: true,
+                robot: true
+            },
+            {
+                id: 'skill-18',
+                name: '网站检测数据总结',
+                introduction: '网站检测数据总结',
+                owner: 'admin',
+                group: 'WeOps',
+                pinned: true,
+                modelName: '知识问答',
+                skillType: '知识问答',
+                typeKey: 'qa',
+                badge: '🤖',
+                strong: true,
+                robot: true
+            },
+            {
+                id: 'skill-19',
+                name: 'saa',
+                introduction: 'asad',
+                owner: 'admin',
+                group: 'WeOps',
+                pinned: true,
+                modelName: 'GPT-4o',
+                skillType: '知识问答',
+                typeKey: 'qa',
+                badge: '🤖',
+                strong: true,
+                robot: true
+            },
+            {
+                id: 'skill-20',
+                name: 'wepaas巡检',
+                introduction: 'wepaas巡检',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-21',
+                name: 'Web 应用数据汇总',
+                introduction: 'Web 应用巡检数据指标汇总',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            },
+            {
+                id: 'skill-22',
+                name: 'Web 应用巡检助手',
+                introduction: 'Web 应用巡检助手',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🤖',
+                strong: true,
+                robot: true
+            },
+            {
+                id: 'skill-23',
+                name: 'monitor数据库汇总',
+                introduction: 'monitor助手 数据指标汇总',
+                owner: 'admin',
+                group: 'Default',
+                pinned: true,
+                modelName: 'GPT-4o',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🤖',
+                strong: true,
+                robot: true
+            },
+            {
+                id: 'skill-24',
+                name: 'Postgres DB 数据汇总',
+                introduction: 'Postgres DB 助手 数据指标汇总',
+                owner: 'admin',
+                group: 'Default',
+                pinned: false,
+                modelName: 'GPT-4o',
+                skillType: '基础工具',
+                typeKey: 'tool',
+                badge: '🟠',
+                strong: false,
+                robot: false
+            }
+        ];
+
+        const templates = {
+            qa: [
+                { name: '文档问答模板', intro: '基于知识库检索提供运维文档问答，适合 SOP 与 FAQ 场景。', icon: '知' },
+                { name: '告警处理指引', intro: '结合告警内容、知识库和标准流程，生成排障建议。', icon: '告' },
+                { name: '新人带教助手', intro: '围绕培训资料与制度文档，帮助新同学快速上手值班工作。', icon: '教' }
+            ],
+            tool: [
+                { name: '主机运维代理', intro: '连接主机、日志与工单类工具，实现自动巡检和基础处置。', icon: '主' },
+                { name: '发布编排模板', intro: '通过一组标准工具实现发布前检查、执行与回滚建议。', icon: '发' },
+                { name: '资源巡检模板', intro: '串联云资源与监控能力，快速搭建资源巡检类智能体。', icon: '巡' }
+            ]
+        };
+
+        const state = {
+            keyword: '',
+            selectedType: 'all',
+            openMenuId: null,
+            templateModalOpen: false,
+            activeTemplateTab: 'qa'
+        };
+
+        const cardGrid = document.getElementById('cardGrid');
+        const emptyState = document.getElementById('emptyState');
+        const typeSelect = document.getElementById('typeSelect');
+        const templateModal = document.getElementById('templateModal');
+        const templateTabs = document.getElementById('templateTabs');
+        const templateGrid = document.getElementById('templateGrid');
+        const toastWrap = document.getElementById('toastWrap');
+
+        typeSelect.innerHTML = skillTypeOptions
+            .map((item) => `<option value="${item.value}">${item.label}</option>`)
+            .join('');
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            toastWrap.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                toast.style.transition = 'all 0.2s ease';
+                setTimeout(() => toast.remove(), 200);
+            }, 2200);
+        }
+
+        function getFilteredSkills() {
+            const keyword = state.keyword.trim().toLowerCase();
+            return skills.filter((item) => {
+                const matchesKeyword = !keyword || item.name.toLowerCase().includes(keyword) || item.introduction.toLowerCase().includes(keyword);
+                const matchesType = state.selectedType === 'all' || item.typeKey === state.selectedType;
+                return matchesKeyword && matchesType;
+            });
+        }
+
+        function renderCard(item) {
+            const dropdownOpen = state.openMenuId === item.id ? 'open' : '';
+            return `
+                <article class="skill-card" data-action="open-card" data-id="${item.id}">
+                    <div class="card-banner ${item.strong ? 'banner-strong' : ''}">
+                        <button class="pin-btn ${item.pinned ? 'active' : ''}" type="button" data-action="toggle-pin" data-id="${item.id}">📌</button>
+                        <div class="menu-wrap">
+                            <button class="menu-btn" type="button" data-action="toggle-menu" data-id="${item.id}">⋮</button>
+                            <div class="dropdown ${dropdownOpen}">
+                                <button type="button" data-action="edit" data-id="${item.id}">编辑</button>
+                                <button type="button" class="danger" data-action="delete" data-id="${item.id}">删除</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="avatar-badge ${item.robot ? 'robot' : ''}">${item.badge}</div>
+                    <div class="card-body">
+                        <h3 class="card-title">${item.name}</h3>
+                        <p class="card-desc">${item.introduction}</p>
+                        <div class="tag-row">
+                            <span class="tag tag-model">${item.modelName}</span>
+                            <span class="tag tag-skill">${item.skillType}</span>
+                        </div>
+                        <div class="card-footer">分组: ${item.group} | 所有者: ${item.owner}</div>
+                    </div>
+                </article>
+            `;
+        }
+
+        function renderTemplateModal() {
+            templateModal.className = `modal-mask ${state.templateModalOpen ? 'open' : ''}`;
+            templateTabs.innerHTML = `
+                <button class="template-tab ${state.activeTemplateTab === 'qa' ? 'active' : ''}" data-action="switch-template-tab" data-tab="qa" type="button">知识问答智能体(RAG)</button>
+                <button class="template-tab ${state.activeTemplateTab === 'tool' ? 'active' : ''}" data-action="switch-template-tab" data-tab="tool" type="button">基础工具智能体(ReAct Agent)</button>
+            `;
+
+            templateGrid.innerHTML = templates[state.activeTemplateTab].map((item) => `
+                <article class="template-card">
+                    <div class="template-icon">${item.icon}</div>
+                    <strong>${item.name}</strong>
+                    <p>${item.intro}</p>
+                    <button class="primary-button" type="button" data-action="use-template" data-template-name="${item.name}">使用该模板</button>
+                </article>
+            `).join('');
+        }
+
+        function render() {
+            const data = getFilteredSkills();
+            cardGrid.innerHTML = `
+                <article class="create-card">
+                    <div class="create-action" id="createBlank">
+                        <div class="create-icon">✚</div>
+                        <div>创建空白智能体</div>
+                    </div>
+                    <div class="create-action" id="createFromTemplate">
+                        <div class="create-icon">⧉</div>
+                        <div>从模板创建</div>
+                    </div>
+                </article>
+            ` + data.map(renderCard).join('');
+
+            emptyState.style.display = data.length === 0 ? 'flex' : 'none';
+            cardGrid.style.display = data.length === 0 ? 'none' : 'grid';
+            renderTemplateModal();
+        }
+
+        document.addEventListener('click', (event) => {
+            const target = event.target.closest('[data-action], [data-toast], #createBlank, #createFromTemplate');
+            const clickedMenu = event.target.closest('.dropdown');
+            const clickedMenuButton = event.target.closest('[data-action="toggle-menu"]');
+            const clickedTemplateModal = event.target.closest('.modal');
+
+            if (!clickedMenu && !clickedMenuButton && state.openMenuId !== null) {
+                state.openMenuId = null;
+                render();
+            }
+
+            if (state.templateModalOpen && !clickedTemplateModal && event.target === templateModal) {
+                state.templateModalOpen = false;
+                renderTemplateModal();
+            }
+
+            if (!target) return;
+
+            if (target.dataset.toast) {
+                showToast(target.dataset.toast);
+                return;
+            }
+
+            if (target.id === 'createBlank') {
+                showToast('当前原型先展示主列表页，创建空白智能体弹窗未展开。');
+                return;
+            }
+
+            if (target.id === 'createFromTemplate') {
+                state.templateModalOpen = true;
+                state.activeTemplateTab = 'qa';
+                renderTemplateModal();
+                return;
+            }
+
+            const action = target.dataset.action;
+            const id = target.dataset.id;
+            const skill = skills.find((item) => item.id === id);
+
+            if (action === 'toggle-menu') {
+                event.stopPropagation();
+                state.openMenuId = state.openMenuId === id ? null : id;
+                render();
+                return;
+            }
+
+            if (action === 'toggle-pin') {
+                event.stopPropagation();
+                if (skill) {
+                    skill.pinned = !skill.pinned;
+                    showToast(skill.pinned ? '已置顶该智能体' : '已取消置顶');
+                    render();
+                }
+                return;
+            }
+
+            if (action === 'edit') {
+                event.stopPropagation();
+                showToast('原型未展开编辑智能体弹窗。');
+                state.openMenuId = null;
+                render();
+                return;
+            }
+
+            if (action === 'delete') {
+                event.stopPropagation();
+                showToast('这里仅模拟删除入口，不执行真实删除。');
+                state.openMenuId = null;
+                render();
+                return;
+            }
+
+            if (action === 'open-card') {
+                if (skill) {
+                    sessionStorage.setItem('selectedSkill', JSON.stringify(skill));
+                    window.location.href = './智能体详情.html';
+                }
+                return;
+            }
+
+            if (action === 'switch-template-tab') {
+                state.activeTemplateTab = target.dataset.tab;
+                renderTemplateModal();
+                return;
+            }
+
+            if (action === 'use-template') {
+                showToast(`已选择模板：${target.dataset.templateName}`);
+                state.templateModalOpen = false;
+                renderTemplateModal();
+                return;
+            }
+        });
+
+        typeSelect.addEventListener('change', (event) => {
+            state.selectedType = event.target.value;
+            render();
+        });
+
+        document.getElementById('searchInput').addEventListener('input', (event) => {
+            state.keyword = event.target.value;
+            render();
+        });
+
+        document.getElementById('searchButton').addEventListener('click', () => {
+            render();
+        });
+
+        document.getElementById('closeTemplateModal').addEventListener('click', () => {
+            state.templateModalOpen = false;
+            renderTemplateModal();
+        });
+
+        render();
+    </script>
+</body>
+</html>

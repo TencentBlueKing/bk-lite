@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsPilot - 知识库详情</title>
+    <style>
+        :root {
+            --color-primary: #2b5bff;
+            --color-border: #dde5f0;
+            --color-text-1: #1f2d3d;
+            --color-text-2: #5a6c85;
+            --color-text-3: #8a9ab0;
+            --bg-page: #f2f5fb;
+        }
+
+        * { box-sizing: border-box; }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg-page);
+            color: var(--color-text-1);
+        }
+
+        a { color: inherit; text-decoration: none; }
+        button, input { font: inherit; }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            height: 52px;
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #e5ebf4;
+            background: #edf3fb;
+        }
+
+        .brand {
+            min-width: 230px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #5a6880;
+        }
+
+        .brand img { width: 20px; height: 20px; }
+
+        .switcher {
+            margin-left: 4px;
+            border: 1px solid var(--color-border);
+            color: #6f7f95;
+            background: #f7faff;
+            border-radius: 8px;
+            width: 22px;
+            height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .main-nav {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+
+        .main-nav a {
+            height: 32px;
+            padding: 0 12px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: #4f5e73;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .main-nav a:hover { background: #e7eef8; }
+
+        .main-nav a.active {
+            color: var(--color-primary);
+            background: #e5efff;
+            font-weight: 600;
+        }
+
+        .header-actions {
+            min-width: 220px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 4px;
+            color: #6f7f95;
+            font-size: 13px;
+        }
+
+        .avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .workspace {
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            min-height: calc(100vh - 52px);
+        }
+
+        .left-menu {
+            width: 148px;
+            background: #fff;
+            border: 1px solid #d8dfe8;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 14px 10px;
+        }
+
+        .menu-top h3 {
+            margin: 0;
+            font-size: 24px;
+            line-height: 1.2;
+            color: #2d3e56;
+            font-weight: 700;
+        }
+
+        .menu-sub {
+            margin-top: 6px;
+            font-size: 11px;
+            line-height: 1.5;
+            color: #8293ab;
+            min-height: 32px;
+        }
+
+        .menu-item {
+            margin-top: 10px;
+            height: 30px;
+            border-radius: 6px;
+            color: #4f5f75;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            cursor: pointer;
+        }
+
+        .menu-item.active {
+            background: #eaf1ff;
+            color: var(--color-primary);
+            font-weight: 600;
+        }
+
+        .back-btn {
+            width: 100%;
+            height: 30px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #6e7f98;
+            text-align: left;
+            padding-left: 6px;
+            cursor: pointer;
+        }
+
+        .back-btn:hover { background: #e8eef8; }
+
+        .main {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .intro,
+        .panel {
+            border: 1px solid #d8dfe8;
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .intro {
+            padding: 12px 14px;
+        }
+
+        .intro h2 {
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .intro p {
+            margin: 6px 0 0;
+            color: var(--color-text-3);
+            font-size: 12px;
+        }
+
+        .panel {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+        }
+
+        .view-section {
+            display: none;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .view-section.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .test-layout {
+            flex: 1;
+            min-height: 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .test-side {
+            min-height: 0;
+            border: 1px solid #e6edf6;
+            border-radius: 8px;
+            background: #fff;
+            padding: 10px;
+            overflow: auto;
+        }
+
+        .test-block {
+            border: 1px solid #e3eaf4;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .test-block-head {
+            height: 26px;
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: #4f6480;
+            background: #edf2fb;
+            border-bottom: 1px solid #e3eaf4;
+        }
+
+        .test-block-body {
+            padding: 10px;
+        }
+
+        .test-textarea {
+            width: 100%;
+            min-height: 94px;
+            border: none;
+            resize: vertical;
+            outline: none;
+            font-size: 12px;
+            color: #3f5069;
+            line-height: 1.5;
+            padding: 0;
+        }
+
+        .test-inline-action {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 8px;
+        }
+
+        .test-grid {
+            display: grid;
+            grid-template-columns: 84px 1fr;
+            gap: 8px;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+
+        .test-label {
+            font-size: 12px;
+            color: #4f6480;
+            padding-top: 6px;
+        }
+
+        .test-select,
+        .test-input {
+            width: 100%;
+            height: 30px;
+            border: 1px solid #d7dfeb;
+            border-radius: 4px;
+            padding: 0 10px;
+            font-size: 12px;
+            color: #5e6f87;
+            background: #fff;
+        }
+
+        .test-recall-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .recall-card {
+            border: 1px solid #dce5f1;
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 12px;
+            color: #49607e;
+        }
+
+        .recall-card b {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .strategy-pair {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .strategy-btn {
+            height: 48px;
+            border-radius: 6px;
+            border: 1px solid #d8e1ef;
+            background: #fff;
+            color: #526883;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .strategy-btn strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .strategy-btn.active {
+            border-color: #5f8fff;
+            box-shadow: inset 0 0 0 1px #5f8fff;
+            color: #2b5bff;
+        }
+
+        .test-radio-line {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            font-size: 12px;
+            color: #4f6480;
+        }
+
+        .test-switch-row {
+            border: 1px solid #dce5f1;
+            border-radius: 6px;
+            padding: 8px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #4f6480;
+            font-size: 12px;
+        }
+
+        .test-switch {
+            width: 22px;
+            height: 12px;
+            background: #cdd6e3;
+            border-radius: 999px;
+            position: relative;
+        }
+
+        .test-switch::after {
+            content: '';
+            position: absolute;
+            left: 1px;
+            top: 1px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #fff;
+        }
+
+        .test-apply {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 12px;
+        }
+
+        .result-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #32465f;
+            margin: 0 0 10px;
+        }
+
+        .result-empty {
+            height: calc(100% - 34px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #8b9bb0;
+            gap: 6px;
+            font-size: 20px;
+        }
+
+        .result-empty small {
+            font-size: 12px;
+        }
+
+        .setting-form {
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
+            padding: 6px 0;
+        }
+
+        .setting-row {
+            display: grid;
+            grid-template-columns: 92px 1fr;
+            align-items: start;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .setting-label {
+            font-size: 12px;
+            color: #5e6f87;
+            text-align: right;
+            padding-top: 8px;
+        }
+
+        .setting-label.required::before {
+            content: '* ';
+            color: #e34b4b;
+        }
+
+        .setting-input,
+        .setting-select,
+        .setting-textarea {
+            width: 100%;
+            border: 1px solid #d7dfeb;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #3f5069;
+            padding: 8px 10px;
+            background: #fff;
+        }
+
+        .setting-input,
+        .setting-select {
+            height: 30px;
+        }
+
+        .setting-textarea {
+            min-height: 70px;
+            resize: vertical;
+            line-height: 1.55;
+        }
+
+        .setting-inline {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            font-size: 12px;
+            color: #5a6c85;
+        }
+
+        .setting-foot {
+            border-top: 1px solid #edf2f8;
+            margin-top: 8px;
+            padding-top: 10px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .api-wrap {
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
+            border: 1px solid #e6edf6;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .api-title {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 800;
+            color: #2f3f57;
+            letter-spacing: 0;
+        }
+
+        .api-example {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #e6edf6;
+        }
+
+        .api-section-title {
+            margin: 0 0 10px;
+            font-size: 14px;
+            color: #2f3f57;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
+
+        .api-step {
+            margin: 0;
+            font-size: 13px;
+            color: #2f3f57;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
+
+        .api-sub-title {
+            margin: 12px 0 8px;
+            font-size: 13px;
+            color: #2f3f57;
+            font-weight: 700;
+        }
+
+        .api-query {
+            margin: 0 0 8px;
+            font-size: 12px;
+            color: #33465f;
+            font-weight: 500;
+        }
+
+        .api-table {
+            border-collapse: collapse;
+            border: 1px solid #dde4ef;
+            font-size: 12px;
+            color: #384c66;
+            background: #fff;
+            margin-bottom: 14px;
+        }
+
+        .api-table th,
+        .api-table td {
+            border: 1px solid #dde4ef;
+            padding: 10px 14px;
+            white-space: nowrap;
+        }
+
+        .api-table th {
+            background: #f6f8fc;
+            font-weight: 700;
+        }
+
+        .api-code {
+            margin: 8px 0 0;
+            background: #f4f7fc;
+            border: 1px solid #e0e8f3;
+            border-radius: 6px;
+            padding: 12px;
+            color: #2f425b;
+            font-size: 12px;
+            line-height: 1.55;
+            overflow: auto;
+        }
+
+        .top-tabs,
+        .sub-tabs {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            border-bottom: 1px solid #e9eef5;
+            padding-bottom: 8px;
+        }
+
+        .sub-tabs {
+            border-bottom: none;
+            padding: 10px 0 8px;
+        }
+
+        .sub-tabs.hidden {
+            display: none;
+        }
+
+        .tab-btn {
+            border: none;
+            background: transparent;
+            color: #6e7f98;
+            font-size: 12px;
+            height: 24px;
+            padding: 0 10px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .tab-btn.active {
+            color: var(--color-primary);
+            background: #edf3ff;
+            font-weight: 600;
+        }
+
+        .table-toolbar {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .search-input {
+            width: 160px;
+            height: 28px;
+            border: 1px solid #d7dfeb;
+            border-radius: 5px;
+            padding: 0 8px;
+            font-size: 12px;
+        }
+
+        .btn {
+            border: 1px solid #d7dfeb;
+            border-radius: 5px;
+            background: #fff;
+            color: #5c6d84;
+            font-size: 12px;
+            height: 28px;
+            padding: 0 10px;
+            cursor: pointer;
+        }
+
+        .btn.primary {
+            background: #2b5bff;
+            border-color: #2b5bff;
+            color: #fff;
+        }
+
+        .btn.danger {
+            background: #fff;
+            border-color: #ff8f8f;
+            color: #ff6b6b;
+        }
+
+        .btn.icon {
+            width: 28px;
+            min-width: 28px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: #72839a;
+        }
+
+        .table-wrap {
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
+            border: 1px solid #e8edf5;
+            border-radius: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            background: #fff;
+        }
+
+        thead {
+            background: #f7f9fd;
+            color: #5d6e86;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 10px 10px;
+            border-bottom: 1px solid #edf1f7;
+            white-space: nowrap;
+        }
+
+        .status {
+            display: inline-flex;
+            height: 18px;
+            padding: 0 6px;
+            border-radius: 4px;
+            align-items: center;
+            font-size: 11px;
+            border: 1px solid;
+        }
+
+        .pending { color: #5f78b8; background: #eef3ff; border-color: #cdddff; }
+        .ready { color: #4ea33d; background: #edf9e9; border-color: #bfe4b5; }
+
+        .op-link {
+            color: #5a86e8;
+            margin-right: 8px;
+            cursor: pointer;
+        }
+
+        .pager {
+            padding: 8px 4px 0;
+            text-align: right;
+            font-size: 12px;
+            color: #8a9ab0;
+        }
+
+        .modal-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.32);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .modal-mask.active {
+            display: flex;
+        }
+
+        .source-modal {
+            width: 380px;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 12px 28px rgba(31, 45, 61, 0.22);
+            overflow: hidden;
+        }
+
+        .source-modal-head {
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            background: #f6f8fc;
+            border-bottom: 1px solid #e5ebf4;
+            font-size: 14px;
+            font-weight: 600;
+            color: #3a4d67;
+        }
+
+        .source-modal-close {
+            border: none;
+            background: transparent;
+            color: #8a9ab0;
+            font-size: 18px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .source-modal-body {
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .source-option {
+            border: 1px solid #dde5f0;
+            border-radius: 6px;
+            padding: 10px 10px;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            cursor: pointer;
+        }
+
+        .source-option input {
+            margin-top: 3px;
+        }
+
+        .source-option.active {
+            border-color: #7ca4ff;
+            background: #f3f7ff;
+        }
+
+        .source-option-title {
+            font-size: 13px;
+            color: #364a63;
+            margin-bottom: 2px;
+        }
+
+        .source-option-desc {
+            font-size: 11px;
+            color: #8a9ab0;
+        }
+
+        .source-modal-foot {
+            padding: 0 14px 14px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="top-header">
+            <div class="brand">
+                <img src="../../../../web/public/logo-site.png" alt="BlueKing Lite">
+                <strong>BlueKing Lite</strong>
+                <span class="switcher">◆</span>
+            </div>
+            <nav class="main-nav">
+                <a href="../工作台/工作台.html">工作台</a>
+                <a href="../智能体/智能体.html">智能体</a>
+                <a class="active" href="./知识库.html">知识库</a>
+                <a href="../工具/工具.html">工具</a>
+                <a href="../模型/模型.html">模型</a>
+            </nav>
+            <div class="header-actions">
+                <span class="avatar">A</span>
+                <span>admin ▾</span>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <aside class="left-menu">
+                <div class="menu-top">
+                    <h3 id="kbTitle">知识库</h3>
+                    <div class="menu-sub" id="kbDesc">知识库详情页</div>
+                    <div class="menu-item" data-tab="document">◉ 文档</div>
+                    <div class="menu-item" data-tab="test">◎ 测试</div>
+                    <div class="menu-item" data-tab="settings">⚙ 设置</div>
+                    <div class="menu-item" data-tab="api">≋ 接口</div>
+                </div>
+                <button class="back-btn" id="backBtn" type="button">←</button>
+            </aside>
+
+            <main class="main">
+                <section class="intro">
+                    <h2 id="introTitle">文档</h2>
+                    <p id="introDesc">文档管理用于添加知识，包含本地文件、网页链接和自定义文本，新增的知识可分块，以便机器人使用。</p>
+                </section>
+
+                <section class="panel">
+                    <div class="view-section" id="view-document">
+                        <div class="top-tabs" id="docTopTabs">
+                            <button class="tab-btn active" data-doc-tab="source" type="button">源文件 (36)</button>
+                            <button class="tab-btn" data-doc-tab="qa" type="button">问答对 (1)</button>
+                            <button class="tab-btn" data-doc-tab="graph" type="button">知识图谱 (1)</button>
+                        </div>
+                        <div class="sub-tabs" id="docSubTabs">
+                            <button class="tab-btn active" type="button">本地文件 (0)</button>
+                            <button class="tab-btn" type="button">网页链接 (0)</button>
+                            <button class="tab-btn" type="button">自定义文本 (0)</button>
+                            <div class="table-toolbar">
+                                <input class="search-input" type="text" placeholder="搜索......">
+                                <button class="btn primary js-source-add-btn" type="button">+ 添加</button>
+                                <button class="btn" type="button">批量操作 ▾</button>
+                            </div>
+                        </div>
+                        <div class="sub-tabs hidden" id="docActionBar"></div>
+                        <div class="table-wrap" id="docTableWrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>文件</th>
+                                        <th>分块数</th>
+                                        <th>创建时间</th>
+                                        <th>更新时间</th>
+                                        <th>创建者</th>
+                                        <th>状态</th>
+                                        <th>提取方式</th>
+                                        <th>分块方式</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>周报.txt</td>
+                                        <td>0</td>
+                                        <td>2026-01-26 10:36:30</td>
+                                        <td>2026-01-26 10:36:30</td>
+                                        <td>admin</td>
+                                        <td><span class="status pending">Pending</span></td>
+                                        <td>全文提取</td>
+                                        <td>定长分块</td>
+                                        <td><span class="op-link">设置</span><span class="op-link">训练</span><span class="op-link">预览</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>WeOpsV5.29功能介绍.pptx</td>
+                                        <td>10</td>
+                                        <td>2026-01-19 13:52:33</td>
+                                        <td>2026-01-23 14:41:38</td>
+                                        <td>一张</td>
+                                        <td><span class="status ready">Ready</span></td>
+                                        <td>全文提取</td>
+                                        <td>循环分块</td>
+                                        <td><span class="op-link">设置</span><span class="op-link">训练</span><span class="op-link">预览</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="pager" id="docPager">共 32 项 已选 0 项</div>
+                    </div>
+
+                    <div class="view-section" id="view-test">
+                        <div class="test-layout">
+                            <div class="test-side">
+                                <div class="test-block">
+                                    <div class="test-block-head">文本</div>
+                                    <div class="test-block-body">
+                                        <textarea class="test-textarea" placeholder="Enter text to search"></textarea>
+                                        <div class="test-inline-action">
+                                            <button class="btn" type="button">测试</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="test-block">
+                                    <div class="test-block-head">配置</div>
+                                    <div class="test-block-body">
+                                        <div class="test-grid">
+                                            <label class="test-label">Embed模型</label>
+                                            <select class="test-select" disabled>
+                                                <option selected>Qwen3-Embedding-4B</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="test-grid">
+                                            <label class="test-label">检索设置</label>
+                                            <div>
+                                                <div style="font-size:12px;color:#61758f;margin-bottom:8px;">返回类型</div>
+                                                <div class="test-recall-grid">
+                                                    <div class="recall-card">
+                                                        <b>知识分块</b>
+                                                        <div style="font-size:11px;color:#6f8096;margin-bottom:4px;">召回数量</div>
+                                                        <input class="test-input" type="number" value="50">
+                                                    </div>
+                                                    <div class="recall-card">
+                                                        <b>问答对</b>
+                                                        <div style="font-size:11px;color:#6f8096;margin-bottom:4px;">召回数量</div>
+                                                        <input class="test-input" type="number" value="50">
+                                                    </div>
+                                                    <div class="recall-card">
+                                                        <b>知识图谱</b>
+                                                        <div style="font-size:11px;color:#6f8096;margin-bottom:4px;">召回数量</div>
+                                                        <input class="test-input" type="number" value="50">
+                                                    </div>
+                                                </div>
+                                                <div style="margin-top:10px;font-size:12px;color:#61758f;">检索策略</div>
+                                                <div class="strategy-pair">
+                                                    <button class="strategy-btn active" type="button"><strong>MMR</strong><span style="font-size:11px;">使用最大边际相关性来平衡相关性和多样性</span></button>
+                                                    <button class="strategy-btn" type="button"><strong>阈值</strong><span style="font-size:11px;">使用相似性分数阈值筛选低分数过滤结果</span></button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="test-grid">
+                                            <label class="test-label">召回方式</label>
+                                            <div class="test-radio-line">
+                                                <label><input type="radio" name="testRetrieveMode" checked> 分块</label>
+                                                <label><input type="radio" name="testRetrieveMode"> 分段</label>
+                                            </div>
+                                        </div>
+
+                                        <div class="test-grid" style="margin-bottom:0;">
+                                            <label class="test-label">重排序设置</label>
+                                            <div class="test-switch-row">
+                                                <span>重排模型</span>
+                                                <span class="test-switch"></span>
+                                            </div>
+                                        </div>
+
+                                        <div class="test-apply">
+                                            <button class="btn primary" type="button">应用配置</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="test-side">
+                                <h3 class="result-title">结果</h3>
+                                <div class="result-empty">
+                                    <div>🖨️</div>
+                                    <small>无结果</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="view-section" id="view-settings">
+                        <div class="setting-form">
+                            <div class="setting-row">
+                                <label class="setting-label required">名称</label>
+                                <input class="setting-input" type="text" value="WeOps知识库">
+                            </div>
+                            <div class="setting-row">
+                                <label class="setting-label required">分组</label>
+                                <input class="setting-input" type="text" value="Default" readonly>
+                            </div>
+                            <div class="setting-row">
+                                <label class="setting-label required">简介</label>
+                                <textarea class="setting-textarea">本知识库接入WeOps的内容，用于WeOps小助手</textarea>
+                            </div>
+                            <div class="setting-row">
+                                <label class="setting-label">Embed模型</label>
+                                <select class="setting-select" disabled>
+                                    <option selected>Qwen3-Embedding-4B</option>
+                                </select>
+                            </div>
+                            <div class="setting-row">
+                                <label class="setting-label">召回方式</label>
+                                <div class="setting-inline">
+                                    <label><input type="radio" name="retrieveMode" checked> 分块</label>
+                                    <label><input type="radio" name="retrieveMode"> 分段</label>
+                                </div>
+                            </div>
+                            <div class="setting-foot">
+                                <button class="btn" type="button">取消</button>
+                                <button class="btn primary" type="button">确认</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="view-section" id="view-api">
+                        <div class="api-wrap">
+                            <h3 class="api-title">知识库API调用</h3>
+                            <div class="api-example">
+                                <h4 class="api-section-title">API调用示例</h4>
+                                <h5 class="api-step">1. 查询知识库</h5>
+
+                                <div class="api-sub-title">请求参数</div>
+                                <div class="api-query">Query:</div>
+
+                                <table class="api-table">
+                                    <thead>
+                                        <tr>
+                                            <th>参数名称</th>
+                                            <th>是否必填</th>
+                                            <th>示例</th>
+                                            <th>备注</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>name</td>
+                                            <td>否</td>
+                                            <td>12</td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <div class="api-sub-title">返回数据</div>
+                                <pre class="api-code">{
+  "result": true,
+  "data": [
+    {
+      "id": 1,
+      "team_name": [
+        "admin"
+      ],
+      "created_at": "2024-09-04 15:52:21",
+      "updated_at": "2024-09-04 15:52:21",
+      "created_by": "admin",
+      "updated_by": "",
+      "name": "知识库测试",
+      "introduction": "abcjde",
+      "team": "2135b2b5-cb04-4aea-8350-7329dcb6671a",
+      "enable_vector_search": true,
+      "vector_search_weight": 0.1,
+      "enable_text_search": true,
+      "text_search_weight": 0.9,
+      "enable_rerank": false,
+      "embed_model": 2,
+      "rerank_model": 1
+    }
+  ]
+}</pre>
+                                                        </div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <div class="modal-mask" id="sourceModalMask">
+        <div class="source-modal" role="dialog" aria-modal="true" aria-labelledby="sourceModalTitle">
+            <div class="source-modal-head">
+                <span id="sourceModalTitle">选择来源</span>
+                <button class="source-modal-close" id="sourceModalClose" type="button">×</button>
+            </div>
+            <div class="source-modal-body" id="sourceModalBody">
+                <label class="source-option" data-source-option="local">
+                    <input type="radio" name="sourceType" value="local">
+                    <span>
+                        <div class="source-option-title">本地文件</div>
+                        <div class="source-option-desc">上传本地文件（如 PDF、DOCX、TXT）作为知识来源。</div>
+                    </span>
+                </label>
+                <label class="source-option" data-source-option="web">
+                    <input type="radio" name="sourceType" value="web">
+                    <span>
+                        <div class="source-option-title">网页链接</div>
+                        <div class="source-option-desc">使用网页链接作为知识来源。</div>
+                    </span>
+                </label>
+                <label class="source-option" data-source-option="custom">
+                    <input type="radio" name="sourceType" value="custom">
+                    <span>
+                        <div class="source-option-title">自定义文本</div>
+                        <div class="source-option-desc">直接输入文本内容作为知识来源。</div>
+                    </span>
+                </label>
+            </div>
+            <div class="source-modal-foot">
+                <button class="btn" id="sourceModalCancel" type="button">取消</button>
+                <button class="btn primary" id="sourceModalConfirm" type="button">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TAB_CONFIG = {
+            document: {
+                title: '文档',
+                desc: '文档管理用于添加知识，包含本地文件、网页链接和自定义文本，新增的知识可分块，以便机器人使用。'
+            },
+            test: {
+                title: '测试',
+                desc: '基于给定查询文本测试知识库的召回效果。'
+            },
+            settings: {
+                title: '设置',
+                desc: '调整知识库的基础配置、模型和召回策略。'
+            },
+            api: {
+                title: '接口',
+                desc: '通过 API 方式访问知识库，支持查询与检索能力。'
+            }
+        };
+
+        const menuItems = Array.from(document.querySelectorAll('.menu-item[data-tab]'));
+        const introTitleEl = document.getElementById('introTitle');
+        const introDescEl = document.getElementById('introDesc');
+        const sectionMap = {
+            document: document.getElementById('view-document'),
+            test: document.getElementById('view-test'),
+            settings: document.getElementById('view-settings'),
+            api: document.getElementById('view-api')
+        };
+
+        function getCurrentTab() {
+            const tab = new URLSearchParams(window.location.search).get('tab');
+            return TAB_CONFIG[tab] ? tab : 'document';
+        }
+
+        function renderTab(tab) {
+            menuItems.forEach((item) => {
+                item.classList.toggle('active', item.dataset.tab === tab);
+            });
+
+            Object.entries(sectionMap).forEach(([key, element]) => {
+                element.classList.toggle('active', key === tab);
+            });
+
+            introTitleEl.textContent = TAB_CONFIG[tab].title;
+            introDescEl.textContent = TAB_CONFIG[tab].desc;
+        }
+
+        menuItems.forEach((item) => {
+            item.addEventListener('click', () => {
+                const tab = item.dataset.tab;
+                window.location.href = './知识库详情.html?tab=' + encodeURIComponent(tab);
+            });
+        });
+
+        renderTab(getCurrentTab());
+
+        const selected = sessionStorage.getItem('selectedKnowledge');
+        if (selected) {
+            try {
+                const data = JSON.parse(selected);
+                document.getElementById('kbTitle').textContent = data.name || '知识库';
+                document.getElementById('kbDesc').textContent = data.introduction || '知识库详情页';
+            } catch (error) {
+                // Ignore invalid session payload in prototype mode.
+            }
+        }
+
+        const docSubTabsEl = document.getElementById('docSubTabs');
+        const docActionBarEl = document.getElementById('docActionBar');
+        const docTableWrapEl = document.getElementById('docTableWrap');
+        const docPagerEl = document.getElementById('docPager');
+        const docTopTabButtons = Array.from(document.querySelectorAll('#docTopTabs .tab-btn[data-doc-tab]'));
+        const sourceModalMask = document.getElementById('sourceModalMask');
+        const sourceModalBody = document.getElementById('sourceModalBody');
+        const sourceModalClose = document.getElementById('sourceModalClose');
+        const sourceModalCancel = document.getElementById('sourceModalCancel');
+        const sourceModalConfirm = document.getElementById('sourceModalConfirm');
+        let currentSourceSubTab = 'local';
+
+        const DOC_TEMPLATES = {
+            source: {
+                actionBar: '',
+                table: '',
+                pager: ''
+            },
+            qa: {
+                actionBar: '<div style="flex:1;"></div><div class="table-toolbar">' +
+                    '<input class="search-input" type="text" placeholder="搜索......">' +
+                    '<button class="btn icon" type="button" aria-label="refresh">↻</button>' +
+                    '<button class="btn primary" type="button">+ 添加</button>' +
+                    '<button class="btn danger" type="button">批量删除</button>' +
+                    '</div>',
+                table: '<table><thead><tr><th style="width:30px;"><input type="checkbox"></th><th>名称</th><th>问答对数量</th><th>类型</th><th>创建时间</th><th>更新时间</th><th>创建者</th><th>状态</th><th>操作</th></tr></thead><tbody><tr><td><input type="checkbox"></td><td><a class="op-link" style="margin-right:0;" href="javascript:void(0)">暴力蓝鲸WeOps内置资产模型.docx</a></td><td>0</td><td>分块生成</td><td>2026-01-13 14:16:12</td><td>2026-03-13 16:15:23</td><td>一张</td><td><span class="status ready">完成</span></td><td><span class="op-link">导出</span><span class="op-link">设置</span><span class="op-link">删除</span></td></tr></tbody></table>',
+                pager: '共 1 项   已选 0 项      20 / page'
+            },
+            graph: {
+                actionBar: '<div style="flex:1;"></div><div class="table-toolbar"><input class="search-input" type="text" placeholder="搜索......"><button class="btn primary" type="button">+ 添加</button></div>',
+                table: '<table><thead><tr><th>名称</th><th>节点数</th><th>边数</th><th>创建时间</th><th>更新时间</th><th>状态</th><th>操作</th></tr></thead><tbody><tr><td>默认知识图谱</td><td>0</td><td>0</td><td>2026-03-01 12:10:00</td><td>2026-03-01 12:10:00</td><td><span class="status pending">Pending</span></td><td><span class="op-link">查看</span><span class="op-link">删除</span></td></tr></tbody></table>',
+                pager: '共 1 项 已选 0 项'
+            }
+        };
+
+        const SOURCE_SUB_TEMPLATES = {
+            local: {
+                subTabs: '<button class="tab-btn active" data-source-tab="local" type="button">本地文件 (32)</button>' +
+                    '<button class="tab-btn" data-source-tab="web" type="button">网页链接 (4)</button>' +
+                    '<button class="tab-btn" data-source-tab="custom" type="button">自定义文本 (0)</button>' +
+                    '<div class="table-toolbar">' +
+                    '<input class="search-input" type="text" placeholder="搜索......">' +
+                    '<button class="btn primary js-source-add-btn" type="button">+ 添加</button>' +
+                    '<button class="btn" type="button">批量操作 ▾</button>' +
+                    '</div>',
+                table: '<table><thead><tr><th style="width:30px;"><input type="checkbox"></th><th>名称</th><th>分块数</th><th>创建时间</th><th>更新时间</th><th>创建者</th><th>状态</th><th>最后同步时间</th><th>定时同步</th><th>提取方式</th><th>分块方式</th><th>操作</th></tr></thead><tbody><tr><td><input type="checkbox"></td><td><a class="op-link" style="margin-right:0;" href="javascript:void(0)">WeOps1</a></td><td>0</td><td>2026-01-14 15:22:33</td><td>2026-03-25 00:07:39</td><td>一张</td><td><span class="status pending">Error</span></td><td>2026-03-25 00:00:03</td><td>【每天 00:00】</td><td>全文提取</td><td>循环分块</td><td><span class="op-link">设置</span><span class="op-link">训练</span><span class="op-link">删除</span></td></tr><tr><td><input type="checkbox"></td><td><a class="op-link" style="margin-right:0;" href="javascript:void(0)">WeOps-LTS</a></td><td>0</td><td>2026-01-14 10:02:04</td><td>2026-03-25 00:08:50</td><td>一张</td><td><span class="status pending">Error</span></td><td>2026-03-25 00:08:01</td><td>【每天 00:00】</td><td>全文提取</td><td>循环分块</td><td><span class="op-link">设置</span><span class="op-link">训练</span><span class="op-link">删除</span></td></tr></tbody></table>',
+                pager: '共 4 项 已选 0 项      20 / page'
+            },
+            web: {
+                subTabs: '<button class="tab-btn" data-source-tab="local" type="button">本地文件 (32)</button>' +
+                    '<button class="tab-btn active" data-source-tab="web" type="button">网页链接 (4)</button>' +
+                    '<button class="tab-btn" data-source-tab="custom" type="button">自定义文本 (0)</button>' +
+                    '<div class="table-toolbar">' +
+                    '<input class="search-input" type="text" placeholder="搜索......">' +
+                    '<button class="btn icon" type="button" aria-label="refresh">↻</button>' +
+                    '<button class="btn primary js-source-add-btn" type="button">+ 添加</button>' +
+                    '<button class="btn" type="button">批量操作 ▾</button>' +
+                    '</div>',
+                table: '<table><thead><tr><th style="width:30px;"><input type="checkbox"></th><th>名称</th><th>链接</th><th>分块数</th><th>创建时间</th><th>更新时间</th><th>创建者</th><th>状态</th><th>提取方式</th><th>分块方式</th><th>操作</th></tr></thead><tbody><tr><td><input type="checkbox"></td><td>BlueKing 官方文档</td><td><a class="op-link" style="margin-right:0;" href="javascript:void(0)">https://www.tencent.com/...</a></td><td>12</td><td>2026-02-18 09:23:11</td><td>2026-03-25 09:12:54</td><td>admin</td><td><span class="status ready">Ready</span></td><td>网页提取</td><td>循环分块</td><td><span class="op-link">设置</span><span class="op-link">训练</span><span class="op-link">删除</span></td></tr><tr><td><input type="checkbox"></td><td>WeOps 帮助中心</td><td><a class="op-link" style="margin-right:0;" href="javascript:void(0)">https://weops.example/help</a></td><td>8</td><td>2026-02-20 11:01:33</td><td>2026-03-24 17:48:27</td><td>一张</td><td><span class="status ready">Ready</span></td><td>网页提取</td><td>定长分块</td><td><span class="op-link">设置</span><span class="op-link">训练</span><span class="op-link">删除</span></td></tr></tbody></table>',
+                pager: '共 4 项 已选 0 项      20 / page'
+            },
+            custom: {
+                subTabs: '<button class="tab-btn" data-source-tab="local" type="button">本地文件 (32)</button>' +
+                    '<button class="tab-btn" data-source-tab="web" type="button">网页链接 (4)</button>' +
+                    '<button class="tab-btn active" data-source-tab="custom" type="button">自定义文本 (0)</button>' +
+                    '<div class="table-toolbar">' +
+                    '<input class="search-input" type="text" placeholder="搜索......">' +
+                    '<button class="btn primary js-source-add-btn" type="button">+ 添加</button>' +
+                    '</div>',
+                table: '<table><thead><tr><th>名称</th><th>字符数</th><th>创建时间</th><th>更新时间</th><th>创建者</th><th>状态</th><th>操作</th></tr></thead><tbody><tr><td colspan="7" style="text-align:center;color:#96a3b6;">暂无数据</td></tr></tbody></table>',
+                pager: '共 0 项 已选 0 项'
+            }
+        };
+
+        function bindSourceSubTabEvents() {
+            const sourceButtons = Array.from(docSubTabsEl.querySelectorAll('.tab-btn[data-source-tab]'));
+            sourceButtons.forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    renderSourceSubTab(btn.dataset.sourceTab);
+                });
+            });
+        }
+
+        function renderSourceSubTab(sourceTab) {
+            const tpl = SOURCE_SUB_TEMPLATES[sourceTab] || SOURCE_SUB_TEMPLATES.local;
+            currentSourceSubTab = sourceTab;
+            docSubTabsEl.innerHTML = tpl.subTabs;
+            docTableWrapEl.innerHTML = tpl.table;
+            docPagerEl.textContent = tpl.pager;
+            bindSourceSubTabEvents();
+        }
+
+        function syncSourceOptionVisual() {
+            const options = Array.from(sourceModalBody.querySelectorAll('.source-option'));
+            options.forEach((el) => {
+                const input = el.querySelector('input[type="radio"]');
+                el.classList.toggle('active', input.checked);
+            });
+        }
+
+        function setSourceModalValue(tab) {
+            const target = sourceModalBody.querySelector('input[name="sourceType"][value="' + tab + '"]');
+            if (target) {
+                target.checked = true;
+            }
+            syncSourceOptionVisual();
+        }
+
+        function openSourceModal() {
+            setSourceModalValue(currentSourceSubTab);
+            sourceModalMask.classList.add('active');
+        }
+
+        function closeSourceModal() {
+            sourceModalMask.classList.remove('active');
+        }
+
+        function renderDocumentTab(docTab) {
+            const tpl = DOC_TEMPLATES[docTab] || DOC_TEMPLATES.source;
+            docTopTabButtons.forEach((btn) => {
+                btn.classList.toggle('active', btn.dataset.docTab === docTab);
+            });
+            const sourceActive = docTab === 'source';
+            docSubTabsEl.classList.toggle('hidden', !sourceActive);
+            docActionBarEl.classList.toggle('hidden', sourceActive);
+            docActionBarEl.innerHTML = tpl.actionBar || '';
+
+            if (sourceActive) {
+                renderSourceSubTab('local');
+                return;
+            }
+
+            docTableWrapEl.innerHTML = tpl.table;
+            docPagerEl.textContent = tpl.pager;
+        }
+
+        docTopTabButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                renderDocumentTab(btn.dataset.docTab);
+            });
+        });
+
+        renderDocumentTab('source');
+
+        document.addEventListener('click', (event) => {
+            const openBtn = event.target.closest('.js-source-add-btn');
+            if (openBtn) {
+                openSourceModal();
+            }
+        });
+
+        sourceModalBody.addEventListener('change', (event) => {
+            if (event.target.name === 'sourceType') {
+                syncSourceOptionVisual();
+            }
+        });
+
+        sourceModalClose.addEventListener('click', closeSourceModal);
+        sourceModalCancel.addEventListener('click', closeSourceModal);
+        sourceModalMask.addEventListener('click', (event) => {
+            if (event.target === sourceModalMask) {
+                closeSourceModal();
+            }
+        });
+        sourceModalConfirm.addEventListener('click', () => {
+            const selectedSource = sourceModalBody.querySelector('input[name="sourceType"]:checked');
+            const source = selectedSource ? selectedSource.value : currentSourceSubTab;
+            window.location.href = './知识库来源创建.html?source=' + encodeURIComponent(source);
+        });
+
+        document.getElementById('backBtn').addEventListener('click', () => {
+            window.location.href = './知识库.html';
+        });
+    </script>
+</body>
+</html>

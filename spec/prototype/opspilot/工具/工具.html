@@ -1,0 +1,1646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsPilot - 工具</title>
+    <style>
+        :root {
+            --color-primary: #155AEF;
+            --color-primary-bg-active: #E1EDFC;
+            --color-text-1: #2C3A4E;
+            --color-text-2: #51617A;
+            --color-text-3: #7D8EA7;
+            --color-text-4: #A5B2C5;
+            --color-border: #DCE5F1;
+            --color-border-1: #E7EDF6;
+            --color-border-2: #DDE6F2;
+            --color-border-3: #C9D7EA;
+            --color-fill-1: #F3F6FB;
+            --color-fill-2: #EDF2F9;
+            --color-fill-4: #D7E2F1;
+            --shadow-soft: 0 10px 24px rgba(34, 63, 102, 0.08);
+            --shadow-hover: 0 10px 24px rgba(34, 63, 102, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: var(--color-fill-4) transparent;
+        }
+
+        *::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        *::-webkit-scrollbar-thumb {
+            border-radius: 999px;
+            background: var(--color-fill-4);
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            min-width: 1440px;
+            min-height: 100%;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+
+        body {
+            color: var(--color-text-1);
+            background:
+                radial-gradient(circle at 12% 82%, rgba(198, 217, 244, 0.36) 0%, rgba(198, 217, 244, 0) 48%),
+                radial-gradient(circle at 86% 8%, rgba(189, 212, 243, 0.34) 0%, rgba(189, 212, 243, 0) 44%),
+                linear-gradient(180deg, #ECF3FA 0%, #EAF1F8 100%);
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        button,
+        input {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-header {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            height: 52px;
+            padding: 0 12px;
+            border-bottom: 1px solid #d6e0ee;
+            background: rgba(227, 237, 248, 0.88);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .brand img {
+            height: 22px;
+            width: auto;
+        }
+
+        .brand strong {
+            font-size: 14px;
+            font-weight: 500;
+            color: #4c5d74;
+        }
+
+        .main-nav {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .main-nav a {
+            height: 30px;
+            padding: 0 10px;
+            border-radius: 6px;
+            color: #4c5d74;
+            font-size: 13px;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .main-nav a:hover {
+            background: rgba(21, 90, 239, 0.04);
+            color: var(--color-primary);
+        }
+
+        .main-nav a.active {
+            color: var(--color-primary);
+            background: #eaf1ff;
+            font-weight: 600;
+            border: 1px solid #d8e6ff;
+        }
+
+        .nav-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.8;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .icon-action {
+            width: 24px;
+            height: 24px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #6c7f99;
+            font-size: 13px;
+        }
+
+        .avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #155AEF 0%, #4F8CFF 100%);
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 11px;
+        }
+
+        .admin-name {
+            color: #4f5f75;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .workspace {
+            padding: 10px;
+            min-height: calc(100vh - 52px);
+        }
+
+        .page-panel {
+            min-height: calc(100vh - 72px);
+            padding: 0;
+            border-radius: 0;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 10px;
+        }
+
+        .toolbar-group {
+            display: flex;
+            align-items: stretch;
+            gap: 6px;
+        }
+
+        .filter-box {
+            position: relative;
+        }
+
+        .filter-trigger {
+            min-width: 130px;
+            height: 30px;
+            padding: 0 10px;
+            border: 1px solid #d6e0ee;
+            border-radius: 4px;
+            background: #f8fbff;
+            color: #6f7f95;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 12px;
+        }
+
+        .filter-dropdown {
+            position: absolute;
+            top: 34px;
+            left: 0;
+            width: 180px;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid var(--color-border-1);
+            background: #ffffff;
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+            display: none;
+            z-index: 8;
+        }
+
+        .filter-dropdown.open {
+            display: block;
+        }
+
+        .filter-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--color-text-2);
+            font-size: 12px;
+        }
+
+        .filter-option:hover {
+            background: var(--color-fill-1);
+        }
+
+        .filter-option input {
+            margin: 0;
+        }
+
+        .search-combo {
+            display: flex;
+            align-items: stretch;
+            border: 1px solid #d6e0ee;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #f8fbff;
+            transition: all 0.2s ease;
+        }
+
+        .search-combo:focus-within {
+            border-color: #B9D0FF;
+            background: #ffffff;
+            box-shadow: 0 0 0 3px rgba(21, 90, 239, 0.08);
+        }
+
+        .search-shell {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-shell input {
+            width: 170px;
+            height: 30px;
+            padding: 0 10px;
+            border: none;
+            background: transparent;
+            outline: none;
+            color: var(--color-text-1);
+            font-size: 12px;
+        }
+
+        .search-button {
+            min-width: 34px;
+            border: none;
+            border-left: 1px solid #d6e0ee;
+            background: var(--color-primary);
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 12px;
+        }
+
+        .primary-button {
+            height: 30px;
+            padding: 0 16px;
+            border: none;
+            border-radius: 4px;
+            background: var(--color-primary);
+            color: #ffffff;
+            font-weight: 600;
+            box-shadow: none;
+            font-size: 13px;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        @media (max-width: 1500px) {
+            .card-grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+        }
+
+        .tool-card {
+            position: relative;
+            min-height: 116px;
+            padding: 10px 12px 9px;
+            border-radius: 10px;
+            background: #f6f8fc;
+            border: 1px solid #dbe4ef;
+            box-shadow: 0 2px 4px rgba(44, 58, 78, 0.04);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            cursor: pointer;
+        }
+
+        .tool-card:hover {
+            transform: none;
+            border-color: #bfd0e6;
+            box-shadow: 0 6px 16px rgba(44, 58, 78, 0.08);
+        }
+
+        .menu-wrap {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 3;
+        }
+
+        .menu-btn {
+            width: 22px;
+            height: 22px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #7c8ca4;
+            font-size: 15px;
+            line-height: 1;
+        }
+
+        .menu-btn:hover {
+            background: var(--color-fill-1);
+        }
+
+        .dropdown {
+            position: absolute;
+            top: 24px;
+            right: 0;
+            width: 118px;
+            padding: 6px;
+            border-radius: 8px;
+            border: 1px solid var(--color-border-1);
+            background: #ffffff;
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+            display: none;
+        }
+
+        .dropdown.open {
+            display: block;
+        }
+
+        .dropdown button {
+            width: 100%;
+            height: 30px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            text-align: left;
+            padding: 0 10px;
+            color: var(--color-text-2);
+            font-size: 12px;
+        }
+
+        .dropdown button:hover {
+            background: var(--color-fill-1);
+            color: var(--color-text-1);
+        }
+
+        .dropdown button.danger {
+            color: #E54D42;
+        }
+
+        .card-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-right: 16px;
+        }
+
+        .tool-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ff6f7d;
+            background: #ffecef;
+            border: 1px solid #ffd9df;
+            font-size: 11px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .card-title {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.3;
+            font-weight: 700;
+            color: #334861;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-desc {
+            margin: 8px 0 0;
+            min-height: 38px;
+            font-size: 12px;
+            line-height: 1.45;
+            color: var(--color-text-3);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .tag-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            line-height: 16px;
+            border: 1px solid transparent;
+        }
+
+        .tag-normal {
+            background: #f5f7fb;
+            color: #5f6f86;
+            border-color: #dde5f0;
+        }
+
+        .tag-blue {
+            background: #edf4ff;
+            color: #2f6bf2;
+            border-color: #d4e3ff;
+        }
+
+        .tag-green {
+            background: #f0fbec;
+            color: #58a63b;
+            border-color: #d8efcf;
+        }
+
+        .empty-state {
+            display: none;
+            min-height: 220px;
+            border: 1px dashed var(--color-border-3);
+            border-radius: 10px;
+            background: #f5f8fd;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            text-align: center;
+            color: var(--color-text-3);
+        }
+
+        .empty-state strong {
+            margin-bottom: 8px;
+            font-size: 16px;
+            color: var(--color-text-2);
+        }
+
+        .drawer-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.28);
+            display: none;
+            z-index: 35;
+        }
+
+        .drawer-mask.open {
+            display: block;
+        }
+
+        .drawer {
+            position: fixed;
+            top: 0;
+            right: -640px;
+            width: 600px;
+            height: 100vh;
+            background: #ffffff;
+            box-shadow: -20px 0 40px rgba(15, 23, 42, 0.16);
+            z-index: 36;
+            transition: right 0.25s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .drawer.open {
+            right: 0;
+        }
+
+        .drawer-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--color-border-1);
+        }
+
+        .drawer-head strong {
+            font-size: 18px;
+        }
+
+        .close-btn {
+            width: 34px;
+            height: 34px;
+            border: none;
+            border-radius: 10px;
+            background: var(--color-fill-1);
+            color: var(--color-text-2);
+            font-size: 18px;
+        }
+
+        .drawer-body {
+            flex: 1;
+            overflow: auto;
+            padding: 12px 16px 16px;
+            background: #f7f9fc;
+        }
+
+        .section {
+            margin-bottom: 14px;
+        }
+
+        .section-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .section-head strong {
+            font-size: 14px;
+        }
+
+        .section-badge {
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #eef3fa;
+            color: #5f6f86;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .content-box {
+            padding: 12px;
+            border-radius: 8px;
+            background: #eaf1fb;
+            border: 1px solid #dce7f5;
+            color: var(--color-text-2);
+            line-height: 1.6;
+            font-size: 13px;
+        }
+
+        .subtool-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: calc(100vh - 260px);
+            overflow-y: auto;
+            padding-right: 2px;
+        }
+
+        .subtool-item {
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #dbe7f5;
+            background: #eaf1fb;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .subtool-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            border: 1px solid #d7e3f4;
+            background: #ffffff;
+            color: #6d7f99;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .subtool-main {
+            min-width: 0;
+        }
+
+        .subtool-item strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 13px;
+            color: #2f4260;
+            word-break: break-all;
+        }
+
+        .subtool-item p {
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.55;
+            color: var(--color-text-3);
+        }
+
+        .toast-wrap {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            z-index: 40;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toast {
+            min-width: 220px;
+            padding: 12px 14px;
+            border-radius: 8px;
+            background: rgba(30, 37, 46, 0.94);
+            color: #ffffff;
+            font-size: 13px;
+            box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+            animation: fade-in 0.2s ease;
+        }
+
+        .modal-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.38);
+            z-index: 45;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+        }
+
+        .modal-mask.open {
+            display: flex;
+        }
+
+        .edit-modal {
+            width: min(1120px, calc(100vw - 40px));
+            max-height: calc(100vh - 40px);
+            border-radius: 8px;
+            border: 1px solid #d9e2ef;
+            background: #ffffff;
+            box-shadow: 0 20px 44px rgba(15, 23, 42, 0.28);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .edit-head {
+            height: 44px;
+            padding: 0 16px;
+            border-bottom: 1px solid #e2e8f2;
+            background: #f6f8fb;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 20px;
+            color: #2c3a4e;
+            font-weight: 600;
+        }
+
+        .edit-close {
+            width: 26px;
+            height: 26px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: #8796ac;
+            font-size: 20px;
+            line-height: 1;
+        }
+
+        .edit-main {
+            min-height: 0;
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 270px;
+            gap: 0;
+        }
+
+        .edit-left {
+            min-width: 0;
+            padding: 14px 14px 12px;
+            border-right: 1px solid #e2e8f2;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            overflow: auto;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 76px 1fr;
+            gap: 10px 8px;
+            align-items: center;
+        }
+
+        .f-label {
+            color: #4f6179;
+            font-size: 12px;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .f-label.required::before {
+            content: '* ';
+            color: #e45252;
+        }
+
+        .f-input,
+        .f-select {
+            width: 100%;
+            height: 30px;
+            border: 1px solid #d4ddea;
+            border-radius: 4px;
+            padding: 0 10px;
+            font-size: 12px;
+            color: #354a66;
+            background: #fff;
+            outline: none;
+        }
+
+        .f-input:focus,
+        .f-select:focus {
+            border-color: #8cb1ff;
+            box-shadow: 0 0 0 2px rgba(21, 90, 239, 0.12);
+        }
+
+        .vars-wrap {
+            margin-top: 4px;
+            border-top: 1px solid #ebeff5;
+            padding-top: 10px;
+        }
+
+        .vars-title {
+            font-size: 12px;
+            color: #4f6179;
+            margin: 0 0 8px;
+        }
+
+        .var-row {
+            display: grid;
+            grid-template-columns: 130px 1fr 58px 44px;
+            gap: 6px;
+            margin-bottom: 6px;
+            align-items: center;
+        }
+
+        .var-row .f-select,
+        .var-row .f-input {
+            height: 28px;
+            font-size: 12px;
+        }
+
+        .var-req {
+            font-size: 12px;
+            color: #8d9bb0;
+            text-align: center;
+        }
+
+        .var-op {
+            color: #8d9bb0;
+            font-size: 18px;
+            text-align: center;
+            user-select: none;
+        }
+
+        .edit-right {
+            min-width: 0;
+            padding: 14px 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: #f8fafd;
+        }
+
+        .ability-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #334861;
+            font-weight: 700;
+            padding: 0 4px;
+        }
+
+        .ability-num {
+            color: #8090a6;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .ability-list {
+            min-height: 0;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            padding-right: 2px;
+        }
+
+        .ability-item {
+            border: 1px solid #dbe7f5;
+            background: #eaf1fb;
+            border-radius: 8px;
+            padding: 8px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .ability-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            border: 1px solid #d5e0f1;
+            background: #ffffff;
+            color: #71839d;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .ability-main {
+            min-width: 0;
+        }
+
+        .ability-name {
+            margin: 0;
+            color: #2f4260;
+            font-size: 12px;
+            line-height: 1.4;
+            font-weight: 700;
+            word-break: break-all;
+        }
+
+        .ability-desc {
+            margin: 2px 0 0;
+            color: #6d7f99;
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .edit-foot {
+            height: 44px;
+            border-top: 1px solid #e2e8f2;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            background: #fff;
+        }
+
+        .btn-ghost,
+        .btn-ok {
+            min-width: 52px;
+            height: 26px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .btn-ghost {
+            border: 1px solid #cfd9e8;
+            background: #fff;
+            color: #5f6f86;
+        }
+
+        .btn-ok {
+            border: none;
+            background: #2b67f5;
+            color: #fff;
+        }
+
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="top-header">
+            <div class="brand">
+                <img src="../../../../web/public/logo-site.png" alt="BlueKing Lite">
+                <strong>BlueKing Lite</strong>
+            </div>
+            <nav class="main-nav">
+                <a href="../工作台/工作台.html"><span class="nav-dot"></span>工作台</a>
+                <a href="../智能体/智能体.html"><span class="nav-dot"></span>智能体</a>
+                <a href="../知识库/知识库.html"><span class="nav-dot"></span>知识库</a>
+                <a class="active" href="./工具.html"><span class="nav-dot"></span>工具</a>
+                <a href="../模型/模型.html"><span class="nav-dot"></span>模型</a>
+            </nav>
+            <div class="header-actions">
+                <button class="icon-action" type="button" data-toast="通知中心为原型占位。">◌</button>
+                <button class="icon-action" type="button" data-toast="列表功能为原型占位。">▤</button>
+                <div class="avatar">A</div>
+                <span class="admin-name">admin ∨</span>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <section class="page-panel">
+                <div class="toolbar">
+                    <div class="toolbar-group">
+                        <div class="filter-box">
+                            <button class="filter-trigger" id="filterTrigger" type="button">
+                                <span id="filterLabel">标签筛选</span>
+                                <span>▾</span>
+                            </button>
+                            <div class="filter-dropdown" id="filterDropdown"></div>
+                        </div>
+                        <div class="search-combo">
+                            <label class="search-shell">
+                                <input id="searchInput" type="text" placeholder="搜索......">
+                            </label>
+                            <button class="search-button" id="searchButton" type="button">⌕</button>
+                        </div>
+                        <button class="primary-button" id="addButton" type="button">新增</button>
+                    </div>
+                </div>
+
+                <div class="card-grid" id="cardGrid"></div>
+                <div class="empty-state" id="emptyState">
+                    <strong>未找到符合条件的工具</strong>
+                    <div>请调整筛选条件或搜索关键词后重试。</div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div class="drawer-mask" id="drawerMask"></div>
+    <aside class="drawer" id="detailDrawer">
+        <div class="drawer-head">
+            <strong id="drawerTitle">工具详情</strong>
+            <button class="close-btn" id="closeDrawer" type="button">×</button>
+        </div>
+        <div class="drawer-body">
+            <div class="section">
+                <div class="section-head">
+                    <strong>描述</strong>
+                </div>
+                <div class="content-box" id="drawerDescription"></div>
+            </div>
+            <div class="section">
+                <div class="section-head">
+                    <strong>工具能力</strong>
+                    <span class="section-badge" id="subtoolCount">0 个</span>
+                </div>
+                <div class="subtool-list" id="subtoolList"></div>
+            </div>
+        </div>
+    </aside>
+
+    <div class="toast-wrap" id="toastWrap"></div>
+
+    <div class="modal-mask" id="editMask">
+        <div class="edit-modal" role="dialog" aria-modal="true" aria-label="编辑工具">
+            <div class="edit-head">
+                <span>编辑</span>
+                <button class="edit-close" id="editClose" type="button">×</button>
+            </div>
+            <div class="edit-main">
+                <div class="edit-left">
+                    <div class="form-grid">
+                        <label class="f-label required" for="toolNameInput">名称</label>
+                        <input class="f-input" id="toolNameInput" type="text">
+
+                        <label class="f-label required" for="toolTagInput">标签</label>
+                        <input class="f-input" id="toolTagInput" type="text">
+
+                        <label class="f-label required" for="toolTypeInput">传输类型</label>
+                        <select class="f-select" id="toolTypeInput">
+                            <option>SSE</option>
+                            <option>HTTP</option>
+                            <option>STDIO</option>
+                        </select>
+
+                        <label class="f-label required" for="toolLinkInput">链接</label>
+                        <input class="f-input" id="toolLinkInput" type="text">
+                    </div>
+
+                    <div class="vars-wrap">
+                        <p class="vars-title">变量</p>
+                        <div id="varRows"></div>
+                    </div>
+                </div>
+                <div class="edit-right">
+                    <div class="ability-head">
+                        <span>工具能力</span>
+                        <span class="ability-num" id="editAbilityNum">共 0 个</span>
+                    </div>
+                    <div class="ability-list" id="editAbilityList"></div>
+                </div>
+            </div>
+            <div class="edit-foot">
+                <button class="btn-ghost" id="editCancel" type="button">Cancel</button>
+                <button class="btn-ok" id="editOk" type="button">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const filterOptions = [
+            { value: 'search', label: '搜索' },
+            { value: 'general', label: '通用' },
+            { value: 'maintenance', label: '运维' },
+            { value: 'collaboration', label: '协作' },
+            { value: 'media', label: '媒体' },
+            { value: 'other', label: '其他' }
+        ];
+
+        const tools = [
+            {
+                id: 'tool-1',
+                name: 'redis',
+                description: 'Redis 运维工具模块',
+                detail: '这个模块提供 Redis 相关的内置工具集，包含字符串、哈希、列表、集合、有序集合、流、JSON、查询引擎和服务管理等能力。',
+                capabilityTotal: 76,
+                tags: ['other', 'general'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'redis_append', description: '向已有 Redis string 末尾追加字符。' },
+                    { name: 'redis_client_list', description: '获取当前连接到 Redis 的客户端列表。' },
+                    { name: 'redis_create_vector_index_hash', description: '为 Redis hash 创建 HNSW 向量索引。' },
+                    { name: 'redis_dbsize', description: '获取当前 Redis 数据库中的 key 总数。' },
+                    { name: 'redis_delete', description: '删除指定 key。' },
+                    { name: 'redis_exists', description: '检查指定 key 是否存在。' },
+                    { name: 'redis_expire', description: '为指定 key 设置过期时间（秒）。' },
+                    { name: 'redis_flushdb', description: '清空当前 Redis 数据库，必须显式 confirm=True。' },
+                    { name: 'redis_get', description: '读取指定 Redis string key 的值。' },
+                    { name: 'redis_get_index_info', description: '获取指定 Redis 搜索索引的详细信息。' }
+                ]
+            },
+            {
+                id: 'tool-2',
+                name: 'elasticsearch',
+                description: 'Elasticsearch 运维工具模块',
+                detail: '这个模块提供 Elasticsearch 相关内置工具，包含集群状态、索引生命周期、文档查询与 mapping 管理。',
+                tags: ['other', 'general'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'es_cluster_health', description: '查看 ES 集群健康状态。' },
+                    { name: 'es_search', description: '执行 ES 检索查询。' }
+                ]
+            },
+            {
+                id: 'tool-3',
+                name: 'mssql',
+                description: 'MSSQL 运维工具模块',
+                detail: '这个模块包含 MSSQL 相关运维函数，支持资源查询、基础运行项检查和动态 SQL 查询等能力。',
+                tags: ['other', 'general'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'mssql_query', description: '执行 SQL 查询。' },
+                    { name: 'mssql_tables', description: '查看数据库表信息。' }
+                ]
+            },
+            {
+                id: 'tool-4',
+                name: 'cmdb',
+                description: 'cmdb 工具集。',
+                detail: '提供 CMDB 基础查询能力，覆盖主机、模块、集群和拓扑对象查询。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'cmdb_search_host', description: '检索主机与资产信息。' },
+                    { name: 'cmdb_search_set', description: '查询业务拓扑集合信息。' }
+                ]
+            },
+            {
+                id: 'tool-5',
+                name: 'WeOpsMCP',
+                description: 'WeOps mcp 开放能力工具。',
+                detail: '对接 WeOps 平台开放能力，提供资源查询、任务触发和执行状态追踪。',
+                tags: ['maintenance', 'general'],
+                tagLabels: ['运维'],
+                isBuildIn: false,
+                icon: '🧰',
+                subtools: [
+                    { name: 'weops_query', description: '查询 WeOps 平台资源。' },
+                    { name: 'weops_command', description: '执行自动化命令。' }
+                ]
+            },
+            {
+                id: 'tool-6',
+                name: 'weops知识库',
+                description: 'weops知识库集成mcp',
+                detail: '用于接入 WeOps 知识库，支持检索和问答。',
+                tags: ['search'],
+                tagLabels: ['搜索'],
+                isBuildIn: false,
+                icon: '🧰',
+                subtools: [
+                    { name: 'weops_kb_search', description: '检索 WeOps 知识库。' },
+                    { name: 'weops_kb_qa', description: '基于知识库回答问题。' }
+                ]
+            },
+            {
+                id: 'tool-7',
+                name: 'browser_use',
+                description: '浏览器操作工具模块，提供自动化浏览器能力，支持页面访问、点击、表单填写等。',
+                detail: 'Browser-Use 浏览器自动化工具，支持页面访问、元素操作和流程化回放。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'browser_open', description: '打开页面。' },
+                    { name: 'browser_click', description: '点击页面元素。' }
+                ]
+            },
+            {
+                id: 'tool-8',
+                name: 'ssh',
+                description: 'SSH 远程操作工具模块，提供 connection、command 等能力。',
+                detail: '提供 SSH 连接与命令执行能力，支持远程诊断与批量执行。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'ssh_connect', description: '连接到远程主机。' },
+                    { name: 'ssh_exec', description: '执行远程命令。' }
+                ]
+            },
+            {
+                id: 'tool-9',
+                name: 'postgres',
+                description: 'PostgreSQL 运维工具模块，支持资源查询与动态 SQL。',
+                detail: 'PostgreSQL 相关运维与检索能力，支持 SQL 执行与统计视图读取。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'pg_query', description: '执行 PostgreSQL 查询。' },
+                    { name: 'pg_stats', description: '查看数据库统计信息。' }
+                ]
+            },
+            {
+                id: 'tool-10',
+                name: 'fetch',
+                description: 'Fetch 工具模块，支持 HTTP 请求与结果解析。',
+                detail: '用于发起标准 HTTP 请求并解析结果，支持 GET、POST、PUT 等方法。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'http_get', description: '发送 GET 请求。' },
+                    { name: 'http_post', description: '发送 POST 请求。' }
+                ]
+            },
+            {
+                id: 'tool-11',
+                name: 'shell',
+                description: 'Shell 工具模块，可执行命令并收集结果。',
+                detail: '执行 Linux Shell 命令并返回结果，适用于巡检与自动化脚本。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'shell_exec', description: '执行命令。' },
+                    { name: 'shell_script', description: '执行脚本。' }
+                ]
+            },
+            {
+                id: 'tool-12',
+                name: 'python',
+                description: 'Python 工具模块，支持执行 Python 代码任务。',
+                detail: '用于执行 Python 代码、脚本及表达式，支持常见数据处理任务。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'python_exec', description: '执行 Python 代码。' },
+                    { name: 'python_eval', description: '计算表达式。' }
+                ]
+            },
+            {
+                id: 'tool-13',
+                name: 'kubernetes',
+                description: 'Kubernetes 工具模块，涵盖资源查询与诊断能力。',
+                detail: '覆盖 Kubernetes 常见资源查询、诊断与事件分析能力。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'k8s_get', description: '查询集群资源。' },
+                    { name: 'k8s_describe', description: '查看资源详情。' }
+                ]
+            },
+            {
+                id: 'tool-14',
+                name: 'jenkins',
+                description: 'Jenkins 工具模块，支持查询任务、触发构建等操作。',
+                detail: '支持 Jenkins 任务检索、构建触发和构建日志查询。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'jenkins_jobs', description: '查询 Jenkins 任务。' },
+                    { name: 'jenkins_build', description: '触发构建。' }
+                ]
+            },
+            {
+                id: 'tool-15',
+                name: 'github',
+                description: 'GitHub 工具模块，支持提交、查询仓库信息和 issue。',
+                detail: '支持 GitHub 提交、仓库元数据与 Issue 查询。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'github_commits', description: '查询提交记录。' },
+                    { name: 'github_issues', description: '查看 issue 列表。' }
+                ]
+            },
+            {
+                id: 'tool-16',
+                name: 'duckduckgo',
+                description: '搜索工具模块，封装 DuckDuckGo 常用查询能力。',
+                detail: '提供 DuckDuckGo Web 检索能力。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'duckduckgo_search', description: '执行 DuckDuckGo 搜索。' },
+                    { name: 'duckduckgo_news', description: '检索新闻结果。' }
+                ]
+            },
+            {
+                id: 'tool-17',
+                name: 'current_time',
+                description: '日期时间工具模块，支持系统时间与时区转换。',
+                detail: '用于获取当前系统时间并进行时区转换。',
+                tags: ['other'],
+                tagLabels: ['其他'],
+                isBuildIn: true,
+                icon: '🧰',
+                subtools: [
+                    { name: 'get_current_time', description: '获取当前时间。' },
+                    { name: 'convert_timezone', description: '执行时区转换。' }
+                ]
+            },
+            {
+                id: 'tool-18',
+                name: '可视化图表-MCP-Server',
+                description: '一套用于 TypeScript 的 MCP 服务，提供图表生成能力。',
+                detail: '提供基于 TypeScript 的图表渲染服务，支持配置驱动式图表生成。',
+                tags: ['maintenance'],
+                tagLabels: ['运维'],
+                isBuildIn: false,
+                icon: '🧰',
+                subtools: [
+                    { name: 'chart_render', description: '渲染图表配置。' },
+                    { name: 'chart_export', description: '导出图表图片。' }
+                ]
+            },
+            {
+                id: 'tool-19',
+                name: '必应搜索',
+                description: '一个基于 MCP 的文本检索工具，可让 Claude 等模型进行搜索。',
+                detail: '基于 MCP 的 Bing 检索工具，支持网页与新闻搜索。',
+                tags: ['search'],
+                tagLabels: ['搜索'],
+                isBuildIn: false,
+                icon: '🧰',
+                subtools: [
+                    { name: 'bing_search', description: '执行必应搜索。' },
+                    { name: 'bing_news', description: '查询新闻检索结果。' }
+                ]
+            }
+        ];
+
+        const state = {
+            keyword: '',
+            selectedTags: [],
+            openMenuId: null,
+            filterOpen: false,
+            selectedToolId: null
+        };
+
+        const cardGrid = document.getElementById('cardGrid');
+        const emptyState = document.getElementById('emptyState');
+        const filterDropdown = document.getElementById('filterDropdown');
+        const filterLabel = document.getElementById('filterLabel');
+        const drawerMask = document.getElementById('drawerMask');
+        const detailDrawer = document.getElementById('detailDrawer');
+        const toastWrap = document.getElementById('toastWrap');
+        const editMask = document.getElementById('editMask');
+        const editClose = document.getElementById('editClose');
+        const editCancel = document.getElementById('editCancel');
+        const editOk = document.getElementById('editOk');
+        const toolNameInput = document.getElementById('toolNameInput');
+        const toolTagInput = document.getElementById('toolTagInput');
+        const toolTypeInput = document.getElementById('toolTypeInput');
+        const toolLinkInput = document.getElementById('toolLinkInput');
+        const editAbilityNum = document.getElementById('editAbilityNum');
+        const editAbilityList = document.getElementById('editAbilityList');
+        const varRows = document.getElementById('varRows');
+
+        function renderVarRows(tool) {
+            const preset = tool.name === 'redis'
+                ? [
+                    { type: '文本', key: 'url', req: true },
+                    { type: '文本', key: 'username', req: true },
+                    { type: '密码', key: 'password', req: true },
+                    { type: '复选框', key: 'ssl', req: false },
+                    { type: '文本', key: 'ssl_ca_path', req: false },
+                    { type: '文本', key: 'ssl_keyfile', req: false }
+                ]
+                : [
+                    { type: '文本', key: 'url', req: true },
+                    { type: '文本', key: 'token', req: true },
+                    { type: '文本', key: 'namespace', req: false }
+                ];
+
+            varRows.innerHTML = preset.map((row) => `
+                <div class="var-row">
+                    <select class="f-select" disabled>
+                        <option>${row.type}</option>
+                    </select>
+                    <input class="f-input" type="text" value="${row.key}" disabled>
+                    <span class="var-req">${row.req ? '必填项' : ''}</span>
+                    <span class="var-op">+</span>
+                </div>
+            `).join('');
+        }
+
+        function openEditModal(tool) {
+            toolNameInput.value = tool.name || '';
+            toolTagInput.value = (tool.tagLabels || []).join('、') || '其他';
+            toolTypeInput.value = 'SSE';
+            toolLinkInput.value = tool.name === 'redis' ? 'langchainredis' : tool.name.toLowerCase();
+            editAbilityNum.textContent = `共 ${tool.capabilityTotal || tool.subtools.length} 个`;
+            editAbilityList.innerHTML = tool.subtools.map((sub) => `
+                <div class="ability-item">
+                    <span class="ability-icon">🧰</span>
+                    <div class="ability-main">
+                        <p class="ability-name">${sub.name}</p>
+                        <p class="ability-desc">${sub.description}</p>
+                    </div>
+                </div>
+            `).join('');
+            renderVarRows(tool);
+            editMask.classList.add('open');
+        }
+
+        function closeEditModal() {
+            editMask.classList.remove('open');
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            toastWrap.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                toast.style.transition = 'all 0.2s ease';
+                setTimeout(() => toast.remove(), 200);
+            }, 2200);
+        }
+
+        function getFilteredTools() {
+            const keyword = state.keyword.trim().toLowerCase();
+            return tools.filter((item) => {
+                const matchesKeyword = !keyword || item.name.toLowerCase().includes(keyword) || item.description.toLowerCase().includes(keyword);
+                const matchesTags = state.selectedTags.length === 0 || item.tags.some((tag) => state.selectedTags.includes(tag));
+                return matchesKeyword && matchesTags;
+            });
+        }
+
+        function renderFilterDropdown() {
+            filterDropdown.className = `filter-dropdown ${state.filterOpen ? 'open' : ''}`;
+            filterDropdown.innerHTML = filterOptions.map((option) => `
+                <label class="filter-option">
+                    <input type="checkbox" value="${option.value}" ${state.selectedTags.includes(option.value) ? 'checked' : ''}>
+                    <span>${option.label}</span>
+                </label>
+            `).join('');
+
+            const selectedLabels = filterOptions.filter((item) => state.selectedTags.includes(item.value)).map((item) => item.label);
+            filterLabel.textContent = selectedLabels.length > 0 ? selectedLabels.join('、') : '标签筛选';
+        }
+
+        function renderCard(item) {
+            const dropdownOpen = state.openMenuId === item.id ? 'open' : '';
+            return `
+                <article class="tool-card" data-action="open-card" data-id="${item.id}">
+                    <div class="menu-wrap">
+                        <button class="menu-btn" type="button" data-action="toggle-menu" data-id="${item.id}">⋯</button>
+                        <div class="dropdown ${dropdownOpen}">
+                            <button type="button" data-action="edit" data-id="${item.id}">编辑</button>
+                            <button type="button" class="danger" data-action="delete" data-id="${item.id}">删除</button>
+                        </div>
+                    </div>
+                    <div class="card-head">
+                        <div class="tool-icon">${item.icon}</div>
+                        <h3 class="card-title">${item.name}</h3>
+                    </div>
+                    <p class="card-desc">${item.description}</p>
+                    <div class="tag-row">
+                        ${item.tagLabels.map((tag) => `<span class="tag tag-normal">${tag}</span>`).join('')}
+                        <span class="tag ${item.isBuildIn ? 'tag-blue' : 'tag-green'}">${item.isBuildIn ? '内置' : 'MCP'}</span>
+                    </div>
+                </article>
+            `;
+        }
+
+        function renderDrawer() {
+            const tool = tools.find((item) => item.id === state.selectedToolId);
+            const open = Boolean(tool);
+            drawerMask.className = `drawer-mask ${open ? 'open' : ''}`;
+            detailDrawer.className = `drawer ${open ? 'open' : ''}`;
+
+            if (!tool) return;
+
+            document.getElementById('drawerTitle').textContent = `工具 - ${tool.name}`;
+            document.getElementById('drawerDescription').textContent = `${tool.description}\n\n${tool.detail || ''}`.trim();
+            document.getElementById('subtoolCount').textContent = `共 ${tool.capabilityTotal || tool.subtools.length} 个`;
+            document.getElementById('subtoolList').innerHTML = tool.subtools.map((sub) => `
+                <div class="subtool-item">
+                    <span class="subtool-icon">🧰</span>
+                    <div class="subtool-main">
+                        <strong>${sub.name}</strong>
+                        <p>${sub.description}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function render() {
+            const data = getFilteredTools();
+            cardGrid.innerHTML = data.map(renderCard).join('');
+            emptyState.style.display = data.length === 0 ? 'flex' : 'none';
+            cardGrid.style.display = data.length === 0 ? 'none' : 'grid';
+            renderFilterDropdown();
+            renderDrawer();
+        }
+
+        document.addEventListener('click', (event) => {
+            const target = event.target.closest('[data-action], [data-toast]');
+            const clickedMenu = event.target.closest('.dropdown');
+            const clickedMenuButton = event.target.closest('[data-action="toggle-menu"]');
+            const clickedFilter = event.target.closest('.filter-box');
+
+            if (!clickedMenu && !clickedMenuButton && state.openMenuId !== null) {
+                state.openMenuId = null;
+                render();
+            }
+
+            if (!clickedFilter && state.filterOpen) {
+                state.filterOpen = false;
+                renderFilterDropdown();
+            }
+
+            if (!target) return;
+
+            if (target.dataset.toast) {
+                showToast(target.dataset.toast);
+                return;
+            }
+
+            const action = target.dataset.action;
+            const id = target.dataset.id;
+            const tool = tools.find((item) => item.id === id);
+
+            if (action === 'toggle-menu') {
+                event.stopPropagation();
+                state.openMenuId = state.openMenuId === id ? null : id;
+                render();
+                return;
+            }
+
+            if (action === 'edit') {
+                event.stopPropagation();
+                if (tool) {
+                    openEditModal(tool);
+                }
+                state.openMenuId = null;
+                render();
+                return;
+            }
+
+            if (action === 'delete') {
+                event.stopPropagation();
+                showToast('这里仅模拟删除入口，不执行真实删除。');
+                state.openMenuId = null;
+                render();
+                return;
+            }
+
+            if (action === 'open-card' && tool) {
+                state.selectedToolId = tool.id;
+                renderDrawer();
+            }
+        });
+
+        document.getElementById('filterTrigger').addEventListener('click', () => {
+            state.filterOpen = !state.filterOpen;
+            renderFilterDropdown();
+        });
+
+        filterDropdown.addEventListener('change', (event) => {
+            if (event.target.matches('input[type="checkbox"]')) {
+                const value = event.target.value;
+                if (event.target.checked) {
+                    if (!state.selectedTags.includes(value)) state.selectedTags.push(value);
+                } else {
+                    state.selectedTags = state.selectedTags.filter((item) => item !== value);
+                }
+                render();
+            }
+        });
+
+        document.getElementById('searchInput').addEventListener('input', (event) => {
+            state.keyword = event.target.value;
+            render();
+        });
+
+        document.getElementById('searchButton').addEventListener('click', () => {
+            render();
+        });
+
+        document.getElementById('addButton').addEventListener('click', () => {
+            showToast('当前原型先展示主列表页，新增工具弹窗未展开。');
+        });
+
+        editClose.addEventListener('click', closeEditModal);
+        editCancel.addEventListener('click', closeEditModal);
+        editOk.addEventListener('click', () => {
+            closeEditModal();
+            showToast('工具配置已保存（原型）。');
+        });
+
+        editMask.addEventListener('click', (event) => {
+            if (event.target === editMask) {
+                closeEditModal();
+            }
+        });
+
+        document.getElementById('closeDrawer').addEventListener('click', () => {
+            state.selectedToolId = null;
+            renderDrawer();
+        });
+
+        drawerMask.addEventListener('click', () => {
+            state.selectedToolId = null;
+            renderDrawer();
+        });
+
+        render();
+    </script>
+</body>
+</html>

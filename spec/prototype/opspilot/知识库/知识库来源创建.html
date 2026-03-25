@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsPilot - 来源创建</title>
+    <style>
+        :root {
+            --color-primary: #2b5bff;
+            --color-border: #dde5f0;
+            --color-text-1: #1f2d3d;
+            --color-text-2: #5a6c85;
+            --color-text-3: #8a9ab0;
+            --bg-page: #f2f5fb;
+        }
+
+        * { box-sizing: border-box; }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg-page);
+            color: var(--color-text-1);
+        }
+
+        a { color: inherit; text-decoration: none; }
+        button { font: inherit; }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            height: 52px;
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #e5ebf4;
+            background: #edf3fb;
+        }
+
+        .brand {
+            min-width: 230px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #5a6880;
+        }
+
+        .brand img { width: 20px; height: 20px; }
+
+        .switcher {
+            margin-left: 4px;
+            border: 1px solid var(--color-border);
+            color: #6f7f95;
+            background: #f7faff;
+            border-radius: 8px;
+            width: 22px;
+            height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .main-nav {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+
+        .main-nav a {
+            height: 32px;
+            padding: 0 12px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: #4f5e73;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .main-nav a.active {
+            color: var(--color-primary);
+            background: #e5efff;
+            font-weight: 600;
+        }
+
+        .header-actions {
+            min-width: 220px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 4px;
+            color: #6f7f95;
+            font-size: 13px;
+        }
+
+        .avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .workspace {
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            min-height: calc(100vh - 52px);
+        }
+
+        .left-menu {
+            width: 148px;
+            background: #fff;
+            border: 1px solid #d8dfe8;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 14px 10px;
+        }
+
+        .menu-top h3 {
+            margin: 0;
+            font-size: 24px;
+            line-height: 1.2;
+            color: #2d3e56;
+            font-weight: 700;
+        }
+
+        .menu-sub {
+            margin-top: 6px;
+            font-size: 11px;
+            line-height: 1.5;
+            color: #8293ab;
+            min-height: 32px;
+        }
+
+        .menu-item {
+            margin-top: 10px;
+            height: 30px;
+            border-radius: 6px;
+            color: #4f5f75;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            cursor: pointer;
+        }
+
+        .menu-item.active {
+            background: #eaf1ff;
+            color: var(--color-primary);
+            font-weight: 600;
+        }
+
+        .back-btn {
+            width: 100%;
+            height: 30px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #6e7f98;
+            text-align: left;
+            padding-left: 6px;
+            cursor: pointer;
+        }
+
+        .main {
+            flex: 1;
+            border: 1px solid #d8dfe8;
+            border-radius: 8px;
+            background: #fff;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .crumb {
+            font-size: 12px;
+            color: #6f7f95;
+            margin-bottom: 12px;
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 14px;
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #98a8bb;
+            font-size: 14px;
+        }
+
+        .step::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e6edf6;
+        }
+
+        .step:last-child::after { display: none; }
+
+        .step-index {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #eef2f7;
+            color: #97a7ba;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .step.active {
+            color: #3c5370;
+            font-weight: 600;
+        }
+
+        .step.active .step-index {
+            background: var(--color-primary);
+            color: #fff;
+        }
+
+        .step.completed {
+            color: #3c5370;
+            font-weight: 600;
+        }
+
+        .step.completed::after {
+            background: #2b5bff;
+        }
+
+        .step.completed .step-index {
+            background: #dfe9ff;
+            color: #2b5bff;
+        }
+
+        .content-section {
+            display: none;
+        }
+
+        .content-section.active {
+            display: block;
+        }
+
+        .upload-box {
+            border: 1px dashed #7ea7ff;
+            border-radius: 8px;
+            min-height: 108px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #61758f;
+            gap: 6px;
+            margin-top: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .upload-box:hover {
+            background: #f8fbff;
+        }
+
+        .upload-icon {
+            font-size: 28px;
+            line-height: 1;
+            color: var(--color-primary);
+        }
+
+        .upload-title {
+            font-size: 16px;
+            color: #2f4764;
+            font-weight: 500;
+        }
+
+        .upload-hint {
+            font-size: 12px;
+            color: #8a9ab0;
+        }
+
+        .uploaded-list {
+            margin: 10px 0 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .uploaded-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #3f5069;
+        }
+
+        .uploaded-file-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #9aa9bc;
+            display: inline-block;
+        }
+
+        .extract-wrap {
+            margin-top: 6px;
+            border: 1px solid #e8edf5;
+            border-radius: 6px;
+            overflow: auto;
+        }
+
+        .extract-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            min-width: 720px;
+        }
+
+        .extract-table thead {
+            background: #f7f9fd;
+            color: #5d6e86;
+        }
+
+        .extract-table th,
+        .extract-table td {
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid #edf1f7;
+            white-space: nowrap;
+        }
+
+        .extract-link {
+            color: #2b5bff;
+            cursor: pointer;
+        }
+
+        .foot {
+            margin-top: auto;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding-top: 12px;
+        }
+
+        .prev-btn {
+            border: 1px solid #d5dce6;
+            background: #fff;
+            color: #7a8aa0;
+            border-radius: 6px;
+            width: 54px;
+            height: 24px;
+            font-size: 12px;
+            cursor: pointer;
+            display: none;
+        }
+
+        .next-btn {
+            border: 1px solid #d5dce6;
+            background: #f3f5f8;
+            color: #a8b3c2;
+            border-radius: 6px;
+            width: 54px;
+            height: 24px;
+            font-size: 12px;
+            cursor: not-allowed;
+        }
+
+        .next-btn.active {
+            border-color: #2b5bff;
+            background: #2b5bff;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .extract-modal-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.35);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 120;
+        }
+
+        .extract-modal-mask.active {
+            display: flex;
+        }
+
+        .extract-modal {
+            width: 472px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 12px 28px rgba(31, 45, 61, 0.24);
+            overflow: hidden;
+        }
+
+        .extract-modal-head {
+            height: 44px;
+            background: #f5f8fd;
+            border-bottom: 1px solid #e6edf6;
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: #334a65;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .extract-close {
+            border: none;
+            background: transparent;
+            color: #8b9bb0;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .extract-modal-body {
+            padding: 12px;
+        }
+
+        .extract-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #3c5370;
+            margin-bottom: 8px;
+        }
+
+        .extract-select {
+            width: 100%;
+            height: 32px;
+            border: 1px solid #d6deea;
+            border-radius: 6px;
+            color: #4f637e;
+            font-size: 13px;
+            padding: 0 10px;
+            background: #fff;
+            margin-bottom: 10px;
+        }
+
+        .ocr-block {
+            border: 1px solid #dbe3ef;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .ocr-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            color: #3b4f69;
+            margin-bottom: 6px;
+        }
+
+        .ocr-tip {
+            font-size: 11px;
+            color: #8a9ab0;
+            line-height: 1.5;
+        }
+
+        .ocr-switch {
+            width: 22px;
+            height: 12px;
+            border-radius: 999px;
+            background: #cfd8e4;
+            position: relative;
+        }
+
+        .ocr-switch::after {
+            content: '';
+            position: absolute;
+            left: 1px;
+            top: 1px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #fff;
+        }
+
+        .extract-desc {
+            border: 1px solid #e1e8f2;
+            border-radius: 6px;
+            padding: 10px;
+        }
+
+        .extract-desc-title {
+            font-size: 12px;
+            color: #5a6c85;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .extract-desc ul {
+            margin: 0;
+            padding-left: 16px;
+            font-size: 11px;
+            color: #7b8ca3;
+            line-height: 1.6;
+        }
+
+        .extract-demo {
+            margin-top: 8px;
+            height: 148px;
+            border-radius: 6px;
+            background: #f4f6fa;
+            border: 1px solid #e4ebf5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #8a9ab0;
+            font-size: 12px;
+        }
+
+        .extract-modal-foot {
+            padding: 10px 12px 12px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .preprocess-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .chunk-cards {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .chunk-card {
+            border: 1px solid #dce5f1;
+            border-radius: 8px;
+            padding: 12px 10px;
+            color: #516781;
+            background: #fff;
+            min-height: 72px;
+        }
+
+        .chunk-card.active {
+            border-color: #5f8fff;
+            box-shadow: inset 0 0 0 1px #5f8fff;
+            background: #f1f6ff;
+        }
+
+        .chunk-card-title {
+            font-size: 14px;
+            color: #334a65;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .chunk-card-desc {
+            font-size: 11px;
+            color: #7a8da6;
+            line-height: 1.5;
+        }
+
+        .panel-box {
+            border: 1px solid #e1e8f2;
+            border-radius: 8px;
+            background: #fff;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+
+        .panel-title {
+            font-size: 14px;
+            color: #334a65;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .param-label {
+            font-size: 12px;
+            color: #5e728c;
+            margin-bottom: 6px;
+        }
+
+        .param-input {
+            width: 100%;
+            height: 32px;
+            border: 1px solid #d5deea;
+            border-radius: 6px;
+            padding: 0 10px;
+            font-size: 13px;
+            color: #425773;
+        }
+
+        .example-box {
+            border: 1px solid #e1e8f2;
+            border-radius: 8px;
+            background: #fff;
+            padding: 12px;
+        }
+
+        .example-text {
+            font-size: 11px;
+            color: #7b8ca3;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+
+        .example-image {
+            height: 150px;
+            border: 1px dashed #c6d6ef;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #91a1b6;
+            font-size: 12px;
+            background: #f8fbff;
+        }
+
+        .preview-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .preview-empty {
+            height: 330px;
+            border: 1px solid #e1e8f2;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            color: #8ea0b7;
+        }
+
+        .preview-empty-icon {
+            font-size: 36px;
+            line-height: 1;
+        }
+
+        .preview-empty-text {
+            font-size: 13px;
+        }
+
+        .finish-wrap {
+            min-height: 470px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 88px;
+        }
+
+        .finish-card {
+            text-align: center;
+            color: #5f7190;
+        }
+
+        .finish-icon {
+            font-size: 48px;
+            line-height: 1;
+            margin-bottom: 12px;
+        }
+
+        .finish-text {
+            font-size: 14px;
+            color: #4d617d;
+            margin-bottom: 4px;
+        }
+
+        .finish-links {
+            font-size: 13px;
+        }
+
+        .finish-links a {
+            color: #2b5bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="top-header">
+            <div class="brand">
+                <img src="../../../../web/public/logo-site.png" alt="BlueKing Lite">
+                <strong>BlueKing Lite</strong>
+                <span class="switcher">◆</span>
+            </div>
+            <nav class="main-nav">
+                <a href="../工作台/工作台.html">工作台</a>
+                <a href="../智能体/智能体.html">智能体</a>
+                <a class="active" href="./知识库.html">知识库</a>
+                <a href="../工具/工具.html">工具</a>
+                <a href="../模型/模型.html">模型</a>
+            </nav>
+            <div class="header-actions">
+                <span class="avatar">A</span>
+                <span>admin ▾</span>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <aside class="left-menu">
+                <div class="menu-top">
+                    <h3 id="kbTitle">知识库</h3>
+                    <div class="menu-sub" id="kbDesc">知识库详情页</div>
+                    <div class="menu-item active">◉ 文档</div>
+                    <div class="menu-item">◎ 测试</div>
+                    <div class="menu-item">⚙ 设置</div>
+                    <div class="menu-item">≋ 接口</div>
+                </div>
+                <button class="back-btn" id="backBtn" type="button">←</button>
+            </aside>
+
+            <main class="main">
+                <div class="crumb" id="crumbText">知识 / 本地文件 / 创建</div>
+
+                <div class="steps">
+                    <div class="step active" id="step1"><span class="step-index" id="step1Index">1</span><span>选择</span></div>
+                    <div class="step" id="step2"><span class="step-index" id="step2Index">2</span><span>提取</span></div>
+                    <div class="step" id="step3"><span class="step-index">3</span><span>预处理</span></div>
+                    <div class="step" id="step4"><span class="step-index">4</span><span>完成</span></div>
+                </div>
+
+                <section class="content-section active" id="step1Section">
+                    <div class="upload-box">
+                        <div class="upload-icon">⤴</div>
+                        <div class="upload-title">点击或拖动文件到此处上传</div>
+                        <div class="upload-hint" id="uploadHint">支持 .docx .pdf .xlsx .pptx .ppt .txt .csv .md .jpg .jpeg .png .webp...</div>
+                    </div>
+                    <ul class="uploaded-list" id="uploadedList"></ul>
+                </section>
+
+                <section class="content-section" id="step2Section">
+                    <div class="extract-wrap">
+                        <table class="extract-table">
+                            <thead>
+                                <tr>
+                                    <th>名称</th>
+                                    <th>提取方式</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td id="extractName">001-200.pdf</td>
+                                    <td>全文提取</td>
+                                    <td><span class="extract-link">配置</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="content-section" id="step3Section">
+                    <div class="chunk-cards">
+                        <div class="chunk-card">
+                            <div class="chunk-card-title">定长分块</div>
+                            <div class="chunk-card-desc">按固定长度进行分块。</div>
+                        </div>
+                        <div class="chunk-card">
+                            <div class="chunk-card-title">循环分块</div>
+                            <div class="chunk-card-desc">在区块间增加重叠提升上下文相关性。</div>
+                        </div>
+                        <div class="chunk-card">
+                            <div class="chunk-card-title">语义分块</div>
+                            <div class="chunk-card-desc">基于语义边界进行智能切分。</div>
+                        </div>
+                        <div class="chunk-card active">
+                            <div class="chunk-card-title">不分块</div>
+                            <div class="chunk-card-desc">将整段文本作为一块，不做切片。</div>
+                        </div>
+                    </div>
+
+                    <div class="preprocess-layout">
+                        <div>
+                            <div class="example-box">
+                                <div class="panel-title" style="margin-bottom:8px;">分块示例</div>
+                                <div class="example-text">说明</div>
+                                <div class="example-text">适用格式: 短文本（邮件、摘要）、小型文件（单页 PPT、简单表格、短文 TXT）。</div>
+                                <div class="example-text">方法: 直接把整篇文本作为一个块，不进行任何切分。</div>
+                                <div class="example-text">简介: 保持全文语义完整，适合需要整体理解的场景。</div>
+                                <div class="example-image">No chunking</div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="preview-head">
+                                <div class="panel-title" style="margin-bottom:0;">预览</div>
+                                <button class="next-btn active" type="button" style="width:68px;height:26px;">查看块</button>
+                            </div>
+                            <div class="preview-empty">
+                                <div class="preview-empty-icon">🖨️</div>
+                                <div class="preview-empty-text">无结果</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="content-section" id="step4Section">
+                    <div class="finish-wrap">
+                        <div class="finish-card">
+                            <div class="finish-icon">🎉</div>
+                            <div class="finish-text">所有上传的文件将会被加入训练队列，请在左侧查看训练进度。</div>
+                            <div class="finish-links">
+                                <a href="./知识库详情.html?tab=document">返回文档列表</a>
+                                或
+                                <a href="./知识库详情.html?tab=test">前往测试</a>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="foot">
+                    <button class="prev-btn" id="prevBtn" type="button">上一步</button>
+                    <button class="next-btn" id="nextBtn" type="button">下一步</button>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div class="extract-modal-mask" id="extractModalMask">
+        <div class="extract-modal" role="dialog" aria-modal="true" aria-labelledby="extractModalTitle">
+            <div class="extract-modal-head">
+                <span id="extractModalTitle">选择提取方式</span>
+                <button class="extract-close" id="extractModalClose" type="button">×</button>
+            </div>
+            <div class="extract-modal-body">
+                <div class="extract-label">提取方式</div>
+                <select class="extract-select">
+                    <option selected>全文提取</option>
+                    <option>章节提取</option>
+                    <option>行级提取</option>
+                </select>
+
+                <div class="ocr-block">
+                    <div class="ocr-row">
+                        <span>OCR增强</span>
+                        <span class="ocr-switch"></span>
+                    </div>
+                    <div class="ocr-tip">OCR（光学字符识别）技术用于识别和提取图片中的文本转换为可编辑文本，提高文本识别的准确性和有效性。</div>
+                </div>
+
+                <div class="extract-label">提取说明</div>
+                <div class="extract-desc">
+                    <div class="extract-desc-title">说明</div>
+                    <ul>
+                        <li>适用格式: PDF、Markdown（.md）、TXT(.txt)等</li>
+                        <li>方法: 直接提取全部文本内容，并对扫描版PDF启用OCR识别图像文字。</li>
+                        <li>简介: 保留原始文本格式和段落结构，确保完整覆盖内容（PDF需OCR处理扫描内容，MD/TXT直接提取）。</li>
+                    </ul>
+                    <div class="extract-desc-title" style="margin-top:8px;">示例</div>
+                    <div class="extract-demo">Keep all</div>
+                </div>
+            </div>
+            <div class="extract-modal-foot">
+                <button class="prev-btn" id="extractCancel" type="button" style="display:inline-flex;">取消</button>
+                <button class="next-btn active" id="extractConfirm" type="button">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const selected = sessionStorage.getItem('selectedKnowledge');
+        if (selected) {
+            try {
+                const data = JSON.parse(selected);
+                document.getElementById('kbTitle').textContent = data.name || '知识库';
+                document.getElementById('kbDesc').textContent = data.introduction || '知识库详情页';
+            } catch (error) {
+                // Ignore invalid session payload in prototype mode.
+            }
+        }
+
+        const source = new URLSearchParams(window.location.search).get('source') || 'local';
+        const sourceLabelMap = {
+            local: '本地文件',
+            web: '网页链接',
+            custom: '自定义文本'
+        };
+
+        const hintMap = {
+            local: '支持 .docx .pdf .xlsx .pptx .ppt .txt .csv .md .jpg .jpeg .png .webp...',
+            web: '请输入网页 URL 作为知识来源，支持批量添加。',
+            custom: '请输入自定义文本内容作为知识来源。'
+        };
+
+        document.getElementById('crumbText').textContent = '知识 / ' + (sourceLabelMap[source] || '本地文件') + ' / 创建';
+        document.getElementById('uploadHint').textContent = hintMap[source] || hintMap.local;
+
+        const uploadBox = document.querySelector('.upload-box');
+        const uploadedList = document.getElementById('uploadedList');
+        const nextBtn = document.getElementById('nextBtn');
+        const prevBtn = document.getElementById('prevBtn');
+        const step1 = document.getElementById('step1');
+        const step2 = document.getElementById('step2');
+        const step1Index = document.getElementById('step1Index');
+        const step2Index = document.getElementById('step2Index');
+        const step1Section = document.getElementById('step1Section');
+        const step2Section = document.getElementById('step2Section');
+        const step3Section = document.getElementById('step3Section');
+        const step4Section = document.getElementById('step4Section');
+        const step3 = document.getElementById('step3');
+        const step4 = document.getElementById('step4');
+        const extractName = document.getElementById('extractName');
+        const extractModalMask = document.getElementById('extractModalMask');
+        const extractModalClose = document.getElementById('extractModalClose');
+        const extractCancel = document.getElementById('extractCancel');
+        const extractConfirm = document.getElementById('extractConfirm');
+        let currentStep = 1;
+        let uploadedName = '';
+
+        function openExtractModal() {
+            extractModalMask.classList.add('active');
+        }
+
+        function closeExtractModal() {
+            extractModalMask.classList.remove('active');
+        }
+
+        function setUploadedFile(fileName) {
+            uploadedName = fileName;
+            uploadedList.innerHTML = '<li class="uploaded-item"><span class="uploaded-file-dot"></span><span>' + fileName + '</span></li>';
+            nextBtn.classList.add('active');
+        }
+
+        function renderStep() {
+            const isStep2 = currentStep === 2;
+            const isStep3 = currentStep === 3;
+            const isStep4 = currentStep === 4;
+
+            step1Section.classList.toggle('active', currentStep === 1);
+            step2Section.classList.toggle('active', isStep2);
+            step3Section.classList.toggle('active', isStep3);
+            step4Section.classList.toggle('active', isStep4);
+            prevBtn.style.display = currentStep > 1 && !isStep4 ? 'inline-flex' : 'none';
+
+            if (isStep4) {
+                step1.classList.add('completed');
+                step1.classList.remove('active');
+                step1Index.textContent = '✓';
+                step2.classList.add('completed');
+                step2.classList.remove('active');
+                step2Index.textContent = '✓';
+                step3.classList.add('completed');
+                step3.classList.remove('active');
+                step4.classList.add('active');
+                nextBtn.classList.add('active');
+                nextBtn.textContent = '完成';
+                return;
+            }
+
+            if (isStep3) {
+                step1.classList.add('completed');
+                step1.classList.remove('active');
+                step1Index.textContent = '✓';
+                step2.classList.add('completed');
+                step2.classList.remove('active');
+                step2Index.textContent = '✓';
+                step3.classList.add('active');
+                step3.classList.remove('completed');
+                step4.classList.remove('active');
+                nextBtn.classList.add('active');
+                nextBtn.textContent = '完成';
+                return;
+            }
+
+            if (isStep2) {
+                step1.classList.add('completed');
+                step1.classList.remove('active');
+                step1Index.textContent = '✓';
+                step2.classList.add('active');
+                step2.classList.remove('completed');
+                step2Index.textContent = '2';
+                step3.classList.remove('active');
+                step3.classList.remove('completed');
+                step4.classList.remove('active');
+                nextBtn.classList.add('active');
+                nextBtn.textContent = '下一步';
+                extractName.textContent = uploadedName || '001-200.pdf';
+                return;
+            }
+
+            step1.classList.add('active');
+            step1.classList.remove('completed');
+            step1Index.textContent = '1';
+            step2.classList.remove('active');
+            step2.classList.remove('completed');
+            step2Index.textContent = '2';
+            step3.classList.remove('active');
+            step3.classList.remove('completed');
+            step4.classList.remove('active');
+            nextBtn.textContent = '下一步';
+        }
+
+        uploadBox.addEventListener('click', () => {
+            if (source === 'web') {
+                setUploadedFile('https://weops.example/help-center');
+                return;
+            }
+
+            if (source === 'custom') {
+                setUploadedFile('自定义文本内容');
+                return;
+            }
+
+            setUploadedFile('001-200.pdf');
+        });
+
+        nextBtn.addEventListener('click', () => {
+            if (currentStep === 1 && uploadedName) {
+                currentStep = 2;
+                renderStep();
+                return;
+            }
+
+            if (currentStep === 2) {
+                currentStep = 3;
+                renderStep();
+                return;
+            }
+
+            if (currentStep === 3) {
+                currentStep = 4;
+                renderStep();
+            }
+        });
+
+        prevBtn.addEventListener('click', () => {
+            if (currentStep > 1) {
+                currentStep -= 1;
+            }
+            renderStep();
+        });
+
+        document.addEventListener('click', (event) => {
+            if (event.target.closest('.extract-link')) {
+                openExtractModal();
+            }
+        });
+
+        extractModalClose.addEventListener('click', closeExtractModal);
+        extractCancel.addEventListener('click', closeExtractModal);
+        extractConfirm.addEventListener('click', closeExtractModal);
+        extractModalMask.addEventListener('click', (event) => {
+            if (event.target === extractModalMask) {
+                closeExtractModal();
+            }
+        });
+
+        renderStep();
+
+        document.getElementById('backBtn').addEventListener('click', () => {
+            window.location.href = './知识库详情.html?tab=document';
+        });
+    </script>
+</body>
+</html>
