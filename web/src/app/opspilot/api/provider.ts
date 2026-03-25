@@ -1,16 +1,25 @@
 import useApiClient from '@/utils/request';
 import {
   Model,
+  ModelVendor,
+  ModelVendorPayload,
   ModelGroup,
   ModelGroupPayload,
   GroupOrderPayload,
 } from '../types/provider';
 
 export const useProviderApi = () => {
-  const { get, post, put, del } = useApiClient();
+  const { get, post, put, del, patch } = useApiClient();
 
-  const fetchModels = async (type: string): Promise<Model[]> => {
-    return get(`/opspilot/model_provider_mgmt/${type}/`);
+  interface TestVendorConnectionPayload {
+    api_base: string;
+    api_key?: string;
+    password_changed?: boolean;
+    original_id?: number;
+  }
+
+  const fetchModels = async (type: string, params?: Record<string, unknown>): Promise<Model[]> => {
+    return get(`/opspilot/model_provider_mgmt/${type}/`, params ? { params } : undefined);
   };
 
   const fetchModelDetail = async (type: string, id: number): Promise<Model> => {
@@ -25,8 +34,41 @@ export const useProviderApi = () => {
     return put(`/opspilot/model_provider_mgmt/${type}/${id}/`, payload);
   };
 
+  const patchProvider = async (type: string, id: number, payload: Record<string, unknown>): Promise<Model> => {
+    return patch(`/opspilot/model_provider_mgmt/${type}/${id}/`, payload);
+  };
+
   const deleteProvider = async (type: string, id: number): Promise<void> => {
     await del(`/opspilot/model_provider_mgmt/${type}/${id}/`);
+  };
+
+  const fetchVendors = async (params?: Record<string, unknown>): Promise<ModelVendor[]> => {
+    return get('/opspilot/model_provider_mgmt/model_vendor/', params ? { params } : undefined);
+  };
+
+  const fetchVendorDetail = async (id: number): Promise<ModelVendor> => {
+    return get(`/opspilot/model_provider_mgmt/model_vendor/${id}/`);
+  };
+
+  const createVendor = async (payload: ModelVendorPayload): Promise<ModelVendor> => {
+    return post('/opspilot/model_provider_mgmt/model_vendor/', payload);
+  };
+
+  const updateVendor = async (id: number, payload: Partial<ModelVendorPayload>): Promise<ModelVendor> => {
+    return put(`/opspilot/model_provider_mgmt/model_vendor/${id}/`, payload);
+  };
+
+  const patchVendor = async (id: number, payload: Partial<ModelVendorPayload>): Promise<ModelVendor> => {
+    return patch(`/opspilot/model_provider_mgmt/model_vendor/${id}/`, payload);
+  };
+
+  const deleteVendor = async (id: number): Promise<void> => {
+    await del(`/opspilot/model_provider_mgmt/model_vendor/${id}/`);
+  };
+
+  const testVendorConnection = async (payload: TestVendorConnectionPayload): Promise<{ success: boolean }> => {
+    await post('/opspilot/model_provider_mgmt/model_vendor/test_connection/', payload);
+    return { success: true };
   };
 
   const fetchModelGroups = async (_type: string, provider_type?: string): Promise<ModelGroup[]> => {
@@ -55,7 +97,15 @@ export const useProviderApi = () => {
     fetchModelDetail,
     addProvider,
     updateProvider,
+    patchProvider,
     deleteProvider,
+    fetchVendors,
+    fetchVendorDetail,
+    createVendor,
+    updateVendor,
+    patchVendor,
+    deleteVendor,
+    testVendorConnection,
     fetchModelGroups,
     createModelGroup,
     updateModelGroup,
