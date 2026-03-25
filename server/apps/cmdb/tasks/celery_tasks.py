@@ -41,6 +41,7 @@ def sync_collect_task(instance_id):
         exec_time=start_time,
     )
     exec_error_message = ""
+    task_exec_status = CollectRunStatusType.SUCCESS
     try:
         if instance.is_job:
             # 脚本采集
