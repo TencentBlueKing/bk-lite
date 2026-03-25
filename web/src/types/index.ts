@@ -124,7 +124,7 @@ export interface EntityListProps<T> {
 }
 
 export interface TimeSelectorRef {
-  getValue: () => void;
+  getValue: () => number[] | null;
 }
 
 export interface HeatMapDataItem {
