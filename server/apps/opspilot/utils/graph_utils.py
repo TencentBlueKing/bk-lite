@@ -102,25 +102,22 @@ class GraphUtils(ChunkHelper):
 
         def _prepare_graph_context():
             current_doc_list = doc_list if doc_list is not None else graph_obj.doc_list
-            embed_config = graph_obj.embed_model.decrypted_embed_config
-            llm_config = graph_obj.llm_model.decrypted_llm_config
-            rerank_config = graph_obj.rerank_model.decrypted_rerank_config_config
             docs = cls.get_documents(current_doc_list, graph_obj.knowledge_base.knowledge_index_name())
 
             doc_objects = [Document(page_content=doc["page_content"], metadata=doc["metadata"]) for doc in docs]
 
             request = DocumentIngestRequest(
-                openai_api_key=llm_config["openai_api_key"],
-                openai_model=llm_config.get("model", graph_obj.llm_model.name),
-                openai_api_base=llm_config["openai_base_url"],
-                rerank_model_base_url=rerank_config["base_url"],
-                rerank_model_name=rerank_config.get("model", graph_obj.rerank_model.name),
-                rerank_model_api_key=rerank_config["api_key"] or " ",
+                openai_api_key=graph_obj.llm_model.openai_api_key,
+                openai_model=graph_obj.llm_model.model_name,
+                openai_api_base=graph_obj.llm_model.openai_api_base,
+                rerank_model_base_url=graph_obj.rerank_model.base_url,
+                rerank_model_name=graph_obj.rerank_model.model_name,
+                rerank_model_api_key=graph_obj.rerank_model.api_key or " ",
                 group_id=f"graph-{graph_obj.id}",
                 rebuild_community=graph_obj.rebuild_community,
-                embed_model_base_url=embed_config["base_url"],
-                embed_model_api_key=embed_config["api_key"] or " ",
-                embed_model_name=embed_config.get("model", graph_obj.embed_model.name),
+                embed_model_base_url=graph_obj.embed_model.base_url,
+                embed_model_api_key=graph_obj.embed_model.api_key or " ",
+                embed_model_name=graph_obj.embed_model.model_name,
                 docs=doc_objects,
             )
 
@@ -177,16 +174,13 @@ class GraphUtils(ChunkHelper):
     @classmethod
     def search_graph(cls, graph_obj: KnowledgeGraph, size=0, search_query=""):
         """搜索图谱"""
-        embed_config = graph_obj.embed_model.decrypted_embed_config
-        rerank_config = graph_obj.rerank_model.decrypted_rerank_config_config
-
         request = DocumentRetrieverRequest(
-            embed_model_base_url=embed_config["base_url"],
-            embed_model_api_key=embed_config["api_key"] or " ",
-            embed_model_name=embed_config.get("model", graph_obj.embed_model.name),
-            rerank_model_base_url=rerank_config["base_url"],
-            rerank_model_name=rerank_config.get("model", graph_obj.rerank_model.name),
-            rerank_model_api_key=rerank_config["api_key"] or " ",
+            embed_model_base_url=graph_obj.embed_model.base_url,
+            embed_model_api_key=graph_obj.embed_model.api_key or " ",
+            embed_model_name=graph_obj.embed_model.model_name,
+            rerank_model_base_url=graph_obj.rerank_model.base_url,
+            rerank_model_name=graph_obj.rerank_model.model_name,
+            rerank_model_api_key=graph_obj.rerank_model.api_key or " ",
             size=size,
             group_ids=[f"graph-{graph_obj.id}"],
             search_query=search_query,
@@ -256,21 +250,17 @@ class GraphUtils(ChunkHelper):
     @classmethod
     def rebuild_graph_community(cls, graph_obj: KnowledgeGraph):
         """重建图谱社区"""
-        embed_config = graph_obj.embed_model.decrypted_embed_config
-        rerank_config = graph_obj.rerank_model.decrypted_rerank_config_config
-        llm_config = graph_obj.llm_model.decrypted_llm_config
-
         request = RebuildCommunityRequest(
-            openai_api_key=llm_config["openai_api_key"],
-            openai_model=llm_config.get("model", graph_obj.llm_model.name),
-            openai_api_base=llm_config["openai_base_url"],
+            openai_api_key=graph_obj.llm_model.openai_api_key,
+            openai_model=graph_obj.llm_model.model_name,
+            openai_api_base=graph_obj.llm_model.openai_api_base,
             group_ids=[f"graph-{graph_obj.id}"],
-            embed_model_base_url=embed_config["base_url"],
-            embed_model_api_key=embed_config["api_key"] or " ",
-            embed_model_name=embed_config.get("model", graph_obj.embed_model.name),
-            rerank_model_base_url=rerank_config["base_url"],
-            rerank_model_name=rerank_config.get("model", graph_obj.rerank_model.name),
-            rerank_model_api_key=rerank_config["api_key"] or " ",
+            embed_model_base_url=graph_obj.embed_model.base_url,
+            embed_model_api_key=graph_obj.embed_model.api_key or " ",
+            embed_model_name=graph_obj.embed_model.model_name,
+            rerank_model_base_url=graph_obj.rerank_model.base_url,
+            rerank_model_name=graph_obj.rerank_model.model_name,
+            rerank_model_api_key=graph_obj.rerank_model.api_key or " ",
         )
 
         try:

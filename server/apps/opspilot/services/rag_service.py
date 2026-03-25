@@ -87,13 +87,10 @@ class RAGService:
                 llm_model = LLMModel.objects.get(id=km_llm_model)
             else:
                 llm_model = km_llm_model
-            openai_api_base = llm_model.decrypted_llm_config["openai_base_url"]
-            openai_api_key = llm_model.decrypted_llm_config["openai_api_key"]
-            model = llm_model.decrypted_llm_config["model"]
             km_request = {
-                "km_route_llm_api_base": openai_api_base,
-                "km_route_llm_api_key": openai_api_key,
-                "km_route_llm_model": model,
+                "km_route_llm_api_base": llm_model.openai_api_base,
+                "km_route_llm_api_key": llm_model.openai_api_key,
+                "km_route_llm_model": llm_model.model_name,
                 "km_info": [
                     {
                         "index_name": i.knowledge_index_name(),
@@ -116,17 +113,15 @@ class RAGService:
         Returns:
             包含默认RAG参数的字典
         """
-        embed_config = knowledge_base.embed_model.decrypted_embed_config
-        embed_model_base_url = embed_config["base_url"]
-        embed_model_api_key = embed_config["api_key"] or " "
-        embed_model_name = embed_config.get("model", knowledge_base.embed_model.name)
+        embed_model_base_url = knowledge_base.embed_model.base_url
+        embed_model_api_key = knowledge_base.embed_model.api_key or " "
+        embed_model_name = knowledge_base.embed_model.model_name
 
         rerank_model_base_url = rerank_model_api_key = rerank_model_name = ""
         if knowledge_base.rerank_model:
-            rerank_config = knowledge_base.rerank_model.decrypted_rerank_config_config
-            rerank_model_base_url = rerank_config["base_url"]
-            rerank_model_api_key = rerank_config["api_key"] or " "
-            rerank_model_name = rerank_config.get("model", knowledge_base.rerank_model.name)
+            rerank_model_base_url = knowledge_base.rerank_model.base_url
+            rerank_model_api_key = knowledge_base.rerank_model.api_key or " "
+            rerank_model_name = knowledge_base.rerank_model.model_name
 
         score_threshold = score_threshold_map.get(knowledge_base.id, 0.7)
         kwargs = {

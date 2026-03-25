@@ -122,10 +122,7 @@ class Command(BaseCommand):
     def _init_opspilot(self):
         """OpsPilot资源初始化"""
         self.stdout.write("OpsPilot资源初始化...")
-        call_command("init_bot")
-        call_command("init_channel")
         call_command("init_llm")
-        call_command("init_provider_model")
         call_command("parse_tools_yml")
         call_command("init_chatflow")
 

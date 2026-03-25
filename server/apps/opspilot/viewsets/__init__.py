@@ -9,7 +9,7 @@ from apps.opspilot.viewsets.knowledge_document_view import KnowledgeDocumentView
 from apps.opspilot.viewsets.knowledge_graph_view import KnowledgeGraphViewSet  # noqa
 from apps.opspilot.viewsets.llm_view import LLMModelViewSet, LLMViewSet, SkillRequestLogViewSet, SkillToolsViewSet  # noqa
 from apps.opspilot.viewsets.manual_knowledge_view import ManualKnowledgeViewSet  # noqa
-from apps.opspilot.viewsets.model_type_view import ModelTypeViewSet  # noqa
+from apps.opspilot.viewsets.model_vendor_view import ModelVendorViewSet  # noqa
 from apps.opspilot.viewsets.ocr_view import OCRProviderViewSet  # noqa
 from apps.opspilot.viewsets.qa_pairs_view import QAPairsViewSet  # noqa
 from apps.opspilot.viewsets.rasa_model_view import RasaModelViewSet  # noqa
