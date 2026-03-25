@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
 from apps.opspilot.models import RerankProvider
-from apps.opspilot.serializers.model_type_serializer import CustomProviderSerializer
+from apps.opspilot.serializers.model_vendor_serializer import CustomProviderSerializer
 
 
 class RerankProviderSerializer(AuthSerializer, CustomProviderSerializer):

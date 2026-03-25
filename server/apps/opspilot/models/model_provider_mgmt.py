@@ -28,7 +28,6 @@ class ModelVendor(models.Model, EncryptMixin):
     team = models.JSONField(default=list, verbose_name="组织")
     description = models.TextField(blank=True, null=True, default="", verbose_name="简介")
     is_build_in = models.BooleanField(default=False)
-    index = models.IntegerField(default=0, verbose_name="排序")
 
     def __str__(self) -> str:
         return str(self.name)
@@ -250,7 +249,6 @@ class LLMSkill(MaintainerInfo):
     enable_query_rewrite = models.BooleanField(default=False, verbose_name="问题优化")
     instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name="实例ID", db_index=True)
     is_builtin = models.BooleanField(default=False, verbose_name="是否内置", db_index=True)
-    is_pinned = models.BooleanField(default=False, verbose_name="是否置顶", db_index=True)
 
     def __str__(self):
         return self.name
