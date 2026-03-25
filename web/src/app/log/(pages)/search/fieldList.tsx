@@ -1,18 +1,22 @@
 'use client';
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   CloseOutlined,
   MoreOutlined,
   PlusOutlined,
-  HolderOutlined
+  HolderOutlined,
+  CaretRightFilled,
+  CaretDownFilled
 } from '@ant-design/icons';
-import { Input, Empty, Button } from 'antd';
+import { Input, Empty, Button, Spin, Progress } from 'antd';
+import VirtualList from 'rc-virtual-list';
 import CustomPopover from './customPopover';
 import { useTranslation } from '@/utils/i18n';
 import searchStyle from './index.module.scss';
-import { FieldListProps } from '@/app/log/types/search';
+import { FieldListProps, FieldTopValue } from '@/app/log/types/search';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { cloneDeep } from 'lodash';
+import useSearchApi from '@/app/log/api/search';
 
 const DEFAULT_FIELDS = ['timestamp', 'message'];
 const DEFAULT_FIELDS_MAP: Record<string, string> = {
@@ -20,19 +24,22 @@ const DEFAULT_FIELDS_MAP: Record<string, string> = {
   message: '_msg'
 };
 
-// 虚拟滚动配置（仅用于可选字段）
+// 不显示展开按钮的字段
+const HIDDEN_EXPAND_FIELDS = ['timestamp'];
+
+// 虚拟滚动配置
 const ITEM_HEIGHT = 32;
-const BUFFER_SIZE = 8;
-const OVERSCAN = 3;
 
 const FieldList: React.FC<FieldListProps> = ({
   fields,
   className = '',
   style = {},
   addToQuery,
-  changeDisplayColumns
+  changeDisplayColumns,
+  getSearchParams
 }) => {
   const { t } = useTranslation();
+  const { getFieldTopStats } = useSearchApi();
   const [searchText, setSearchText] = useState<string>('');
   const [displayFields, setDisplayFields] = useState<string[]>(() => {
     const stored = localStorage.getItem('logSearchFields');
@@ -53,9 +60,13 @@ const FieldList: React.FC<FieldListProps> = ({
   // 拖拽状态
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
-  // 虚拟滚动相关状态（仅用于可选字段）
-  const [scrollTop, setScrollTop] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
+  // 展开状态管理
+  const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
+  const [loadingFields, setLoadingFields] = useState<Set<string>>(new Set());
+  const [fieldTopValues, setFieldTopValues] = useState<
+    Record<string, FieldTopValue[]>
+  >({});
+
   const CONTAINER_HEIGHT =
     +(style.height || '').toString().replace('px', '') || 400;
 
@@ -83,49 +94,76 @@ const FieldList: React.FC<FieldListProps> = ({
     );
   }, [hiddenFields, searchText]);
 
-  // 计算可选字段区域的高度
+  // 计算展示字段区域的高度（简化计算，用于可选字段容器高度）
   const displayFieldsHeight = useMemo(() => {
-    return ITEM_HEIGHT + filteredDisplayFields.length * ITEM_HEIGHT + 12;
-  }, [filteredDisplayFields.length]);
+    // title + items + margin
+    return ITEM_HEIGHT + filteredDisplayFields.length * ITEM_HEIGHT;
+  }, [filteredDisplayFields]);
 
+  // 可选字段容器高度
   const hiddenFieldsContainerHeight = useMemo(() => {
     const available = CONTAINER_HEIGHT - displayFieldsHeight - ITEM_HEIGHT;
     return Math.max(100, available);
   }, [CONTAINER_HEIGHT, displayFieldsHeight]);
 
-  const totalHiddenHeight = filteredHiddenFields.length * ITEM_HEIGHT;
+  // 展开/收起字段
+  const toggleFieldExpand = useCallback(
+    async (field: string, e: React.MouseEvent) => {
+      e.stopPropagation();
 
-  // 计算可见的可选字段项目
-  const visibleHiddenItems = useMemo(() => {
-    if (filteredHiddenFields.length === 0) return [];
+      const isExpanded = expandedFields.has(field);
 
-    const bufferHeight = BUFFER_SIZE * ITEM_HEIGHT;
-    const overscanHeight = OVERSCAN * ITEM_HEIGHT;
+      if (isExpanded) {
+        // 收起
+        setExpandedFields((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(field);
+          return newSet;
+        });
+      } else {
+        // 展开，每次都重新加载数据
+        setExpandedFields((prev) => new Set(prev).add(field));
 
-    const startY = Math.max(0, scrollTop - bufferHeight - overscanHeight);
-    const endY =
-      scrollTop + hiddenFieldsContainerHeight + bufferHeight + overscanHeight;
+        // 加载Top5数据
+        setLoadingFields((prev) => new Set(prev).add(field));
 
-    const startIndex = Math.max(0, Math.floor(startY / ITEM_HEIGHT));
-    const endIndex = Math.min(
-      filteredHiddenFields.length - 1,
-      Math.ceil(endY / ITEM_HEIGHT)
-    );
+        try {
+          const searchParams = getSearchParams?.();
+          if (searchParams) {
+            const data = await getFieldTopStats({
+              query: searchParams.query || '*',
+              start_time: searchParams.start_time,
+              end_time: searchParams.end_time,
+              attr: field,
+              top_num: 5,
+              log_groups: searchParams.log_groups || []
+            });
+            setFieldTopValues((prev) => ({
+              ...prev,
+              [field]: data?.items || []
+            }));
+          }
+        } catch (error) {
+          console.error('Failed to fetch field top values:', error);
+          setFieldTopValues((prev) => ({
+            ...prev,
+            [field]: []
+          }));
+        } finally {
+          setLoadingFields((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(field);
+            return newSet;
+          });
+        }
+      }
+    },
+    [expandedFields, getSearchParams, getFieldTopStats]
+  );
 
-    const items: Array<{ field: string; index: number; top: number }> = [];
-    for (let i = startIndex; i <= endIndex; i++) {
-      items.push({
-        field: filteredHiddenFields[i],
-        index: i,
-        top: i * ITEM_HEIGHT
-      });
-    }
-
-    return items;
-  }, [filteredHiddenFields, scrollTop, hiddenFieldsContainerHeight]);
-
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    setScrollTop(e.currentTarget.scrollTop);
+  // 判断字段是否显示展开按钮
+  const shouldShowExpandButton = useCallback((field: string) => {
+    return !HIDDEN_EXPAND_FIELDS.includes(field);
   }, []);
 
   const operateFields = useCallback(
@@ -152,7 +190,6 @@ const FieldList: React.FC<FieldListProps> = ({
       setDraggedIndex(index);
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', index.toString());
-      // 添加拖拽时的样式
       if (e.currentTarget) {
         e.currentTarget.style.opacity = '0.5';
       }
@@ -204,6 +241,150 @@ const FieldList: React.FC<FieldListProps> = ({
     [addToQuery]
   );
 
+  // 点击top值添加到查询
+  const handleTopValueClick = useCallback(
+    (field: string, value: string) => {
+      addToQuery(
+        {
+          label: field,
+          value: value
+        },
+        'value'
+      );
+    },
+    [addToQuery]
+  );
+
+  // 渲染Top5值列表
+  const renderTopValues = (field: string) => {
+    const isLoading = loadingFields.has(field);
+    const topValues = fieldTopValues[field] || [];
+
+    if (isLoading) {
+      return (
+        <div className={searchStyle.topValuesLoading}>
+          <Spin size="small" />
+        </div>
+      );
+    }
+
+    if (topValues.length === 0) {
+      return <div className={searchStyle.topValuesEmpty}>--</div>;
+    }
+
+    return (
+      <div className={searchStyle.topValuesList}>
+        {topValues.map((item, index) => (
+          <CustomPopover
+            key={index}
+            title={`${field} = ${item.value || '(empty)'}`}
+            content={(onClose) => (
+              <ul>
+                <li>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => {
+                      onClose();
+                      handleTopValueClick(field, item.value);
+                    }}
+                  >
+                    {t('log.search.addToQuery')}
+                  </Button>
+                </li>
+              </ul>
+            )}
+          >
+            <div className={searchStyle.topValueItem}>
+              <div className={searchStyle.topValueContent}>
+                <EllipsisWithTooltip
+                  className={searchStyle.topValueText}
+                  text={item.value || '(empty)'}
+                />
+                <span className={searchStyle.topValueCount}>{item.count}</span>
+                <span className={searchStyle.topValuePercent}>
+                  {(item.ratio * 100).toFixed(2)}%
+                </span>
+              </div>
+              <Progress
+                percent={item.ratio * 100}
+                showInfo={false}
+                strokeColor="var(--color-primary)"
+                trailColor="var(--color-fill-2)"
+                className={searchStyle.topValueProgress}
+              />
+            </div>
+          </CustomPopover>
+        ))}
+      </div>
+    );
+  };
+
+  // 渲染可选字段项（用于虚拟列表）
+  const renderHiddenFieldItem = (field: string) => {
+    const isExpanded = expandedFields.has(field);
+    const showExpandBtn = shouldShowExpandButton(field);
+
+    return (
+      <div
+        className={`${searchStyle.listItem} ${isExpanded ? searchStyle.expanded : ''}`}
+      >
+        <div className={searchStyle.fieldHeader}>
+          <div className="flex items-center flex-1 min-w-0">
+            {showExpandBtn ? (
+              <span
+                className={searchStyle.expandIcon}
+                onClick={(e) => toggleFieldExpand(field, e)}
+              >
+                {isExpanded ? (
+                  <CaretDownFilled style={{ fontSize: 10 }} />
+                ) : (
+                  <CaretRightFilled style={{ fontSize: 10 }} />
+                )}
+              </span>
+            ) : (
+              <span className={searchStyle.expandIconPlaceholder} />
+            )}
+            <CustomPopover
+              title={field}
+              content={(onClose) => (
+                <ul>
+                  <li>
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() => {
+                        onClose();
+                        handleAddToQuery(field, false);
+                      }}
+                    >
+                      {t('log.search.addToQuery')}
+                    </Button>
+                  </li>
+                </ul>
+              )}
+            >
+              <div className="flex">
+                <EllipsisWithTooltip
+                  className={`w-[150px] overflow-hidden text-ellipsis whitespace-nowrap ${searchStyle.label}`}
+                  text={field}
+                />
+                <MoreOutlined
+                  className={`${searchStyle.operate} cursor-pointer`}
+                />
+              </div>
+            </CustomPopover>
+          </div>
+          <PlusOutlined
+            className={`${searchStyle.operate} ml-[4px] cursor-pointer scale-[0.8]`}
+            onClick={() => operateFields('add', field)}
+          />
+        </div>
+        {isExpanded && renderTopValues(field)}
+      </div>
+    );
+  };
+
   const hasData =
     filteredDisplayFields.length > 0 || filteredHiddenFields.length > 0;
 
@@ -230,12 +411,14 @@ const FieldList: React.FC<FieldListProps> = ({
                   {filteredDisplayFields.map((field, index) => {
                     const isDefault = DEFAULT_FIELDS.includes(field);
                     const isDragging = draggedIndex === index;
+                    const isExpanded = expandedFields.has(field);
+                    const showExpandBtn = shouldShowExpandButton(field);
 
                     return (
                       <li
                         key={field}
-                        className={searchStyle.listItem}
-                        draggable={!searchText} // 搜索时禁用拖拽
+                        className={`${searchStyle.listItem} ${isExpanded ? searchStyle.expanded : ''}`}
+                        draggable={!searchText && !isExpanded}
                         onDragStart={(e) => handleDragStart(e, index)}
                         onDragEnd={handleDragEnd}
                         onDragOver={handleDragOver}
@@ -244,48 +427,67 @@ const FieldList: React.FC<FieldListProps> = ({
                           opacity: isDragging ? 0.5 : 1
                         }}
                       >
-                        <div className="flex items-center flex-1 min-w-0">
-                          {!searchText && (
-                            <HolderOutlined
-                              className={`${searchStyle.dragHandle} cursor-grab mr-[4px]`}
+                        <div className={searchStyle.fieldHeader}>
+                          <div className="flex items-center flex-1 min-w-0">
+                            {!searchText && (
+                              <HolderOutlined
+                                className={`${searchStyle.dragHandle} cursor-grab mr-[4px]`}
+                              />
+                            )}
+                            {showExpandBtn ? (
+                              <span
+                                className={searchStyle.expandIcon}
+                                onClick={(e) => toggleFieldExpand(field, e)}
+                              >
+                                {isExpanded ? (
+                                  <CaretDownFilled style={{ fontSize: 10 }} />
+                                ) : (
+                                  <CaretRightFilled style={{ fontSize: 10 }} />
+                                )}
+                              </span>
+                            ) : (
+                              <span
+                                className={searchStyle.expandIconPlaceholder}
+                              />
+                            )}
+                            <CustomPopover
+                              title={field}
+                              content={(onClose) => (
+                                <ul>
+                                  <li>
+                                    <Button
+                                      type="link"
+                                      size="small"
+                                      onClick={() => {
+                                        onClose();
+                                        handleAddToQuery(field, true);
+                                      }}
+                                    >
+                                      {t('log.search.addToQuery')}
+                                    </Button>
+                                  </li>
+                                </ul>
+                              )}
+                            >
+                              <div className="flex items-center">
+                                <EllipsisWithTooltip
+                                  className={`w-[130px] overflow-hidden text-ellipsis whitespace-nowrap ${searchStyle.label}`}
+                                  text={field}
+                                />
+                                <MoreOutlined
+                                  className={`${searchStyle.operate} cursor-pointer`}
+                                />
+                              </div>
+                            </CustomPopover>
+                          </div>
+                          {!isDefault && (
+                            <CloseOutlined
+                              className={`${searchStyle.operate} ml-[4px] cursor-pointer scale-[0.8]`}
+                              onClick={() => operateFields('reduce', field)}
                             />
                           )}
-                          <CustomPopover
-                            title={field}
-                            content={(onClose) => (
-                              <ul>
-                                <li>
-                                  <Button
-                                    type="link"
-                                    size="small"
-                                    onClick={() => {
-                                      onClose();
-                                      handleAddToQuery(field, true);
-                                    }}
-                                  >
-                                    {t('log.search.addToQuery')}
-                                  </Button>
-                                </li>
-                              </ul>
-                            )}
-                          >
-                            <div className="flex items-center">
-                              <EllipsisWithTooltip
-                                className={`w-[100px] overflow-hidden text-ellipsis whitespace-nowrap ${searchStyle.label}`}
-                                text={field}
-                              />
-                              <MoreOutlined
-                                className={`${searchStyle.operate} cursor-pointer`}
-                              />
-                            </div>
-                          </CustomPopover>
                         </div>
-                        {!isDefault && (
-                          <CloseOutlined
-                            className={`${searchStyle.operate} ml-[4px] cursor-pointer scale-[0.8]`}
-                            onClick={() => operateFields('reduce', field)}
-                          />
-                        )}
+                        {isExpanded && renderTopValues(field)}
                       </li>
                     );
                   })}
@@ -293,7 +495,7 @@ const FieldList: React.FC<FieldListProps> = ({
               </>
             )}
 
-            {/* 可选字段（虚拟滚动） */}
+            {/* 可选字段（使用 rc-virtual-list） */}
             {filteredHiddenFields.length > 0 && (
               <>
                 <div
@@ -304,80 +506,14 @@ const FieldList: React.FC<FieldListProps> = ({
                 >
                   {t('log.search.hiddenFields')}
                 </div>
-                <div
-                  ref={containerRef}
-                  style={{
-                    height: Math.min(
-                      hiddenFieldsContainerHeight,
-                      totalHiddenHeight
-                    ),
-                    overflow: 'auto',
-                    position: 'relative'
-                  }}
-                  onScroll={handleScroll}
+                <VirtualList
+                  data={filteredHiddenFields}
+                  height={hiddenFieldsContainerHeight}
+                  itemHeight={ITEM_HEIGHT}
+                  itemKey={(item) => item}
                 >
-                  <ul
-                    className={searchStyle.fieldList}
-                    style={{
-                      height: totalHiddenHeight,
-                      position: 'relative',
-                      margin: 0,
-                      padding: 0,
-                      listStyle: 'none'
-                    }}
-                  >
-                    {visibleHiddenItems.map((item) => (
-                      <li
-                        key={item.field}
-                        className={searchStyle.listItem}
-                        style={{
-                          position: 'absolute',
-                          top: item.top,
-                          left: 0,
-                          right: 0,
-                          height: ITEM_HEIGHT,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between'
-                        }}
-                      >
-                        <CustomPopover
-                          title={item.field}
-                          content={(onClose) => (
-                            <ul>
-                              <li>
-                                <Button
-                                  type="link"
-                                  size="small"
-                                  onClick={() => {
-                                    onClose();
-                                    handleAddToQuery(item.field, false);
-                                  }}
-                                >
-                                  {t('log.search.addToQuery')}
-                                </Button>
-                              </li>
-                            </ul>
-                          )}
-                        >
-                          <div className="flex">
-                            <EllipsisWithTooltip
-                              className={`w-[120px] overflow-hidden text-ellipsis whitespace-nowrap ${searchStyle.label}`}
-                              text={item.field}
-                            />
-                            <MoreOutlined
-                              className={`${searchStyle.operate} cursor-pointer`}
-                            />
-                          </div>
-                        </CustomPopover>
-                        <PlusOutlined
-                          className={`${searchStyle.operate} ml-[4px] cursor-pointer scale-[0.8]`}
-                          onClick={() => operateFields('add', item.field)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                  {(field) => renderHiddenFieldItem(field)}
+                </VirtualList>
               </>
             )}
           </div>

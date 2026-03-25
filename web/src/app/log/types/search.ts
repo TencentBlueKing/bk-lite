@@ -61,6 +61,12 @@ export interface FieldListProps {
   fields: string[];
   addToQuery: (row: TableDataItem, type: string) => void;
   changeDisplayColumns: (columns: string[]) => void;
+  getSearchParams?: () => {
+    query: string;
+    start_time: string;
+    end_time: string;
+    log_groups: React.Key[];
+  };
 }
 
 export interface Conidtion {
@@ -77,4 +83,27 @@ export interface SearchConfig {
   times?: number[];
   logGroups?: React.Key[];
   text?: string;
+}
+
+// 字段Top值统计相关类型
+export interface FieldTopStatsParams {
+  query: string;
+  start_time: string;
+  end_time: string;
+  attr: string;
+  top_num?: number;
+  log_groups: React.Key[];
+}
+
+export interface FieldTopValue {
+  value: string;
+  count: number;
+  ratio: number;
+}
+
+export interface FieldTopStatsResponse {
+  attr: string;
+  top_num: number;
+  total: number;
+  items: FieldTopValue[];
 }
