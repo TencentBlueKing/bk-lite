@@ -1,4 +1,9 @@
-import { SearchParams, StoreConditions } from '@/app/log/types/search';
+import {
+  SearchParams,
+  StoreConditions,
+  FieldTopStatsParams,
+  FieldTopStatsResponse
+} from '@/app/log/types/search';
 import useApiClient from '@/utils/request';
 import React from 'react';
 
@@ -17,6 +22,12 @@ const useSearchApi = () => {
     return await get(`/log/search/tail/`, { params });
   };
 
+  const getFieldTopStats = async (
+    data: FieldTopStatsParams
+  ): Promise<FieldTopStatsResponse> => {
+    return await post(`/log/search/top_stats/`, data);
+  };
+
   const saveLogCondition = async (data: StoreConditions) => {
     return await post(`/log/search_conditions/`, data);
   };
@@ -33,9 +44,10 @@ const useSearchApi = () => {
     getLogs,
     getHits,
     getLogTail,
+    getFieldTopStats,
     saveLogCondition,
     getLogCondition,
-    delLogCondition,
+    delLogCondition
   };
 };
 

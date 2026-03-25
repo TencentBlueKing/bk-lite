@@ -10,6 +10,7 @@ from apps.opspilot.serializers.rerank_serializer import RerankProviderSerializer
 class ObjFilter(FilterSet):
     name = filters.CharFilter(field_name="name", lookup_expr="icontains")
     enabled = filters.CharFilter(method="filter_enabled")
+    vendor = filters.NumberFilter(field_name="vendor_id", lookup_expr="exact")
 
     @staticmethod
     def filter_enabled(qs, field_name, value):

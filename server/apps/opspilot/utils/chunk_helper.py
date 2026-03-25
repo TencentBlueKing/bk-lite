@@ -412,9 +412,9 @@ class ChunkHelper(ChatServerHelper):
         answer_llm = qa_pairs.answer_llm_model
         kwargs = {
             "extra_prompt": qa_pairs.answer_prompt,
-            "openai_api_base": answer_llm.decrypted_llm_config["openai_base_url"],
-            "openai_api_key": answer_llm.decrypted_llm_config["openai_api_key"],
-            "model": answer_llm.decrypted_llm_config["model"] or answer_llm.name,
+            "openai_api_base": answer_llm.openai_api_base,
+            "openai_api_key": answer_llm.openai_api_key,
+            "model": answer_llm.model_name,
         }
         for i in return_data:
             res = cls.generate_answer(dict(kwargs, **{"context": i["content"], "content": i["question"]}))

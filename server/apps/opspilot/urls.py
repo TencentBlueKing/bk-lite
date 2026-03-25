@@ -15,7 +15,7 @@ from apps.opspilot.viewsets import (
     LLMModelViewSet,
     LLMViewSet,
     ManualKnowledgeViewSet,
-    ModelTypeViewSet,
+    ModelVendorViewSet,
     OCRProviderViewSet,
     QAPairsViewSet,
     RasaModelViewSet,
@@ -35,7 +35,7 @@ router.register(r"model_provider_mgmt/llm", LLMViewSet)
 router.register(r"model_provider_mgmt/llm_model", LLMModelViewSet)
 router.register(r"model_provider_mgmt/skill_tools", SkillToolsViewSet)
 router.register(r"model_provider_mgmt/skill_log", SkillRequestLogViewSet)
-router.register(r"model_provider_mgmt/model_type", ModelTypeViewSet)
+router.register(r"model_provider_mgmt/model_vendor", ModelVendorViewSet)
 
 # bot
 router.register(r"bot_mgmt/bot", BotViewSet)

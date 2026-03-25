@@ -6,20 +6,20 @@ from apps.log.services.search import SearchService
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.models.log_group import SearchCondition
 from apps.log.serializers.log_group import SearchConditionSerializer
+from apps.log.serializers.search import LogTopStatsSerializer
 from apps.log.filters.log_group import SearchConditionFilter
 
 
 class LogSearchViewSet(ViewSet):
-
-    @action(methods=['get'], detail=False, url_path='field_names')
+    @action(methods=["get"], detail=False, url_path="field_names")
     def field_names(self, request):
         """
         Search available log field_names.
         """
-        field = request.query_params.get('filed', '')
-        start_time = request.query_params.get('start_time', '')
-        end_time = request.query_params.get('end_time', '')
-        limit = int(request.query_params.get('limit', 100))
+        field = request.query_params.get("filed", "")
+        start_time = request.query_params.get("start_time", "")
+        end_time = request.query_params.get("end_time", "")
+        limit = int(request.query_params.get("limit", 100))
 
         if not field:
             return WebUtils.response_error("Field parameter is required.")
@@ -27,16 +27,16 @@ class LogSearchViewSet(ViewSet):
         data = SearchService.field_names(start_time, end_time, field, limit)
         return WebUtils.response_success(data)
 
-    @action(methods=['post'], detail=False, url_path='search')
+    @action(methods=["post"], detail=False, url_path="search")
     def search(self, request):
         """
         Search logs based on the provided query parameters.
         """
-        query = request.data.get('query', '')
-        start_time = request.data.get('start_time', '')
-        end_time = request.data.get('end_time', '')
-        limit = request.data.get('limit', 10)
-        log_groups = request.data.get('log_groups', [])
+        query = request.data.get("query", "")
+        start_time = request.data.get("start_time", "")
+        end_time = request.data.get("end_time", "")
+        limit = request.data.get("limit", 10)
+        log_groups = request.data.get("log_groups", [])
 
         if not query:
             return WebUtils.response_error("Query parameter is required.")
@@ -49,18 +49,18 @@ class LogSearchViewSet(ViewSet):
         data = SearchService.search_logs(query, start_time, end_time, limit, log_groups)
         return WebUtils.response_success(data)
 
-    @action(methods=['post'], detail=False, url_path='hits')
+    @action(methods=["post"], detail=False, url_path="hits")
     def hits(self, request):
         """
         Search hits based on the provided query parameters.
         """
-        query = request.data.get('query', '')
-        start_time = request.data.get('start_time', '')
-        end_time = request.data.get('end_time', '')
-        field = request.data.get('field', '')
-        fields_limit = request.data.get('fields_limit', 5)
-        step = request.data.get('step', '5m')
-        log_groups = request.data.get('log_groups', [])
+        query = request.data.get("query", "")
+        start_time = request.data.get("start_time", "")
+        end_time = request.data.get("end_time", "")
+        field = request.data.get("field", "")
+        fields_limit = request.data.get("fields_limit", 5)
+        step = request.data.get("step", "5m")
+        log_groups = request.data.get("log_groups", [])
 
         if not query or not field:
             return WebUtils.response_error("Query and field parameters are required.")
@@ -70,10 +70,35 @@ class LogSearchViewSet(ViewSet):
         if not is_valid:
             return WebUtils.response_error(error_msg)
 
-        data = SearchService.search_hits(query, start_time, end_time, field, fields_limit, step, log_groups)
+        data = SearchService.search_hits(
+            query, start_time, end_time, field, fields_limit, step, log_groups
+        )
         return WebUtils.response_success(data)
 
-    @action(methods=['get'], detail=False, url_path='tail')
+    @action(methods=["post"], detail=False, url_path="top_stats")
+    def top_stats(self, request):
+        """按字段返回 TopN 统计结果。"""
+        serializer = LogTopStatsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        validated_data = serializer.validated_data
+        log_groups = validated_data.get("log_groups", [])
+
+        is_valid, error_msg, _ = LogGroupQueryBuilder.validate_log_groups(log_groups)
+        if not is_valid:
+            return WebUtils.response_error(error_message=error_msg)
+
+        data = SearchService.top_stats(
+            query=validated_data.get("query", "*"),
+            start_time=validated_data.get("start_time", ""),
+            end_time=validated_data.get("end_time", ""),
+            attr=validated_data["attr"],
+            top_num=validated_data.get("top_num", 5),
+            log_groups=log_groups,
+        )
+        return WebUtils.response_success(data)
+
+    @action(methods=["get"], detail=False, url_path="tail")
     def tail_logs(self, request):
         """
         实现长连接接口，用于实时获取日志数据
@@ -84,7 +109,9 @@ class LogSearchViewSet(ViewSet):
         # 解析log_groups参数
         log_groups = []
         if log_groups_param:
-            log_groups = [group.strip() for group in log_groups_param.split(',') if group.strip()]
+            log_groups = [
+                group.strip() for group in log_groups_param.split(",") if group.strip()
+            ]
 
         if not log_groups:
             return WebUtils.response_error("log_groups parameter is required.")
@@ -99,8 +126,10 @@ class LogSearchViewSet(ViewSet):
 
         return SearchService.tail(query, log_groups)
 
+
 class SearchConditionViewSet(ModelViewSet):
     """搜索条件管理ViewSet"""
+
     queryset = SearchCondition.objects.all()
     serializer_class = SearchConditionSerializer
     filterset_class = SearchConditionFilter
@@ -122,16 +151,18 @@ class SearchConditionViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         # 设置创建者和组织
-        serializer.validated_data['created_by'] = request.user.username
-        serializer.validated_data['organization'] = int(current_team)
+        serializer.validated_data["created_by"] = request.user.username
+        serializer.validated_data["organization"] = int(current_team)
 
         search_condition = serializer.save()
 
-        return WebUtils.response_success({
-            "id": search_condition.id,
-            "name": search_condition.name,
-            "message": "搜索条件创建成功"
-        })
+        return WebUtils.response_success(
+            {
+                "id": search_condition.id,
+                "name": search_condition.name,
+                "message": "搜索条件创建成功",
+            }
+        )
 
     def list(self, request, *args, **kwargs):
         """获取搜索条件列表"""
@@ -166,25 +197,27 @@ class SearchConditionViewSet(ModelViewSet):
         if not current_team:
             return WebUtils.response_error("当前组织信息不存在，请重新登录")
 
-        partial = kwargs.pop('partial', False)
+        partial = kwargs.pop("partial", False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
 
         # 设置更新者（不允许修改组织）
-        serializer.validated_data['updated_by'] = request.user.username
+        serializer.validated_data["updated_by"] = request.user.username
 
         search_condition = serializer.save()
 
-        return WebUtils.response_success({
-            "id": search_condition.id,
-            "name": search_condition.name,
-            "message": "搜索条件更新成功"
-        })
+        return WebUtils.response_success(
+            {
+                "id": search_condition.id,
+                "name": search_condition.name,
+                "message": "搜索条件更新成功",
+            }
+        )
 
     def partial_update(self, request, *args, **kwargs):
         """部分更新搜索条件"""
-        kwargs['partial'] = True
+        kwargs["partial"] = True
         return self.update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
@@ -197,6 +230,6 @@ class SearchConditionViewSet(ModelViewSet):
         search_condition_name = instance.name
         instance.delete()
 
-        return WebUtils.response_success({
-            "message": f"搜索条件 '{search_condition_name}' 删除成功"
-        })
+        return WebUtils.response_success(
+            {"message": f"搜索条件 '{search_condition_name}' 删除成功"}
+        )

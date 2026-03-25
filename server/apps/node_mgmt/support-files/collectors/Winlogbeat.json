@@ -2,7 +2,7 @@
   {
     "id": "Winlogbeat_windows",
     "name": "Winlogbeat",
-    "controller_default_run": false,
+    "controller_default_run": true,
     "icon": "",
     "node_operating_system": "windows",
     "service_type": "exec",

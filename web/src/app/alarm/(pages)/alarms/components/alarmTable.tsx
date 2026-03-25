@@ -156,6 +156,14 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       width: 250,
     },
     {
+      title: t('alarms.createTime'),
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 180,
+      render: (_: any, { created_at }: AlarmTableDataItem) =>
+        created_at ? convertToLocalizedTime(created_at) : '--',
+    },
+    {
       title: t('alarmCommon.action'),
       key: 'action',
       fixed: 'right',

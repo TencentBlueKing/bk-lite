@@ -356,12 +356,6 @@ class Sidecar:
                                 "Collector command is being executed by sidecar",
                                 timestamp=now_iso(),
                             ),
-                            build_step(
-                                "state_converge",
-                                "waiting",
-                                "Waiting for collector state convergence",
-                                timestamp=now_iso(),
-                            ),
                         ],
                     }
                     task_node.save(update_fields=["status", "result"])
@@ -404,23 +398,6 @@ class Sidecar:
                             )
                         )
 
-                    state_converge_step = next(
-                        (
-                            step
-                            for step in steps
-                            if step.get("action") == "state_converge"
-                        ),
-                        None,
-                    )
-                    if not state_converge_step:
-                        steps.append(
-                            build_step(
-                                "state_converge",
-                                "waiting",
-                                "Waiting for collector state convergence",
-                                timestamp=now_iso(),
-                            )
-                        )
                     result["steps"] = steps
                     result["overall_status"] = "running"
                     result["final_message"] = "Collector action consumed by sidecar"

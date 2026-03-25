@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Form, Input as AntdInput, Switch, message, Select, Skeleton } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
-import { Model, ModelConfig, ModelGroup } from '@/app/opspilot/types/provider';
+import { Model, ModelConfig, ModelGroup, ProviderResourceType } from '@/app/opspilot/types/provider';
 import { CONFIG_MAP, MODEL_CATEGORY_OPTIONS, getProviderType } from '@/app/opspilot/constants/provider';
 import OperateModal from '@/components/operate-modal';
 import EditablePasswordField from '@/components/dynamic-form/editPasswordField';
@@ -12,7 +12,7 @@ import { useProviderApi } from '@/app/opspilot/api/provider';
 interface ProviderModalProps {
   visible: boolean;
   mode: 'add' | 'edit';
-  filterType: string;
+  filterType: ProviderResourceType;
   model?: Model | null;
   confirmLoading: boolean;
   onOk: (values: any) => Promise<void>;

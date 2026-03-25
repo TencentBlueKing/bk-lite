@@ -151,6 +151,7 @@
             "scope": "Scope",
             "executionTime": "Execution Time",
             "lastUpdateTime": "Last Update Time",
+            "effectiveAlerts": "Effective Alerts",
             "min": "min",
             "noiseReduction": "Noise Reduction",
             "noiseReductionDesc": "Automatically identify and merge duplicate and related events, simplify chaos, and focus on key issues.",

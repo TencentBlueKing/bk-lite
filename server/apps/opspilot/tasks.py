@@ -10,7 +10,6 @@ from django.utils import timezone
 from tqdm import tqdm
 
 from apps.core.logger import opspilot_logger as logger
-from apps.core.mixinx import EncryptMixin
 from apps.opspilot.enum import DocumentStatus
 from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
 from apps.opspilot.metis.llm.rag.naive_rag_entity import DocumentMetadataUpdateRequest
@@ -185,31 +184,32 @@ def _prepare_ingest_params(document, is_preview=False):
     semantic_embed_model_name = ""
 
     if document.knowledge_base.embed_model:
-        embed_config = document.knowledge_base.embed_model.decrypted_embed_config
-        embed_config["model"] = embed_config.get("model", document.knowledge_base.embed_model.name)
+        embed_config = {
+            "base_url": document.knowledge_base.embed_model.base_url,
+            "api_key": document.knowledge_base.embed_model.api_key,
+            "model": document.knowledge_base.embed_model.model_name,
+        }
 
     if document.semantic_chunk_parse_embedding_model:
-        semantic_embed_config = document.semantic_chunk_parse_embedding_model.decrypted_embed_config
-        semantic_embed_model_name = document.semantic_chunk_parse_embedding_model.name
+        semantic_embed_config = {
+            "base_url": document.semantic_chunk_parse_embedding_model.base_url,
+            "api_key": document.semantic_chunk_parse_embedding_model.api_key,
+            "model": document.semantic_chunk_parse_embedding_model.model_name,
+        }
+        semantic_embed_model_name = document.semantic_chunk_parse_embedding_model.model_name
 
     # OCR配置
     ocr_config = {}
-    if document.enable_ocr_parse and document.ocr_model and document.ocr_model.ocr_config:
-        # 复制一份配置以防止修改原始对象
-        ocr_config = document.ocr_model.ocr_config.copy()
-        # 尝试解密 api_key 字段（如果是明文则会被忽略）
-        try:
-            EncryptMixin.decrypt_field("api_key", ocr_config)
-        except Exception:
-            # 任何解密异常都不应阻塞摄取流程，记录在日志中
-            logger.exception("Failed to decrypt OCR api_key")
-
+    if document.enable_ocr_parse and document.ocr_model:
+        runtime_ocr_config = document.ocr_model.runtime_ocr_config
         ocr_config = {
-            "ocr_type": ocr_config.get("type", "olm_ocr"),
-            "olm_base_url": ocr_config.get("base_url", ""),
-            "olm_api_key": ocr_config.get("api_key") or " ",
-            "olm_model": ocr_config.get("model", "olmOCR-7B-0225-preview"),
+            "ocr_type": runtime_ocr_config.get("ocr_type", "olm_ocr"),
+            "olm_base_url": runtime_ocr_config.get("base_url", ""),
+            "olm_api_key": runtime_ocr_config.get("api_key") or " ",
+            "olm_model": runtime_ocr_config.get("model", "olmOCR-7B-0225-preview"),
         }
+        if runtime_ocr_config.get("ocr_type") == "azure_ocr":
+            ocr_config["olm_base_url"] = runtime_ocr_config.get("endpoint", "")
 
     params = {
         "is_preview": is_preview,
@@ -345,18 +345,21 @@ def create_qa_pairs(qa_pairs_id_list, only_question, delete_old_qa_pairs=False):
     )
 
     es_index = knowledge_base.knowledge_index_name()
-    embed_config = knowledge_base.embed_model.decrypted_embed_config
-    embed_config["model"] = embed_config.get("model", knowledge_base.embed_model.name)
+    embed_config = {
+        "base_url": knowledge_base.embed_model.base_url,
+        "api_key": knowledge_base.embed_model.api_key,
+        "model": knowledge_base.embed_model.model_name,
+    }
     llm_setting = {
         "question": {
-            "openai_api_base": question_llm.decrypted_llm_config["openai_base_url"],
-            "openai_api_key": question_llm.decrypted_llm_config["openai_api_key"],
-            "model": question_llm.decrypted_llm_config["model"] or question_llm.name,
+            "openai_api_base": question_llm.openai_api_base,
+            "openai_api_key": question_llm.openai_api_key,
+            "model": question_llm.model_name,
         },
         "answer": {
-            "openai_api_base": answer_llm.decrypted_llm_config["openai_base_url"],
-            "openai_api_key": answer_llm.decrypted_llm_config["openai_api_key"],
-            "model": answer_llm.decrypted_llm_config["model"] or answer_llm.name,
+            "openai_api_base": answer_llm.openai_api_base,
+            "openai_api_key": answer_llm.openai_api_key,
+            "model": answer_llm.model_name,
         },
     }
 
@@ -557,15 +560,15 @@ def _process_qa_pairs_batch(qa_pairs_list, file_data, knowledge_base, task_obj):
 
 def _prepare_qa_ingest_params(knowledge_base):
     """准备问答对摄取的基础参数"""
-    embed_config = knowledge_base.embed_model.decrypted_embed_config
+    embed_config = knowledge_base.embed_model
 
     return {
         "is_preview": False,
         "knowledge_base_id": knowledge_base.knowledge_index_name(),
         "knowledge_id": "0",
-        "embed_model_base_url": embed_config.get("base_url", ""),
-        "embed_model_api_key": embed_config.get("api_key", "") or " ",
-        "embed_model_name": embed_config.get("model", knowledge_base.embed_model.name),
+        "embed_model_base_url": embed_config.base_url,
+        "embed_model_api_key": embed_config.api_key or " ",
+        "embed_model_name": embed_config.model_name,
         "chunk_mode": "full",
         "chunk_size": 9999,
         "chunk_overlap": 128,
@@ -680,8 +683,11 @@ def create_qa_pairs_task(knowledge_base_id, qa_name, username, domain):
 def create_qa_pairs_by_custom(qa_pairs_id, content_list):
     qa_pairs = QAPairs.objects.get(id=qa_pairs_id)
     es_index = qa_pairs.knowledge_base.knowledge_index_name()
-    embed_config = qa_pairs.knowledge_base.embed_model.decrypted_embed_config
-    embed_config["model"] = embed_config.get("model", qa_pairs.knowledge_base.embed_model.name)
+    embed_config = {
+        "base_url": qa_pairs.knowledge_base.embed_model.base_url,
+        "api_key": qa_pairs.knowledge_base.embed_model.api_key,
+        "model": qa_pairs.knowledge_base.embed_model.model_name,
+    }
     chunk_obj = {}
     task_obj = KnowledgeTask.objects.create(
         created_by=qa_pairs.created_by,
@@ -731,19 +737,22 @@ def create_qa_pairs_by_chunk(qa_pairs_id, kwargs):
     answer_llm = LLMModel.objects.filter(id=kwargs["answer_llm_model_id"]).first()
     llm_setting = {
         "question": {
-            "openai_api_base": question_llm.decrypted_llm_config["openai_base_url"],
-            "openai_api_key": question_llm.decrypted_llm_config["openai_api_key"],
-            "model": question_llm.decrypted_llm_config["model"] or question_llm.name,
+            "openai_api_base": question_llm.openai_api_base,
+            "openai_api_key": question_llm.openai_api_key,
+            "model": question_llm.model_name,
         },
         "answer": {
-            "openai_api_base": answer_llm.decrypted_llm_config["openai_base_url"],
-            "openai_api_key": answer_llm.decrypted_llm_config["openai_api_key"],
-            "model": answer_llm.decrypted_llm_config["model"] or answer_llm.name,
+            "openai_api_base": answer_llm.openai_api_base,
+            "openai_api_key": answer_llm.openai_api_key,
+            "model": answer_llm.model_name,
         },
     }
     es_index = qa_pairs_obj.knowledge_base.knowledge_index_name()
-    embed_config = qa_pairs_obj.knowledge_base.embed_model.decrypted_embed_config
-    embed_config["model"] = embed_config.get("model", qa_pairs_obj.knowledge_base.embed_model.name)
+    embed_config = {
+        "base_url": qa_pairs_obj.knowledge_base.embed_model.base_url,
+        "api_key": qa_pairs_obj.knowledge_base.embed_model.api_key,
+        "model": qa_pairs_obj.knowledge_base.embed_model.model_name,
+    }
     client = ChunkHelper()
     task_obj = KnowledgeTask.objects.create(
         created_by=qa_pairs_obj.created_by,

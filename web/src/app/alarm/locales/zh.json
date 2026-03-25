@@ -151,8 +151,9 @@
         "correlation": {
             "type": "类型",
             "scope": "作用范围",
-            "executionTime": "策略执行时间",
-            "lastUpdateTime": "策略修改时间",
+            "executionTime": "执行时间",
+            "lastUpdateTime": "修改时间",
+            "effectiveAlerts": "生效告警",
             "min": "分",
             "noiseReduction": "智能降噪",
             "noiseReductionDesc": "自动识别并合并重复、相关事件，简化混乱，聚焦关键问题。",
