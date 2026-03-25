@@ -103,7 +103,8 @@ def generate_mock_events(num_events=100):
         event["event_type"] = 1  # EventType.ALERT
         event["tags"] = {"environment": random.choice(["production", "staging"]), "team": random.choice(["ops", "dev"])}
         event["location"] = region
-        event["action"] = "created" if event["status"] == "firing" else "resolved"
+        # event["action"] = "created" if event["status"] == "firing" else "resolved"
+        event["action"] = "created"
         event["rule_id"] = "cpu_threshold_rule"
         event["event_id"] = f"EVENT-{uuid.uuid4().hex}"
         event["assignee"] = []

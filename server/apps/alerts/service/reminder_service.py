@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, Tuple
 
 from apps.alerts.common.notify.base import NotifyParamsFormat
 from apps.alerts.models import Alert, AlertReminderTask, AlertAssignment, Level
-from apps.alerts.constants import SessionStatus
+from apps.alerts.constants import SessionStatus, AlertStatus
 from apps.core.logger import alert_logger as logger
 
 
@@ -116,13 +116,40 @@ class ReminderService:
 
             interval_minutes, max_count = normalized_config
 
-            # 检查是否已存在活跃的提醒任务
-            existing_task = AlertReminderTask.objects.filter(
-                alert=alert, assignment=assignment, is_active=True
-            ).first()
+            existing_task = AlertReminderTask.objects.filter(alert=alert).first()
 
             if existing_task:
-                logger.warning(f"告警 {alert.alert_id} 已存在活跃的提醒任务")
+                if existing_task.is_active:
+                    logger.warning(f"告警 {alert.alert_id} 已存在活跃的提醒任务")
+                    return existing_task
+
+                existing_task.assignment = assignment
+                existing_task.is_active = True
+                existing_task.current_frequency_minutes = interval_minutes
+                existing_task.current_max_reminders = max_count
+                existing_task.reminder_count = 0
+                existing_task.last_reminder_time = None
+                existing_task.next_reminder_time = (
+                    timezone.now() + timedelta(minutes=interval_minutes)
+                )
+                existing_task.save(
+                    update_fields=[
+                        "assignment",
+                        "is_active",
+                        "current_frequency_minutes",
+                        "current_max_reminders",
+                        "reminder_count",
+                        "last_reminder_time",
+                        "next_reminder_time",
+                        "updated_at",
+                    ]
+                )
+                logger.info(
+                    "重新激活告警 %s 的提醒任务，频率: %s分钟，最大次数: %s",
+                    alert.alert_id,
+                    interval_minutes,
+                    max_count,
+                )
                 return existing_task
 
             # 创建新的提醒任务
@@ -143,6 +170,52 @@ class ReminderService:
 
         except Exception as e:
             logger.error(f"创建提醒任务失败: alert_id={alert.alert_id}, error={str(e)}")
+            return None
+
+    @classmethod
+    def ensure_reminder_task(
+        cls,
+        alert: Alert,
+        assignment: Optional[AlertAssignment] = None,
+        assignment_id: Optional[int] = None,
+    ) -> Optional[AlertReminderTask]:
+        """确保告警存在可用的提醒任务。"""
+        try:
+            if assignment is None and assignment_id:
+                assignment = AlertAssignment.objects.filter(
+                    id=assignment_id, is_active=True
+                ).first()
+
+            if assignment is None:
+                existing_task = AlertReminderTask.objects.filter(alert=alert).select_related(
+                    "assignment"
+                ).first()
+                if existing_task:
+                    assignment = existing_task.assignment
+
+            if assignment is None:
+                logger.warning(
+                    "告警 %s 缺少可用的分派策略，无法恢复提醒任务",
+                    alert.alert_id,
+                )
+                return None
+
+            if not assignment.is_active:
+                logger.warning(
+                    "告警 %s 的分派策略 %s 未启用，无法恢复提醒任务",
+                    alert.alert_id,
+                    assignment.id,
+                )
+                return None
+
+            return cls.create_reminder_task(alert, assignment)
+
+        except Exception as e:
+            logger.error(
+                "确保提醒任务失败: alert_id=%s, error=%s",
+                alert.alert_id,
+                str(e),
+            )
             return None
 
     @classmethod
@@ -235,6 +308,16 @@ class ReminderService:
                 processed += 1
 
                 try:
+                    if reminder.alert.status != AlertStatus.PENDING:
+                        reminder.is_active = False
+                        reminder.save(update_fields=["is_active", "updated_at"])
+                        logger.info(
+                            "提醒任务因告警状态非待响应而停用: alert_id=%s, status=%s",
+                            reminder.alert.alert_id,
+                            reminder.alert.status,
+                        )
+                        continue
+
                     effective_max_reminders = cls._get_effective_max_reminders(
                         reminder
                     )

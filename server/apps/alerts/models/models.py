@@ -2,8 +2,11 @@
 # @File: models.py
 # @Time: 2025/5/14 16:14
 # @Author: windyzhao
+from zoneinfo import ZoneInfo
+
 from django.db import models
 from django.db.models import JSONField
+from django.utils import timezone as django_timezone
 
 from apps.alerts.constants.constants import (
     AlertOperate,
@@ -146,10 +149,20 @@ class Alert(models.Model):
     def __str__(self):
         return f"{self.alert_id} - {self.title} ({self.status})"
 
-    @property
-    def format_created_at(self):
+    def format_created_at(self, target_timezone=None):
         """格式化创建时间"""
-        return self.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        if not self.created_at:
+            return ""
+
+        if isinstance(target_timezone, str) and target_timezone:
+            target_timezone = ZoneInfo(target_timezone)
+
+        if target_timezone is None:
+            target_timezone = django_timezone.get_current_timezone()
+
+        return django_timezone.localtime(
+            self.created_at, target_timezone
+        ).strftime("%Y-%m-%d %H:%M:%S")
 
     @classmethod
     def model_fields(cls):
