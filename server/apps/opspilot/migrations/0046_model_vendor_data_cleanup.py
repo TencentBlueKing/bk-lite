@@ -60,7 +60,6 @@ def _bulk_create_vendors(ModelVendor, EncryptMixin, vendor_specs):
             enabled=spec["enabled"],
             description="",
             is_build_in=False,
-            index=0,
         )
         vendors.append(_encrypt_vendor_api_key(vendor, EncryptMixin))
     return ModelVendor.objects.bulk_create(vendors, batch_size=500)

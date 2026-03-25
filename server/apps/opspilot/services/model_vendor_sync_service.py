@@ -1,9 +1,11 @@
 import logging
 from collections import defaultdict
+from typing import ContextManager, cast
 
 import requests
 from django.db import transaction
 
+from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankProvider
 
 logger = logging.getLogger(__name__)
@@ -12,6 +14,10 @@ OPENAI_COMPATIBLE_VENDOR_TYPES = {"openai", "azure", "deepseek", "other"}
 
 
 class ModelVendorSyncService:
+    @staticmethod
+    def _get_loader(locale=None):
+        return LanguageLoader(app="opspilot", default_lang=locale or "en")
+
     @staticmethod
     def is_supported(vendor):
         return vendor.vendor_type in OPENAI_COMPATIBLE_VENDOR_TYPES
@@ -27,14 +33,17 @@ class ModelVendorSyncService:
             return "ocr"
         return "llm"
 
-    @staticmethod
-    def fetch_vendor_models(vendor):
-        api_base = (vendor.api_base or "").rstrip("/")
-        if not api_base:
-            raise ValueError("供应商 API 地址不能为空")
+    @classmethod
+    def fetch_models_with_credentials(cls, api_base, api_key, locale=None):
+        loader = cls._get_loader(locale)
+        normalized_api_base = (api_base or "").rstrip("/")
+        if not normalized_api_base:
+            raise ValueError(loader.get("error.vendor_api_base_required", "供应商 API 地址不能为空"))
+        if not api_key:
+            raise ValueError(loader.get("error.vendor_api_key_required", "供应商 API Key 不能为空"))
         response = requests.get(
-            f"{api_base}/models",
-            headers={"Authorization": f"Bearer {vendor.decrypted_api_key}"},
+            f"{normalized_api_base}/models",
+            headers={"Authorization": f"Bearer {api_key}"},
             timeout=15,
         )
         response.raise_for_status()
@@ -42,11 +51,12 @@ class ModelVendorSyncService:
         return payload.get("data", []) if isinstance(payload, dict) else []
 
     @classmethod
-    def sync_vendor_models(cls, vendor):
+    def sync_vendor_models(cls, vendor, locale=None):
         if not cls.is_supported(vendor):
-            raise ValueError("当前仅支持 OpenAI-compatible 供应商同步")
+            loader = cls._get_loader(locale)
+            raise ValueError(loader.get("error.vendor_sync_not_supported", "当前仅支持 OpenAI-compatible 供应商同步"))
 
-        remote_models = cls.fetch_vendor_models(vendor)
+        remote_models = cls.fetch_models_with_credentials(vendor.api_base, vendor.decrypted_api_key, locale=locale)
         grouped = defaultdict(list)
         for item in remote_models:
             model_id = item.get("id", "")
@@ -55,7 +65,8 @@ class ModelVendorSyncService:
             grouped[cls.classify_model_type(model_id)].append(model_id)
 
         result = {}
-        with transaction.atomic():
+        atomic_context = cast(ContextManager[None], transaction.atomic())
+        with atomic_context:
             result["llm_models"] = cls._upsert_models(LLMModel, vendor, grouped.get("llm", []), is_build_in=True)
             result["embed_models"] = cls._upsert_models(EmbedProvider, vendor, grouped.get("embed", []), is_build_in=False)
             result["rerank_models"] = cls._upsert_models(RerankProvider, vendor, grouped.get("rerank", []), is_build_in=False)

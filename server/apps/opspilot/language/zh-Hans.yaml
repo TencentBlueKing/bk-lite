@@ -187,6 +187,9 @@ error:
   crontab_preview_failed: '计算下次执行时间失败：{detail}'
   knowledge_graph_pending_or_training_no_update: 知识图谱正在创建中或等待中，无法更新
   knowledge_graph_already_exists: 该知识库已存在知识图谱，无法重复创建
+  vendor_api_base_required: 供应商 API 地址不能为空
+  vendor_api_key_required: 供应商 API Key 不能为空
+  vendor_sync_not_supported: 当前仅支持 OpenAI-compatible 供应商同步
 tools:
   kubernetes:
     name: Kubernetes工具
