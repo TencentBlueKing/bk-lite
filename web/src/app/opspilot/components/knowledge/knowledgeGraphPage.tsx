@@ -70,14 +70,6 @@ const transformApiDataToGraphData = (data: any): GraphData => {
   return { nodes: [], edges: [] };
 };
 
-const hasRenderableGraphData = (data: GraphData | null): boolean => {
-  if (!data) {
-    return false;
-  }
-
-  return (data.nodes?.length || 0) > 0 || (data.edges?.length || 0) > 0;
-};
-
 const KnowledgeGraphPage: React.FC<KnowledgeGraphPageProps> = ({ knowledgeBaseId, desc, name, type }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -118,7 +110,12 @@ const KnowledgeGraphPage: React.FC<KnowledgeGraphPageProps> = ({ knowledgeBaseId
       const transformedData: GraphData = transformApiDataToGraphData(response.graph);
       setGraphData(transformedData);
       
-      setHasGraph(hasRenderableGraphData(transformedData));
+      // 只有status为completed时才展示图谱，其他状态显示状态文本
+      if (response.status === 'completed') {
+        setHasGraph(true);
+      } else {
+        setHasGraph(false);
+      }
       
     } catch (error: any) {
       console.error('Failed to load knowledge graph:', error);

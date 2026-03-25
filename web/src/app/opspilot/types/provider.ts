@@ -6,12 +6,19 @@ export interface ModelConfig {
     model?: string;
 }
 
+export type ProviderResourceType = 'llm_model' | 'embed_provider' | 'rerank_provider' | 'ocr_provider';
+
+export type VendorType = 'openai' | 'azure' | 'aliyun' | 'zhipu' | 'baidu' | 'anthropic' | 'deepseek' | 'other';
+
 export interface Model {
     id: number;
     name: string;
+    model?: string;
     enabled: boolean;
     is_build_in?: boolean;
-    team?: boolean;
+    team?: number[];
+    team_name?: string[];
+    vendor?: number;
     llm_model_type?: string;
     model_type?: string;
     model_type_name?: string;
@@ -25,6 +32,35 @@ export interface Model {
     group_id?: string;
     group_name?: string;
     label?: string;
+}
+
+export interface ModelVendor {
+    id: number;
+    name: string;
+    vendor_type: VendorType;
+    api_base: string;
+    api_key?: string;
+    description?: string;
+    enabled?: boolean;
+    team: number[];
+    team_name?: string[];
+    permissions?: string[];
+    model_count?: number;
+    is_build_in?: boolean;
+    llm_model_count?: number;
+    embed_model_count?: number;
+    rerank_model_count?: number;
+    ocr_model_count?: number;
+}
+
+export interface ModelVendorPayload {
+    name: string;
+    vendor_type: VendorType;
+    api_base: string;
+    api_key: string;
+    team: number[];
+    description?: string;
+    enabled?: boolean;
 }
 
 export interface TabConfig {
