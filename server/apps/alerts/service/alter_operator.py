@@ -92,6 +92,28 @@ class AlertOperator(object):
         except Exception as e:
             logger.error(f"停止提醒任务失败: {str(e)}")
 
+    def _ensure_reminder_tasks(self, alert: Alert, assignment_id: str = None):
+        """恢复或创建告警的提醒任务"""
+        try:
+            from apps.alerts.service.reminder_service import ReminderService
+
+            normalized_assignment_id = None
+            if assignment_id not in (None, ""):
+                try:
+                    normalized_assignment_id = int(assignment_id)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "提醒任务恢复失败，assignment_id 非法: alert_id=%s, assignment_id=%s",
+                        alert.alert_id,
+                        assignment_id,
+                    )
+
+            ReminderService.ensure_reminder_task(
+                alert, assignment_id=normalized_assignment_id
+            )
+        except Exception as e:
+            logger.error(f"恢复提醒任务失败: {str(e)}")
+
     def _assign_alert(self, alert_id: str, data: dict) -> dict:
         """
         分派告警：未分派 -> 待响应
@@ -298,6 +320,9 @@ class AlertOperator(object):
                 logger.warning(
                     f"未找到有效的email通知参数，邮件通知失败！alert_id={alert_id}, assignee={new_assignee}"
                 )
+
+            assignment_id = data.get("assignment_id")
+            self._ensure_reminder_tasks(alert, assignment_id)
 
             log_data = {
                 "action": LogAction.MODIFY,

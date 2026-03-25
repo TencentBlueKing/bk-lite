@@ -418,6 +418,10 @@ class AggregationProcessor:
         active_alert.status = AlertStatus.AUTO_RECOVERY
         active_alert.last_event_time = now
         active_alert.save(update_fields=["status", "last_event_time", "updated_at"])
+
+        from apps.alerts.service.reminder_service import ReminderService
+
+        ReminderService.stop_reminder_task(active_alert)
         logger.info(
             "自动恢复成功: strategy_id=%s, alert_id=%s",
             strategy.id,

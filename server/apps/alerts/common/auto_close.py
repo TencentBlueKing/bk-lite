@@ -177,6 +177,10 @@ class AlertAutoClose:
                 locked_alert.status = AlertStatus.AUTO_CLOSE
                 locked_alert.save(update_fields=['status', 'updated_at', 'operate'])
 
+                from apps.alerts.service.reminder_service import ReminderService
+
+                ReminderService.stop_reminder_task(locked_alert)
+
                 # 记录操作日志
                 logs = OperatorLog(
                     action=LogAction.MODIFY,
