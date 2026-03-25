@@ -28,18 +28,16 @@ class CustomProviderSerializer(serializers.ModelSerializer):
 
 
 class ModelVendorSerializer(serializers.ModelSerializer):
-    decrypted_api_key = serializers.SerializerMethodField()
-
     class Meta:
         model = ModelVendor
-        fields = "__all__"
+        fields = [
+            "id",
+            "name",
+            "vendor_type",
+            "api_base",
+            "enabled",
+            "team",
+            "description",
+            "is_build_in",
+        ]
         extra_kwargs = {"api_key": {"write_only": True}}
-
-    @staticmethod
-    def get_decrypted_api_key(instance):
-        return instance.decrypted_api_key
-
-    def create(self, validated_data):
-        last_obj = ModelVendor.objects.order_by("-index").first()
-        validated_data["index"] = last_obj.index + 1 if last_obj else 0
-        return super().create(validated_data)
