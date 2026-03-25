@@ -248,6 +248,34 @@ class AlarmStrategyType:
     )
 
 
+class HeartbeatCheckMode:
+    CRON = "cron"
+
+    CHOICES = ((CRON, "Cron 表达式"),)
+
+
+class HeartbeatActivationMode:
+    FIRST_HEARTBEAT = "first_heartbeat"
+    IMMEDIATE = "immediate"
+
+    CHOICES = (
+        (FIRST_HEARTBEAT, "首条心跳激活"),
+        (IMMEDIATE, "立即激活"),
+    )
+
+
+class HeartbeatStatus:
+    WAITING = "waiting"
+    MONITORING = "monitoring"
+    ALERTING = "alerting"
+
+    CHOICES = (
+        (WAITING, "待激活"),
+        (MONITORING, "监控中"),
+        (ALERTING, "缺失告警中"),
+    )
+
+
 class NotifyResultStatus:
     """通知结果"""
 

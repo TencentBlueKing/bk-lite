@@ -35,11 +35,11 @@ def fetch_html(
     - 自动处理编码
     - 支持Bearer Token认证（通过独立参数传递）
 
-    **🔐 Bearer Token 认证（推荐使用独立参数）：**
+    **[凭据] Bearer Token 认证（推荐使用独立参数）：**
     当需要Bearer Token认证时，必须使用 bearer_token 参数：
 
     ```python
-    # ✅ 正确示例
+    # [OK] 正确示例
     fetch_html(
         url="https://api.example.com/page",
         bearer_token="your_token_here"
@@ -82,7 +82,7 @@ def fetch_html(
     **注意事项：**
     - 大页面建议使用max_length分段获取
     - extract_main可能误删某些内容，请谨慎使用
-    - 🔐 Bearer Token 必须通过 bearer_token 参数传递
+    - [凭据] Bearer Token 必须通过 bearer_token 参数传递
     """
     fetch_config = prepare_fetch_config(config)
 
@@ -141,11 +141,11 @@ def fetch_txt(
     - 支持分段获取
     - 支持Bearer Token认证（通过独立参数传递）
 
-    **🔐 Bearer Token 认证（推荐使用独立参数）：**
+    **[凭据] Bearer Token 认证（推荐使用独立参数）：**
     当需要Bearer Token认证时，必须使用 bearer_token 参数：
 
     ```python
-    # ✅ 正确示例
+    # [OK] 正确示例
     fetch_txt(
         url="https://api.example.com/page",
         bearer_token="your_token_here"
@@ -178,7 +178,7 @@ def fetch_txt(
             - remaining (int): 剩余字符数
 
     **注意事项：**
-    - 🔐 Bearer Token 必须通过 bearer_token 参数传递
+    - [凭据] Bearer Token 必须通过 bearer_token 参数传递
     """
     fetch_config = prepare_fetch_config(config)
 
@@ -236,11 +236,11 @@ def fetch_markdown(
     - 支持分段获取
     - 支持Bearer Token认证（通过独立参数传递）
 
-    **🔐 Bearer Token 认证（推荐使用独立参数）：**
+    **[凭据] Bearer Token 认证（推荐使用独立参数）：**
     当需要Bearer Token认证时，必须使用 bearer_token 参数：
 
     ```python
-    # ✅ 正确示例
+    # [OK] 正确示例
     fetch_markdown(
         url="https://api.example.com/page",
         bearer_token="your_token_here"
@@ -273,7 +273,7 @@ def fetch_markdown(
             - remaining (int): 剩余字符数
 
     **注意事项：**
-    - 🔐 Bearer Token 必须通过 bearer_token 参数传递
+    - [凭据] Bearer Token 必须通过 bearer_token 参数传递
     """
     fetch_config = prepare_fetch_config(config)
 
@@ -331,17 +331,17 @@ def fetch_json(
     - 支持分段获取（针对JSON字符串）
     - 支持Bearer Token认证（通过独立参数传递）
 
-    **🔐 Bearer Token 认证（推荐使用独立参数）：**
+    **[凭据] Bearer Token 认证（推荐使用独立参数）：**
     当需要Bearer Token认证时，必须使用 bearer_token 参数：
 
     ```python
-    # ✅ 正确示例
+    # [OK] 正确示例
     fetch_json(
         url="https://api.example.com/users",
         bearer_token="your_token_here"
     )
 
-    # ❌ 错误示例 - 不要这样做
+    # [X] 错误示例 - 不要这样做
     fetch_json(
         url="https://api.example.com/users",
         headers={"Authorization": "Bearer your_token"}  # Token可能被脱敏为***
@@ -378,7 +378,7 @@ def fetch_json(
     **注意事项：**
     - 如果响应不是有效的JSON，会返回错误
     - 被截断的JSON字符串可能无法解析，建议不截断或增加max_length
-    - 🔐 Bearer Token 必须通过 bearer_token 参数传递
+    - [凭据] Bearer Token 必须通过 bearer_token 参数传递
     """
     fetch_config = prepare_fetch_config(config)
 

@@ -11,7 +11,7 @@ export const ApiInfoNodeConfig: React.FC<ApiInfoNodeConfigProps> = ({
   nodeId,
   copyApiUrl,
 }) => {
-  const apiUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/v1/opspilot/bot_mgmt/execute_chat_flow/${botId}/${nodeId}`;
+  const apiUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/v1/opspilot/bot_mgmt/execute_chat_flow/${botId}/${nodeId}/`;
   const infoKey = nodeType === 'embedded_chat' ? 'agui' : nodeType;
 
   return (

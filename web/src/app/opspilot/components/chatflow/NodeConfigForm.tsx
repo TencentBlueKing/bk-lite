@@ -46,7 +46,7 @@ export const NodeConfigForm: React.FC<any> = ({
 
   const copyApiUrl = async () => {
     const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-    const apiUrl = `${currentOrigin}/api/v1/opspilot/bot_mgmt/execute_chat_flow/${botId}/${node.id}`;
+    const apiUrl = `${currentOrigin}/api/v1/opspilot/bot_mgmt/execute_chat_flow/${botId}/${node.id}/`;
     try {
       await navigator.clipboard.writeText(apiUrl);
       message.success(t('chatflow.nodeConfig.apiLinkCopied'));

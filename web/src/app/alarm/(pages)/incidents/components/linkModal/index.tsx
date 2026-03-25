@@ -101,6 +101,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       width={820}
       onClose={onClose}
       open={visible}
+      maskClosable={false}
     >
       <div
         style={{

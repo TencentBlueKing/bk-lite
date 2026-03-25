@@ -10,9 +10,9 @@
 import threading
 from abc import ABC, abstractmethod
 
+from django.core.cache import cache
 from django.http import HttpResponse
 
-from apps.core.backends import cache
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine

@@ -12,12 +12,12 @@ from apps.cmdb.constants.constants import (
     CREATE_MODEL_CHECK_ATTR,
     ENUM_SELECT_MODE_CHOICES,
     ENUM_SELECT_MODE_DEFAULT,
+    INIT_MODEL_GROUP,
     INSTANCE,
     MODEL,
     MODEL_ASSOCIATION,
     ORGANIZATION,
     SUBORDINATE_MODEL,
-    INIT_MODEL_GROUP,
 )
 from apps.cmdb.constants.field_constraints import (
     DEFAULT_NUMBER_CONSTRAINT,
@@ -27,13 +27,13 @@ from apps.cmdb.constants.field_constraints import (
     TimeDisplayFormat,
     WidgetType,
 )
-from apps.cmdb.validators import IdentifierValidator
-from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.display_field import ExcludeFieldsCache
+from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.field_group import FieldGroup
 from apps.cmdb.models.public_enum_library import PublicEnumLibrary
 from apps.cmdb.services.public_enum_library import enqueue_library_snapshot_refresh
 from apps.cmdb.utils.base import get_default_group_id
+from apps.cmdb.validators import IdentifierValidator
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
@@ -93,8 +93,8 @@ class ModelMigrate:
             if isinstance(sheet_data, pd.Series):
                 sheet_data = sheet_data.to_frame()  # 将 Series 转换为 DataFrame
 
-            # 对 NaN 值进行填充，先转换为 object 类型避免类型不兼容警告
-            sheet_data = sheet_data.astype(object).fillna("")
+            # 对 NaN 值进行填充
+            sheet_data = sheet_data.fillna("").infer_objects(copy=False)
 
             # 将 DataFrame 转换为字典格式，使用 'records' 使每行成为一个字典
             data = sheet_data.to_dict(orient="records")
@@ -133,9 +133,7 @@ class ModelMigrate:
         attr["option"] = self._parse_attr_option(attr_type, option_value)
 
         if attr_type == "enum":
-            enum_option, enum_meta = self._normalize_enum_option_payload(
-                attr["option"], attr_id=attr_id
-            )
+            enum_option, enum_meta = self._normalize_enum_option_payload(attr["option"], attr_id=attr_id)
             attr["option"] = enum_option
             attr["enum_rule_type"] = enum_meta["enum_rule_type"]
             attr["public_library_id"] = enum_meta["public_library_id"]
@@ -199,9 +197,7 @@ class ModelMigrate:
 
         type_value = parsed.get("type")
         if type_value and type_value != "none":
-            validation_type = EXCEL_STR_TYPE_MAP.get(
-                type_value, StringValidationType.UNRESTRICTED
-            )
+            validation_type = EXCEL_STR_TYPE_MAP.get(type_value, StringValidationType.UNRESTRICTED)
         else:
             validation_type = StringValidationType.UNRESTRICTED
 
@@ -221,18 +217,14 @@ class ModelMigrate:
         min_val = parsed.get("min")
         if min_val is not None and min_val != "":
             try:
-                result["min_value"] = (
-                    float(min_val) if "." in str(min_val) else int(min_val)
-                )
+                result["min_value"] = float(min_val) if "." in str(min_val) else int(min_val)
             except (ValueError, TypeError):
                 pass
 
         max_val = parsed.get("max")
         if max_val is not None and max_val != "":
             try:
-                result["max_value"] = (
-                    float(max_val) if "." in str(max_val) else int(max_val)
-                )
+                result["max_value"] = float(max_val) if "." in str(max_val) else int(max_val)
             except (ValueError, TypeError):
                 pass
 
@@ -352,9 +344,7 @@ class ModelMigrate:
             raise BaseAppException(f"{context} 的 team 必须是数组")
         return team
 
-    def _normalize_enum_option_payload(
-        self, parsed_option, attr_id: str = ""
-    ) -> tuple[list[dict], dict[str, Any]]:
+    def _normalize_enum_option_payload(self, parsed_option, attr_id: str = "") -> tuple[list[dict], dict[str, Any]]:
         context = f"属性 {attr_id}" if attr_id else "枚举属性"
 
         if isinstance(parsed_option, list):
@@ -370,31 +360,20 @@ class ModelMigrate:
 
         enum_rule_type = str(parsed_option.get("enum_rule_type", "custom")).strip() or "custom"
         public_library_id = parsed_option.get("public_library_id")
-        enum_select_mode = (
-            str(parsed_option.get("enum_select_mode", ENUM_SELECT_MODE_DEFAULT)).strip()
-            or ENUM_SELECT_MODE_DEFAULT
-        )
+        enum_select_mode = str(parsed_option.get("enum_select_mode", ENUM_SELECT_MODE_DEFAULT)).strip() or ENUM_SELECT_MODE_DEFAULT
         if enum_select_mode not in ENUM_SELECT_MODE_CHOICES:
-            raise BaseAppException(
-                f"{context} 的 enum_select_mode 不合法: {enum_select_mode}"
-            )
+            raise BaseAppException(f"{context} 的 enum_select_mode 不合法: {enum_select_mode}")
 
         nested_option = parsed_option.get("option")
 
         if enum_rule_type == "public_library":
             public_library_id = str(public_library_id or "").strip()
             if not public_library_id:
-                raise BaseAppException(
-                    f"{context} 使用公共选项库时 public_library_id 不能为空"
-                )
+                raise BaseAppException(f"{context} 使用公共选项库时 public_library_id 不能为空")
 
-            option = self._normalize_attr_enum_options(
-                nested_option if nested_option is not None else [], context
-            )
+            option = self._normalize_attr_enum_options(nested_option if nested_option is not None else [], context)
             if not option:
-                library = PUBLIC_ENUM_LIBRARY_MANAGER.filter(
-                    library_id=public_library_id
-                ).first()
+                library = PUBLIC_ENUM_LIBRARY_MANAGER.filter(library_id=public_library_id).first()
                 if library and isinstance(library.options, list):
                     option = self._normalize_attr_enum_options(library.options, context)
 
@@ -407,9 +386,7 @@ class ModelMigrate:
         if enum_rule_type != "custom":
             raise BaseAppException(f"{context} 的 enum_rule_type 不合法: {enum_rule_type}")
 
-        option = self._normalize_attr_enum_options(
-            nested_option if nested_option is not None else [], context
-        )
+        option = self._normalize_attr_enum_options(nested_option if nested_option is not None else [], context)
         return option, {
             "enum_rule_type": "custom",
             "public_library_id": None,
@@ -447,9 +424,7 @@ class ModelMigrate:
             normalized = self._normalize_public_enum_library_row(row, index)
             library_id = normalized["library_id"]
             if library_id in seen_library_ids:
-                raise BaseAppException(
-                    f"sheet[{self.PUBLIC_ENUM_LIBRARY_SHEET}] 存在重复 library_id: {library_id}"
-                )
+                raise BaseAppException(f"sheet[{self.PUBLIC_ENUM_LIBRARY_SHEET}] 存在重复 library_id: {library_id}")
             seen_library_ids.add(library_id)
             normalized_rows.append(normalized)
 
@@ -460,9 +435,7 @@ class ModelMigrate:
 
         with transaction.atomic():
             for payload in normalized_rows:
-                library = PUBLIC_ENUM_LIBRARY_MANAGER.filter(
-                    library_id=payload["library_id"]
-                ).first()
+                library = PUBLIC_ENUM_LIBRARY_MANAGER.filter(library_id=payload["library_id"]).first()
                 if not library:
                     PUBLIC_ENUM_LIBRARY_MANAGER.create(
                         library_id=payload["library_id"],
@@ -475,11 +448,7 @@ class ModelMigrate:
                     created += 1
                     continue
 
-                changed = (
-                    library.name != payload["name"]
-                    or library.team != payload["team"]
-                    or library.options != payload["options"]
-                )
+                changed = library.name != payload["name"] or library.team != payload["team"] or library.options != payload["options"]
                 if not changed:
                     skipped += 1
                     continue
@@ -488,16 +457,12 @@ class ModelMigrate:
                 library.team = payload["team"]
                 library.options = payload["options"]
                 library.updated_by = "system"
-                library.save(
-                    update_fields=["name", "team", "options", "updated_by", "updated_at"]
-                )
+                library.save(update_fields=["name", "team", "options", "updated_by", "updated_at"])
                 updated += 1
                 updated_library_ids.append(payload["library_id"])
 
         for library_id in updated_library_ids:
-            enqueue_library_snapshot_refresh(
-                library_id, trigger="model_config_import", operator="system"
-            )
+            enqueue_library_snapshot_refresh(library_id, trigger="model_config_import", operator="system")
 
         return {
             "created": created,
@@ -517,25 +482,16 @@ class ModelMigrate:
 
                 public_library_id = str(attr.get("public_library_id") or "").strip()
                 if not public_library_id:
-                    raise BaseAppException(
-                        f"模型 {model_id} 的属性 {attr.get('attr_id')} 缺少 public_library_id"
-                    )
+                    raise BaseAppException(f"模型 {model_id} 的属性 {attr.get('attr_id')} 缺少 public_library_id")
                 referenced_library_ids.add(public_library_id)
 
         if not referenced_library_ids:
             return
 
-        existing_library_ids = set(
-            PUBLIC_ENUM_LIBRARY_MANAGER.filter(
-                library_id__in=referenced_library_ids
-            ).values_list("library_id", flat=True)
-        )
+        existing_library_ids = set(PUBLIC_ENUM_LIBRARY_MANAGER.filter(library_id__in=referenced_library_ids).values_list("library_id", flat=True))
         missing_library_ids = sorted(referenced_library_ids - existing_library_ids)
         if missing_library_ids:
-            raise BaseAppException(
-                "模型枚举字段引用了不存在的公共选项库: "
-                + ", ".join(missing_library_ids)
-            )
+            raise BaseAppException("模型枚举字段引用了不存在的公共选项库: " + ", ".join(missing_library_ids))
 
     def _build_model_payload(self):
         models = []
@@ -588,9 +544,7 @@ class ModelMigrate:
         return attrs if isinstance(attrs, list) else []
 
     def _sync_added_attrs_to_existing_models(self, ag, attrs_by_model_id, existing_model_map):
-        target_model_ids = [
-            model_id for model_id in attrs_by_model_id.keys() if model_id in existing_model_map
-        ]
+        target_model_ids = [model_id for model_id in attrs_by_model_id.keys() if model_id in existing_model_map]
         if not target_model_ids:
             return {
                 "updated_models": [],
@@ -599,9 +553,7 @@ class ModelMigrate:
                 "created_group_count": 0,
             }
 
-        field_groups = FIELD_GROUP_MANAGER.filter(model_id__in=target_model_ids).order_by(
-            "model_id", "order"
-        )
+        field_groups = FIELD_GROUP_MANAGER.filter(model_id__in=target_model_ids).order_by("model_id", "order")
         field_group_map = {}
         max_group_order = defaultdict(int)
         for group in field_groups:
@@ -617,11 +569,7 @@ class ModelMigrate:
         for model_id in target_model_ids:
             existing_model = existing_model_map[model_id]
             existing_attrs = self._parse_model_attrs(existing_model.get("attrs", "[]"))
-            existing_attr_ids = {
-                attr.get("attr_id")
-                for attr in existing_attrs
-                if isinstance(attr, dict) and attr.get("attr_id")
-            }
+            existing_attr_ids = {attr.get("attr_id") for attr in existing_attrs if isinstance(attr, dict) and attr.get("attr_id")}
 
             added_attrs = []
             for attr in attrs_by_model_id.get(model_id, []):
@@ -667,9 +615,7 @@ class ModelMigrate:
         }
 
     @staticmethod
-    def _sync_added_attrs_field_groups(
-        model_id, added_attrs, field_group_map, max_group_order
-    ):
+    def _sync_added_attrs_field_groups(model_id, added_attrs, field_group_map, max_group_order):
         group_attr_map = {}
         for attr in added_attrs:
             attr_id = attr.get("attr_id")
@@ -697,9 +643,7 @@ class ModelMigrate:
             if group:
                 current_orders = group.attr_orders if isinstance(group.attr_orders, list) else []
                 current_order_set = set(current_orders)
-                append_attr_ids = [
-                    attr_id for attr_id in unique_attr_ids if attr_id not in current_order_set
-                ]
+                append_attr_ids = [attr_id for attr_id in unique_attr_ids if attr_id not in current_order_set]
                 if not append_attr_ids:
                     continue
 
@@ -731,20 +675,10 @@ class ModelMigrate:
             exist_items, _ = ag.query_entity(MODEL, [])
             exist_model_map = {item.get("model_id"): item for item in exist_items}
             exist_classifications, _ = ag.query_entity(CLASSIFICATION, [])
-            classification_map = {
-                i["classification_id"]: i["_id"] for i in exist_classifications
-            }
-            models = [
-                i for i in models if i.get("classification_id") in classification_map
-            ]
-            new_models = [
-                i for i in models if i.get("model_id") not in exist_model_map
-            ]
-            result = (
-                ag.batch_create_entity(MODEL, new_models, CREATE_MODEL_CHECK_ATTR, exist_items)
-                if new_models
-                else []
-            )
+            classification_map = {i["classification_id"]: i["_id"] for i in exist_classifications}
+            models = [i for i in models if i.get("classification_id") in classification_map]
+            new_models = [i for i in models if i.get("model_id") not in exist_model_map]
+            result = ag.batch_create_entity(MODEL, new_models, CREATE_MODEL_CHECK_ATTR, exist_items) if new_models else []
 
             success_models = [i["data"] for i in result if i["success"]]
             asso_list = [
@@ -854,9 +788,7 @@ class ModelMigrate:
                 for i in associations
                 if model_map.get(i["src_model_id"]) and model_map.get(i["dst_model_id"])
             ]
-            result = ag.batch_create_edge(
-                MODEL_ASSOCIATION, MODEL, MODEL, asso_list, "model_asst_id"
-            )
+            result = ag.batch_create_edge(MODEL_ASSOCIATION, MODEL, MODEL, asso_list, "model_asst_id")
         return result
 
     def main(self):
@@ -883,9 +815,7 @@ class ModelMigrate:
         except Exception as err:  # noqa
             import traceback
 
-            logger.error(
-                f"Error updating old instances organization: {traceback.format_exc()}"
-            )
+            logger.error(f"Error updating old instances organization: {traceback.format_exc()}")
 
         return dict(
             classification=classification_resp,
@@ -906,9 +836,7 @@ class ModelMigrate:
             for model in all_models:
                 if INIT_MODEL_GROUP not in model or not model[INIT_MODEL_GROUP]:
                     models_without_group.append(model["_id"])
-                elif INIT_MODEL_GROUP in model and isinstance(
-                        model[INIT_MODEL_GROUP], int
-                ):
+                elif INIT_MODEL_GROUP in model and isinstance(model[INIT_MODEL_GROUP], int):
                     # 如果组织字段是单个整数，转换为列表
                     models_without_group.append(model["_id"])
 
@@ -941,14 +869,10 @@ class ModelMigrate:
 
             # 批量更新需要修复的实例
             if instances_need_fix:
-                logger.info(
-                    f"Found {len(instances_need_fix)} instances with incorrect organization field type"
-                )
+                logger.info(f"Found {len(instances_need_fix)} instances with incorrect organization field type")
                 ag.batch_update_node_properties(
                     label=INSTANCE,
                     node_ids=instances_need_fix,
                     properties={ORGANIZATION: self.default_group_id},
                 )
-                logger.info(
-                    f"Successfully updated {len(instances_need_fix)} instances organization field to list type"
-                )
+                logger.info(f"Successfully updated {len(instances_need_fix)} instances organization field to list type")

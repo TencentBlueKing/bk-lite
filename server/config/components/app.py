@@ -4,6 +4,10 @@ from config.components.base import BASE_DIR, DEBUG
 
 ROOT_URLCONF = "urls"
 
+# 检查当前数据库环境
+_db_engine = os.getenv("DB_ENGINE", "postgresql").lower()
+_migrate_patch_db_engines = {"dameng", "gaussdb", "goldendb", "oceanbase"}
+
 # 模板页面配置
 TEMPLATES = [
     {
@@ -40,6 +44,9 @@ INSTALLED_APPS = (
     "nats_client",
     "django_extensions",
 )
+
+if _db_engine in _migrate_patch_db_engines:
+    INSTALLED_APPS += ("cw_cornerstone.migrate_patch",)
 
 SHELL_PLUS = "ipython"
 IPYTHON_KERNEL_DISPLAY_NAME = "BK-Lite"
@@ -78,6 +85,10 @@ MIDDLEWARE = (
     "apps.system_mgmt.middleware.error_log_middleware.ErrorLogMiddleware",
     "better_exceptions.integrations.django.BetterExceptionsMiddleware",
 )
+
+# 达梦数据库环境下，添加连接管理中间件（放在最前面）
+if _db_engine == "dameng":
+    MIDDLEWARE = ("apps.core.middlewares.dameng_connection_middleware.DamengConnectionMiddleware",) + MIDDLEWARE
 
 if DEBUG:
     INSTALLED_APPS += (
