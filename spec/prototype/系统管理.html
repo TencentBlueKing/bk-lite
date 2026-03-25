@@ -638,6 +638,41 @@
         margin-right: 6px;
       }
 
+      .role-tag-personal {
+        border-color: #d8e7ff;
+        background: #edf4ff;
+        color: #3a84ff;
+      }
+
+      .role-tag-inherited {
+        border-color: #ffe0b0;
+        background: #fff7e8;
+        color: #c07800;
+      }
+
+      .role-source-mini {
+        font-size: 10px;
+        border-radius: 8px;
+        line-height: 14px;
+        padding: 0 4px;
+        border: 1px solid rgba(58, 132, 255, 0.25);
+        background: rgba(255, 255, 255, 0.6);
+      }
+
+      .role-tag-inherited .role-source-mini {
+        border-color: rgba(192, 120, 0, 0.28);
+      }
+
+      .role-app-mini {
+        font-size: 10px;
+        color: #7a869b;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(122, 134, 155, 0.25);
+        border-radius: 8px;
+        line-height: 14px;
+        padding: 0 4px;
+      }
+
       .role-cell {
         display: inline-flex;
         align-items: center;
@@ -690,6 +725,18 @@
         color: #3a84ff;
         border-radius: 4px;
         padding: 0 6px;
+      }
+
+      .role-popover-item.inherited {
+        color: #c07800;
+      }
+
+      .role-popover-item.personal {
+        color: #3a84ff;
+      }
+
+      .role-popover-item .role-name {
+        min-width: 42px;
       }
 
       .role-popover-item:hover {
@@ -1665,6 +1712,134 @@
         font-size: 11px;
         line-height: 18px;
         padding: 0 6px;
+      }
+
+      .tag-inherited {
+        border: 1px solid #8cd98c;
+        background: #f0f9f0;
+        color: #3d8b3d;
+        border-radius: 4px;
+        font-size: 11px;
+        line-height: 18px;
+        padding: 0 6px;
+      }
+
+      .inherit-toggle-row {
+        display: none;
+      }
+
+      .inherit-toggle-main {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #47556c;
+        font-size: 13px;
+      }
+
+      .inherit-source-note {
+        color: #738099;
+        font-size: 12px;
+      }
+
+      .modal-switch {
+        width: 34px;
+        height: 20px;
+        border: 0;
+        border-radius: 10px;
+        background: #c4c8d3;
+        position: relative;
+        cursor: pointer;
+      }
+
+      .modal-switch::after {
+        content: "";
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #fff;
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        transition: left 0.2s ease;
+      }
+
+      .modal-switch.active {
+        background: #3a84ff;
+      }
+
+      .modal-switch.active::after {
+        left: 16px;
+      }
+
+      .org-inherit-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: #4d596e;
+        font-size: 13px;
+      }
+
+      .org-role-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 6px;
+      }
+
+      .org-role-head label {
+        margin-bottom: 0;
+      }
+
+      .org-inherit-toggle-tip {
+        color: #8a95aa;
+        font-size: 12px;
+      }
+
+      .role-source-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: 6px;
+      }
+
+      .role-line-inherited {
+        color: #6f7b91;
+      }
+
+      .org-role-delete-btn {
+        margin-left: auto;
+        padding: 0 4px;
+        background: none;
+        border: none;
+        color: #a6a7ae;
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 18px;
+        display: inline-block;
+        font-weight: normal;
+      }
+
+      .org-role-delete-btn:hover {
+        color: #d64a4a;
+      }
+
+      .role-preview {
+        margin-top: 10px;
+        border: 1px solid #e7ecf4;
+        border-radius: 8px;
+        background: #fafcff;
+        padding: 10px;
+      }
+
+      .role-preview-title {
+        font-size: 13px;
+        color: #4d596e;
+        margin-bottom: 8px;
+      }
+
+      .role-preview-empty {
+        color: #93a0b4;
+        font-size: 12px;
       }
 
       .modal-foot {
@@ -2702,7 +2877,13 @@
           </div>
 
           <div class="form-row">
-            <label>组织角色 ⓘ</label>
+            <div class="org-role-head">
+              <label>组织角色 ⓘ</label>
+              <div class="org-inherit-toggle">
+                <button class="modal-switch" id="orgDisableDownInheritToggle" type="button" aria-label="开启后向下继承角色"></button>
+                <span>开启后向下继承角色</span>
+              </div>
+            </div>
             <div class="transfer org-role-transfer">
               <section>
                 <div class="box-hd" id="orgRoleSourceCount">0 items</div>
@@ -2860,36 +3041,74 @@
       };
 
       const users = [
-        { id: "u1", color: "c-green", username: "o-eXO6xaI79cxcG803X1RR_NvLag", name: "陈盐a", email: "--", lastLogin: "2026-03-24 16:00:52", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["Default"], roles: ["opspilot:guest", "ops-console:guest"] },
-        { id: "u2", color: "c-orange", username: "o-eXO66tt4S_xJ_MoJApPwcY1MM", name: "Neil", email: "--", lastLogin: "2026-03-24 15:41:15", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["weops产研"], roles: ["opspilot:guest", "ops-console:guest"] },
-        { id: "u3", color: "c-blue", username: "o-eXO62t6yJFsCnvwMV1E3CLYGCw", name: "Jin'", email: "jin@example.com", lastLogin: "2026-03-24 14:16:22", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["Default"], roles: ["opspilot:guest", "ops-console:guest"] },
-        { id: "u4", color: "c-purple", username: "o-eXO60F-ZbwsPXzRoQ-HKGQK3dM", name: "LMS", email: "lms@example.com", lastLogin: "2026-03-24 14:13:34", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["weops产研"], roles: ["opspilot:guest", "ops-console:guest"] },
-        { id: "u5", color: "c-blue", username: "o-eXO67t-suRf69WWftxh2-NNX1w", name: "拿下Kk", email: "naxia@example.com", lastLogin: "2026-03-24 10:16:03", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["Devops"], roles: ["opspilot:guest", "ops-console:guest"] },
-        { id: "u6", color: "c-green", username: "o-eXO65mGE_OMPaliDR-VSbnulZs", name: "无尘", email: "wuchen@example.com", lastLogin: "2026-03-23 18:52:45", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["weops售前"], roles: ["opspilot:guest", "ops-console:guest"] },
-        { id: "u7", color: "c-orange", username: "o-eXO6xXp7Z79_TRHC4JF74_58lE", name: "才才", email: "caicai@example.com", lastLogin: "2026-03-23 16:22:35", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["weops测试"], roles: ["opspilot:guest", "ops-console:guest"] },
-        { id: "u8", color: "c-blue", username: "o-eXO66IF0QRF4cKoKb0tVTWPah0", name: "Chris JI", email: "--", lastLogin: "2026-03-23 15:26:36", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["weops测试-1组"], roles: ["opspilot:guest", "ops-console:guest"] },
-        { id: "u9", color: "c-purple", username: "o-eXO64luW3lmxp8QcJ3_DvvkK9g", name: "秋念", email: "--", lastLogin: "2026-03-23 11:03:57", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["PMC"], roles: ["opspilot:guest", "ops-console:guest"] },
+        { id: "u1", color: "c-green", username: "o-eXO6xaI79cxcG803X1RR_NvLag", name: "陈盐a", email: "--", lastLogin: "2026-03-24 16:00:52", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["Default"], roles: ["opspilot:guest", "ops-console:guest"], inheritOrgRoles: true },
+        { id: "u2", color: "c-orange", username: "o-eXO66tt4S_xJ_MoJApPwcY1MM", name: "Neil", email: "--", lastLogin: "2026-03-24 15:41:15", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["weops产研"], roles: ["opspilot:guest", "ops-console:guest"], inheritOrgRoles: true },
+        { id: "u3", color: "c-blue", username: "o-eXO62t6yJFsCnvwMV1E3CLYGCw", name: "Jin'", email: "jin@example.com", lastLogin: "2026-03-24 14:16:22", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["Default"], roles: ["opspilot:guest", "ops-console:guest"], inheritOrgRoles: false },
+        { id: "u4", color: "c-purple", username: "o-eXO60F-ZbwsPXzRoQ-HKGQK3dM", name: "LMS", email: "lms@example.com", lastLogin: "2026-03-24 14:13:34", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["weops产研"], roles: ["opspilot:guest", "ops-console:guest"], inheritOrgRoles: true },
+        { id: "u5", color: "c-blue", username: "o-eXO67t-suRf69WWftxh2-NNX1w", name: "拿下Kk", email: "naxia@example.com", lastLogin: "2026-03-24 10:16:03", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["Devops"], roles: ["opspilot:guest", "ops-console:guest"], inheritOrgRoles: true },
+        { id: "u6", color: "c-green", username: "o-eXO65mGE_OMPaliDR-VSbnulZs", name: "无尘", email: "wuchen@example.com", lastLogin: "2026-03-23 18:52:45", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["weops售前"], roles: ["opspilot:guest", "ops-console:guest"], inheritOrgRoles: true },
+        { id: "u7", color: "c-orange", username: "o-eXO6xXp7Z79_TRHC4JF74_58lE", name: "才才", email: "caicai@example.com", lastLogin: "2026-03-23 16:22:35", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["weops测试"], roles: ["opspilot:guest", "ops-console:guest"], inheritOrgRoles: true },
+        { id: "u8", color: "c-blue", username: "o-eXO66IF0QRF4cKoKb0tVTWPah0", name: "Chris JI", email: "--", lastLogin: "2026-03-23 15:26:36", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["weops测试-1组"], roles: ["opspilot:guest", "ops-console:guest"], inheritOrgRoles: true },
+        { id: "u9", color: "c-purple", username: "o-eXO64luW3lmxp8QcJ3_DvvkK9g", name: "秋念", email: "--", lastLogin: "2026-03-23 11:03:57", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["PMC"], roles: ["opspilot:guest", "ops-console:guest"], inheritOrgRoles: true },
       ];
 
       const usersById = Object.fromEntries(users.map((user) => [user.id, user]));
+      const orgRoleByName = {};
+      const orgNoDownInheritByName = {};
+
+      orgRoleByName.Default = ['opspilot:normal', 'cmdb:normal', 'monitor:normal'];
+      orgRoleByName.Guest = ['opspilot:guest'];
+      orgRoleByName['weops产研'] = ['opspilot:manager', 'ops-console:normal'];
 
       function roleIconByApp(app) {
-        return app === 'ops-console' ? '◧' : '◉';
+        const iconMap = {
+          'opspilot': '◉',
+          'cmdb': '◈',
+          'monitor': '◆',
+          'ops-console': '◧',
+          'system-manager': '◍',
+        };
+        return iconMap[app] || '•';
       }
 
-      function renderRoleCell(roles) {
-        const preview = roles.slice(0, 2).map((r) => {
-          const parts = r.split(':');
-          const app = parts[0] || '';
-          const role = parts[1] || r;
-          return '<span class="role-tag"><span class="role-tag-icon">' + roleIconByApp(app) + '</span><span>' + role + '</span></span>';
+      function renderRoleCell(roleEntries) {
+        const normalizeRole = (entry) => {
+          if (typeof entry === 'string') {
+            const pair = entry.split(':');
+            return {
+              roleKey: entry,
+              app: pair[0] || '',
+              role: pair[1] || entry,
+              source: 'personal',
+              sourceOrg: '',
+            };
+          }
+          const roleKey = entry?.roleKey || '';
+          const pair = roleKey.split(':');
+          return {
+            roleKey,
+            app: entry?.app || pair[0] || '',
+            role: entry?.role || pair[1] || roleKey,
+            source: entry?.source || 'personal',
+            sourceOrg: entry?.sourceOrg || '',
+          };
+        };
+
+        const roles = (Array.isArray(roleEntries) ? roleEntries : []).map(normalizeRole);
+        const preview = roles.slice(0, 2).map((item) => {
+          const isInherited = item.source === 'inherited';
+          const sourceText = isInherited ? '组织角色' : '个人角色';
+          const titleText = item.app + ':' + item.role + '（' + sourceText + '）' + (isInherited && item.sourceOrg ? ('，继承自：' + item.sourceOrg) : '');
+          const tagClass = isInherited ? 'role-tag role-tag-inherited' : 'role-tag role-tag-personal';
+          return '<span class="' + tagClass + '" title="' + titleText + '"><span class="role-tag-icon">' + roleIconByApp(item.app) + '</span><span>' + item.role + '</span></span>';
         }).join('');
 
-        const popoverItems = roles.map((r) => {
-          const parts = r.split(':');
-          const app = parts[0] || '';
-          const role = parts[1] || r;
-          return '<div class="role-popover-item"><span class="role-tag-icon">' + roleIconByApp(app) + '</span><span>' + role + '</span></div>';
+        const popoverItems = roles.map((item) => {
+          const isInherited = item.source === 'inherited';
+          const sourceText = isInherited ? '组织角色' : '个人角色';
+          const titleText = ' title="' + item.app + ':' + item.role + '（' + sourceText + '）' + (isInherited && item.sourceOrg ? ('，继承自：' + item.sourceOrg) : '') + '"';
+          const itemClass = isInherited ? 'role-popover-item inherited' : 'role-popover-item personal';
+          return '<div class="' + itemClass + '"' + titleText + '><span class="role-tag-icon">' + roleIconByApp(item.app) + '</span><span class="role-name">' + item.role + '</span></div>';
         }).join('');
 
         return '<span class="role-cell">' +
@@ -2910,24 +3129,137 @@
       ];
 
       const userTable = document.getElementById("userTable");
-      users.forEach((user) => {
-        const tr = document.createElement("tr");
-        const rolesHtml = renderRoleCell(user.roles);
-        tr.innerHTML =
-          '<td><input type="checkbox" /></td>' +
-          '<td><span class="user-cell"><span class="initial ' + user.color + '">o</span>' + user.username + '</span></td>' +
-          '<td>' + user.name + '</td>' +
-          '<td>' + user.email + '</td>' +
-          '<td>' + user.lastLogin + '</td>' +
-          '<td>' + rolesHtml + '</td>' +
-          '<td class="op">' +
-          '<a href="#" data-action="edit" data-user-id="' + user.id + '">编辑</a>' +
-          '<a href="#" data-action="password" data-user-id="' + user.id + '">密码</a>' +
-          '<a href="#" data-action="delete" data-user-id="' + user.id + '">删除</a>' +
-          '</td>';
-        tr.dataset.userId = user.id;
-        userTable.appendChild(tr);
-      });
+      const userRoleInheritToggle = document.getElementById("userRoleInheritToggle");
+      const userOrgRoleSource = document.getElementById("userOrgRoleSource");
+      const rolePermissionPreview = document.getElementById("rolePermissionPreview");
+
+      function getUserPersonalRoles(user) {
+        return Array.isArray(user?.roles) ? user.roles : [];
+      }
+
+      function getPrimaryOrgFromGroups(groups) {
+        if (!Array.isArray(groups) || !groups.length) return "Default";
+        return groups[0] || "Default";
+      }
+
+      function getInheritedRolesByOrg(orgName) {
+        return getInheritedRoleContext(orgName).roles;
+      }
+
+      function getOrgParentMap() {
+        const parentMap = {};
+        document.querySelectorAll('.group-check').forEach((check) => {
+          const label = check.dataset.label || '';
+          const parent = check.dataset.parent || '';
+          if (!label) return;
+          if (!parent || parent === label) {
+            parentMap[label] = null;
+            return;
+          }
+          parentMap[label] = parent;
+        });
+        return parentMap;
+      }
+
+      function getInheritedRoleContext(orgName) {
+        const parentMap = getOrgParentMap();
+        const visited = new Set();
+        let cursor = orgName;
+
+        while (cursor && !visited.has(cursor)) {
+          visited.add(cursor);
+          const hasRoles = Array.isArray(orgRoleByName[cursor]);
+          const blockedForDescendant = cursor !== orgName && orgNoDownInheritByName[cursor] === true;
+          if (hasRoles && !blockedForDescendant) {
+            return { sourceOrg: cursor, roles: orgRoleByName[cursor] };
+          }
+          const parent = parentMap[cursor];
+          if (!parent || parent === cursor) break;
+          cursor = parent;
+        }
+
+        const rootCandidates = Object.keys(parentMap).filter((name) => parentMap[name] === null);
+        const fallbackRoot = rootCandidates.find((name) => {
+          const hasRoles = Array.isArray(orgRoleByName[name]);
+          if (!hasRoles) return false;
+          if (name === orgName) return true;
+          return orgNoDownInheritByName[name] !== true;
+        });
+        if (fallbackRoot) {
+          return { sourceOrg: fallbackRoot, roles: orgRoleByName[fallbackRoot] };
+        }
+
+        if (Array.isArray(orgRoleByName.Default) && (orgName === 'Default' || orgNoDownInheritByName.Default !== true)) {
+          return { sourceOrg: 'Default', roles: orgRoleByName.Default };
+        }
+
+        return { sourceOrg: orgName || '未匹配', roles: [] };
+      }
+
+      function getEffectiveRolesForUser(user) {
+        const personal = getUserPersonalRoles(user);
+        const inheritEnabled = user?.inheritOrgRoles !== false;
+        if (!inheritEnabled) return Array.from(new Set(personal));
+        const orgName = getPrimaryOrgFromGroups(user?.groups || []);
+        const inherited = getInheritedRoleContext(orgName).roles;
+        return Array.from(new Set(inherited.concat(personal)));
+      }
+
+      function getRoleEntriesForUser(user) {
+        const personal = getUserPersonalRoles(user).map((roleKey) => {
+          const parts = roleKey.split(':');
+          return {
+            roleKey,
+            app: parts[0] || '',
+            role: parts[1] || roleKey,
+            source: 'personal',
+            sourceOrg: '',
+          };
+        });
+
+        const inheritEnabled = user?.inheritOrgRoles !== false;
+        if (!inheritEnabled) return personal;
+
+        const orgName = getPrimaryOrgFromGroups(user?.groups || []);
+        const inheritedCtx = getInheritedRoleContext(orgName);
+        const inherited = inheritedCtx.roles.map((roleKey) => {
+          const parts = roleKey.split(':');
+          return {
+            roleKey,
+            app: parts[0] || '',
+            role: parts[1] || roleKey,
+            source: 'inherited',
+            sourceOrg: inheritedCtx.sourceOrg || '',
+          };
+        });
+
+        return inherited.concat(personal);
+      }
+
+      function renderUserTable() {
+        userTable.innerHTML = "";
+        users.forEach((user) => {
+          const tr = document.createElement("tr");
+          const roleEntries = getRoleEntriesForUser(user);
+          const rolesHtml = renderRoleCell(roleEntries);
+          tr.innerHTML =
+            '<td><input type="checkbox" /></td>' +
+            '<td><span class="user-cell"><span class="initial ' + user.color + '">o</span>' + user.username + '</span></td>' +
+            '<td>' + user.name + '</td>' +
+            '<td>' + user.email + '</td>' +
+            '<td>' + user.lastLogin + '</td>' +
+            '<td>' + rolesHtml + '</td>' +
+            '<td class="op">' +
+            '<a href="#" data-action="edit" data-user-id="' + user.id + '">编辑</a>' +
+            '<a href="#" data-action="password" data-user-id="' + user.id + '">密码</a>' +
+            '<a href="#" data-action="delete" data-user-id="' + user.id + '">删除</a>' +
+            '</td>';
+          tr.dataset.userId = user.id;
+          userTable.appendChild(tr);
+        });
+      }
+
+      renderUserTable();
 
       userTable.addEventListener("click", (e) => {
         const link = e.target.closest('a[data-action]');
@@ -3395,8 +3727,9 @@
       const orgRoleSourceCount = document.getElementById('orgRoleSourceCount');
       const orgRoleSelectedCount = document.getElementById('orgRoleSelectedCount');
       const orgRoleSelectedBody = document.getElementById('orgRoleSelectedBody');
+      const orgDisableDownInheritToggle = document.getElementById('orgDisableDownInheritToggle');
       let currentTreeActionItem = null;
-      const orgRoleByName = {};
+      let currentOrgEditSourceName = '';
 
       function getActiveTreeItem() {
         return document.querySelector('.left-panel .tree-item.active') || document.querySelector('.left-panel .tree-item');
@@ -3436,18 +3769,68 @@
         });
       }
 
+      function getInheritedRoleContextFromParent(orgName) {
+        const parentMap = getOrgParentMap();
+        const visited = new Set();
+        let cursor = parentMap[orgName] || null;
+
+        while (cursor && !visited.has(cursor)) {
+          visited.add(cursor);
+          const hasRoles = Array.isArray(orgRoleByName[cursor]);
+          const blockedForDescendant = orgNoDownInheritByName[cursor] === true;
+          if (hasRoles && !blockedForDescendant) {
+            return { sourceOrg: cursor, roles: orgRoleByName[cursor] };
+          }
+          const parent = parentMap[cursor];
+          if (!parent || parent === cursor) break;
+          cursor = parent;
+        }
+
+        return { sourceOrg: '', roles: [] };
+      }
+
       function renderOrgRoleSelected() {
         const selected = collectOrgRoles();
+        const orgName = currentOrgEditSourceName || orgEditNameInput.value.trim() || 'Default';
+        const inheritedCtx = getInheritedRoleContextFromParent(orgName);
+        const inherited = inheritedCtx.roles || [];
         const grouped = {};
+
         selected.forEach((roleKey) => {
           const parts = roleKey.split(':');
           const app = parts[0] || '';
           const role = parts[1] || '';
-          if (!grouped[app]) grouped[app] = [];
-          grouped[app].push(role);
+          if (!grouped[app]) grouped[app] = {};
+          if (!grouped[app][roleKey]) {
+            grouped[app][roleKey] = {
+              role,
+              hasOrg: false,
+              hasInherited: false,
+              inheritedSourceOrg: '',
+            };
+          }
+          grouped[app][roleKey].hasOrg = true;
         });
 
-        orgRoleSelectedCount.textContent = selected.length + ' items';
+        inherited.forEach((roleKey) => {
+          const parts = roleKey.split(':');
+          const app = parts[0] || '';
+          const role = parts[1] || '';
+          if (!grouped[app]) grouped[app] = {};
+          if (!grouped[app][roleKey]) {
+            grouped[app][roleKey] = {
+              role,
+              hasOrg: false,
+              hasInherited: false,
+              inheritedSourceOrg: '',
+            };
+          }
+          grouped[app][roleKey].hasInherited = true;
+          grouped[app][roleKey].inheritedSourceOrg = inheritedCtx.sourceOrg || '';
+        });
+
+        const effectiveCount = Object.values(grouped).reduce((sum, roleMap) => sum + Object.keys(roleMap).length, 0);
+        orgRoleSelectedCount.textContent = effectiveCount + ' items';
         orgRoleSelectedBody.innerHTML = '';
 
         Object.keys(grouped).forEach((app) => {
@@ -3456,17 +3839,120 @@
           p.innerHTML = '<span class="caret">▼</span><span class="label">' + app + '</span>';
           orgRoleSelectedBody.appendChild(p);
 
-          grouped[app].forEach((role) => {
+          Object.values(grouped[app]).forEach((item) => {
             const c = document.createElement('div');
             c.className = 'tree-node indent';
-            c.innerHTML = '<span class="caret"></span><span class="label">' + role + '</span><span class="org-role-badge">组织角色</span>';
+            const tags = [];
+            if (item.hasOrg) {
+              tags.push('<span class="org-role-badge">组织角色</span>');
+            }
+            if (item.hasInherited) {
+              tags.push('<span class="tag-inherited" title="继承自：' + (item.inheritedSourceOrg || '未匹配') + '">继承角色</span>');
+            }
+            let deleteBtn = '';
+            if (!item.hasInherited) {
+              deleteBtn = '<button class="org-role-delete-btn" data-app="' + app + '" data-role="' + item.role + '" title="删除">🗑</button>';
+            }
+            c.innerHTML = '<span class="caret"></span><span class="label">' + item.role + '</span>' + tags.join('') + deleteBtn;
             orgRoleSelectedBody.appendChild(c);
           });
         });
 
-        if (!selected.length) {
+        if (!effectiveCount) {
           orgRoleSelectedBody.innerHTML = '<div class="tree-node" style="color:#9aa4b6;">暂无已选角色</div>';
         }
+      }
+
+      function getModalCurrentOrg() {
+        const selected = getModalSelectedGroups();
+        return selected[0] || 'Default';
+      }
+
+      function getModalSelectedGroups() {
+        const selected = Array.from(document.querySelectorAll('.group-check:checked'))
+          .map((x) => x.dataset.label || '')
+          .filter(Boolean);
+        return selected.length ? selected : ['Default'];
+      }
+
+      function getInheritedRoleInfoForModalGroups() {
+        const selectedGroups = getModalSelectedGroups();
+        const roleSourceMap = {};
+
+        selectedGroups.forEach((orgName) => {
+          const inheritedCtx = getInheritedRoleContext(orgName);
+          (inheritedCtx.roles || []).forEach((roleKey) => {
+            if (!roleSourceMap[roleKey]) roleSourceMap[roleKey] = new Set();
+            if (inheritedCtx.sourceOrg) {
+              roleSourceMap[roleKey].add(inheritedCtx.sourceOrg);
+            }
+          });
+        });
+
+        const roleEntries = Object.keys(roleSourceMap).map((roleKey) => {
+          return {
+            roleKey,
+            sourceOrgs: Array.from(roleSourceMap[roleKey]),
+          };
+        });
+
+        const roleSet = new Set(roleEntries.map((x) => x.roleKey));
+        const allSourceOrgs = Array.from(
+          new Set(roleEntries.flatMap((x) => x.sourceOrgs))
+        );
+
+        return {
+          selectedGroups,
+          roleEntries,
+          roleSet,
+          allSourceOrgs,
+        };
+      }
+
+      function isModalInheritEnabled() {
+        if (!userRoleInheritToggle) return true;
+        return !userRoleInheritToggle.classList.contains('active');
+      }
+
+      function renderRoleSourceTagsByOrg(orgName) {
+        document.querySelectorAll('.role-check').forEach((check) => {
+          const row = check.closest('.tree-node');
+          if (!row) return;
+
+          row.querySelectorAll('.role-source-tag').forEach((tag) => tag.remove());
+          row.removeAttribute('title');
+          check.removeAttribute('title');
+        });
+      }
+
+      function applyRoleLockState() {
+        const inheritEnabled = isModalInheritEnabled();
+        const orgName = getModalCurrentOrg();
+        const inheritedInfo = getInheritedRoleInfoForModalGroups();
+        const inheritedSet = inheritedInfo.roleSet;
+
+        document.querySelectorAll('.role-check').forEach((check) => {
+          const roleKey = (check.dataset.app || '') + ':' + (check.dataset.role || '');
+          const inherited = inheritEnabled && inheritedSet.has(roleKey);
+          if (inherited) {
+            check.checked = true;
+            check.indeterminate = !modalPersonalRoleKeys.has(roleKey);
+            check.disabled = false;
+          } else {
+            check.indeterminate = false;
+            check.disabled = false;
+            check.checked = modalPersonalRoleKeys.has(roleKey);
+          }
+        });
+
+        document.querySelectorAll('.role-app-check').forEach((appCheck) => {
+          const app = appCheck.dataset.app || '';
+          appCheck.disabled = false;
+          appCheck.title = '';
+          syncRoleAppState(app);
+        });
+
+        renderRoleSourceTagsByOrg(orgName);
       }
 
       function applyOrgRoleFilter() {
@@ -3522,8 +4008,12 @@
 
       function openOrgEditModal(item) {
         const orgName = getTreeItemName(item);
+        currentOrgEditSourceName = orgName;
         const selected = new Set(orgRoleByName[orgName] || []);
         orgEditNameInput.value = orgName;
+        if (orgDisableDownInheritToggle) {
+          orgDisableDownInheritToggle.classList.toggle('active', orgNoDownInheritByName[orgName] !== true);
+        }
         document.querySelectorAll('.org-role-check').forEach((check) => {
           check.checked = selected.has((check.dataset.app || '') + ':' + (check.dataset.role || ''));
         });
@@ -3813,11 +4303,19 @@
             return;
           }
           if (confirm('确认删除该组织吗？')) {
+            const orgName = getTreeItemName(currentTreeActionItem);
+            delete orgNoDownInheritByName[orgName];
             nodeLi.remove();
             closeTreeMenu();
           }
         }
       });
+
+      if (orgDisableDownInheritToggle) {
+        orgDisableDownInheritToggle.addEventListener('click', () => {
+          orgDisableDownInheritToggle.classList.toggle('active');
+        });
+      }
 
       document.querySelectorAll('.org-role-app-check').forEach((check) => {
         check.addEventListener('change', (e) => {
@@ -3845,6 +4343,26 @@
       orgRoleSearchLeft.addEventListener('input', applyOrgRoleFilter);
       orgRoleSearchRight.addEventListener('input', applyOrgSelectedFilter);
 
+      orgRoleSelectedBody.addEventListener('click', (e) => {
+        if (e.target.classList.contains('org-role-delete-btn')) {
+          const app = e.target.dataset.app;
+          const role = e.target.dataset.role;
+          const roleKey = app + ':' + role;
+          const orgName = currentOrgEditSourceName || orgEditNameInput.value.trim() || 'Default';
+          const currentRoles = orgRoleByName[orgName] || [];
+          const index = currentRoles.indexOf(roleKey);
+          if (index > -1) {
+            currentRoles.splice(index, 1);
+            document.querySelectorAll('.org-role-check').forEach((check) => {
+              if (check.dataset.app === app && check.dataset.role === role) {
+                check.checked = false;
+              }
+            });
+            renderOrgRoleSelected();
+          }
+        }
+      });
+
       closeOrgEditModal.addEventListener('click', closeOrgEditModalFn);
       cancelOrgEditModal.addEventListener('click', closeOrgEditModalFn);
       orgEditModalOverlay.addEventListener('click', (e) => {
@@ -3855,16 +4373,44 @@
         if (!currentTreeActionItem) return;
         const oldName = getTreeItemName(currentTreeActionItem);
         const newName = orgEditNameInput.value.trim();
+        const enableDownInherit = !!orgDisableDownInheritToggle?.classList.contains('active');
         if (!newName) {
           alert('请输入组织名称');
           return;
         }
+        const oldRoleKeys = Array.isArray(orgRoleByName[oldName]) ? orgRoleByName[oldName] : [];
         const roleKeys = collectOrgRoles();
+        const newRoleSet = new Set(roleKeys);
+        const removedRoles = oldRoleKeys.filter((x) => !newRoleSet.has(x));
+
+        users.forEach((user) => {
+          const primaryOrg = getPrimaryOrgFromGroups(user.groups || []);
+          const isInheritUser = user.inheritOrgRoles !== false;
+          if (!isInheritUser) return;
+          const sourceOrg = getInheritedRoleContext(primaryOrg).sourceOrg;
+          if (sourceOrg !== oldName) return;
+          removedRoles.forEach((roleKey) => {
+            if (!user.roles.includes(roleKey)) {
+              user.roles.push(roleKey);
+            }
+          });
+        });
+
         if (newName !== oldName) {
+          users.forEach((user) => {
+            user.groups = (user.groups || []).map((g) => (g === oldName ? newName : g));
+          });
           delete orgRoleByName[oldName];
+          delete orgNoDownInheritByName[oldName];
         }
         orgRoleByName[newName] = roleKeys;
+        if (enableDownInherit) {
+          delete orgNoDownInheritByName[newName];
+        } else {
+          orgNoDownInheritByName[newName] = true;
+        }
         setTreeItemName(currentTreeActionItem, newName);
+        renderUserTable();
         closeOrgEditModalFn();
       });
 
@@ -3948,7 +4494,9 @@
       const closeUserModal = document.getElementById("closeUserModal");
       const cancelUserModal = document.getElementById("cancelUserModal");
       const roleTransfer = document.getElementById("roleTransfer");
+      const roleSelectedBody = document.getElementById("roleSelectedBody");
       const superTip = document.getElementById("superTip");
+      let modalPersonalRoleKeys = new Set();
 
       function showUserModal() {
         modal.style.display = "block";
@@ -3961,6 +4509,7 @@
 
       function resetUserForm() {
         currentEditUserId = null;
+        modalPersonalRoleKeys = new Set();
         document.getElementById('userModalTitle').textContent = '添加';
         document.getElementById('fieldUsername').value = '';
         document.getElementById('fieldUsername').disabled = false;
@@ -3981,6 +4530,15 @@
         document.querySelectorAll('.role-app-check').forEach((check) => {
           syncRoleAppState(check.dataset.app);
         });
+        if (userRoleInheritToggle) {
+          userRoleInheritToggle.classList.remove('active');
+        }
+        const resetOrg = getModalCurrentOrg();
+        const resetInheritedCtx = getInheritedRoleContext(resetOrg);
+        if (userOrgRoleSource) {
+          userOrgRoleSource.textContent = '继承来源: ' + resetInheritedCtx.sourceOrg + '（当前组织: ' + resetOrg + '）';
+        }
+        applyRoleLockState();
         renderGroupSelected();
         renderRoleSelected();
       }
@@ -4035,10 +4593,21 @@
               bodyEl.appendChild(c);
             });
         });
+
+        const inheritedInfo = getInheritedRoleInfoForModalGroups();
+        const currentOrgText = inheritedInfo.selectedGroups.join('、');
+        const sourceOrgText = inheritedInfo.allSourceOrgs.length
+          ? inheritedInfo.allSourceOrgs.join('、')
+          : '未匹配';
+        if (userOrgRoleSource) {
+          userOrgRoleSource.textContent = '继承来源: ' + sourceOrgText + '（当前组织: ' + currentOrgText + '）';
+        }
+        applyRoleLockState();
       }
 
       function syncRoleAppState(app) {
         const appCheck = document.querySelector('.role-app-check[data-app="' + app + '"]');
+        if (!appCheck) return;
         const children = Array.from(document.querySelectorAll('.role-check[data-app="' + app + '"]'));
         const checkedCount = children.filter((x) => x.checked).length;
         appCheck.checked = checkedCount === children.length && children.length > 0;
@@ -4046,62 +4615,212 @@
       }
 
       function renderRoleSelected() {
-        const roleChecks = Array.from(document.querySelectorAll('.role-check'));
-        const selected = roleChecks
-          .filter((x) => x.checked)
-          .map((x) => ({ app: x.dataset.app || '', role: x.dataset.role || '' }));
+        const inheritEnabled = isModalInheritEnabled();
+        const personalSelected = Array.from(modalPersonalRoleKeys).map((roleKey) => {
+          const parts = roleKey.split(':');
+          return { app: parts[0] || '', role: parts[1] || '', roleKey };
+        });
+
+        const inheritedInfo = getInheritedRoleInfoForModalGroups();
+        const inherited = inheritedInfo.roleEntries.map((entry) => {
+          const roleKey = entry.roleKey;
+          const parts = roleKey.split(':');
+          return {
+            app: parts[0] || '',
+            role: parts[1] || '',
+            roleKey,
+            sourceOrgs: entry.sourceOrgs,
+          };
+        });
+        const inheritedVisible = inheritEnabled ? inherited : [];
 
         const countEl = document.getElementById('roleSelectedCount');
         const bodyEl = document.getElementById('roleSelectedBody');
-        countEl.textContent = selected.length + ' items';
-
         const grouped = {};
-        selected.forEach((item) => {
-          if (!grouped[item.app]) grouped[item.app] = [];
-          grouped[item.app].push(item.role);
+        inheritedVisible.forEach((item) => {
+          if (!grouped[item.app]) grouped[item.app] = {};
+          if (!grouped[item.app][item.roleKey]) {
+            grouped[item.app][item.roleKey] = {
+              role: item.role,
+              roleKey: item.roleKey,
+              hasInherited: false,
+              hasPersonal: false,
+              inheritedSourceOrgs: [],
+            };
+          }
+          grouped[item.app][item.roleKey].hasInherited = true;
+          grouped[item.app][item.roleKey].inheritedSourceOrgs = Array.from(
+            new Set(grouped[item.app][item.roleKey].inheritedSourceOrgs.concat(item.sourceOrgs || []))
+          );
         });
+        personalSelected.forEach((item) => {
+          if (!grouped[item.app]) grouped[item.app] = {};
+          if (!grouped[item.app][item.roleKey]) {
+            grouped[item.app][item.roleKey] = {
+              role: item.role,
+              roleKey: item.roleKey,
+              hasInherited: false,
+              hasPersonal: false,
+              inheritedSourceOrgs: [],
+            };
+          }
+          grouped[item.app][item.roleKey].hasPersonal = true;
+        });
+
+        const totalEffective = Object.values(grouped).reduce((sum, roleMap) => sum + Object.keys(roleMap).length, 0);
+        countEl.textContent = totalEffective + ' items';
 
         bodyEl.innerHTML = '';
         Object.keys(grouped).forEach((app) => {
           const p = document.createElement('div');
           p.className = 'tree-node';
-          p.innerHTML = '<span class="caret">▼</span><span class="label">' + app + '</span><span class="line-actions">🗑</span>';
+          p.innerHTML = '<span class="caret">▼</span><span class="label">' + app + '</span>';
           bodyEl.appendChild(p);
 
-          grouped[app].forEach((role) => {
+          Object.values(grouped[app]).forEach((item) => {
             const c = document.createElement('div');
-            c.className = 'tree-node indent';
-            c.innerHTML = '<span class="caret"></span><span class="label">' + role + '</span><span class="tag-personal">个人角色</span><span class="line-actions">🗑</span>';
+            c.className = 'tree-node indent' + (item.hasInherited ? ' role-line-inherited' : '');
+            const tags = [];
+            const inheritedOrgTitle = (item.inheritedSourceOrgs || []).length
+              ? item.inheritedSourceOrgs.join('、')
+              : '未匹配';
+            if (item.hasInherited) tags.push('<span class="tag-org" title="所属组织：' + inheritedOrgTitle + '">组织角色</span>');
+            if (item.hasPersonal) tags.push('<span class="tag-personal">个人角色</span>');
+            const removeBtn = item.hasPersonal
+              ? '<a href="#" data-action="remove-personal-role" data-role-key="' + item.roleKey + '" class="line-actions" style="text-decoration:none;">🗑</a>'
+              : '';
+            c.innerHTML = '<span class="caret"></span><span class="label">' + item.role + '</span>' + tags.join('') + removeBtn;
+
+            if (item.hasInherited) {
+              c.title = '继承自：' + inheritedOrgTitle;
+            } else {
+              c.removeAttribute('title');
+            }
             bodyEl.appendChild(c);
           });
         });
+
+        if (!Object.keys(grouped).length) {
+          bodyEl.innerHTML = '<div class="tree-node" style="color:#9aa4b6;">暂无已分配角色</div>';
+        }
+
+        const mergedRoleKeys = inheritEnabled
+          ? Array.from(new Set(inherited.map((x) => x.roleKey).concat(personalSelected.map((x) => x.roleKey))))
+          : Array.from(new Set(personalSelected.map((x) => x.roleKey)));
+
+        if (rolePermissionPreview) {
+          rolePermissionPreview.innerHTML = mergedRoleKeys.map((key) => {
+            return '<span class="chip">' + key + '</span>';
+          }).join('');
+
+          if (!mergedRoleKeys.length) {
+            rolePermissionPreview.innerHTML = '<span class="role-preview-empty">暂无生效权限</span>';
+          }
+        }
+
+        if (!inheritEnabled && inherited.length) {
+          const disabledHint = document.createElement('div');
+          disabledHint.className = 'tree-node';
+          disabledHint.style.color = '#9aa4b6';
+          const sourceOrgText = inheritedInfo.allSourceOrgs.length ? inheritedInfo.allSourceOrgs.join('、') : '未匹配组织';
+          disabledHint.textContent = '已关闭继承，来自 ' + sourceOrgText + ' 的组织角色暂不生效（配置记录已保留）';
+          bodyEl.appendChild(disabledHint);
+        }
       }
 
       document.querySelectorAll('.group-check').forEach((check) => {
-        check.addEventListener('change', renderGroupSelected);
+        check.addEventListener('change', () => {
+          renderGroupSelected();
+          renderRoleSelected();
+        });
       });
 
       document.querySelectorAll('.role-app-check').forEach((check) => {
         check.addEventListener('change', (e) => {
           const app = e.target.dataset.app;
+          const inheritEnabled = isModalInheritEnabled();
+          const inheritedSet = getInheritedRoleInfoForModalGroups().roleSet;
           document.querySelectorAll('.role-check[data-app="' + app + '"]').forEach((child) => {
-            child.checked = e.target.checked;
+            const roleKey = (child.dataset.app || '') + ':' + (child.dataset.role || '');
+            const inherited = inheritEnabled && inheritedSet.has(roleKey);
+            if (inherited) {
+              if (e.target.checked) {
+                modalPersonalRoleKeys.add(roleKey);
+              } else {
+                modalPersonalRoleKeys.delete(roleKey);
+              }
+              child.checked = true;
+            } else {
+              child.checked = e.target.checked;
+              if (e.target.checked) {
+                modalPersonalRoleKeys.add(roleKey);
+              } else {
+                modalPersonalRoleKeys.delete(roleKey);
+              }
+            }
           });
-          syncRoleAppState(app);
+          applyRoleLockState();
           renderRoleSelected();
         });
       });
 
       document.querySelectorAll('.role-check').forEach((check) => {
         check.addEventListener('change', (e) => {
-          syncRoleAppState(e.target.dataset.app);
+          const roleKey = (e.target.dataset.app || '') + ':' + (e.target.dataset.role || '');
+          const inheritEnabled = isModalInheritEnabled();
+          const inheritedSet = getInheritedRoleInfoForModalGroups().roleSet;
+          const inherited = inheritEnabled && inheritedSet.has(roleKey);
+          if (inherited) {
+            if (modalPersonalRoleKeys.has(roleKey)) {
+              modalPersonalRoleKeys.delete(roleKey);
+            } else {
+              modalPersonalRoleKeys.add(roleKey);
+            }
+            e.target.checked = true;
+          } else {
+            if (e.target.checked) {
+              modalPersonalRoleKeys.add(roleKey);
+            } else {
+              modalPersonalRoleKeys.delete(roleKey);
+            }
+          }
+          applyRoleLockState();
           renderRoleSelected();
         });
       });
 
+      roleSelectedBody.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action="remove-personal-role"]');
+        if (!btn) return;
+        e.preventDefault();
+        const roleKey = btn.dataset.roleKey || '';
+        const parts = roleKey.split(':');
+        const app = parts[0] || '';
+        const role = parts[1] || '';
+        modalPersonalRoleKeys.delete(roleKey);
+        applyRoleLockState();
+        renderRoleSelected();
+      });
+
+      if (userRoleInheritToggle) {
+        userRoleInheritToggle.addEventListener('click', () => {
+          const wasInheritEnabled = isModalInheritEnabled();
+          if (wasInheritEnabled) {
+            const inheritedSet = getInheritedRoleInfoForModalGroups().roleSet;
+            inheritedSet.forEach((roleKey) => {
+              modalPersonalRoleKeys.add(roleKey);
+            });
+          }
+          userRoleInheritToggle.classList.toggle('active');
+          applyRoleLockState();
+          renderRoleSelected();
+        });
+      }
+
       document.querySelectorAll('.role-app-check').forEach((check) => {
         syncRoleAppState(check.dataset.app);
       });
+      applyRoleLockState();
       renderGroupSelected();
       renderRoleSelected();
 
@@ -4112,6 +4831,7 @@
         const user = usersById[userId];
         if (!user) return;
         currentEditUserId = user.id;
+        modalPersonalRoleKeys = new Set(getUserPersonalRoles(user));
         document.getElementById('userModalTitle').textContent = '编辑';
         document.getElementById('fieldUsername').value = user.username;
         document.getElementById('fieldUsername').disabled = true;
@@ -4127,12 +4847,22 @@
 
         // Clear and set roles
         document.querySelectorAll('.role-check').forEach((check) => {
-          check.checked = user.roles.includes(check.dataset.app + ':' + check.dataset.role);
+          const roleKey = (check.dataset.app || '') + ':' + (check.dataset.role || '');
+          check.checked = modalPersonalRoleKeys.has(roleKey);
         });
+
+        if (userRoleInheritToggle) {
+          if (user.inheritOrgRoles === false) {
+            userRoleInheritToggle.classList.add('active');
+          } else {
+            userRoleInheritToggle.classList.remove('active');
+          }
+        }
 
         document.querySelectorAll('.role-app-check').forEach((check) => {
           syncRoleAppState(check.dataset.app);
         });
+        applyRoleLockState();
         renderGroupSelected();
         renderRoleSelected();
 
@@ -4150,10 +4880,9 @@
 
       function deleteUser(userId) {
         if (confirm('确定要删除此用户吗？')) {
-          const row = document.querySelector('tr[data-user-id="' + userId + '"]');
-          if (row) {
-            row.remove();
-          }
+          const idx = users.findIndex((x) => x.id === userId);
+          if (idx > -1) users.splice(idx, 1);
+          renderUserTable();
           delete usersById[userId];
         }
       }
@@ -4195,10 +4924,25 @@
           alert('请填写必填项');
           return;
         }
+        const selectedGroups = Array.from(document.querySelectorAll('.group-check:checked')).map((x) => x.dataset.label || '');
+        const selectedPersonalRoles = Array.from(modalPersonalRoleKeys);
+        const inheritEnabled = userRoleInheritToggle ? !userRoleInheritToggle.classList.contains('active') : true;
+
         if (currentEditUserId) {
+          const target = usersById[currentEditUserId];
+          if (target) {
+            target.email = document.getElementById('fieldEmail').value;
+            target.name = document.getElementById('fieldName').value;
+            target.timezone = document.getElementById('fieldTimezone').value;
+            target.language = document.getElementById('fieldLanguage').value;
+            target.groups = selectedGroups;
+            target.roles = selectedPersonalRoles;
+            target.inheritOrgRoles = inheritEnabled;
+          }
+          renderUserTable();
           alert('用户信息已更新');
         } else {
-          alert('新用户已添加');
+          alert('新用户已添加（原型未接入实际新增数据）');
         }
         hideUserModal();
       });
