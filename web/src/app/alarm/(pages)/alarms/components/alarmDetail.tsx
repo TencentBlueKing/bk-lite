@@ -44,8 +44,8 @@ import {
   TimeLineItem,
 } from '@/app/alarm/types/types';
 
-const AlertDetail = forwardRef<ModalRef, ModalConfig>(
-  ({ handleAction }, ref) => {
+const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
+  ({ handleAction, readonly = false }, ref) => {
     const STATE_MAP = useStateMap();
     const { levelList, levelMap } = useCommon();
     const { t } = useTranslation();
@@ -275,27 +275,29 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
               </Tag>
               <b>{formData.content || '--'}</b>
             </div>
-            <div>
-              <span className="mr-2">
-                {!formData.incident_name && (
-                  <DeclareIncident
-                    rowData={[formData]}
-                    onSuccess={() => {
-                      handleAction();
-                      setGroupVisible(false);
-                    }}
-                  />
-                )}
-              </span>
-              <AlarmAction
-                rowData={[formData]}
-                displayMode="dropdown"
-                onAction={() => {
-                  handleAction?.();
-                  handleCancel();
-                }}
-              />
-            </div>
+            {!readonly && (
+              <div>
+                <span className="mr-2">
+                  {!formData.incident_name && (
+                    <DeclareIncident
+                      rowData={[formData]}
+                      onSuccess={() => {
+                        handleAction();
+                        setGroupVisible(false);
+                      }}
+                    />
+                  )}
+                </span>
+                <AlarmAction
+                  rowData={[formData]}
+                  displayMode="dropdown"
+                  onAction={() => {
+                    handleAction?.();
+                    handleCancel();
+                  }}
+                />
+              </div>
+            )}
           </div>
           <ul className="flex mt-[10px] mb-[14px] space-x-2">
             <li>

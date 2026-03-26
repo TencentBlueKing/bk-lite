@@ -9,7 +9,7 @@
         "operateFailed": "Operation failed",
         "notNotified": "Not notified",
         "success": "Success",
-        "fail": "Fail",
+        "failed": "Failed",
         "partialSuccess": "Partial success",
         "advanced": "Advanced",
         "partialFailure": "Partial failure",
