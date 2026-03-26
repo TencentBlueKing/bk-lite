@@ -141,7 +141,7 @@ const JobRecordPage = () => {
       const res = await getJobRecordDetail(id);
 
       // 兼容 API 返回的 execution_results 字段，映射为 execution_targets
-      if (!res.execution_targets && res.execution_results) {
+      if ((!res.execution_targets || res.execution_targets.length === 0) && res.execution_results?.length) {
         res.execution_targets = res.execution_results.map((result: any, index: number) => ({
           id: index,
           target: index,
@@ -155,6 +155,24 @@ const JobRecordPage = () => {
           started_at: result.started_at,
           finished_at: result.finished_at,
           error_message: result.error_message || '',
+        }));
+      }
+
+      // 任务刚创建时可能还没有 execution_results，但 target_list 已经存在
+      if ((!res.execution_targets || res.execution_targets.length === 0) && res.target_list?.length) {
+        res.execution_targets = res.target_list.map((target: any, index: number) => ({
+          id: Number(target.target_id || target.node_id || index),
+          target: Number(target.target_id || target.node_id || index),
+          target_name: target.name || target.ip || `Target ${index + 1}`,
+          target_ip: target.ip || '-',
+          status: res.status,
+          status_display: res.status_display || res.status,
+          stdout: '',
+          stderr: '',
+          exit_code: 0,
+          started_at: res.started_at || null,
+          finished_at: res.finished_at || null,
+          error_message: '',
         }));
       }
 
@@ -419,7 +437,7 @@ const JobRecordPage = () => {
       width: 120,
       render: (_: unknown, record: JobRecord) => (
         <a
-          className="text-[var(--color-primary)] cursor-pointer"
+          className="text-(--color-primary) cursor-pointer"
           onClick={() => handleViewDetail(record)}
         >
           {t('job.viewDetail')}
@@ -577,7 +595,7 @@ const JobRecordPage = () => {
       <div className="w-full h-full flex flex-col overflow-hidden">
         {/* Header Card */}
         <div
-          className="rounded-lg px-6 py-4 mb-4 flex-shrink-0"
+          className="mb-4 rounded-lg px-6 py-4 shrink-0"
           style={{
             background: 'var(--color-bg-1)',
             border: '1px solid var(--color-border-1)',
@@ -590,7 +608,7 @@ const JobRecordPage = () => {
                 type="text"
                 icon={<ArrowLeftOutlined />}
                 onClick={handleBack}
-                className="!p-1"
+                className="p-1!"
               />
               <h2
                 className="text-lg font-medium m-0"
@@ -682,7 +700,7 @@ const JobRecordPage = () => {
         <div className="flex gap-4 flex-1 min-h-0">
           {/* Left: Target Host List */}
           <div
-            className="w-80 flex-shrink-0 rounded-lg flex flex-col"
+            className="flex w-80 shrink-0 flex-col rounded-lg"
             style={{
               background: 'var(--color-bg-1)',
               border: '1px solid var(--color-border-1)',
@@ -715,8 +733,8 @@ const JobRecordPage = () => {
                 return (
                   <div
                     key={target.id}
-                    className={`px-4 py-3 cursor-pointer border-b transition-colors ${
-                      isSelected ? 'bg-[var(--color-primary-bg)]' : 'hover:bg-[var(--color-fill-2)]'
+                    className={`cursor-pointer border-b px-4 py-3 transition-colors ${
+                      isSelected ? 'bg-(--color-primary-bg)' : 'hover:bg-(--color-fill-2)'
                     }`}
                     style={{ borderColor: 'var(--color-border-1)' }}
                     onClick={() => setSelectedTargetId(target.id)}
@@ -926,7 +944,7 @@ const JobRecordPage = () => {
               {detail.script_content?.split('\n').map((line, index) => (
                 <div key={index} className="flex px-4 py-0.5 leading-6">
                   <span
-                    className="w-8 text-right mr-4 select-none flex-shrink-0"
+                    className="mr-4 w-8 shrink-0 select-none text-right"
                     style={{ color: '#6e7681' }}
                   >
                     {index + 1}
@@ -951,7 +969,7 @@ const JobRecordPage = () => {
     <div className="w-full h-full flex flex-col overflow-hidden">
       {/* Header */}
       <div
-        className="rounded-lg px-6 py-4 mb-4 flex-shrink-0"
+        className="mb-4 rounded-lg px-6 py-4 shrink-0"
         style={{
           background: 'var(--color-bg-1)',
           border: '1px solid var(--color-border-1)',
@@ -977,7 +995,7 @@ const JobRecordPage = () => {
         }}
       >
         {/* Toolbar */}
-        <div className="flex justify-between items-center mb-4 flex-shrink-0">
+        <div className="mb-4 flex items-center justify-between shrink-0">
           <SearchCombination
             fieldConfigs={fieldConfigs}
             onChange={handleSearchChange}

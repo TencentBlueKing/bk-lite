@@ -19,6 +19,23 @@ import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/compon
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { EnabledDangerousPaths, JobRecordFile } from '@/app/job/types';
 
+const extractExecutionId = (response: any): number | undefined => {
+  const candidates = [
+    response?.id,
+    response?.execution_id,
+    response?.job_id,
+    response?.data?.id,
+    response?.data?.execution_id,
+    response?.data?.job_id,
+  ];
+
+  const matched = candidates.find((value) => typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''));
+  if (matched === undefined) return undefined;
+
+  const numericId = Number(matched);
+  return Number.isFinite(numericId) ? numericId : undefined;
+};
+
 const { Dragger } = Upload;
 const FILE_DIST_REPLAY_STORAGE_KEY = 'job.file-dist.replay';
 
@@ -177,7 +194,7 @@ const FileDistPage = () => {
       os: h.osType?.toLowerCase() as 'linux' | 'windows',
     }));
 
-    await createFileDistribution({
+    const executionResult = await createFileDistribution({
       name: values.jobName,
       file_ids: fileIds,
       target_source: targetSource === 'node_manager' ? 'node_mgmt' : 'manual',
@@ -188,7 +205,8 @@ const FileDistPage = () => {
     });
 
     message.success(t('job.fileDistSuccess'));
-    router.push('/job/execution/job-record');
+    const executionId = extractExecutionId(executionResult);
+    router.replace(executionId ? `/job/execution/job-record?id=${executionId}` : '/job/execution/job-record');
   };
 
   const handleExecute = async () => {

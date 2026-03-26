@@ -10,10 +10,10 @@ import {
   Button,
   Divider,
   message,
-  Alert,
+  Tooltip,
   Modal,
 } from 'antd';
-import { ExclamationCircleOutlined } from '@ant-design/icons';
+import { ExclamationCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
@@ -28,6 +28,23 @@ type ContentSource = 'template' | 'manual';
 type TemplateType = 'scriptLibrary' | 'playbook';
 type ScriptLang = 'shell' | 'bat' | 'python' | 'powershell';
 const QUICK_EXEC_REPLAY_STORAGE_KEY = 'job.quick-exec.replay';
+
+const extractExecutionId = (response: any): number | undefined => {
+  const candidates = [
+    response?.id,
+    response?.execution_id,
+    response?.job_id,
+    response?.data?.id,
+    response?.data?.execution_id,
+    response?.data?.job_id,
+  ];
+
+  const matched = candidates.find((value) => typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''));
+  if (matched === undefined) return undefined;
+
+  const numericId = Number(matched);
+  return Number.isFinite(numericId) ? numericId : undefined;
+};
 
 interface QuickExecReplayDraft {
   jobName?: string;
@@ -358,6 +375,7 @@ const QuickExecPage = () => {
         is_modified: currentValue !== defaultValue || !!editedTemplateParams[param.name],
       };
     });
+    let executionResult: any;
 
     const timeout = values.timeout ? Number(values.timeout) : 600;
 
@@ -374,7 +392,7 @@ const QuickExecPage = () => {
 
     if (contentSource === 'template') {
       if (templateType === 'scriptLibrary') {
-        await quickExecute({
+        executionResult = await quickExecute({
           name: values.jobName,
           script_id: selectedTemplate,
           target_source,
@@ -383,7 +401,7 @@ const QuickExecPage = () => {
           timeout,
         });
       } else {
-        await playbookExecute({
+        executionResult = await playbookExecute({
           name: values.jobName,
           playbook_id: selectedTemplate!,
           target_source,
@@ -394,7 +412,7 @@ const QuickExecPage = () => {
       }
     } else {
       const execParamsText = String(values.execParams || '').trim();
-      await quickExecute({
+      executionResult = await quickExecute({
         name: values.jobName,
         script_type: scriptLang,
         script_content: scriptContent!,
@@ -406,7 +424,8 @@ const QuickExecPage = () => {
     }
 
     message.success(t('job.executeSuccess'));
-    router.push('/job/execution/job-record');
+    const executionId = extractExecutionId(executionResult);
+    router.replace(executionId ? `/job/execution/job-record?id=${executionId}` : '/job/execution/job-record');
   };
 
   const handleExecute = async () => {
@@ -591,14 +610,6 @@ const QuickExecPage = () => {
 
           {contentSource === 'template' && (
             <>
-              {targetSource === 'node_manager' && (
-                <Alert
-                  className="mb-4"
-                  message={t('job.nodeManagerPlaybookNotSupported')}
-                  type="warning"
-                  showIcon
-                />
-              )}
               <Form.Item label={t('job.selectTemplate')} required>
                 <div className="flex flex-col gap-3">
                   <Segmented
@@ -607,7 +618,29 @@ const QuickExecPage = () => {
                     onChange={handleTemplateTypeChange}
                     options={[
                       { label: t('job.scriptLibrary'), value: 'scriptLibrary' },
-                      { label: 'Playbook', value: 'playbook', disabled: targetSource === 'node_manager' },
+                      {
+                        label: (
+                          <span
+                            className="flex items-center gap-1.5"
+                            style={{
+                              color: targetSource === 'node_manager' ? 'var(--color-text-4)' : undefined,
+                            }}
+                          >
+                            <span>Playbook</span>
+                            {targetSource === 'node_manager' && (
+                              <Tooltip title={t('job.nodeManagerPlaybookNotSupported')}>
+                                <span
+                                  className="inline-flex items-center text-[12px] text-[#faad14]"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <InfoCircleOutlined />
+                                </span>
+                              </Tooltip>
+                            )}
+                          </span>
+                        ),
+                        value: 'playbook',
+                      },
                     ]}
                   />
                   <Select
