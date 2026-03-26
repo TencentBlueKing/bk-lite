@@ -5,6 +5,8 @@ import OperateModal from '@/components/operate-modal';
 import { Form, FormInstance, Select, Button, Input, InputNumber, message } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import useMlopsModelReleaseApi from "@/app/mlops/api/modelRelease";
+import GroupTreeSelect from '@/components/group-tree-select';
+import { useUserInfoContext } from '@/context/userInfo';
 const { TextArea } = Input;
 
 interface ReleaseModalProps {
@@ -15,6 +17,8 @@ interface ReleaseModalProps {
 
 const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activeTag, onSuccess }, ref) => {
   const { t } = useTranslation();
+  const { selectedGroup } = useUserInfoContext();
+  const defaultTeam = selectedGroup?.id ? [Number(selectedGroup.id)] : [];
   const {
     addAnomalyServings, updateAnomalyServings,
     addLogClusteringServings, updateLogClusteringServings,
@@ -26,7 +30,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
   } = useMlopsModelReleaseApi();
   const formRef = useRef<FormInstance>(null);
   const [type, setType] = useState<string>('add');
-  const [formData, setFormData] = useState<any>(null);
+  const [formData, setFormData] = useState<any>({ team: defaultTeam });
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [versionOptions, setVersionOptions] = useState<Option[]>([]);
   const [versionLoading, setVersionLoading] = useState<boolean>(false);
@@ -37,7 +41,12 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
   useImperativeHandle(ref, () => ({
     showModal: ({ type, form }) => {
       setType(type);
-      setFormData(form);
+      setFormData({
+        ...form,
+        team: Array.isArray(form?.team)
+          ? form.team.map((id: string | number) => Number(id))
+          : defaultTeam,
+      });
       setModalOpen(true);
       setConfirmLoading(false);
     }
@@ -66,6 +75,10 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
       };
       formRef.current.setFieldsValue(editValues);
       getModelVersionListWithTrainJob(formData.train_job, tagName as DatasetType);
+    } else {
+      formRef.current.setFieldsValue({
+        team: defaultTeam,
+      });
     }
   };
 
@@ -194,6 +207,14 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             rules={[{ required: true, message: t(`common.inputMsg`) }]}
           >
             <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} onChange={(value) => onTrainJobChange(value, tagName)} />
+          </Form.Item>
+
+          <Form.Item
+            name='team'
+            label={t('mlops-common.organizations')}
+            rules={[{ required: true, message: t('common.selectMsg') }]}
+          >
+            <GroupTreeSelect multiple={true} mode='ownership' placeholder={t('common.selectMsg')} />
           </Form.Item>
 
           <Form.Item

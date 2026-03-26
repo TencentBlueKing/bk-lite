@@ -2,6 +2,11 @@ from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.object_detection import *
 from rest_framework import serializers
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.utils.group_scope import (
+    assert_team_ownership,
+    get_current_team,
+    validate_requested_teams,
+)
 
 
 class ObjectDetectionDatasetSerializer(AuthSerializer):
@@ -12,6 +17,9 @@ class ObjectDetectionDatasetSerializer(AuthSerializer):
     class Meta:
         model = ObjectDetectionDataset
         fields = "__all__"
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
 
 
 class ObjectDetectionTrainDataSerializer(AuthSerializer):
@@ -201,6 +209,12 @@ class ObjectDetectionTrainDataSerializer(AuthSerializer):
 
         return value
 
+    def validate_dataset(self, value):
+        assert_team_ownership(
+            value, get_current_team(self.context["request"]), "dataset"
+        )
+        return value
+
 
 class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
     """目标检测数据集发布版本序列化器"""
@@ -229,6 +243,12 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
 
         if not re.match(r"^v\d+\.\d+\.\d+$", value):
             raise serializers.ValidationError("版本号格式应为 vX.Y.Z，例如：v1.0.0")
+        return value
+
+    def validate_dataset(self, value):
+        assert_team_ownership(
+            value, get_current_team(self.context["request"]), "dataset"
+        )
         return value
 
     def create(self, validated_data):
@@ -351,7 +371,7 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
 class ObjectDetectionTrainJobSerializer(AuthSerializer):
     """目标检测训练任务序列化器"""
 
-    permission_key = "train_tasks.object_detection_train_job"
+    permission_key = "train_job.object_detection_train_job"
 
     dataset_version_name = serializers.CharField(
         source="dataset_version.name", read_only=True
@@ -395,6 +415,9 @@ class ObjectDetectionTrainJobSerializer(AuthSerializer):
         validated_data["status"] = "pending"
         return super().create(validated_data)
 
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
+
 
 class ObjectDetectionServingSerializer(AuthSerializer):
     """目标检测服务序列化器"""
@@ -432,3 +455,6 @@ class ObjectDetectionServingSerializer(AuthSerializer):
                 "模型版本必须是 'latest' 或正整数（如：1, 2, 3）"
             )
         return value
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)

@@ -11,6 +11,8 @@ from apps.mlops.serializers.algorithm_config import (
 )
 from apps.mlops.filters.image_classification import *
 from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+from apps.mlops.views.base import TeamModelViewSet
+from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 from config.drf.pagination import CustomPageNumberPagination
 from apps.core.decorators.api_permission import HasPermission
 from rest_framework import status
@@ -39,7 +41,7 @@ import numpy as np
 import requests
 
 
-class ImageClassificationDatasetViewSet(ModelViewSet):
+class ImageClassificationDatasetViewSet(TeamModelViewSet):
     queryset = ImageClassificationDataset.objects.all()
     serializer_class = ImageClassificationDatasetSerializer
     filterset_class = ImageClassificationDatasetFilter
@@ -77,6 +79,11 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
     filterset_class = ImageClassificationTrainDataFilter
     ordering = ("-id",)
     permission_key = "dataset.image_classification_train_data"
+
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
 
     @HasPermission("image_classification-View")
     def list(self, request, *args, **kwargs):
@@ -179,6 +186,11 @@ class ImageClassificationDatasetReleaseViewSet(ModelViewSet):
     ordering = ("-created_at",)
     permission_key = "dataset.image_classification_dataset_release"
 
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
+
     @HasPermission("image_classification-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -279,7 +291,7 @@ class ImageClassificationDatasetReleaseViewSet(ModelViewSet):
             )
 
 
-class ImageClassificationTrainJobViewSet(ModelViewSet):
+class ImageClassificationTrainJobViewSet(TeamModelViewSet):
     """图片分类训练任务视图集"""
 
     queryset = ImageClassificationTrainJob.objects.select_related(
@@ -289,7 +301,7 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     filterset_class = ImageClassificationTrainJobFilter
     ordering = ("-created_at",)
-    permission_key = "train_tasks.image_classification_train_job"
+    permission_key = "train_job.image_classification_train_job"
 
     # MLflow 前缀
     MLFLOW_PREFIX = "ImageClassification"
@@ -817,7 +829,7 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             )
 
 
-class ImageClassificationServingViewSet(ModelViewSet):
+class ImageClassificationServingViewSet(TeamModelViewSet):
     """图片分类服务视图集"""
 
     queryset = ImageClassificationServing.objects.select_related(

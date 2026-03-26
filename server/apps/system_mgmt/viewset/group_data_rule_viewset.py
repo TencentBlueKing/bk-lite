@@ -9,6 +9,7 @@ from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
 from apps.rpc.job_mgmt import JobMgmt
 from apps.rpc.log import Log
+from apps.rpc.mlops import MLOps
 from apps.rpc.monitor import Monitor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.operation_analysis import OperationAnalysisRPC
@@ -124,6 +125,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
             "node": NodeMgmt,
             "monitor": Monitor,
             "log": Log,
+            "mlops": MLOps,
             "cmdb": CMDB,
             "ops-analysis": OperationAnalysisRPC,
             "job": JobMgmt,

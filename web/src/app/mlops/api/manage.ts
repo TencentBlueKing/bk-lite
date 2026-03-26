@@ -68,6 +68,7 @@ const useMlopsManageApi = () => {
   const addDataset = async (key: DatasetType, params: {
     name: string;
     description: string;
+    team: number[];
   }) => {
     return await post(`/mlops/${DATASET_MAP[key]}/`, params);
   };
@@ -131,6 +132,7 @@ const useMlopsManageApi = () => {
   const updateDataset = async (id: number, key: DatasetType, params: {
     name: string;
     description: string;
+    team: number[];
   }) => {
     return await put(`/mlops/${DATASET_MAP[key]}/${id}`, params);
   };

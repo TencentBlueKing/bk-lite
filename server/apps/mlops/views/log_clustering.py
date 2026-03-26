@@ -37,9 +37,11 @@ from apps.mlops.serializers.algorithm_config import (
     AlgorithmConfigListSerializer,
 )
 from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+from apps.mlops.views.base import TeamModelViewSet
+from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 
 
-class LogClusteringDatasetViewSet(ModelViewSet):
+class LogClusteringDatasetViewSet(TeamModelViewSet):
     queryset = LogClusteringDataset.objects.all()
     serializer_class = LogClusteringDatasetSerializer
     pagination_class = CustomPageNumberPagination
@@ -68,7 +70,7 @@ class LogClusteringDatasetViewSet(ModelViewSet):
         return super().update(request, *args, **kwargs)
 
 
-class LogClusteringTrainJobViewSet(ModelViewSet):
+class LogClusteringTrainJobViewSet(TeamModelViewSet):
     queryset = LogClusteringTrainJob.objects.select_related(
         "dataset_version", "dataset_version__dataset"
     ).all()
@@ -76,7 +78,7 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     filterset_class = LogClusteringTrainJobFilter
     ordering = ("-id",)
-    permission_key = "dataset.log_clustering_train_job"
+    permission_key = "train_job.log_clustering_train_job"
 
     MLFLOW_PREFIX = "LogClustering"  # MLflow 命名前缀
 
@@ -609,6 +611,11 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.log_clustering_dataset_release"
 
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
+
     @HasPermission("log_clustering-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -734,6 +741,11 @@ class LogClusteringTrainDataViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.log_clustering_train_data"
 
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
+
     @HasPermission("log_clustering-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -755,7 +767,7 @@ class LogClusteringTrainDataViewSet(ModelViewSet):
         return super().update(request, *args, **kwargs)
 
 
-class LogClusteringServingViewSet(ModelViewSet):
+class LogClusteringServingViewSet(TeamModelViewSet):
     queryset = LogClusteringServing.objects.select_related(
         "train_job", "train_job__dataset_version", "train_job__dataset_version__dataset"
     ).all()
@@ -763,7 +775,7 @@ class LogClusteringServingViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     filterset_class = LogClusteringServingFilter
     ordering = ("-id",)
-    permission_key = "dataset.log_clustering_serving"
+    permission_key = "serving.log_clustering_serving"
 
     MLFLOW_PREFIX = "LogClustering"  # MLflow 命名前缀
 

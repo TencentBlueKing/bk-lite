@@ -3,6 +3,11 @@ from rest_framework import serializers
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.timeseries_predict import *
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.utils.group_scope import (
+    assert_team_ownership,
+    get_current_team,
+    validate_requested_teams,
+)
 
 
 class TimeSeriesPredictDatasetSerializer(AuthSerializer):
@@ -14,6 +19,9 @@ class TimeSeriesPredictDatasetSerializer(AuthSerializer):
         model = TimeSeriesPredictDataset
         fields = "__all__"
 
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
+
 
 class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
     """
@@ -24,7 +32,7 @@ class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
     - config_url: FileField，自动同步到MinIO（Model.save()处理）
     """
 
-    permission_key = "dataset.timeseries_predict_train_job"
+    permission_key = "train_job.timeseries_predict_train_job"
 
     class Meta:
         model = TimeSeriesPredictTrainJob
@@ -46,6 +54,9 @@ class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
                 {"dataset_version": "创建训练任务时必须指定数据集版本"}
             )
         return super().validate(attrs)
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
 
 
 class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
@@ -98,6 +109,12 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
             return value
         except pd.errors.ParserError as e:
             raise serializers.ValidationError(f"无效的CSV格式: {str(e)}")
+
+    def validate_dataset(self, value):
+        assert_team_ownership(
+            value, get_current_team(self.context["request"]), "dataset"
+        )
+        return value
 
     def to_representation(self, instance):
         """
@@ -161,11 +178,14 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
 class TimeSeriesPredictServingSerializer(AuthSerializer):
     """时间序列预测服务序列化器"""
 
-    permission_key = "dataset.timeseries_predict_serving"
+    permission_key = "serving.timeseries_predict_serving"
 
     class Meta:
         model = TimeSeriesPredictServing
         fields = "__all__"
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
 
 
 class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
@@ -187,6 +207,12 @@ class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
             "file_size": {"required": False},
             "status": {"required": False},
         }
+
+    def validate_dataset(self, value):
+        assert_team_ownership(
+            value, get_current_team(self.context["request"]), "dataset"
+        )
+        return value
 
     def create(self, validated_data):
         """

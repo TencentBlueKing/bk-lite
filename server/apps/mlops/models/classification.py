@@ -13,6 +13,11 @@ class ClassificationDataset(MaintainerInfo, TimeInfo):
 
     name = models.CharField(max_length=100, verbose_name="数据集名称")
     description = models.TextField(blank=True, null=True, verbose_name="数据集描述")
+    team = models.JSONField(
+        default=list,
+        verbose_name="关联组织",
+        help_text="关联的组织ID列表，用于权限控制",
+    )
 
     class Meta:
         verbose_name = "分类任务数据集"
@@ -138,6 +143,11 @@ class ClassificationTrainJob(TrainJobConfigSyncMixin, MaintainerInfo, TimeInfo):
 
     name = models.CharField(max_length=100, verbose_name="任务名称")
     description = models.TextField(blank=True, null=True, verbose_name="任务描述")
+    team = models.JSONField(
+        default=list,
+        verbose_name="关联组织",
+        help_text="关联的组织ID列表，用于权限控制",
+    )
 
     status = models.CharField(
         max_length=20,
@@ -205,6 +215,11 @@ class ClassificationServing(MaintainerInfo, TimeInfo):
         null=True,
         verbose_name="服务描述",
         help_text="服务的详细描述",
+    )
+    team = models.JSONField(
+        default=list,
+        verbose_name="关联组织",
+        help_text="关联的组织ID列表，用于权限控制",
     )
     train_job = models.ForeignKey(
         ClassificationTrainJob,

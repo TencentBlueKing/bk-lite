@@ -14,6 +14,8 @@ import EntityList from '@/components/entity-list';
 import PermissionWrapper from '@/components/permission';
 import { DatasetType, ModalRef } from '@/app/mlops/types';
 import { DataSet } from '@/app/mlops/types/manage';
+import { useUserInfoContext } from '@/context/userInfo';
+import { formatGroupNames } from '@/app/mlops/utils/common';
 const { confirm } = Modal;
 
 const DatasetsPage = () => {
@@ -21,6 +23,7 @@ const DatasetsPage = () => {
   const router = useRouter();
   const params = useParams();
   const algorithmType = params.algorithmType as DatasetType;
+  const { flatGroups } = useUserInfoContext();
 
   const {
     getDatasetsList,
@@ -55,6 +58,7 @@ const DatasetsPage = () => {
           description: item.description || '--',
           icon: 'tucengshuju',
           creator: item?.created_by || '--',
+          team: item?.team || [],
         }
       }) || [];
       setDatasets(_data);
@@ -106,7 +110,13 @@ const DatasetsPage = () => {
   };
 
   const infoText = (item: any) => {
-    return <p className='text-right font-mini text-(--color-text-3)'>{`${t(`mlops-common.owner`)}: ${item.creator}`}</p>;
+    const organizationText = formatGroupNames(item.team, flatGroups);
+    return (
+      <div className='flex items-center justify-end gap-4 font-mini text-(--color-text-3) text-right whitespace-nowrap'>
+        <p className='truncate max-w-[55%]' title={organizationText}>{`${t('mlops-common.organizations')}: ${organizationText}`}</p>
+        <p>{`${t(`mlops-common.owner`)}: ${item.creator}`}</p>
+      </div>
+    );
   };
 
   const menuActions = (item: any) => {

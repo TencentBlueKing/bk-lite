@@ -17,6 +17,8 @@ import type { Option } from '@/types';
 import { TrainJob } from '@/app/mlops/types/task';
 import { TRAIN_STATUS_MAP, TRAIN_TEXT, ALGORITHM_TYPE_I18N_KEYS } from '@/app/mlops/constants';
 import { DataSet } from '@/app/mlops/types/manage';
+import { useUserInfoContext } from '@/context/userInfo';
+import { formatGroupNames } from '@/app/mlops/utils/common';
 const { Search } = Input;
 
 const getStatusColor = (value: string, TrainStatus: Record<string, string>) => {
@@ -31,6 +33,7 @@ const TrainingPage = () => {
   const { t } = useTranslation();
   const params = useParams();
   const algorithmType = params.algorithmType as DatasetType;
+  const { flatGroups } = useUserInfoContext();
 
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getDatasetsList } = useMlopsManageApi();
@@ -90,6 +93,21 @@ const TrainingPage = () => {
           </div>
         ) : (
           <>--</>
+        );
+      }
+    },
+    {
+      title: t('mlops-common.organizations'),
+      key: 'team',
+      dataIndex: 'team',
+      width: 180,
+      render: (_, record: TrainJob) => {
+        const organizationText = formatGroupNames(record.team, flatGroups);
+        return (
+          <EllipsisWithTooltip
+            className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+            text={organizationText}
+          />
         );
       }
     },
@@ -203,6 +221,7 @@ const TrainingPage = () => {
         dataset_version: item.dataset_version,
         created_at: item.created_at,
         creator: item?.created_by,
+        team: item?.team || [],
         status: item?.status,
         max_evals: item.max_evals,
         algorithm: item.algorithm,

@@ -5,6 +5,7 @@ export interface ServingParams {
   model_version: string;
   status: string;
   train_job: string;
+  team?: number[];
 }
 
 // ========== 推理请求类型 ==========

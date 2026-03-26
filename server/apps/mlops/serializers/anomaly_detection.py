@@ -1,6 +1,11 @@
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.anomaly_detection import *
 from rest_framework import serializers
+from apps.mlops.utils.group_scope import (
+    assert_team_ownership,
+    get_current_team,
+    validate_requested_teams,
+)
 
 
 class AnomalyDetectionDatasetSerializer(AuthSerializer):
@@ -11,6 +16,9 @@ class AnomalyDetectionDatasetSerializer(AuthSerializer):
     class Meta:
         model = AnomalyDetectionDataset
         fields = "__all__"
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
 
 
 class AnomalyDetectionTrainDataSerializer(AuthSerializer):
@@ -59,7 +67,7 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
             # 检查数据类型
             if df["value"].isnull().any():
                 raise serializers.ValidationError("'value'列包含空值")
-            
+
             if df["label"].isnull().any():
                 raise serializers.ValidationError("'label'列包含空值")
 
@@ -69,6 +77,12 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
             return value
         except pd.errors.ParserError as e:
             raise serializers.ValidationError(f"无效的CSV格式: {str(e)}")
+
+    def validate_dataset(self, value):
+        assert_team_ownership(
+            value, get_current_team(self.context["request"]), "dataset"
+        )
+        return value
 
     def to_representation(self, instance):
         """
@@ -148,6 +162,12 @@ class AnomalyDetectionDatasetReleaseSerializer(AuthSerializer):
             "file_size": {"required": False},
             "status": {"required": False},
         }
+
+    def validate_dataset(self, value):
+        assert_team_ownership(
+            value, get_current_team(self.context["request"]), "dataset"
+        )
+        return value
 
     def create(self, validated_data):
         """
@@ -248,7 +268,7 @@ class AnomalyDetectionDatasetReleaseSerializer(AuthSerializer):
 
 
 class AnomalyDetectionTrainJobSerializer(AuthSerializer):
-    permission_key = "dataset.anomaly_detection_train_job"
+    permission_key = "train_job.anomaly_detection_train_job"
 
     class Meta:
         model = AnomalyDetectionTrainJob
@@ -270,6 +290,9 @@ class AnomalyDetectionTrainJobSerializer(AuthSerializer):
                 {"dataset_version": "创建训练任务时必须指定数据集版本"}
             )
         return super().validate(attrs)
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
 
 
 class TimeSeriesDataSerializer(serializers.Serializer):
@@ -332,3 +355,6 @@ class AnomalyDetectionServingSerializer(AuthSerializer):
     class Meta:
         model = AnomalyDetectionServing
         fields = "__all__"
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
