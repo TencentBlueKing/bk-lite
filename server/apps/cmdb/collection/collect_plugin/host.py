@@ -2,7 +2,6 @@
 # @File: host.py
 # @Time: 2025/11/12 14:06
 # @Author: windyzhao
-import codecs
 import json
 import re
 from apps.cmdb.collection.collect_plugin.base import CollectBase
@@ -28,7 +27,8 @@ class HostCollectMetrics(CollectBase):
             {"name": "armv8l", "id": "arm64"}
         ]
         self.cup_arch_list = [{"id": "x86", "name": "x86"}, {"id": "x64", "name": "x64"}, {"id": "arm", "name": "ARM"},
-                              {"id": "arm64", "name": "ARM64"}, {"id": "other", "name": "Other"}]
+                               {"id": "arm64", "name": "ARM64"}, {"id": "other", "name": "Other"}]
+        self.host_proc_map = {}
 
     @property
     def _metrics(self):
@@ -52,8 +52,9 @@ class HostCollectMetrics(CollectBase):
                 "disk": (self.transform_int, "disk_gb"),
                 "cpu_arch": self.set_cpu_arch,
                 "inner_mac": (self.format_mac, "mac_address"),
+                "proc": self.get_host_proc,
             },
-            "physcial_server": {
+         "physcial_server": {
                 "inst_name": self.set_inst_name,
                 "serial_number": "serial_number",
                 "cpu_vendor": "cpu_vendor",
@@ -201,6 +202,28 @@ class HostCollectMetrics(CollectBase):
                 return cpu["id"]
         return "other"
 
+    def get_host_proc(self, data, *args, **kwargs):
+        host_key = self.get_host_proc_key(data)
+        return json.dumps(self.host_proc_map.get(host_key, []))
+
+    @staticmethod
+    def get_host_proc_key(data):
+        return data.get("ip_addr") or data.get("host") or data.get("instance_id") or ""
+
+    def add_host_proc(self, data):
+        host_key = self.get_host_proc_key(data)
+        if not host_key:
+            return
+        proc_item = {
+            "pid": data.get("pid", ""),
+            "name": data.get("name", ""),
+            "arg": data.get("arg", ""),
+            "exe": data.get("exe", ""),
+            "cwd": data.get("cwd", ""),
+            "ports": data.get("ports", ""),
+        }
+        self.host_proc_map.setdefault(host_key, []).append(proc_item)
+
     def format_data(self, data):
         """格式化数据"""
         if not isinstance(data, dict) or "result" not in data:
@@ -225,6 +248,9 @@ class HostCollectMetrics(CollectBase):
                 **index_data["metric"],
                 **result_data,  # 将解析后的JSON数据合并到index_dict中
             )
+            if metric_name == "host_proc_usage_info_gauge":
+                self.add_host_proc(index_dict)
+                continue
             self.collection_metrics_dict[metric_name].append(index_dict)
 
     def format_metrics(self):
@@ -258,4 +284,4 @@ class HostCollectMetrics(CollectBase):
                 if data:
                     result.append(data)
             self.result[model_id] = result
-        # print(json.dumps(self.result, indent=4))
+        print(json.dumps(self.result, indent=4))

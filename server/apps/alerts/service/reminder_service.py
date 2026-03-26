@@ -4,20 +4,97 @@
 # @Author: windyzhao
 import json
 
-from django.db.models import F
 from django.utils import timezone
 from django.db import transaction
 from datetime import timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 from apps.alerts.common.notify.base import NotifyParamsFormat
 from apps.alerts.models import Alert, AlertReminderTask, AlertAssignment, Level
-from apps.alerts.constants import SessionStatus
+from apps.alerts.constants import SessionStatus, AlertStatus
 from apps.core.logger import alert_logger as logger
 
 
 class ReminderService:
     """告警提醒服务"""
+
+    DEFAULT_MAX_REMINDERS = 10
+
+    @classmethod
+    def _parse_max_count(
+        cls, raw_max_count: Any, *, alert_level: str, assignment_id: int
+    ) -> int:
+        """解析最大提醒次数。0 表示不限次数。"""
+        if raw_max_count in (None, ""):
+            return cls.DEFAULT_MAX_REMINDERS
+
+        try:
+            max_count = int(raw_max_count)
+        except (TypeError, ValueError):
+            logger.warning(
+                "分派策略 %s 的提醒次数配置格式错误: level=%s, max_count=%s，使用默认值 %s",
+                assignment_id,
+                alert_level,
+                raw_max_count,
+                cls.DEFAULT_MAX_REMINDERS,
+            )
+            return cls.DEFAULT_MAX_REMINDERS
+
+        if max_count < 0:
+            logger.warning(
+                "分派策略 %s 的提醒次数配置无效: level=%s, max_count=%s，使用默认值 %s",
+                assignment_id,
+                alert_level,
+                raw_max_count,
+                cls.DEFAULT_MAX_REMINDERS,
+            )
+            return cls.DEFAULT_MAX_REMINDERS
+
+        return max_count
+
+    @classmethod
+    def _get_effective_max_reminders(cls, reminder: AlertReminderTask) -> int:
+        """获取提醒任务的有效最大提醒次数。0 表示不限次数。"""
+        assignment_config = reminder.assignment.notification_frequency or {}
+        level_config = assignment_config.get(reminder.alert.level, {})
+        if level_config:
+            configured_max_count = cls._parse_max_count(
+                level_config.get("max_count"),
+                alert_level=reminder.alert.level,
+                assignment_id=reminder.assignment_id,
+            )
+            if configured_max_count == 0:
+                return 0
+
+        if reminder.current_max_reminders < 0:
+            return cls.DEFAULT_MAX_REMINDERS
+
+        return reminder.current_max_reminders
+
+    @classmethod
+    def _normalize_frequency_config(
+        cls, level_config: Dict[str, Any], alert_level: str, assignment_id: int
+    ) -> Optional[Tuple[int, int]]:
+        """规范化频率配置。"""
+        if not level_config:
+            return None
+
+        interval_minutes = int(level_config.get("interval_minutes", 0) or 0)
+        if interval_minutes <= 0:
+            logger.warning(
+                "告警级别 %s 在分派策略 %s 中没有配置有效通知频率，不创建提醒任务",
+                alert_level,
+                assignment_id,
+            )
+            return None
+
+        max_count = cls._parse_max_count(
+            level_config.get("max_count", cls.DEFAULT_MAX_REMINDERS),
+            alert_level=alert_level,
+            assignment_id=assignment_id,
+        )
+
+        return interval_minutes, max_count
 
     @classmethod
     def create_reminder_task(
@@ -29,22 +106,50 @@ class ReminderService:
             alert_level = alert.level
             level_config = assignment.notification_frequency.get(alert_level, {})
 
-            if not level_config or level_config.get("interval_minutes", 0) <= 0:
-                logger.warning(
-                    f"告警级别 {alert_level} 没有配置通知频率或频率为0，不创建提醒任务"
-                )
+            normalized_config = cls._normalize_frequency_config(
+                level_config=level_config,
+                alert_level=alert_level,
+                assignment_id=assignment.id,
+            )
+            if not normalized_config:
                 return None
 
-            interval_minutes = level_config.get("interval_minutes", 30)
-            max_count = level_config.get("max_count", 10)
+            interval_minutes, max_count = normalized_config
 
-            # 检查是否已存在活跃的提醒任务
-            existing_task = AlertReminderTask.objects.filter(
-                alert=alert, assignment=assignment, is_active=True
-            ).first()
+            existing_task = AlertReminderTask.objects.filter(alert=alert).first()
 
             if existing_task:
-                logger.warning(f"告警 {alert.alert_id} 已存在活跃的提醒任务")
+                if existing_task.is_active:
+                    logger.warning(f"告警 {alert.alert_id} 已存在活跃的提醒任务")
+                    return existing_task
+
+                existing_task.assignment = assignment
+                existing_task.is_active = True
+                existing_task.current_frequency_minutes = interval_minutes
+                existing_task.current_max_reminders = max_count
+                existing_task.reminder_count = 0
+                existing_task.last_reminder_time = None
+                existing_task.next_reminder_time = (
+                    timezone.now() + timedelta(minutes=interval_minutes)
+                )
+                existing_task.save(
+                    update_fields=[
+                        "assignment",
+                        "is_active",
+                        "current_frequency_minutes",
+                        "current_max_reminders",
+                        "reminder_count",
+                        "last_reminder_time",
+                        "next_reminder_time",
+                        "updated_at",
+                    ]
+                )
+                logger.info(
+                    "重新激活告警 %s 的提醒任务，频率: %s分钟，最大次数: %s",
+                    alert.alert_id,
+                    interval_minutes,
+                    max_count,
+                )
                 return existing_task
 
             # 创建新的提醒任务
@@ -65,6 +170,52 @@ class ReminderService:
 
         except Exception as e:
             logger.error(f"创建提醒任务失败: alert_id={alert.alert_id}, error={str(e)}")
+            return None
+
+    @classmethod
+    def ensure_reminder_task(
+        cls,
+        alert: Alert,
+        assignment: Optional[AlertAssignment] = None,
+        assignment_id: Optional[int] = None,
+    ) -> Optional[AlertReminderTask]:
+        """确保告警存在可用的提醒任务。"""
+        try:
+            if assignment is None and assignment_id:
+                assignment = AlertAssignment.objects.filter(
+                    id=assignment_id, is_active=True
+                ).first()
+
+            if assignment is None:
+                existing_task = AlertReminderTask.objects.filter(alert=alert).select_related(
+                    "assignment"
+                ).first()
+                if existing_task:
+                    assignment = existing_task.assignment
+
+            if assignment is None:
+                logger.warning(
+                    "告警 %s 缺少可用的分派策略，无法恢复提醒任务",
+                    alert.alert_id,
+                )
+                return None
+
+            if not assignment.is_active:
+                logger.warning(
+                    "告警 %s 的分派策略 %s 未启用，无法恢复提醒任务",
+                    alert.alert_id,
+                    assignment.id,
+                )
+                return None
+
+            return cls.create_reminder_task(alert, assignment)
+
+        except Exception as e:
+            logger.error(
+                "确保提醒任务失败: alert_id=%s, error=%s",
+                alert.alert_id,
+                str(e),
+            )
             return None
 
     @classmethod
@@ -100,7 +251,11 @@ class ReminderService:
                 old_max_count = reminder.current_max_reminders
 
                 reminder.current_frequency_minutes = new_frequency
-                reminder.current_max_reminders = new_max_count
+                reminder.current_max_reminders = (
+                    new_max_count
+                    if new_max_count >= 0
+                    else cls.DEFAULT_MAX_REMINDERS
+                )
 
                 # 如果频率发生变化，需要重新计算下次提醒时间
                 if old_frequency != new_frequency:
@@ -147,13 +302,40 @@ class ReminderService:
             pending_reminders = AlertReminderTask.objects.filter(
                 is_active=True,
                 next_reminder_time__lte=now,
-                reminder_count__lt=F("current_max_reminders"),
             ).select_related("alert", "assignment")
 
             for reminder in pending_reminders:
                 processed += 1
 
                 try:
+                    if reminder.alert.status != AlertStatus.PENDING:
+                        reminder.is_active = False
+                        reminder.save(update_fields=["is_active", "updated_at"])
+                        logger.info(
+                            "提醒任务因告警状态非待响应而停用: alert_id=%s, status=%s",
+                            reminder.alert.alert_id,
+                            reminder.alert.status,
+                        )
+                        continue
+
+                    effective_max_reminders = cls._get_effective_max_reminders(
+                        reminder
+                    )
+
+                    if (
+                        effective_max_reminders > 0
+                        and reminder.reminder_count >= effective_max_reminders
+                    ):
+                        reminder.is_active = False
+                        reminder.save(update_fields=["is_active", "updated_at"])
+                        logger.info(
+                            "提醒任务达到最大次数，自动停用: alert_id=%s, assignment_id=%s, max_count=%s",
+                            reminder.alert.alert_id,
+                            reminder.assignment_id,
+                            effective_max_reminders,
+                        )
+                        continue
+
                     # 发送提醒通知
                     if cls._send_reminder_notification(
                         assignment=reminder.assignment, alert=reminder.alert
@@ -163,7 +345,10 @@ class ReminderService:
                         reminder.last_reminder_time = now
 
                         # 计算下次提醒时间
-                        if reminder.reminder_count < reminder.current_max_reminders:
+                        if (
+                            effective_max_reminders <= 0
+                            or reminder.reminder_count < effective_max_reminders
+                        ):
                             reminder.next_reminder_time = now + timedelta(
                                 minutes=reminder.current_frequency_minutes
                             )

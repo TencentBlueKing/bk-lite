@@ -1,0 +1,1771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsPilot - 智能体详情</title>
+    <style>
+        :root {
+            --color-primary: #2b5bff;
+            --color-text-1: #1f2d3d;
+            --color-text-2: #4f5f75;
+            --color-text-3: #8d9bb0;
+            --color-border: #dde5f0;
+            --color-page: #f2f5fb;
+            --color-panel: #f7f9fd;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            color: var(--color-text-1);
+            background: var(--color-page);
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        button,
+        input,
+        select,
+        textarea {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            height: 56px;
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #e5ebf4;
+            background: #edf3fb;
+        }
+
+        .brand {
+            min-width: 230px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #5a6880;
+        }
+
+        .brand img {
+            width: 22px;
+            height: 22px;
+        }
+
+        .brand .switcher {
+            margin-left: 4px;
+            border: 1px solid var(--color-border);
+            color: #6f7f95;
+            background: #f7faff;
+            border-radius: 8px;
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .main-nav {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+
+        .main-nav a {
+            height: 34px;
+            padding: 0 12px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: #4f5e73;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .main-nav a:hover {
+            background: #e7eef8;
+        }
+
+        .main-nav a.active {
+            color: var(--color-primary);
+            background: #e5efff;
+            font-weight: 600;
+        }
+
+        .nav-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.75;
+        }
+
+        .header-actions {
+            min-width: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+            color: #6f7f95;
+            font-size: 13px;
+        }
+
+        .icon-action {
+            border: none;
+            background: transparent;
+            color: inherit;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .icon-action:hover {
+            background: #e3eaf5;
+        }
+
+        .avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .workspace {
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            min-height: calc(100vh - 56px);
+        }
+
+        .left-menu {
+            width: 148px;
+            background: #f5f7fb;
+            border: 1px solid #d8dfe8;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 14px 10px;
+        }
+
+        .menu-top h3 {
+            margin: 0;
+            font-size: 18px;
+            line-height: 1.3;
+            color: #2d3e56;
+            font-weight: 700;
+        }
+
+        .menu-sub {
+            margin-top: 6px;
+            font-size: 11px;
+            color: #8293ab;
+            line-height: 1.5;
+            min-height: 32px;
+        }
+
+        .menu-item {
+            margin-top: 14px;
+            height: 32px;
+            border-radius: 6px;
+            background: #e5edfa;
+            color: #2b5bff;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            font-weight: 600;
+            cursor: default;
+        }
+
+        .back-btn {
+            width: 100%;
+            height: 32px;
+            border: none;
+            border-radius: 6px;
+            color: #6e7f98;
+            background: transparent;
+            text-align: left;
+            padding-left: 6px;
+        }
+
+        .back-btn:hover {
+            background: #e8eef8;
+        }
+
+        .main {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            overflow-x: auto;
+        }
+
+        .summary {
+            border: 1px solid #d8dfe8;
+            border-radius: 8px;
+            background: #f9fafd;
+            padding: 12px 16px;
+        }
+
+        .summary h2 {
+            margin: 0;
+            font-size: 18px;
+            line-height: 1.2;
+            color: #2b3e59;
+            font-weight: 700;
+        }
+
+        .summary p {
+            margin: 6px 0 0;
+            color: #7f90a8;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .detail-layout {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 12px;
+            height: calc(100vh - 170px);
+            min-width: 0;
+        }
+
+        .detail-layout > .config-panel {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .detail-layout > .test-panel {
+            flex: 0 1 clamp(380px, 38vw, 620px);
+            width: clamp(380px, 38vw, 620px);
+            max-width: 100%;
+            min-width: 0;
+        }
+
+        .config-panel {
+            border: 1px solid #dde5f0;
+            border-radius: 8px;
+            background: #fff;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .config-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .config-section {
+            border: 1px solid #e7edf6;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .config-save {
+            border-top: 1px solid #ebf0f5;
+            padding: 10px 14px;
+            background: #fff;
+        }
+
+        .panel {
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            background: #fff;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-head {
+            height: 36px;
+            border-bottom: 1px solid #d8e2f1;
+            background: #e8eef9;
+            border-radius: 8px 8px 0 0;
+            padding: 0 14px;
+            display: flex;
+            align-items: center;
+            font-size: 13px;
+            font-weight: 700;
+            color: #354a68;
+        }
+
+        .panel-body {
+            padding: 12px 14px;
+            overflow: auto;
+            background: #fff;
+        }
+
+        .basic-info-panel {
+            border: 1px solid #dde5f0;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .basic-head {
+            height: 32px;
+            border-bottom: 1px solid #e4ebf6;
+            background: #e8eef9;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            font-size: 14px;
+            font-weight: 700;
+            color: #354a68;
+        }
+
+        .basic-body {
+            padding: 10px 16px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 80px 1fr;
+            gap: 12px;
+            align-items: start;
+            margin-bottom: 14px;
+        }
+
+        .form-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .form-label {
+            font-size: 13px;
+            color: #5c6d84;
+            text-align: right;
+            padding-top: 6px;
+            white-space: nowrap;
+        }
+
+        .required::before {
+            content: '* ';
+            color: #e34b4b;
+        }
+
+        .field,
+        .textarea,
+        .select {
+            width: 100%;
+            border: 1px solid #d5dce6;
+            border-radius: 5px;
+            padding: 8px 10px;
+            background: #fff;
+            font-size: 12px;
+            color: #3d4f6a;
+            outline: none;
+        }
+
+        .field,
+        .select {
+            height: 30px;
+        }
+
+        .field:focus,
+        .textarea:focus,
+        .select:focus {
+            border-color: #2b5bff;
+        }
+
+        .textarea {
+            min-height: 80px;
+            resize: none;
+            line-height: 1.5;
+        }
+
+        .tip-icon {
+            color: #a0b0c4;
+            border: 1px solid #d5dce6;
+            border-radius: 50%;
+            display: inline-flex;
+            width: 14px;
+            height: 14px;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            line-height: 1;
+            vertical-align: middle;
+        }
+
+        .fake-select {
+            height: 30px;
+            border: 1px solid #d5dce6;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 8px;
+            background: #fff;
+        }
+
+        .fake-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            height: 20px;
+            padding: 0 8px;
+            border: 1px solid #d7dfe9;
+            border-radius: 4px;
+            color: #566b86;
+            background: #f7f9fc;
+            font-size: 12px;
+        }
+
+        .fake-arrow {
+            color: #a5b3c5;
+            font-size: 12px;
+        }
+
+        .wide-row {
+            display: grid;
+            grid-template-columns: 80px 1fr;
+            gap: 12px;
+            align-items: start;
+        }
+
+        .wide-label {
+            font-size: 13px;
+            color: #5c6d84;
+            text-align: right;
+            padding-top: 7px;
+            white-space: nowrap;
+        }
+
+        .save-row {
+            margin-top: 2px;
+        }
+
+        .switch-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            height: 28px;
+            font-size: 12px;
+            color: #4f5f75;
+        }
+
+        .switch {
+            width: 22px;
+            height: 12px;
+            border-radius: 999px;
+            appearance: none;
+            position: relative;
+            background: #c8d2e2;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .switch::after {
+            content: '';
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #fff;
+            position: absolute;
+            left: 1px;
+            top: 1px;
+            transition: transform 0.2s ease;
+            box-shadow: 0 1px 3px rgba(24, 34, 54, 0.25);
+        }
+
+        .switch:checked {
+            background: #2a66ff;
+        }
+
+        .switch:checked::after {
+            transform: translateX(10px);
+        }
+
+        .temperature-wrap {
+            display: grid;
+            grid-template-columns: 1fr 66px;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .temperature-wrap input[type='range'] {
+            width: 100%;
+        }
+
+        .temp-val {
+            border: 1px solid #cfd9e8;
+            border-radius: 5px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            font-size: 12px;
+            color: #4e5f79;
+        }
+
+        .footer-actions {
+            padding: 10px 14px;
+            background: #fff;
+        }
+
+        .save-btn {
+            width: 48px;
+            height: 26px;
+            border: none;
+            border-radius: 5px;
+            color: #fff;
+            background: #2b5bff;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .save-btn:hover {
+            background: #1f45d8;
+        }
+
+        .chat-body {
+            flex: 1;
+            min-height: 0;
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #fff;
+        }
+
+        .chat-box {
+            flex: 1;
+            min-height: 180px;
+            border: 1px solid #e0e8f0;
+            border-radius: 8px;
+            background: #f9fafc;
+            padding: 14px;
+            overflow: auto;
+        }
+
+        .message {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+        }
+
+        .msg-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #f6ca40;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .msg-bubble {
+            max-width: 80%;
+            background: #fff;
+            border: 1px solid #e0e8f0;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #4f5f75;
+        }
+
+        .msg-link {
+            color: #2b5bff;
+            font-weight: 600;
+            display: block;
+            margin-top: 6px;
+        }
+
+        .chat-input {
+            border: 1px solid #d5dce6;
+            border-radius: 8px;
+            height: 42px;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            gap: 8px;
+        }
+
+        .chat-input input {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 12px;
+            background: transparent;
+            color: #2b3d58;
+        }
+
+        .chat-input input::placeholder {
+            color: #a0b0c4;
+        }
+
+        .send {
+            border: none;
+            background: transparent;
+            color: #8ea2be;
+            font-size: 13px;
+        }
+
+        .send:hover {
+            color: #2b5bff;
+        }
+
+        .enhance-panel {
+            border: 1px solid #d8dfe8;
+            border-radius: 8px;
+            background: #f9fafd;
+            padding: 14px 16px;
+            margin-top: 10px;
+        }
+
+        .test-panel {
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .test-panel .chat-body {
+            flex: 1;
+            min-height: 0;
+            padding: 0 16px 14px 16px;
+            gap: 10px;
+        }
+
+        .test-panel .chat-box {
+            min-height: 0;
+            height: 100%;
+            border: none;
+            background: #f5f7fb;
+            padding: 16px;
+        }
+
+        .test-panel .chat-input {
+            flex-shrink: 0;
+            margin-top: 0;
+        }
+
+        .enhance-title {
+            margin: 0 0 12px;
+            font-size: 14px;
+            font-weight: 700;
+            color: #2b5bff;
+        }
+
+        .enhance-item {
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #e5ebf4;
+        }
+
+        .enhance-item:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .enhance-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .enhance-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #2d3e56;
+        }
+
+        .enhance-desc {
+            font-size: 11px;
+            color: #8293ab;
+            line-height: 1.5;
+            margin-top: 4px;
+        }
+
+        .enhance-input {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .num-input {
+            width: 60px;
+            height: 28px;
+            border: 1px solid #d5dce6;
+            border-radius: 5px;
+            padding: 0 8px;
+            font-size: 12px;
+            color: #3d4f6a;
+            outline: none;
+        }
+
+        .add-btn {
+            height: 28px;
+            padding: 0 12px;
+            border: none;
+            border-radius: 5px;
+            background: #f0f3f9;
+            color: #5c6d84;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .add-btn:hover {
+            background: #e5ecf6;
+        }
+
+        .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .tag-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            height: 28px;
+            padding: 0 10px;
+            border: 1px solid #d0dce6;
+            border-radius: 6px;
+            background: #fafbfd;
+            font-size: 12px;
+            color: #44566f;
+        }
+
+        .tag-close {
+            cursor: pointer;
+            color: #9aa8bc;
+            font-size: 14px;
+        }
+
+        .tag-close:hover {
+            color: #e34b4b;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            width: 860px;
+            max-height: 85vh;
+            background: #fff;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .modal-header {
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #ebf0f5;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1f2d3d;
+        }
+
+        .modal-close {
+            cursor: pointer;
+            color: #8293ab;
+            font-size: 16px;
+        }
+
+        .modal-close:hover {
+            color: #4f5f75;
+        }
+
+        .modal-body {
+            overflow-y: auto;
+            flex: 1;
+            padding: 0;
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            min-height: 420px;
+        }
+
+        .redis-instance-side {
+            border-right: 1px solid #ebf0f5;
+            background: #fbfcff;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .redis-side-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+            color: #4f5f75;
+        }
+
+        .redis-instance-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow: auto;
+            padding-right: 2px;
+        }
+
+        .redis-instance-item {
+            border: 1px solid #dbe3ee;
+            border-radius: 6px;
+            background: #fff;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .redis-instance-item.active {
+            border-color: #2b5bff;
+            box-shadow: 0 0 0 2px rgba(43, 91, 255, 0.15);
+            background: #f7faff;
+        }
+
+        .redis-instance-name {
+            font-size: 13px;
+            color: #1f2d3d;
+            font-weight: 600;
+        }
+
+        .redis-instance-meta {
+            margin-top: 3px;
+            font-size: 11px;
+            color: #8293ab;
+        }
+
+        .redis-instance-del {
+            border: none;
+            background: transparent;
+            color: #9aa8bc;
+            font-size: 13px;
+            padding: 2px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .redis-instance-del:hover {
+            color: #e34b4b;
+            background: #ffeef0;
+        }
+
+        .redis-form-wrap {
+            padding: 16px 20px;
+            overflow: auto;
+        }
+
+        .redis-form-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .redis-form-title {
+            font-size: 14px;
+            color: #1f2d3d;
+            font-weight: 600;
+        }
+
+        .redis-status {
+            font-size: 12px;
+            color: #6d7f98;
+            background: #f1f4f9;
+            border-radius: 999px;
+            padding: 2px 8px;
+        }
+
+        .redis-status.success {
+            color: #2b5bff;
+            background: #e8f0ff;
+        }
+
+        .redis-status.error {
+            color: #e34b4b;
+            background: #ffeef0;
+        }
+
+        .redis-form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px 14px;
+        }
+
+        .redis-form-grid .modal-form-item.full {
+            grid-column: 1 / -1;
+        }
+
+        .redis-actions-row {
+            margin-top: 14px;
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .modal-form-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .modal-label {
+            font-size: 13px;
+            color: #4f5f75;
+        }
+
+        .modal-input {
+            width: 100%;
+            height: 32px;
+            border: 1px solid #d5dce6;
+            border-radius: 4px;
+            background: #fff;
+            padding: 0 10px;
+            font-size: 13px;
+            color: #1f2d3d;
+            outline: none;
+        }
+
+        .modal-input:focus {
+            border-color: #2b5bff;
+            box-shadow: 0 0 0 2px rgba(43, 91, 255, 0.2);
+        }
+
+        .modal-footer {
+            padding: 16px 20px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            border-top: 1px solid #ebf0f5;
+        }
+
+        .btn-cancel {
+            height: 32px;
+            padding: 0 16px;
+            border: 1px solid #d5dce6;
+            border-radius: 4px;
+            background: #fff;
+            color: #4f5f75;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .btn-cancel:hover {
+            color: #2b5bff;
+            border-color: #2b5bff;
+        }
+
+        .btn-primary {
+            height: 32px;
+            padding: 0 16px;
+            border: none;
+            border-radius: 4px;
+            background: #2b5bff;
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .btn-primary:hover {
+            background: #1f45d8;
+        }
+
+        .btn-secondary {
+            height: 32px;
+            padding: 0 12px;
+            border: 1px solid #d5dce6;
+            border-radius: 4px;
+            background: #fff;
+            color: #4f5f75;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .btn-secondary:hover {
+            color: #2b5bff;
+            border-color: #2b5bff;
+        }
+
+        @media (max-width: 1180px) {
+            .modal-content {
+                width: 96vw;
+            }
+
+            .modal-body {
+                grid-template-columns: 1fr;
+            }
+
+            .redis-instance-side {
+                border-right: none;
+                border-bottom: 1px solid #ebf0f5;
+            }
+
+            .redis-form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 900px) {
+            .workspace {
+                flex-direction: column;
+            }
+
+            .detail-layout {
+                min-width: 0;
+                height: auto;
+                flex-direction: column;
+            }
+
+            .detail-layout > .test-panel {
+                flex: 0 0 auto;
+                width: 100%;
+            }
+
+            .left-menu {
+                width: 100%;
+                flex-direction: row;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .menu-top {
+                flex: 1;
+            }
+
+            .menu-sub {
+                min-height: auto;
+            }
+
+            .menu-item {
+                margin-top: 0;
+                width: 80px;
+                justify-content: center;
+                padding: 0;
+            }
+
+            .back-btn {
+                width: 60px;
+                text-align: center;
+                padding-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="top-header">
+            <div class="brand">
+                <img src="../../../../web/public/logo-site.png" alt="BlueKing Lite">
+                <strong>BlueKing Lite</strong>
+                <span class="switcher">◆</span>
+            </div>
+            <nav class="main-nav">
+                <a href="../工作台/工作台.html"><span class="nav-dot"></span>工作台</a>
+                <a class="active" href="./智能体.html"><span class="nav-dot"></span>智能体</a>
+                <a href="../知识库/知识库.html"><span class="nav-dot"></span>知识库</a>
+                <a href="../工具/工具.html"><span class="nav-dot"></span>工具</a>
+                <a href="../模型/模型.html"><span class="nav-dot"></span>模型</a>
+            </nav>
+            <div class="header-actions">
+                <button class="icon-action" type="button">◌</button>
+                <button class="icon-action" type="button">▤</button>
+                <span class="avatar">A</span>
+                <span>admin</span>
+                <span>∨</span>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <aside class="left-menu" style="background: #fff; border-color: #ebf0f5;">
+                <div class="menu-top">
+                    <h3 id="agentTitle" style="font-size: 16px;">备份监控</h3>
+                    <div class="menu-sub" id="agentSub">检查数据库备份状态,确保备...</div>
+                    <div class="menu-item" style="background: #f0f4ff;">⚙ 设置</div>
+                </div>
+                <button class="back-btn" id="backBtn" type="button">←</button>
+            </aside>
+
+            <main class="main" style="gap: 16px;">
+                <section class="summary" style="background: transparent; border: none; padding: 4px 4px 16px 4px; border-bottom: 1px solid #dde5f0; border-radius: 0;">
+                    <h2 id="summaryTitle" style="font-size: 16px; margin-bottom: 8px;">智能体</h2>
+                    <p style="margin: 0; color: #8293ab; font-size: 12px;">智能体包括选择LLM模型和知识库以优化语言理解和生成过程。用户还可以启用RAG（检索增强生成）和对话增强功能，以提高对话质量和准确性。</p>
+                </section>
+
+                <section class="detail-layout">
+                    <div class="config-panel">
+                        <div class="config-scroll">
+                        <div class="basic-info-panel config-section">
+                            <div class="basic-head">基本信息</div>
+                            <div class="basic-body">
+                            <div class="form-row" style="margin-bottom: 0;">
+                                <label class="form-label required" for="name">名称:</label>
+                                <input class="field" id="name" type="text" value="rex-test">
+                            </div>
+
+                            <div class="form-row" style="margin-bottom: 0;">
+                                <label class="form-label required" for="group">分组:</label>
+                                <div class="fake-select" id="group">
+                                    <span class="fake-chip">Default ×</span>
+                                    <span class="fake-arrow">⌄</span>
+                                </div>
+                            </div>
+
+                            <div class="form-row" style="margin-bottom: 0;">
+                                <label class="form-label required" for="intro">简介:</label>
+                                <textarea class="textarea" id="intro" style="height: 86px; resize: none;">rex-test</textarea>
+                            </div>
+
+                            <div class="form-row" style="margin-bottom: 0;">
+                                <label class="form-label required" for="model">LLM模型:</label>
+                                <select class="select" id="model">
+                                    <option>qwen-3.5-35b</option>
+                                    <option selected>GPT-4o</option>
+                                    <option>DeepSeek V3</option>
+                                </select>
+                            </div>
+
+                            <div class="form-row" style="margin-bottom: 0;">
+                                <div class="form-label">展示思考:</div>
+                                <div class="switch-row"><input class="switch" id="showThink" type="checkbox" checked></div>
+                            </div>
+
+                            <div class="form-row" style="margin-bottom: 0;">
+                                <div class="form-label">启用问题建议:</div>
+                                <div class="switch-row"><input class="switch" id="suggest" type="checkbox"></div>
+                            </div>
+
+                            <div class="form-row" style="margin-bottom: 0;">
+                                <div class="form-label">问题优化 <span class="tip-icon">?</span>:</div>
+                                <div class="switch-row"><input class="switch" id="optimize" type="checkbox"></div>
+                            </div>
+
+                            <div class="form-row" style="margin-bottom: 0;">
+                                <label class="form-label" for="temperature">温度 <span class="tip-icon">?</span>:</label>
+                                <div class="temperature-wrap">
+                                    <input id="temperature" type="range" min="0" max="1" step="0.01" value="0.70">
+                                    <div class="temp-val" id="tempVal">0.70</div>
+                                </div>
+                            </div>
+
+                            <div class="wide-row">
+                                <div class="wide-label">
+                                    <span style="color: #e34b4b;">*</span> 提示 <span class="tip-icon">?</span>:
+                                </div>
+                                <div>
+                                    <textarea class="textarea" id="prompt" style="height: 86px; resize: none;">——
+
+🧠 角色定义</textarea>
+                                </div>
+                            </div>
+
+                            <div class="wide-row">
+                                <div class="wide-label">
+                                    引导语 <span class="tip-icon">?</span>:
+                                </div>
+                                <div>
+                                    <textarea class="textarea" id="guide" style="height: 86px; resize: none;">您好，请问有什么可以帮助您的吗？可以点击如下问题进行快捷提问。
+[访问网易官网，点进体育tab，随机打开5个体育新闻，检查是否能正常访问，并告诉我新闻概要]
+[问题2]</textarea>
+                                </div>
+                            </div>
+                            </div>
+                        </div>
+
+                        <div class="enhance-panel config-section" style="margin-top: 0; background: #fff; display: flex; flex-direction: column; border: none; border-radius: 0; padding: 0;">
+                            <div class="panel-head" style="margin: 0; font-size: 14px; font-weight: 600; color: #1f2d3d; padding: 14px 20px; border-bottom: 1px solid #ebf0f5; background: #fff; border-radius: 8px 8px 0 0;">聊天增强</div>
+                        
+                        <div class="enhance-item" style="padding: 20px; border-bottom: 1px solid #ebf0f5; margin: 0;">
+                            <div class="enhance-header" style="margin-bottom: 8px; display: flex; justify-content: space-between;">
+                                <span class="enhance-label" style="font-size: 14px; font-weight: 600; color: #1f2d3d;">聊天历史</span>
+                                <input class="switch" id="chatHistory" type="checkbox" checked>
+                            </div>
+                            <div class="enhance-desc">聊天历史数量指的是系统与机器人之间互动的对话轮次或消息总数。这一数量可以帮助机器人理解上下文，并增强回复的相关性和连贯性。</div>
+                            <div class="enhance-input" style="background: transparent; border: 1px solid #92b0ff; border-radius: 6px; padding: 0 16px; margin-top: 16px; display: flex; align-items: center; box-shadow: 0 0 0 2px #e5eeff;">
+                                <span style="font-size: 13px; color: #4f5f75; white-space: nowrap;">数量:</span>
+                                <input class="num-input" id="historyCount" type="number" value="10" min="1" max="100" style="flex: 1; height: 38px; border: none; font-size: 13px; color: #1f2d3d; outline: none; padding-left: 8px; background: transparent;">
+                            </div>
+                        </div>
+                        
+                        <div class="enhance-item" style="padding: 20px; border-bottom: 1px solid #ebf0f5; margin: 0;">
+                            <div class="enhance-header" style="margin-bottom: 8px; display: flex; justify-content: space-between;">
+                                <span class="enhance-label" style="font-size: 14px; font-weight: 600; color: #1f2d3d;">RAG</span>
+                                <input class="switch" id="ragSwitch" type="checkbox">
+                            </div>
+                            <div class="enhance-desc">RAG是一种信息检索技术与生成式技术相结合的方法，先从知识库中检索相关信息，然后使用生成模型产生上下文本相关的回答。</div>
+                        </div>
+                        
+                        <div class="enhance-item" style="padding: 20px; margin: 0; border-bottom: none;">
+                            <div class="enhance-header" style="margin-bottom: 8px; display: flex; justify-content: space-between;">
+                                <span class="enhance-label" style="font-size: 14px; font-weight: 600; color: #1f2d3d;">工具</span>
+                                <input class="switch" id="toolSwitch" type="checkbox" checked>
+                            </div>
+                            <div class="enhance-desc">给智能体获取外部数据或者执行操作的能力，具体调用哪个工具，由大模型自主决定。</div>
+                            <div class="enhance-input" style="margin-top: 16px; display: block;">
+                                <button class="add-btn" id="addToolBtn" type="button" style="background: transparent; border: 1px solid #dde5f0; padding: 6px 16px; height: auto;">+ 添加</button>
+                            </div>
+                            <div class="tag-list" id="toolList" style="margin-top: 12px; display: flex; flex-direction: column;">
+                                <div class="tag-item" style="width: 100%; justify-content: space-between; padding: 12px 16px; height: auto; background: #fafbfc; border-color: #ebf0f5; border-radius: 6px;">
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <span style="color: #e34b4b; background: #ffebeb; border-radius: 4px; padding: 4px 6px; font-size: 14px;">🧰</span>
+                                        <span style="font-size: 13px; color: #1f2d3d; font-weight: 500;">redis</span>
+                                    </div>
+                                    <div style="display: flex; gap: 12px; color: #8293ab; font-size: 16px;">
+                                        <span class="tool-edit-btn" style="cursor: pointer;" title="编辑" onclick="openToolModal()">✎</span>
+                                        <span style="cursor: pointer;" title="删除" onclick="this.closest('.tag-item').remove()">🗑</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    </div>
+
+                    <div class="config-save">
+                        <button class="save-btn" id="saveBtn" type="button" style="width: 68px; height: 32px; font-size: 14px; border-radius: 4px;">保存</button>
+                    </div>
+                </div>
+
+                <div class="panel test-panel" style="display: flex; flex-direction: column;">
+                    <div class="panel-head" style="background: #fff; border-bottom: none; justify-content: space-between; padding: 16px 20px;">
+                        <span style="font-size: 14px; font-weight: 600; color: #1f2d3d;">测试</span>
+                        <span style="color: #8293ab; cursor: pointer; font-size: 16px;">⛶</span>
+                    </div>
+                    <div class="chat-body" style="padding-top: 0; margin-top: 0;">
+                        <div class="chat-box" style="box-sizing: border-box;">
+                            <div class="message">
+                                <div class="msg-avatar" style="background: #f6ca40;">🤖</div>
+                                <div class="msg-bubble" style="background: #fff; border: 1px solid #ebeff5; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); padding: 12px 16px;">
+                                    您好，请问有什么可以帮助您的吗？可以点击如下问题进行快捷提问。<br>
+                                    <span class="msg-link" style="margin-top:8px;">问题1</span>
+                                    <span class="msg-link" style="margin-top:4px;">问题2</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chat-input" style="height: 52px; border-color: #dde5f0; position: relative; border-radius: 8px;">
+                            <span style="position: absolute; left: 16px; color: #8293ab; font-size: 16px;">🖼</span>
+                            <input type="text" placeholder="请输入消息..." style="padding-left: 44px; padding-right: 80px; width: 100%;">
+                            <span style="position: absolute; right: 48px; color: #8293ab; cursor: pointer; font-size: 18px;">🗑</span>
+                            <button class="send" type="button" style="position: absolute; right: 16px; background: transparent; border: none; font-size: 18px; color: #a1b0c3;">▷</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Tool Edit Modal -->
+    <div class="modal-overlay" id="toolEditModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                编辑
+                <span class="modal-close" id="closeModalBtn">✕</span>
+            </div>
+            <div class="modal-body">
+                <div class="redis-instance-side">
+                    <div class="redis-side-top">
+                        <span>Redis实例</span>
+                        <button class="btn-secondary" id="addRedisInstanceBtn" type="button">+ 新建</button>
+                    </div>
+                    <div class="redis-instance-list" id="redisInstanceList"></div>
+                </div>
+
+                <div class="redis-form-wrap">
+                    <div class="redis-form-head">
+                        <div class="redis-form-title" id="redisFormTitle">实例配置</div>
+                        <div class="redis-status" id="redisStatus">未测试</div>
+                    </div>
+
+                    <div class="redis-form-grid">
+                        <div class="modal-form-item full">
+                            <label class="modal-label">实例名称</label>
+                            <input type="text" class="modal-input" id="redis_name">
+                        </div>
+                        <div class="modal-form-item full">
+                            <label class="modal-label">url</label>
+                            <input type="text" class="modal-input" id="redis_url">
+                        </div>
+                        <div class="modal-form-item">
+                            <label class="modal-label">username</label>
+                            <input type="text" class="modal-input" id="redis_username">
+                        </div>
+                        <div class="modal-form-item">
+                            <label class="modal-label">password</label>
+                            <input type="password" class="modal-input" id="redis_password" style="background: #f4f7ff;">
+                        </div>
+                        <div class="modal-form-item">
+                            <label class="modal-label">ssl</label>
+                            <div><input class="switch" id="redis_ssl" type="checkbox"></div>
+                        </div>
+                        <div class="modal-form-item">
+                            <label class="modal-label">cluster_mode</label>
+                            <div><input class="switch" id="redis_cluster_mode" type="checkbox"></div>
+                        </div>
+                        <div class="modal-form-item full">
+                            <label class="modal-label">ssl_ca_path</label>
+                            <input type="text" class="modal-input" id="redis_ssl_ca_path">
+                        </div>
+                        <div class="modal-form-item full">
+                            <label class="modal-label">ssl_keyfile</label>
+                            <input type="text" class="modal-input" id="redis_ssl_keyfile">
+                        </div>
+                        <div class="modal-form-item full">
+                            <label class="modal-label">ssl_certfile</label>
+                            <input type="text" class="modal-input" id="redis_ssl_certfile">
+                        </div>
+                        <div class="modal-form-item">
+                            <label class="modal-label">ssl_cert_reqs</label>
+                            <input type="text" class="modal-input" id="redis_ssl_cert_reqs">
+                        </div>
+                        <div class="modal-form-item">
+                            <label class="modal-label">ssl_ca_certs</label>
+                            <input type="text" class="modal-input" id="redis_ssl_ca_certs">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="testRedisBtn">测试连接</button>
+                <button class="btn-cancel" id="cancelModalBtn">取消</button>
+                <button class="btn-primary" id="saveModalBtn">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Tool Modal Script
+    const toolEditModal = document.getElementById('toolEditModal');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const cancelModalBtn = document.getElementById('cancelModalBtn');
+    const saveModalBtn = document.getElementById('saveModalBtn');
+    const addRedisInstanceBtn = document.getElementById('addRedisInstanceBtn');
+    const redisInstanceList = document.getElementById('redisInstanceList');
+    const redisFormTitle = document.getElementById('redisFormTitle');
+    const redisStatus = document.getElementById('redisStatus');
+    const saveCurrentRedisBtn = document.getElementById('saveCurrentRedisBtn');
+    const testRedisBtn = document.getElementById('testRedisBtn');
+
+    const redisFields = {
+        name: document.getElementById('redis_name'),
+        url: document.getElementById('redis_url'),
+        username: document.getElementById('redis_username'),
+        password: document.getElementById('redis_password'),
+        ssl: document.getElementById('redis_ssl'),
+        clusterMode: document.getElementById('redis_cluster_mode'),
+        sslCaPath: document.getElementById('redis_ssl_ca_path'),
+        sslKeyfile: document.getElementById('redis_ssl_keyfile'),
+        sslCertfile: document.getElementById('redis_ssl_certfile'),
+        sslCertReqs: document.getElementById('redis_ssl_cert_reqs'),
+        sslCaCerts: document.getElementById('redis_ssl_ca_certs')
+    };
+
+    const defaultRedisInstances = [
+        {
+            id: String(Date.now()),
+            name: 'redis-prod-01',
+            url: 'redis://10.0.1.15:6379/0',
+            username: '',
+            password: '******',
+            ssl: false,
+            clusterMode: false,
+            sslCaPath: '',
+            sslKeyfile: '',
+            sslCertfile: '',
+            sslCertReqs: '',
+            sslCaCerts: '',
+            status: '未测试'
+        }
+    ];
+
+    let redisInstances = defaultRedisInstances.map((item) => ({ ...item }));
+    let activeRedisId = redisInstances[0].id;
+
+    function escapeHtml(value) {
+        const text = String(value || '');
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function getActiveRedis() {
+        return redisInstances.find((item) => item.id === activeRedisId) || null;
+    }
+
+    function fillRedisForm(instance) {
+        if (!instance) {
+            return;
+        }
+
+        redisFields.name.value = instance.name || '';
+        redisFields.url.value = instance.url || '';
+        redisFields.username.value = instance.username || '';
+        redisFields.password.value = instance.password || '';
+        redisFields.ssl.checked = !!instance.ssl;
+        redisFields.clusterMode.checked = !!instance.clusterMode;
+        redisFields.sslCaPath.value = instance.sslCaPath || '';
+        redisFields.sslKeyfile.value = instance.sslKeyfile || '';
+        redisFields.sslCertfile.value = instance.sslCertfile || '';
+        redisFields.sslCertReqs.value = instance.sslCertReqs || '';
+        redisFields.sslCaCerts.value = instance.sslCaCerts || '';
+
+        redisFormTitle.textContent = `${instance.name || 'Redis实例'} 配置`;
+        redisStatus.textContent = instance.status || '未测试';
+        redisStatus.classList.remove('success', 'error');
+        if (instance.statusType === 'success') {
+            redisStatus.classList.add('success');
+        } else if (instance.statusType === 'error') {
+            redisStatus.classList.add('error');
+        }
+    }
+
+    function renderRedisInstanceList() {
+        redisInstanceList.innerHTML = '';
+
+        redisInstances.forEach((instance) => {
+            const item = document.createElement('div');
+            item.className = `redis-instance-item${instance.id === activeRedisId ? ' active' : ''}`;
+            item.innerHTML = `
+                <div>
+                    <div class="redis-instance-name">${escapeHtml(instance.name || '未命名实例')}</div>
+                    <div class="redis-instance-meta">${escapeHtml(instance.url || '未配置地址')}</div>
+                </div>
+                <button class="redis-instance-del" type="button" title="删除实例">🗑</button>
+            `;
+
+            const delBtn = item.querySelector('.redis-instance-del');
+            delBtn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                if (redisInstances.length <= 1) {
+                    alert('至少保留一个 Redis 实例');
+                    return;
+                }
+                redisInstances = redisInstances.filter((it) => it.id !== instance.id);
+                if (activeRedisId === instance.id) {
+                    activeRedisId = redisInstances[0].id;
+                }
+                renderRedisInstanceList();
+                fillRedisForm(getActiveRedis());
+                syncRedisToolTags();
+            });
+
+            item.addEventListener('click', () => {
+                activeRedisId = instance.id;
+                renderRedisInstanceList();
+                fillRedisForm(instance);
+            });
+
+            redisInstanceList.appendChild(item);
+        });
+    }
+
+    function saveRedisFormToActive() {
+        const active = getActiveRedis();
+        if (!active) {
+            return;
+        }
+
+        active.name = redisFields.name.value.trim() || '未命名实例';
+        active.url = redisFields.url.value.trim();
+        active.username = redisFields.username.value.trim();
+        active.password = redisFields.password.value;
+        active.ssl = redisFields.ssl.checked;
+        active.clusterMode = redisFields.clusterMode.checked;
+        active.sslCaPath = redisFields.sslCaPath.value.trim();
+        active.sslKeyfile = redisFields.sslKeyfile.value.trim();
+        active.sslCertfile = redisFields.sslCertfile.value.trim();
+        active.sslCertReqs = redisFields.sslCertReqs.value.trim();
+        active.sslCaCerts = redisFields.sslCaCerts.value.trim();
+    }
+
+    function syncRedisToolTags() {
+        const redisOnly = redisInstances.filter((item) => (item.name || '').toLowerCase().includes('redis') || item.url.startsWith('redis://'));
+        if (!redisOnly.length) {
+            return;
+        }
+
+        toolList.innerHTML = '';
+        redisOnly.forEach((item) => {
+            const tagItem = document.createElement('div');
+            tagItem.className = 'tag-item';
+            tagItem.style.cssText = 'width: 100%; justify-content: space-between; padding: 12px 16px; height: auto; background: #fafbfc; border-color: #ebf0f5; border-radius: 6px;';
+            tagItem.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #e34b4b; background: #ffebeb; border-radius: 4px; padding: 4px 6px; font-size: 14px;">🧰</span>
+                    <span style="font-size: 13px; color: #1f2d3d; font-weight: 500;">${escapeHtml(item.name)}</span>
+                </div>
+                <div style="display: flex; gap: 12px; color: #8293ab; font-size: 16px;">
+                    <span class="tool-edit-btn" style="cursor: pointer;" title="编辑">✎</span>
+                    <span style="cursor: pointer;" title="删除">🗑</span>
+                </div>
+            `;
+
+            tagItem.querySelector('.tool-edit-btn').addEventListener('click', () => {
+                activeRedisId = item.id;
+                openToolModal();
+            });
+
+            tagItem.querySelector('[title="删除"]').addEventListener('click', () => {
+                if (redisInstances.length <= 1) {
+                    alert('至少保留一个 Redis 实例');
+                    return;
+                }
+                redisInstances = redisInstances.filter((it) => it.id !== item.id);
+                if (activeRedisId === item.id) {
+                    activeRedisId = redisInstances[0].id;
+                }
+                syncRedisToolTags();
+            });
+
+            toolList.appendChild(tagItem);
+        });
+    }
+
+    function openToolModal() {
+        renderRedisInstanceList();
+        fillRedisForm(getActiveRedis());
+        toolEditModal.classList.add('active');
+    }
+
+    function closeToolModal() {
+        toolEditModal.classList.remove('active');
+    }
+
+    closeModalBtn.addEventListener('click', closeToolModal);
+    cancelModalBtn.addEventListener('click', closeToolModal);
+    saveModalBtn.addEventListener('click', () => {
+        saveRedisFormToActive();
+        renderRedisInstanceList();
+        syncRedisToolTags();
+        closeToolModal();
+    });
+
+    addRedisInstanceBtn.addEventListener('click', () => {
+        const id = String(Date.now() + Math.floor(Math.random() * 1000));
+        const newItem = {
+            id,
+            name: `redis-${redisInstances.length + 1}`,
+            url: '',
+            username: '',
+            password: '',
+            ssl: false,
+            clusterMode: false,
+            sslCaPath: '',
+            sslKeyfile: '',
+            sslCertfile: '',
+            sslCertReqs: '',
+            sslCaCerts: '',
+            status: '未测试'
+        };
+        redisInstances.push(newItem);
+        activeRedisId = id;
+        renderRedisInstanceList();
+        fillRedisForm(newItem);
+    });
+
+    if (saveCurrentRedisBtn) {
+        saveCurrentRedisBtn.addEventListener('click', () => {
+            saveRedisFormToActive();
+            const active = getActiveRedis();
+            if (active) {
+                active.status = '已保存';
+                fillRedisForm(active);
+            }
+            renderRedisInstanceList();
+            syncRedisToolTags();
+        });
+    }
+
+    if (testRedisBtn) {
+        testRedisBtn.addEventListener('click', () => {
+            saveRedisFormToActive();
+            const active = getActiveRedis();
+            if (!active || !active.url) {
+                if (active) {
+                    active.status = '连接失败';
+                    active.statusType = 'error';
+                    fillRedisForm(active);
+                    renderRedisInstanceList();
+                }
+                alert('请先填写 Redis URL');
+                return;
+            }
+            active.status = '连接成功';
+            active.statusType = 'success';
+            fillRedisForm(active);
+            renderRedisInstanceList();
+        });
+    }
+
+    // Close modal on outside click
+    toolEditModal.addEventListener('click', (e) => {
+        if (e.target === toolEditModal) {
+            closeToolModal();
+        }
+    });
+
+    const guideInput = document.getElementById('guide');
+    const temperature = document.getElementById('temperature');
+    const tempVal = document.getElementById('tempVal');
+
+    if (temperature && tempVal) {
+        temperature.addEventListener('input', () => {
+            tempVal.textContent = Number(temperature.value).toFixed(2);
+        });
+    }
+
+    document.getElementById('backBtn').addEventListener('click', () => {
+        window.location.href = './智能体.html';
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+        alert('保存成功');
+    });
+
+    // Chat Enhancement handlers
+    const chatHistoryToggle = document.getElementById('chatHistory');
+    const historyCountInput = document.getElementById('historyCount');
+    const ragToggle = document.getElementById('ragSwitch');
+    const toolToggle = document.getElementById('toolSwitch');
+    const addToolBtn = document.getElementById('addToolBtn');
+    const toolList = document.getElementById('toolList');
+
+    chatHistoryToggle.addEventListener('change', () => {
+        historyCountInput.disabled = !chatHistoryToggle.checked;
+    });
+
+    toolToggle.addEventListener('change', () => {
+        addToolBtn.disabled = !toolToggle.checked;
+    });
+
+    addToolBtn.addEventListener('click', () => {
+        openToolModal();
+    });
+
+    syncRedisToolTags();
+
+    // Chat message sending
+    const chatInput = document.querySelector('.chat-input input');
+    const chatSendBtn = document.querySelector('.chat-input .send');
+    const chatBox = document.querySelector('.chat-box');
+
+    const sendMessage = () => {
+        const message = chatInput.value.trim();
+        if (!message) return;
+
+        const userMsg = document.createElement('div');
+        userMsg.className = 'message';
+        userMsg.innerHTML = `
+            <div class="msg-avatar" style="background: #e2e8f0; margin-left: auto;">🧑‍💻</div>
+            <div class="msg-bubble" style="background: #2b5bff; color: white; border: none; margin-right: 8px; border-radius: 8px;">
+                ${message}
+            </div>
+        `;
+        userMsg.style.flexDirection = 'row-reverse';
+        chatBox.appendChild(userMsg);
+        chatInput.value = '';
+
+        setTimeout(() => {
+            const botMsg = document.createElement('div');
+            botMsg.className = 'message';
+            botMsg.innerHTML = `
+                <div class="msg-avatar" style="background: #f6ca40;">🤖</div>
+                <div class="msg-bubble" style="background: #fff; border: 1px solid #ebeff5; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); padding: 12px 16px;">
+                    我正在处理您的请求...
+                </div>
+            `;
+            chatBox.appendChild(botMsg);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }, 300);
+
+        chatBox.scrollTop = chatBox.scrollHeight;
+    };
+
+    chatSendBtn.addEventListener('click', sendMessage);
+    chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    });
+</script>
+</body>
+</html>

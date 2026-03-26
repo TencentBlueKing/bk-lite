@@ -1,0 +1,3592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlueKing Lite - 资产管理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            color: #1f2329;
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+
+        /* 顶部导航栏 */
+        .top-header {
+            background: #fff;
+            height: 60px;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+
+        .logo-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+
+        .header-nav {
+            display: flex;
+            gap: 8px;
+            margin-left: 48px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #646a73;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .nav-item.active {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.1);
+        }
+
+
+        .nav-icon {
+            font-size: 16px;
+        }
+
+        .nav-item svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        a.nav-item {
+            text-decoration: none;
+        }
+
+        a.nav-item:hover,
+        a.nav-item.active {
+            color: #0052d9;
+        }
+
+        .app-switcher {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: #f5f7fa;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #646a73;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .app-switcher:hover {
+            background: rgba(0, 82, 217, 0.06);
+            color: #0052d9;
+        }
+
+        .app-switcher svg {
+            width: 16px;
+            height: 16px;
+        }
+
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: #646a73;
+            font-size: 14px;
+        }
+
+        .header-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .header-icon:hover {
+            background: rgba(0, 0, 0, 0.04);
+            color: #0052d9;
+        }
+
+        .header-icon svg {
+            width: 20px;
+            height: 20px;
+            color: #646a73;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .user-info:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .user-info svg {
+            width: 14px;
+            height: 14px;
+            color: #979ba5;
+        }
+
+
+        /* 二级导航 */
+        .sub-header {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(16px);
+            height: 56px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            padding: 0 40px;
+        }
+
+        .sub-nav {
+            display: flex;
+            gap: 4px;
+        }
+
+        .sub-nav-item {
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #646a73;
+            border-radius: 12px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+            position: relative;
+        }
+
+        .sub-nav-item::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%) scaleX(0);
+            width: 60%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #3a84ff, transparent);
+            border-radius: 2px;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .sub-nav-item:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .sub-nav-item.active {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.12);
+        }
+
+        .sub-nav-item.active::after {
+            transform: translateX(-50%) scaleX(1);
+        }
+
+        /* 主内容区 */
+        .main-container {
+            display: flex;
+            height: calc(100vh - 64px);
+            background: transparent;
+        }
+
+        /* 左侧查询面板 */
+        .query-panel {
+            width: 380px;
+            background: #fff;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin: 16px 0 16px 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            border: 1px solid #dcdee5;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .query-panel.collapsed {
+            width: 0;
+            min-width: 0;
+            border-right: none;
+            box-shadow: none;
+        }
+
+        .query-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .query-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #313238;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .query-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            color: #979ba5;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .icon-btn:hover {
+            background: rgba(58, 132, 255, 0.1);
+            color: #3a84ff;
+            transform: scale(1.1);
+        }
+
+        /* 展开面板按钮 */
+        .expand-panel-btn {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 32px;
+            height: 64px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-left: none;
+            border-radius: 0 12px 12px 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #979ba5;
+            font-size: 16px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 4px 0 16px rgba(0, 0, 0, 0.08);
+            z-index: 10;
+        }
+
+        .expand-panel-btn:hover {
+            background: rgba(240, 245, 255, 0.95);
+            color: #3a84ff;
+            width: 36px;
+        }
+
+        .query-panel.collapsed + .content-area .expand-panel-btn {
+            display: flex;
+        }
+
+        .query-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 24px;
+        }
+
+        .query-section {
+            margin-bottom: 24px;
+        }
+
+        .section-label {
+            font-size: 12px;
+            color: #63656e;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .query-group {
+            background: rgba(250, 251, 253, 0.6);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 16px;
+            margin-bottom: 16px;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+        }
+
+        .query-group:hover {
+            border-color: rgba(58, 132, 255, 0.2);
+            box-shadow: 0 4px 16px rgba(58, 132, 255, 0.08);
+        }
+
+        .group-header {
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+            background: rgba(255, 255, 255, 0.5);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .group-header:hover {
+            background: rgba(240, 241, 245, 0.8);
+        }
+
+        .group-title {
+            font-size: 12px;
+            color: #63656e;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .collapse-icon {
+            font-size: 12px;
+            color: #979ba5;
+            transition: transform 0.2s;
+        }
+
+        .group-header.collapsed .collapse-icon {
+            transform: rotate(-90deg);
+        }
+
+        .group-content {
+            padding: 16px;
+            border-top: 1px solid #dcdee0;
+        }
+
+        .group-content.hidden {
+            display: none;
+        }
+
+        .form-item {
+            margin-bottom: 16px;
+        }
+
+        .form-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .form-label {
+            font-size: 12px;
+            color: #63656e;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .form-input,
+        .form-select {
+            width: 100%;
+            height: 36px;
+            padding: 0 14px;
+            border: 1.5px solid rgba(196, 198, 204, 0.4);
+            border-radius: 10px;
+            font-size: 13px;
+            color: #63656e;
+            background: rgba(255, 255, 255, 0.9);
+            outline: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .form-input:hover,
+        .form-select:hover {
+            border-color: rgba(58, 132, 255, 0.4);
+            background: #ffffff;
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+            border-color: #3a84ff;
+            background: #ffffff;
+            box-shadow: 0 0 0 3px rgba(58, 132, 255, 0.1);
+        }
+
+        .form-input::placeholder {
+            color: #c4c6cc;
+        }
+
+        .form-input-with-icon {
+            position: relative;
+        }
+
+        /* 多选资产选择器样式 */
+        .multi-select-container {
+            position: relative;
+        }
+
+        .multi-select-display {
+            width: 100%;
+            min-height: 36px;
+            padding: 6px 30px 6px 14px;
+            border: 1.5px solid rgba(196, 198, 204, 0.4);
+            border-radius: 10px;
+            font-size: 13px;
+            color: #63656e;
+            background: rgba(255, 255, 255, 0.9);
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .multi-select-display:hover {
+            border-color: rgba(58, 132, 255, 0.4);
+            background: #ffffff;
+        }
+
+        .multi-select-display.active {
+            border-color: #3a84ff;
+            background: #ffffff;
+            box-shadow: 0 0 0 3px rgba(58, 132, 255, 0.1);
+        }
+
+        .multi-select-display.empty {
+            color: #c4c6cc;
+        }
+
+        .multi-select-arrow {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #979ba5;
+            font-size: 12px;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
+        }
+
+        .multi-select-display.active ~ .multi-select-arrow {
+            transform: translateY(-50%) rotate(180deg);
+        }
+
+        .selected-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 6px 2px 8px;
+            background: linear-gradient(135deg, rgba(58, 132, 255, 0.15), rgba(58, 132, 255, 0.1));
+            border: 1px solid rgba(58, 132, 255, 0.3);
+            border-radius: 6px;
+            font-size: 12px;
+            color: #3a84ff;
+            font-weight: 500;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .selected-tag:hover {
+            background: linear-gradient(135deg, rgba(58, 132, 255, 0.25), rgba(58, 132, 255, 0.15));
+            border-color: rgba(58, 132, 255, 0.5);
+        }
+
+        .selected-tag-close {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+            color: #3a84ff;
+            font-size: 10px;
+            border-radius: 3px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .selected-tag-close:hover {
+            background: rgba(58, 132, 255, 0.2);
+        }
+
+        .multi-select-dropdown {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+            max-height: 240px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            animation: dropdownFadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .multi-select-dropdown.show {
+            display: block;
+        }
+
+        .multi-select-search {
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            position: sticky;
+            top: 0;
+            background: rgba(255, 255, 255, 0.98);
+            z-index: 1;
+        }
+
+        .multi-select-search input {
+            width: 100%;
+            height: 32px;
+            padding: 0 12px;
+            border: 1.5px solid rgba(196, 198, 204, 0.4);
+            border-radius: 8px;
+            font-size: 12px;
+            outline: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .multi-select-search input:focus {
+            border-color: #3a84ff;
+            box-shadow: 0 0 0 3px rgba(58, 132, 255, 0.1);
+        }
+
+        .multi-select-options {
+            padding: 4px;
+        }
+
+        .multi-select-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 13px;
+            color: #63656e;
+        }
+
+        .multi-select-option:hover {
+            background: rgba(240, 245, 255, 0.8);
+            color: #3a84ff;
+        }
+
+        .multi-select-option.selected {
+            background: rgba(240, 245, 255, 0.6);
+            color: #3a84ff;
+            font-weight: 500;
+        }
+
+        .multi-select-checkbox {
+            width: 16px;
+            height: 16px;
+            border: 1.5px solid rgba(196, 198, 204, 0.6);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            flex-shrink: 0;
+        }
+
+        .multi-select-option.selected .multi-select-checkbox {
+            background: linear-gradient(135deg, #3a84ff 0%, #5c9aff 100%);
+            border-color: #3a84ff;
+        }
+
+        .multi-select-checkbox::after {
+            content: '✓';
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+            opacity: 0;
+            transform: scale(0);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .multi-select-option.selected .multi-select-checkbox::after {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .multi-select-actions {
+            display: flex;
+            gap: 8px;
+            padding: 8px 12px;
+            border-top: 1px solid rgba(0, 0, 0, 0.06);
+            background: rgba(255, 255, 255, 0.98);
+            position: sticky;
+            bottom: 0;
+        }
+
+        .multi-select-btn {
+            flex: 1;
+            height: 28px;
+            border: none;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .multi-select-btn-primary {
+            background: linear-gradient(135deg, #3a84ff 0%, #5c9aff 100%);
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(58, 132, 255, 0.3);
+        }
+
+        .multi-select-btn-primary:hover {
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .multi-select-btn-secondary {
+            background: rgba(240, 241, 245, 0.8);
+            color: #63656e;
+        }
+
+        .multi-select-btn-secondary:hover {
+            background: rgba(240, 241, 245, 1);
+        }
+
+        .multi-select-dropdown::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .multi-select-dropdown::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .multi-select-dropdown::-webkit-scrollbar-thumb {
+            background: rgba(220, 222, 224, 0.5);
+            border-radius: 8px;
+        }
+
+        .multi-select-dropdown::-webkit-scrollbar-thumb:hover {
+            background: rgba(196, 198, 204, 0.8);
+        }
+
+        .form-input-with-icon .clear-icon {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #979ba5;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .form-row .form-select {
+            flex: 1;
+        }
+
+        .form-row input[type="number"] {
+            width: 60px;
+            text-align: center;
+        }
+
+        /* 条件列表样式 */
+        .conditions-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .condition-item {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .condition-item .form-input,
+        .condition-item .form-select {
+            flex: 1;
+        }
+
+        .condition-delete-btn {
+            width: 32px;
+            height: 36px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            color: #979ba5;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            flex-shrink: 0;
+        }
+
+        .condition-delete-btn:hover {
+            background: rgba(255, 86, 86, 0.1);
+            color: #ff5656;
+            transform: scale(1.1);
+        }
+
+        .add-condition-btn {
+            width: 100%;
+            height: 36px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1.5px dashed rgba(58, 132, 255, 0.4);
+            border-radius: 12px;
+            color: #3a84ff;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .add-condition-btn:hover {
+            background: rgba(240, 245, 255, 0.9);
+            border-color: #3a84ff;
+            border-style: solid;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(58, 132, 255, 0.15);
+        }
+
+        .add-condition-btn:active {
+            transform: translateY(0);
+        }
+
+        .query-footer {
+            padding: 20px 24px;
+            border-top: 1px solid rgba(0, 0, 0, 0.06);
+            display: flex;
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.6);
+        }
+
+        .add-query-btn {
+            width: 100%;
+            height: 44px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1.5px dashed rgba(58, 132, 255, 0.4);
+            border-radius: 16px;
+            color: #3a84ff;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .add-query-btn:hover {
+            background: rgba(240, 245, 255, 0.9);
+            border-color: #3a84ff;
+            border-style: solid;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.15);
+        }
+
+        .add-query-btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary {
+            flex: 1;
+            height: 40px;
+            background: linear-gradient(135deg, #3a84ff 0%, #5c9aff 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #5c9aff 0%, #3a84ff 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(58, 132, 255, 0.4);
+        }
+
+        .btn-primary:hover::before {
+            opacity: 1;
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            height: 40px;
+            padding: 0 20px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #63656e;
+            border: 1.5px solid rgba(196, 198, 204, 0.4);
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn-secondary:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+            background: rgba(58, 132, 255, 0.05);
+            transform: translateY(-1px);
+        }
+
+        .btn-text {
+            height: 40px;
+            padding: 0 20px;
+            background: transparent;
+            color: #63656e;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 12px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn-text:hover {
+            background: rgba(240, 241, 245, 0.8);
+            color: #3a84ff;
+        }
+
+        /* 右侧内容区域 */
+        .content-area {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin: 16px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+        }
+
+        .content-header {
+            padding: 16px 24px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            font-size: 12px;
+            color: #979ba5;
+            align-items: center;
+        }
+
+        .add-tab-btn {
+            padding: 6px 12px;
+            font-size: 13px;
+            color: #63656e;
+            background: rgba(240, 241, 245, 0.8);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-right: 12px;
+        }
+
+        .add-tab-btn:hover {
+            background: rgba(58, 132, 255, 0.1);
+            border-color: rgba(58, 132, 255, 0.3);
+            color: #3a84ff;
+            transform: translateY(-1px);
+        }
+
+        .add-tab-btn:active {
+            transform: translateY(0);
+        }
+
+        .tab {
+            padding: 8px 16px;
+            font-size: 13px;
+            color: #63656e;
+            background: transparent;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .tab:hover {
+            background: rgba(240, 241, 245, 0.8);
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, rgba(58, 132, 255, 0.15), rgba(58, 132, 255, 0.1));
+            color: #3a84ff;
+            box-shadow: 0 2px 8px rgba(58, 132, 255, 0.15);
+        }
+
+        .content-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 12px;
+            color: #979ba5;
+        }
+
+        .toolbar-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 10px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+            position: relative;
+        }
+
+        .toolbar-item:hover {
+            background: rgba(240, 241, 245, 0.8);
+            color: #3a84ff;
+            transform: translateY(-1px);
+        }
+
+        /* 刷新下拉菜单 */
+        .refresh-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .refresh-button {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 10px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+            font-size: 12px;
+            color: #979ba5;
+            border: 1.5px solid rgba(220, 222, 224, 0.4);
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        .refresh-button:hover {
+            background: rgba(240, 245, 255, 0.9);
+            color: #3a84ff;
+            border-color: rgba(58, 132, 255, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .refresh-button.active {
+            background: rgba(240, 245, 255, 0.9);
+            color: #3a84ff;
+            border-color: rgba(58, 132, 255, 0.6);
+        }
+
+        .refresh-dropdown-content {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            min-width: 120px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            z-index: 1000;
+            overflow: hidden;
+            animation: dropdownFadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes dropdownFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .refresh-dropdown.show .refresh-dropdown-content {
+            display: block;
+        }
+
+        .refresh-option {
+            padding: 10px 16px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 13px;
+            color: #63656e;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .refresh-option:hover {
+            background: rgba(240, 245, 255, 0.8);
+            color: #3a84ff;
+        }
+
+        .refresh-option.active {
+            background: rgba(240, 245, 255, 0.6);
+            color: #3a84ff;
+            font-weight: 600;
+        }
+
+        .refresh-option.active::after {
+            content: '✓';
+            font-size: 14px;
+            color: #3a84ff;
+        }
+
+        .refresh-option:first-child {
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 4px;
+            border: 1.5px solid rgba(220, 222, 224, 0.4);
+            border-radius: 12px;
+            overflow: hidden;
+            padding: 4px;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .view-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #979ba5;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 8px;
+        }
+
+        .view-btn:hover {
+            background: rgba(240, 241, 245, 0.8);
+            color: #3a84ff;
+        }
+
+        .view-btn.active {
+            background: linear-gradient(135deg, rgba(58, 132, 255, 0.15), rgba(58, 132, 255, 0.1));
+            color: #3a84ff;
+            box-shadow: 0 2px 6px rgba(58, 132, 255, 0.2);
+        }
+
+        .content-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .result-info {
+            padding: 16px 24px;
+            background: linear-gradient(135deg, rgba(245, 247, 250, 0.8), rgba(240, 245, 255, 0.8));
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            font-size: 13px;
+            color: #63656e;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .result-info .btn-primary {
+            width: auto;
+            padding: 0 20px;
+            flex: none;
+        }
+
+        .result-link {
+            color: #3a84ff;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .result-link:hover {
+            text-decoration: underline;
+        }
+
+        .favorite-tags {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+        }
+
+        .favorite-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px 6px 16px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1.5px solid rgba(220, 222, 224, 0.4);
+            border-radius: 12px;
+            font-size: 13px;
+            color: #63656e;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+
+        .favorite-tag:hover {
+            border-color: rgba(58, 132, 255, 0.4);
+            background: rgba(240, 245, 255, 0.8);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(58, 132, 255, 0.1);
+        }
+
+        .favorite-tag.active {
+            background: linear-gradient(135deg, rgba(58, 132, 255, 0.15), rgba(58, 132, 255, 0.1));
+            border-color: rgba(58, 132, 255, 0.6);
+            color: #3a84ff;
+            box-shadow: 0 2px 12px rgba(58, 132, 255, 0.2);
+        }
+
+        .tag-close {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            color: #979ba5;
+            font-size: 12px;
+            border-radius: 6px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 0;
+            transform: scale(0.8);
+        }
+
+        .favorite-tag:hover .tag-close {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .tag-close:hover {
+            background: rgba(255, 86, 86, 0.1);
+            color: #ff5656;
+            transform: scale(1.1) !important;
+        }
+
+        /* 图表容器 */
+        .chart-container {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 20px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+        }
+
+        /* 双列布局样式 */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+
+        .charts-grid.two-column {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .charts-grid.two-column .chart-container {
+            margin-bottom: 0;
+        }
+
+        /* 双列布局时隐藏表格 */
+        .charts-grid.two-column .chart-stats {
+            display: none;
+        }
+
+        .chart-container:hover {
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+            transform: translateY(-2px);
+        }
+
+        .chart-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .chart-title {
+            font-size: 15px;
+            color: #313238;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .chart-time {
+            font-size: 12px;
+            color: #979ba5;
+            font-weight: 400;
+        }
+
+        .chart-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .chart-body {
+            padding: 16px;
+        }
+
+        .chart-placeholder {
+            height: 240px;
+            background: linear-gradient(180deg, rgba(249, 250, 251, 0.5) 0%, rgba(255, 255, 255, 0.3) 100%);
+            border-radius: 16px;
+            display: flex;
+            align-items: stretch;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+            margin: 8px;
+            cursor: crosshair;
+        }
+
+        /* 图表模拟 */
+        .line-chart {
+            flex: 1;
+            height: 100%;
+            position: relative;
+            min-width: 0;
+        }
+
+        .chart-stats {
+            width: 300px;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(12px);
+            border-left: 1px solid rgba(0, 0, 0, 0.06);
+            font-size: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .stats-table thead {
+            background: rgba(240, 241, 245, 0.6);
+        }
+
+        .stats-table th {
+            padding: 8px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #63656e;
+            font-size: 11px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            white-space: nowrap;
+        }
+
+        .stats-table td {
+            padding: 8px 12px;
+            color: #313238;
+            font-size: 11px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+        }
+
+        .stats-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .stats-table tbody tr:hover {
+            background: rgba(240, 245, 255, 0.5);
+        }
+
+        .stat-label-cell {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .stat-dot {
+            width: 8px;
+            height: 3px;
+            background: linear-gradient(90deg, #52c41a, #73d13d);
+            border-radius: 2px;
+            box-shadow: 0 0 8px rgba(82, 196, 26, 0.4);
+            flex-shrink: 0;
+        }
+
+        .stat-dot.line-2 {
+            background: linear-gradient(90deg, #3a84ff, #5c9aff);
+            box-shadow: 0 0 8px rgba(58, 132, 255, 0.4);
+        }
+
+        .stat-dot.line-3 {
+            background: linear-gradient(90deg, #ff9a28, #ffb54d);
+            box-shadow: 0 0 8px rgba(255, 154, 40, 0.4);
+        }
+
+        .stat-name {
+            color: #63656e;
+            font-weight: 500;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            color: #313238;
+        }
+
+        /* 图表工具提示 */
+        .chart-tooltip {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            padding: 12px 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08);
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 13px;
+            min-width: 180px;
+        }
+
+        .chart-tooltip.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .tooltip-time {
+            font-weight: 600;
+            color: #313238;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            font-size: 12px;
+        }
+
+        .tooltip-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 4px 0;
+        }
+
+        .tooltip-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #63656e;
+            font-size: 12px;
+        }
+
+        .tooltip-dot {
+            width: 10px;
+            height: 3px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        .tooltip-value {
+            font-weight: 600;
+            color: #313238;
+            font-size: 13px;
+        }
+
+        .chart-crosshair {
+            stroke: rgba(58, 132, 255, 0.4);
+            stroke-width: 1.5;
+            stroke-dasharray: 4 4;
+            pointer-events: none;
+        }
+
+        .chart-point {
+            fill: white;
+            stroke-width: 2.5;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+            pointer-events: none;
+        }
+
+        /* SVG 折线图 */
+        .chart-svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .chart-line {
+            fill: none;
+            stroke: url(#lineGradient);
+            stroke-width: 3;
+            filter: drop-shadow(0 2px 4px rgba(82, 196, 26, 0.3));
+        }
+
+        .chart-grid {
+            stroke: rgba(229, 230, 235, 0.6);
+            stroke-width: 1;
+            stroke-dasharray: 5 5;
+        }
+
+        .chart-axis {
+            stroke: rgba(229, 230, 235, 0.8);
+            stroke-width: 1.5;
+        }
+
+        .chart-label {
+            font-size: 11px;
+            fill: #979ba5;
+            font-weight: 500;
+        }
+
+        /* 滚动条 */
+        .query-content::-webkit-scrollbar,
+        .content-body::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .query-content::-webkit-scrollbar-track,
+        .content-body::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .query-content::-webkit-scrollbar-thumb,
+        .content-body::-webkit-scrollbar-thumb {
+            background: rgba(220, 222, 224, 0.5);
+            border-radius: 8px;
+            transition: background 0.3s;
+        }
+
+        .query-content::-webkit-scrollbar-thumb:hover,
+        .content-body::-webkit-scrollbar-thumb:hover {
+            background: rgba(196, 198, 204, 0.8);
+        }
+
+
+
+        /* 响应式设计 */
+        @media (max-width: 1024px) {
+            .header-nav {
+                gap: 4px;
+                margin-left: 24px;
+            }
+            
+            .nav-item {
+                padding: 8px 14px;
+                font-size: 13px;
+            }
+
+            .query-panel {
+                width: 400px;
+            }
+
+            .content-area {
+                margin: 12px 12px 12px 0;
+                border-radius: 16px;
+            }
+        }
+
+        /* 暗色模式支持 */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: linear-gradient(145deg, #1a1d23 0%, #0f1218 50%, #1a1d23 100%);
+            }
+
+            .top-header {
+                background: rgba(42, 45, 51, 0.85);
+                border-bottom-color: rgba(255, 255, 255, 0.06);
+            }
+
+            .query-panel,
+            .content-area {
+                background: rgba(42, 45, 51, 0.8);
+                border-color: rgba(255, 255, 255, 0.08);
+            }
+
+            .query-group {
+                background: rgba(26, 29, 35, 0.6);
+                border-color: rgba(255, 255, 255, 0.08);
+            }
+
+            .chart-container {
+                background: rgba(42, 45, 51, 0.8);
+                border-color: rgba(255, 255, 255, 0.08);
+            }
+
+            .form-input,
+            .form-select {
+                background: rgba(26, 29, 35, 0.6);
+                border-color: rgba(255, 255, 255, 0.1);
+                color: #e5e6eb;
+            }
+
+            .chart-label {
+                fill: #8a8f99;
+            }
+        }
+
+        /* 添加渐变定义 */
+        @keyframes shimmer {
+            0% {
+                background-position: -1000px 0;
+            }
+            100% {
+                background-position: 1000px 0;
+            }
+        }
+
+        .stat-dot {
+            width: 10px;
+            height: 3px;
+            background: linear-gradient(90deg, #52c41a, #73d13d);
+            border-radius: 2px;
+            box-shadow: 0 0 8px rgba(82, 196, 26, 0.4);
+        }
+
+        /* 弹窗遮罩 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        /* 弹窗容器 */
+        .modal-container {
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 600px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            animation: modalSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px) scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* 弹窗头部 */
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #313238;
+        }
+
+        .modal-close-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            color: #979ba5;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .modal-close-btn:hover {
+            background: rgba(255, 86, 86, 0.1);
+            color: #ff5656;
+            transform: rotate(90deg);
+        }
+
+        /* 弹窗搜索框 */
+        .modal-search {
+            padding: 16px 24px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        .modal-search-input {
+            width: 100%;
+            height: 40px;
+            padding: 0 14px 0 40px;
+            border: 1.5px solid rgba(196, 198, 204, 0.4);
+            border-radius: 12px;
+            font-size: 14px;
+            color: #63656e;
+            background: rgba(255, 255, 255, 0.9);
+            outline: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23979ba5' d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: 14px center;
+        }
+
+        .modal-search-input:hover {
+            border-color: rgba(58, 132, 255, 0.4);
+            background-color: #ffffff;
+        }
+
+        .modal-search-input:focus {
+            border-color: #3a84ff;
+            background-color: #ffffff;
+            box-shadow: 0 0 0 3px rgba(58, 132, 255, 0.1);
+        }
+
+        .modal-search-input::placeholder {
+            color: #c4c6cc;
+        }
+
+        /* 弹窗内容 */
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 24px;
+        }
+
+        /* 弹窗表格 */
+        .modal-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .modal-table thead {
+            background: rgba(240, 241, 245, 0.6);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .modal-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: #63656e;
+            font-size: 13px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        .modal-table td {
+            padding: 12px 16px;
+            color: #313238;
+            font-size: 13px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+        }
+
+        .modal-table tbody tr {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .modal-table tbody tr:hover {
+            background: rgba(240, 245, 255, 0.5);
+        }
+
+        .modal-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* 操作按钮 */
+        .action-btn {
+            padding: 6px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-right: 8px;
+        }
+
+        .action-btn-primary {
+            background: linear-gradient(135deg, #3a84ff 0%, #5c9aff 100%);
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(58, 132, 255, 0.3);
+        }
+
+        .action-btn-primary:hover {
+            background: linear-gradient(135deg, #5c9aff 0%, #3a84ff 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.4);
+        }
+
+        .action-btn-danger {
+            background: rgba(255, 86, 86, 0.1);
+            color: #ff5656;
+            border: 1.5px solid rgba(255, 86, 86, 0.3);
+        }
+
+        .action-btn-danger:hover {
+            background: rgba(255, 86, 86, 0.2);
+            border-color: #ff5656;
+            transform: translateY(-1px);
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #979ba5;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state-text {
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <!-- SVG 渐变定义 -->
+    <svg width="0" height="0" style="position: absolute;">
+        <defs>
+            <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:#52c41a;stop-opacity:1" />
+                <stop offset="50%" style="stop-color:#73d13d;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#95de64;stop-opacity:1" />
+            </linearGradient>
+        </defs>
+    </svg>
+    <!-- 顶部导航栏 -->
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <span>BlueKing Lite</span>
+            </div>
+            <div class="app-switcher">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+            <nav class="header-nav">
+                <a href="../视图/视图.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    <span>视图</span>
+                </a>
+                <a href="搜索.html" class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span>搜索</span>
+                </a>
+                <a href="../事件/告警.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    <span>事件</span>
+                </a>
+                <a href="../集成/集成.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 11a9 9 0 0 1 9 9"/>
+                        <path d="M4 4a16 16 0 0 1 16 16"/>
+                        <circle cx="5" cy="19" r="1"/>
+                    </svg>
+                    <span>集成</span>
+                </a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+            </div>
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </div>
+            <div class="user-info">
+                <div class="user-avatar">陈</div>
+                <span>陈润翼</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+    <!-- 主内容区 -->
+    <div class="main-container">
+        <!-- 左侧查询面板 -->
+        <div class="query-panel">
+            <div class="query-header">
+                <div class="query-title">
+                    <span>数据查询</span>
+                </div>
+                <div class="query-actions">
+                    <button class="icon-btn" id="toggleAllGroupsBtn" title="收起所有" onclick="toggleAllGroups()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M18 15l-6-6-6 6"/></svg></button>
+                    <button class="icon-btn" title="收起" onclick="toggleQueryPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M15 18l-6-6 6-6"/></svg></button>
+                </div>
+            </div>
+
+            <div class="query-content">
+                <!-- a 查询组 -->
+                <div class="query-group">
+                    <div class="query-header group-header" onclick="toggleGroup(this)">
+                        <div class="group-title">
+                            <span class="collapse-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M6 9l6 6 6-6"/></svg></span>
+                            <span>a</span>
+                        </div>
+                        <div class="query-actions">
+                            <button class="icon-btn" title="查看"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                            <button class="icon-btn" title="复制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+                            <button class="icon-btn" title="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                        </div>
+                    </div>
+                    <div class="group-content">
+                        <div class="form-item">
+                            <label class="form-label">对象</label>
+                            <select class="form-select">
+                                <option value="">请选择对象</option>
+                                <option value="server">服务器</option>
+                                <option value="database">数据库</option>
+                                <option value="network">网络设备</option>
+                                <option value="container">容器</option>
+                            </select>
+                        </div>
+                        <div class="form-item">
+                            <label class="form-label">资产</label>
+                            <div class="multi-select-container">
+                                <div class="multi-select-display empty" onclick="toggleMultiSelect(this)">
+                                    <span class="placeholder-text">请选择资产</span>
+                                </div>
+                                <span class="multi-select-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><path d="M6 9l6 6 6-6"/></svg></span>
+                                <div class="multi-select-dropdown">
+                                    <div class="multi-select-search">
+                                        <input type="text" placeholder="搜索资产..." oninput="filterMultiSelectOptions(this)">
+                                    </div>
+                                    <div class="multi-select-options">
+                                        <div class="multi-select-option" data-value="asset1" onclick="toggleMultiSelectOption(this)">
+                                            <div class="multi-select-checkbox"></div>
+                                            <span>服务器A</span>
+                                        </div>
+                                        <div class="multi-select-option" data-value="asset2" onclick="toggleMultiSelectOption(this)">
+                                            <div class="multi-select-checkbox"></div>
+                                            <span>服务器B</span>
+                                        </div>
+                                        <div class="multi-select-option" data-value="asset3" onclick="toggleMultiSelectOption(this)">
+                                            <div class="multi-select-checkbox"></div>
+                                            <span>数据库C</span>
+                                        </div>
+                                    </div>
+                                    <div class="multi-select-actions">
+                                        <button class="multi-select-btn multi-select-btn-secondary" onclick="clearMultiSelect(event)">清空</button>
+                                        <button class="multi-select-btn multi-select-btn-primary" onclick="confirmMultiSelect(event)">确定</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-item">
+                            <label class="form-label">指标</label>
+                            <div class="form-input-with-icon">
+                                <input type="text" class="form-input" placeholder="CPU使用率" value="CPU使用率">
+                                <span class="clear-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+                            </div>
+                        </div>
+                        <div class="form-item">
+                            <label class="form-label">汇聚方法</label>
+                            <select class="form-select">
+                                <option>AVG</option>
+                                <option>SUM</option>
+                                <option>MAX</option>
+                                <option>MIN</option>
+                            </select>
+                        </div>
+                        <div class="form-item">
+                            <label class="form-label">条件</label>
+                            <div class="conditions-list">
+                                <div class="condition-item">
+                                    <select class="form-select">
+                                        <option value="">请选择字段</option>
+                                        <option value="host">主机名</option>
+                                        <option value="ip">IP地址</option>
+                                        <option value="region">区域</option>
+                                        <option value="status">状态</option>
+                                    </select>
+                                    <select class="form-select">
+                                        <option value="eq">等于</option>
+                                        <option value="ne">不等于</option>
+                                        <option value="contains">包含</option>
+                                        <option value="not_contains">不包含</option>
+                                    </select>
+                                    <input type="text" class="form-input" placeholder="请输入值">
+                                    <button class="condition-delete-btn" onclick="removeCondition(this)" title="删除条件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                                </div>
+                            </div>
+                            <button class="add-condition-btn" onclick="addCondition(this)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                <span>添加条件</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- b 查询组 -->
+                <div class="query-group">
+                    <div class="query-header group-header" onclick="toggleGroup(this)">
+                        <div class="group-title">
+                            <span class="collapse-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M6 9l6 6 6-6"/></svg></span>
+                            <span>b</span>
+                        </div>
+                        <div class="query-actions">
+                            <button class="icon-btn" title="查看"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                            <button class="icon-btn" title="复制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+                            <button class="icon-btn" title="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                        </div>
+                    </div>
+                    <div class="group-content">
+                        <div class="form-item">
+                            <label class="form-label">对象</label>
+                            <select class="form-select">
+                                <option value="">请选择对象</option>
+                                <option value="server">服务器</option>
+                                <option value="database">数据库</option>
+                                <option value="network">网络设备</option>
+                                <option value="container">容器</option>
+                            </select>
+                        </div>
+                        <div class="form-item">
+                            <label class="form-label">资产</label>
+                            <div class="multi-select-container">
+                                <div class="multi-select-display empty" onclick="toggleMultiSelect(this)">
+                                    <span class="placeholder-text">请选择资产</span>
+                                </div>
+                                <span class="multi-select-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><path d="M6 9l6 6 6-6"/></svg></span>
+                                <div class="multi-select-dropdown">
+                                    <div class="multi-select-search">
+                                        <input type="text" placeholder="搜索资产..." oninput="filterMultiSelectOptions(this)">
+                                    </div>
+                                    <div class="multi-select-options">
+                                        <div class="multi-select-option" data-value="asset1" onclick="toggleMultiSelectOption(this)">
+                                            <div class="multi-select-checkbox"></div>
+                                            <span>服务器A</span>
+                                        </div>
+                                        <div class="multi-select-option" data-value="asset2" onclick="toggleMultiSelectOption(this)">
+                                            <div class="multi-select-checkbox"></div>
+                                            <span>服务器B</span>
+                                        </div>
+                                        <div class="multi-select-option" data-value="asset3" onclick="toggleMultiSelectOption(this)">
+                                            <div class="multi-select-checkbox"></div>
+                                            <span>数据库C</span>
+                                        </div>
+                                    </div>
+                                    <div class="multi-select-actions">
+                                        <button class="multi-select-btn multi-select-btn-secondary" onclick="clearMultiSelect(event)">清空</button>
+                                        <button class="multi-select-btn multi-select-btn-primary" onclick="confirmMultiSelect(event)">确定</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-item">
+                            <label class="form-label">指标</label>
+                            <div class="form-input-with-icon">
+                                <input type="text" class="form-input" placeholder="请选择指标" value="磁盘使用率">
+                                <span class="clear-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+                            </div>
+                        </div>
+                        <div class="form-item">
+                            <label class="form-label">汇聚方法</label>
+                            <select class="form-select">
+                                <option>AVG</option>
+                                <option>SUM</option>
+                                <option>MAX</option>
+                                <option>MIN</option>
+                            </select>
+                        </div>
+                        <div class="form-item">
+                            <label class="form-label">条件</label>
+                            <div class="conditions-list">
+                                <div class="condition-item">
+                                    <select class="form-select">
+                                        <option value="">请选择字段</option>
+                                        <option value="host">主机名</option>
+                                        <option value="ip">IP地址</option>
+                                        <option value="region">区域</option>
+                                        <option value="status">状态</option>
+                                    </select>
+                                    <select class="form-select">
+                                        <option value="eq">等于</option>
+                                        <option value="ne">不等于</option>
+                                        <option value="contains">包含</option>
+                                        <option value="not_contains">不包含</option>
+                                    </select>
+                                    <input type="text" class="form-input" placeholder="请输入值">
+                                    <button class="condition-delete-btn" onclick="removeCondition(this)" title="删除条件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                                </div>
+                            </div>
+                            <button class="add-condition-btn" onclick="addCondition(this)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                <span>添加条件</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 添加查询按钮 -->
+                <button class="add-query-btn" onclick="addQuery()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <span>添加查询</span>
+                </button>
+
+            </div>
+
+            <div class="query-footer">
+                <button class="btn-primary">查询</button>
+                <button class="btn-secondary">保存</button>
+                <button class="btn-secondary" onclick="openLoadModal()">加载</button>
+                <button class="btn-text">清空</button>
+            </div>
+        </div>
+
+        <!-- 右侧内容区域 -->
+        <div class="content-area">
+            <!-- 展开面板按钮 -->
+            <button class="expand-panel-btn" onclick="toggleQueryPanel()" title="展开查询面板"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M9 18l6-6-6-6"/></svg></button>
+
+            <div class="content-header">
+                <div class="tabs">
+                    总用时 468 毫秒
+                </div>
+                <div class="content-toolbar">
+                    <div class="toolbar-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <span>近1小时</span>
+                    </div>
+                    <div class="refresh-dropdown" id="refreshDropdown">
+                        <button class="refresh-button" onclick="toggleRefreshDropdown()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            <span id="refreshLabel">5m</span>
+                            <span style="font-size: 10px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:8px;height:8px;"><path d="M6 9l6 6 6-6"/></svg></span>
+                        </button>
+                        <div class="refresh-dropdown-content">
+                            <div class="refresh-option" onclick="selectRefreshInterval('off', '关闭')">关闭</div>
+                            <div class="refresh-option" onclick="selectRefreshInterval(60000, '1m')">1m</div>
+                            <div class="refresh-option active" onclick="selectRefreshInterval(300000, '5m')">5m</div>
+                            <div class="refresh-option" onclick="selectRefreshInterval(600000, '10m')">10m</div>
+                        </div>
+                    </div>
+                    <div class="view-toggle">
+                        <button class="view-btn active" onclick="toggleChartView('single')" title="单列布局"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+                        <button class="view-btn" onclick="toggleChartView('two-column')" title="双列布局"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-body">
+                <div class="charts-grid">
+                <!-- 图表1: CPU使用率 -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <span>AVG(主机-CPU使用率)</span>
+                            <span class="chart-time">用时 216 毫秒</span>
+                        </div>
+                        <div class="chart-actions">
+                            <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+                        </div>
+                    </div>
+                    <div class="chart-body">
+                        <div class="chart-placeholder">
+                            <div class="line-chart">
+                                <svg class="chart-svg" viewBox="0 0 780 220" preserveAspectRatio="none">
+                                    <defs>
+                                        <linearGradient id="lineGradient2" x1="0%" y1="0%" x2="100%" y2="0%">
+                                            <stop offset="0%" style="stop-color:#52c41a;stop-opacity:1" />
+                                            <stop offset="50%" style="stop-color:#73d13d;stop-opacity:1" />
+                                            <stop offset="100%" style="stop-color:#95de64;stop-opacity:1" />
+                                        </linearGradient>
+                                    </defs>
+                                    <!-- 网格线 -->
+                                    <line class="chart-grid" x1="45" y1="30" x2="760" y2="30"/>
+                                    <line class="chart-grid" x1="45" y1="60" x2="760" y2="60"/>
+                                    <line class="chart-grid" x1="45" y1="90" x2="760" y2="90"/>
+                                    <line class="chart-grid" x1="45" y1="120" x2="760" y2="120"/>
+                                    <line class="chart-grid" x1="45" y1="150" x2="760" y2="150"/>
+                                    
+                                    <!-- Y轴标签 -->
+                                    <text class="chart-label" x="5" y="35">37%</text>
+                                    <text class="chart-label" x="5" y="65">35%</text>
+                                    <text class="chart-label" x="5" y="95">30%</text>
+                                    <text class="chart-label" x="5" y="125">25%</text>
+                                    <text class="chart-label" x="5" y="155">20%</text>
+                                    <text class="chart-label" x="5" y="185">17%</text>
+                                    
+                                    <!-- X轴标签 -->
+                                    <text class="chart-label" x="160" y="200">18:10</text>
+                                    <text class="chart-label" x="310" y="200">18:20</text>
+                                    <text class="chart-label" x="460" y="200">18:30</text>
+                                    <text class="chart-label" x="610" y="200">18:40</text>
+                                    <text class="chart-label" x="740" y="200">18:50</text>
+                                    
+                                    <!-- 折线将通过JavaScript动态生成 -->
+                                </svg>
+                            </div>
+                            <div class="chart-stats">
+                                <table class="stats-table">
+                                    <thead>
+                                        <tr>
+                                            <th>标识</th>
+                                            <th>最小值</th>
+                                            <th>最大值</th>
+                                            <th>平均值</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>
+                                                <div class="stat-label-cell">
+                                                    <span class="stat-dot"></span>
+                                                    <span class="stat-name">host1</span>
+                                                </div>
+                                            </td>
+                                            <td><span class="stat-value">17.40%</span></td>
+                                            <td><span class="stat-value">37.46%</span></td>
+                                            <td><span class="stat-value">24.22%</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 图表3: 表达式 a+b -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <span>AVG(主机-磁盘使用率)</span>
+                            <span class="chart-time">用时 189 毫秒</span>
+                        </div>
+                        <div class="chart-actions">
+                            <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+                        </div>
+                    </div>
+                    <div class="chart-body">
+                        <div class="chart-placeholder">
+                            <div class="line-chart">
+                                <svg class="chart-svg" viewBox="0 0 780 220" preserveAspectRatio="none">
+                                    <defs>
+                                        <linearGradient id="lineGradient3" x1="0%" y1="0%" x2="100%" y2="0%">
+                                            <stop offset="0%" style="stop-color:#52c41a;stop-opacity:1" />
+                                            <stop offset="50%" style="stop-color:#73d13d;stop-opacity:1" />
+                                            <stop offset="100%" style="stop-color:#95de64;stop-opacity:1" />
+                                        </linearGradient>
+                                        <linearGradient id="lineGradient4" x1="0%" y1="0%" x2="100%" y2="0%">
+                                            <stop offset="0%" style="stop-color:#3a84ff;stop-opacity:1" />
+                                            <stop offset="50%" style="stop-color:#5c9aff;stop-opacity:1" />
+                                            <stop offset="100%" style="stop-color:#85b8ff;stop-opacity:1" />
+                                        </linearGradient>
+                                        <linearGradient id="lineGradient5" x1="0%" y1="0%" x2="100%" y2="0%">
+                                            <stop offset="0%" style="stop-color:#ff9a28;stop-opacity:1" />
+                                            <stop offset="50%" style="stop-color:#ffb54d;stop-opacity:1" />
+                                            <stop offset="100%" style="stop-color:#ffc870;stop-opacity:1" />
+                                        </linearGradient>
+                                    </defs>
+                                    <!-- 网格线 -->
+                                    <line class="chart-grid" x1="45" y1="30" x2="760" y2="30"/>
+                                    <line class="chart-grid" x1="45" y1="60" x2="760" y2="60"/>
+                                    <line class="chart-grid" x1="45" y1="90" x2="760" y2="90"/>
+                                    <line class="chart-grid" x1="45" y1="120" x2="760" y2="120"/>
+                                    <line class="chart-grid" x1="45" y1="150" x2="760" y2="150"/>
+                                    
+                                    <!-- Y轴标签 -->
+                                    <text class="chart-label" x="5" y="35">87%</text>
+                                    <text class="chart-label" x="5" y="65">80%</text>
+                                    <text class="chart-label" x="5" y="95">70%</text>
+                                    <text class="chart-label" x="5" y="125">60%</text>
+                                    <text class="chart-label" x="5" y="155">50%</text>
+                                    <text class="chart-label" x="5" y="185">43%</text>
+                                    
+                                    <!-- X轴标签 -->
+                                    <text class="chart-label" x="160" y="200">18:10</text>
+                                    <text class="chart-label" x="310" y="200">18:20</text>
+                                    <text class="chart-label" x="460" y="200">18:30</text>
+                                    <text class="chart-label" x="610" y="200">18:40</text>
+                                    <text class="chart-label" x="740" y="200">18:50</text>
+
+                                    <!-- 折线将通过JavaScript动态生成 -->
+                                </svg>
+                            </div>
+                            <div class="chart-stats">
+                                <table class="stats-table">
+                                    <thead>
+                                        <tr>
+                                            <th>标识</th>
+                                            <th>最小值</th>
+                                            <th>最大值</th>
+                                            <th>平均值</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>
+                                                <div class="stat-label-cell">
+                                                    <span class="stat-dot"></span>
+                                                    <span class="stat-name">host02:dm-0</span>
+                                                </div>
+                                            </td>
+                                            <td><span class="stat-value">25.75%</span></td>
+                                            <td><span class="stat-value">49.66%</span></td>
+                                            <td><span class="stat-value">35.45%</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>
+                                                <div class="stat-label-cell">
+                                                    <span class="stat-dot line-2"></span>
+                                                    <span class="stat-name">host02:dm-1</span>
+                                                </div>
+                                            </td>
+                                            <td><span class="stat-value">17.40%</span></td>
+                                            <td><span class="stat-value">37.46%</span></td>
+                                            <td><span class="stat-value">24.22%</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载弹窗 -->
+    <div class="modal-overlay" id="loadModal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <div class="modal-title">加载已保存的查询</div>
+                <button class="modal-close-btn" onclick="closeLoadModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+            </div>
+            <div class="modal-search">
+                <input type="text" class="modal-search-input" placeholder="按名称搜索" id="modalSearchInput" oninput="filterSavedQueries()">
+            </div>
+            <div class="modal-body">
+                <table class="modal-table" id="savedQueriesTable">
+                    <thead>
+                        <tr>
+                            <th>名称</th>
+                            <th>保存时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="savedQueriesBody">
+                        <!-- 示例数据 -->
+                        <tr data-name="CPU监控查询">
+                            <td>CPU监控查询</td>
+                            <td>2025-10-30 14:23:15</td>
+                            <td>
+                                <button class="action-btn action-btn-primary" onclick="loadQuery(this)">载入</button>
+                                <button class="action-btn action-btn-danger" onclick="deleteQuery(this)">删除</button>
+                            </td>
+                        </tr>
+                        <tr data-name="磁盘使用率查询">
+                            <td>磁盘使用率查询</td>
+                            <td>2025-10-30 13:45:28</td>
+                            <td>
+                                <button class="action-btn action-btn-primary" onclick="loadQuery(this)">载入</button>
+                                <button class="action-btn action-btn-danger" onclick="deleteQuery(this)">删除</button>
+                            </td>
+                        </tr>
+                        <tr data-name="内存监控查询">
+                            <td>内存监控查询</td>
+                            <td>2025-10-30 12:10:42</td>
+                            <td>
+                                <button class="action-btn action-btn-primary" onclick="loadQuery(this)">载入</button>
+                                <button class="action-btn action-btn-danger" onclick="deleteQuery(this)">删除</button>
+                            </td>
+                        </tr>
+                        <tr data-name="网络流量查询">
+                            <td>网络流量查询</td>
+                            <td>2025-10-30 11:30:05</td>
+                            <td>
+                                <button class="action-btn action-btn-primary" onclick="loadQuery(this)">载入</button>
+                                <button class="action-btn action-btn-danger" onclick="deleteQuery(this)">删除</button>
+                            </td>
+                        </tr>
+                        <tr data-name="数据库性能查询">
+                            <td>数据库性能查询</td>
+                            <td>2025-10-30 10:15:33</td>
+                            <td>
+                                <button class="action-btn action-btn-primary" onclick="loadQuery(this)">载入</button>
+                                <button class="action-btn action-btn-danger" onclick="deleteQuery(this)">删除</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 切换查询面板显示/隐藏
+        function toggleQueryPanel() {
+            const queryPanel = document.querySelector('.query-panel');
+            queryPanel.classList.toggle('collapsed');
+        }
+
+        // 切换所有查询组的展开/收起状态
+        function toggleAllGroups() {
+            const allGroups = document.querySelectorAll('.query-group .group-header');
+            const btn = document.getElementById('toggleAllGroupsBtn');
+            
+            // 检查是否所有组都已收起
+            const allCollapsed = Array.from(allGroups).every(header => 
+                header.classList.contains('collapsed')
+            );
+            
+            if (allCollapsed) {
+                // 展开所有
+                allGroups.forEach(header => {
+                    if (header.classList.contains('collapsed')) {
+                        const content = header.nextElementSibling;
+                        header.classList.remove('collapsed');
+                        content.classList.remove('hidden');
+                        content.style.animation = 'slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+                    }
+                });
+                btn.title = '收起所有';
+                btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M18 15l-6-6-6 6"/></svg>';
+            } else {
+                // 收起所有
+                allGroups.forEach(header => {
+                    if (!header.classList.contains('collapsed')) {
+                        const content = header.nextElementSibling;
+                        header.classList.add('collapsed');
+                        content.style.animation = 'slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+                        setTimeout(() => {
+                            content.classList.add('hidden');
+                        }, 280);
+                    }
+                });
+                btn.title = '展开所有';
+                btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M6 9l6 6 6-6"/></svg>';
+            }
+        }
+
+        function toggleGroup(header) {
+            header.classList.toggle('collapsed');
+            const content = header.nextElementSibling;
+            
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                // 添加展开动画
+                content.style.animation = 'slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+            } else {
+                // 添加收起动画
+                content.style.animation = 'slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+                setTimeout(() => {
+                    content.classList.add('hidden');
+                }, 280);
+            }
+        }
+
+        function removeTag(closeBtn) {
+            const tag = closeBtn.parentElement;
+            tag.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+            tag.style.opacity = '0';
+            tag.style.transform = 'scale(0.8) translateY(-10px)';
+            setTimeout(() => {
+                tag.remove();
+            }, 300);
+        }
+
+        // 添加条件
+        function addCondition(button) {
+            const formItem = button.parentElement;
+            const conditionsList = formItem.querySelector('.conditions-list');
+            
+            // 创建新的条件项
+            const newCondition = document.createElement('div');
+            newCondition.className = 'condition-item';
+            newCondition.innerHTML = `
+                <select class="form-select">
+                    <option value="">请选择字段</option>
+                    <option value="host">主机名</option>
+                    <option value="ip">IP地址</option>
+                    <option value="region">区域</option>
+                    <option value="status">状态</option>
+                </select>
+                <select class="form-select">
+                    <option value="eq">等于</option>
+                    <option value="ne">不等于</option>
+                    <option value="gt">大于</option>
+                    <option value="lt">小于</option>
+                    <option value="contains">包含</option>
+                </select>
+                <input type="text" class="form-input" placeholder="请输入值">
+                <button class="condition-delete-btn" onclick="removeCondition(this)" title="删除条件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            `;
+            
+            // 添加到列表
+            conditionsList.appendChild(newCondition);
+            
+            // 聚焦到新添加的输入框
+            const newInput = newCondition.querySelector('.form-input');
+            setTimeout(() => {
+                newInput.focus();
+            }, 100);
+        }
+
+        // 删除条件
+        function removeCondition(button) {
+            const conditionItem = button.parentElement;
+            const conditionsList = conditionItem.parentElement;
+            
+            // 如果只剩一个条件，不允许删除
+            if (conditionsList.children.length <= 1) {
+                // 可以选择清空输入或显示提示
+                conditionItem.querySelectorAll('.form-input, .form-select').forEach(input => {
+                    if (input.tagName === 'INPUT') {
+                        input.value = '';
+                    } else {
+                        input.selectedIndex = 0;
+                    }
+                });
+                return;
+            }
+            
+            // 添加删除动画
+            conditionItem.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+            conditionItem.style.opacity = '0';
+            conditionItem.style.transform = 'translateX(-20px)';
+            
+            setTimeout(() => {
+                conditionItem.remove();
+            }, 300);
+        }
+
+        function addQuery() {
+            // 获取最后一个查询组的标识符
+            const queryGroups = document.querySelectorAll('.query-group');
+            const lastGroup = queryGroups[queryGroups.length - 1];
+            const lastLabel = lastGroup.querySelector('.group-title span:last-child').textContent;
+            const nextLabel = String.fromCharCode(lastLabel.charCodeAt(0) + 1);
+
+            // 创建新的查询组
+            const newGroup = document.createElement('div');
+            newGroup.className = 'query-group';
+            newGroup.style.opacity = '0';
+            newGroup.style.transform = 'translateY(-20px)';
+            newGroup.innerHTML = `
+                <div class="query-header group-header" onclick="toggleGroup(this)">
+                    <div class="group-title">
+                        <span class="collapse-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M6 9l6 6 6-6"/></svg></span>
+                        <span>${nextLabel}</span>
+                    </div>
+                    <div class="query-actions">
+                        <button class="icon-btn" title="查看"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                        <button class="icon-btn" title="复制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+                        <button class="icon-btn" title="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                    </div>
+                </div>
+                <div class="group-content">
+                    <div class="form-item">
+                        <label class="form-label">对象</label>
+                        <select class="form-select">
+                            <option value="">请选择对象</option>
+                            <option value="server">服务器</option>
+                            <option value="database">数据库</option>
+                            <option value="network">网络设备</option>
+                            <option value="container">容器</option>
+                        </select>
+                    </div>
+                    <div class="form-item">
+                        <label class="form-label">资产</label>
+                        <div class="multi-select-container">
+                            <div class="multi-select-display empty" onclick="toggleMultiSelect(this)">
+                                <span class="placeholder-text">请选择资产</span>
+                            </div>
+                            <span class="multi-select-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><path d="M6 9l6 6 6-6"/></svg></span>
+                            <div class="multi-select-dropdown">
+                                <div class="multi-select-search">
+                                    <input type="text" placeholder="搜索资产..." oninput="filterMultiSelectOptions(this)">
+                                </div>
+                                <div class="multi-select-options">
+                                    <div class="multi-select-option" data-value="asset1" onclick="toggleMultiSelectOption(this)">
+                                        <div class="multi-select-checkbox"></div>
+                                        <span>资产1 - 服务器A</span>
+                                    </div>
+                                    <div class="multi-select-option" data-value="asset2" onclick="toggleMultiSelectOption(this)">
+                                        <div class="multi-select-checkbox"></div>
+                                        <span>资产2 - 服务器B</span>
+                                    </div>
+                                    <div class="multi-select-option" data-value="asset3" onclick="toggleMultiSelectOption(this)">
+                                        <div class="multi-select-checkbox"></div>
+                                        <span>资产3 - 数据库C</span>
+                                    </div>
+                                    <div class="multi-select-option" data-value="asset4" onclick="toggleMultiSelectOption(this)">
+                                        <div class="multi-select-checkbox"></div>
+                                        <span>资产4 - 存储D</span>
+                                    </div>
+                                    <div class="multi-select-option" data-value="asset5" onclick="toggleMultiSelectOption(this)">
+                                        <div class="multi-select-checkbox"></div>
+                                        <span>资产5 - 网络E</span>
+                                    </div>
+                                </div>
+                                <div class="multi-select-actions">
+                                    <button class="multi-select-btn multi-select-btn-secondary" onclick="clearMultiSelect(event)">清空</button>
+                                    <button class="multi-select-btn multi-select-btn-primary" onclick="confirmMultiSelect(event)">确定</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-item">
+                        <label class="form-label">指标</label>
+                        <div class="form-input-with-icon">
+                            <input type="text" class="form-input" placeholder="请选择指标">
+                            <span class="clear-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+                        </div>
+                    </div>
+                    <div class="form-item">
+                        <label class="form-label">汇聚方法</label>
+                        <select class="form-select">
+                            <option>AVG</option>
+                            <option>SUM</option>
+                            <option>MAX</option>
+                            <option>MIN</option>
+                        </select>
+                    </div>
+                    <div class="form-item">
+                        <label class="form-label">条件</label>
+                        <div class="conditions-list">
+                            <div class="condition-item">
+                                <select class="form-select">
+                                    <option value="">请选择字段</option>
+                                    <option value="host">主机名</option>
+                                    <option value="ip">IP地址</option>
+                                    <option value="region">区域</option>
+                                    <option value="status">状态</option>
+                                </select>
+                                <select class="form-select">
+                                    <option value="eq">等于</option>
+                                    <option value="ne">不等于</option>
+                                    <option value="gt">大于</option>
+                                    <option value="lt">小于</option>
+                                    <option value="contains">包含</option>
+                                </select>
+                                <input type="text" class="form-input" placeholder="请输入值">
+                                <button class="condition-delete-btn" onclick="removeCondition(this)" title="删除条件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                            </div>
+                        </div>
+                        <button class="add-condition-btn" onclick="addCondition(this)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            <span>添加条件</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // 插入新查询组到添加按钮之前
+            const addBtn = document.querySelector('.add-query-btn');
+            addBtn.parentNode.insertBefore(newGroup, addBtn);
+
+            // 添加动画
+            setTimeout(() => {
+                newGroup.style.transition = 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+                newGroup.style.opacity = '1';
+                newGroup.style.transform = 'translateY(0)';
+            }, 10);
+
+            // 重新绑定清空图标事件
+            newGroup.querySelectorAll('.clear-icon').forEach(icon => {
+                icon.addEventListener('click', function() {
+                    const input = this.previousElementSibling;
+                    input.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+                    input.value = '';
+                    input.focus();
+                });
+            });
+        }
+
+        // 模拟交互
+        document.querySelectorAll('.clear-icon').forEach(icon => {
+            icon.addEventListener('click', function() {
+                const input = this.previousElementSibling;
+                input.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+                input.value = '';
+                input.focus();
+            });
+        });
+
+        // 标签点击切换
+        document.querySelectorAll('.favorite-tag').forEach(tag => {
+            tag.addEventListener('click', function(e) {
+                if (e.target.classList.contains('tag-close')) return;
+                
+                document.querySelectorAll('.favorite-tag').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // 添加CSS动画定义
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideDown {
+                from {
+                    opacity: 0;
+                    max-height: 0;
+                    transform: translateY(-10px);
+                }
+                to {
+                    opacity: 1;
+                    max-height: 500px;
+                    transform: translateY(0);
+                }
+            }
+
+            @keyframes slideUp {
+                from {
+                    opacity: 1;
+                    max-height: 500px;
+                    transform: translateY(0);
+                }
+                to {
+                    opacity: 0;
+                    max-height: 0;
+                    transform: translateY(-10px);
+                }
+            }
+
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            .chart-container {
+                animation: fadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+            }
+
+            .chart-container:nth-child(1) { animation-delay: 0.1s; }
+            .chart-container:nth-child(2) { animation-delay: 0.2s; }
+            .chart-container:nth-child(3) { animation-delay: 0.3s; }
+        `;
+        document.head.appendChild(style);
+
+        // 刷新下拉菜单功能
+        let refreshInterval = null;
+        let currentRefreshTime = 'off';
+
+        function toggleRefreshDropdown() {
+            const dropdown = document.getElementById('refreshDropdown');
+            dropdown.classList.toggle('show');
+            
+            // 点击外部关闭下拉菜单
+            if (dropdown.classList.contains('show')) {
+                setTimeout(() => {
+                    document.addEventListener('click', closeDropdownOnClickOutside);
+                }, 0);
+            }
+        }
+
+        function closeDropdownOnClickOutside(event) {
+            const dropdown = document.getElementById('refreshDropdown');
+            if (!dropdown.contains(event.target)) {
+                dropdown.classList.remove('show');
+                document.removeEventListener('click', closeDropdownOnClickOutside);
+            }
+        }
+
+        function selectRefreshInterval(interval, label) {
+            // 清除之前的定时器
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+
+            // 更新选中状态
+            document.querySelectorAll('.refresh-option').forEach(option => {
+                option.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // 更新按钮文本
+            document.getElementById('refreshLabel').textContent = label;
+            currentRefreshTime = interval;
+
+            // 更新按钮状态
+            const button = document.querySelector('.refresh-button');
+            if (interval === 'off') {
+                button.classList.remove('active');
+            } else {
+                button.classList.add('active');
+                // 设置定时刷新
+                refreshInterval = setInterval(() => {
+                    console.log(`自动刷新 - 每 ${label}`);
+                    // 这里添加实际的刷新逻辑
+                    performRefresh();
+                }, interval);
+                
+                // 立即执行一次刷新
+                performRefresh();
+            }
+
+            // 关闭下拉菜单
+            document.getElementById('refreshDropdown').classList.remove('show');
+            document.removeEventListener('click', closeDropdownOnClickOutside);
+        }
+
+        function performRefresh() {
+            // 添加刷新动画效果
+            const refreshIcon = document.querySelector('.refresh-button span:first-child');
+            refreshIcon.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+            refreshIcon.style.transform = 'rotate(360deg)';
+            
+            setTimeout(() => {
+                refreshIcon.style.transition = 'none';
+                refreshIcon.style.transform = 'rotate(0deg)';
+            }, 600);
+
+            // 这里添加实际的数据刷新逻辑
+            console.log('执行数据刷新...');
+        }
+
+        // 页面加载动画
+        window.addEventListener('load', () => {
+            document.body.style.opacity = '0';
+            document.body.style.transition = 'opacity 0.5s ease-in-out';
+            setTimeout(() => {
+                document.body.style.opacity = '1';
+            }, 100);
+
+            // 启动默认的5分钟自动刷新
+            currentRefreshTime = 300000;
+            refreshInterval = setInterval(() => {
+                console.log('自动刷新 - 每 5m');
+                performRefresh();
+            }, 300000);
+
+            // 动态生成第二个图表的折线
+            renderChart2Lines();
+
+            // 初始化图表工具提示
+            initChartTooltips();
+        });
+
+        // 图表工具提示功能
+        function initChartTooltips() {
+            const chartContainers = document.querySelectorAll('.chart-container');
+            
+            chartContainers.forEach((container, chartIndex) => {
+                const chartPlaceholder = container.querySelector('.chart-placeholder');
+                const lineChart = container.querySelector('.line-chart');
+                const svg = container.querySelector('.chart-svg');
+                
+                if (!svg || !lineChart) return;
+
+                // 创建工具提示元素
+                const tooltip = document.createElement('div');
+                tooltip.className = 'chart-tooltip';
+                lineChart.appendChild(tooltip);
+
+                // 创建十字线和数据点
+                const svgNS = "http://www.w3.org/2000/svg";
+                const crosshairGroup = document.createElementNS(svgNS, 'g');
+                crosshairGroup.setAttribute('class', 'crosshair-group');
+                crosshairGroup.style.display = 'none';
+
+                // 垂直十字线
+                const verticalLine = document.createElementNS(svgNS, 'line');
+                verticalLine.setAttribute('class', 'chart-crosshair');
+                verticalLine.setAttribute('y1', '30');
+                verticalLine.setAttribute('y2', '180');
+                crosshairGroup.appendChild(verticalLine);
+
+                svg.appendChild(crosshairGroup);
+
+                // 根据图表索引获取数据配置
+                const chartDataConfig = getChartDataConfig(chartIndex);
+
+                // 鼠标移动事件
+                lineChart.addEventListener('mousemove', (e) => {
+                    // 获取SVG的实际边界
+                    const svgRect = svg.getBoundingClientRect();
+                    
+                    // 鼠标相对于 SVG 的位置（像素）
+                    const mouseXInSvg = e.clientX - svgRect.left;
+                    const mouseYInSvg = e.clientY - svgRect.top;
+
+                    // 获取viewBox属性
+                    const viewBox = svg.viewBox.baseVal;
+                    const viewBoxWidth = viewBox.width;   // 780
+                    const viewBoxHeight = viewBox.height; // 220
+                    
+                    // 转换到viewBox坐标系
+                    const svgX = (mouseXInSvg / svgRect.width) * viewBoxWidth;
+                    const svgY = (mouseYInSvg / svgRect.height) * viewBoxHeight;
+
+                    // 图表区域范围 (x: 45-760, y: 30-180)
+                    if (svgX >= 45 && svgX <= 760 && svgY >= 30 && svgY <= 180) {
+                        // 显示十字线
+                        crosshairGroup.style.display = 'block';
+                        verticalLine.setAttribute('x1', svgX);
+                        verticalLine.setAttribute('x2', svgX);
+
+                        // 计算最近的数据点
+                        const dataPoint = calculateNearestDataPoint(svgX, chartDataConfig);
+
+                        // 显示工具提示（使用相对于 lineChart 的坐标）
+                        const lineChartRect = lineChart.getBoundingClientRect();
+                        const mouseX = e.clientX - lineChartRect.left;
+                        const mouseY = e.clientY - lineChartRect.top;
+                        showTooltip(tooltip, mouseX, mouseY, lineChart, dataPoint, chartDataConfig);
+
+                        // 更新数据点位置
+                        updateDataPoints(crosshairGroup, svgX, dataPoint, chartDataConfig, svgNS);
+                    } else {
+                        crosshairGroup.style.display = 'none';
+                        tooltip.classList.remove('show');
+                    }
+                });
+
+                // 鼠标离开事件
+                lineChart.addEventListener('mouseleave', () => {
+                    crosshairGroup.style.display = 'none';
+                    tooltip.classList.remove('show');
+                });
+            });
+        }
+
+        // 获取图表数据配置
+        function getChartDataConfig(chartIndex) {
+            // 生成1小时的数据点（60个点，每分钟一个）
+            function generateHourlyData(baseValue, variance, color, name) {
+                const data = [];
+                const startTime = new Date();
+                startTime.setHours(18, 0, 0, 0); // 从18:00开始
+                
+                for (let i = 0; i < 60; i++) {
+                    const x = 45 + (i / 59) * 715; // 从45到760均匀分布
+                    // 生成波动的y值
+                    const randomFactor = Math.sin(i / 5) * 0.5 + Math.cos(i / 3) * 0.3 + (Math.random() - 0.5) * 0.2;
+                    const yRange = 150; // y轴范围 (30-180)
+                    const yMin = 30;
+                    const normalizedValue = (baseValue + randomFactor * variance - (baseValue - variance)) / (variance * 2);
+                    const y = yMin + (1 - normalizedValue) * yRange;
+                    
+                    const time = new Date(startTime.getTime() + i * 60000); // 每分钟
+                    const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
+                    const value = `${(baseValue + randomFactor * variance).toFixed(1)}%`;
+                    
+                    data.push({ x, y, time: timeStr, value });
+                }
+                return data;
+            }
+
+            const configs = [
+                // 图表1: CPU使用率 (单条线) - 1小时数据
+                {
+                    lines: [
+                        {
+                            name: 'host1',
+                            color: '#52c41a',
+                            data: generateHourlyData(27, 8, '#52c41a', 'host1')
+                        }
+                    ]
+                },
+                // 图表2: 磁盘使用率 (两条线) - 1小时数据
+                {
+                    lines: [
+                        {
+                            name: 'host02:dm-0',
+                            color: '#ff9a28',
+                            data: generateHourlyData(75, 12, '#ff9a28', 'host02:dm-0')
+                        },
+                        {
+                            name: 'host02:dm-1',
+                            color: '#3a84ff',
+                            data: generateHourlyData(28, 6, '#3a84ff', 'host02:dm-1')
+                        }
+                    ]
+                }
+            ];
+
+            return configs[chartIndex] || configs[0];
+        }
+
+        // 计算最近的数据点索引
+        function calculateNearestDataPoint(svgX, chartConfig) {
+            const firstLine = chartConfig.lines[0].data;
+            let nearestIndex = 0;
+            let minDistance = Math.abs(firstLine[0].x - svgX);
+
+            for (let i = 1; i < firstLine.length; i++) {
+                const distance = Math.abs(firstLine[i].x - svgX);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearestIndex = i;
+                }
+            }
+
+            return nearestIndex;
+        }
+
+        // 显示工具提示
+        function showTooltip(tooltip, mouseX, mouseY, container, dataPointIndex, chartConfig) {
+            const rect = container.getBoundingClientRect();
+
+            // 获取时间标签
+            const time = chartConfig.lines[0].data[dataPointIndex].time;
+
+            // 构建工具提示内容
+            let tooltipHTML = `<div class="tooltip-time">${time}</div>`;
+            
+            chartConfig.lines.forEach(line => {
+                const dataPoint = line.data[dataPointIndex];
+                tooltipHTML += `
+                    <div class="tooltip-item">
+                        <div class="tooltip-label">
+                            <span class="tooltip-dot" style="background: ${line.color};"></span>
+                            <span>${line.name}</span>
+                        </div>
+                        <div class="tooltip-value">${dataPoint.value}</div>
+                    </div>
+                `;
+            });
+
+            tooltip.innerHTML = tooltipHTML;
+            
+            // 先添加 show 类以便计算尺寸
+            tooltip.classList.add('show');
+
+            // 获取工具提示的实际尺寸
+            const tooltipWidth = tooltip.offsetWidth;
+            const tooltipHeight = tooltip.offsetHeight;
+
+            // 定位工具提示（避免溢出）
+            let left = mouseX + 15;
+            let top = mouseY - tooltipHeight / 2;
+
+            // 防止右侧溢出
+            if (left + tooltipWidth > rect.width) {
+                left = mouseX - tooltipWidth - 15;
+            }
+
+            // 防止上下溢出
+            if (top < 0) {
+                top = 5;
+            } else if (top + tooltipHeight > rect.height) {
+                top = rect.height - tooltipHeight - 5;
+            }
+
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = top + 'px';
+        }
+
+        // 更新数据点位置
+        function updateDataPoints(crosshairGroup, svgX, dataPointIndex, chartConfig, svgNS) {
+            // 移除旧的数据点
+            const oldPoints = crosshairGroup.querySelectorAll('.chart-point');
+            oldPoints.forEach(point => point.remove());
+
+            // 为每条线添加数据点
+            chartConfig.lines.forEach(line => {
+                const dataPoint = line.data[dataPointIndex];
+                const circle = document.createElementNS(svgNS, 'circle');
+                circle.setAttribute('class', 'chart-point');
+                circle.setAttribute('cx', dataPoint.x);
+                circle.setAttribute('cy', dataPoint.y);
+                circle.setAttribute('r', '5');
+                circle.setAttribute('stroke', line.color);
+                crosshairGroup.appendChild(circle);
+            });
+        }
+
+        // 动态渲染图表的折线
+        function renderChart2Lines() {
+            const charts = document.querySelectorAll('.chart-container');
+            
+            charts.forEach((chart, chartIndex) => {
+                const svg = chart.querySelector('.chart-svg');
+                if (!svg) return;
+                
+                // 移除现有的折线
+                const existingLines = svg.querySelectorAll('polyline');
+                existingLines.forEach(line => line.remove());
+                
+                // 获取图表的配置
+                const config = getChartDataConfig(chartIndex);
+                
+                // 生成折线points字符串
+                config.lines.forEach((line, lineIndex) => {
+                    const points = line.data.map(d => `${d.x.toFixed(2)},${d.y.toFixed(2)}`).join(' ');
+                    
+                    // 确定渐变ID
+                    let gradientId;
+                    if (chartIndex === 0) {
+                        gradientId = 'lineGradient2';
+                    } else {
+                        gradientId = lineIndex === 0 ? 'lineGradient5' : 'lineGradient4';
+                    }
+                    
+                    // 创建折线元素
+                    const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                    polyline.style.fill = 'none';
+                    polyline.style.stroke = `url(#${gradientId})`;
+                    polyline.style.strokeWidth = '2.5';
+                    polyline.style.filter = `drop-shadow(0 2px 4px ${line.color}40)`;
+                    polyline.setAttribute('points', points);
+                    
+                    svg.appendChild(polyline);
+                });
+            });
+        }
+
+        // 视图切换功能
+        function toggleChartView(viewType) {
+            const chartsGrid = document.querySelector('.charts-grid');
+            const viewButtons = document.querySelectorAll('.view-btn');
+            
+            // 更新按钮状态
+            viewButtons.forEach(btn => btn.classList.remove('active'));
+            event.target.closest('.view-btn').classList.add('active');
+            
+            // 切换布局
+            if (viewType === 'single') {
+                chartsGrid.classList.remove('two-column');
+            } else {
+                chartsGrid.classList.add('two-column');
+            }
+        }
+
+        // 新增标签页功能
+        function addNewTab() {
+            console.log('新增标签页');
+            // 这里可以添加实际的新增标签页逻辑
+            // 例如：打开新的查询标签、保存当前查询等
+        }
+
+        // 打开加载弹窗
+        function openLoadModal() {
+            const modal = document.getElementById('loadModal');
+            modal.classList.add('show');
+            // 清空搜索框
+            document.getElementById('modalSearchInput').value = '';
+            filterSavedQueries();
+        }
+
+        // 关闭加载弹窗
+        function closeLoadModal() {
+            const modal = document.getElementById('loadModal');
+            modal.classList.remove('show');
+        }
+
+        // 点击遮罩层关闭弹窗
+        document.getElementById('loadModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeLoadModal();
+            }
+        });
+
+        // 搜索过滤功能
+        function filterSavedQueries() {
+            const searchValue = document.getElementById('modalSearchInput').value.toLowerCase();
+            const rows = document.querySelectorAll('#savedQueriesBody tr');
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const name = row.getAttribute('data-name').toLowerCase();
+                if (name.includes(searchValue)) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            // 如果没有匹配结果，显示空状态
+            const tbody = document.getElementById('savedQueriesBody');
+            let emptyState = tbody.querySelector('.empty-state-row');
+            
+            if (visibleCount === 0) {
+                if (!emptyState) {
+                    emptyState = document.createElement('tr');
+                    emptyState.className = 'empty-state-row';
+                    emptyState.innerHTML = `
+                        <td colspan="3">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🔍</div>
+                                <div class="empty-state-text">没有找到匹配的查询</div>
+                            </div>
+                        </td>
+                    `;
+                    tbody.appendChild(emptyState);
+                }
+            } else {
+                if (emptyState) {
+                    emptyState.remove();
+                }
+            }
+        }
+
+        // 载入查询
+        function loadQuery(button) {
+            const row = button.closest('tr');
+            const name = row.getAttribute('data-name');
+            
+            // 添加载入动画
+            button.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+            button.style.transform = 'scale(0.95)';
+            button.textContent = '载入中...';
+            
+            setTimeout(() => {
+                button.style.transform = 'scale(1)';
+                button.textContent = '载入';
+                
+                // 这里添加实际的载入逻辑
+                console.log('载入查询:', name);
+                
+                // 显示成功提示（简单实现）
+                showNotification('成功载入查询: ' + name, 'success');
+                
+                // 关闭弹窗
+                setTimeout(() => {
+                    closeLoadModal();
+                }, 500);
+            }, 800);
+        }
+
+        // 删除查询
+        function deleteQuery(button) {
+            const row = button.closest('tr');
+            const name = row.getAttribute('data-name');
+            
+            // 确认删除
+            if (confirm(`确定要删除查询 "${name}" 吗？`)) {
+                // 添加删除动画
+                row.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+                row.style.opacity = '0';
+                row.style.transform = 'translateX(-20px)';
+                
+                setTimeout(() => {
+                    row.remove();
+                    
+                    // 检查是否还有数据
+                    const tbody = document.getElementById('savedQueriesBody');
+                    const remainingRows = tbody.querySelectorAll('tr:not(.empty-state-row)');
+                    
+                    if (remainingRows.length === 0) {
+                        tbody.innerHTML = `
+                            <tr class="empty-state-row">
+                                <td colspan="3">
+                                    <div class="empty-state">
+                                        <div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:48px;height:48px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></div>
+                                        <div class="empty-state-text">暂无保存的查询</div>
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                    
+                    // 显示删除提示
+                    showNotification('已删除查询: ' + name, 'success');
+                }, 300);
+            }
+        }
+
+        // 显示通知（简单实现）
+        function showNotification(message, type = 'info') {
+            // 创建通知元素
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 80px;
+                right: 24px;
+                background: ${type === 'success' ? 'linear-gradient(135deg, #52c41a, #73d13d)' : 'linear-gradient(135deg, #3a84ff, #5c9aff)'};
+                color: white;
+                padding: 12px 20px;
+                border-radius: 12px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+                font-size: 14px;
+                font-weight: 500;
+                z-index: 3000;
+                animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            `;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            // 3秒后移除
+            setTimeout(() => {
+                notification.style.animation = 'slideOutRight 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+                setTimeout(() => {
+                    notification.remove();
+                }, 300);
+            }, 3000);
+        }
+
+        // 添加通知动画
+        const notificationStyle = document.createElement('style');
+        notificationStyle.textContent = `
+            @keyframes slideInRight {
+                from {
+                    opacity: 0;
+                    transform: translateX(100px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+            }
+
+            @keyframes slideOutRight {
+                from {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+                to {
+                    opacity: 0;
+                    transform: translateX(100px);
+                }
+            }
+        `;
+        document.head.appendChild(notificationStyle);
+
+        // ========== 多选资产选择器功能 ==========
+        
+        // 切换多选下拉菜单显示/隐藏
+        function toggleMultiSelect(displayElement) {
+            const container = displayElement.closest('.multi-select-container');
+            const dropdown = container.querySelector('.multi-select-dropdown');
+            const isActive = displayElement.classList.contains('active');
+            
+            // 关闭所有其他打开的多选下拉菜单
+            document.querySelectorAll('.multi-select-display.active').forEach(el => {
+                if (el !== displayElement) {
+                    el.classList.remove('active');
+                    el.closest('.multi-select-container').querySelector('.multi-select-dropdown').classList.remove('show');
+                }
+            });
+            
+            // 切换当前下拉菜单
+            if (isActive) {
+                displayElement.classList.remove('active');
+                dropdown.classList.remove('show');
+            } else {
+                displayElement.classList.add('active');
+                dropdown.classList.add('show');
+                
+                // 聚焦到搜索框
+                const searchInput = dropdown.querySelector('.multi-select-search input');
+                setTimeout(() => {
+                    searchInput.focus();
+                }, 100);
+            }
+        }
+        
+        // 切换选项选中状态
+        function toggleMultiSelectOption(optionElement) {
+            optionElement.classList.toggle('selected');
+        }
+        
+        // 过滤多选选项
+        function filterMultiSelectOptions(inputElement) {
+            const searchValue = inputElement.value.toLowerCase();
+            const container = inputElement.closest('.multi-select-container');
+            const options = container.querySelectorAll('.multi-select-option');
+            
+            options.forEach(option => {
+                const text = option.textContent.toLowerCase();
+                if (text.includes(searchValue)) {
+                    option.style.display = 'flex';
+                } else {
+                    option.style.display = 'none';
+                }
+            });
+        }
+        
+        // 清空多选
+        function clearMultiSelect(event) {
+            event.stopPropagation();
+            const container = event.target.closest('.multi-select-container');
+            const options = container.querySelectorAll('.multi-select-option');
+            
+            options.forEach(option => {
+                option.classList.remove('selected');
+            });
+            
+            updateMultiSelectDisplay(container);
+        }
+        
+        // 确认多选
+        function confirmMultiSelect(event) {
+            event.stopPropagation();
+            const container = event.target.closest('.multi-select-container');
+            const display = container.querySelector('.multi-select-display');
+            const dropdown = container.querySelector('.multi-select-dropdown');
+            
+            updateMultiSelectDisplay(container);
+            
+            // 关闭下拉菜单
+            display.classList.remove('active');
+            dropdown.classList.remove('show');
+        }
+        
+        // 更新多选显示
+        function updateMultiSelectDisplay(container) {
+            const display = container.querySelector('.multi-select-display');
+            const selectedOptions = container.querySelectorAll('.multi-select-option.selected');
+            
+            // 清空现有内容
+            display.innerHTML = '';
+            
+            if (selectedOptions.length === 0) {
+                display.classList.add('empty');
+                const placeholder = document.createElement('span');
+                placeholder.className = 'placeholder-text';
+                placeholder.textContent = '请选择资产';
+                display.appendChild(placeholder);
+            } else {
+                display.classList.remove('empty');
+                
+                selectedOptions.forEach(option => {
+                    const value = option.getAttribute('data-value');
+                    const text = option.querySelector('span').textContent;
+                    
+                    const tag = document.createElement('div');
+                    tag.className = 'selected-tag';
+                    tag.innerHTML = `
+                        <span>${text}</span>
+                        <span class="selected-tag-close" onclick="removeSelectedTag(event, '${value}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+                    `;
+                    
+                    display.appendChild(tag);
+                });
+            }
+        }
+        
+        // 删除选中的标签
+        function removeSelectedTag(event, value) {
+            event.stopPropagation();
+            const container = event.target.closest('.multi-select-container');
+            const option = container.querySelector(`.multi-select-option[data-value="${value}"]`);
+            
+            if (option) {
+                option.classList.remove('selected');
+                updateMultiSelectDisplay(container);
+            }
+        }
+        
+        // 点击外部关闭多选下拉菜单
+        document.addEventListener('click', function(event) {
+            const multiSelectContainers = document.querySelectorAll('.multi-select-container');
+            
+            multiSelectContainers.forEach(container => {
+                if (!container.contains(event.target)) {
+                    const display = container.querySelector('.multi-select-display');
+                    const dropdown = container.querySelector('.multi-select-dropdown');
+                    
+                    if (display && dropdown) {
+                        display.classList.remove('active');
+                        dropdown.classList.remove('show');
+                    }
+                }
+            });
+        });
+        
+        // 阻止多选下拉菜单内的点击事件冒泡
+        document.addEventListener('click', function(event) {
+            if (event.target.closest('.multi-select-dropdown')) {
+                // 只有点击确定或清空按钮时才会关闭
+                if (!event.target.closest('.multi-select-actions')) {
+                    event.stopPropagation();
+                }
+            }
+        }, true);
+    </script>
+</body>
+</html>
+

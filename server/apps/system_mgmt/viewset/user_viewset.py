@@ -1,11 +1,12 @@
 from django.contrib.auth.hashers import make_password
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F, Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
-from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_cache import clear_user_permission_cache, clear_users_permission_cache
 from apps.rpc.cmdb import CMDB
@@ -154,12 +155,7 @@ class UserViewSet(ViewSetUtils):
                 UserRule.objects.bulk_create(add_rule, batch_size=100)
 
             # 记录操作日志
-            log_operation(
-                request,
-                "create",
-                "user",
-                f"新增用户: {kwargs['username']} ({kwargs['lastName']})",
-            )
+            log_operation(request, "create", "user", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -217,12 +213,7 @@ class UserViewSet(ViewSetUtils):
             clear_users_permission_cache(user_info_list)
 
         # 记录操作日志
-        log_operation(
-            request,
-            "delete",
-            "user",
-            f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)",
-        )
+        log_operation(request, "delete", "user", f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -252,16 +243,11 @@ class UserViewSet(ViewSetUtils):
             # 清除用户菜单缓存（缓存键格式为 menus-user:{user_id}）
             cache.delete(f"menus-user:{pk}")
 
-            # 同步用户数据到CMDB
-            CMDB().sync_display_fields(
-                users=[
-                    {
-                        "id": pk,
-                        "username": params["username"],
-                        "display_name": params.get("lastName"),
-                    }
-                ]
-            )
+            # 同步用户数据到 CMDB
+            try:
+                CMDB().sync_display_fields(users=[{"id": pk, "username": params["username"], "display_name": params.get("lastName")}])
+            except Exception as e:
+                logger.exception(e)
             # 记录操作日志
             log_operation(request, "update", "user", f"编辑用户: {params['username']}")
 

@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime
 
 from celery import shared_task
+from django.db.models import Count, Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -29,66 +29,106 @@ from apps.node_mgmt.utils.installer import (
     unzip_file,
     transfer_file_to_remote,
 )
+from apps.node_mgmt.utils.step_tracker import (
+    advance_step,
+    append_step,
+    append_steps,
+    build_step,
+    clone_steps,
+    now_iso,
+    update_last_running_step,
+)
 from apps.node_mgmt.utils.token_auth import generate_node_token
 from config.components.nats import NATS_NAMESPACE
 
 
-def _add_step(node_obj, action, status, message, timestamp=None, details=None):
-    """添加执行步骤记录并立即持久化"""
-    step = {
-        "action": action,
-        "status": status,
-        "message": message,
-        "timestamp": timestamp or datetime.now().isoformat(),
-    }
-    # 添加详细信息，特别是错误详情
-    if details:
-        step["details"] = details
+CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS = 300
 
-    # 获取现有 result，追加步骤
+
+def _add_steps(node_obj, step_items):
     result = node_obj.result or {}
-    steps = result.get("steps", [])
-    steps.append(step)
-    result["steps"] = steps
+    append_steps(result, clone_steps(step_items, timestamp=now_iso()))
     node_obj.result = result
     node_obj.save(update_fields=["result"])
 
+
+def _add_step(node_obj, action, status, message, timestamp=None, details=None):
+    """添加执行步骤记录并立即持久化"""
+    result = node_obj.result or {}
+    step = append_step(
+        result,
+        action,
+        status,
+        message,
+        timestamp=timestamp or now_iso(),
+        details=details,
+    )
+    node_obj.result = result
+    node_obj.save(update_fields=["result"])
     return step
+
+
+def _build_step(action, status, message, timestamp=None, details=None):
+    return build_step(
+        action,
+        status,
+        message,
+        timestamp=timestamp or now_iso(),
+        details=details,
+    )
 
 
 def _update_step_status(node_obj, status, message, details=None):
     """更新最后一个步骤的状态并立即持久化"""
     result = node_obj.result or {}
-    steps = result.get("steps", [])
-
-    if steps and steps[-1]["status"] == "running":
-        steps[-1]["status"] = status
-        steps[-1]["message"] = message
-        if details:
-            steps[-1]["details"] = details
-        result["steps"] = steps
+    if update_last_running_step(
+        result,
+        status,
+        message,
+        details=details,
+        timestamp=now_iso(),
+    ):
         node_obj.result = result
         node_obj.save(update_fields=["result"])
 
 
+def _advance_step(node_obj, status, message, details=None, next_steps=None):
+    result = node_obj.result or {}
+    advance_step(
+        result,
+        status,
+        message,
+        details=details,
+        next_steps=next_steps,
+        timestamp=now_iso(),
+    )
+    node_obj.result = result
+    node_obj.save(update_fields=["result"])
+
+
 def _batch_add_step(nodes, action, status, message, timestamp=None, details=None):
     """批量为多个节点添加相同步骤并立即持久化"""
-    ts = timestamp or datetime.now().isoformat()
+    ts = timestamp or now_iso()
 
     for node_obj in nodes:
-        step = {
-            "action": action,
-            "status": status,
-            "message": message,
-            "timestamp": ts,
-        }
-        if details:
-            step["details"] = details.copy() if isinstance(details, dict) else details
-
         result = node_obj.result or {}
-        steps = result.get("steps", [])
-        steps.append(step)
-        result["steps"] = steps
+        append_step(result, action, status, message, timestamp=ts, details=details)
+        node_obj.result = result
+        node_obj.save(update_fields=["result"])
+
+
+def _batch_advance_step(nodes, status, message, details=None, next_steps=None):
+    timestamp = now_iso()
+    for node_obj in nodes:
+        result = node_obj.result or {}
+        advance_step(
+            result,
+            status,
+            message,
+            details=details,
+            next_steps=next_steps,
+            timestamp=timestamp,
+        )
         node_obj.result = result
         node_obj.save(update_fields=["result"])
 
@@ -97,14 +137,13 @@ def _batch_update_step_status(nodes, status, message, details=None):
     """批量更新多个节点最后一个步骤的状态并立即持久化"""
     for node_obj in nodes:
         result = node_obj.result or {}
-        steps = result.get("steps", [])
-
-        if steps and steps[-1]["status"] == "running":
-            steps[-1]["status"] = status
-            steps[-1]["message"] = message
-            if details:
-                steps[-1]["details"] = details
-            result["steps"] = steps
+        if update_last_running_step(
+            result,
+            status,
+            message,
+            details=details,
+            timestamp=now_iso(),
+        ):
             node_obj.result = result
             node_obj.save(update_fields=["result"])
 
@@ -117,6 +156,58 @@ def _save_node_result(node_obj, overall_status, final_message):
     node_obj.status = "success" if overall_status == "success" else "error"
     node_obj.result = result
     node_obj.save(update_fields=["status", "result"])
+
+
+def _save_node_pending_connectivity(node_obj, final_message):
+    """保存节点待连通确认状态"""
+    result = node_obj.result or {}
+    result["overall_status"] = "running"
+    result["final_message"] = final_message
+    node_obj.status = "running"
+    node_obj.result = result
+    node_obj.save(update_fields=["status", "result"])
+
+
+def _reconcile_controller_task_status(task_id):
+    """根据节点状态收敛控制器任务状态"""
+    task_obj = ControllerTask.objects.filter(id=task_id).first()
+    if not task_obj:
+        return
+
+    running_or_waiting_exists = task_obj.controllertasknode_set.filter(
+        status__in=["waiting", "running"]
+    ).exists()
+
+    task_obj.status = "running" if running_or_waiting_exists else "finished"
+    task_obj.save(update_fields=["status"])
+
+
+def _reconcile_controller_task_statuses(task_ids):
+    if not task_ids:
+        return
+
+    pending_by_task = {
+        item["task_id"]: item["pending_count"]
+        for item in ControllerTaskNode.objects.filter(task_id__in=task_ids)
+        .values("task_id")
+        .annotate(
+            pending_count=Count("id", filter=Q(status__in=["waiting", "running"]))
+        )
+    }
+
+    running_ids = []
+    finished_ids = []
+
+    for task_id in task_ids:
+        if pending_by_task.get(task_id, 0):
+            running_ids.append(task_id)
+        else:
+            finished_ids.append(task_id)
+
+    if running_ids:
+        ControllerTask.objects.filter(id__in=running_ids).update(status="running")
+    if finished_ids:
+        ControllerTask.objects.filter(id__in=finished_ids).update(status="finished")
 
 
 def _parse_exception_details(error_message, exception_obj=None):
@@ -218,8 +309,13 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             package_obj.name,
             controller_storage_dir,
         )
-        _batch_update_step_status(
-            nodes_list, "success", "Package downloaded successfully"
+        _batch_advance_step(
+            nodes_list,
+            "success",
+            "Package downloaded successfully",
+            next_steps=[
+                _build_step("unzip", "running", "Extracting package"),
+            ],
         )
     except Exception as e:
         _batch_update_step_status(nodes_list, "error", f"Download failed: {str(e)}")
@@ -227,7 +323,6 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
         base_error_message = f"Download failed: {str(e)}"
 
     if base_run:
-        _batch_add_step(nodes_list, "unzip", "running", "Extracting package")
         try:
             unzip_name = unzip_file(
                 task_obj.work_node,
@@ -263,11 +358,16 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             continue
 
         auth_method = "private key" if has_private_key else "password"
-        _add_step(
+        _add_steps(
             node_obj,
-            "credential_check",
-            "success",
-            f"Credential validation passed (using {auth_method})",
+            [
+                _build_step(
+                    "credential_check",
+                    "success",
+                    f"Credential validation passed (using {auth_method})",
+                ),
+                _build_step("prepare", "running", "Preparing remote directory"),
+            ],
         )
 
         password = None
@@ -283,7 +383,6 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             passphrase = aes_obj.decode(node_obj.passphrase)
 
         try:
-            _add_step(node_obj, "prepare", "running", "Preparing remote directory")
             remote_target_dir = f"{controller_install_dir}/{unzip_name}"
             exec_command_to_remote(
                 task_obj.work_node,
@@ -295,12 +394,17 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 private_key=private_key,
                 passphrase=passphrase,
             )
-            _update_step_status(
-                node_obj, "success", "Remote directory prepared successfully"
-            )
-
-            _add_step(
-                node_obj, "send", "running", "Starting file transfer to remote host"
+            _advance_step(
+                node_obj,
+                "success",
+                "Remote directory prepared successfully",
+                next_steps=[
+                    _build_step(
+                        "send",
+                        "running",
+                        "Starting file transfer to remote host",
+                    )
+                ],
             )
             transfer_file_to_remote(
                 task_obj.work_node,
@@ -313,11 +417,14 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 private_key=private_key,
                 passphrase=passphrase,
             )
-            _update_step_status(
-                node_obj, "success", "File transfer completed successfully"
+            _advance_step(
+                node_obj,
+                "success",
+                "File transfer completed successfully",
+                next_steps=[
+                    _build_step("run", "running", "Starting controller installation")
+                ],
             )
-
-            _add_step(node_obj, "run", "running", "Starting controller installation")
             groups = ",".join([str(i) for i in node_obj.organizations])
 
             node_id = uuid.uuid4().hex
@@ -345,20 +452,30 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 private_key=private_key,
                 passphrase=passphrase,
             )
-            _update_step_status(
-                node_obj, "success", "Controller installation completed successfully"
+            _advance_step(
+                node_obj,
+                "success",
+                "Controller installation completed successfully",
+                next_steps=[
+                    _build_step(
+                        "connectivity_check",
+                        "running",
+                        "Waiting for sidecar callback to confirm connectivity",
+                    )
+                ],
             )
 
         except Exception as e:
             _handle_step_exception(node_obj, str(e), e)
             overall_status = "error"
 
-        final_message = (
-            "All steps completed successfully"
-            if overall_status == "success"
-            else "Installation failed"
-        )
-        _save_node_result(node_obj, overall_status, final_message)
+        if overall_status == "success":
+            _save_node_pending_connectivity(
+                node_obj,
+                "Installation command succeeded, waiting connectivity confirmation",
+            )
+        else:
+            _save_node_result(node_obj, "error", "Installation failed")
 
 
 @shared_task
@@ -379,10 +496,90 @@ def install_controller(task_id):
     # 安装控制器
     install_controller_on_nodes(task_obj, nodes, package_obj)
 
-    # 更新任务状态并清理密码
-    task_obj.status = "finished"
-    task_obj.save()
+    # 根据节点收敛状态更新任务状态并清理密码
+    _reconcile_controller_task_status(task_id)
     nodes.update(password="", private_key="", passphrase="")
+
+
+@shared_task
+def converge_controller_install_connectivity_for_node(node_id):
+    """根据 sidecar 回调收敛控制器安装任务连通状态"""
+    node = Node.objects.filter(id=node_id).first()
+    if not node:
+        return
+
+    running_task_nodes = ControllerTaskNode.objects.filter(
+        ip=node.ip,
+        status="running",
+        task__type="install",
+    ).select_related("task")
+
+    affected_task_ids = set()
+
+    for task_node in running_task_nodes:
+        result = task_node.result or {}
+        steps = result.get("steps", [])
+        if not steps:
+            continue
+
+        last_step = steps[-1]
+        if not (
+            last_step.get("action") == "connectivity_check"
+            and last_step.get("status") == "running"
+        ):
+            continue
+
+        _update_step_status(
+            task_node,
+            "success",
+            "Sidecar connectivity confirmed",
+        )
+        _save_node_result(task_node, "success", "All steps completed successfully")
+        affected_task_ids.add(task_node.task_id)
+
+    _reconcile_controller_task_statuses(affected_task_ids)
+
+
+@shared_task
+def timeout_controller_install_task(task_id):
+    """控制器安装任务连通检测超时兜底"""
+    task_obj = ControllerTask.objects.filter(id=task_id).first()
+    if not task_obj:
+        return
+
+    if task_obj.type != "install":
+        return
+
+    if task_obj.status not in ["waiting", "running"]:
+        return
+
+    pending_nodes = ControllerTaskNode.objects.filter(
+        task_id=task_id,
+        status="running",
+    )
+
+    for task_node in pending_nodes:
+        result = task_node.result or {}
+        steps = result.get("steps", [])
+        if not steps:
+            continue
+
+        last_step = steps[-1]
+        if not (
+            last_step.get("action") == "connectivity_check"
+            and last_step.get("status") == "running"
+        ):
+            continue
+
+        _update_step_status(
+            task_node,
+            "error",
+            "Connectivity check timeout",
+            details={"timeout": True},
+        )
+        _save_node_result(task_node, "error", "Connectivity check timeout")
+
+    _reconcile_controller_task_status(task_id)
 
 
 @shared_task
@@ -470,11 +667,16 @@ def uninstall_controller(task_id):
             continue
 
         auth_method = "private key" if has_private_key else "password"
-        _add_step(
+        _add_steps(
             node_obj,
-            "credential_check",
-            "success",
-            f"Credential validation passed (using {auth_method})",
+            [
+                _build_step(
+                    "credential_check",
+                    "success",
+                    f"Credential validation passed (using {auth_method})",
+                ),
+                _build_step("stop_run", "running", "Stopping controller service"),
+            ],
         )
 
         password = None
@@ -490,7 +692,6 @@ def uninstall_controller(task_id):
             passphrase = aes_obj.decode(node_obj.passphrase)
 
         try:
-            _add_step(node_obj, "stop_run", "running", "Stopping controller service")
             uninstall_command = get_uninstall_command(node_obj.os)
             exec_command_to_remote(
                 task_obj.work_node,
@@ -502,15 +703,17 @@ def uninstall_controller(task_id):
                 private_key=private_key,
                 passphrase=passphrase,
             )
-            _update_step_status(
-                node_obj, "success", "Controller service stopped successfully"
-            )
-
-            _add_step(
+            _advance_step(
                 node_obj,
-                "delete_dir",
-                "running",
-                "Removing controller installation directory",
+                "success",
+                "Controller service stopped successfully",
+                next_steps=[
+                    _build_step(
+                        "delete_dir",
+                        "running",
+                        "Removing controller installation directory",
+                    )
+                ],
             )
             exec_command_to_remote(
                 task_obj.work_node,
@@ -522,11 +725,14 @@ def uninstall_controller(task_id):
                 private_key=private_key,
                 passphrase=passphrase,
             )
-            _update_step_status(
-                node_obj, "success", "Installation directory removed successfully"
+            _advance_step(
+                node_obj,
+                "success",
+                "Installation directory removed successfully",
+                next_steps=[
+                    _build_step("delete_node", "running", "Removing node from database")
+                ],
             )
-
-            _add_step(node_obj, "delete_node", "running", "Removing node from database")
             Node.objects.filter(
                 cloud_region_id=task_obj.cloud_region_id, ip=node_obj.ip
             ).delete()
@@ -573,7 +779,7 @@ def install_collector(task_id):
         try:
             _add_step(
                 node_obj,
-                "send",
+                "download",
                 "running",
                 f"Starting file download to node {node_obj.node_id}",
             )
@@ -584,34 +790,65 @@ def install_collector(task_id):
                 package_obj.name,
                 collector_install_dir,
             )
-            _update_step_status(
-                node_obj, "success", "File download completed successfully"
-            )
-
             if package_obj.name.lower().endswith(".zip"):
-                _add_step(node_obj, "unzip", "running", "Extracting collector package")
+                _advance_step(
+                    node_obj,
+                    "success",
+                    "File download completed successfully",
+                    next_steps=[
+                        _build_step("unzip", "running", "Extracting collector package")
+                    ],
+                )
                 unzip_name = unzip_file(
                     node_obj.node_id,
                     f"{collector_install_dir}/{package_obj.name}",
                     collector_install_dir,
                 )
                 executable_name = unzip_name
-                _update_step_status(
-                    node_obj, "success", f"Package extracted successfully: {unzip_name}"
-                )
+                if package_obj.os in NodeConstants.LINUX_OS:
+                    _advance_step(
+                        node_obj,
+                        "success",
+                        f"Package extracted successfully: {unzip_name}",
+                        next_steps=[
+                            _build_step(
+                                "set_executable",
+                                "running",
+                                "Setting execution permissions",
+                            )
+                        ],
+                    )
+                else:
+                    _update_step_status(
+                        node_obj,
+                        "success",
+                        f"Package extracted successfully: {unzip_name}",
+                    )
             else:
                 executable_name = package_obj.name
-                _add_step(
+                next_steps = [
+                    _build_step(
+                        "prepare",
+                        "success",
+                        "Package ready (no extraction required)",
+                    )
+                ]
+                if package_obj.os in NodeConstants.LINUX_OS:
+                    next_steps.append(
+                        _build_step(
+                            "set_executable",
+                            "running",
+                            "Setting execution permissions",
+                        )
+                    )
+                _advance_step(
                     node_obj,
-                    "prepare",
                     "success",
-                    "Package ready (no extraction required)",
+                    "File download completed successfully",
+                    next_steps=next_steps,
                 )
 
             if package_obj.os in NodeConstants.LINUX_OS:
-                _add_step(
-                    node_obj, "set_exe", "running", "Setting execution permissions"
-                )
                 executable_path = f"{collector_install_dir}/{executable_name}"
                 exec_command_to_local(
                     node_obj.node_id,

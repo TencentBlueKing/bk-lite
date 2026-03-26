@@ -19,15 +19,13 @@ class KnowledgeSearchService:
             graph_obj = KnowledgeGraph.objects.filter(knowledge_base_id=knowledge_base_folder.id).first()
             if not graph_obj:
                 return {}
-            embed_config = graph_obj.embed_model.decrypted_embed_config
-            rerank_config = graph_obj.rerank_model.decrypted_rerank_config_config
             graph_rag_request = {
-                "embed_model_base_url": embed_config["base_url"],
-                "embed_model_api_key": embed_config["api_key"] or " ",
-                "embed_model_name": embed_config.get("model", graph_obj.embed_model.name),
-                "rerank_model_base_url": rerank_config["base_url"],
-                "rerank_model_name": rerank_config.get("model", graph_obj.rerank_model.name),
-                "rerank_model_api_key": rerank_config["api_key"] or " ",
+                "embed_model_base_url": graph_obj.embed_model.base_url,
+                "embed_model_api_key": graph_obj.embed_model.api_key or " ",
+                "embed_model_name": graph_obj.embed_model.model_name,
+                "rerank_model_base_url": graph_obj.rerank_model.base_url,
+                "rerank_model_name": graph_obj.rerank_model.model_name,
+                "rerank_model_api_key": graph_obj.rerank_model.api_key or " ",
                 "size": knowledge_base_folder.graph_size,
                 "group_ids": ["graph-{}".format(graph_obj.id)],
                 "search_query": query,
@@ -57,18 +55,14 @@ class KnowledgeSearchService:
 
         # 获取嵌入模型地址
         embed_mode = EmbedProvider.objects.get(id=kwargs["embed_model"])
-        embed_mode_config = embed_mode.decrypted_embed_config
-        if "model" not in embed_mode_config:
-            embed_mode_config["model"] = embed_mode.name
 
         # 获取重排序模型地址
         rerank_model_address = rerank_model_api_key = rerank_model_name = ""
         if kwargs["enable_rerank"]:
             rerank_model = RerankProvider.objects.get(id=kwargs["rerank_model"])
-            rerank_config = rerank_model.decrypted_rerank_config_config
-            rerank_model_address = rerank_config["base_url"]
-            rerank_model_api_key = rerank_config["api_key"] or " "
-            rerank_model_name = rerank_config.get("model", rerank_model.name)
+            rerank_model_address = rerank_model.base_url
+            rerank_model_api_key = rerank_model.api_key or " "
+            rerank_model_name = rerank_model.model_name
 
         # 构建搜索请求
         request = DocumentRetrieverRequest(
@@ -79,9 +73,9 @@ class KnowledgeSearchService:
             qa_size=kwargs.get("qa_size", 50),
             search_type=kwargs["search_type"],
             score_threshold=score_threshold if score_threshold > 0 else 0.7,
-            embed_model_base_url=embed_mode_config["base_url"],
-            embed_model_api_key=embed_mode_config["api_key"] or " ",
-            embed_model_name=embed_mode_config["model"],
+            embed_model_base_url=embed_mode.base_url,
+            embed_model_api_key=embed_mode.api_key or " ",
+            embed_model_name=embed_mode.model_name,
             enable_rerank=kwargs["enable_rerank"],
             rerank_model_base_url=rerank_model_address,
             rerank_model_api_key=rerank_model_api_key,
@@ -151,7 +145,7 @@ class KnowledgeSearchService:
         try:
             rag_client.update_metadata(request)
         except Exception:
-            logger.exception("Failed to update ES metadata: index_name=%s, doc_id=%s", index_name, doc_id)
+            logger.exception("Failed to update ES metadata: index_name=%s, chunk_id=%s", index_name, chunk_id)
 
     @staticmethod
     def delete_es_content(index_name, doc_id, doc_name="", is_chunk=False, keep_qa=False):

@@ -103,7 +103,8 @@ def generate_mock_events(num_events=100):
         event["event_type"] = 1  # EventType.ALERT
         event["tags"] = {"environment": random.choice(["production", "staging"]), "team": random.choice(["ops", "dev"])}
         event["location"] = region
-        event["action"] = "created" if event["status"] == "firing" else "resolved"
+        # event["action"] = "created" if event["status"] == "firing" else "resolved"
+        event["action"] = "created"
         event["rule_id"] = "cpu_threshold_rule"
         event["event_id"] = f"EVENT-{uuid.uuid4().hex}"
         event["assignee"] = []
@@ -386,7 +387,7 @@ def generate_website_monitoring_events(num_websites=3):
 
 if __name__ == "__main__":
     # 生成100个mock事件
-    mock_data = generate_mock_events(50)
+    mock_data = generate_mock_events(5)
 
     with open("mock_monitor_events.json", "w") as f:
         json.dump(mock_data, f, indent=2)

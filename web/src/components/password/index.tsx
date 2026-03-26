@@ -59,18 +59,37 @@ const Password: React.FC<PasswordProps> = ({
     copy(value);
   };
 
+  const isEditable = !clickToEdit || isEditing;
+
+  if (isEditable) {
+    return (
+      <Input.Password
+        className={className}
+        style={style}
+        value={password}
+        disabled={disabled}
+        allowClear={!disabled}
+        visibilityToggle={!disabled}
+        placeholder={placeholder || t('common.inputPassword')}
+        autoComplete="new-password"
+        onChange={handleChange}
+      />
+    );
+  }
+
   return (
     <Input
       className={className}
       style={style}
       type="password"
       value={password}
-      disabled={clickToEdit ? !isEditing : disabled}
+      disabled
       placeholder={placeholder || t('common.inputPassword')}
+      autoComplete="new-password"
       suffix={
         <div className="flex items-center">
           {clickToEdit && (
-            <Tooltip title={t('common.reset')}>
+            <Tooltip title={t('common.edit')}>
               <Button
                 size="small"
                 type="link"

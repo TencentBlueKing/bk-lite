@@ -29,13 +29,49 @@
 
                 .listItem {
                     display: flex;
-                    align-items: center;
-                    justify-content: space-between;
+                    flex-direction: column;
                     font-size: 12px;
                     color: var(--color-primary);
-                    padding: 4px 6px;
                     border-radius: 4px;
                     margin-bottom: 4px;
+
+                    .fieldHeader {
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        min-height: 24px;
+                        padding: 4px 8px 4px 4px;
+
+                        &:hover {
+                            background: var(--color-fill-1);
+                        }
+                    }
+
+                    .expandIcon {
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        width: 16px;
+                        min-width: 16px;
+                        height: 16px;
+                        margin-right: 2px;
+                        cursor: pointer;
+                        color: var(--color-text-3);
+                        flex-shrink: 0;
+
+                        &:hover {
+                            color: var(--color-primary);
+                        }
+                    }
+
+                    .expandIconPlaceholder {
+                        display: inline-block;
+                        width: 16px;
+                        min-width: 16px;
+                        height: 16px;
+                        margin-right: 2px;
+                        flex-shrink: 0;
+                    }
 
                     .dragHandle {
                         color: var(--color-text-3);
@@ -56,7 +92,9 @@
                     }
 
                     &:hover {
-                        background: var(--color-fill-1);
+                        .fieldHeader {
+                            background: var(--color-fill-1);
+                        }
 
                         .dragHandle {
                             opacity: 1;
@@ -69,6 +107,80 @@
 
                     .label {
                         color: var(--color-text-2) !important;
+                    }
+
+                    // Top值相关样式
+                    .topValuesLoading {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        height: 32px;
+                    }
+
+                    .topValuesEmpty {
+                        height: 32px;
+                        line-height: 32px;
+                        color: var(--color-text-3);
+                        font-size: 12px;
+                    }
+
+                    .topValuesList {
+
+                        .topValueItem {
+                            padding: 10px 10px;
+                            cursor: pointer;
+
+                            &:hover {
+                                background: var(--color-fill-3);
+                            }
+
+                            .topValueContent {
+                                display: flex;
+                                align-items: center;
+                            }
+
+                            .topValueText {
+                                flex: 1;
+                                min-width: 0;
+                                font-size: 12px;
+                                color: var(--color-text-2);
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: nowrap;
+                                margin-right: 10px;
+                            }
+
+                            .topValueCount {
+                                font-size: 12px;
+                                color: var(--color-text-3);
+                                flex-shrink: 0;
+                                padding-right: 5px;
+                                border-right: 1px solid var(--color-border-3);
+                            }
+
+                            .topValuePercent {
+                                font-size: 12px;
+                                padding-left: 5px;
+                                color: var(--color-text-3);
+                                flex-shrink: 0;
+                                white-space: nowrap;
+                            }
+
+                            .topValueProgress {
+                                margin: 4px 0 0 0;
+                                line-height: 1;
+
+                                :global(.ant-progress-inner) {
+                                    height: 6px !important;
+                                    border-radius: 3px;
+                                }
+
+                                :global(.ant-progress-bg) {
+                                    height: 6px !important;
+                                    border-radius: 3px;
+                                }
+                            }
+                        }
                     }
                 }
             }

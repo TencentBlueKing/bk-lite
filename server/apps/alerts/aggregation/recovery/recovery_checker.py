@@ -110,5 +110,9 @@ class AlertRecoveryChecker:
                 f"Alert {alert.alert_id} 已自动恢复 "
                 f"(CREATED 事件数={len(created_events)})"
             )
+
+        from apps.alerts.service.reminder_service import ReminderService
+
+        ReminderService.stop_reminder_task(alert)
         
         return True

@@ -53,11 +53,9 @@ class CollectModels(MaintainerInfo, TimeInfo):
 
     plugin_id = models.IntegerField(default=0, help_text="采集插件ID")
 
-    # 审批
     input_method = models.PositiveSmallIntegerField(
         default=CollectInputMethod.AUTO, choices=CollectInputMethod.CHOICE, help_text="录入方式"
     )
-    examine = models.BooleanField(default=False, help_text="是否已经审批")
 
     collect_data = JSONField(default=dict, help_text="采集原数据")
     collect_digest = JSONField(default=dict, help_text="采集摘要数据")

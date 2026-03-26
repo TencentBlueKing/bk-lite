@@ -1,0 +1,1991 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsPilot - 模型管理</title>
+    <style>
+        :root {
+            --color-primary: #155AEF;
+            --color-primary-bg-active: #E1EDFC;
+            --color-text-1: #1E252E;
+            --color-text-2: #475468;
+            --color-text-3: #7588A3;
+            --color-text-4: #B2BDCC;
+            --color-border: #EAECF0;
+            --color-border-1: #EDEFF3;
+            --color-border-2: #E6E9EE;
+            --color-border-3: #D1D7E1;
+            --color-fill-1: #F6F8F9;
+            --color-fill-2: #F4F5F8;
+            --color-fill-4: #E6E9EE;
+            --color-success: #27C274;
+            --color-fail: #F43B2C;
+            --color-warning: #F59E0B;
+            --shadow-soft: 0 16px 40px rgba(15, 23, 42, 0.06);
+            --shadow-hover: 0 16px 36px rgba(15, 23, 42, 0.10);
+            --page-bg: url('../../../../web/public/system-bg.jpg');
+        }
+
+        * {
+            box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: var(--color-fill-4) transparent;
+        }
+
+        *::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        *::-webkit-scrollbar-thumb {
+            border-radius: 999px;
+            background: var(--color-fill-4);
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            min-width: 1440px;
+            min-height: 100%;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+
+        body {
+            color: var(--color-text-1);
+            background:
+                linear-gradient(180deg, rgba(242, 244, 247, 0.88) 0%, rgba(242, 244, 247, 0.95) 42%, rgba(242, 244, 247, 1) 100%),
+                var(--page-bg) center / cover no-repeat fixed;
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        button,
+        input,
+        select {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-header {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            height: 56px;
+            padding: 0 18px;
+            border-bottom: 1px solid rgba(230, 233, 238, 0.9);
+            background: rgba(255, 255, 255, 0.82);
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 30px rgba(15, 23, 42, 0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .brand .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #155AEF 0%, #4F8CFF 50%, #7EB5FF 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(21, 90, 239, 0.25);
+            flex-shrink: 0;
+        }
+
+        .brand strong {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .main-nav {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .main-nav a {
+            padding: 8px 14px;
+            border-radius: 10px;
+            color: var(--color-text-2);
+            font-size: 14px;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .main-nav a:hover {
+            background: rgba(21, 90, 239, 0.04);
+            color: var(--color-primary);
+        }
+
+        .main-nav a.active {
+            color: var(--color-primary);
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: 0 8px 24px rgba(21, 90, 239, 0.08);
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .badge-chip {
+            padding: 7px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(21, 90, 239, 0.12);
+            background: rgba(255, 255, 255, 0.88);
+            color: var(--color-primary);
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .icon-action {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--color-border);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.72);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--color-text-2);
+            font-size: 15px;
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #155AEF 0%, #4F8CFF 100%);
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            box-shadow: 0 8px 20px rgba(21, 90, 239, 0.2);
+        }
+
+        .workspace {
+            padding: 16px;
+            min-height: calc(100vh - 56px);
+        }
+
+        .page-panel {
+            min-height: calc(100vh - 88px);
+            padding: 24px 32px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.80);
+            border: 1px solid rgba(230, 233, 238, 0.9);
+            backdrop-filter: blur(16px);
+            box-shadow: var(--shadow-soft);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .page-header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .page-header h1 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .page-header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            background: var(--color-fill-1);
+            overflow: hidden;
+        }
+
+        .search-box input {
+            width: 240px;
+            padding: 9px 12px 9px 12px;
+            border: none;
+            background: transparent;
+            outline: none;
+        }
+
+        .search-box button {
+            padding: 9px 14px;
+            border: none;
+            border-left: 1px solid var(--color-border-1);
+            background: #ffffff;
+            color: var(--color-text-2);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .link-button {
+            padding: 9px 16px;
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            background: #ffffff;
+            color: var(--color-text-2);
+            font-weight: 600;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .link-button:hover {
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+        }
+
+        .link-button.icon-only {
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .primary-button {
+            height: 38px;
+            padding: 0 16px;
+            border: none;
+            border-radius: 10px;
+            background: var(--color-primary);
+            color: #ffffff;
+            font-weight: 600;
+            box-shadow: 0 10px 20px rgba(21, 90, 239, 0.18);
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .provider-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 8px;
+            flex: 1;
+        }
+
+        .grid-divider-line {
+            grid-column: 1 / -1;
+            height: 1px;
+            background: var(--color-border-1);
+            margin: 2px 0;
+        }
+
+        .pagination-container {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            margin-top: 24px;
+            gap: 12px;
+            font-size: 14px;
+            color: var(--color-text-2);
+        }
+
+        .pagination-btn {
+            width: 32px;
+            height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            background: #ffffff;
+            color: var(--color-text-1);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+        }
+
+        .pagination-btn.active {
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+            color: #ffffff;
+        }
+
+        .pagination-btn:disabled {
+            background: var(--color-fill-1);
+            color: var(--color-text-4);
+            cursor: not-allowed;
+        }
+
+        .picker-select {
+            padding: 4px 8px;
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            background: #ffffff;
+            color: var(--color-text-1);
+            outline: none;
+            cursor: pointer;
+        }
+        
+        .provider-card {
+            position: relative;
+            padding: 16px;
+            height: 114px;
+            box-sizing: border-box;
+            border: 1px solid var(--color-border-2);
+            border-radius: 16px;
+            background: linear-gradient(180deg, #FFFFFF 0%, #FCFDFF 100%);
+            transition: all 0.25s ease;
+            cursor: pointer;
+        }
+
+        .provider-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--color-border-3);
+            box-shadow: var(--shadow-hover);
+        }
+
+
+        .provider-top {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+        }
+
+        .provider-icon {
+            width: 52px;
+            height: 52px;
+            flex-shrink: 0;
+            padding: 10px;
+            border: 1px solid var(--color-fill-4);
+            border-radius: 14px;
+            background: #ffffff;
+            object-fit: contain;
+        }
+
+        .provider-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .provider-name {
+            margin: 0 0 6px;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--color-text-1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+
+        .provider-type {
+            font-size: 12px;
+            color: var(--color-text-3);
+        }
+
+        .provider-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .meta-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .meta-tag.models {
+            background: #EEF4FF;
+            color: var(--color-primary);
+        }
+
+        .meta-tag.feature {
+            background: #F0FDF4;
+            color: #16A34A;
+            border: 1px solid rgba(22, 163, 74, 0.2);
+            padding: 2px 8px;
+        }
+
+        .meta-tag.scope {
+            background: #F0FDF4;
+            color: #16A34A;
+        }
+
+        .meta-tag.scope.all {
+            background: #FEF3C7;
+            color: #D97706;
+        }
+
+
+        .provider-actions {
+            position: absolute;
+            right: 16px;
+            top: 16px;
+            display: flex;
+            gap: 6px;
+        }
+
+        .action-btn {
+            width: 32px;
+            height: 32px;
+            border: 1px solid var(--color-border-2);
+            border-radius: 8px;
+            background: #ffffff;
+            color: var(--color-text-3);
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: all 0.2s ease;
+        }
+
+        .provider-card:hover .action-btn {
+            opacity: 1;
+        }
+
+        .action-btn:hover {
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+            background: var(--color-primary-bg-active);
+        }
+
+        .action-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 4px;
+            min-width: 100px;
+            background: #ffffff;
+            border: 1px solid var(--color-border-2);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-8px);
+            transition: all 0.2s ease;
+            z-index: 10;
+        }
+
+        .action-dropdown.open {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown-item {
+            display: block;
+            width: 100%;
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            color: var(--color-text-2);
+            font-size: 14px;
+            text-align: left;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .dropdown-item:first-child {
+            border-radius: 8px 8px 0 0;
+        }
+
+        .dropdown-item:last-child {
+            border-radius: 0 0 8px 8px;
+        }
+
+        .dropdown-item:hover {
+            background: var(--color-fill-2);
+        }
+
+        .dropdown-item.danger {
+            position: relative;
+            color: #f53f3f;
+        }
+
+        .dropdown-item.danger:hover {
+            background: #ffece8;
+        }
+
+        .delete-confirm-popover {
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 8px);
+            transform: translateX(-50%);
+            min-width: 150px;
+            padding: 10px;
+            border: 1px solid var(--color-border-2);
+            border-radius: 10px;
+            background: #ffffff;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+            z-index: 12;
+        }
+
+        .delete-confirm-text {
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: var(--color-text-2);
+            text-align: center;
+        }
+
+        .delete-confirm-actions {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+        }
+
+        .delete-confirm-btn {
+            height: 26px;
+            padding: 0 8px;
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            background: #ffffff;
+            color: var(--color-text-2);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .delete-confirm-btn.confirm {
+            border-color: #f53f3f;
+            background: #f53f3f;
+            color: #ffffff;
+        }
+
+        .switch {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            width: 36px;
+            height: 20px;
+            display: inline-block;
+            z-index: 2;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .switch-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--color-text-4);
+            transition: .3s;
+            border-radius: 20px;
+        }
+
+        .switch-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .switch input:checked + .switch-slider {
+            background-color: var(--color-primary);
+        }
+
+        .switch input:checked + .switch-slider:before {
+            transform: translateX(16px);
+        }
+
+        .empty-state {
+            display: flex;
+            min-height: 400px;
+            border: 1px dashed var(--color-border-3);
+            border-radius: 16px;
+            background: linear-gradient(180deg, #FBFCFE 0%, #F7F9FC 100%);
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            text-align: center;
+            color: var(--color-text-3);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+
+        .empty-state strong {
+            margin-bottom: 8px;
+            font-size: 16px;
+            color: var(--color-text-2);
+        }
+
+        .empty-state p {
+            margin: 0 0 20px;
+            font-size: 14px;
+        }
+
+        .toast-wrap {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            z-index: 40;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toast {
+            min-width: 220px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: rgba(30, 37, 46, 0.94);
+            color: #ffffff;
+            font-size: 13px;
+            box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+            animation: fade-in 0.2s ease;
+        }
+
+        .top-notice-wrap {
+            position: fixed;
+            top: 76px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 70;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        .top-notice {
+            min-width: 260px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 13px;
+            box-shadow: 0 16px 32px rgba(15, 23, 42, 0.2);
+            animation: fade-in 0.2s ease;
+        }
+
+        .top-notice.success {
+            background: rgba(39, 194, 116, 0.95);
+        }
+
+        .top-notice.fail {
+            background: rgba(245, 63, 63, 0.96);
+        }
+
+        .modal-notice-wrap {
+            padding: 0 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modal-notice {
+            margin-top: 14px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-size: 13px;
+            text-align: center;
+            animation: fade-in 0.2s ease;
+        }
+
+        .modal-notice.success {
+            background: rgba(39, 194, 116, 0.12);
+            color: #0f8a4a;
+            border: 1px solid rgba(39, 194, 116, 0.24);
+        }
+
+        .modal-notice.fail {
+            background: rgba(245, 63, 63, 0.12);
+            color: #c43030;
+            border: 1px solid rgba(245, 63, 63, 0.24);
+        }
+
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Modal styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(4px);
+            z-index: 50;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.open {
+            display: flex;
+        }
+
+        .modal {
+            width: 540px;
+            max-height: 90vh;
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--color-border-1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--color-text-3);
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-close:hover {
+            background: var(--color-fill-1);
+            color: var(--color-text-1);
+        }
+
+        .modal-body {
+            padding: 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--color-border-1);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-text-1);
+        }
+
+        .form-label .required {
+            color: var(--color-fail);
+            margin-left: 2px;
+        }
+
+        .form-hint {
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--color-text-3);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            background: var(--color-fill-1);
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .form-input:focus {
+            border-color: var(--color-primary);
+            background: #ffffff;
+        }
+
+        .input-with-clear {
+            position: relative;
+        }
+
+        .input-with-clear .form-input {
+            padding-right: 36px;
+        }
+
+        .input-clear-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            border: none;
+            border-radius: 50%;
+            background: var(--color-fill-4);
+            color: #5f6e82;
+            font-size: 12px;
+            line-height: 1;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .input-clear-btn:hover {
+            background: #d5dce7;
+        }
+
+        .input-clear-btn.visible {
+            display: inline-flex;
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            background: var(--color-fill-1);
+            font-size: 14px;
+            outline: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%237588A3' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            cursor: pointer;
+        }
+
+        /* Multi-select dropdown */
+        .multi-select {
+            position: relative;
+        }
+
+        .multi-select-trigger {
+            width: 100%;
+            min-height: 42px;
+            padding: 8px 36px 8px 12px;
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            background: var(--color-fill-1);
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%237588A3' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+        }
+
+        .multi-select-trigger:focus {
+            border-color: var(--color-primary);
+            background-color: #ffffff;
+            outline: none;
+        }
+
+        .multi-select-placeholder {
+            color: var(--color-text-4);
+        }
+
+        .multi-select-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: var(--color-primary-bg-active);
+            color: var(--color-primary);
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .multi-select-tag-remove {
+            width: 14px;
+            height: 14px;
+            border: none;
+            background: transparent;
+            color: var(--color-primary);
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            line-height: 1;
+            opacity: 0.7;
+        }
+
+        .multi-select-tag-remove:hover {
+            opacity: 1;
+        }
+
+        .multi-select-dropdown {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            max-height: 200px;
+            overflow-y: auto;
+            background: #ffffff;
+            border: 1px solid var(--color-border-1);
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+            z-index: 10;
+            display: none;
+        }
+
+        .multi-select-dropdown.open {
+            display: block;
+        }
+
+        .multi-select-option {
+            padding: 10px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--color-text-2);
+        }
+
+        .multi-select-option:hover {
+            background: var(--color-fill-1);
+        }
+
+        .multi-select-option.selected {
+            color: var(--color-primary);
+            background: var(--color-primary-bg-active);
+        }
+
+        .multi-select-checkbox {
+            width: 16px;
+            height: 16px;
+            border: 1px solid var(--color-border-3);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .multi-select-option.selected .multi-select-checkbox {
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+            color: #ffffff;
+        }
+
+        .provider-type-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .provider-type-option {
+            padding: 12px;
+            border: 1px solid var(--color-border-2);
+            border-radius: 12px;
+            background: #ffffff;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .provider-type-option:hover {
+            border-color: var(--color-primary);
+        }
+
+        .provider-type-option.selected {
+            border-color: var(--color-primary);
+            background: var(--color-primary-bg-active);
+        }
+
+        .provider-type-option img {
+            width: 32px;
+            height: 32px;
+            margin-bottom: 6px;
+            object-fit: contain;
+        }
+
+        .provider-type-option span {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--color-text-2);
+        }
+
+        .cancel-button {
+            padding: 10px 20px;
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            background: #ffffff;
+            color: var(--color-text-2);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .cancel-button:hover {
+            background: var(--color-fill-1);
+        }
+
+        .secondary-button {
+            padding: 10px 20px;
+            border: 1px solid var(--color-primary);
+            border-radius: 10px;
+            background: transparent;
+            color: var(--color-primary);
+            font-weight: 600;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .secondary-button:hover {
+            background: rgba(21, 90, 239, 0.08);
+        }
+
+        .submit-button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            background: var(--color-primary);
+            color: #ffffff;
+            font-weight: 600;
+            box-shadow: 0 8px 16px rgba(21, 90, 239, 0.18);
+            white-space: nowrap;
+        }
+
+        .form-switch-row {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-switch {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            display: inline-block;
+        }
+
+        .form-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .form-switch-slider {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 999px;
+            background: var(--color-text-4);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .form-switch-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            left: 2px;
+            top: 2px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s ease;
+        }
+
+        .form-switch input:checked + .form-switch-slider {
+            background: var(--color-primary);
+        }
+
+        .form-switch input:checked + .form-switch-slider::before {
+            transform: translateX(18px);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="top-header">
+            <div class="brand">
+                <div class="logo-icon">BK</div>
+                <strong>BlueKing Lite</strong>
+            </div>
+            <nav class="main-nav">
+                <a href="../工作台/工作台.html">工作台</a>
+                <a href="../智能体/智能体.html">智能体</a>
+                <a href="../知识库/知识库.html">知识库</a>
+                <a href="../工具/工具.html">工具</a>
+                <a class="active" href="./模型.html">模型</a>
+            </nav>
+            <div class="header-actions">
+                <span class="badge-chip">测试环境</span>
+                <button class="icon-action" type="button">🔔</button>
+                <div class="avatar">BK</div>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <section class="page-panel">
+                <div class="page-header">
+                    <div class="page-header-left">
+                        <div style="padding: 4px 12px;">
+                            <h1 style="font-size: 22px; margin-bottom: 6px;">模型供应商</h1>
+                            <div style="font-size: 14px; color: var(--color-text-3);">管理 AI 模型供应商及其 API 接入配置</div>
+                        </div>
+                    </div>
+                    <div class="page-header-right">
+                        <div class="search-box">
+                            <input id="searchInput" type="text" placeholder="搜索供应商...">
+                            <button type="button">搜索</button>
+                        </div>
+                        <button class="link-button icon-only" id="syncModelBtn" type="button" title="刷新">↻</button>
+                        <button class="primary-button" id="addProviderBtn" type="button">
+                            <span>+</span> 添加供应商
+                        </button>
+                    </div>
+                </div>
+
+                <div class="provider-grid" id="providerGrid"></div>
+                
+                <div class="pagination-container" id="paginationContainer">
+                    <!-- Pagination will be dynamically rendered here -->
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Add Provider Modal -->
+    <div class="modal-overlay" id="addProviderModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>添加供应商</h2>
+                <button class="modal-close" type="button" data-action="close-modal">×</button>
+            </div>
+            <div class="modal-notice-wrap" id="modalNoticeWrap"></div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">选择供应商类型<span class="required">*</span></label>
+                    <div class="provider-type-grid" id="providerTypeGrid"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">名称<span class="required">*</span></label>
+                    <input class="form-input" type="text" placeholder="例如：OpenAI 官方、研发部专用" id="providerName">
+                    <div class="form-hint">便于识别的名称，建议包含用途或部门</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">API 地址<span class="required">*</span></label>
+                    <input class="form-input" type="text" placeholder="请输入 API 地址" id="providerEndpoint">
+                    <div class="form-hint">如使用代理或私有部署，请填写对应地址</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">API Key<span class="required">*</span></label>
+                    <div class="input-with-clear">
+                        <input class="form-input" type="password" placeholder="请输入 API Key" id="providerApiKey">
+                        <button class="input-clear-btn" type="button" id="clearProviderApiKeyBtn" aria-label="清空 API Key">×</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">组织<span class="required">*</span></label>
+                    <div class="multi-select" id="orgSelect">
+                        <div class="multi-select-trigger" tabindex="0" id="orgSelectTrigger">
+                            <span class="multi-select-placeholder">请选择组织</span>
+                        </div>
+                        <div class="multi-select-dropdown" id="orgSelectDropdown"></div>
+                    </div>
+                    <div class="form-hint">设置管理该供应商的组织</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">启用</label>
+                    <div class="form-switch-row">
+                        <label class="form-switch" for="providerEnabledInput">
+                            <input type="checkbox" id="providerEnabledInput" checked>
+                            <span class="form-switch-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">简介</label>
+                    <textarea class="form-input" placeholder="可选，填写该供应商的用途说明" id="providerDescription" rows="2" style="resize: vertical;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel-button" type="button" data-action="close-modal">取消</button>
+                <button class="secondary-button" type="button" id="testConnBtn">测试连接</button>
+                <button class="submit-button" type="button" id="saveProviderBtn">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-wrap" id="toastWrap"></div>
+    <div class="top-notice-wrap" id="topNoticeWrap"></div>
+
+    <script>
+        // Provider logo SVGs (inline data URLs)
+        const PROVIDER_LOGOS = {
+            'openai': `data:image/svg+xml,${encodeURIComponent('<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="8" fill="#10A37F"/><path d="M16 6c-4.4 0-8 3.2-8.8 7.4-.1.6.3 1.1.9 1.2.5.1 1-.2 1.1-.7C10 10.5 12.7 8 16 8c3.9 0 7 3.1 7 7 0 1.5-.5 2.9-1.3 4.1l-1.4-1.4c.4-.8.7-1.7.7-2.7 0-2.8-2.2-5-5-5-2.2 0-4 1.4-4.6 3.4-.2.5.1 1.1.6 1.3.5.2 1.1-.1 1.3-.6.4-1.2 1.5-2.1 2.7-2.1 1.7 0 3 1.3 3 3s-1.3 3-3 3c-.6 0-1 .4-1 1s.4 1 1 1c2.8 0 5-2.2 5-5 0-.6-.1-1.1-.2-1.6.9-1.4 1.2-3.1.9-4.8C21.1 8.5 18.8 6 16 6z" fill="white"/></svg>')}`,
+            'azure': `data:image/svg+xml,${encodeURIComponent('<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="8" fill="#0078D4"/><path d="M9 8h6l-6 10h4l-2 6 9-10h-5l4-6H9z" fill="white"/></svg>')}`,
+            'aliyun': `data:image/svg+xml,${encodeURIComponent('<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="8" fill="#FF6A00"/><path d="M8 12h16v2H8v-2zm0 6h16v2H8v-2zm4-3h8v2h-8v-2z" fill="white"/></svg>')}`,
+            'zhipu': `data:image/svg+xml,${encodeURIComponent('<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="8" fill="#3D5AFE"/><path d="M16 7l7 4v10l-7 4-7-4V11l7-4zm0 2.3L11 11.5v7l5 2.2 5-2.2v-7L16 9.3z" fill="white"/></svg>')}`,
+            'baidu': `data:image/svg+xml,${encodeURIComponent('<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="8" fill="#2932E1"/><path d="M16 8c-1.7 0-3 1.3-3 3v2c0 1.7 1.3 3 3 3s3-1.3 3-3v-2c0-1.7-1.3-3-3-3zm-5 6c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2v-4c0-1.1-.9-2-2-2H11z" fill="white"/></svg>')}`,
+            'anthropic': `data:image/svg+xml,${encodeURIComponent('<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="8" fill="#D4A574"/><path d="M16 7l8 18h-4l-1.5-3.5h-5L12 25H8l8-18zm0 5.5L14 18h4l-2-5.5z" fill="white"/></svg>')}`,
+            'deepseek': `data:image/svg+xml,${encodeURIComponent('<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="8" fill="#4D6BFE"/><path d="M16 6a10 10 0 100 20 10 10 0 000-20zm0 3a7 7 0 110 14 7 7 0 010-14zm0 2a5 5 0 100 10 5 5 0 000-10z" fill="white"/></svg>')}`,
+            'default': `data:image/svg+xml,${encodeURIComponent('<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="8" fill="#6B7280"/><path d="M16 8l6 4v8l-6 4-6-4v-8l6-4zm0 2.5L12 12.5v5l4 2 4-2v-5l-4-2z" fill="white"/></svg>')}`
+        };
+
+        // Provider types
+        const providerTypes = [
+            { id: 'openai', name: 'OpenAI', icon: 'openai' },
+            { id: 'azure', name: 'Azure', icon: 'azure' },
+            { id: 'aliyun', name: '阿里云', icon: 'aliyun' },
+            { id: 'zhipu', name: '智谱', icon: 'zhipu' },
+            { id: 'baidu', name: '百度', icon: 'baidu' },
+            { id: 'anthropic', name: 'Anthropic', icon: 'anthropic' },
+            { id: 'deepseek', name: 'DeepSeek', icon: 'deepseek' },
+            { id: 'openai_compatible', name: '其他', icon: 'default' }
+        ];
+
+        // Default API endpoints for each provider
+        const PROVIDER_ENDPOINTS = {
+            'openai': 'https://api.openai.com/v1',
+            'azure': 'https://{resource}.openai.azure.com/openai/deployments/{deployment}',
+            'aliyun': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+            'zhipu': 'https://open.bigmodel.cn/api/paas/v4',
+            'baidu': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1',
+            'anthropic': 'https://api.anthropic.com/v1',
+            'deepseek': 'https://api.deepseek.com/v1',
+            'openai_compatible': ''
+        };
+
+        // Mock providers data
+        const providers = [
+            { id: 1, name: 'OpenAI 官方', type: 'openai', isConfigured: true, isEnabled: true, enabledModels: 7, features: ['LLM', 'Embedding'] }
+        ];
+
+        const state = {
+            searchKeyword: '',
+            selectedProviderType: 'openai',
+            selectedOrgs: [],
+            editingProviderId: null,
+            currentPage: 1,
+            pageSize: 10
+        };
+
+        // Mock organizations data
+        const organizations = [
+            { id: 'all', name: '全部' },
+            { id: 'tech', name: '技术部' },
+            { id: 'product', name: '产品部' },
+            { id: 'ops', name: '运维组' },
+            { id: 'ai', name: 'AI平台组' },
+            { id: 'data', name: '数据中心' },
+            { id: 'security', name: '安全部' }
+        ];
+
+        const providerGrid = document.getElementById('providerGrid');
+        const toastWrap = document.getElementById('toastWrap');
+        const topNoticeWrap = document.getElementById('topNoticeWrap');
+        const modalNoticeWrap = document.getElementById('modalNoticeWrap');
+        const addProviderModal = document.getElementById('addProviderModal');
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            toastWrap.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                toast.style.transition = 'all 0.2s ease';
+                setTimeout(() => toast.remove(), 200);
+            }, 2200);
+        }
+
+        function showTopNotice(message, type = 'success') {
+            const notice = document.createElement('div');
+            notice.className = `top-notice ${type === 'fail' ? 'fail' : 'success'}`;
+            notice.textContent = message;
+            topNoticeWrap.appendChild(notice);
+            setTimeout(() => {
+                notice.style.opacity = '0';
+                notice.style.transform = 'translateY(-8px)';
+                notice.style.transition = 'all 0.2s ease';
+                setTimeout(() => notice.remove(), 200);
+            }, 2200);
+        }
+
+        function showModalNotice(message, type = 'success') {
+            if (!modalNoticeWrap) {
+                showTopNotice(message, type);
+                return;
+            }
+
+            const notice = document.createElement('div');
+            notice.className = `modal-notice ${type === 'fail' ? 'fail' : 'success'}`;
+            notice.textContent = message;
+            modalNoticeWrap.appendChild(notice);
+
+            setTimeout(() => {
+                notice.style.opacity = '0';
+                notice.style.transform = 'translateY(-6px)';
+                notice.style.transition = 'all 0.2s ease';
+                setTimeout(() => notice.remove(), 200);
+            }, 2200);
+        }
+
+        function getProviderLogo(type) {
+            return PROVIDER_LOGOS[type] || PROVIDER_LOGOS['default'];
+        }
+
+        function getProviderTypeName(typeId) {
+            const type = providerTypes.find(t => t.id === typeId);
+            return type ? type.name : typeId;
+        }
+
+        function goToProviderDetail(provider, tab = 1) {
+            if (!provider) return;
+            const params = new URLSearchParams({
+                id: String(provider.id),
+                name: provider.name,
+                type: provider.type,
+                models: String(provider.enabledModels || 0),
+                tab: String(tab)
+            });
+            window.location.href = `./供应商详情.html?${params.toString()}`;
+        }
+
+        function renderProviderCard(provider) {
+            const statusConfig = provider.isConfigured 
+                ? `<span class="meta-tag models">已启用 ${provider.enabledModels || 0} 个模型</span>`
+                : `<span class="meta-tag" style="background: var(--color-fill-1); color: var(--color-text-3);">未配置，点击配置 API</span>`;
+
+            return `
+                <div class="provider-card" data-provider-id="${provider.id}">
+                    <div class="provider-actions">
+                        <button class="action-btn more-btn" type="button" data-provider-id="${provider.id}" title="更多操作">⋯</button>
+                        <div class="action-dropdown" data-provider-id="${provider.id}">
+                            <button class="dropdown-item" type="button" data-action="edit" data-provider-id="${provider.id}">编辑</button>
+                            <button class="dropdown-item danger" type="button" data-action="delete" data-provider-id="${provider.id}">删除</button>
+                        </div>
+                    </div>
+                    <div class="provider-top">
+                        <img class="provider-icon" src="${getProviderLogo(provider.type)}" alt="${provider.name}">
+                        <div class="provider-info">
+                            <h3 class="provider-name">${provider.name}</h3>
+                            <div class="provider-type">${getProviderTypeName(provider.type)}</div>
+                            <div class="provider-meta" style="margin-top: 8px;">
+                                ${statusConfig}
+                            </div>
+                        </div>
+                    </div>
+                    <label class="switch" title="点击配置" onclick="event.stopPropagation(); event.preventDefault(); if(${provider.isConfigured}) { goToProviderDetail(providers.find(p => p.id === ${provider.id}), 2) } else { state.editingProviderId = ${provider.id}; openAddProviderModal(); state.selectedProviderType = '${provider.type}'; renderProviderTypes(); updateEndpointForProvider('${provider.type}'); document.getElementById('providerName').value = '${provider.name}'; }">
+                        <input type="checkbox" class="provider-switch-input" data-provider-id="${provider.id}" ${provider.isEnabled ? 'checked' : ''}>
+                        <span class="switch-slider"></span>
+                    </label>
+                </div>
+            `;
+        }
+
+        function renderProviders() {
+            const keyword = state.searchKeyword.toLowerCase().trim();
+            let filtered = keyword
+                ? providers.filter(p => p.name.toLowerCase().includes(keyword))
+                : [...providers];
+
+            // 分组：已配置在前（其中已启动优先），未配置在后
+            const configuredProviders = filtered
+                .filter(p => p.isConfigured)
+                .sort((a, b) => Number(b.isEnabled) - Number(a.isEnabled));
+            const unconfiguredProviders = filtered.filter(p => !p.isConfigured);
+            filtered = [...configuredProviders, ...unconfiguredProviders];
+
+            // Pagination calculation
+            const totalItems = filtered.length;
+            const totalPages = Math.ceil(totalItems / state.pageSize) || 1;
+            
+            // Adjust current page if out of bounds
+            if (state.currentPage > totalPages) {
+                state.currentPage = totalPages;
+            }
+            if (state.currentPage < 1) {
+                state.currentPage = 1;
+            }
+
+            const startIndex = (state.currentPage - 1) * state.pageSize;
+            const endIndex = startIndex + state.pageSize;
+            const currentItems = filtered.slice(startIndex, endIndex);
+
+            if (filtered.length === 0) {
+                providerGrid.innerHTML = `
+                    <div class="empty-state" style="grid-column: 1 / -1;">
+                        <div class="empty-state-icon">📭</div>
+                        <strong>暂无供应商</strong>
+                        <p>请点击「添加供应商」配置 LLM 服务</p>
+                        <button class="primary-button" type="button" id="emptyAddBtn">
+                            <span>+</span> 添加供应商
+                        </button>
+                    </div>
+                `;
+                document.getElementById('emptyAddBtn')?.addEventListener('click', openAddProviderModal);
+                document.getElementById('paginationContainer').innerHTML = '';
+            } else {
+                const configuredCurrentItems = currentItems.filter(p => p.isConfigured);
+                const unconfiguredCurrentItems = currentItems.filter(p => !p.isConfigured);
+
+                if (configuredCurrentItems.length > 0 && unconfiguredCurrentItems.length > 0) {
+                    providerGrid.innerHTML = `
+                        ${configuredCurrentItems.map(renderProviderCard).join('')}
+                        <div class="grid-divider-line" aria-hidden="true"></div>
+                        ${unconfiguredCurrentItems.map(renderProviderCard).join('')}
+                    `;
+                } else {
+                    providerGrid.innerHTML = currentItems.map(renderProviderCard).join('');
+                }
+                renderPagination(totalItems, totalPages);
+            }
+        }
+
+        function renderPagination(totalItems, totalPages) {
+            const container = document.getElementById('paginationContainer');
+            if (totalItems <= 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let pagesHtml = '';
+            for (let i = 1; i <= totalPages; i++) {
+                pagesHtml += `<button class="pagination-btn ${i === state.currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+            }
+
+            container.innerHTML = `
+                <span>共 ${totalItems} 项</span>
+                <select class="picker-select" id="pageSizeSelect">
+                    <option value="10" ${state.pageSize === 10 ? 'selected' : ''}>10 条/页</option>
+                    <option value="20" ${state.pageSize === 20 ? 'selected' : ''}>20 条/页</option>
+                    <option value="50" ${state.pageSize === 50 ? 'selected' : ''}>50 条/页</option>
+                </select>
+                <div style="display: flex; gap: 8px;">
+                    <button class="pagination-btn" id="prevPageBtn" ${state.currentPage === 1 ? 'disabled' : ''}>&lt;</button>
+                    ${pagesHtml}
+                    <button class="pagination-btn" id="nextPageBtn" ${state.currentPage === totalPages ? 'disabled' : ''}>&gt;</button>
+                </div>
+            `;
+
+            // Bind Pagination Events
+            const pageSizeSelect = document.getElementById('pageSizeSelect');
+            if (pageSizeSelect) {
+                pageSizeSelect.addEventListener('change', (e) => {
+                    state.pageSize = Number(e.target.value);
+                    state.currentPage = 1;
+                    renderProviders();
+                });
+            }
+
+            const prevBtn = document.getElementById('prevPageBtn');
+            if (prevBtn) {
+                prevBtn.addEventListener('click', () => {
+                    if (state.currentPage > 1) {
+                        state.currentPage--;
+                        renderProviders();
+                    }
+                });
+            }
+
+            const nextBtn = document.getElementById('nextPageBtn');
+            if (nextBtn) {
+                nextBtn.addEventListener('click', () => {
+                    if (state.currentPage < totalPages) {
+                        state.currentPage++;
+                        renderProviders();
+                    }
+                });
+            }
+
+            container.querySelectorAll('.pagination-btn[data-page]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const page = Number(e.target.dataset.page);
+                    if (page !== state.currentPage) {
+                        state.currentPage = page;
+                        renderProviders();
+                    }
+                });
+            });
+        }
+
+        function renderProviderTypes() {
+            const grid = document.getElementById('providerTypeGrid');
+            grid.innerHTML = providerTypes.map(type => `
+                <div class="provider-type-option ${state.selectedProviderType === type.id ? 'selected' : ''}" data-type-id="${type.id}">
+                    <img src="${getProviderLogo(type.id)}" alt="${type.name}">
+                    <span>${type.name}</span>
+                </div>
+            `).join('');
+        }
+
+        // Multi-select organization functions
+        function renderOrgSelect() {
+            const trigger = document.getElementById('orgSelectTrigger');
+            const dropdown = document.getElementById('orgSelectDropdown');
+            const hasAllSelected = state.selectedOrgs.includes('all');
+            const visibleSelectedOrgs = hasAllSelected ? ['all'] : state.selectedOrgs.filter((orgId) => orgId !== 'all');
+            
+            // Render trigger content
+            if (visibleSelectedOrgs.length === 0) {
+                trigger.innerHTML = '<span class="multi-select-placeholder">请选择组织</span>';
+            } else {
+                trigger.innerHTML = visibleSelectedOrgs.map(orgId => {
+                    const org = organizations.find(o => o.id === orgId);
+                    return `<span class="multi-select-tag">${org.name}<button type="button" class="multi-select-tag-remove" data-org-id="${orgId}">×</button></span>`;
+                }).join('');
+            }
+            
+            // Render dropdown options
+            dropdown.innerHTML = organizations.map(org => `
+                <div class="multi-select-option ${(org.id === 'all' ? hasAllSelected : state.selectedOrgs.includes(org.id)) ? 'selected' : ''}" data-org-id="${org.id}">
+                    <span class="multi-select-checkbox">${(org.id === 'all' ? hasAllSelected : state.selectedOrgs.includes(org.id)) ? '✓' : ''}</span>
+                    <span>${org.name}</span>
+                </div>
+            `).join('');
+        }
+
+        function toggleOrgDropdown(show) {
+            const dropdown = document.getElementById('orgSelectDropdown');
+            if (show === undefined) {
+                dropdown.classList.toggle('open');
+            } else {
+                dropdown.classList.toggle('open', show);
+            }
+        }
+
+        function toggleOrgSelection(orgId) {
+            const specificOrgIds = organizations.filter((org) => org.id !== 'all').map((org) => org.id);
+            if (orgId === 'all') {
+                const allSpecificSelected = specificOrgIds.length > 0 && specificOrgIds.every((id) => state.selectedOrgs.includes(id));
+                state.selectedOrgs = allSpecificSelected ? [] : ['all', ...specificOrgIds];
+            } else {
+                const nextSelected = new Set(state.selectedOrgs.filter((id) => id !== 'all'));
+                if (nextSelected.has(orgId)) {
+                    nextSelected.delete(orgId);
+                } else {
+                    nextSelected.add(orgId);
+                }
+
+                const allSpecificSelected = specificOrgIds.length > 0 && specificOrgIds.every((id) => nextSelected.has(id));
+                if (allSpecificSelected) {
+                    state.selectedOrgs = ['all', ...specificOrgIds];
+                } else {
+                    state.selectedOrgs = Array.from(nextSelected);
+                }
+            }
+            renderOrgSelect();
+        }
+
+        function updateEndpointForProvider(providerType) {
+            const endpointInput = document.getElementById('providerEndpoint');
+            endpointInput.value = PROVIDER_ENDPOINTS[providerType] || '';
+        }
+
+        function clearDeleteConfirm() {
+            document.querySelectorAll('.delete-confirm-popover').forEach(el => el.remove());
+        }
+
+        function showDeleteConfirm(triggerBtn, providerId) {
+            const existing = triggerBtn.querySelector('.delete-confirm-popover');
+            clearDeleteConfirm();
+            if (existing) {
+                return;
+            }
+
+            const popover = document.createElement('div');
+            popover.className = 'delete-confirm-popover';
+            popover.innerHTML = `
+                <div class="delete-confirm-text">确认删除该供应商？</div>
+                <div class="delete-confirm-actions">
+                    <button class="delete-confirm-btn" type="button" data-action="cancel-delete">取消</button>
+                    <button class="delete-confirm-btn confirm" type="button" data-action="confirm-delete" data-provider-id="${providerId}">删除</button>
+                </div>
+            `;
+            triggerBtn.appendChild(popover);
+        }
+
+        function openAddProviderModal() {
+            state.selectedProviderType = 'openai';
+            state.selectedOrgs = [];
+            document.getElementById('providerName').value = '';
+            document.getElementById('providerApiKey').value = '';
+            document.getElementById('providerDescription').value = '';
+            const providerEnabledInput = document.getElementById('providerEnabledInput');
+            if (providerEnabledInput) {
+                providerEnabledInput.checked = true;
+            }
+            if (modalNoticeWrap) {
+                modalNoticeWrap.innerHTML = '';
+            }
+            updateProviderApiKeyClearBtn();
+            renderProviderTypes();
+            updateEndpointForProvider('openai');
+            renderOrgSelect();
+            addProviderModal.classList.add('open');
+        }
+
+        function updateProviderApiKeyClearBtn() {
+            const providerApiKeyInput = document.getElementById('providerApiKey');
+            const clearProviderApiKeyBtn = document.getElementById('clearProviderApiKeyBtn');
+            if (!providerApiKeyInput || !clearProviderApiKeyBtn) {
+                return;
+            }
+            clearProviderApiKeyBtn.classList.toggle('visible', Boolean(providerApiKeyInput.value));
+        }
+
+        function closeModal() {
+            addProviderModal.classList.remove('open');
+        }
+
+        function validateProviderForm() {
+            const providerNameInput = document.getElementById('providerName');
+            const providerEndpointInput = document.getElementById('providerEndpoint');
+            const providerApiKeyInput = document.getElementById('providerApiKey');
+
+            if (!state.selectedProviderType) {
+                showModalNotice('请选择供应商类型', 'fail');
+                return false;
+            }
+
+            if (!providerNameInput.value.trim()) {
+                showModalNotice('请填写名称', 'fail');
+                providerNameInput.focus();
+                return false;
+            }
+
+            if (!providerEndpointInput.value.trim()) {
+                showModalNotice('请填写 API 地址', 'fail');
+                providerEndpointInput.focus();
+                return false;
+            }
+
+            if (!providerApiKeyInput.value.trim()) {
+                showModalNotice('请填写 API Key', 'fail');
+                providerApiKeyInput.focus();
+                return false;
+            }
+
+            if (!Array.isArray(state.selectedOrgs) || state.selectedOrgs.length === 0) {
+                showModalNotice('请至少选择一个组织', 'fail');
+                toggleOrgDropdown(true);
+                return false;
+            }
+
+            return true;
+        }
+
+        // Event listeners
+        document.getElementById('addProviderBtn').addEventListener('click', () => {
+            state.editingProviderId = null;
+            openAddProviderModal();
+        });
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            state.searchKeyword = e.target.value;
+            renderProviders();
+        });
+
+        document.getElementById('syncModelBtn').addEventListener('click', () => {
+            renderProviders();
+            showToast('已刷新供应商列表');
+        });
+
+        const providerApiKeyInput = document.getElementById('providerApiKey');
+        const clearProviderApiKeyBtn = document.getElementById('clearProviderApiKeyBtn');
+        if (providerApiKeyInput && clearProviderApiKeyBtn) {
+            providerApiKeyInput.addEventListener('input', updateProviderApiKeyClearBtn);
+            clearProviderApiKeyBtn.addEventListener('click', () => {
+                providerApiKeyInput.value = '';
+                updateProviderApiKeyClearBtn();
+                providerApiKeyInput.focus();
+            });
+        }
+
+        document.getElementById('testConnBtn').addEventListener('click', () => {
+            const testConnBtn = document.getElementById('testConnBtn');
+            const failCodes = ['401_INVALID_API_KEY', '403_NO_PERMISSION', '429_RATE_LIMIT', 'ETIMEDOUT', 'ECONNREFUSED'];
+            testConnBtn.disabled = true;
+            setTimeout(() => {
+                const isSuccess = Math.random() >= 0.35;
+                if (isSuccess) {
+                    showModalNotice('测试成功', 'success');
+                } else {
+                    const failCode = failCodes[Math.floor(Math.random() * failCodes.length)];
+                    showModalNotice(`测试失败（${failCode}）`, 'fail');
+                }
+                testConnBtn.disabled = false;
+            }, 1500);
+        });
+
+        document.getElementById('saveProviderBtn').addEventListener('click', () => {
+            if (!validateProviderForm()) {
+                return;
+            }
+
+            let targetProvider = null;
+            let successMessage = '保存成功';
+            if (state.editingProviderId) {
+                targetProvider = providers.find(p => p.id === state.editingProviderId);
+                if (targetProvider) {
+                    targetProvider.isConfigured = true;
+                    targetProvider.isEnabled = Boolean(document.getElementById('providerEnabledInput')?.checked);
+                    targetProvider.enabledModels = 4;
+                    targetProvider.name = document.getElementById('providerName').value || targetProvider.name;
+                    successMessage = '供应商更新成功';
+                }
+            } else {
+                const newId = Math.max(0, ...providers.map(p => p.id)) + 1;
+                const pType = state.selectedProviderType;
+                targetProvider = {
+                    id: newId,
+                    name: document.getElementById('providerName').value || getProviderTypeName(pType),
+                    type: pType,
+                    isConfigured: true,
+                    isEnabled: Boolean(document.getElementById('providerEnabledInput')?.checked),
+                    enabledModels: 1,
+                    features: ['LLM']
+                };
+                providers.push(targetProvider);
+                successMessage = '添加成功';
+            }
+            state.currentPage = 1;
+            renderProviders();
+            closeModal();
+            if (targetProvider) {
+                showTopNotice(successMessage, 'success');
+            }
+        });
+
+        document.getElementById('providerTypeGrid').addEventListener('click', (e) => {
+            const option = e.target.closest('.provider-type-option');
+            if (option) {
+                state.selectedProviderType = option.dataset.typeId;
+                renderProviderTypes();
+                updateEndpointForProvider(option.dataset.typeId);
+            }
+        });
+
+        // Organization multi-select event listeners
+        document.getElementById('orgSelectTrigger').addEventListener('click', (e) => {
+            const removeBtn = e.target.closest('.multi-select-tag-remove');
+            if (removeBtn) {
+                e.stopPropagation();
+                toggleOrgSelection(removeBtn.dataset.orgId);
+                return;
+            }
+            toggleOrgDropdown();
+        });
+
+        document.getElementById('orgSelectDropdown').addEventListener('click', (e) => {
+            const option = e.target.closest('.multi-select-option');
+            if (option) {
+                e.stopPropagation();
+                toggleOrgSelection(option.dataset.orgId);
+            }
+        });
+
+        // Close org dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#orgSelect')) {
+                toggleOrgDropdown(false);
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            // Close modal
+            if (e.target.matches('[data-action="close-modal"]')) {
+                closeModal();
+                return;
+            }
+
+            const confirmDeleteBtn = e.target.closest('[data-action="confirm-delete"]');
+            if (confirmDeleteBtn) {
+                e.stopPropagation();
+                const providerId = Number(confirmDeleteBtn.dataset.providerId);
+                const index = providers.findIndex(p => p.id === providerId);
+                if (index > -1) {
+                    providers.splice(index, 1);
+                    showToast('已删除供应商');
+                    renderProviders();
+                }
+                clearDeleteConfirm();
+                return;
+            }
+
+            const cancelDeleteBtn = e.target.closest('[data-action="cancel-delete"]');
+            if (cancelDeleteBtn) {
+                e.stopPropagation();
+                clearDeleteConfirm();
+                return;
+            }
+
+            // Close all action dropdowns when clicking outside
+            if (!e.target.closest('.provider-actions')) {
+                document.querySelectorAll('.action-dropdown.open').forEach(d => d.classList.remove('open'));
+                clearDeleteConfirm();
+            }
+
+            // Toggle action dropdown
+            const moreBtn = e.target.closest('.more-btn');
+            if (moreBtn) {
+                e.stopPropagation();
+                const providerId = moreBtn.dataset.providerId;
+                const dropdown = document.querySelector(`.action-dropdown[data-provider-id="${providerId}"]`);
+                // Close other dropdowns
+                document.querySelectorAll('.action-dropdown.open').forEach(d => {
+                    if (d !== dropdown) d.classList.remove('open');
+                });
+                dropdown.classList.toggle('open');
+                return;
+            }
+
+            // Handle dropdown item clicks
+            const dropdownItem = e.target.closest('.dropdown-item');
+            if (dropdownItem) {
+                e.stopPropagation();
+                const action = dropdownItem.dataset.action;
+                const providerId = dropdownItem.dataset.providerId;
+                const provider = providers.find(p => p.id === Number(providerId));
+                if (action === 'edit') {
+                    dropdownItem.closest('.action-dropdown').classList.remove('open');
+                    goToProviderDetail(provider, 2);
+                } else if (action === 'delete') {
+                    showDeleteConfirm(dropdownItem, providerId);
+                }
+                return;
+            }
+
+            // Click on provider card
+            const card = e.target.closest('.provider-card');
+            if (card && !e.target.closest('.provider-actions') && !e.target.closest('.switch')) {
+                const providerId = card.dataset.providerId;
+                const provider = providers.find(p => p.id === Number(providerId));
+                if (provider.isConfigured) {
+                    goToProviderDetail(provider, 2);
+                } else {
+                    state.editingProviderId = provider.id;
+                    openAddProviderModal();
+                    state.selectedProviderType = provider.type;
+                    renderProviderTypes();
+                    updateEndpointForProvider(provider.type);
+                    document.getElementById('providerName').value = provider.name;
+                    const providerEnabledInput = document.getElementById('providerEnabledInput');
+                    if (providerEnabledInput) {
+                        providerEnabledInput.checked = Boolean(provider.isEnabled);
+                    }
+                }
+            }
+        });
+
+        // Close modal on overlay click
+        addProviderModal.addEventListener('click', (e) => {
+            if (e.target === addProviderModal) {
+                closeModal();
+            }
+        });
+
+        // Initial render
+        renderProviders();
+        renderProviderTypes();
+    </script>
+</body>
+</html>

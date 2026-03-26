@@ -1,9 +1,9 @@
 import datetime
 
+from django.core.cache import cache
 from wechatpy import WeChatClient as WeChatAccountClient
 from wechatpy.enterprise import WeChatClient
 
-from apps.core.backends import cache
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import ChannelChoices
 from apps.opspilot.models import BotChannel, ChannelGroup, ChannelUser, SkillRequestLog, UserGroup

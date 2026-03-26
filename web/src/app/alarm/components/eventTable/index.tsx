@@ -145,6 +145,7 @@ const EventTable: React.FC<EventTableProps> = ({
         open={rawVisible}
         width={600}
         onClose={() => setRawVisible(false)}
+        maskClosable={false}
       >
         <pre
           style={{

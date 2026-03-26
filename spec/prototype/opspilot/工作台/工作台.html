@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsPilot - 工作台</title>
+    <style>
+        :root {
+            --color-primary: #2b5bff;
+            --color-primary-2: #3f79ff;
+            --color-text-1: #1f2d3d;
+            --color-text-2: #4f5f75;
+            --color-text-3: #8c9bb0;
+            --color-text-4: #a3b1c4;
+            --color-border: #dfe6ef;
+            --color-page-bg: #f2f5fb;
+            --shadow-card: 0 6px 16px rgba(20, 38, 70, 0.08);
+            --shadow-hover: 0 10px 20px rgba(20, 38, 70, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            color: var(--color-text-1);
+            background: var(--color-page-bg);
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        button,
+        input {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            height: 52px;
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #e5ebf4;
+            background: #edf3fb;
+        }
+
+        .brand {
+            min-width: 230px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #5a6880;
+        }
+
+        .brand img {
+            width: 20px;
+            height: 20px;
+        }
+
+        .brand .switcher {
+            margin-left: 4px;
+            border: 1px solid var(--color-border);
+            color: #6f7f95;
+            background: #f7faff;
+            border-radius: 8px;
+            width: 22px;
+            height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .app-launcher {
+            position: relative;
+        }
+
+        .app-launcher-trigger {
+            margin-left: 4px;
+            border: 1px solid var(--color-border);
+            color: #6f7f95;
+            background: #f7faff;
+            border-radius: 8px;
+            min-width: 44px;
+            height: 28px;
+            padding: 0 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .app-launcher-trigger.open {
+            background: #e8effa;
+            border-color: #d2dcec;
+        }
+
+        .launcher-icon {
+            width: 12px;
+            height: 12px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2px;
+        }
+
+        .launcher-icon span {
+            width: 5px;
+            height: 5px;
+            border-radius: 2px;
+            background: #2f73f6;
+        }
+
+        .launcher-caret {
+            color: #9aabc0;
+            font-size: 10px;
+            line-height: 1;
+        }
+
+        .app-launcher-panel {
+            position: absolute;
+            left: -50px;
+            top: calc(100% + 10px);
+            width: 438px;
+            border: 1px solid #dfe6f1;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 16px 28px rgba(20, 38, 70, 0.18);
+            padding: 12px 10px 10px;
+            display: none;
+            z-index: 25;
+        }
+
+        .app-launcher-panel.open {
+            display: block;
+        }
+
+        .app-launcher-title {
+            font-size: 25px;
+            transform: scale(0.5);
+            transform-origin: left center;
+            color: #2f405a;
+            font-weight: 700;
+            margin: -7px 0 -1px -20px;
+        }
+
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .app-item {
+            height: 74px;
+            border-radius: 4px;
+            background: #f2f4f7;
+            color: #587192;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        .app-item-icon {
+            color: #2f73f6;
+            font-size: 19px;
+            line-height: 1;
+        }
+
+        .app-item-name {
+            font-size: 25px;
+            transform: scale(0.5);
+            transform-origin: center;
+            margin-top: -7px;
+            white-space: nowrap;
+        }
+
+        .main-nav {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+
+        .main-nav a {
+            height: 32px;
+            padding: 0 12px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: #4f5e73;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .main-nav a:hover {
+            background: #e7eef8;
+        }
+
+        .main-nav a.active {
+            color: var(--color-primary);
+            background: #e5efff;
+            font-weight: 600;
+        }
+
+        .nav-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.75;
+        }
+
+        .header-actions {
+            min-width: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+            color: #6f7f95;
+            font-size: 13px;
+        }
+
+        .icon-action {
+            border: none;
+            background: transparent;
+            color: inherit;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .icon-action:hover {
+            background: #e3eaf5;
+        }
+
+        .avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .user-menu {
+            position: relative;
+            margin-left: 2px;
+        }
+
+        .user-menu-trigger {
+            height: 30px;
+            padding: 0 6px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #4f5f75;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .user-menu-trigger:hover,
+        .user-menu-trigger.open {
+            background: #e5edf8;
+        }
+
+        .user-name {
+            font-size: 22px;
+            line-height: 1;
+            transform: scale(0.58);
+            transform-origin: center;
+            color: #3e556f;
+            margin-left: -4px;
+            margin-right: -5px;
+        }
+
+        .user-caret {
+            color: #7d8ea5;
+            font-size: 11px;
+        }
+
+        .user-menu-panel {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            width: 162px;
+            border: 1px solid #dbe4f0;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 10px 24px rgba(19, 33, 56, 0.18);
+            padding: 4px 0;
+            display: none;
+            z-index: 20;
+        }
+
+        .user-menu-panel.open {
+            display: block;
+        }
+
+        .user-menu-item {
+            height: 35px;
+            padding: 0 14px;
+            color: #2f405a;
+            font-size: 26px;
+            transform: scale(0.5);
+            transform-origin: left center;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            white-space: nowrap;
+            border-top: 1px solid #eef2f7;
+            margin-top: -8px;
+            margin-bottom: -8px;
+        }
+
+        .user-menu-item:first-child {
+            border-top: none;
+        }
+
+        .menu-item-right {
+            color: #9bacbf;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .theme-spinner {
+            width: 12px;
+            height: 12px;
+            border: 1.5px solid #d8e1ed;
+            border-top-color: #a4b4c8;
+            border-radius: 50%;
+        }
+
+        .workspace {
+            padding: 8px 10px 12px;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .search-input {
+            height: 30px;
+            border: 1px solid var(--color-border);
+            border-radius: 5px;
+            background: #fff;
+            color: #6c7b90;
+            font-size: 12px;
+            padding: 0 9px;
+            outline: none;
+            width: 168px;
+        }
+
+        .search-button {
+            width: 34px;
+            border: none;
+            border-radius: 5px;
+            background: var(--color-primary);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .create-card,
+        .work-card {
+            border: 1px solid #d8e0ec;
+            border-radius: 10px;
+            background: #fff;
+            overflow: hidden;
+            box-shadow: var(--shadow-card);
+            transition: all 0.18s ease;
+        }
+
+        .create-card:hover,
+        .work-card:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-hover);
+            border-color: #c7d4e6;
+        }
+
+        .create-card {
+            min-height: 136px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #5a6c85;
+            cursor: pointer;
+        }
+
+        .create-body {
+            text-align: center;
+            font-size: 13px;
+            line-height: 1.7;
+        }
+
+        .create-body .plus {
+            display: block;
+            font-size: 18px;
+            margin-bottom: 4px;
+            color: #495a75;
+        }
+
+        .work-card {
+            position: relative;
+            min-height: 136px;
+            cursor: pointer;
+        }
+
+        .card-banner {
+            position: relative;
+            height: 34px;
+            background: linear-gradient(110deg, #cfd9ef 0%, #bac9e7 45%, #9bb3e2 100%);
+            border-bottom: 1px solid rgba(205, 215, 232, 0.95);
+        }
+
+        .banner-strong {
+            background: linear-gradient(110deg, #4249e7 0%, #0b92ff 100%);
+        }
+
+        .pin-dot {
+            position: absolute;
+            left: 8px;
+            top: 8px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: rgba(34, 45, 64, 0.36);
+            color: #fff;
+            font-size: 9px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .menu-btn {
+            position: absolute;
+            right: 7px;
+            top: 6px;
+            width: 16px;
+            height: 16px;
+            border: none;
+            border-radius: 4px;
+            color: #3b4f6f;
+            background: transparent;
+            font-size: 15px;
+            line-height: 1;
+            padding: 0;
+        }
+
+        .card-actions {
+            position: absolute;
+            top: 24px;
+            right: 8px;
+            min-width: 74px;
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 10px 20px rgba(20, 38, 70, 0.18);
+            padding: 4px;
+            display: none;
+            flex-direction: column;
+            gap: 2px;
+            z-index: 3;
+        }
+
+        .card-actions.open {
+            display: flex;
+        }
+
+        .card-action-item {
+            border: none;
+            background: transparent;
+            height: 28px;
+            border-radius: 6px;
+            padding: 0 10px;
+            text-align: left;
+            color: #2f405a;
+            font-size: 13px;
+        }
+
+        .card-action-item:hover {
+            background: #edf3ff;
+            color: #2b5bff;
+        }
+
+        .avatar-badge {
+            position: absolute;
+            top: 18px;
+            right: 26px;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            border: 4px solid #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f3f7ff;
+            color: #2d63ff;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(32, 42, 62, 0.12);
+        }
+
+        .avatar-badge.user {
+            background: #fff4f1;
+            color: #f87d46;
+        }
+
+        .card-body {
+            padding: 12px 10px 10px;
+        }
+
+        .card-title {
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.25;
+            font-weight: 700;
+            color: #1f2d3d;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-desc {
+            margin: 6px 0 0;
+            font-size: 11px;
+            color: #7f90a8;
+            line-height: 1.25;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-footer {
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .status-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 1px 5px;
+            border: 1px solid;
+            border-radius: 3px;
+            font-size: 9px;
+            line-height: 1.35;
+        }
+
+        .status-tag::before {
+            content: "";
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .online {
+            border-color: #99d779;
+            color: #54a430;
+            background: #f3faef;
+        }
+
+        .offline {
+            border-color: #d6dde8;
+            color: #a1adbd;
+            background: #f6f8fb;
+        }
+
+        .meta-text {
+            font-size: 10px;
+            color: var(--color-text-4);
+            text-align: right;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 132px;
+        }
+
+        .empty-state {
+            display: none;
+            min-height: 220px;
+            border: 1px dashed #c6d3e5;
+            border-radius: 10px;
+            background: #f9fbff;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: #7f90a8;
+            font-size: 13px;
+        }
+
+        .empty-state strong {
+            margin-bottom: 6px;
+            color: #4d5e75;
+            font-size: 15px;
+        }
+
+        .modal-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(18, 28, 44, 0.34);
+            backdrop-filter: blur(2px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 40;
+        }
+
+        .modal-mask.open {
+            display: flex;
+        }
+
+        .create-modal {
+            width: 580px;
+            border-radius: 8px;
+            background: #fff;
+            border: 1px solid #d7dfeb;
+            box-shadow: 0 16px 38px rgba(20, 38, 70, 0.2);
+            overflow: hidden;
+        }
+
+        .modal-head {
+            height: 44px;
+            border-bottom: 1px solid #e7edf6;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            font-size: 13px;
+            color: #26354d;
+        }
+
+        .modal-head strong {
+            font-size: 24px;
+            font-weight: 700;
+            line-height: 1;
+            transform: scaleY(0.86);
+            transform-origin: left center;
+        }
+
+        .modal-close {
+            border: none;
+            background: transparent;
+            color: #9aa8ba;
+            font-size: 22px;
+            line-height: 1;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+        }
+
+        .modal-close:hover {
+            background: #edf3fb;
+            color: #5f718a;
+        }
+
+        .modal-body {
+            padding: 14px 16px 12px;
+        }
+
+        .form-row {
+            margin-bottom: 12px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: #394a62;
+            font-weight: 600;
+        }
+
+        .required {
+            color: #ff5b57;
+            margin-right: 3px;
+        }
+
+        .form-input,
+        .form-textarea {
+            width: 100%;
+            border: 1px solid #d7dfeb;
+            border-radius: 5px;
+            background: #fff;
+            padding: 8px 10px;
+            font-size: 13px;
+            color: #2a3950;
+            outline: none;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .form-input {
+            height: 34px;
+        }
+
+        .form-textarea {
+            min-height: 70px;
+            resize: none;
+            line-height: 1.55;
+        }
+
+        .form-input:focus,
+        .form-textarea:focus {
+            border-color: #9db8ff;
+            box-shadow: 0 0 0 2px rgba(43, 91, 255, 0.12);
+        }
+
+        .select-like {
+            height: 34px;
+            border: 1px solid #d7dfeb;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 10px;
+            color: #4f5e73;
+            background: #fff;
+        }
+
+        .tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            height: 22px;
+            padding: 0 7px;
+            border-radius: 4px;
+            border: 1px solid #d7dfeb;
+            background: #f7f9fc;
+            font-size: 12px;
+            color: #5a6980;
+        }
+
+        .tag-chip span {
+            color: #9aa8ba;
+            font-weight: 700;
+            line-height: 1;
+            font-size: 12px;
+        }
+
+        .select-arrow {
+            color: #a0aec0;
+            font-size: 11px;
+        }
+
+        .modal-foot {
+            border-top: 1px solid #e7edf6;
+            padding: 10px 16px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .btn-ghost,
+        .btn-primary {
+            min-width: 48px;
+            height: 28px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid transparent;
+        }
+
+        .btn-ghost {
+            border-color: #d7dfeb;
+            background: #fff;
+            color: #52647d;
+        }
+
+        .btn-primary {
+            background: #2b5bff;
+            color: #fff;
+        }
+
+        @media (max-width: 1400px) {
+            .card-grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 1140px) {
+            .top-header {
+                height: auto;
+                padding: 8px 10px;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .brand,
+            .header-actions {
+                min-width: 0;
+            }
+
+            .main-nav {
+                width: 100%;
+                justify-content: flex-start;
+                order: 3;
+            }
+
+            .card-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 780px) {
+            .card-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 520px) {
+            .card-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="top-header">
+            <div class="brand">
+                <img src="../../../../web/public/logo-site.png" alt="BlueKing Lite">
+                <strong>BlueKing Lite</strong>
+                <div class="app-launcher" id="appLauncher">
+                    <button class="app-launcher-trigger" id="appLauncherTrigger" type="button" aria-label="应用切换">
+                        <span class="launcher-icon"><span></span><span></span><span></span><span></span></span>
+                        <span class="launcher-caret">▼</span>
+                    </button>
+                    <div class="app-launcher-panel" id="appLauncherPanel">
+                        <div class="app-launcher-title">应用列表</div>
+                        <div class="app-grid">
+                            <div class="app-item"><span class="app-item-icon">◉</span><span class="app-item-name">OpsPilot</span></div>
+                            <div class="app-item"><span class="app-item-icon">⌂</span><span class="app-item-name">OpsConsole</span></div>
+                            <div class="app-item"><span class="app-item-icon">⬢</span><span class="app-item-name">Setting</span></div>
+                            <div class="app-item"><span class="app-item-icon">▦</span><span class="app-item-name">CMDB</span></div>
+                            <div class="app-item"><span class="app-item-icon">⌁</span><span class="app-item-name">Monitor</span></div>
+                            <div class="app-item"><span class="app-item-icon">▤</span><span class="app-item-name">Log</span></div>
+                            <div class="app-item"><span class="app-item-icon">⎇</span><span class="app-item-name">Node</span></div>
+                            <div class="app-item"><span class="app-item-icon">◔</span><span class="app-item-name">Alarm</span></div>
+                            <div class="app-item"><span class="app-item-icon">▣</span><span class="app-item-name">ITSM</span></div>
+                            <div class="app-item"><span class="app-item-icon">▴</span><span class="app-item-name">OpsAnalysis</span></div>
+                            <div class="app-item"><span class="app-item-icon">✣</span><span class="app-item-name">MLOps</span></div>
+                            <div class="app-item"><span class="app-item-icon">✢</span><span class="app-item-name">Lab</span></div>
+                            <div class="app-item"><span class="app-item-icon">◕</span><span class="app-item-name">Playground</span></div>
+                            <div class="app-item"><span class="app-item-icon">▥</span><span class="app-item-name">Job</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <nav class="main-nav">
+                <a class="active" href="./工作台.html"><span class="nav-dot"></span>工作台</a>
+                <a href="../智能体/智能体.html"><span class="nav-dot"></span>智能体</a>
+                <a href="../知识库/知识库.html"><span class="nav-dot"></span>知识库</a>
+                <a href="../工具/工具.html"><span class="nav-dot"></span>工具</a>
+                <a href="../模型/模型.html"><span class="nav-dot"></span>模型</a>
+            </nav>
+            <div class="header-actions">
+                <button class="icon-action" type="button">◌</button>
+                <button class="icon-action" type="button">▤</button>
+                <div class="user-menu" id="userMenu">
+                    <button class="user-menu-trigger" id="userMenuTrigger" type="button" aria-label="用户菜单">
+                        <span class="avatar">A</span>
+                        <span class="user-name">admin</span>
+                        <span class="user-caret">∨</span>
+                    </button>
+                    <div class="user-menu-panel" id="userMenuPanel">
+                        <div class="user-menu-item"><span>主题</span><span class="menu-item-right"><span class="theme-spinner"></span></span></div>
+                        <div class="user-menu-item"><span>版本</span><span class="menu-item-right">3.1.0</span></div>
+                        <div class="user-menu-item"><span>组</span><span class="menu-item-right">Default &gt;</span></div>
+                        <div class="user-menu-item"><span>用户信息</span></div>
+                        <div class="user-menu-item"><span>退出</span></div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="workspace">
+            <div class="toolbar">
+                <input class="search-input" id="searchInput" type="text" placeholder="搜索......">
+                <button class="search-button" id="searchBtn" type="button">⌕</button>
+            </div>
+
+            <section class="card-grid" id="cardGrid"></section>
+            <section class="empty-state" id="emptyState">
+                <strong>没有找到匹配的工作台</strong>
+                <div>请修改关键词后再试。</div>
+            </section>
+        </main>
+    </div>
+
+    <div class="modal-mask" id="createModalMask">
+        <section class="create-modal" role="dialog" aria-modal="true" aria-labelledby="createTitle">
+            <header class="modal-head">
+                <strong id="createTitle">添加</strong>
+                <button class="modal-close" id="closeCreateModal" type="button">×</button>
+            </header>
+            <div class="modal-body">
+                <div class="form-row">
+                    <label class="form-label" for="nameInput"><span class="required">*</span>名称</label>
+                    <input class="form-input" id="nameInput" type="text" placeholder="请输入名称">
+                </div>
+                <div class="form-row">
+                    <label class="form-label"><span class="required">*</span>分组</label>
+                    <div class="select-like">
+                        <div class="tag-chip">Default <span>×</span></div>
+                        <span class="select-arrow">▽</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label class="form-label" for="introInput"><span class="required">*</span>简介</label>
+                    <textarea class="form-textarea" id="introInput" placeholder="请输入简介"></textarea>
+                </div>
+            </div>
+            <footer class="modal-foot">
+                <button class="btn-ghost" id="cancelCreate" type="button">取消</button>
+                <button class="btn-primary" id="confirmCreate" type="button">确认</button>
+            </footer>
+        </section>
+    </div>
+
+    <script>
+        const workspaces = [
+            { id: "1", name: "mmmm", desc: "mmmm", online: false, owner: "admin", group: "Default", strong: false, avatar: "tool" },
+            { id: "2", name: "发布监控", desc: "检查发布连接状态正常，延时短，确保数据库同步正常。", online: false, owner: "admin", group: "Default", strong: true, avatar: "tool" },
+            { id: "3", name: "sd", desc: "asas", online: false, owner: "admin", group: "Default", strong: false, avatar: "tool" },
+            { id: "4", name: "备份监控", desc: "检查数据库备份状态，确保备份成功。", online: true, owner: "admin", group: "Default", strong: true, avatar: "tool" },
+            { id: "5", name: "低低低低低低低低低", desc: "低低低低低低低低低", online: false, owner: "admin", group: "Default", strong: false, avatar: "tool" },
+            { id: "6", name: "凭据监控", desc: "检查凭据状态，确保系统运行稳定", online: true, owner: "admin", group: "Default", strong: true, avatar: "tool" },
+            { id: "7", name: "MonitorEvents", desc: "监控事件处理分析", online: true, owner: "admin", group: "Snow", strong: false, avatar: "tool" },
+            { id: "8", name: "weops知识库集成", desc: "weops知识库集成", online: true, owner: "admin", group: "WeOps", strong: true, avatar: "tool" },
+            { id: "9", name: "wepaas定时检查", desc: "wepaas定时检查", online: true, owner: "admin", group: "WeOps", strong: false, avatar: "tool" },
+            { id: "10", name: "Web 应用巡检助手", desc: "Web 应用巡检助手", online: true, owner: "admin", group: "Default", strong: true, avatar: "tool" },
+            { id: "11", name: "Postgres DB 助手", desc: "Postgres DB 助手", online: true, owner: "admin", group: "Default", strong: false, avatar: "tool" },
+            { id: "12", name: "Kubernetes 助手", desc: "Kubernetes 助手", online: true, owner: "admin", group: "Default", strong: true, avatar: "tool" },
+            { id: "13", name: "Monitor巡检助手", desc: "Monitor巡检助手", online: true, owner: "一帐", group: "Default", strong: false, avatar: "tool" },
+            { id: "14", name: "github 提交记录总结", desc: "github 提交记录总结", online: true, owner: "admin", group: "Default", strong: false, avatar: "tool" },
+            { id: "15", name: "WeOps 服务台", desc: "WeOps 服务台", online: true, owner: "admin", group: "Default", strong: true, avatar: "tool" },
+            { id: "16", name: "wew", desc: "121222", online: false, owner: "admin", group: "OpsPilotGuest", strong: true, avatar: "user" },
+            { id: "17", name: "BKLite Flow", desc: "BKLite Flow", online: false, owner: "admin", group: "Default", strong: false, avatar: "tool" },
+            { id: "18", name: "rtrr", desc: "wr", online: false, owner: "admin", group: "簇", strong: false, avatar: "tool" },
+            { id: "19", name: "123", desc: "123", online: false, owner: "admin", group: "簇", strong: true, avatar: "user" },
+            { id: "20", name: "yyyyy", desc: "", online: false, owner: "admin", group: "Default", strong: true, avatar: "tool" },
+            { id: "21", name: "[内置] ks8智能体", desc: "ks8智能体", online: true, owner: "admin", group: "Default", strong: true, avatar: "user" }
+        ];
+
+        const state = {
+            keyword: ""
+        };
+
+        const cardGrid = document.getElementById("cardGrid");
+        const emptyState = document.getElementById("emptyState");
+        const createModalMask = document.getElementById("createModalMask");
+        const closeCreateModalBtn = document.getElementById("closeCreateModal");
+        const cancelCreateBtn = document.getElementById("cancelCreate");
+        const confirmCreateBtn = document.getElementById("confirmCreate");
+        const appLauncher = document.getElementById("appLauncher");
+        const appLauncherTrigger = document.getElementById("appLauncherTrigger");
+        const appLauncherPanel = document.getElementById("appLauncherPanel");
+        const userMenu = document.getElementById("userMenu");
+        const userMenuTrigger = document.getElementById("userMenuTrigger");
+        const userMenuPanel = document.getElementById("userMenuPanel");
+
+        function closeAppLauncher() {
+            appLauncherPanel.classList.remove("open");
+            appLauncherTrigger.classList.remove("open");
+        }
+
+        function toggleAppLauncher() {
+            const willOpen = !appLauncherPanel.classList.contains("open");
+            appLauncherPanel.classList.toggle("open", willOpen);
+            appLauncherTrigger.classList.toggle("open", willOpen);
+        }
+
+        function closeUserMenu() {
+            userMenuPanel.classList.remove("open");
+            userMenuTrigger.classList.remove("open");
+        }
+
+        function toggleUserMenu() {
+            const willOpen = !userMenuPanel.classList.contains("open");
+            userMenuPanel.classList.toggle("open", willOpen);
+            userMenuTrigger.classList.toggle("open", willOpen);
+        }
+
+        function openCreateModal() {
+            createModalMask.classList.add("open");
+        }
+
+        function closeCreateModal() {
+            createModalMask.classList.remove("open");
+        }
+
+        function getData() {
+            const key = state.keyword.trim().toLowerCase();
+            if (!key) {
+                return workspaces;
+            }
+            return workspaces.filter((item) => {
+                return item.name.toLowerCase().includes(key) || item.desc.toLowerCase().includes(key);
+            });
+        }
+
+        function renderCard(item) {
+            const avatarClass = item.avatar === "user" ? "avatar-badge user" : "avatar-badge";
+            const avatarIcon = item.avatar === "user" ? "👥" : "🏢";
+            const bannerClass = item.strong ? "card-banner banner-strong" : "card-banner";
+
+            return `
+                <article class="work-card" title="${item.name}" data-action="open-card" data-id="${item.id}">
+                    <div class="${bannerClass}">
+                        <span class="pin-dot">📌</span>
+                        <button class="menu-btn" type="button" data-action="toggle-card-menu" data-id="${item.id}">⋮</button>
+                    </div>
+                    <div class="card-actions" data-role="card-actions">
+                        <button class="card-action-item" type="button" data-action="edit-card" data-id="${item.id}">编辑</button>
+                        <button class="card-action-item" type="button" data-action="delete-card" data-id="${item.id}">删除</button>
+                    </div>
+                    <div class="${avatarClass}">${avatarIcon}</div>
+                    <div class="card-body">
+                        <h3 class="card-title">${item.name}</h3>
+                        <p class="card-desc">${item.desc || "-"}</p>
+                        <div class="card-footer">
+                            <span class="status-tag ${item.online ? "online" : "offline"}">${item.online ? "上线" : "下线"}</span>
+                            <span class="meta-text">分组: ${item.group} | 所有者: ${item.owner}</span>
+                        </div>
+                    </div>
+                </article>
+            `;
+        }
+
+        function render() {
+            const list = getData();
+            cardGrid.innerHTML = `
+                <article class="create-card" id="createCard">
+                    <div class="create-body">
+                        <span class="plus">+</span>
+                        <div>新增</div>
+                    </div>
+                </article>
+            ` + list.map(renderCard).join("");
+
+            const hasData = list.length > 0;
+            cardGrid.style.display = hasData ? "grid" : "none";
+            emptyState.style.display = hasData ? "none" : "flex";
+
+            const createCard = document.getElementById("createCard");
+            createCard.addEventListener("click", () => {
+                openCreateModal();
+            });
+        }
+
+        document.getElementById("searchInput").addEventListener("input", (event) => {
+            state.keyword = event.target.value;
+            render();
+        });
+
+        document.getElementById("searchBtn").addEventListener("click", render);
+
+        document.addEventListener("click", (event) => {
+            if (event.target.closest("#appLauncherTrigger")) {
+                closeUserMenu();
+                toggleAppLauncher();
+                return;
+            }
+
+            if (event.target.closest("#appLauncherPanel")) {
+                return;
+            }
+
+            closeAppLauncher();
+
+            if (event.target.closest("#userMenuTrigger")) {
+                closeAppLauncher();
+                toggleUserMenu();
+                return;
+            }
+
+            if (event.target.closest("#userMenuPanel")) {
+                return;
+            }
+
+            closeUserMenu();
+
+            const menuToggle = event.target.closest('[data-action="toggle-card-menu"]');
+            if (menuToggle) {
+                const card = menuToggle.closest(".work-card");
+                const actions = card?.querySelector('[data-role="card-actions"]');
+                const willOpen = actions && !actions.classList.contains("open");
+
+                document.querySelectorAll('[data-role="card-actions"].open').forEach((node) => {
+                    node.classList.remove("open");
+                });
+
+                if (willOpen) {
+                    actions.classList.add("open");
+                }
+                return;
+            }
+
+            const editTarget = event.target.closest('[data-action="edit-card"]');
+            if (editTarget) {
+                const selected = workspaces.find((item) => item.id === editTarget.dataset.id);
+                if (selected) {
+                    alert(`编辑：${selected.name}`);
+                }
+                return;
+            }
+
+            const deleteTarget = event.target.closest('[data-action="delete-card"]');
+            if (deleteTarget) {
+                const selected = workspaces.find((item) => item.id === deleteTarget.dataset.id);
+                if (selected) {
+                    alert(`删除：${selected.name}`);
+                }
+                return;
+            }
+
+            const card = event.target.closest('[data-action="open-card"]');
+            if (!card) {
+                document.querySelectorAll('[data-role="card-actions"].open').forEach((node) => {
+                    node.classList.remove("open");
+                });
+                return;
+            }
+
+            if (event.target.closest(".menu-btn") || event.target.closest('[data-role="card-actions"]')) {
+                return;
+            }
+
+            document.querySelectorAll('[data-role="card-actions"].open').forEach((node) => {
+                node.classList.remove("open");
+            });
+
+            const id = card.dataset.id;
+            const selected = workspaces.find((item) => item.id === id);
+            if (selected) {
+                sessionStorage.setItem("selectedStudio", JSON.stringify(selected));
+                window.location.href = "./工作台详情.html";
+            }
+        });
+
+        closeCreateModalBtn.addEventListener("click", closeCreateModal);
+        cancelCreateBtn.addEventListener("click", closeCreateModal);
+        confirmCreateBtn.addEventListener("click", closeCreateModal);
+
+        createModalMask.addEventListener("click", (event) => {
+            if (event.target === createModalMask) {
+                closeCreateModal();
+            }
+        });
+
+        render();
+    </script>
+</body>
+</html>

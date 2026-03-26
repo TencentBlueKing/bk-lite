@@ -11,7 +11,7 @@ import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
 import nodeStyle from './index.module.scss';
-import CollectorModal from './collectorModal';
+import CollectorModal from './collectorOperation/collectorModal';
 import { useTranslation } from '@/utils/i18n';
 import { ModalRef, TableDataItem, Pagination } from '@/app/node-manager/types';
 import { SearchFilters } from '@/components/search-combination/types';
@@ -30,12 +30,12 @@ import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import ControllerInstall from './controllerInstall';
 import ControllerUninstall from './controllerUninstall';
-import CollectorInstallTable from './controllerTable';
+import CollectorOperation from './collectorOperation';
 import { useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
-import CollectorDetailDrawer from './collectorDetailDrawer';
+import CollectorDetailDrawer from './collectorDetail';
 import EditNode from './editNode';
 import { useCommon } from '@/app/node-manager/context/common';
 const { confirm } = Modal;
@@ -65,11 +65,16 @@ const Node = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [showNodeTable, setShowNodeTable] = useState<boolean>(true);
   const [taskId, setTaskId] = useState<string>('');
-  const [tableType, setTableType] = useState<string>('');
   const [showInstallController, setShowInstallController] =
     useState<boolean>(false);
-  const [showInstallCollectorTable, setShowInstallCollectorTable] =
+  const [showCollectorOperation, setShowCollectorOperation] =
     useState<boolean>(false);
+  const [collectorOperationType, setCollectorOperationType] =
+    useState<string>('');
+  const [collectorId, setCollectorId] = useState<string>('');
+  const [collectorPackageId, setCollectorPackageId] = useState<
+    number | undefined
+  >();
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
   const [pagination, setPagination] = useState<Pagination>({
@@ -107,9 +112,10 @@ const Node = () => {
     getNodes(searchFilters);
   }, [searchFilters]);
 
-  const cancelWait = useCallback(() => {
+  const cancelCollectorOperation = useCallback(() => {
     setShowNodeTable(true);
-    setShowInstallCollectorTable(false);
+    setShowCollectorOperation(false);
+    setCollectorOperationType('');
     getNodes(searchFilters);
   }, [searchFilters]);
 
@@ -403,20 +409,49 @@ const Node = () => {
             collectorTarget,
             installTarget
           );
+
+          // 检查是否有 Ansible-Executor
+          const ansibleExecutorId = 'ansibleexecutor_linux';
+          const ansibleCollectorTarget = (record.status?.collectors || []).find(
+            (item: TableDataItem) => item.collector_id === ansibleExecutorId
+          );
+          const ansibleInstallTarget = (
+            record.status?.collectors_install || []
+          ).find(
+            (item: TableDataItem) => item.collector_id === ansibleExecutorId
+          );
+          const hasAnsibleExecutor =
+            ansibleCollectorTarget || ansibleInstallTarget;
+          const ansibleStatusInfo = hasAnsibleExecutor
+            ? getStatusInfo(ansibleCollectorTarget, ansibleInstallTarget)
+            : null;
+
           return (
-            <>
-              <Tooltip
-                title={`${record.status?.message}`}
-                className="py-1 px-2"
-              >
-                <Tag color={record.active ? 'success' : 'warning'}>Sidecar</Tag>
+            <div className="flex flex-nowrap gap-1">
+              <Tooltip title={`${record.status?.message}`}>
+                <Tag
+                  color={record.active ? 'success' : 'warning'}
+                  className="py-1 px-2"
+                >
+                  Sidecar
+                </Tag>
               </Tooltip>
               <Tooltip title={title}>
                 <Tag color={tagColor} className="py-1 px-2">
                   NATS-Executor
                 </Tag>
               </Tooltip>
-            </>
+              {hasAnsibleExecutor && (
+                <Tooltip title={ansibleStatusInfo?.title}>
+                  <Tag
+                    color={ansibleStatusInfo?.tagColor}
+                    className="py-1 px-2"
+                  >
+                    Ansible-Executor
+                  </Tag>
+                </Tooltip>
+              )}
+            </div>
           );
         }
       },
@@ -492,7 +527,7 @@ const Node = () => {
                 <Tag
                   key={status}
                   color={statusInfo.tagColor}
-                  className="cursor-pointer mr-1 mb-1 py-1 px-2"
+                  className="cursor-pointer py-1 px-2"
                   onClick={() => handleCollectorTagClick(record, allCollectors)}
                 >
                   {statusInfo.text}: {collectors.length}
@@ -501,7 +536,7 @@ const Node = () => {
             }
           );
           return statusTags.length > 0 ? (
-            <div className="flex">{statusTags}</div>
+            <div className="flex flex-nowrap gap-1">{statusTags}</div>
           ) : (
             <span>--</span>
           );
@@ -542,13 +577,31 @@ const Node = () => {
     };
   };
 
-  const handleCollector = (config = { type: '', taskId: '' }) => {
+  const handleCollector = (
+    config = {
+      type: '',
+      taskId: '',
+      collectorId: '',
+      collectorPackageId: undefined as number | undefined
+    }
+  ) => {
     getNodes(searchFilters);
-    if (['installCollector', 'uninstallController'].includes(config.type)) {
+    // 安装组件、启动组件、重启组件、停止组件、卸载控制器 - 进入步骤页面
+    const collectorOperationTypes = [
+      'installCollector',
+      'startCollector',
+      'restartCollector',
+      'stopCollector',
+      'uninstallController'
+    ];
+    if (collectorOperationTypes.includes(config.type)) {
       setTaskId(config.taskId);
-      setTableType(config.type);
+      setCollectorOperationType(config.type);
+      setCollectorId(config.collectorId || '');
+      setCollectorPackageId(config.collectorPackageId);
       setShowNodeTable(false);
-      setShowInstallCollectorTable(true);
+      setShowCollectorOperation(true);
+      return;
     }
   };
 
@@ -653,10 +706,13 @@ const Node = () => {
           cancel={cancelInstall}
         />
       )}
-      {showInstallCollectorTable && (
-        <CollectorInstallTable
-          config={{ taskId, type: tableType }}
-          cancel={cancelWait}
+      {showCollectorOperation && (
+        <CollectorOperation
+          operationType={collectorOperationType as any}
+          taskId={taskId}
+          collectorId={collectorId}
+          collectorPackageId={collectorPackageId}
+          cancel={cancelCollectorOperation}
         />
       )}
     </MainLayout>

@@ -26,6 +26,26 @@ export const initialConditionLists: Record<
     { name: 're', desc: '正则' },
     { name: 'not_contains', desc: '不包含' },
   ],
+  service: [
+    { name: 'eq', desc: '等于' },
+    { name: 'contains', desc: '包含' },
+    { name: 'ne', desc: '不等于' },
+  ],
+  location: [
+    { name: 'eq', desc: '等于' },
+    { name: 'contains', desc: '包含' },
+    { name: 'ne', desc: '不等于' },
+  ],
+  resource_name: [
+    { name: 'eq', desc: '等于' },
+    { name: 'contains', desc: '包含' },
+    { name: 'ne', desc: '不等于' },
+  ],
+  item: [
+    { name: 'eq', desc: '等于' },
+    { name: 'contains', desc: '包含' },
+    { name: 'ne', desc: '不等于' },
+  ],
 };
 
 export const ruleList = [
@@ -41,6 +61,10 @@ export const ruleList = [
   { name: 'resource_type', verbose_name: '类型对象' },
   { name: 'resource_id', verbose_name: '对象实例' },
   { name: 'content', verbose_name: '内容' },
+  { name: 'service', verbose_name: '服务' },
+  { name: 'location', verbose_name: '位置' },
+  { name: 'resource_name', verbose_name: '资源名称' },
+  { name: 'item', verbose_name: '指标' },
 ];
 
 export const typeLabel: Record<string, string> = {

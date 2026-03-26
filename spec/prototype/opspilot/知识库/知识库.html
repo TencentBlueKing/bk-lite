@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsPilot - 知识库</title>
+    <style>
+        :root {
+            --color-primary: #155AEF;
+            --color-text-1: #1E252E;
+            --color-text-2: #475468;
+            --color-text-3: #7588A3;
+            --color-text-4: #B2BDCC;
+            --color-border: #EAECF0;
+            --color-border-1: #EDEFF3;
+            --color-border-2: #E6E9EE;
+            --color-border-3: #D1D7E1;
+            --color-fill-1: #F6F8F9;
+            --color-fill-4: #E6E9EE;
+            --shadow-soft: 0 8px 20px rgba(15, 23, 42, 0.05);
+            --shadow-hover: 0 10px 24px rgba(15, 23, 42, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: var(--color-fill-4) transparent;
+        }
+
+        *::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        *::-webkit-scrollbar-thumb {
+            border-radius: 999px;
+            background: var(--color-fill-4);
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            min-width: 1440px;
+            min-height: 100%;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+
+        body {
+            color: var(--color-text-1);
+            background:
+                radial-gradient(1200px 520px at 20% 84%, rgba(214, 224, 238, 0.7) 0%, rgba(214, 224, 238, 0) 70%),
+                radial-gradient(1000px 460px at 78% 20%, rgba(220, 230, 243, 0.58) 0%, rgba(220, 230, 243, 0) 72%),
+                linear-gradient(180deg, #EAF1F8 0%, #EEF3F8 46%, #EDF2F7 100%);
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        button,
+        input {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-header {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            height: 52px;
+            padding: 0 10px;
+            border-bottom: 1px solid #d9e2ee;
+            background: rgba(231, 240, 249, 0.84);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .brand img {
+            height: 22px;
+            width: auto;
+        }
+
+        .brand strong {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .switcher {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            font-size: 10px;
+            color: #7c89a6;
+            background: #f3f6fd;
+            border: 1px solid #e5ebf8;
+        }
+
+        .switcher {
+            width: 22px;
+            height: 22px;
+            border-radius: 7px;
+            border: 1px solid #d6dfeb;
+            background: #f5f8fd;
+            color: #7f8da2;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            margin-left: 2px;
+        }
+
+        .main-nav {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .main-nav a {
+            padding: 7px 12px;
+            border-radius: 8px;
+            color: var(--color-text-2);
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+
+        .main-nav a:hover {
+            background: rgba(21, 90, 239, 0.04);
+            color: var(--color-primary);
+        }
+
+        .main-nav a.active {
+            color: var(--color-primary);
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 5px 14px rgba(21, 90, 239, 0.08);
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .icon-action {
+            width: 26px;
+            height: 26px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--color-text-2);
+            font-size: 13px;
+        }
+
+        .avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #155AEF 0%, #4F8CFF 100%);
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 11px;
+        }
+
+        .admin-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #46526d;
+            margin-left: 2px;
+            white-space: nowrap;
+        }
+
+        .admin-name {
+            font-size: 13px;
+            color: #5f7087;
+        }
+
+        .workspace {
+            padding: 10px;
+            min-height: calc(100vh - 52px);
+        }
+
+        .page-panel {
+            min-height: calc(100vh - 72px);
+            padding: 0;
+            border-radius: 0;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 10px;
+        }
+
+        .search-combo {
+            display: flex;
+            align-items: stretch;
+            border: 1px solid #d8e0eb;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #fff;
+            transition: all 0.2s ease;
+        }
+
+        .search-combo:focus-within {
+            border-color: #B9D0FF;
+            background: #ffffff;
+            box-shadow: 0 0 0 3px rgba(21, 90, 239, 0.08);
+        }
+
+        .search-shell {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-shell span {
+            position: absolute;
+            left: 12px;
+            color: var(--color-text-3);
+            font-size: 12px;
+        }
+
+        .search-shell input {
+            width: 142px;
+            height: 30px;
+            padding: 0 8px;
+            border: none;
+            background: transparent;
+            outline: none;
+            color: var(--color-text-1);
+            font-size: 12px;
+        }
+
+        .search-button {
+            width: 34px;
+            border: none;
+            background: #1f63f5;
+            color: #fff;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .add-card,
+        .knowledge-card {
+            position: relative;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.88);
+            border: 1px solid #dbe3ee;
+            box-shadow: 0 4px 12px rgba(20, 38, 70, 0.06);
+            transition: all 0.18s ease;
+        }
+
+        .add-card:hover,
+        .knowledge-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--color-border-3);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .add-card {
+            min-height: 112px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.86);
+            cursor: pointer;
+        }
+
+        .add-card-inner {
+            text-align: center;
+            color: var(--color-text-2);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .add-icon {
+            width: auto;
+            height: auto;
+            margin: 0 0 2px;
+            background: transparent;
+            color: #52657d;
+            font-size: 24px;
+            font-weight: 400;
+        }
+
+        .add-card strong {
+            display: none;
+        }
+
+        .add-card p {
+            margin: 0;
+            font-size: 13px;
+            color: #5a6d84;
+        }
+
+        .knowledge-card {
+            min-height: 112px;
+            padding: 10px 10px 8px;
+            cursor: pointer;
+        }
+
+        .menu-wrap {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 3;
+        }
+
+        .menu-btn {
+            width: 18px;
+            height: 18px;
+            border: none;
+            border-radius: 4px;
+            color: #3b4f6f;
+            background: transparent;
+            font-size: 15px;
+            line-height: 1;
+        }
+
+        .menu-btn:hover {
+            background: #edf3ff;
+            color: #2b5bff;
+        }
+
+        .dropdown {
+            position: absolute;
+            top: 24px;
+            right: 0;
+            min-width: 74px;
+            background: #fff;
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            padding: 4px;
+            box-shadow: 0 10px 20px rgba(20, 38, 70, 0.18);
+            display: none;
+        }
+
+        .dropdown.open {
+            display: block;
+        }
+
+        .dropdown button {
+            width: 100%;
+            height: 28px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            text-align: left;
+            padding: 0 10px;
+            color: #2f405a;
+            font-size: 13px;
+        }
+
+        .dropdown button:hover {
+            background: #edf3ff;
+            color: #2b5bff;
+        }
+
+        .card-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 7px;
+            padding-right: 18px;
+        }
+
+        .icon-badge {
+            width: 28px;
+            height: 28px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            color: #ffffff;
+            flex-shrink: 0;
+        }
+
+        .card-title {
+            margin: 0;
+            font-size: 16px;
+            line-height: 1.4;
+            font-weight: 700;
+            color: var(--color-text-1);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-desc {
+            margin: 0;
+            min-height: 30px;
+            font-size: 16px;
+            line-height: 1.35;
+            color: var(--color-text-3);
+            display: -webkit-box;
+            line-clamp: 2;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .card-footer {
+            margin-top: 6px;
+            text-align: right;
+            font-size: 12px;
+            line-height: 1.4;
+            color: var(--color-text-4);
+        }
+
+        .empty-state {
+            display: none;
+            min-height: 280px;
+            border: 1px dashed var(--color-border-3);
+            border-radius: 18px;
+            background: linear-gradient(180deg, #FBFCFE 0%, #F7F9FC 100%);
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            text-align: center;
+            color: var(--color-text-3);
+        }
+
+        .empty-state strong {
+            margin-bottom: 8px;
+            font-size: 16px;
+            color: var(--color-text-2);
+        }
+
+        .toast-wrap {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            z-index: 40;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toast {
+            min-width: 220px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: rgba(30, 37, 46, 0.94);
+            color: #ffffff;
+            font-size: 13px;
+            box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+            animation: fade-in 0.2s ease;
+        }
+
+        .create-modal-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(18, 28, 44, 0.38);
+            backdrop-filter: blur(2px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 45;
+        }
+
+        .create-modal-mask.open {
+            display: flex;
+        }
+
+        .create-modal {
+            width: 380px;
+            border-radius: 8px;
+            background: #fff;
+            border: 1px solid #d7dfeb;
+            box-shadow: 0 16px 38px rgba(20, 38, 70, 0.2);
+            overflow: hidden;
+        }
+
+        .create-modal-head {
+            height: 44px;
+            border-bottom: 1px solid #e7edf6;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            color: #26354d;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .create-modal-close {
+            border: none;
+            background: transparent;
+            color: #9aa8ba;
+            font-size: 22px;
+            width: 26px;
+            height: 26px;
+            line-height: 1;
+            border-radius: 6px;
+        }
+
+        .create-modal-close:hover {
+            background: #edf3fb;
+            color: #5f718a;
+        }
+
+        .create-modal-body {
+            padding: 12px 16px 10px;
+        }
+
+        .create-form-row {
+            margin-bottom: 10px;
+        }
+
+        .create-form-label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: #394a62;
+            font-weight: 600;
+        }
+
+        .create-required {
+            color: #ff5b57;
+            margin-right: 3px;
+        }
+
+        .create-input,
+        .create-textarea,
+        .create-select {
+            width: 100%;
+            border: 1px solid #d7dfeb;
+            border-radius: 5px;
+            background: #fff;
+            padding: 8px 10px;
+            font-size: 13px;
+            color: #2a3950;
+            outline: none;
+        }
+
+        .create-input,
+        .create-select {
+            height: 34px;
+        }
+
+        .create-textarea {
+            min-height: 70px;
+            resize: none;
+            line-height: 1.55;
+        }
+
+        .create-input:focus,
+        .create-textarea:focus,
+        .create-select:focus {
+            border-color: #9db8ff;
+            box-shadow: 0 0 0 2px rgba(43, 91, 255, 0.12);
+        }
+
+        .create-form-tip {
+            color: #95a4b8;
+            font-size: 11px;
+        }
+
+        .create-select-like {
+            height: 34px;
+            border: 1px solid #d7dfeb;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 10px;
+            background: #fff;
+            color: #4f5e73;
+        }
+
+        .create-tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            height: 22px;
+            padding: 0 7px;
+            border-radius: 4px;
+            border: 1px solid #d7dfeb;
+            background: #f7f9fc;
+            font-size: 12px;
+            color: #5a6980;
+        }
+
+        .create-tag-chip span {
+            color: #9aa8ba;
+            font-weight: 700;
+            font-size: 12px;
+            line-height: 1;
+        }
+
+        .create-select-arrow {
+            color: #a0aec0;
+            font-size: 11px;
+        }
+
+        .create-modal-foot {
+            border-top: 1px solid #e7edf6;
+            padding: 10px 16px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .create-btn-ghost,
+        .create-btn-primary {
+            min-width: 48px;
+            height: 28px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid transparent;
+        }
+
+        .create-btn-ghost {
+            border-color: #d7dfeb;
+            background: #fff;
+            color: #52647d;
+        }
+
+        .create-btn-primary {
+            background: #2b5bff;
+            color: #fff;
+        }
+
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="top-header">
+            <div class="brand">
+                <img src="../../../../web/public/logo-site.png" alt="BlueKing Lite">
+                <strong>BlueKing Lite</strong>
+                <span class="switcher">◆</span>
+            </div>
+            <nav class="main-nav">
+                <a href="../工作台/工作台.html">工作台</a>
+                <a href="../智能体/智能体.html">智能体</a>
+                <a class="active" href="./知识库.html">知识库</a>
+                <a href="../工具/工具.html">工具</a>
+                <a href="../模型/模型.html">模型</a>
+            </nav>
+            <div class="header-actions">
+                <button class="icon-action" type="button" data-toast="通知中心为原型占位。">◌</button>
+                <button class="icon-action" type="button" data-toast="列表功能为原型占位。">▤</button>
+                <div class="avatar">A</div>
+                <span class="admin-name">admin ▾</span>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <section class="page-panel">
+                <div class="toolbar">
+                    <div class="search-combo">
+                        <label class="search-shell">
+                            <input id="searchInput" type="text" placeholder="搜索......">
+                        </label>
+                        <button class="search-button" id="searchButton" type="button">⌕</button>
+                    </div>
+                </div>
+
+                <div class="card-grid" id="cardGrid"></div>
+                <div class="empty-state" id="emptyState">
+                    <strong>未找到符合条件的知识库</strong>
+                    <div>请调整搜索关键词后重试。</div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div class="create-modal-mask" id="createModalMask">
+        <section class="create-modal" role="dialog" aria-modal="true" aria-labelledby="createTitle">
+            <header class="create-modal-head">
+                <strong id="createTitle">添加</strong>
+                <button class="create-modal-close" id="closeCreateModal" type="button">×</button>
+            </header>
+            <div class="create-modal-body">
+                <div class="create-form-row">
+                    <label class="create-form-label" for="kbNameInput"><span class="create-required">*</span>名称</label>
+                    <input class="create-input" id="kbNameInput" type="text" placeholder="请输入名称">
+                </div>
+                <div class="create-form-row">
+                    <label class="create-form-label" for="kbEmbedModel"><span class="create-required">*</span>Embed模型 <span class="create-form-tip">?</span></label>
+                    <select class="create-select" id="kbEmbedModel">
+                        <option selected>Qwen3-Embedding-4B</option>
+                        <option>text-embedding-3-large</option>
+                        <option>bge-m3</option>
+                    </select>
+                </div>
+                <div class="create-form-row">
+                    <label class="create-form-label"><span class="create-required">*</span>分组</label>
+                    <div class="create-select-like">
+                        <div class="create-tag-chip">Default <span>×</span></div>
+                        <span class="create-select-arrow">▽</span>
+                    </div>
+                </div>
+                <div class="create-form-row">
+                    <label class="create-form-label" for="kbIntroInput"><span class="create-required">*</span>简介</label>
+                    <textarea class="create-textarea" id="kbIntroInput" placeholder="请输入简介"></textarea>
+                </div>
+            </div>
+            <footer class="create-modal-foot">
+                <button class="create-btn-ghost" id="cancelCreate" type="button">取消</button>
+                <button class="create-btn-primary" id="confirmCreate" type="button">确认</button>
+            </footer>
+        </section>
+    </div>
+
+    <div class="toast-wrap" id="toastWrap"></div>
+
+    <script>
+        const knowledges = [
+            {
+                id: 'kb-1',
+                name: '测试知识引用',
+                introduction: '测试知识引用',
+                owner: 'admin',
+                group: 'Default',
+                icon: '引',
+                bg: 'linear-gradient(135deg, #8C7BFF 0%, #B2A8FF 100%)'
+            },
+            {
+                id: 'kb-2',
+                name: 'monitor',
+                introduction: '勿动',
+                owner: '🐕',
+                group: 'Default',
+                icon: '监',
+                bg: 'linear-gradient(135deg, #FF8A7A 0%, #FFB3A9 100%)'
+            },
+            {
+                id: 'kb-3',
+                name: '勿动',
+                introduction: 'test',
+                owner: '张',
+                group: 'Default',
+                icon: '勿',
+                bg: 'linear-gradient(135deg, #4FD8EB 0%, #9BEAF4 100%)'
+            },
+            {
+                id: 'kb-4',
+                name: 'WeOps知识库',
+                introduction: '本知识库接入WeOps的内容，用于WeOps小助手',
+                owner: '张',
+                group: 'Default',
+                icon: '知',
+                bg: 'linear-gradient(135deg, #F8B84D 0%, #F9D288 100%)'
+            },
+            {
+                id: 'kb-5',
+                name: '测试知识库',
+                introduction: '测试知识库',
+                owner: 'admin',
+                group: 'Default',
+                icon: '测',
+                bg: 'linear-gradient(135deg, #79D56C 0%, #AFE9A6 100%)'
+            },
+            {
+                id: 'kb-6',
+                name: '111111',
+                introduction: '11111',
+                owner: 'admin',
+                group: 'OpsPilotGuest',
+                icon: '引',
+                bg: 'linear-gradient(135deg, #8C7BFF 0%, #B2A8FF 100%)'
+            },
+            {
+                id: 'kb-7',
+                name: '[内置]opspilot对外宣传文章',
+                introduction: '这里展示opspilot所有对外发布的文章。',
+                owner: 'admin',
+                group: 'OpsPilotGuest',
+                icon: '宣',
+                bg: 'linear-gradient(135deg, #FF8A7A 0%, #FFB3A9 100%)'
+            },
+            {
+                id: 'kb-8',
+                name: '[内置] 达梦数据库专业知识库',
+                introduction: '以问答测试的方式，内置达梦专业的知识库，可用于达梦数据库相关的问题解答',
+                owner: 'admin',
+                group: 'OpsPilotGuest',
+                icon: '达',
+                bg: 'linear-gradient(135deg, #4FD8EB 0%, #9BEAF4 100%)'
+            },
+            {
+                id: 'kb-9',
+                name: '[内置] BKLite平台使用指引知识库',
+                introduction: '本知识库接入BKLite平台各个APP的相关介绍，包括OpsPilot、监控中心、CMDB等，主要包括功能介绍和操作步骤。',
+                owner: 'admin',
+                group: 'OpsPilotGuest',
+                icon: '指',
+                bg: 'linear-gradient(135deg, #F8B84D 0%, #F9D288 100%)'
+            }
+        ];
+
+        const state = {
+            keyword: '',
+            openMenuId: null
+        };
+
+        const cardGrid = document.getElementById('cardGrid');
+        const emptyState = document.getElementById('emptyState');
+        const toastWrap = document.getElementById('toastWrap');
+        const createModalMask = document.getElementById('createModalMask');
+        const closeCreateModalBtn = document.getElementById('closeCreateModal');
+        const cancelCreateBtn = document.getElementById('cancelCreate');
+        const confirmCreateBtn = document.getElementById('confirmCreate');
+
+        function openCreateModal() {
+            createModalMask.classList.add('open');
+        }
+
+        function closeCreateModal() {
+            createModalMask.classList.remove('open');
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            toastWrap.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                toast.style.transition = 'all 0.2s ease';
+                setTimeout(() => toast.remove(), 200);
+            }, 2200);
+        }
+
+        function getFilteredData() {
+            const keyword = state.keyword.trim().toLowerCase();
+            return knowledges.filter((item) => {
+                return !keyword || item.name.toLowerCase().includes(keyword) || item.introduction.toLowerCase().includes(keyword);
+            });
+        }
+
+        function renderCard(item) {
+            const dropdownOpen = state.openMenuId === item.id ? 'open' : '';
+            return `
+                <article class="knowledge-card" data-action="open-card" data-id="${item.id}">
+                    <div class="menu-wrap">
+                        <button class="menu-btn" type="button" data-action="toggle-menu" data-id="${item.id}">⋮</button>
+                        <div class="dropdown ${dropdownOpen}">
+                            <button type="button" data-action="edit" data-id="${item.id}">编辑</button>
+                            <button type="button" class="danger" data-action="delete" data-id="${item.id}">删除</button>
+                        </div>
+                    </div>
+                    <div class="card-head">
+                        <div class="icon-badge" style="background:${item.bg}">${item.icon}</div>
+                        <h3 class="card-title">${item.name}</h3>
+                    </div>
+                    <p class="card-desc">${item.introduction}</p>
+                    <div class="card-footer">所有者：${item.owner}<br>分组：${item.group}</div>
+                </article>
+            `;
+        }
+
+        function render() {
+            const data = getFilteredData();
+            cardGrid.innerHTML = `
+                <article class="add-card" id="addCard">
+                    <div class="add-card-inner">
+                        <div class="add-icon">+</div>
+                        <p>新增</p>
+                    </div>
+                </article>
+            ` + data.map(renderCard).join('');
+
+            emptyState.style.display = data.length === 0 ? 'flex' : 'none';
+            cardGrid.style.display = data.length === 0 ? 'none' : 'grid';
+        }
+
+        document.addEventListener('click', (event) => {
+            const target = event.target.closest('[data-action], [data-toast], #addCard');
+            const clickedMenu = event.target.closest('.dropdown');
+            const clickedMenuButton = event.target.closest('[data-action="toggle-menu"]');
+
+            if (!clickedMenu && !clickedMenuButton && state.openMenuId !== null) {
+                state.openMenuId = null;
+                render();
+            }
+
+            if (!target) return;
+
+            if (target.dataset.toast) {
+                showToast(target.dataset.toast);
+                return;
+            }
+
+            if (target.id === 'addCard') {
+                openCreateModal();
+                return;
+            }
+
+            const action = target.dataset.action;
+            const id = target.dataset.id;
+            const knowledge = knowledges.find((item) => item.id === id);
+
+            if (action === 'toggle-menu') {
+                event.stopPropagation();
+                state.openMenuId = state.openMenuId === id ? null : id;
+                render();
+                return;
+            }
+
+            if (action === 'edit') {
+                event.stopPropagation();
+                showToast('原型未展开编辑知识库弹窗。');
+                state.openMenuId = null;
+                render();
+                return;
+            }
+
+            if (action === 'delete') {
+                event.stopPropagation();
+                showToast('这里仅模拟删除入口，不执行真实删除。');
+                state.openMenuId = null;
+                render();
+                return;
+            }
+
+            if (action === 'open-card' && knowledge) {
+                sessionStorage.setItem('selectedKnowledge', JSON.stringify(knowledge));
+                window.location.href = './知识库详情.html';
+            }
+        });
+
+        document.getElementById('searchInput').addEventListener('input', (event) => {
+            state.keyword = event.target.value;
+            render();
+        });
+
+        document.getElementById('searchButton').addEventListener('click', () => {
+            render();
+        });
+
+        closeCreateModalBtn.addEventListener('click', closeCreateModal);
+        cancelCreateBtn.addEventListener('click', closeCreateModal);
+        confirmCreateBtn.addEventListener('click', () => {
+            closeCreateModal();
+            showToast('创建知识库成功（原型演示）');
+        });
+
+        createModalMask.addEventListener('click', (event) => {
+            if (event.target === createModalMask) {
+                closeCreateModal();
+            }
+        });
+
+        render();
+    </script>
+</body>
+</html>

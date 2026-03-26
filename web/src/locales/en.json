@@ -55,6 +55,7 @@
     "input": "Input",
     "select": "Select",
     "selectTip": "Please select",
+    "searchKeywordPlaceholder": "Enter keywords to search...",
     "yes": "Yes",
     "no": "No",
     "updatedTime": "Updated Time",

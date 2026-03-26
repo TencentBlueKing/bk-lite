@@ -17,7 +17,7 @@ export interface LogStep {
 
 export interface StatusConfig {
   text: string;
-  tagColor: 'success' | 'error' | 'processing';
+  tagColor: 'success' | 'error' | 'processing' | 'warning';
   borderColor: string;
   stepStatus: 'finish';
   icon: React.ReactNode;

@@ -12,6 +12,7 @@ from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
 from apps.core.logger import cmdb_logger as logger
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.constants.constants import CollectRunStatusType
+from apps.cmdb.services.subscription_task import SubscriptionTaskService
 
 
 @shared_task
@@ -20,11 +21,11 @@ def sync_collect_task(instance_id):
     同步采集任务
     """
     logger.info("开始采集任务 task_id={}".format(instance_id))
-    instance = CollectModels.objects.filter(id=instance_id).first()
+    instance = CollectModels._default_manager.filter(id=instance_id).first()
     if not instance:
         return
     if instance.exec_status == CollectRunStatusType.NOT_START:
-        CollectModels.objects.filter(id=instance_id).update(
+        CollectModels._default_manager.filter(id=instance_id).update(
             exec_status=CollectRunStatusType.RUNNING
         )
     # # 防止周期触发与延迟补跑重叠导致同一任务并发执行
@@ -35,11 +36,12 @@ def sync_collect_task(instance_id):
     start_time = now()
     instance.exec_status = CollectRunStatusType.RUNNING
     instance.exec_time = start_time
-    CollectModels.objects.filter(id=instance_id).update(
+    CollectModels._default_manager.filter(id=instance_id).update(
         exec_status=CollectRunStatusType.RUNNING,
         exec_time=start_time,
     )
     exec_error_message = ""
+    task_exec_status = CollectRunStatusType.SUCCESS
     try:
         if instance.is_job:
             # 脚本采集
@@ -49,12 +51,8 @@ def sync_collect_task(instance_id):
             # 协议采集
             collect = ProtocolCollect(task=instance)
             result, format_data = collect.main()
-        task_exec_status = (
-            CollectRunStatusType.EXAMINE
-            if instance.input_method
-            else CollectRunStatusType.SUCCESS
-        )
-        instance.exec_status = task_exec_status
+
+        instance.exec_status = CollectRunStatusType.SUCCESS
 
     except Exception as err:
         import traceback
@@ -143,7 +141,7 @@ def sync_collect_task(instance_id):
                 instance_id, traceback.format_exc()
             )
         )
-        CollectModels.objects.filter(id=instance_id).update(
+        CollectModels._default_manager.filter(id=instance_id).update(
             exec_status=CollectRunStatusType.ERROR,
             collect_digest={"message": "保存采集结果失败: {}".format(err)},
         )
@@ -160,7 +158,7 @@ def sync_periodic_update_task_status():
     """
     logger.info("==开始周期执行修改采集状态==")
     five_minutes_ago = datetime.now() - timedelta(minutes=5)
-    rows = CollectModels.objects.filter(
+    rows = CollectModels._default_manager.filter(
         exec_status=CollectRunStatusType.RUNNING, exec_time__lt=five_minutes_ago
     ).update(exec_status=CollectRunStatusType.ERROR)
     logger.info("开始周期执行修改采集状态完成, rows={}".format(rows))
@@ -230,3 +228,15 @@ def sync_public_enum_library_snapshots_task(
         f"trigger={trigger}, operator={operator}"
     )
     return sync_library_snapshots(library_id, trigger, operator)
+
+
+@shared_task
+def check_subscription_rules() -> None:
+    SubscriptionTaskService.check_rules()
+
+
+@shared_task
+def send_subscription_notifications(
+    event_groups: list[dict] | None = None,
+) -> None:
+    SubscriptionTaskService.send_notifications(event_groups=event_groups)

@@ -1,0 +1,3536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlueKing Lite - 自定义API模版</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            color: #313238;
+            min-height: 100vh;
+            font-size: 14px;
+        }
+
+        /* 顶部导航栏 */
+        .top-header {
+            background: #fff;
+            height: 60px;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+
+        .logo-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .app-switcher {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: #f5f7fa;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #646a73;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .app-switcher:hover {
+            background: rgba(0, 82, 217, 0.06);
+            color: #0052d9;
+        }
+
+        .app-switcher svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 8px;
+            margin-left: 48px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #646a73;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .nav-item.active {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.1);
+        }
+
+        .nav-item svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        a.nav-item {
+            text-decoration: none;
+        }
+
+        a.nav-item:hover,
+        a.nav-item.active {
+            color: #0052d9;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: #646a73;
+            font-size: 14px;
+        }
+
+        .header-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .header-icon:hover {
+            background: rgba(0, 0, 0, 0.04);
+            color: #0052d9;
+        }
+
+        .header-icon svg {
+            width: 20px;
+            height: 20px;
+            color: #646a73;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .user-info:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .user-info svg {
+            width: 14px;
+            height: 14px;
+            color: #979ba5;
+        }
+
+        /* 二级导航 */
+        .sub-header {
+            background: #fff;
+            height: 48px;
+            border-bottom: 1px solid #dcdee5;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+        }
+
+        .sub-nav {
+            display: flex;
+            gap: 4px;
+        }
+
+        .sub-nav-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #63656e;
+            border-radius: 4px;
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .sub-nav-item:hover {
+            color: #3a84ff;
+            background: #e1ecff;
+        }
+
+        .sub-nav-item.active {
+            color: #3a84ff;
+            background: #e1ecff;
+        }
+
+        /* 模版头部信息 */
+        .template-header {
+            background: #fff;
+            padding: 24px 32px;
+            border-bottom: 1px solid #dcdee5;
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .template-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #e1ecff 0%, #d4e3fc 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .template-icon svg {
+            width: 28px;
+            height: 28px;
+            color: #3a84ff;
+        }
+
+        .template-info {
+            flex: 1;
+        }
+
+        .template-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #313238;
+            margin-bottom: 8px;
+        }
+
+        .template-desc {
+            font-size: 14px;
+            color: #646a73;
+            line-height: 1.6;
+        }
+
+        /* 主内容区 */
+        .main-container {
+            display: flex;
+            height: calc(100vh - 180px);
+        }
+
+        /* 左侧导航 */
+        .left-sidebar {
+            width: 180px;
+            background: #fff;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin: 16px 16px 16px 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            border: 1px solid #dcdee5;
+        }
+
+        .sidebar-menu {
+            padding: 12px 0;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 20px;
+            cursor: pointer;
+            color: #63656e;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .sidebar-item:hover {
+            background: #f5f7fa;
+            color: #3a84ff;
+        }
+
+        .sidebar-item.active {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .sidebar-item svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .sidebar-back {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 16px 20px;
+            cursor: pointer;
+            color: #63656e;
+            font-size: 14px;
+            border-top: 1px solid #f0f1f5;
+            margin-top: auto;
+            transition: all 0.2s;
+        }
+
+        .sidebar-back:hover {
+            color: #3a84ff;
+            background: #f5f7fa;
+        }
+
+        .sidebar-back svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* 右侧内容区域 */
+        .content-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+            margin: 16px 16px 16px 0;
+        }
+
+        /* 配置表单 */
+        .config-section {
+            margin-bottom: 32px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #313238;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #313238;
+            margin-bottom: 8px;
+        }
+
+        .form-label .required {
+            color: #f5222d;
+            margin-left: 2px;
+        }
+
+        .form-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .form-input {
+            width: 320px;
+            padding: 10px 14px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .form-input:focus {
+            border-color: #3a84ff;
+        }
+
+        .form-input-small {
+            width: 100px;
+            padding: 10px 14px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .form-input-small:focus {
+            border-color: #3a84ff;
+        }
+
+        .form-select {
+            width: 320px;
+            padding: 10px 14px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            background: #fff;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23979ba5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+
+        .form-select:focus {
+            border-color: #3a84ff;
+        }
+
+        .config-card {
+            padding: 20px;
+            background: #f5f7fa;
+            border: 1px solid #eaecf2;
+            border-radius: 6px;
+        }
+
+        .input-suffix {
+            font-size: 14px;
+            color: #63656e;
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: #979ba5;
+            margin-left: 12px;
+        }
+
+        /* 监控对象表格 */
+        .monitor-table-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .monitor-table-title {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #313238;
+        }
+
+        .monitor-table-title .required {
+            color: #f5222d;
+        }
+
+        .selection-meta {
+            margin-top: 4px;
+            font-size: 12px;
+            color: #979ba5;
+            line-height: 1.5;
+        }
+
+        .selection-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+
+        .selection-summary {
+            flex: 1;
+            font-size: 13px;
+            color: #63656e;
+            line-height: 1.5;
+        }
+
+        .table-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-import {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #fff;
+            color: #3a84ff;
+            border: 1px solid #3a84ff;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-import:hover {
+            background: #eaf3ff;
+        }
+
+        .btn-import svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .btn-create-asset {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-create-asset:hover {
+            background: #306ed0;
+        }
+
+        .btn-create-asset svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .btn-upload-assets {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #0052d9;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-upload-assets:hover {
+            background: #0041ad;
+        }
+
+        .btn-upload-assets svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .btn-batch {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #fff;
+            color: #63656e;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-batch:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .btn-batch svg {
+            width: 12px;
+            height: 12px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .data-table th {
+            background: #f5f7fa;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 500;
+            color: #313238;
+            border-bottom: 1px solid #dcdee5;
+        }
+
+        .data-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f1f5;
+            vertical-align: middle;
+        }
+
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .selected-assets-wrap {
+            background: #fff;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .selected-assets-wrap .data-table {
+            border: none;
+            border-radius: 0;
+        }
+
+        .empty-state-card {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 40px 24px;
+            text-align: center;
+            background: #fff;
+        }
+
+        .empty-state-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #313238;
+        }
+
+        .empty-state-desc {
+            max-width: 420px;
+            font-size: 13px;
+            color: #979ba5;
+            line-height: 1.6;
+        }
+
+        .table-link-btn {
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: #3a84ff;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .table-link-btn:hover {
+            color: #306ed0;
+            text-decoration: underline;
+        }
+
+        .table-empty-cell {
+            padding: 24px 16px !important;
+            text-align: center;
+            color: #979ba5;
+        }
+
+        .asset-selector-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .table-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .table-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            background: #fff;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23979ba5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 32px;
+        }
+
+        .table-select:focus {
+            border-color: #3a84ff;
+        }
+
+        .table-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .table-input:focus {
+            border-color: #3a84ff;
+        }
+
+        .tag-select {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            min-height: 36px;
+            padding: 4px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+        }
+
+        .tag {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            background: #f5f7fa;
+            border-radius: 2px;
+            font-size: 12px;
+            color: #63656e;
+        }
+
+        .tag-close {
+            cursor: pointer;
+            color: #979ba5;
+        }
+
+        .tag-close:hover {
+            color: #f5222d;
+        }
+
+        .btn-add {
+            color: #3a84ff;
+            font-size: 14px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .btn-add:hover {
+            text-decoration: underline;
+        }
+
+        /* 确认按钮 */
+        .form-footer {
+            margin-top: 32px;
+        }
+
+        .btn-confirm {
+            padding: 10px 24px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-confirm:hover {
+            background: #306ed0;
+        }
+
+        /* 指标页面样式 */
+        .metrics-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            gap: 16px;
+        }
+
+        .metrics-toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        .metrics-title {
+            font-size: 14px;
+            color: #63656e;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .metrics-search {
+            width: 240px;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            flex-shrink: 0;
+        }
+
+        .metrics-search:focus {
+            border-color: #3a84ff;
+        }
+
+        .metrics-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        .btn-add-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-add-group:hover {
+            background: #306ed0;
+        }
+
+        .btn-add-metric {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #fff;
+            color: #313238;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-add-metric:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        /* 指标分组 */
+        .metric-group {
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .metric-group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #f5f7fa;
+            cursor: pointer;
+        }
+
+        .metric-group-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .drag-handle {
+            color: #979ba5;
+            cursor: grab;
+        }
+
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+
+        .expand-icon {
+            color: #979ba5;
+            transition: transform 0.2s;
+        }
+
+        .expand-icon.expanded {
+            transform: rotate(90deg);
+        }
+
+        .metric-group-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #313238;
+        }
+
+        .metric-group-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .action-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #979ba5;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .action-icon:hover {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .action-icon svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .metric-group-content {
+            display: none;
+        }
+
+        .metric-group-content.expanded {
+            display: block;
+        }
+
+        .metric-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .metric-table th {
+            background: #fff;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 500;
+            color: #63656e;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .metric-table td {
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #313238;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .metric-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .metric-id {
+            color: #3a84ff;
+            font-family: monospace;
+        }
+
+        .metric-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            white-space: nowrap;
+        }
+
+        .metric-action {
+            color: #979ba5;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .metric-action:hover {
+            color: #3a84ff;
+        }
+
+        .metric-action.danger:hover {
+            color: #f5222d;
+        }
+
+        /* 折叠的分组 */
+        .metric-group.collapsed .metric-group-content {
+            display: none;
+        }
+
+        /* 隐藏内容区 */
+        .content-panel {
+            display: none;
+        }
+
+        .content-panel.active {
+            display: block;
+        }
+
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #dcdee5;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #c4c6cc;
+        }
+
+        /* API接入界面样式 */
+        .api-intro {
+            background: #f5f7fa;
+            padding: 16px 20px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .api-intro p {
+            margin: 0;
+            font-size: 14px;
+            color: #63656e;
+            line-height: 1.6;
+        }
+
+        .api-endpoint {
+            background: #f5f7fa;
+            padding: 16px 20px;
+            border-radius: 6px;
+        }
+
+        .endpoint-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .endpoint-method {
+            background: #52c41a;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .endpoint-url {
+            flex: 1;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 14px;
+            color: #313238;
+            background: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #dcdee5;
+        }
+
+        .btn-copy {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 12px;
+            font-size: 13px;
+            color: #3a84ff;
+            background: #fff;
+            border: 1px solid #3a84ff;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-copy:hover {
+            background: #3a84ff;
+            color: #fff;
+        }
+
+        .auth-info {
+            background: #fff;
+            padding: 10px 12px;
+            border: 1px solid #eaecf2;
+            border-radius: 6px;
+        }
+
+        .auth-secret-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .auth-status-tag {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #eaf3ff;
+            color: #3a84ff;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .auth-org-tag {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #f5f7fa;
+            color: #63656e;
+            font-size: 12px;
+        }
+
+        .auth-token {
+            flex: 1 1 240px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            color: #313238;
+            background: #f5f7fa;
+            padding: 7px 10px;
+            border-radius: 4px;
+            border: 1px solid #dcdee5;
+            word-break: break-all;
+        }
+
+        .auth-hint {
+            margin: 6px 0 0;
+            font-size: 12px;
+            color: #7f8795;
+            line-height: 1.5;
+        }
+
+        .auth-hint code {
+            background: #e1ecff;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #3a84ff;
+            font-size: 12px;
+        }
+
+        .auth-warning-inline {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 12px;
+            background: #fffbe6;
+            border: 1px solid #ffe58f;
+            border-radius: 4px;
+        }
+
+        .auth-warning-text {
+            flex: 1;
+            font-size: 13px;
+            color: #8c6d1f;
+            line-height: 1.5;
+        }
+
+        .auth-warning-text strong {
+            display: block;
+            margin-bottom: 2px;
+            color: #7a5d00;
+        }
+
+        .btn-link-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 12px;
+            font-size: 13px;
+            color: #3a84ff;
+            background: #fff;
+            border: 1px solid #3a84ff;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-link-action:hover {
+            background: #3a84ff;
+            color: #fff;
+        }
+
+        .request-example-meta {
+            margin-bottom: 12px;
+            padding: 12px 16px;
+            background: #f5f7fa;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #63656e;
+            line-height: 1.6;
+        }
+
+        .code-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 0;
+            border-bottom: 1px solid #dcdee5;
+        }
+
+        .code-tab {
+            padding: 10px 20px;
+            font-size: 14px;
+            color: #63656e;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: all 0.2s;
+        }
+
+        .code-tab:hover {
+            color: #3a84ff;
+        }
+
+        .code-tab.active {
+            color: #3a84ff;
+            border-bottom-color: #3a84ff;
+        }
+
+        .code-block {
+            position: relative;
+            background: #282c34;
+            border-radius: 0 0 6px 6px;
+            overflow: hidden;
+        }
+
+        .code-block pre {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #abb2bf;
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        .btn-copy-code {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            padding: 6px 12px;
+            font-size: 12px;
+            color: #abb2bf;
+            background: #3e4451;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-copy-code:hover {
+            background: #4d5566;
+            color: #fff;
+        }
+
+        .params-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #dcdee5;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .params-table th {
+            background: #f5f7fa;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 500;
+            color: #63656e;
+            border-bottom: 1px solid #dcdee5;
+        }
+
+        .params-table td {
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #313238;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .params-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .params-table code {
+            background: #f0f1f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            color: #313238;
+        }
+
+        .tag-required {
+            background: #fff1f0;
+            color: #f5222d;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .tag-optional {
+            background: #f5f7fa;
+            color: #979ba5;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .response-block {
+            background: #f5f7fa;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .response-status {
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .response-status.success {
+            background: #f6ffed;
+            color: #52c41a;
+            border-bottom: 1px solid #b7eb8f;
+        }
+
+        .response-status.error {
+            background: #fff1f0;
+            color: #f5222d;
+            border-bottom: 1px solid #ffa39e;
+        }
+
+        .response-block pre {
+            margin: 0;
+            padding: 16px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #313238;
+            background: #fff;
+        }
+
+        /* 弹窗样式 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal {
+            background: #fff;
+            border-radius: 8px;
+            width: 560px;
+            max-height: 85vh;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        .modal-wide {
+            width: 960px;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #313238;
+        }
+
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 4px;
+            color: #979ba5;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: #f5f7fa;
+            color: #313238;
+        }
+
+        .modal-body {
+            padding: 24px;
+            max-height: 65vh;
+            overflow-y: auto;
+        }
+
+        .modal-form-group {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .modal-form-label {
+            width: 96px;
+            font-size: 14px;
+            color: #63656e;
+            text-align: right;
+            padding-top: 8px;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        .modal-form-label .required {
+            color: #f5222d;
+            margin-right: 4px;
+        }
+
+        .modal-form-content {
+            flex: 1;
+            margin-left: 12px;
+        }
+
+        .modal-form-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .modal-form-input:focus {
+            border-color: #3a84ff;
+        }
+
+        .modal-form-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            box-sizing: border-box;
+            background: #fff;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23979ba5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+
+        .modal-form-select:focus {
+            border-color: #3a84ff;
+        }
+
+        .modal-form-textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            box-sizing: border-box;
+            resize: vertical;
+            min-height: 80px;
+            font-family: inherit;
+        }
+
+        .modal-form-textarea:focus {
+            border-color: #3a84ff;
+        }
+
+        .modal-form-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modal-form-row .modal-form-input {
+            flex: 1;
+        }
+
+        .btn-add-field {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+            color: #63656e;
+            flex-shrink: 0;
+        }
+
+        .btn-add-field:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .multi-select-wrapper {
+            position: relative;
+        }
+
+        .multi-select-trigger {
+            width: 100%;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+            color: #313238;
+            font-size: 14px;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .multi-select-trigger:hover {
+            border-color: #3a84ff;
+        }
+
+        .multi-select-trigger svg {
+            width: 14px;
+            height: 14px;
+            color: #979ba5;
+            flex-shrink: 0;
+        }
+
+        .multi-select-trigger-text {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .multi-select-tag {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #f5f7fa;
+            color: #63656e;
+            font-size: 12px;
+            line-height: 1.4;
+            max-width: 100%;
+        }
+
+        .multi-select-tag.locked {
+            background: #eaf3ff;
+            color: #3a84ff;
+            font-weight: 600;
+        }
+
+        .multi-select-panel {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            z-index: 20;
+            background: #fff;
+            border: 1px solid #dcdee5;
+            border-radius: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+            padding: 8px 0;
+        }
+
+        .multi-select-panel.show {
+            display: block;
+        }
+
+        .multi-select-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 12px;
+            font-size: 14px;
+            color: #313238;
+        }
+
+        .multi-select-option:hover {
+            background: #f5f7fa;
+        }
+
+        .multi-select-option input {
+            margin-right: 8px;
+        }
+
+        .multi-select-option-main {
+            display: flex;
+            align-items: center;
+        }
+
+        .multi-select-lock {
+            padding: 2px 8px;
+            background: #eaf3ff;
+            border-radius: 999px;
+            color: #3a84ff;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .multi-select-hint {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #979ba5;
+            line-height: 1.6;
+        }
+
+        .modal-footer {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 16px 24px;
+            border-top: 1px solid #f0f1f5;
+        }
+
+        .btn-modal-cancel {
+            padding: 8px 24px;
+            background: #fff;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-modal-cancel:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .btn-modal-confirm {
+            padding: 8px 24px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-modal-confirm:hover {
+            background: #306ed0;
+        }
+
+        .btn-modal-confirm:disabled {
+            background: #f0f1f5;
+            color: #c4c6cc;
+            cursor: not-allowed;
+        }
+
+        .btn-modal-confirm:disabled:hover {
+            background: #f0f1f5;
+        }
+
+        .asset-modal-tip {
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: #f5f7fa;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #63656e;
+            line-height: 1.6;
+        }
+
+        .asset-modal-toolbar {
+            margin-bottom: 16px;
+        }
+
+        .asset-modal-search {
+            width: 320px;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            background: #fff;
+        }
+
+        .asset-modal-search:focus {
+            border-color: #3a84ff;
+        }
+
+        .asset-modal-table th,
+        .asset-modal-table td {
+            vertical-align: middle;
+        }
+
+        .create-asset-tip {
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: #f5f7fa;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #63656e;
+            line-height: 1.6;
+        }
+
+        .import-drop-zone {
+            border: 1px dashed #d7deea;
+            border-radius: 8px;
+            background: #fff;
+            padding: 24px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .import-drop-zone:hover,
+        .import-drop-zone.dragover {
+            border-color: #3a84ff;
+            background: #f5f9ff;
+        }
+
+        .import-upload-icon {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 12px;
+            color: #2f67e8;
+        }
+
+        .import-upload-main {
+            font-size: 14px;
+            color: #63656e;
+            line-height: 1.6;
+        }
+
+        .import-upload-main .upload-link {
+            color: #3a84ff;
+            margin-left: 4px;
+        }
+
+        .import-upload-file {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #313238;
+            font-weight: 500;
+        }
+
+        .import-upload-tip {
+            margin-top: 14px;
+            font-size: 13px;
+            color: #7f8aa3;
+        }
+
+        .import-template-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: #3a84ff;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .import-template-link svg {
+            width: 14px;
+            height: 14px;
+        }
+
+    </style>
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <span>BlueKing Lite</span>
+            </div>
+            <div class="app-switcher">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+            <nav class="header-nav">
+                <a href="../../视图/视图.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    <span>视图</span>
+                </a>
+                <a href="../../搜索/搜索.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span>搜索</span>
+                </a>
+                <a href="../../事件/告警.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    <span>事件</span>
+                </a>
+                <a href="../集成.html" class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 11a9 9 0 0 1 9 9"/>
+                        <path d="M4 4a16 16 0 0 1 16 16"/>
+                        <circle cx="5" cy="19" r="1"/>
+                    </svg>
+                    <span>集成</span>
+                </a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+            </div>
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </div>
+            <div class="user-info">
+                <div class="user-avatar">陈</div>
+                <span>陈润翼</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- 二级导航 -->
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <a href="../集成.html" class="sub-nav-item active">集成</a>
+            <a href="../资产.html" class="sub-nav-item">资产</a>
+            <a href="../分组.html" class="sub-nav-item">分组</a>
+            <a href="../对象.html" class="sub-nav-item">对象</a>
+        </nav>
+    </div>
+
+    <!-- 模版头部信息 -->
+    <div class="template-header">
+        <div class="template-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+            </svg>
+        </div>
+        <div class="template-info">
+            <div class="template-title">自定义API模版</div>
+            <div class="template-desc">自定义监控模版 - 通过API接口上传自定义监控指标数据</div>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-container">
+        <!-- 左侧导航 -->
+        <div class="left-sidebar">
+            <div class="sidebar-menu">
+                <div class="sidebar-item active" onclick="switchTab('config', this)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    <span>配置</span>
+                </div>
+                <div class="sidebar-item" onclick="switchTab('metrics', this)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                    <span>指标</span>
+                </div>
+            </div>
+            <div class="sidebar-back" onclick="goBack()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 12H5"/>
+                    <polyline points="12 19 5 12 12 5"/>
+                </svg>
+            </div>
+        </div>
+
+        <!-- 右侧内容区域 -->
+        <div class="content-area">
+            <!-- 配置面板 -->
+            <div class="content-panel active" id="configPanel">
+                <!-- 接入配置 -->
+                <div class="config-section">
+                    <div class="section-title">接入配置</div>
+                    <div class="config-card">
+                        <div class="form-group">
+                            <label class="form-label">组织<span class="required">*</span></label>
+                            <div class="form-row">
+                                <select class="form-select" id="organizationSelect" onchange="handleOrganizationChange(this.value)">
+                                    <option value="Default">Default</option>
+                                    <option value="Devops">Devops</option>
+                                    <option value="weops产研">weops产研</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">API秘钥<span class="required">*</span></label>
+                            <div class="auth-info" id="apiSecretContainer"></div>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <div class="monitor-table-header">
+                                <div>
+                                    <div class="monitor-table-title">监控资产<span class="required">*</span></div>
+                                </div>
+                            </div>
+                            <div class="selection-toolbar">
+                                <button class="btn-create-asset" onclick="openCreateAssetModal()">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 5v14"></path>
+                                        <path d="M5 12h14"></path>
+                                    </svg>
+                                    新建资产
+                                </button>
+                                <button class="btn-import" onclick="openAssetModal()">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 5v14"></path>
+                                        <path d="M5 12h14"></path>
+                                    </svg>
+                                    选择已有资产
+                                </button>
+                                <div class="selection-summary" id="assetSummaryText"></div>
+                                <button class="btn-upload-assets" onclick="openImportAssetModal()">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="7 10 12 15 17 10"></polyline>
+                                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                                    </svg>
+                                        导入新资产
+                                </button>
+                                <button class="btn-batch" id="clearAssetsButton" onclick="clearSelectedAssets()">清空选择</button>
+                            </div>
+                            <div class="selected-assets-wrap">
+                                <table class="data-table" id="selectedAssetsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>资产名称</th>
+                                            <th>资产ID</th>
+                                            <th>所属组织</th>
+                                            <th style="width: 88px;">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="selectedAssetsBody"></tbody>
+                                </table>
+                                <div class="empty-state-card" id="selectedAssetsEmpty">
+                                    <div class="empty-state-title">还未选择监控资产</div>
+                                    <div class="empty-state-desc">请先选择组织，再从该组织下可访问的资产中挑选需要接入监控数据的对象。</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API端点 -->
+                <div class="config-section">
+                    <div class="section-title">API端点</div>
+                    <div class="api-endpoint">
+                        <div class="endpoint-row">
+                            <span class="endpoint-method">POST</span>
+                            <code class="endpoint-url">https://api.monitor.example.com/v1/metrics/push</code>
+                            <button class="btn-copy" onclick="copyText('https://api.monitor.example.com/v1/metrics/push')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                复制
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 请求示例 -->
+                <div class="config-section">
+                    <div class="section-title">请求示例</div>
+                    <div class="request-example-meta" id="requestExampleMeta"></div>
+                    <div class="code-tabs">
+                        <div class="code-tab active" onclick="switchCodeTab('curl', this)">cURL</div>
+                        <div class="code-tab" onclick="switchCodeTab('python', this)">Python</div>
+                        <div class="code-tab" onclick="switchCodeTab('javascript', this)">JavaScript</div>
+                    </div>
+                    <div class="code-block" id="curlCode">
+                        <button class="btn-copy-code" onclick="copyCode('curl')">复制代码</button>
+                        <pre></pre>
+                    </div>
+                    <div class="code-block" id="pythonCode" style="display: none;">
+                        <button class="btn-copy-code" onclick="copyCode('python')">复制代码</button>
+                        <pre></pre>
+                    </div>
+                    <div class="code-block" id="javascriptCode" style="display: none;">
+                        <button class="btn-copy-code" onclick="copyCode('javascript')">复制代码</button>
+                        <pre></pre>
+                    </div>
+                </div>
+
+                <!-- 请求参数说明 -->
+                <div class="config-section">
+                    <div class="section-title">请求参数说明</div>
+                    <table class="params-table">
+                        <thead>
+                            <tr>
+                                <th>参数名</th>
+                                <th>类型</th>
+                                <th>必填</th>
+                                <th>说明</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>template_id</code></td>
+                                <td>string</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>模版 ID，当前模版固定为 <code>custom_api_template_001</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>organization</code></td>
+                                <td>string</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>当前接入组织，必须与页面顶部选择的组织一致</td>
+                            </tr>
+                            <tr>
+                                <td><code>timestamp</code></td>
+                                <td>integer</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>Unix 时间戳（秒），表示本次批量上报时间</td>
+                            </tr>
+                            <tr>
+                                <td><code>assets</code></td>
+                                <td>array</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>资产数组，支持一次传递 N 个资产的监控数据</td>
+                            </tr>
+                            <tr>
+                                <td><code>assets[].asset_id</code></td>
+                                <td>string</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>资产唯一标识，对应上方已选择资产的 ID</td>
+                            </tr>
+                            <tr>
+                                <td><code>assets[].asset_name</code></td>
+                                <td>string</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>资产名称，便于服务端审计和展示</td>
+                            </tr>
+                            <tr>
+                                <td><code>assets[].metrics</code></td>
+                                <td>array</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>当前资产的指标数组</td>
+                            </tr>
+                            <tr>
+                                <td><code>assets[].metrics[].name</code></td>
+                                <td>string</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>指标名称，参考“指标”页面的指标列表</td>
+                            </tr>
+                            <tr>
+                                <td><code>assets[].metrics[].value</code></td>
+                                <td>number</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>指标值，支持整数或浮点数</td>
+                            </tr>
+                            <tr>
+                                <td><code>assets[].metrics[].tags</code></td>
+                                <td>object</td>
+                                <td><span class="tag-optional">否</span></td>
+                                <td>标签键值对，用于区分实例与环境，如 <code>{"host": "mysql-prod-01"}</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 响应示例 -->
+                <div class="config-section">
+                    <div class="section-title">响应示例</div>
+                    <div class="response-block">
+                        <div class="response-status success">成功响应 (200)</div>
+                        <pre id="successResponsePre"></pre>
+                    </div>
+                    <div class="response-block" style="margin-top: 16px;">
+                        <div class="response-status error">错误响应 (401)</div>
+<pre>{
+  "code": 40101,
+  "message": "API secret not found for organization",
+  "data": null
+}</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 指标面板 -->
+            <div class="content-panel" id="metricsPanel">
+                <div class="metrics-toolbar">
+                    <div class="metrics-toolbar-left">
+                        <input type="text" class="metrics-search" placeholder="请输入指标名称">
+                    </div>
+                    <div class="metrics-actions">
+                        <button class="btn-add-group">添加组</button>
+                        <button class="btn-add-metric" onclick="openAddMetricModal()">添加指标</button>
+                    </div>
+                </div>
+
+                <!-- 表缓存 -->
+                <div class="metric-group">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon expanded">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">表缓存</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content expanded">
+                        <table class="metric-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;"></th>
+                                    <th style="width: 220px;">ID</th>
+                                    <th style="width: 140px;">名称</th>
+                                    <th style="width: 80px;">维度</th>
+                                    <th style="width: 100px;">数据类型</th>
+                                    <th style="width: 80px;">单位</th>
+                                    <th>描述</th>
+                                    <th style="width: 120px;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        <span class="drag-handle">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                                <circle cx="9" cy="6" r="1.5"/>
+                                                <circle cx="15" cy="6" r="1.5"/>
+                                                <circle cx="9" cy="12" r="1.5"/>
+                                                <circle cx="15" cy="12" r="1.5"/>
+                                                <circle cx="9" cy="18" r="1.5"/>
+                                                <circle cx="15" cy="18" r="1.5"/>
+                                            </svg>
+                                        </span>
+                                    </td>
+                                    <td><span class="metric-id">mysql_table_open_cache_hits_rate</span></td>
+                                    <td>表缓存命中率</td>
+                                    <td>--</td>
+                                    <td>Number</td>
+                                    <td>percent</td>
+                                    <td>表缓存命中率；&lt;95% 需调整 table_open_c...</td>
+                                    <td>
+                                        <div class="metric-actions">
+                                            <span class="metric-action">编辑</span>
+                                            <span class="metric-action danger">删除</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <span class="drag-handle">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                                <circle cx="9" cy="6" r="1.5"/>
+                                                <circle cx="15" cy="6" r="1.5"/>
+                                                <circle cx="9" cy="12" r="1.5"/>
+                                                <circle cx="15" cy="12" r="1.5"/>
+                                                <circle cx="9" cy="18" r="1.5"/>
+                                                <circle cx="15" cy="18" r="1.5"/>
+                                            </svg>
+                                        </span>
+                                    </td>
+                                    <td><span class="metric-id">mysql_table_open_cache_misses...</span></td>
+                                    <td>表缓存未命中请求速率</td>
+                                    <td>--</td>
+                                    <td>Number</td>
+                                    <td>cps</td>
+                                    <td>表缓存未命中的请求次数，反映表缓存的命中...</td>
+                                    <td>
+                                        <div class="metric-actions">
+                                            <span class="metric-action">编辑</span>
+                                            <span class="metric-action danger">删除</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 连接状态 -->
+                <div class="metric-group collapsed">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">连接状态</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content"></div>
+                </div>
+
+                <!-- 网络流量 -->
+                <div class="metric-group collapsed">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">网络流量</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content"></div>
+                </div>
+
+                <!-- 查询性能 -->
+                <div class="metric-group collapsed">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">查询性能</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content"></div>
+                </div>
+
+                <!-- 临时表 -->
+                <div class="metric-group collapsed">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">临时表</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content"></div>
+                </div>
+
+                <!-- InnoDB 性能 -->
+                <div class="metric-group collapsed">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">InnoDB 性能</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建资产弹窗 -->
+    <div class="modal-overlay" id="createAssetModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">新建资产</span>
+                <span class="modal-close" onclick="closeCreateAssetModal()">×</span>
+            </div>
+            <div class="modal-body">
+                <div class="create-asset-tip">新建资产后会自动加入“选择已有资产”列表，并直接选中到当前模板配置中。</div>
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>资产名称：</label>
+                    <div class="modal-form-content">
+                        <input type="text" class="modal-form-input" id="createAssetNameInput" placeholder="请输入资产名称">
+                    </div>
+                </div>
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>所属组织：</label>
+                    <div class="modal-form-content">
+                        <div class="multi-select-wrapper" id="createAssetOrgSelector">
+                            <button type="button" class="multi-select-trigger" onclick="toggleCreateAssetOrgDropdown(event)">
+                                <span class="multi-select-trigger-text" id="createAssetOrgSummary"></span>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M6 9l6 6 6-6"></path>
+                                </svg>
+                            </button>
+                            <div class="multi-select-panel" id="createAssetOrgPanel">
+                                <div id="createAssetOrgOptions"></div>
+                            </div>
+                        </div>
+                        <div class="multi-select-hint">当前页面组织会自动选中且不可取消，你可以额外勾选其他组织。</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" onclick="closeCreateAssetModal()">取 消</button>
+                <button class="btn-modal-confirm" onclick="confirmCreateAsset()">确 认</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 选择资产弹窗 -->
+    <div class="modal-overlay" id="assetSelectorModal">
+        <div class="modal modal-wide">
+            <div class="modal-header">
+                <span class="modal-title">选择接入资产</span>
+                <span class="modal-close" onclick="closeAssetModal()">×</span>
+            </div>
+            <div class="modal-body">
+                <div class="asset-modal-tip">仅展示所属组织包含当前组织的资产。确认后，请求示例会自动按所选资产生成批量上报 payload。</div>
+                <div class="asset-modal-toolbar">
+                    <input
+                        type="text"
+                        class="asset-modal-search"
+                        id="assetModalSearch"
+                        placeholder="按资产名称搜索"
+                        oninput="handleAssetSearch(this.value)">
+                </div>
+                <table class="params-table asset-modal-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 56px; text-align: center;">
+                                <input type="checkbox" class="asset-selector-checkbox" id="assetModalSelectAll" onchange="toggleAllDraftAssets(this.checked)">
+                            </th>
+                            <th>资产名称</th>
+                            <th>资产ID</th>
+                            <th>所属组织</th>
+                        </tr>
+                    </thead>
+                    <tbody id="assetModalTableBody"></tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" onclick="closeAssetModal()">取 消</button>
+                <button class="btn-modal-confirm" onclick="confirmAssetSelection()">确 认</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导入新资产弹窗 -->
+    <div class="modal-overlay" id="importAssetModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">导入新资产</span>
+                <span class="modal-close" onclick="closeImportAssetModal()">×</span>
+            </div>
+            <div class="modal-body">
+                <input type="file" id="importAssetFileInput" accept=".xlsx" style="display: none;" onchange="handleImportFileChange(this)">
+                <div
+                    class="import-drop-zone"
+                    id="importDropZone"
+                    onclick="triggerImportFileSelect()"
+                    ondragover="handleImportDragOver(event)"
+                    ondragleave="handleImportDragLeave(event)"
+                    ondrop="handleImportDrop(event)">
+                    <div class="import-upload-icon">
+                        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 48H16c-6.6 0-12-5.4-12-12s5.4-12 12-12c1.4 0 2.8.2 4.1.7C22.6 17.2 29.8 12 38 12c10.4 0 18.9 8.3 19 18.7 5.8 1 11 6.1 11 12.3 0 6.9-5.6 12.5-12.5 12.5H44"></path>
+                            <path d="M32 44V24"></path>
+                            <path d="M24 32l8-8 8 8"></path>
+                        </svg>
+                    </div>
+                    <div class="import-upload-main" id="importUploadMainText">
+                        点击或拖动文件到此处上传<span class="upload-link">点击上传</span>
+                    </div>
+                    <div class="import-upload-file" id="importUploadFileText" style="display: none;"></div>
+                </div>
+                <div class="import-upload-tip">只能上传xlsx文件,且不超过20MB</div>
+                <button class="import-template-link" onclick="downloadImportTemplate()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    下载模板
+                </button>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-confirm" id="confirmImportAssetButton" onclick="confirmImportAssets()" disabled>确 认</button>
+                <button class="btn-modal-cancel" onclick="closeImportAssetModal()">取 消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加指标弹窗 -->
+    <div class="modal-overlay" id="addMetricModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">添加指标</span>
+                <span class="modal-close" onclick="closeAddMetricModal()">×</span>
+            </div>
+            <div class="modal-body">
+                <!-- ID -->
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>ID：</label>
+                    <div class="modal-form-content">
+                        <input type="text" class="modal-form-input" placeholder="请输入ID">
+                    </div>
+                </div>
+                <!-- 名称 -->
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>名称：</label>
+                    <div class="modal-form-content">
+                        <input type="text" class="modal-form-input" placeholder="请输入名称">
+                    </div>
+                </div>
+                <!-- 组 -->
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>组：</label>
+                    <div class="modal-form-content">
+                        <select class="modal-form-select">
+                            <option value="">请选择分组</option>
+                            <option value="table_cache">表缓存</option>
+                            <option value="query_perf">查询性能</option>
+                            <option value="temp_table">临时表</option>
+                            <option value="innodb">InnoDB 性能</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- 维度 -->
+                <div class="modal-form-group">
+                    <label class="modal-form-label">维度：</label>
+                    <div class="modal-form-content">
+                        <div class="modal-form-row">
+                            <input type="text" class="modal-form-input" placeholder="请输入维度（选填）">
+                            <button class="btn-add-field">+</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- 公式 -->
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>公式：</label>
+                    <div class="modal-form-content">
+                        <textarea class="modal-form-textarea" placeholder="请输入公式"></textarea>
+                    </div>
+                </div>
+                <!-- 数据类型 -->
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>数据类型：</label>
+                    <div class="modal-form-content">
+                        <select class="modal-form-select">
+                            <option value="">请选择数据类型</option>
+                            <option value="number">数字</option>
+                            <option value="enum">枚举</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- 描述 -->
+                <div class="modal-form-group">
+                    <label class="modal-form-label">描述：</label>
+                    <div class="modal-form-content">
+                        <textarea class="modal-form-textarea" placeholder="请输入描述（选填）"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" onclick="closeAddMetricModal()">取 消</button>
+                <button class="btn-modal-confirm" onclick="confirmAddMetric()">确 认</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const organizationOptions = ['Default', 'Devops', 'weops产研'];
+
+        const currentUser = {
+            name: '陈润翼',
+            apiKeys: {
+                Default: 'sk_live_6f8a2b3d...',
+                Devops: 'sk_live_98bc7ae1...'
+            }
+        };
+
+        let assetCatalog = [
+            {
+                id: 'mysql-prod-01',
+                name: 'mysql-prod-01',
+                type: 'MySQL 实例',
+                template: '自定义API模版',
+                organizations: ['Default', 'Devops'],
+                endpoint: '10.0.20.15:3306',
+                cloudArea: '华东-生产',
+                env: 'prod',
+                role: 'master',
+                lastReport: '2025-10-29 11:50:52'
+            },
+            {
+                id: 'mysql-report-01',
+                name: 'mysql-report-01',
+                type: 'MySQL 实例',
+                template: '自定义API模版',
+                organizations: ['Default'],
+                endpoint: '10.0.21.18:3306',
+                cloudArea: '华东-报表',
+                env: 'prod',
+                role: 'replica',
+                lastReport: '2025-10-29 11:47:26'
+            },
+            {
+                id: 'mysql-ci-01',
+                name: 'mysql-ci-01',
+                type: 'MySQL 实例',
+                template: '自定义API模版',
+                organizations: ['Devops'],
+                endpoint: '10.0.40.12:3306',
+                cloudArea: '研发-构建',
+                env: 'test',
+                role: 'primary',
+                lastReport: '2025-10-29 10:32:18'
+            },
+            {
+                id: 'mysql-staging-01',
+                name: 'mysql-staging-01',
+                type: 'MySQL 实例',
+                template: '自定义API模版',
+                organizations: ['Default', 'weops产研'],
+                endpoint: '10.0.52.9:3306',
+                cloudArea: '华南-预发',
+                env: 'staging',
+                role: 'primary',
+                lastReport: '2025-10-29 11:44:08'
+            },
+            {
+                id: 'mysql-sandbox-01',
+                name: 'mysql-sandbox-01',
+                type: 'MySQL 实例',
+                template: '自定义API模版',
+                organizations: ['weops产研'],
+                endpoint: '172.16.0.45:3306',
+                cloudArea: '容器-测试',
+                env: 'test',
+                role: 'sandbox',
+                lastReport: '2025-10-29 11:42:10'
+            }
+        ];
+
+        const apiConfigState = {
+            organization: 'Default',
+            selectedAssetIds: ['mysql-prod-01', 'mysql-report-01', 'mysql-staging-01'],
+            draftAssetIds: [],
+            assetSearchKeyword: '',
+            activeCodeTab: 'curl'
+        };
+
+        const createAssetState = {
+            organizations: [],
+            dropdownOpen: false
+        };
+
+        const importAssetState = {
+            file: null,
+            dragover: false
+        };
+
+        function getAssetById(assetId) {
+            return assetCatalog.find(asset => asset.id === assetId);
+        }
+
+        function getEligibleAssets() {
+            return assetCatalog.filter(asset => asset.organizations.includes(apiConfigState.organization));
+        }
+
+        function getFilteredEligibleAssets() {
+            const keyword = apiConfigState.assetSearchKeyword.trim().toLowerCase();
+            const eligibleAssets = getEligibleAssets();
+
+            if (!keyword) {
+                return eligibleAssets;
+            }
+
+            return eligibleAssets.filter(asset => asset.name.toLowerCase().includes(keyword));
+        }
+
+        function getSelectedAssets() {
+            return apiConfigState.selectedAssetIds
+                .map(assetId => getAssetById(assetId))
+                .filter(asset => asset && asset.organizations.includes(apiConfigState.organization));
+        }
+
+        function getApiSecret() {
+            return currentUser.apiKeys[apiConfigState.organization] || '';
+        }
+
+        function ensureUniqueAssetId(baseId) {
+            const normalizedBaseId = (baseId || 'imported-asset').replace(/^-+|-+$/g, '') || 'imported-asset';
+            let nextId = normalizedBaseId;
+            let suffix = 1;
+
+            while (assetCatalog.some(asset => asset.id === nextId)) {
+                nextId = `${normalizedBaseId}-${suffix}`;
+                suffix += 1;
+            }
+
+            return nextId;
+        }
+
+        function prependAssetsAndSelect(assets) {
+            if (!assets.length) {
+                return;
+            }
+
+            assetCatalog = [...assets, ...assetCatalog];
+            const assetIds = assets.map(asset => asset.id);
+            apiConfigState.selectedAssetIds = [...new Set([...assetIds, ...apiConfigState.selectedAssetIds])];
+            apiConfigState.draftAssetIds = [...new Set([...assetIds, ...apiConfigState.draftAssetIds])];
+            apiConfigState.assetSearchKeyword = '';
+
+            renderConfigState();
+
+            if (document.getElementById('assetSelectorModal').classList.contains('show')) {
+                renderAssetSelector();
+            }
+        }
+
+        function resetCreateAssetState() {
+            createAssetState.organizations = [apiConfigState.organization];
+            createAssetState.dropdownOpen = false;
+
+            const nameInput = document.getElementById('createAssetNameInput');
+            if (nameInput) {
+                nameInput.value = '';
+            }
+
+            renderCreateAssetOrganizations();
+        }
+
+        function renderCreateAssetOrganizations() {
+            const currentOrg = apiConfigState.organization;
+            createAssetState.organizations = [...new Set([
+                currentOrg,
+                ...createAssetState.organizations.filter(org => organizationOptions.includes(org) && org !== currentOrg)
+            ])];
+
+            const summary = document.getElementById('createAssetOrgSummary');
+            const panel = document.getElementById('createAssetOrgPanel');
+            const options = document.getElementById('createAssetOrgOptions');
+
+            if (summary) {
+                summary.innerHTML = createAssetState.organizations.map(org => {
+                    const lockedClass = org === currentOrg ? ' locked' : '';
+                    return `<span class="multi-select-tag${lockedClass}">${org}</span>`;
+                }).join('');
+            }
+
+            if (panel) {
+                panel.classList.toggle('show', createAssetState.dropdownOpen);
+            }
+
+            if (options) {
+                options.innerHTML = organizationOptions.map(org => {
+                    const checked = createAssetState.organizations.includes(org) ? 'checked' : '';
+                    const disabled = org === currentOrg ? 'disabled' : '';
+                    const lockTag = org === currentOrg ? '<span class="multi-select-lock">当前组织</span>' : '';
+                    return `
+                        <label class="multi-select-option">
+                            <span class="multi-select-option-main">
+                                <input type="checkbox" class="asset-selector-checkbox" ${checked} ${disabled} onchange="toggleCreateAssetOrganization('${org}', this.checked)">
+                                <span>${org}</span>
+                            </span>
+                            ${lockTag}
+                        </label>
+                    `;
+                }).join('');
+            }
+        }
+
+        function openCreateAssetModal() {
+            resetCreateAssetState();
+            document.getElementById('createAssetModal').classList.add('show');
+        }
+
+        function closeCreateAssetModal() {
+            createAssetState.dropdownOpen = false;
+            document.getElementById('createAssetModal').classList.remove('show');
+            renderCreateAssetOrganizations();
+        }
+
+        function toggleCreateAssetOrgDropdown(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            createAssetState.dropdownOpen = !createAssetState.dropdownOpen;
+            renderCreateAssetOrganizations();
+        }
+
+        function toggleCreateAssetOrganization(organization, checked) {
+            if (organization === apiConfigState.organization) {
+                return;
+            }
+
+            if (checked) {
+                createAssetState.organizations = [...new Set([...createAssetState.organizations, organization])];
+            } else {
+                createAssetState.organizations = createAssetState.organizations.filter(org => org !== organization);
+            }
+
+            renderCreateAssetOrganizations();
+        }
+
+        function confirmCreateAsset() {
+            const assetNameInput = document.getElementById('createAssetNameInput');
+            const assetName = assetNameInput.value.trim();
+            const organizations = [...new Set([apiConfigState.organization, ...createAssetState.organizations])];
+
+            if (!assetName) {
+                alert('请输入资产名称');
+                assetNameInput.focus();
+                return;
+            }
+
+            const assetIdBase = assetName
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '') || 'custom-asset';
+            const assetId = ensureUniqueAssetId(assetIdBase);
+
+            prependAssetsAndSelect([{
+                id: assetId,
+                name: assetName,
+                type: '自定义资产',
+                template: '自定义API模版',
+                organizations: organizations,
+                endpoint: '--',
+                cloudArea: '自定义',
+                env: 'custom',
+                role: 'custom',
+                lastReport: '待上报'
+            }]);
+
+            closeCreateAssetModal();
+        }
+
+        function resetImportAssetState() {
+            importAssetState.file = null;
+            importAssetState.dragover = false;
+
+            const fileInput = document.getElementById('importAssetFileInput');
+            if (fileInput) {
+                fileInput.value = '';
+            }
+
+            renderImportAssetState();
+        }
+
+        function renderImportAssetState() {
+            const dropZone = document.getElementById('importDropZone');
+            const fileText = document.getElementById('importUploadFileText');
+            const confirmButton = document.getElementById('confirmImportAssetButton');
+
+            if (dropZone) {
+                dropZone.classList.toggle('dragover', importAssetState.dragover);
+            }
+
+            if (fileText) {
+                if (importAssetState.file) {
+                    fileText.style.display = 'block';
+                    fileText.textContent = `已选择文件：${importAssetState.file.name}`;
+                } else {
+                    fileText.style.display = 'none';
+                    fileText.textContent = '';
+                }
+            }
+
+            if (confirmButton) {
+                confirmButton.disabled = !importAssetState.file;
+            }
+        }
+
+        function openImportAssetModal() {
+            resetImportAssetState();
+            document.getElementById('importAssetModal').classList.add('show');
+        }
+
+        function closeImportAssetModal() {
+            document.getElementById('importAssetModal').classList.remove('show');
+            resetImportAssetState();
+        }
+
+        function triggerImportFileSelect() {
+            document.getElementById('importAssetFileInput').click();
+        }
+
+        function validateImportFile(file) {
+            if (!file) {
+                return false;
+            }
+
+            if (!/\.xlsx$/i.test(file.name)) {
+                alert('只能上传xlsx文件');
+                return false;
+            }
+
+            if (file.size > 20 * 1024 * 1024) {
+                alert('文件大小不能超过20MB');
+                return false;
+            }
+
+            return true;
+        }
+
+        function handleImportFile(file) {
+            if (!validateImportFile(file)) {
+                importAssetState.file = null;
+                renderImportAssetState();
+                return;
+            }
+
+            importAssetState.file = file;
+            importAssetState.dragover = false;
+            renderImportAssetState();
+        }
+
+        function handleImportFileChange(input) {
+            const [file] = input.files || [];
+            handleImportFile(file);
+        }
+
+        function handleImportDragOver(event) {
+            event.preventDefault();
+            importAssetState.dragover = true;
+            renderImportAssetState();
+        }
+
+        function handleImportDragLeave(event) {
+            event.preventDefault();
+            importAssetState.dragover = false;
+            renderImportAssetState();
+        }
+
+        function handleImportDrop(event) {
+            event.preventDefault();
+            importAssetState.dragover = false;
+            const [file] = event.dataTransfer.files || [];
+            handleImportFile(file);
+        }
+
+        function buildImportedAssets() {
+            const fileName = importAssetState.file ? importAssetState.file.name.replace(/\.xlsx$/i, '') : '导入新资产';
+            const displayBaseName = fileName || '导入新资产';
+            const sanitizedBaseName = displayBaseName
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '') || 'imported-asset';
+
+            return [1, 2].map(index => {
+                const id = ensureUniqueAssetId(`${sanitizedBaseName}-${index}`);
+                return {
+                    id: id,
+                    name: `${displayBaseName}-${index}`,
+                    type: '导入新资产',
+                    template: '自定义API模版',
+                    organizations: [apiConfigState.organization],
+                    endpoint: '--',
+                    cloudArea: '导入',
+                    env: 'import',
+                    role: 'imported',
+                    lastReport: '待上报'
+                };
+            });
+        }
+
+        function confirmImportAssets() {
+            if (!importAssetState.file) {
+                return;
+            }
+
+            const importedAssets = buildImportedAssets();
+            prependAssetsAndSelect(importedAssets);
+            closeImportAssetModal();
+        }
+
+        function downloadImportTemplate() {
+            alert('模板已下载');
+        }
+
+        function buildMetricPayload(asset, index) {
+            return [
+                {
+                    name: 'mysql_connections_active',
+                    value: 120 + (index * 18),
+                    tags: {
+                        host: asset.name,
+                        env: asset.env
+                    }
+                },
+                {
+                    name: 'mysql_queries_per_second',
+                    value: Number((980.5 + (index * 67.2)).toFixed(1)),
+                    tags: {
+                        host: asset.name,
+                        role: asset.role
+                    }
+                },
+                {
+                    name: 'mysql_slow_queries',
+                    value: index === 0 ? 3 : 1,
+                    tags: {
+                        host: asset.name,
+                        organization: apiConfigState.organization
+                    }
+                }
+            ];
+        }
+
+        function buildRequestPayload() {
+            const selectedAssets = getSelectedAssets();
+            const assets = selectedAssets.length > 0
+                ? selectedAssets.map((asset, index) => ({
+                    asset_id: asset.id,
+                    asset_name: asset.name,
+                    metrics: buildMetricPayload(asset, index)
+                }))
+                : [
+                    {
+                        asset_id: '<请选择资产>',
+                        asset_name: '<请选择资产>',
+                        metrics: [
+                            {
+                                name: 'mysql_connections_active',
+                                value: 150,
+                                tags: {
+                                    host: '<asset-host>'
+                                }
+                            }
+                        ]
+                    }
+                ];
+
+            return {
+                template_id: 'custom_api_template_001',
+                organization: apiConfigState.organization,
+                timestamp: 1710576000,
+                assets: assets
+            };
+        }
+
+        function renderSelectedAssets() {
+            const selectedAssets = getSelectedAssets();
+            const table = document.getElementById('selectedAssetsTable');
+            const tableBody = document.getElementById('selectedAssetsBody');
+            const emptyState = document.getElementById('selectedAssetsEmpty');
+            const clearButton = document.getElementById('clearAssetsButton');
+
+            document.getElementById('assetSummaryText').textContent = selectedAssets.length > 0
+                ? `已选择 ${selectedAssets.length} 个资产，将作为同一批次监控数据上报`
+                : `当前还未选择资产，请从 ${apiConfigState.organization} 组织中选择需要接入监控数据的资产`;
+
+            clearButton.style.display = selectedAssets.length > 0 ? 'inline-flex' : 'none';
+
+            if (!selectedAssets.length) {
+                table.style.display = 'none';
+                emptyState.style.display = 'flex';
+                tableBody.innerHTML = '';
+                return;
+            }
+
+            tableBody.innerHTML = selectedAssets.map(asset => `
+                <tr>
+                    <td>${asset.name}</td>
+                    <td><code>${asset.id}</code></td>
+                    <td>${asset.organizations.join('、')}</td>
+                    <td><button class="table-link-btn" onclick="removeSelectedAsset('${asset.id}')">移除</button></td>
+                </tr>
+            `).join('');
+
+            table.style.display = 'table';
+            emptyState.style.display = 'none';
+        }
+
+        function renderApiSecret() {
+            const secret = getApiSecret();
+            const container = document.getElementById('apiSecretContainer');
+
+            if (secret) {
+                container.innerHTML = `
+                    <div class="auth-secret-line">
+                        <span class="auth-status-tag">自动读取</span>
+                        <span class="auth-org-tag">${apiConfigState.organization}</span>
+                        <code class="auth-token">${secret}</code>
+                        <button class="btn-copy" onclick="copyApiSecret()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            复制
+                        </button>
+                    </div>
+                    <p class="auth-hint">请求 Header：<code>Authorization: Bearer {API秘钥}</code></p>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="auth-warning-inline">
+                    <div class="auth-warning-text">
+                        <strong>未创建 API秘钥</strong>
+                        当前组织 ${apiConfigState.organization} 暂无可用 API 秘钥，请前往系统管理创建。
+                    </div>
+                    <a class="btn-link-action" href="../../../系统管理.html">去创建</a>
+                </div>
+            `;
+        }
+
+        function renderRequestExamples() {
+            const selectedAssets = getSelectedAssets();
+            const secret = getApiSecret() || '<请先在系统管理创建 API 秘钥>';
+            const payload = buildRequestPayload();
+            const payloadText = JSON.stringify(payload, null, 2);
+            const successResponse = {
+                code: 0,
+                message: 'success',
+                data: {
+                    organization: apiConfigState.organization,
+                    received_assets: selectedAssets.length,
+                    processed_metrics: selectedAssets.length * 3
+                }
+            };
+
+            document.getElementById('requestExampleMeta').textContent = getApiSecret()
+                ? `当前组织 ${apiConfigState.organization}，已选择 ${selectedAssets.length} 个资产。示例代码已自动带入该组织下的 API 秘钥，并按资产批量渲染请求体。`
+                : `当前组织 ${apiConfigState.organization}，已选择 ${selectedAssets.length} 个资产。由于该组织尚未创建 API 秘钥，示例代码中会保留创建提示占位。`;
+
+            document.querySelector('#curlCode pre').textContent = [
+                "curl -X POST 'https://api.monitor.example.com/v1/metrics/push' \\",
+                "  -H 'Content-Type: application/json' \\",
+                `  -H 'Authorization: Bearer ${secret}' \\`,
+                `  -d '${payloadText}'`
+            ].join('\n');
+
+            document.querySelector('#pythonCode pre').textContent = [
+                'import requests',
+                '',
+                "url = 'https://api.monitor.example.com/v1/metrics/push'",
+                'headers = {',
+                "    'Content-Type': 'application/json',",
+                `    'Authorization': 'Bearer ${secret}'`,
+                '}',
+                `payload = ${payloadText}`,
+                '',
+                'response = requests.post(url, json=payload, headers=headers)',
+                'print(response.json())'
+            ].join('\n');
+
+            document.querySelector('#javascriptCode pre').textContent = [
+                "const response = await fetch('https://api.monitor.example.com/v1/metrics/push', {",
+                "  method: 'POST',",
+                '  headers: {',
+                "    'Content-Type': 'application/json',",
+                `    'Authorization': 'Bearer ${secret}'`,
+                '  },',
+                `  body: JSON.stringify(${payloadText})`,
+                '});',
+                '',
+                'const result = await response.json();',
+                'console.log(result);'
+            ].join('\n');
+
+            document.getElementById('successResponsePre').textContent = JSON.stringify(successResponse, null, 2);
+        }
+
+        function renderAssetSelector() {
+            const eligibleAssets = getEligibleAssets();
+            const filteredAssets = getFilteredEligibleAssets();
+            const eligibleAssetIds = new Set(eligibleAssets.map(asset => asset.id));
+            apiConfigState.draftAssetIds = apiConfigState.draftAssetIds.filter(assetId => eligibleAssetIds.has(assetId));
+
+            const searchInput = document.getElementById('assetModalSearch');
+            if (searchInput) {
+                searchInput.value = apiConfigState.assetSearchKeyword;
+            }
+
+            const tableBody = document.getElementById('assetModalTableBody');
+            if (!filteredAssets.length) {
+                tableBody.innerHTML = '<tr><td colspan="4" class="table-empty-cell">当前组织下暂无可接入资产</td></tr>';
+                const selectAllCheckbox = document.getElementById('assetModalSelectAll');
+                if (selectAllCheckbox) {
+                    selectAllCheckbox.checked = false;
+                    selectAllCheckbox.indeterminate = false;
+                    selectAllCheckbox.disabled = true;
+                }
+                return;
+            }
+
+            tableBody.innerHTML = filteredAssets.map(asset => {
+                const checked = apiConfigState.draftAssetIds.includes(asset.id) ? 'checked' : '';
+                return `
+                    <tr>
+                        <td><input type="checkbox" class="asset-selector-checkbox" ${checked} onchange="toggleDraftAsset('${asset.id}', this.checked)"></td>
+                        <td>${asset.name}</td>
+                        <td><code>${asset.id}</code></td>
+                        <td>${asset.organizations.join('、')}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            const filteredAssetIds = filteredAssets.map(asset => asset.id);
+            const selectedFilteredCount = filteredAssetIds.filter(assetId => apiConfigState.draftAssetIds.includes(assetId)).length;
+            const selectAllCheckbox = document.getElementById('assetModalSelectAll');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.disabled = false;
+                selectAllCheckbox.checked = selectedFilteredCount > 0 && selectedFilteredCount === filteredAssetIds.length;
+                selectAllCheckbox.indeterminate = selectedFilteredCount > 0 && selectedFilteredCount < filteredAssetIds.length;
+            }
+        }
+
+        function renderConfigState() {
+            document.getElementById('organizationSelect').value = apiConfigState.organization;
+            renderSelectedAssets();
+            renderApiSecret();
+            renderRequestExamples();
+        }
+
+        function handleOrganizationChange(organization) {
+            apiConfigState.organization = organization;
+            apiConfigState.assetSearchKeyword = '';
+            apiConfigState.selectedAssetIds = apiConfigState.selectedAssetIds.filter(assetId => {
+                const asset = getAssetById(assetId);
+                return asset && asset.organizations.includes(organization);
+            });
+            renderConfigState();
+        }
+
+        function openAssetModal() {
+            if (!apiConfigState.organization) {
+                alert('请先选择组织');
+                return;
+            }
+            apiConfigState.draftAssetIds = [...apiConfigState.selectedAssetIds];
+            apiConfigState.assetSearchKeyword = '';
+            renderAssetSelector();
+            document.getElementById('assetSelectorModal').classList.add('show');
+        }
+
+        function closeAssetModal() {
+            document.getElementById('assetSelectorModal').classList.remove('show');
+        }
+
+        function toggleDraftAsset(assetId, checked) {
+            if (checked) {
+                if (!apiConfigState.draftAssetIds.includes(assetId)) {
+                    apiConfigState.draftAssetIds.push(assetId);
+                }
+            } else {
+                apiConfigState.draftAssetIds = apiConfigState.draftAssetIds.filter(id => id !== assetId);
+            }
+            renderAssetSelector();
+        }
+
+        function toggleAllDraftAssets(checked) {
+            const filteredAssetIds = getFilteredEligibleAssets().map(asset => asset.id);
+
+            if (checked) {
+                apiConfigState.draftAssetIds = [...new Set([...apiConfigState.draftAssetIds, ...filteredAssetIds])];
+            } else {
+                apiConfigState.draftAssetIds = apiConfigState.draftAssetIds.filter(assetId => !filteredAssetIds.includes(assetId));
+            }
+
+            renderAssetSelector();
+        }
+
+        function handleAssetSearch(keyword) {
+            apiConfigState.assetSearchKeyword = keyword;
+            renderAssetSelector();
+        }
+
+        function confirmAssetSelection() {
+            apiConfigState.selectedAssetIds = [...new Set(apiConfigState.draftAssetIds)];
+            closeAssetModal();
+            renderConfigState();
+        }
+
+        function clearSelectedAssets() {
+            apiConfigState.selectedAssetIds = [];
+            renderConfigState();
+        }
+
+        function removeSelectedAsset(assetId) {
+            apiConfigState.selectedAssetIds = apiConfigState.selectedAssetIds.filter(id => id !== assetId);
+            renderConfigState();
+        }
+
+        // 切换标签页
+        function switchTab(tab, trigger) {
+            document.querySelectorAll('.sidebar-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            if (trigger) {
+                trigger.classList.add('active');
+            }
+
+            document.querySelectorAll('.content-panel').forEach(panel => {
+                panel.classList.remove('active');
+            });
+
+            if (tab === 'config') {
+                document.getElementById('configPanel').classList.add('active');
+            } else if (tab === 'metrics') {
+                document.getElementById('metricsPanel').classList.add('active');
+            }
+        }
+
+        // 展开/折叠指标分组
+        function toggleMetricGroup(header) {
+            const group = header.closest('.metric-group');
+            const content = group.querySelector('.metric-group-content');
+            const expandIcon = header.querySelector('.expand-icon');
+
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                expandIcon.classList.remove('expanded');
+                group.classList.add('collapsed');
+            } else {
+                content.classList.add('expanded');
+                expandIcon.classList.add('expanded');
+                group.classList.remove('collapsed');
+            }
+        }
+
+        // 返回上一页
+        function goBack() {
+            window.location.href = '../集成.html';
+        }
+
+        // 切换代码示例Tab
+        function switchCodeTab(lang, trigger) {
+            apiConfigState.activeCodeTab = lang;
+            document.querySelectorAll('.code-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            if (trigger) {
+                trigger.classList.add('active');
+            }
+
+            document.getElementById('curlCode').style.display = 'none';
+            document.getElementById('pythonCode').style.display = 'none';
+            document.getElementById('javascriptCode').style.display = 'none';
+
+            document.getElementById(lang + 'Code').style.display = 'block';
+        }
+
+        // 复制文本
+        function copyText(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('已复制到剪贴板');
+            });
+        }
+
+        // 复制 API 秘钥
+        function copyApiSecret() {
+            const secret = getApiSecret();
+            if (!secret) {
+                alert('当前组织还未创建 API 秘钥');
+                return;
+            }
+            navigator.clipboard.writeText(secret).then(() => {
+                alert('API秘钥已复制到剪贴板');
+            });
+        }
+
+        // 复制代码
+        function copyCode(lang) {
+            const codeBlock = document.getElementById(lang + 'Code');
+            const code = codeBlock.querySelector('pre').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                alert('代码已复制到剪贴板');
+            });
+        }
+
+        // 打开添加指标弹窗
+        function openAddMetricModal() {
+            document.getElementById('addMetricModal').classList.add('show');
+        }
+
+        // 关闭添加指标弹窗
+        function closeAddMetricModal() {
+            document.getElementById('addMetricModal').classList.remove('show');
+        }
+
+        // 确认添加指标
+        function confirmAddMetric() {
+            closeAddMetricModal();
+        }
+
+        document.addEventListener('click', event => {
+            const selector = document.getElementById('createAssetOrgSelector');
+            if (!selector || !createAssetState.dropdownOpen) {
+                return;
+            }
+
+            if (!selector.contains(event.target)) {
+                createAssetState.dropdownOpen = false;
+                renderCreateAssetOrganizations();
+            }
+        });
+
+        renderConfigState();
+    </script>
+</body>
+</html>

@@ -24,6 +24,70 @@ import { useSSEStream } from './hooks/useSSEStream';
 import { useSendMessage } from './hooks/useSendMessage';
 import { useReferenceHandler } from './hooks/useReferenceHandler';
 
+const normalizeThinkingText = (value?: string) => {
+  if (!value) return '';
+
+  return value
+    .replace(/<\/?think>/gi, '')
+    .replace(/^\s+/, '')
+    .replace(/\s+$/, '');
+};
+
+const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }> = ({ thinking, isThinking }) => {
+  const [expanded, setExpanded] = useState(Boolean(isThinking));
+  const previousThinkingRef = useRef(Boolean(isThinking));
+
+  useEffect(() => {
+    if (isThinking) {
+      setExpanded(true);
+    } else if (previousThinkingRef.current) {
+      setExpanded(false);
+    }
+
+    previousThinkingRef.current = Boolean(isThinking);
+  }, [isThinking]);
+
+  const normalizedThinking = normalizeThinkingText(thinking);
+
+  if (!normalizedThinking && !isThinking) {
+    return null;
+  }
+
+  const statusText = isThinking ? '思考中' : '已完成思考';
+
+  return (
+    <div className={`${styles.thinkingPanel} ${isThinking ? styles.thinkingPanelActive : styles.thinkingPanelDone}`}>
+      <button
+        type="button"
+        className={styles.thinkingToggle}
+        onClick={() => setExpanded(prev => !prev)}
+      >
+        <span className={styles.thinkingMeta}>
+          <span className={`${styles.thinkingBadge} ${isThinking ? styles.thinkingBadgeActive : styles.thinkingBadgeDone}`}>
+            <span className={styles.thinkingBadgeDot} />
+            {statusText}
+          </span>
+        </span>
+        <span className={styles.thinkingAside}>
+          {isThinking && <span className={styles.thinkingDots}><span /><span /><span /></span>}
+          <span className={`${styles.thinkingIconButton} ${expanded ? styles.thinkingIconButtonExpanded : ''}`}>
+            <span className={`${styles.thinkingArrow} ${expanded ? styles.thinkingArrowExpanded : ''}`}>⌟</span>
+          </span>
+        </span>
+      </button>
+      {expanded && (
+        <div className={styles.thinkingBody}>
+          {normalizedThinking ? (
+            <div className={styles.thinkingText}>{normalizedThinking}</div>
+          ) : (
+            <div className={styles.thinkingPlaceholder}>正在整理思路...</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const md = new MarkdownIt({
   html: true, // Enable raw HTML (sanitized by DOMPurify)
   highlight: function (str: string, lang: string) {
@@ -338,7 +402,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   );
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images, browserStepsHistory } = msg;
+    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking } = msg;
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
     const html = sanitizeHtml(md.render(replacedContent));
@@ -361,6 +425,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             </Image.PreviewGroup>
           </div>
         )}
+        <ThinkingPanel thinking={thinking} isThinking={isThinking} />
         {browserStepsHistory && browserStepsHistory.steps.length > 0 && (
           <BrowserStepProgress history={browserStepsHistory} />
         )}
@@ -603,7 +668,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <Flex gap="small" vertical>
             {messages.map(msg => {
               const hasBrowserSteps = msg.browserStepsHistory && msg.browserStepsHistory.steps.length > 0;
-              const isEmptyMessage = !msg.content && !hasBrowserSteps;
+              const hasThinking = Boolean(normalizeThinkingText(msg.thinking)) || Boolean(msg.isThinking);
+              const isEmptyMessage = !msg.content && !hasBrowserSteps && !hasThinking;
               const isCurrentBotLoading = loading && currentBotMessageRef.current?.id === msg.id;
               return (
                 <Bubble
@@ -621,7 +687,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     )
                   }}
                   footer={
-                    isEmptyMessage && isCurrentBotLoading ? null : (
+                    isCurrentBotLoading ? null : (
                       <MessageActions
                         message={msg}
                         onCopy={handleCopyMessage}

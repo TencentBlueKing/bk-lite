@@ -15,6 +15,9 @@ from ag_ui.core import (
     TextMessageContentEvent,
     TextMessageEndEvent,
     TextMessageStartEvent,
+    ThinkingTextMessageContentEvent,
+    ThinkingTextMessageEndEvent,
+    ThinkingTextMessageStartEvent,
     ToolCallArgsEvent,
     ToolCallEndEvent,
     ToolCallResultEvent,
@@ -365,15 +368,125 @@ class BasicGraph(ABC):
         run_id: str,
         current_message_id: Optional[str],
         message_started: bool,
-    ) -> tuple[list[str], Optional[str], bool]:
+        show_think: bool,
+        thinking_started: bool,
+    ) -> tuple[list[str], Optional[str], bool, bool]:
         """处理 on_chat_model_stream 事件中的文本内容
 
         Returns:
-            (events_to_yield, updated_message_id, updated_message_started)
+            (events_to_yield, updated_message_id, updated_message_started, updated_thinking_started)
         """
         events = []
         if not (chunk and hasattr(chunk, "content") and chunk.content):
-            return events, current_message_id, message_started
+            return events, current_message_id, message_started, thinking_started
+
+        content_delta = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
+
+        if show_think:
+            remaining_content = content_delta
+            while remaining_content:
+                think_start = remaining_content.find("<think>")
+                if think_start == -1:
+                    if remaining_content:
+                        if not message_started:
+                            current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
+                            message_started = True
+                            events.append(
+                                encoder.encode(
+                                    TextMessageStartEvent(
+                                        type=EventType.TEXT_MESSAGE_START,
+                                        message_id=current_message_id,
+                                        role="assistant",
+                                        timestamp=int(time.time() * 1000),
+                                    )
+                                )
+                            )
+                        events.append(
+                            encoder.encode(
+                                TextMessageContentEvent(
+                                    type=EventType.TEXT_MESSAGE_CONTENT,
+                                    message_id=current_message_id,
+                                    delta=remaining_content,
+                                    timestamp=int(time.time() * 1000),
+                                )
+                            )
+                        )
+                    break
+
+                plain_prefix = remaining_content[:think_start]
+                if plain_prefix:
+                    if not message_started:
+                        current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
+                        message_started = True
+                        events.append(
+                            encoder.encode(
+                                TextMessageStartEvent(
+                                    type=EventType.TEXT_MESSAGE_START,
+                                    message_id=current_message_id,
+                                    role="assistant",
+                                    timestamp=int(time.time() * 1000),
+                                )
+                            )
+                        )
+                    events.append(
+                        encoder.encode(
+                            TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
+                                message_id=current_message_id,
+                                delta=plain_prefix,
+                                timestamp=int(time.time() * 1000),
+                            )
+                        )
+                    )
+
+                remaining_content = remaining_content[think_start + len("<think>") :]
+                think_end = remaining_content.find("</think>")
+
+                if not thinking_started:
+                    thinking_started = True
+                    events.append(
+                        encoder.encode(
+                            ThinkingTextMessageStartEvent(
+                                type=EventType.THINKING_TEXT_MESSAGE_START,
+                                timestamp=int(time.time() * 1000),
+                            )
+                        )
+                    )
+
+                if think_end == -1:
+                    if remaining_content:
+                        events.append(
+                            encoder.encode(
+                                ThinkingTextMessageContentEvent(
+                                    type=EventType.THINKING_TEXT_MESSAGE_CONTENT,
+                                    delta=remaining_content,
+                                )
+                            )
+                        )
+                    remaining_content = ""
+                else:
+                    think_content = remaining_content[:think_end]
+                    if think_content:
+                        events.append(
+                            encoder.encode(
+                                ThinkingTextMessageContentEvent(
+                                    type=EventType.THINKING_TEXT_MESSAGE_CONTENT,
+                                    delta=think_content,
+                                )
+                            )
+                        )
+                    events.append(
+                        encoder.encode(
+                            ThinkingTextMessageEndEvent(
+                                type=EventType.THINKING_TEXT_MESSAGE_END,
+                                timestamp=int(time.time() * 1000),
+                            )
+                        )
+                    )
+                    thinking_started = False
+                    remaining_content = remaining_content[think_end + len("</think>") :]
+
+            return events, current_message_id, message_started, thinking_started
 
         # 首次输出内容时发送 TEXT_MESSAGE_START
         if not message_started:
@@ -391,7 +504,6 @@ class BasicGraph(ABC):
             )
 
         # 发送内容块 (token-by-token)
-        content_delta = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
         events.append(
             encoder.encode(
                 TextMessageContentEvent(
@@ -402,7 +514,7 @@ class BasicGraph(ABC):
                 )
             )
         )
-        return events, current_message_id, message_started
+        return events, current_message_id, message_started, thinking_started
 
     def _handle_tool_call_chunks(
         self,
@@ -628,7 +740,8 @@ class BasicGraph(ABC):
         current_message_id: Optional[str] = None
         current_tool_calls: Dict[str, Dict] = {}
         message_started = False
-
+        thinking_started = False
+        show_think = bool((request.extra_config or {}).get("show_think", True))
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
         browser_step_callback = create_browser_step_callback(browser_event_queue, encoder)
@@ -681,8 +794,14 @@ class BasicGraph(ABC):
                 if event_type == "on_chat_model_stream":
                     chunk = event_data.get("chunk")
                     # 处理文本内容
-                    content_events, current_message_id, message_started = self._handle_chat_model_stream_content(
-                        chunk, encoder, run_id, current_message_id, message_started
+                    content_events, current_message_id, message_started, thinking_started = self._handle_chat_model_stream_content(
+                        chunk,
+                        encoder,
+                        run_id,
+                        current_message_id,
+                        message_started,
+                        show_think,
+                        thinking_started,
                     )
                     for ev in content_events:
                         yield ev
@@ -722,6 +841,14 @@ class BasicGraph(ABC):
                     TextMessageEndEvent(
                         type=EventType.TEXT_MESSAGE_END,
                         message_id=current_message_id,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+
+            if thinking_started:
+                yield encoder.encode(
+                    ThinkingTextMessageEndEvent(
+                        type=EventType.THINKING_TEXT_MESSAGE_END,
                         timestamp=int(time.time() * 1000),
                     )
                 )

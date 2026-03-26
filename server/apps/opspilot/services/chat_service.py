@@ -107,9 +107,10 @@ class ChatService:
         Returns:
             chat_kwargs字典、doc_map字典、title_map字典
         """
+        show_think = kwargs.get("show_think", True)
         title_map = doc_map = {}
         naive_rag_request = []
-        extra_config = {}
+        extra_config = {"show_think": show_think}
 
         # 如果启用RAG，搜索文档
         if kwargs["enable_rag"]:
@@ -123,9 +124,9 @@ class ChatService:
 
         # 构建聊天参数
         chat_kwargs = {
-            "openai_api_base": llm_model.decrypted_llm_config["openai_base_url"],
-            "openai_api_key": llm_model.decrypted_llm_config["openai_api_key"],
-            "model": llm_model.decrypted_llm_config["model"],
+            "openai_api_base": llm_model.openai_api_base,
+            "openai_api_key": llm_model.openai_api_key,
+            "model": llm_model.model_name,
             "system_message_prompt": kwargs["skill_prompt"],
             "temperature": kwargs["temperature"],
             "user_message": user_message,

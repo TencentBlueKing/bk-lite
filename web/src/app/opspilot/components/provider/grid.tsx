@@ -5,7 +5,7 @@ import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
 import styles from './index.module.scss';
 import comStyles from '@/app/opspilot/styles/common.module.scss';
-import { Model, ModelConfig } from '@/app/opspilot/types/provider';
+import { Model, ModelConfig, ProviderResourceType } from '@/app/opspilot/types/provider';
 import PermissionWrapper from '@/components/permission';
 import ConfigModal from '@/app/opspilot/components/provider/configModal';
 import { useProviderApi } from '@/app/opspilot/api/provider';
@@ -13,7 +13,7 @@ import { CONFIG_MAP, MODEL_CATEGORY_MAPPING } from '@/app/opspilot/constants/pro
 
 interface ProviderGridProps {
   models: Model[];
-  filterType: string;
+  filterType: ProviderResourceType;
   loading: boolean;
   setModels: React.Dispatch<React.SetStateAction<Model[]>>;
   onRefreshData?: () => void;
@@ -150,7 +150,7 @@ const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading
               />
             </div>
             <div className={`flex-1 ml-2 ${styles.nameContainer}`}>
-              <h3 className={`text-sm font-semibold break-words mb-1 ${styles.name}`}>{model.name}</h3>
+              <h3 className={`text-sm font-semibold wrap-break-word mb-1 ${styles.name}`}>{model.name}</h3>
               <div className="flex flex-wrap gap-1 mt-1">
                 {model.model_type_name && (
                   <span className="inline-block font-mini px-2 py-0.2 rounded-sm bg-blue-50 text-blue-600">

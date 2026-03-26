@@ -1,0 +1,2934 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlueKing Lite - 资产管理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            color: #313238;
+            min-height: 100vh;
+            font-size: 14px;
+        }
+
+        /* ==================== 顶部导航栏 ==================== */
+        .top-header {
+            background: #fff;
+            height: 60px;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+
+        .logo-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .app-switcher {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: #f5f7fa;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #646a73;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .app-switcher:hover {
+            background: rgba(0, 82, 217, 0.06);
+            color: #0052d9;
+        }
+
+        .app-switcher svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 8px;
+            margin-left: 48px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #646a73;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .nav-item.active {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.1);
+        }
+
+        .nav-item svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        a.nav-item {
+            text-decoration: none;
+        }
+
+        a.nav-item:hover,
+        a.nav-item.active {
+            color: #0052d9;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: #646a73;
+            font-size: 14px;
+        }
+
+        .header-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .header-icon:hover {
+            background: rgba(0, 0, 0, 0.04);
+            color: #0052d9;
+        }
+
+        .header-icon svg {
+            width: 20px;
+            height: 20px;
+            color: #646a73;
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .user-avatar:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .user-info:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        .user-info svg {
+            width: 14px;
+            height: 14px;
+            color: #979ba5;
+        }
+
+        /* 二级导航 */
+        .sub-header {
+            background: #fff;
+            height: 48px;
+            border-bottom: 1px solid #dcdee5;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+        }
+
+
+        .sub-nav {
+            display: flex;
+            gap: 4px;
+        }
+
+        .sub-nav-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #63656e;
+            border-radius: 4px;
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .sub-nav-item:hover {
+            color: #3a84ff;
+            background: #e1ecff;
+        }
+
+        .sub-nav-item.active {
+            color: #3a84ff;
+            background: #e1ecff;
+        }
+
+
+        /* 主内容区 */
+        .main-container {
+            display: flex;
+            height: calc(100vh - 108px);
+        }
+
+        /* 左侧导航 */
+        .left-sidebar {
+            width: 260px;
+            background: #fff;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin: 16px 16px 16px 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            border: 1px solid #dcdee5;
+        }
+
+
+        /* 搜索框 */
+        .search-box {
+            padding: 16px;
+        }
+
+        .search-input-wrapper {
+            position: relative;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #979ba5;
+            font-size: 14px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 10px 14px 10px 40px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .search-input:focus {
+            border-color: #3a84ff;
+        }
+
+
+        /* 树形菜单 */
+        .tree-menu {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 12px 20px;
+        }
+
+        .tree-node {
+            user-select: none;
+            margin-bottom: 4px;
+        }
+
+        .tree-node-content {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .tree-node-content:hover {
+            background: #f5f7fa;
+        }
+
+        .tree-node-content.active {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .tree-node-icon {
+            width: 20px;
+            margin-right: 8px;
+            color: #979ba5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .tree-node-icon.expanded {
+            transform: rotate(90deg);
+            color: #3a84ff;
+        }
+
+        .tree-node-label {
+            flex: 1;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 500;
+        }
+
+        .tree-node-count {
+            margin-left: auto;
+            padding: 2px 8px;
+            background: #f0f1f5;
+            color: #979ba5;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .category-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            background: #f0f1f5;
+        }
+
+
+        .tree-children {
+            display: none;
+            padding-left: 24px;
+            margin-top: 4px;
+        }
+
+        .tree-children.expanded {
+            display: block;
+        }
+
+        .all-items {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            margin: 0 0 12px 0;
+            cursor: pointer;
+            border-radius: 4px;
+            background: #f5f7fa;
+        }
+
+        .all-items:hover {
+            background: #e1ecff;
+        }
+
+        .all-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            background: #3a84ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+        }
+
+
+        /* 右侧内容区域 */
+        .content-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+            margin: 16px 16px 16px 0;
+        }
+
+        /* 内容标题 */
+        .content-header {
+            margin-bottom: 20px;
+        }
+
+        .content-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #313238;
+            margin-bottom: 4px;
+        }
+
+        .content-subtitle {
+            font-size: 13px;
+            color: #979ba5;
+        }
+
+        /* 表格工具栏 */
+        .table-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 0;
+            margin-bottom: 16px;
+        }
+
+
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .toolbar-search {
+            position: relative;
+            width: 240px;
+        }
+
+        .toolbar-search .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #979ba5;
+            font-size: 14px;
+        }
+
+        .toolbar-search-input {
+            width: 100%;
+            padding: 10px 14px 10px 36px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .toolbar-search-input:focus {
+            border-color: #3a84ff;
+        }
+
+        .toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .toolbar-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 16px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            background: #fff;
+            color: #63656e;
+        }
+
+
+        .toolbar-btn:hover {
+            background: #e1ecff;
+            color: #3a84ff;
+            border-color: #3a84ff;
+        }
+
+        .toolbar-btn:active {
+            background: #d4e3fc;
+        }
+
+        .btn-refresh:hover {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .btn-bulk-delete:hover {
+            background: #fff1f0;
+            color: #f5222d;
+            border-color: #ffa39e;
+        }
+
+        .toolbar-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .toolbar-btn:disabled:hover {
+            background: white;
+            color: #63656e;
+            border-color: #dcdee5;
+        }
+
+        /* 批量操作下拉菜单 */
+        .bulk-action-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .bulk-action-dropdown .toolbar-btn {
+            min-width: 120px;
+            justify-content: space-between;
+        }
+
+        .dropdown-arrow {
+            font-size: 10px;
+        }
+
+        .bulk-action-dropdown.open .dropdown-arrow {
+            transform: rotate(180deg);
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            background: #fff;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            min-width: 160px;
+            opacity: 0;
+            visibility: hidden;
+            z-index: 1000;
+            overflow: hidden;
+        }
+
+        .bulk-action-dropdown.open .dropdown-menu {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #63656e;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .dropdown-item:hover {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .dropdown-item.danger:hover {
+            background: #fff1f0;
+            color: #f5222d;
+        }
+
+        .dropdown-item:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .dropdown-item:disabled:hover {
+            background: transparent;
+            color: #646a73;
+        }
+
+        .dropdown-icon {
+            font-size: 16px;
+        }
+
+        /* 表格容器 */
+        .table-container {
+            background: #fff;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid #dcdee5;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        /* 表格样式 */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table thead {
+            background: #fafbfc;
+        }
+
+        .data-table th {
+            padding: 14px 20px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            color: #313238;
+            border-bottom: 1px solid #dcdee5;
+        }
+
+        .data-table tbody tr {
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .data-table tbody tr:hover {
+            background: #f5f7fa;
+        }
+
+        .data-table tbody tr.selected {
+            background: #e1ecff;
+        }
+
+        .data-table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        .table-row-checkbox {
+            margin: 0 auto;
+        }
+
+        .data-table td {
+            padding: 14px 20px;
+            font-size: 13px;
+            color: #313238;
+        }
+
+        /* 标签样式 */
+        .tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .tag-type {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .tag-org {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        /* 集成模版标签样式 */
+        .template-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .tag-template {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .tag-template:hover {
+            opacity: 0.85;
+        }
+
+        /* 状态指示点 */
+        .tag-template-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        /* 提示框 */
+        .tag-template-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-8px);
+            background: #313238;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+        }
+
+        .tag-template-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #313238;
+        }
+
+        .tag-template:hover .tag-template-tooltip {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-4px);
+        }
+
+        /* 正常状态 - 绿色 */
+        .tag-template.normal {
+            background: #f6ffed;
+            color: #52c41a;
+        }
+
+        .tag-template.normal .tag-template-dot {
+            background: #52c41a;
+        }
+
+        /* 异常状态 - 红色 */
+        .tag-template.abnormal {
+            background: #fff1f0;
+            color: #f5222d;
+        }
+
+        .tag-template.abnormal .tag-template-dot {
+            background: #f5222d;
+        }
+
+        /* 部分异常状态 - 橙色 */
+        .tag-template.partial {
+            background: #fffbe6;
+            color: #faad14;
+        }
+
+        .tag-template.partial .tag-template-dot {
+            background: #faad14;
+        }
+
+        /* 接入方式标签样式 */
+        .tag-access {
+            position: relative;
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: help;
+        }
+
+        .tag-access.auto {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .tag-access.manual {
+            background: #fffbe6;
+            color: #faad14;
+        }
+
+        /* 接入方式提示框 */
+        .access-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-8px);
+            background: #313238;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+        }
+
+        .access-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #313238;
+        }
+
+        .tag-access:hover .access-tooltip {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-4px);
+        }
+
+        .tag-status {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: help;
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tag-status.normal {
+            background: #f6ffed;
+            color: #52c41a;
+        }
+
+        .tag-status.abnormal {
+            background: #fff1f0;
+            color: #f5222d;
+        }
+
+        .tag-status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .tag-status.normal .tag-status-dot {
+            background: #52c41a;
+        }
+
+        .tag-status.abnormal .tag-status-dot {
+            background: #f5222d;
+        }
+
+        .tag-status.partial {
+            background: #fffbe6;
+            color: #faad14;
+        }
+
+        .tag-status.partial .tag-status-dot {
+            background: #faad14;
+        }
+
+        .tag-status-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-8px);
+            background: #313238;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+        }
+
+        .tag-status-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #313238;
+        }
+
+        .tag-status:hover .tag-status-tooltip {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-4px);
+        }
+
+        /* 操作按钮 */
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn-action {
+            padding: 6px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            background: #fff;
+            color: #63656e;
+        }
+
+        .btn-action:hover {
+            background: #e1ecff;
+            color: #3a84ff;
+            border-color: #3a84ff;
+        }
+
+        .btn-edit:hover {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .btn-config:hover {
+            background: #f6ffed;
+            color: #52c41a;
+        }
+
+        .btn-delete:hover {
+            background: #fff1f0;
+            color: #f5222d;
+        }
+
+        /* 节点卡片样式 */
+        .node-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+        }
+
+        .node-card {
+            background: #fff;
+            border-radius: 4px;
+            padding: 20px;
+            border: 1px solid #dcdee5;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        .node-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-color: #3a84ff;
+        }
+
+        .node-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+
+        .node-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2329;
+            margin-bottom: 4px;
+        }
+
+        .node-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-status {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .node-badge.success {
+            background: #f6ffed;
+            color: #52c41a;
+        }
+
+        .node-badge.success .badge-status {
+            background: #52c41a;
+        }
+
+        .node-badge.warning {
+            background: #fffbe6;
+            color: #faad14;
+        }
+
+        .node-badge.warning .badge-status {
+            background: #faad14;
+        }
+
+        .node-info {
+            margin-bottom: 12px;
+        }
+
+        .node-info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            font-size: 13px;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .node-info-item:last-child {
+            border-bottom: none;
+        }
+
+        .node-info-label {
+            color: #8f959e;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .node-info-value {
+            color: #1f2329;
+            font-weight: 500;
+        }
+
+        .node-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .node-tag {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .node-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #f0f1f5;
+        }
+
+        .node-btn {
+            flex: 1;
+            padding: 8px 16px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            background: #fff;
+            color: #63656e;
+        }
+
+        .node-btn:hover {
+            background: #e1ecff;
+            color: #3a84ff;
+            border-color: #3a84ff;
+        }
+
+        .node-btn.primary {
+            background: #3a84ff;
+            color: white;
+            border: none;
+        }
+
+        .node-btn.primary:hover {
+            background: #306ed0;
+        }
+
+        /* 批量操作工具栏 */
+        .bulk-action-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            margin-bottom: 16px;
+            background: #fff;
+            border-radius: 4px;
+            border: 1px solid #dcdee5;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        .bulk-action-bar.active {
+            border-color: #3a84ff;
+            background: #f0f5ff;
+        }
+
+        .bulk-action-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .bulk-select-all {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .bulk-checkbox {
+            width: 18px;
+            height: 18px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+        }
+
+        .bulk-checkbox:hover {
+            border-color: #3a84ff;
+        }
+
+        .bulk-checkbox.checked {
+            background: #3a84ff;
+            border-color: #3a84ff;
+        }
+
+        .bulk-checkbox.checked::after {
+            content: '✓';
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .bulk-select-text {
+            font-size: 14px;
+            color: #1f2329;
+            font-weight: 500;
+        }
+
+        .bulk-selected-count {
+            padding: 4px 10px;
+            background: #e1ecff;
+            color: #3a84ff;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .bulk-action-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .bulk-btn {
+            padding: 8px 16px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            background: white;
+            color: #63656e;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .bulk-btn:hover {
+            background: #e1ecff;
+            color: #3a84ff;
+            border-color: #3a84ff;
+        }
+
+        .bulk-btn.danger {
+            color: #f5222d;
+        }
+
+        .bulk-btn.danger:hover {
+            background: #fff1f0;
+            color: #f5222d;
+            border-color: #ffa39e;
+        }
+
+        .bulk-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .bulk-btn:disabled:hover {
+            background: white;
+            color: #63656e;
+            border-color: #dcdee5;
+        }
+
+        /* 卡片复选框 */
+        .node-card {
+            position: relative;
+        }
+
+        .node-card.selected {
+            border-color: #3a84ff;
+            background: #f0f5ff;
+            box-shadow: 0 2px 8px rgba(58, 132, 255, 0.15);
+        }
+
+        .card-checkbox {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            width: 18px;
+            height: 18px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            z-index: 10;
+        }
+
+        .card-checkbox:hover {
+            border-color: #3a84ff;
+        }
+
+        .card-checkbox.checked {
+            background: #3a84ff;
+            border-color: #3a84ff;
+        }
+
+        .card-checkbox.checked::after {
+            content: '✓';
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .node-card-header {
+            padding-left: 36px;
+        }
+
+        /* 滚动条样式 */
+        .tree-menu::-webkit-scrollbar,
+        .content-area::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .tree-menu::-webkit-scrollbar-track,
+        .content-area::-webkit-scrollbar-track {
+            background: transparent;
+            margin: 8px 0;
+        }
+
+        .tree-menu::-webkit-scrollbar-thumb,
+        .content-area::-webkit-scrollbar-thumb {
+            background: #c4c6cc;
+            border-radius: 4px;
+        }
+
+        .tree-menu::-webkit-scrollbar-thumb:hover,
+        .content-area::-webkit-scrollbar-thumb:hover {
+            background: #979ba5;
+        }
+
+        /* 抽屉样式 */
+        .drawer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .drawer-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 800px;
+            background: #f5f7fa;
+            box-shadow: -2px 0 8px rgba(0, 0, 0, 0.08);
+            transform: translateX(100%);
+            z-index: 1001;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .drawer.active {
+            transform: translateX(0);
+        }
+
+        .drawer-header {
+            padding: 20px 24px;
+            background: white;
+            border-bottom: 1px solid #dcdee5;
+        }
+
+        .drawer-header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .drawer-title-group {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .drawer-node-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2329;
+        }
+
+        .drawer-close {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: #f5f7fa;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .drawer-close:hover {
+            background: #eaebf0;
+        }
+
+        .drawer-body {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            gap: 0;
+            padding: 0;
+            background: #f5f7fa;
+        }
+
+        /* 集成模版侧边栏 */
+        .template-sidebar {
+            width: 280px;
+            background: #f5f7fa;
+            border-right: 1px solid #dcdee5;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .template-sidebar.hidden {
+            display: none;
+        }
+
+        .template-sidebar-header {
+            padding: 12px;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .template-sidebar-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .template-sidebar-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #8f959e;
+            letter-spacing: 0;
+        }
+
+        .template-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            background: #eaebf0;
+            color: #63656e;
+            border-radius: 9px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .template-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .template-item {
+            display: flex;
+            align-items: center;
+            padding: 14px 16px;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            border: 1px solid #dcdee5;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .template-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: transparent;
+        }
+
+        .template-item:hover {
+            border-color: #3a84ff;
+            background: #f5f7fa;
+        }
+
+        .template-item.active {
+            background: #e1ecff;
+            border-color: #3a84ff;
+        }
+
+        .template-item.active::before {
+            background: #3a84ff;
+        }
+
+        .template-item.error::before {
+            background: #f5222d;
+        }
+
+        .template-item.error:hover {
+            border-color: #f5222d;
+        }
+
+        .template-item.success::before {
+            background: #52c41a;
+        }
+
+        .template-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .template-icon.success {
+            background: #f6ffed;
+            color: #52c41a;
+        }
+
+        .template-icon.error {
+            background: #fff1f0;
+            color: #f5222d;
+        }
+
+        .template-item.active .template-icon,
+        .template-item:hover .template-icon {
+            /* no transform */
+        }
+
+        .template-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .template-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1f2329;
+            line-height: 1.4;
+            margin-bottom: 4px;
+        }
+
+        .template-access-type {
+            font-size: 12px;
+            color: #8f959e;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .access-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .access-badge.auto {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .access-badge.manual {
+            background: #fffbe6;
+            color: #faad14;
+        }
+
+        .template-arrow {
+            color: #c4c6cc;
+            font-size: 16px;
+            opacity: 0;
+            flex-shrink: 0;
+        }
+
+        .template-item:hover .template-arrow,
+        .template-item.active .template-arrow {
+            opacity: 1;
+            color: #3a84ff;
+        }
+
+        /* 模版详情区域 */
+        .template-detail {
+            flex: 1;
+            background: #f5f7fa;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .template-detail-header {
+            padding: 12px 24px;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .detail-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #8f959e;
+            letter-spacing: 0;
+        }
+
+        .detail-status-tag {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .detail-status-tag.error {
+            background: #fff1f0;
+            color: #f5222d;
+        }
+
+        .detail-status-tag.success {
+            background: #f6ffed;
+            color: #52c41a;
+        }
+
+        .template-detail-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        /* 状态卡片 */
+        .status-card {
+            background: white;
+            border-radius: 4px;
+            padding: 20px;
+            margin-bottom: 16px;
+            border: 1px solid #dcdee5;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        .status-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .status-card-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #646a73;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* 配置表格 */
+        .config-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #313238;
+            margin-bottom: 16px;
+            padding: 14px 20px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #dcdee5;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        .config-container {
+            background: white;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid #dcdee5;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        .config-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0;
+        }
+
+        .config-table thead {
+            background: #fafbfc;
+        }
+
+        .config-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            color: #313238;
+            border-bottom: 1px solid #dcdee5;
+            white-space: nowrap;
+        }
+
+        .config-table td {
+            padding: 12px 16px;
+            font-size: 13px;
+            color: #313238;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .config-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .config-table tbody tr {
+            /* no transition */
+        }
+
+        .config-table tbody tr:hover {
+            background: #f5f7fa;
+        }
+
+        .config-edit-link {
+            color: #3a84ff;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            white-space: nowrap;
+        }
+
+        .config-edit-link:hover {
+            background: #e1ecff;
+        }
+
+        .empty-detail {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #8f959e;
+            padding: 40px;
+        }
+
+        .empty-icon {
+            font-size: 56px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .empty-text {
+            font-size: 14px;
+            color: #8f959e;
+        }
+
+        .template-list::-webkit-scrollbar,
+        .template-detail-body::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .template-list::-webkit-scrollbar-track,
+        .template-detail-body::-webkit-scrollbar-track {
+            background: transparent;
+            margin: 8px 0;
+        }
+
+        .template-list::-webkit-scrollbar-thumb,
+        .template-detail-body::-webkit-scrollbar-thumb {
+            background: #c4c6cc;
+            border-radius: 4px;
+        }
+
+        .template-list::-webkit-scrollbar-thumb:hover,
+        .template-detail-body::-webkit-scrollbar-thumb:hover {
+            background: #979ba5;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1024px) {
+            .header-nav {
+                gap: 4px;
+                margin-left: 24px;
+            }
+            
+            .nav-item {
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+
+            .drawer {
+                width: 100%;
+                right: -100%;
+            }
+        }
+
+        /* 暗色模式支持 */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: linear-gradient(135deg, #1a1d23 0%, #0f1115 100%);
+                color: #e8eaed;
+            }
+
+            .top-header,
+            .sub-header {
+                background: rgba(30, 33, 39, 0.95);
+                border-bottom-color: rgba(255, 255, 255, 0.08);
+            }
+
+            .left-sidebar,
+            .content-area {
+                background: rgba(30, 33, 39, 0.9);
+                border-color: rgba(255, 255, 255, 0.08);
+            }
+
+            .search-input {
+                background: rgba(255, 255, 255, 0.05);
+                border-color: rgba(255, 255, 255, 0.1);
+                color: #e8eaed;
+            }
+
+            .search-input:hover {
+                border-color: rgba(58, 132, 255, 0.5);
+                background: rgba(255, 255, 255, 0.08);
+            }
+
+            .search-input:focus {
+                border-color: #3a84ff;
+                background: rgba(255, 255, 255, 0.1);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <span>BlueKing Lite</span>
+            </div>
+            <div class="app-switcher">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+            <nav class="header-nav">
+                <a href="../视图/视图.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    <span>视图</span>
+                </a>
+                <a href="../搜索/搜索.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span>搜索</span>
+                </a>
+                <a href="../事件/告警.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    <span>事件</span>
+                </a>
+                <a href="集成.html" class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 11a9 9 0 0 1 9 9"/>
+                        <path d="M4 4a16 16 0 0 1 16 16"/>
+                        <circle cx="5" cy="19" r="1"/>
+                    </svg>
+                    <span>集成</span>
+                </a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+            </div>
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </div>
+            <div class="user-info">
+                <div class="user-avatar">陈</div>
+                <span>陈润翼</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- 二级导航 -->
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <a href="集成.html" class="sub-nav-item">集成</a>
+            <a href="资产.html" class="sub-nav-item active">资产</a>
+            <a href="分组.html" class="sub-nav-item">分组</a>
+            <a href="对象.html" class="sub-nav-item">对象</a>
+        </nav>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-container">
+        <!-- 左侧导航 -->
+        <div class="left-sidebar">
+            <!-- 搜索框 -->
+            <div class="search-box">
+                <div class="search-input-wrapper">
+                    <span class="search-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></span>
+                    <input type="text" class="search-input" placeholder="搜索...">
+                </div>
+            </div>
+
+            <!-- 树形菜单 -->
+            <div class="tree-menu">
+                <!-- 操作系统 -->
+                <div class="tree-node">
+                    <div class="tree-node-content" onclick="toggleNode(this)">
+                        <span class="tree-node-icon expanded"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span>
+                        <div class="tree-node-label">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            <span>操作系统</span>
+                        </div>
+                    </div>
+                    <div class="tree-children expanded">
+                        <div class="tree-node-content active">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
+                                <span>主机</span>
+                                <span class="tree-node-count">3</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 网络 -->
+                <div class="tree-node">
+                    <div class="tree-node-content" onclick="toggleNode(this)">
+                        <span class="tree-node-icon expanded"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span>
+                        <div class="tree-node-label">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            <span>网络</span>
+                        </div>
+                    </div>
+                    <div class="tree-children expanded">
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+                                <span>网站</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg></div>
+                                <span>Ping</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 数据库 -->
+                <div class="tree-node">
+                    <div class="tree-node-content" onclick="toggleNode(this)">
+                        <span class="tree-node-icon expanded"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span>
+                        <div class="tree-node-label">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            <span>数据库</span>
+                        </div>
+                    </div>
+                    <div class="tree-children expanded">
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></div>
+                                <span>ElasticSearch</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+                                <span>Mysql</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+                                <span>Postgres</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/><line x1="4" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="20" y2="12"/><line x1="12" y1="4" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="20"/></svg></div>
+                                <span>Redis</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+                                <span>Oracle</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+                                <span>DM</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+                                <span>GreenPlum</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+                                <span>MSSQL</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+                                <span>DB2</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+                                <span>MongoDB</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+                                <span>ClickHouse</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+                                <span>GBaseDB</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                        <div class="tree-node-content">
+                            <span class="tree-node-icon"></span>
+                            <div class="tree-node-label">
+                                <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>
+                                <span>OpenGauss</span>
+                                <span class="tree-node-count">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧内容区域 -->
+        <div class="content-area" id="contentArea">
+
+            <!-- 表格工具栏 -->
+            <div class="table-toolbar">
+                <div class="toolbar-left">
+                    <div class="toolbar-search">
+                        <span class="search-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></span>
+                        <input type="text" class="toolbar-search-input" placeholder="按名称搜索..." id="tableSearchInput">
+                    </div>
+                </div>
+                <div class="toolbar-right">
+                    <button class="toolbar-btn btn-refresh" onclick="refreshTable()">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        <span>刷新</span>
+                    </button>
+                    <div class="bulk-action-dropdown" id="bulkActionDropdown">
+                        <button class="toolbar-btn" onclick="toggleBulkActionDropdown()" id="bulkActionBtn">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 批量操作
+                            <span class="dropdown-arrow">▼</span>
+                        </button>
+                        <div class="dropdown-menu" id="dropdownMenu">
+                            <div class="dropdown-item" onclick="bulkEdit()">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                <span>批量编辑</span>
+                            </div>
+                            <div class="dropdown-item" onclick="bulkConfig()">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                <span>修改配置</span>
+                            </div>
+                            <div class="dropdown-item danger" onclick="bulkDelete()">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                <span>批量删除</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据表格 -->
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">
+                                <div class="bulk-checkbox" id="tableSelectAllCheckbox" onclick="toggleSelectAll()"></div>
+                            </th>
+                            <th>名称</th>
+                            <th>集成模版</th>
+                            <th>组织</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- 数据行1: azure-k3s-node-1 -->
+                        <tr data-node-id="node-1" data-access-type="auto">
+                            <td>
+                                <div class="bulk-checkbox table-row-checkbox" onclick="toggleRowSelection(this)"></div>
+                            </td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
+                                    <span style="font-weight: 500;">azure-k3s-node-1</span>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="template-tags">
+                                    <span class="tag-template normal" onclick="openConfigDrawer('azure-k3s-node-1')">
+                                        主机（Telegraf）
+                                        <span class="tag-template-tooltip">正常 - 最后上报: 2025-10-29 11:50:52</span>
+                                    </span>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="tag tag-org">Default</span>
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="btn-action btn-edit">视图</button>
+                                    <button class="btn-action btn-edit">编辑</button>
+                                    <button class="btn-action btn-config" onclick="openConfigDrawer('azure-k3s-node-1')">配置</button>
+                                    <button class="btn-action btn-delete">删除</button>
+                                </div>
+                            </td>
+                        </tr>
+                        
+                        <!-- 数据行2: build-server -->
+                        <tr data-node-id="node-2" data-access-type="manual">
+                            <td>
+                                <div class="bulk-checkbox table-row-checkbox" onclick="toggleRowSelection(this)"></div>
+                            </td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
+                                    <span style="font-weight: 500;">build-server</span>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="template-tags">
+                                    <span class="tag-template abnormal" onclick="openConfigDrawer('build-server')">
+                                        主机（Telegraf）
+                                        <span class="tag-template-tooltip">失联 - 最后上报: 2025-10-29 10:32:18</span>
+                                    </span>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="tag tag-org">Default</span>
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="btn-action btn-edit">视图</button>
+                                    <button class="btn-action btn-edit">编辑</button>
+                                    <button class="btn-action btn-config" onclick="openConfigDrawer('build-server')">配置</button>
+                                    <button class="btn-action btn-delete">删除</button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- 数据行3: web-server -->
+                        <tr data-node-id="node-3" data-access-type="auto">
+                            <td>
+                                <div class="bulk-checkbox table-row-checkbox" onclick="toggleRowSelection(this)"></div>
+                            </td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div class="category-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
+                                    <span style="font-weight: 500;">web-server</span>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="template-tags">
+                                    <span class="tag-template abnormal" onclick="openConfigDrawer('web-server')">
+                                        主机（Telegraf）
+                                        <span class="tag-template-tooltip">失联 - 最后上报: 2025-10-29 11:45:30</span>
+                                    </span>
+                                    <span class="tag-template normal" onclick="openConfigDrawer('web-server')">
+                                        系统时间偏差
+                                        <span class="tag-template-tooltip">正常 - 最后上报: 2025-10-29 11:46:15</span>
+                                    </span>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="tag tag-org">Default</span>
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="btn-action btn-edit">视图</button>
+                                    <button class="btn-action btn-edit">编辑</button>
+                                    <button class="btn-action btn-config" onclick="openConfigDrawer('web-server')">配置</button>
+                                    <button class="btn-action btn-delete">删除</button>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 配置抽屉 -->
+    <div class="drawer-overlay" id="drawerOverlay" onclick="closeConfigDrawer()"></div>
+    <div class="drawer" id="configDrawer">
+        <div class="drawer-header">
+            <div class="drawer-header-top">
+                <div class="drawer-title-group">
+                    <div class="drawer-node-name" id="drawerTitle">资产配置</div>
+                </div>
+                <button class="drawer-close" onclick="closeConfigDrawer()"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+            </div>
+        </div>
+        <div class="drawer-body">
+            <!-- 左侧集成模版列表 -->
+            <div class="template-sidebar">
+                <div class="template-sidebar-header">
+                    <div class="template-sidebar-header-left">
+                        <div class="template-sidebar-title">集成模版列表</div>
+                        <span class="template-count-badge" id="templateCount">0</span>
+                    </div>
+                </div>
+                <div class="template-list" id="templateList">
+                    <!-- 模版列表将通过 JavaScript 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 右侧详情区域 -->
+            <div class="template-detail">
+                <div class="template-detail-header">
+                    <div class="detail-title" id="detailTitle">请选择集成模版</div>
+                </div>
+                <div class="template-detail-body" id="detailBody">
+                    <div class="empty-detail">
+                        <div class="empty-icon"><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
+                        <div class="empty-text">请在左侧选择一个集成模版查看详情</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 模拟集成模版数据
+        const templateData = {
+            'azure-k3s-node-1': {
+                templates: [
+                    {
+                        id: 'host-template',
+                        name: '主机（Telegraf）',
+                        accessType: 'auto', // 自动接入
+                        status: 'success',
+                        statusText: '正常',
+                        lastReport: '2025-10-29 11:50:52',
+                        checkPeriod: 360, // 检查周期（秒）
+                        configs: [
+                            { name: 'CPU', type: 'host', collectPeriod: 60 },
+                            { name: 'Disk', type: 'host', collectPeriod: 120 },
+                            { name: 'Memory', type: 'host', collectPeriod: 60 },
+                            { name: 'Net', type: 'host', collectPeriod: 30 }
+                        ]
+                    }
+                ],
+                lastReport: '2025-10-29 11:50:52'
+            },
+            'build-server': {
+                templates: [
+                    {
+                        id: 'host-template',
+                        name: '主机（Telegraf）',
+                        accessType: 'auto', // 自动接入
+                        status: 'error',
+                        statusText: '失联',
+                        lastReport: '2025-10-29 10:32:18',
+                        checkPeriod: 360, // 检查周期（秒）
+                        errorMsg: '采集器连接超时，请检查网络配置',
+                        configs: [
+                            { name: 'CPU', type: 'host', collectPeriod: 60 },
+                            { name: 'Disk', type: 'host', collectPeriod: 120 },
+                            { name: 'Memory', type: 'host', collectPeriod: 60 },
+                            { name: 'Net', type: 'host', collectPeriod: 30 }
+                        ]
+                    }
+                ],
+                lastReport: '2025-10-29 10:32:18'
+            },
+            'web-server': {
+                templates: [
+                    {
+                        id: 'host-template',
+                        name: '主机（Telegraf）',
+                        accessType: 'auto', // 自动接入
+                        status: 'error',
+                        statusText: '失联',
+                        lastReport: '2025-10-29 11:45:30',
+                        checkPeriod: 360, // 检查周期（秒）
+                        errorMsg: '部分指标采集失败',
+                        configs: [
+                            { name: 'CPU', type: 'host', collectPeriod: 60 },
+                            { name: 'Disk', type: 'host', collectPeriod: 120 },
+                            { name: 'Memory', type: 'host', collectPeriod: 60 },
+                            { name: 'Net', type: 'host', collectPeriod: 30 }
+                        ]
+                    },
+                    {
+                        id: 'gpu-template',
+                        name: '系统时间偏差',
+                        accessType: 'manual', // 手动接入
+                        status: 'success',
+                        statusText: '正常',
+                        lastReport: '2025-10-29 11:46:15',
+                        checkPeriod: 60, // 检查周期（秒）
+                        configs: [
+                            { name: 'GPU使用率', type: 'gpu', collectPeriod: 30 },
+                            { name: 'GPU温度', type: 'gpu', collectPeriod: 60 },
+                            { name: 'GPU显存', type: 'gpu', collectPeriod: 30 }
+                        ]
+                    }
+                ],
+                lastReport: '2025-10-29 11:46:15'
+            }
+        };
+
+        // 当前选中的模版
+        let currentSelectedTemplate = null;
+
+        // 打开配置抽屉
+        function openConfigDrawer(nodeName) {
+            const overlay = document.getElementById('drawerOverlay');
+            const drawer = document.getElementById('configDrawer');
+            const drawerTitle = document.getElementById('drawerTitle');
+            const templateList = document.getElementById('templateList');
+            const templateCount = document.getElementById('templateCount');
+            const templateSidebar = document.querySelector('.template-sidebar');
+            
+            // 设置标题
+            drawerTitle.textContent = nodeName;
+            
+            // 获取数据
+            const data = templateData[nodeName] || { templates: [], lastReport: '-' };
+            
+            // 更新模版数量
+            templateCount.textContent = data.templates.length;
+            
+            // 判断是否只有一个模版，如果是则隐藏左侧列表
+            if (data.templates.length <= 1) {
+                templateSidebar.classList.add('hidden');
+            } else {
+                templateSidebar.classList.remove('hidden');
+            }
+            
+            // 填充模版列表
+            templateList.innerHTML = '';
+            data.templates.forEach((template, index) => {
+                const item = document.createElement('div');
+                item.className = `template-item ${template.status} ${index === 0 ? 'active' : ''}`;
+                item.onclick = () => selectTemplate(nodeName, template.id);
+                
+                const iconClass = template.status === 'success' ? '✓' : '⊗';
+                const accessType = template.accessType || 'manual';
+                const accessText = accessType === 'auto' ? '自动接入' : '手动接入';
+                const accessIcon = accessType === 'auto' ? '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>' : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
+                
+                item.innerHTML = `
+                    <div class="template-icon ${template.status}">${iconClass}</div>
+                    <div class="template-info">
+                        <div class="template-name">${template.name}</div>
+                        <div class="template-access-type">
+                            <span class="access-badge ${accessType}">${accessIcon} ${accessText}</span>
+                        </div>
+                    </div>
+                    <span class="template-arrow">›</span>
+                `;
+                templateList.appendChild(item);
+            });
+            
+            // 默认选中第一个模版
+            if (data.templates.length > 0) {
+                currentSelectedTemplate = { nodeName, templateId: data.templates[0].id };
+                updateTemplateDetail(nodeName, data.templates[0].id);
+            } else {
+                showEmptyDetail();
+            }
+            
+            // 显示抽屉
+            overlay.classList.add('active');
+            drawer.classList.add('active');
+            
+            // 阻止页面滚动
+            document.body.style.overflow = 'hidden';
+        }
+
+        // 关闭配置抽屉
+        function closeConfigDrawer() {
+            const overlay = document.getElementById('drawerOverlay');
+            const drawer = document.getElementById('configDrawer');
+            
+            overlay.classList.remove('active');
+            drawer.classList.remove('active');
+            
+            // 恢复页面滚动
+            document.body.style.overflow = '';
+            
+            // 重置选中状态
+            currentSelectedTemplate = null;
+        }
+
+        // 选择模版
+        function selectTemplate(nodeName, templateId) {
+            // 更新选中状态
+            document.querySelectorAll('.template-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+            
+            // 更新当前选中
+            currentSelectedTemplate = { nodeName, templateId };
+            
+            // 更新详情
+            updateTemplateDetail(nodeName, templateId);
+        }
+
+        // 更新模版详情
+        function updateTemplateDetail(nodeName, templateId) {
+            const data = templateData[nodeName];
+            if (!data) return;
+            
+            const template = data.templates.find(t => t.id === templateId);
+            if (!template) return;
+            
+            const detailTitle = document.getElementById('detailTitle');
+            const detailBody = document.getElementById('detailBody');
+            
+            // 获取接入方式
+            const templateAccessType = template.accessType || 'manual';
+            const isAutoAccess = templateAccessType === 'auto';
+            const accessText = templateAccessType === 'auto' ? '自动接入' : '手动接入';
+            const accessIcon = templateAccessType === 'auto' ? '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>' : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
+            
+            // 设置标题（包含接入方式）
+            detailTitle.innerHTML = `
+                <span>${template.name}</span>
+                <span class="access-badge ${templateAccessType}" style="margin-left: 12px;">${accessIcon} ${accessText}</span>
+            `;
+            
+            // 构建状态卡片HTML
+            const statusHtml = `
+                <div class="status-card">
+                    <div class="status-card-header">
+                        <div class="status-card-title">上报状态</div>
+                        <span class="detail-status-tag ${template.status}">${template.statusText}</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div style="font-size: 13px; color: #8f959e;">
+                            最后上报时间：${template.lastReport}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 构建配置列表HTML
+            let configHtml = '';
+            // 只有自动接入的模版才显示配置列表
+            if (templateAccessType === 'auto' && template.configs && template.configs.length > 0) {
+                const configRows = template.configs.map(config => `
+                    <tr>
+                        <td style="font-weight: 500;">${config.name}</td>
+                        <td style="text-align: center;">
+                            <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; background: rgba(0, 82, 217, 0.08); color: #0052d9; border-radius: 6px; font-size: 13px; font-weight: 600;">
+                                ${config.collectPeriod || 60} 秒
+                            </span>
+                        </td>
+                        <td style="text-align: center;"><a href="#" class="config-edit-link" onclick="editConfig('${templateId}', '${config.name}'); return false;">编辑</a></td>
+                    </tr>
+                `).join('');
+                
+                configHtml = `
+                    <div class="config-container">
+                        <div class="config-section-title" style="border-radius: 10px 10px 0 0; margin-bottom: 0; border: none; box-shadow: none; border-bottom: 2px solid rgba(0, 82, 217, 0.08);">
+                            <span>配置列表</span>
+                            <span style="font-size: 13px; color: #8f959e; font-weight: 500;">${template.configs.length} 项</span>
+                        </div>
+                        <table class="config-table" style="margin-top: 0; border-radius: 0 0 10px 10px; border: none;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50%;">配置名称</th>
+                                    <th style="width: 30%; text-align: center;">采集周期</th>
+                                    <th style="width: 20%; text-align: center;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${configRows}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else if (templateAccessType === 'manual') {
+                // 手动接入显示提示信息
+                configHtml = `
+                    <div class="status-card">
+                        <div style="display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center; padding: 20px 0;">
+                            <div style="font-size: 48px; opacity: 0.3;"><svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>
+                            <div style="font-size: 14px; color: #8f959e; line-height: 1.6;">
+                                手动接入时，请自行管理相关集成配置。
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            detailBody.innerHTML = statusHtml + configHtml;
+        }
+
+        // 显示空状态
+        function showEmptyDetail() {
+            const detailBody = document.getElementById('detailBody');
+            detailBody.innerHTML = `
+                <div class="empty-detail">
+                    <div class="empty-icon"><svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
+                    <div class="empty-text">暂无集成模版</div>
+                </div>
+            `;
+        }
+
+        // 编辑配置
+        function editConfig(templateId, configName) {
+            alert(`编辑配置\n模版: ${templateId}\n配置: ${configName}`);
+            console.log('编辑配置:', templateId, configName);
+        }
+
+        // 保存检查周期
+        function saveCheckPeriod(nodeName, templateId) {
+            const input = document.getElementById(`checkPeriod_${templateId}`);
+            const newPeriod = parseInt(input.value);
+            
+            // 验证输入
+            if (isNaN(newPeriod) || newPeriod < 10 || newPeriod > 3600) {
+                alert('检查周期必须在 10 到 3600 秒之间');
+                return;
+            }
+            
+            // 查找并更新数据
+            const data = templateData[nodeName];
+            if (data) {
+                const template = data.templates.find(t => t.id === templateId);
+                if (template) {
+                    const oldPeriod = template.checkPeriod || 60;
+                    template.checkPeriod = newPeriod;
+                    
+                    // 显示保存动画和提示
+                    const saveBtn = event.target;
+                    const originalText = saveBtn.textContent;
+                    saveBtn.textContent = '✓ 已保存';
+                    saveBtn.style.background = 'linear-gradient(135deg, #52c41a 0%, #73d13d 100%)';
+                    
+                    setTimeout(() => {
+                        saveBtn.textContent = originalText;
+                        saveBtn.style.background = 'linear-gradient(135deg, #0052d9 0%, #3a84ff 100%)';
+                    }, 2000);
+                    
+                    console.log(`检查周期已更新: ${nodeName} - ${templateId}`, {
+                        oldPeriod,
+                        newPeriod
+                    });
+                }
+            }
+        }
+
+        // 选中的节点ID集合
+        let selectedNodes = new Set();
+
+        // 切换树节点展开/收起
+        function toggleNode(element) {
+            const parent = element.parentElement;
+            const children = parent.querySelector('.tree-children');
+            const icon = element.querySelector('.tree-node-icon');
+            
+            if (children) {
+                children.classList.toggle('expanded');
+                icon.classList.toggle('expanded');
+            }
+        }
+
+        // 搜索功能
+        function searchTable() {
+            const searchInput = document.getElementById('tableSearchInput');
+            const searchTerm = searchInput.value.toLowerCase().trim();
+            const rows = document.querySelectorAll('tbody tr[data-node-id]');
+            
+            rows.forEach(row => {
+                const nameCell = row.querySelector('td:nth-child(2)');
+                if (nameCell) {
+                    const name = nameCell.textContent.toLowerCase();
+                    if (name.includes(searchTerm)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                }
+            });
+        }
+
+        // 刷新表格
+        function refreshTable() {
+            const refreshBtn = document.querySelector('.btn-refresh');
+            
+            // 添加旋转动画
+            const icon = refreshBtn.querySelector('span:first-child');
+            icon.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+            icon.style.transform = 'rotate(360deg)';
+            
+            // 模拟刷新操作
+            setTimeout(() => {
+                icon.style.transform = 'rotate(0deg)';
+                
+                // 清空搜索框
+                const searchInput = document.getElementById('tableSearchInput');
+                searchInput.value = '';
+                
+                // 显示所有行
+                const rows = document.querySelectorAll('tbody tr[data-node-id]');
+                rows.forEach(row => {
+                    row.style.display = '';
+                });
+                
+                // 取消所有选择
+                cancelSelection();
+                
+                // 提示刷新成功
+                console.log('表格已刷新');
+            }, 600);
+        }
+
+        // 切换卡片/行选择状态
+        function toggleCardSelection(checkbox) {
+            toggleRowSelection(checkbox);
+        }
+
+        function toggleRowSelection(checkbox) {
+            const row = checkbox.closest('tr');
+            const nodeId = row.getAttribute('data-node-id');
+            
+            if (selectedNodes.has(nodeId)) {
+                selectedNodes.delete(nodeId);
+                checkbox.classList.remove('checked');
+                row.classList.remove('selected');
+            } else {
+                selectedNodes.add(nodeId);
+                checkbox.classList.add('checked');
+                row.classList.add('selected');
+            }
+            
+            updateBulkActionBar();
+            updateBulkActionBtn();
+        }
+
+        // 全选/取消全选
+        function toggleSelectAll() {
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox') || document.getElementById('tableSelectAllCheckbox');
+            const allRows = document.querySelectorAll('tbody tr[data-node-id]');
+            const visibleRows = Array.from(allRows).filter(row => row.style.display !== 'none');
+            
+            if (selectAllCheckbox.classList.contains('checked')) {
+                // 取消全选
+                selectedNodes.clear();
+                selectAllCheckbox.classList.remove('checked');
+                allRows.forEach(row => {
+                    row.classList.remove('selected');
+                    row.querySelector('.table-row-checkbox').classList.remove('checked');
+                });
+            } else {
+                // 全选（仅选中可见的行）
+                selectedNodes.clear();
+                visibleRows.forEach(row => {
+                    const nodeId = row.getAttribute('data-node-id');
+                    selectedNodes.add(nodeId);
+                    row.classList.add('selected');
+                    row.querySelector('.table-row-checkbox').classList.add('checked');
+                });
+                selectAllCheckbox.classList.add('checked');
+            }
+            
+            updateBulkActionBar();
+            updateBulkActionBtn();
+        }
+
+        // 取消选择
+        function cancelSelection() {
+            selectedNodes.clear();
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox') || document.getElementById('tableSelectAllCheckbox');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.classList.remove('checked');
+            }
+            document.querySelectorAll('tbody tr[data-node-id]').forEach(row => {
+                row.classList.remove('selected');
+                const checkbox = row.querySelector('.table-row-checkbox');
+                if (checkbox) {
+                    checkbox.classList.remove('checked');
+                }
+            });
+            updateBulkActionBar();
+            updateBulkActionBtn();
+        }
+
+        // 切换批量操作下拉菜单
+        function toggleBulkActionDropdown() {
+            const dropdown = document.getElementById('bulkActionDropdown');
+            dropdown.classList.toggle('open');
+        }
+
+        // 批量编辑
+        function bulkEdit() {
+            closeBulkActionDropdown();
+            if (selectedNodes.size === 0) {
+                alert('请先选择要编辑的项');
+                return;
+            }
+            alert(`批量编辑 ${selectedNodes.size} 个节点`);
+            console.log('批量编辑选中的节点:', Array.from(selectedNodes));
+        }
+
+        // 批量修改配置
+        function bulkConfig() {
+            closeBulkActionDropdown();
+            if (selectedNodes.size === 0) {
+                alert('请先选择要修改配置的项');
+                return;
+            }
+            alert(`修改配置 ${selectedNodes.size} 个节点`);
+            console.log('批量修改配置:', Array.from(selectedNodes));
+        }
+
+        // 批量删除
+        function bulkDelete() {
+            closeBulkActionDropdown();
+            if (selectedNodes.size === 0) {
+                alert('请先选择要删除的项');
+                return;
+            }
+            
+            const confirmMsg = `确定要删除选中的 ${selectedNodes.size} 个节点吗？`;
+            if (confirm(confirmMsg)) {
+                // 删除选中的行
+                selectedNodes.forEach(nodeId => {
+                    const row = document.querySelector(`tbody tr[data-node-id="${nodeId}"]`);
+                    if (row) {
+                        row.style.transition = 'all 0.3s';
+                        row.style.opacity = '0';
+                        row.style.transform = 'scale(0.95)';
+                        setTimeout(() => {
+                            row.remove();
+                            updateTotalCount();
+                        }, 300);
+                    }
+                });
+                
+                selectedNodes.clear();
+                setTimeout(() => {
+                    updateBulkActionBar();
+                    updateBulkActionBtn();
+                }, 350);
+            }
+        }
+
+        // 关闭批量操作下拉菜单
+        function closeBulkActionDropdown() {
+            const dropdown = document.getElementById('bulkActionDropdown');
+            dropdown.classList.remove('open');
+        }
+
+        // 更新批量操作按钮状态
+        function updateBulkActionBtn() {
+            const bulkActionBtn = document.getElementById('bulkActionBtn');
+            const dropdownItems = document.querySelectorAll('.dropdown-item');
+            
+            if (bulkActionBtn) {
+                if (selectedNodes.size > 0) {
+                    bulkActionBtn.disabled = false;
+                    bulkActionBtn.innerHTML = `<span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>批量操作 (${selectedNodes.size})</span><span class="dropdown-arrow">▼</span>`;
+                    // 启用下拉菜单项
+                    dropdownItems.forEach(item => {
+                        item.style.pointerEvents = 'auto';
+                        item.style.opacity = '1';
+                    });
+                } else {
+                    bulkActionBtn.disabled = false; // 按钮本身不禁用，但下拉项禁用
+                    bulkActionBtn.innerHTML = '<span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>批量操作</span><span class="dropdown-arrow">▼</span>';
+                    // 禁用下拉菜单项（视觉上）
+                    dropdownItems.forEach(item => {
+                        item.style.pointerEvents = 'auto'; // 保持可点击，在函数内部判断
+                        item.style.opacity = '1';
+                    });
+                }
+            }
+        }
+
+        // 更新批量操作工具栏状态
+        function updateBulkActionBar() {
+            const selectedCount = selectedNodes.size;
+            const bulkActionBar = document.getElementById('bulkActionBar');
+            const selectedCountDisplay = document.getElementById('selectedCount');
+            const selectedNumber = document.getElementById('selectedNumber');
+            const cancelSelectBtn = document.getElementById('cancelSelectBtn');
+            const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox') || document.getElementById('tableSelectAllCheckbox');
+            const allRows = document.querySelectorAll('tbody tr[data-node-id]');
+            const visibleRows = Array.from(allRows).filter(row => row.style.display !== 'none');
+            
+            // 更新选中数量显示
+            if (bulkActionBar) {
+                if (selectedCount > 0) {
+                    if (selectedCountDisplay) selectedCountDisplay.style.display = 'block';
+                    if (selectedNumber) selectedNumber.textContent = selectedCount;
+                    bulkActionBar.classList.add('active');
+                    if (cancelSelectBtn) cancelSelectBtn.disabled = false;
+                    if (bulkDeleteBtn) bulkDeleteBtn.disabled = false;
+                } else {
+                    if (selectedCountDisplay) selectedCountDisplay.style.display = 'none';
+                    bulkActionBar.classList.remove('active');
+                    if (cancelSelectBtn) cancelSelectBtn.disabled = true;
+                    if (bulkDeleteBtn) bulkDeleteBtn.disabled = true;
+                }
+            }
+            
+            // 更新全选复选框状态
+            if (selectedCount === visibleRows.length && visibleRows.length > 0) {
+                if (selectAllCheckbox) {
+                    selectAllCheckbox.classList.add('checked');
+                }
+            } else {
+                if (selectAllCheckbox) {
+                    selectAllCheckbox.classList.remove('checked');
+                }
+            }
+        }
+
+        // 更新总数量
+        function updateTotalCount() {
+            const totalRows = document.querySelectorAll('tbody tr[data-node-id]').length;
+            const subtitle = document.querySelector('.content-subtitle');
+            if (subtitle) {
+                subtitle.textContent = `共 ${totalRows} 项`;
+            }
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            // 绑定搜索框事件
+            const searchInput = document.getElementById('tableSearchInput');
+            if (searchInput) {
+                searchInput.addEventListener('input', searchTable);
+            }
+            
+            // 初始化批量操作按钮状态
+            updateBulkActionBtn();
+            
+            // 点击外部区域关闭下拉菜单
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('bulkActionDropdown');
+                const bulkActionBtn = document.getElementById('bulkActionBtn');
+                
+                if (dropdown && bulkActionBtn) {
+                    // 如果点击的不是按钮或下拉菜单内部，则关闭菜单
+                    if (!dropdown.contains(event.target)) {
+                        closeBulkActionDropdown();
+                    }
+                }
+            });
+        });
+
+        // 二级导航切换
+        document.querySelectorAll('.sub-nav-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.sub-nav-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // 树节点选中
+        document.querySelectorAll('.tree-node-content').forEach(node => {
+            if (!node.querySelector('.tree-node-icon')) return;
+            
+            node.addEventListener('click', function(e) {
+                // 如果点击的是展开图标，不处理选中
+                if (e.target.classList.contains('tree-node-icon')) return;
+                
+                document.querySelectorAll('.tree-node-content').forEach(n => n.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

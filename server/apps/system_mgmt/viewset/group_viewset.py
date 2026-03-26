@@ -1,8 +1,9 @@
+from django.core.cache import cache
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
-from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
@@ -33,15 +34,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
     def get_detail(self, request):
         group = Group.objects.get(id=request.GET["group_id"])
         return JsonResponse(
-            {
-                "result": True,
-                "data": {
-                    "name": group.name,
-                    "id": group.id,
-                    "parent_id": group.parent_id,
-                    "is_virtual": group.is_virtual,
-                },
-            }
+            {"result": True, "data": {"name": group.name, "id": group.id, "parent_id": group.parent_id, "is_virtual": group.is_virtual}}
         )
 
     @action(detail=False, methods=["POST"])
@@ -179,14 +172,10 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
                 cache.delete_many(menu_cache_keys)
 
         # 同步组织数据到CMDB
-        CMDB().sync_display_fields(
-            organizations=[
-                {
-                    "id": request.data.get("group_id"),
-                    "name": request.data.get("group_name"),
-                }
-            ]
-        )
+        try:
+            CMDB().sync_display_fields(organizations=[{"id": request.data.get("group_id"), "name": request.data.get("group_name")}])
+        except Exception as e:
+            logger.exception(e)
 
         # 记录操作日志
         log_operation(request, "update", "group", f"编辑组织: {request.data.get('group_name')}")
@@ -244,10 +233,5 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         Group.objects.filter(id__in=groups_to_delete).delete()
 
         # 记录操作日志
-        log_operation(
-            request,
-            "delete",
-            "group",
-            f"删除组织: {obj.name} (包含{len(groups_to_delete)}个子组)",
-        )
+        log_operation(request, "delete", "group", f"删除组织: {obj.name} (包含{len(groups_to_delete)}个子组)")
         return JsonResponse({"result": True})

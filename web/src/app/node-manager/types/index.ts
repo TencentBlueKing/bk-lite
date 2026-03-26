@@ -26,7 +26,10 @@ interface ModalConfig {
 //调用弹窗的类型
 interface ModalRef {
   showModal: (config: ModalConfig) => void;
-  updateLogs?: (logs: LogStep[]) => void;
+  updateLogs?: (
+    logs: LogStep[],
+    newNodeInfo?: { ip?: string; nodeName?: string }
+  ) => void;
 }
 
 interface TopSectionProps {
@@ -76,5 +79,5 @@ export type {
   OptionItem,
   DropDownItem,
   Pagination,
-  SegmentedItem,
+  SegmentedItem
 };

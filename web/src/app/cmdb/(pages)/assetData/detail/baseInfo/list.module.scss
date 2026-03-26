@@ -55,6 +55,7 @@
     background: var(--color-fill-1) !important;
     padding: 10px !important;
     width: 150px !important;
+    vertical-align: top !important;
 }
 
 .list :global(.ant-collapse-content-box) {
@@ -68,6 +69,7 @@
 .list :global(.ant-descriptions-item-content) {
     width: 300px !important;
     padding: 10px !important;
+    vertical-align: top !important;
 }
 
 .list :global(.ant-btn-link) {
