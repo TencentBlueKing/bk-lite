@@ -31,7 +31,7 @@ const useNotifiedStateMap = () => {
     return {
       not_notified: t('alarmCommon.notNotified'),
       success: t('alarmCommon.success'),
-      fail: t('alarmCommon.fail'),
+      failed: t('alarmCommon.failed'),
       partial_success: t('alarmCommon.partialSuccess'),
     };
   }, [t]);
