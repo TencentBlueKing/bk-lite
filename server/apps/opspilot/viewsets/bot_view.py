@@ -1,6 +1,6 @@
 from django.core.paginator import Paginator
 from django.db import connection
-from django.db.models import Count, Max, Min
+from django.db.models import Case, Count, IntegerField, Max, Min, Value, When
 from django.db.models.functions import TruncDay
 from django.http import JsonResponse
 from django_filters import filters
@@ -10,7 +10,7 @@ from rest_framework.decorators import action
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.enum import BotTypeChoice, WorkFlowExecuteType
-from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, WorkFlowConversationHistory
+from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, UserPin, WorkFlowConversationHistory
 from apps.opspilot.serializers import BotSerializer
 from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
@@ -36,14 +36,30 @@ class BotViewSet(AuthViewSet):
     filterset_class = BotFilter
 
     def query_by_groups(self, request, queryset):
-        """重写排序逻辑：置顶优先，再按 ID 倒序"""
+        """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
         new_queryset = self.get_queryset_by_permission(request, queryset)
-        return self._list(new_queryset.order_by("-is_pinned", "-id"))
+        username = request.user.username
+        domain = getattr(request.user, "domain", "")
+        pinned_ids = list(
+            UserPin.objects.filter(
+                username=username,
+                domain=domain,
+                content_type=UserPin.CONTENT_TYPE_BOT,
+            ).values_list("object_id", flat=True)
+        )
+        new_queryset = new_queryset.annotate(
+            is_pinned_for_user=Case(
+                When(id__in=pinned_ids, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        )
+        return self._list(new_queryset.order_by("-is_pinned_for_user", "-id"))
 
     @action(methods=["POST"], detail=True)
     @HasPermission("bot_settings-Edit")
     def toggle_pin(self, request, pk=None):
-        """切换工作台置顶状态"""
+        """切换工作台置顶状态（个人行为）"""
         instance = self.get_object()
         if not request.user.is_superuser:
             current_team = request.COOKIES.get("current_team", "0")
@@ -52,9 +68,20 @@ class BotViewSet(AuthViewSet):
             if not has_permission:
                 message = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
                 return JsonResponse({"result": False, "message": message})
-        instance.is_pinned = not instance.is_pinned
-        instance.save(update_fields=["is_pinned"])
-        return JsonResponse({"result": True, "data": {"is_pinned": instance.is_pinned}})
+        username = request.user.username
+        domain = getattr(request.user, "domain", "")
+        pin_obj, created = UserPin.objects.get_or_create(
+            username=username,
+            domain=domain,
+            content_type=UserPin.CONTENT_TYPE_BOT,
+            object_id=instance.id,
+        )
+        if created:
+            is_pinned = True
+        else:
+            pin_obj.delete()
+            is_pinned = False
+        return JsonResponse({"result": True, "data": {"is_pinned": is_pinned}})
 
     @HasPermission("bot_list-Add")
     def create(self, request, *args, **kwargs):

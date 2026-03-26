@@ -1,53 +1,87 @@
 import uuid
 
 from django.db import models
-from django.utils.functional import cached_property
 
-from apps.core.encoders import PrettyJSONEncoder
 from apps.core.mixinx import EncryptMixin
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.opspilot.enum import SkillTypeChoices
 
+VENDOR_TYPE_CHOICES = (
+    ("openai", "OpenAI"),
+    ("azure", "Azure"),
+    ("aliyun", "阿里云"),
+    ("zhipu", "智谱"),
+    ("baidu", "百度"),
+    ("anthropic", "Anthropic"),
+    ("deepseek", "DeepSeek"),
+    ("other", "其它"),
+)
+
+
+class ModelVendor(models.Model, EncryptMixin):
+    name = models.CharField(max_length=255, verbose_name="名称")
+    vendor_type = models.CharField(max_length=50, choices=VENDOR_TYPE_CHOICES, default="openai", verbose_name="供应商类型")
+    api_base = models.CharField(max_length=500, blank=True, default="", verbose_name="API地址")
+    api_key = models.TextField(blank=True, default="", verbose_name="API Key")
+    enabled = models.BooleanField(default=True, verbose_name="是否启用")
+    team = models.JSONField(default=list, verbose_name="组织")
+    description = models.TextField(blank=True, null=True, default="", verbose_name="简介")
+    is_build_in = models.BooleanField(default=False)
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+    def save(self, *args, **kwargs):
+        vendor_data = {"api_key": self.api_key}
+        self.decrypt_field("api_key", vendor_data)
+        self.encrypt_field("api_key", vendor_data)
+        self.api_key = vendor_data["api_key"]
+        super().save(*args, **kwargs)
+
+    @property
+    def decrypted_api_key(self):
+        vendor_data = {"api_key": self.api_key}
+        self.decrypt_field("api_key", vendor_data)
+        return vendor_data["api_key"]
+
+    class Meta:
+        verbose_name = "供应商"
+        verbose_name_plural = verbose_name
+        db_table = "opspilot_modelvendor"
+
 
 class LLMModel(models.Model, EncryptMixin):
     name = models.CharField(max_length=255, verbose_name="名称")
-    llm_config = models.JSONField(
-        verbose_name="LLM配置",
-        blank=True,
-        null=True,
-        encoder=PrettyJSONEncoder,
-        default=dict,
-    )
     enabled = models.BooleanField(default=True, verbose_name="启用")
     team = models.JSONField(default=list)
     is_build_in = models.BooleanField(default=True, verbose_name="是否内置")
     is_demo = models.BooleanField(default=False)
-    model_type = models.ForeignKey(
-        "ModelType",
+    vendor = models.ForeignKey(
+        "ModelVendor",
         on_delete=models.SET_NULL,
-        verbose_name="模型类型",
+        verbose_name="供应商",
         blank=True,
         null=True,
+        related_name="llm_models",
     )
+    model = models.CharField(max_length=255, verbose_name="模型", blank=True, null=True)
     label = models.CharField(max_length=100, verbose_name="标签", blank=True, null=True)
 
-    def __str__(self):
-        return self.name
+    def __str__(self) -> str:
+        return str(self.name)
 
-    def save(self, *args, **kwargs):
-        if "openai_api_key" in self.llm_config:
-            self.decrypt_field("openai_api_key", self.llm_config)
-            self.encrypt_field("openai_api_key", self.llm_config)
-        super().save(*args, **kwargs)
+    @property
+    def openai_api_key(self):
+        return self.vendor.decrypted_api_key if self.vendor_id else ""
 
-    @cached_property
-    def decrypted_llm_config(self):
-        llm_config_decrypted = self.llm_config.copy()
+    @property
+    def openai_api_base(self):
+        return self.vendor.api_base if self.vendor_id else ""
 
-        if "openai_api_key" in llm_config_decrypted:
-            self.decrypt_field("openai_api_key", llm_config_decrypted)
-        return llm_config_decrypted
+    @property
+    def model_name(self):
+        return self.model or self.name
 
     class Meta:
         verbose_name = "LLM模型"
@@ -57,82 +91,69 @@ class LLMModel(models.Model, EncryptMixin):
 
 class EmbedProvider(models.Model, EncryptMixin):
     name = models.CharField(max_length=255, verbose_name="名称")
-    embed_config = models.JSONField(
-        verbose_name="嵌入配置",
-        blank=True,
-        null=True,
-        encoder=PrettyJSONEncoder,
-        default=dict,
-    )
     enabled = models.BooleanField(default=True, verbose_name="是否启用")
     team = models.JSONField(default=list)
     is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
-    model_type = models.ForeignKey(
-        "ModelType",
+    vendor = models.ForeignKey(
+        "ModelVendor",
         on_delete=models.SET_NULL,
-        verbose_name="模型类型",
+        verbose_name="供应商",
         blank=True,
         null=True,
+        related_name="embed_models",
     )
+    model = models.CharField(max_length=255, verbose_name="模型", blank=True, null=True)
 
-    def __str__(self):
-        return self.name
+    def __str__(self) -> str:
+        return str(self.name)
 
     class Meta:
         verbose_name = "Embed模型"
         verbose_name_plural = verbose_name
         db_table = "model_provider_mgmt_embedprovider"
 
-    def save(self, *args, **kwargs):
-        if "api_key" in self.embed_config:
-            self.decrypt_field("api_key", self.embed_config)
-            self.encrypt_field("api_key", self.embed_config)
-        super().save(*args, **kwargs)
+    @property
+    def api_key(self):
+        return self.vendor.decrypted_api_key if self.vendor_id else ""
 
-    @cached_property
-    def decrypted_embed_config(self):
-        embed_config_decrypted = self.embed_config.copy()
+    @property
+    def base_url(self):
+        return self.vendor.api_base if self.vendor_id else ""
 
-        if "api_key" in embed_config_decrypted:
-            self.decrypt_field("api_key", embed_config_decrypted)
-        return embed_config_decrypted
+    @property
+    def model_name(self):
+        return self.model or self.name
 
 
 class RerankProvider(models.Model, EncryptMixin):
     name = models.CharField(max_length=255, verbose_name="名称")
-    rerank_config = models.JSONField(
-        verbose_name="Rerank配置",
-        blank=True,
-        null=True,
-        encoder=PrettyJSONEncoder,
-        default=dict,
-    )
     enabled = models.BooleanField(default=True, verbose_name="是否启用")
     team = models.JSONField(default=list)
     is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
-    model_type = models.ForeignKey(
-        "ModelType",
+    vendor = models.ForeignKey(
+        "ModelVendor",
         on_delete=models.SET_NULL,
-        verbose_name="模型类型",
+        verbose_name="供应商",
         blank=True,
         null=True,
+        related_name="rerank_models",
     )
+    model = models.CharField(max_length=255, verbose_name="模型", blank=True, null=True)
 
-    def save(self, *args, **kwargs):
-        if "api_key" in self.rerank_config:
-            self.decrypt_field("api_key", self.rerank_config)
-            self.encrypt_field("api_key", self.rerank_config)
-        super().save(*args, **kwargs)
+    @property
+    def api_key(self):
+        return self.vendor.decrypted_api_key if self.vendor_id else ""
 
-    @cached_property
-    def decrypted_rerank_config_config(self):
-        rerank_config_decrypted = self.rerank_config.copy()
-        if "api_key" in rerank_config_decrypted:
-            self.decrypt_field("api_key", rerank_config_decrypted)
-        return rerank_config_decrypted
+    @property
+    def base_url(self):
+        return self.vendor.api_base if self.vendor_id else ""
 
-    def __str__(self):
-        return self.name
+    @property
+    def model_name(self):
+        return self.model or self.name
+
+    def __str__(self) -> str:
+        return str(self.name)
 
     class Meta:
         verbose_name = "Rerank模型"
@@ -142,36 +163,44 @@ class RerankProvider(models.Model, EncryptMixin):
 
 class OCRProvider(models.Model, EncryptMixin):
     name = models.CharField(max_length=255, verbose_name="名称")
-    ocr_config = models.JSONField(
-        verbose_name="OCR配置",
-        blank=True,
-        null=True,
-        default=dict,
-    )
     enabled = models.BooleanField(default=True, verbose_name="是否启用")
     team = models.JSONField(default=list)
     is_build_in = models.BooleanField(default=True, verbose_name="是否内置")
-    model_type = models.ForeignKey(
-        "ModelType",
+    vendor = models.ForeignKey(
+        "ModelVendor",
         on_delete=models.SET_NULL,
-        verbose_name="模型类型",
+        verbose_name="供应商",
         blank=True,
         null=True,
+        related_name="ocr_models",
     )
+    model = models.CharField(max_length=255, verbose_name="模型", blank=True, null=True)
 
-    def __str__(self):
-        return self.name
+    def __str__(self) -> str:
+        return str(self.name)
 
     class Meta:
         verbose_name = "OCR模型"
         verbose_name_plural = verbose_name
         db_table = "model_provider_mgmt_ocrprovider"
 
-    def save(self, *args, **kwargs):
-        if "api_key" in self.ocr_config:
-            self.decrypt_field("api_key", self.ocr_config)
-            self.encrypt_field("api_key", self.ocr_config)
-        super().save(*args, **kwargs)
+    @property
+    def runtime_ocr_config(self):
+        if self.vendor_id:
+            if self.vendor.vendor_type == "azure":
+                return {
+                    "ocr_type": "azure_ocr",
+                    "endpoint": self.vendor.api_base,
+                    "api_key": self.vendor.decrypted_api_key,
+                    "model": self.model or "",
+                }
+        return {
+            "ocr_type": "olm_ocr",
+            "base_url": self.vendor.api_base if self.vendor_id else "",
+            "endpoint": self.vendor.api_base if self.vendor_id else "",
+            "api_key": self.vendor.decrypted_api_key if self.vendor_id else "",
+            "model": self.model or "olmOCR-7B-0225-preview",
+        }
 
 
 class LLMSkill(MaintainerInfo):
@@ -220,7 +249,6 @@ class LLMSkill(MaintainerInfo):
     enable_query_rewrite = models.BooleanField(default=False, verbose_name="问题优化")
     instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name="实例ID", db_index=True)
     is_builtin = models.BooleanField(default=False, verbose_name="是否内置", db_index=True)
-    is_pinned = models.BooleanField(default=False, verbose_name="是否置顶", db_index=True)
 
     def __str__(self):
         return self.name
@@ -262,12 +290,3 @@ class SkillRequestLog(models.Model):
 
     class Meta:
         db_table = "model_provider_mgmt_skillrequestlog"
-
-
-class ModelType(models.Model):
-    name = models.CharField(max_length=50, verbose_name="模型类型名称", unique=True)
-    display_name = models.CharField(max_length=100, verbose_name="显示名称")
-    icon = models.CharField(max_length=100, verbose_name="图标", blank=True, null=True)
-    is_build_in = models.BooleanField(default=False)
-    index = models.IntegerField(default=0, verbose_name="排序")
-    tags = models.JSONField(default=list)

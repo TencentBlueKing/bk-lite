@@ -15,11 +15,12 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
 
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
+    last_execute_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
 
     class Meta:
         model = AlarmStrategy
         fields = "__all__"
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at", "last_execute_time"]
         extra_kwargs = {}
 
     def validate(self, attrs):
@@ -54,7 +55,7 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
         cron_expr = (params.get("cron_expr") or "").strip()
         grace_period = params.get("grace_period")
         activation_mode = (
-            params.get("activation_mode") or HeartbeatActivationMode.FIRST_HEARTBEAT
+                params.get("activation_mode") or HeartbeatActivationMode.FIRST_HEARTBEAT
         )
         auto_recovery = params.get("auto_recovery")
         if auto_recovery is None:
@@ -101,8 +102,8 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
 
         existing_runtime = {}
         if (
-            self.instance
-            and self.instance.strategy_type == AlarmStrategyType.MISSING_DETECTION
+                self.instance
+                and self.instance.strategy_type == AlarmStrategyType.MISSING_DETECTION
         ):
             existing_runtime = dict(self.instance.params or {})
 

@@ -6,7 +6,9 @@ from apps.rpc.base import RpcClient, AppClient, BaseOperationAnaRpc
 class Log(object):
     def __init__(self, is_local_client=False):
         is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
-        self.client = AppClient("apps.log.nats.permission") if is_local_client else RpcClient()
+        self.client = (
+            AppClient("apps.log.nats.permission") if is_local_client else RpcClient()
+        )
 
     def get_module_data(self, **kwargs):
         """
@@ -59,4 +61,34 @@ class LogOperationAnaRpc(BaseOperationAnaRpc):
             fields_limit=fields_limit,
             step=step,
             **kwargs,
+        )
+
+    def query_log_alert_segments(self, query_data: dict, **kwargs):
+        """查询日志模块策略产生的异常段
+        query_data: {
+            "collect_type_id": str,
+            "start": str,
+            "end": str,
+            "instance_id": str,
+            "instance_ids": list[str],
+            "source_id": str,
+            "status": str | list[str],
+            "level": str | list[str],
+            "page": int,
+            "page_size": int,
+        }
+        user_info: {
+            team: 当前组织ID
+            user: 用户对象或用户名
+            include_children: 是否包含子组织
+        }
+        返回 data: {
+            "count": int,
+            "page": int,
+            "page_size": int,
+            "items": list,
+        }
+        """
+        return self.client.run(
+            "query_log_alert_segments", query_data=query_data, **kwargs
         )

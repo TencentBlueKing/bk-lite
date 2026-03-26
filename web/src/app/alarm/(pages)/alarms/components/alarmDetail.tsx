@@ -248,6 +248,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         open={groupVisible}
         width={820}
         onClose={handleCancel}
+        maskClosable={false}
         footer={
           <div>
             <Button onClick={handleCancel}>{t('common.close')}</Button>

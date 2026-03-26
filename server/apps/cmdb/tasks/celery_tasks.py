@@ -41,6 +41,7 @@ def sync_collect_task(instance_id):
         exec_time=start_time,
     )
     exec_error_message = ""
+    task_exec_status = CollectRunStatusType.SUCCESS
     try:
         if instance.is_job:
             # 脚本采集
@@ -50,12 +51,8 @@ def sync_collect_task(instance_id):
             # 协议采集
             collect = ProtocolCollect(task=instance)
             result, format_data = collect.main()
-        task_exec_status = (
-            CollectRunStatusType.EXAMINE
-            if instance.input_method
-            else CollectRunStatusType.SUCCESS
-        )
-        instance.exec_status = task_exec_status
+
+        instance.exec_status = CollectRunStatusType.SUCCESS
 
     except Exception as err:
         import traceback

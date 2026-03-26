@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import OperateModal from './components/operateModal';
+import AlertListDrawer from './components/alertListDrawer';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
 import Introduction from '@/app/alarm/components/introduction';
@@ -28,6 +29,8 @@ const CorrelationRulesPage: React.FC = () => {
     pageSize: 20,
   });
   const [activeTab, setActiveTab] = useState<'Event' | 'Alert'>('Event');
+  const [alertDrawerVisible, setAlertDrawerVisible] = useState<boolean>(false);
+  const [currentRuleId, setCurrentRuleId] = useState<number | null>(null);
 
   useEffect(() => {
     getTableList();
@@ -49,6 +52,7 @@ const CorrelationRulesPage: React.FC = () => {
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
       centered: true,
+      maskClosable: false,
       onOk: async () => {
         try {
           await deleteCorrelationRule(row.id);
@@ -153,21 +157,38 @@ const CorrelationRulesPage: React.FC = () => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (value: string) => <span>{value ? convertToLocalizedTime(value) : '-'}</span>,
+      render: (text: string) => text ? convertToLocalizedTime(text) : '-',
+    },
+    {
+      title: t('settings.correlation.executionTime'),
+      dataIndex: 'last_execute_time',
+      key: 'last_execute_time',
+      width: 180,
+      render: (text: string) => text ? convertToLocalizedTime(text) : '-',
     },
     {
       title: t('settings.correlation.lastUpdateTime'),
       dataIndex: 'updated_at',
       key: 'updated_at',
       width: 180,
-      render: (value: string) => <span>{value ? convertToLocalizedTime(value) : '-'}</span>,
+      render: (text: string) => text ? convertToLocalizedTime(text) : '-',
     },
     {
       title: t('settings.assignActions'),
       key: 'operation',
-      width: 120,
+      width: 180,
       render: (_: any, row: CorrelationRule) => (
         <div className="flex gap-4">
+          <Button
+            type="link"
+            size="small"
+            onClick={() => {
+              setCurrentRuleId(row.id);
+              setAlertDrawerVisible(true);
+            }}
+          >
+            {t('settings.correlation.effectiveAlerts')}
+          </Button>
           <PermissionWrapper requiredPermissions={['Edit']}>
             <Button
               type="link"
@@ -243,6 +264,14 @@ const CorrelationRulesPage: React.FC = () => {
               onSuccess={() => {
                 setPagination((prev) => ({ ...prev, current: 1 }));
                 getTableList({ current: 1, pageSize: pagination.pageSize });
+              }}
+            />
+            <AlertListDrawer
+              visible={alertDrawerVisible}
+              ruleId={currentRuleId}
+              onClose={() => {
+                setAlertDrawerVisible(false);
+                setCurrentRuleId(null);
               }}
             />
           </div>

@@ -192,6 +192,9 @@ error:
   crontab_preview_failed: 'Failed to calculate next runs: {detail}'
   knowledge_graph_pending_or_training_no_update: Knowledge graph is pending or training, cannot update
   knowledge_graph_already_exists: Knowledge graph already exists for this knowledge base
+  vendor_api_base_required: Vendor API base URL is required
+  vendor_api_key_required: Vendor API key is required
+  vendor_sync_not_supported: Only OpenAI-compatible vendors are supported for synchronization
 tools:
   kubernetes:
     name: Kubernetes Tools

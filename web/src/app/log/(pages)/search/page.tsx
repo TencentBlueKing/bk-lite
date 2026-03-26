@@ -7,7 +7,7 @@ import {
   SearchOutlined,
   BulbFilled,
   StarOutlined,
-  FolderOpenOutlined,
+  FolderOpenOutlined
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import {
@@ -17,7 +17,7 @@ import {
   Segmented,
   Spin,
   InputNumber,
-  message,
+  message
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import searchStyle from './index.module.scss';
@@ -32,7 +32,7 @@ import {
   ChartData,
   ModalRef,
   Pagination,
-  TableDataItem,
+  TableDataItem
 } from '@/app/log/types';
 import useApiClient from '@/utils/request';
 import useSearchApi from '@/app/log/api/search';
@@ -41,7 +41,7 @@ import {
   SearchParams,
   LogTerminalRef,
   Conidtion,
-  SearchConfig,
+  SearchConfig
 } from '@/app/log/types/search';
 import { aggregateLogs } from '@/app/log/utils/common';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -81,7 +81,7 @@ const SearchView: React.FC = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 0,
     total: 0,
-    pageSize: PAGE_LIMIT,
+    pageSize: PAGE_LIMIT
   });
   const [expand, setExpand] = useState<boolean>(true);
   const [chartData, setChartData] = useState<ChartData[]>([]);
@@ -95,7 +95,7 @@ const SearchView: React.FC = () => {
   const [timeDefaultValue, setTimeDefaultValue] =
     useState<TimeSelectorDefaultValue>({
       selectValue: startTime ? 0 : 15,
-      rangePickerVaule: endTime ? [dayjs(+startTime), dayjs(+endTime)] : null,
+      rangePickerVaule: endTime ? [dayjs(+startTime), dayjs(+endTime)] : null
     });
   const [windowHeight, setWindowHeight] = useState<number>(window.innerHeight);
   const [limit, setLimit] = useState<number | null>(100);
@@ -161,7 +161,7 @@ const SearchView: React.FC = () => {
       setPageLoading(true);
       const data = await getLogStreams({
         page_size: -1,
-        page: 1,
+        page: 1
       });
       const list = data || [];
       const ids = list.at()?.id ? [list.at().id] : [];
@@ -195,7 +195,7 @@ const SearchView: React.FC = () => {
       setPagination((pre) => ({
         ...pre,
         total: total,
-        current: 1,
+        current: 1
       }));
       setChartData(chartData);
     } finally {
@@ -211,7 +211,7 @@ const SearchView: React.FC = () => {
       const listData: TableDataItem[] = (res || []).map(
         (item: TableDataItem) => ({
           ...item,
-          id: uuidv4(),
+          id: uuidv4()
         })
       );
       setTableData(listData);
@@ -244,7 +244,7 @@ const SearchView: React.FC = () => {
       fields_limit: 5,
       log_groups: extra?.logGroups || groups,
       query: extra?.text || searchTextRef.current || '*',
-      limit,
+      limit
     };
     params.step = Math.round((times[1] - times[0]) / 100) + 'ms';
     return params;
@@ -292,7 +292,7 @@ const SearchView: React.FC = () => {
     setTimeDefaultValue((pre) => ({
       ...pre,
       rangePickerVaule: arr,
-      selectValue: 0,
+      selectValue: 0
     }));
     const times = arr.map((item) => dayjs(item).valueOf());
     getLogData('refresh', { times });
@@ -301,7 +301,7 @@ const SearchView: React.FC = () => {
   const onTimeChange = (range: number[], originValue: number | null) => {
     setTimeDefaultValue({
       selectValue: originValue || 0,
-      rangePickerVaule: originValue ? null : [dayjs(range[0]), dayjs(range[1])],
+      rangePickerVaule: originValue ? null : [dayjs(range[0]), dayjs(range[1])]
     });
     onRefresh();
   };
@@ -317,9 +317,9 @@ const SearchView: React.FC = () => {
         time_range: {
           origin_value: timeDefaultValue.selectValue,
           start: start_time,
-          end: end_time,
-        },
-      },
+          end: end_time
+        }
+      }
     });
   };
 
@@ -327,7 +327,7 @@ const SearchView: React.FC = () => {
     conditionListRef.current?.showModal({
       title: t('log.search.loadConditions'),
       type,
-      form: row,
+      form: row
     });
   };
 
@@ -342,12 +342,12 @@ const SearchView: React.FC = () => {
       selectValue: (time_range.origin_value as number) || 0,
       rangePickerVaule: time_range.origin_value
         ? null
-        : [dayjs(start), dayjs(end)],
+        : [dayjs(start), dayjs(end)]
     });
     getLogData('refresh', {
       logGroups: log_groups,
       text: query,
-      times: [start, end],
+      times: [start, end]
     });
   };
 
@@ -355,6 +355,17 @@ const SearchView: React.FC = () => {
   const getTimeRange = () => {
     const value = timeSelectorRef.current?.getValue?.() as any;
     return value || [];
+  };
+
+  // 获取搜索参数的方法（用于字段Top值统计）
+  const getSearchParams = () => {
+    const times = timeSelectorRef.current?.getValue() || [];
+    return {
+      query: searchTextRef.current || '*',
+      start_time: times[0] ? new Date(times[0]).toISOString() : '',
+      end_time: times[1] ? new Date(times[1]).toISOString() : '',
+      log_groups: groups
+    };
   };
 
   return (
@@ -365,7 +376,7 @@ const SearchView: React.FC = () => {
           <div className="flex">
             <Select
               style={{
-                width: '250px',
+                width: '250px'
               }}
               showSearch
               mode="multiple"
@@ -425,7 +436,7 @@ const SearchView: React.FC = () => {
             value={activeMenu}
             options={[
               { value: 'list', label: t('log.search.list') },
-              { value: 'overview', label: t('log.search.terminal') },
+              { value: 'overview', label: t('log.search.terminal') }
             ]}
             onChange={onTabChange}
           />
@@ -499,26 +510,27 @@ const SearchView: React.FC = () => {
               bordered={false}
               style={{
                 minHeight: scrollHeight + 74 + 'px',
-                overflowY: 'hidden',
+                overflowY: 'hidden'
               }}
             >
               <div className={searchStyle.tableArea}>
                 <Spin spinning={treeLoading}>
                   <FieldList
                     style={{ height: scrollHeight + 'px' }}
-                    className="w-[180px] min-w-[180px]"
+                    className="w-[230px] min-w-[230px] flex-shrink-0"
                     fields={fields}
                     addToQuery={addToQuery}
                     changeDisplayColumns={(val) => {
                       setColumnFields(val);
                     }}
+                    getSearchParams={getSearchParams}
                   />
                 </Spin>
                 <SearchTable
                   loading={tableLoading}
                   dataSource={tableData}
                   fields={columnFields}
-                  scroll={{ x: 'calc(100vw-300px)', y: scrollHeight }}
+                  scroll={{ x: 'calc(100vw-350px)', y: scrollHeight }}
                   addToQuery={addToQuery}
                 />
               </div>
