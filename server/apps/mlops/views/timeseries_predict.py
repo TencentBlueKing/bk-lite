@@ -37,9 +37,11 @@ from apps.mlops.serializers.algorithm_config import (
     AlgorithmConfigListSerializer,
 )
 from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+from apps.mlops.views.base import TeamModelViewSet
+from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 
 
-class TimeSeriesPredictDatasetViewSet(ModelViewSet):
+class TimeSeriesPredictDatasetViewSet(TeamModelViewSet):
     queryset = TimeSeriesPredictDataset.objects.all()
     serializer_class = TimeSeriesPredictDatasetSerializer
     pagination_class = CustomPageNumberPagination
@@ -68,7 +70,7 @@ class TimeSeriesPredictDatasetViewSet(ModelViewSet):
         return super().update(request, *args, **kwargs)
 
 
-class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
+class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
     queryset = TimeSeriesPredictTrainJob.objects.select_related(
         "dataset_version", "dataset_version__dataset"
     ).all()
@@ -76,7 +78,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     filterset_class = TimeSeriesPredictTrainJobFilter
     ordering = ("-id",)
-    permission_key = "dataset.timeseries_predict_train_job"
+    permission_key = "train_job.timeseries_predict_train_job"
 
     MLFLOW_PREFIX = "TimeseriesPredict"  # MLflow 命名前缀
 
@@ -609,6 +611,11 @@ class TimeSeriesPredictTrainDataViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.timeseries_predict_train_data"
 
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
+
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -630,7 +637,7 @@ class TimeSeriesPredictTrainDataViewSet(ModelViewSet):
         return super().update(request, *args, **kwargs)
 
 
-class TimeSeriesPredictServingViewSet(ModelViewSet):
+class TimeSeriesPredictServingViewSet(TeamModelViewSet):
     queryset = TimeSeriesPredictServing.objects.select_related(
         "train_job", "train_job__dataset_version", "train_job__dataset_version__dataset"
     ).all()
@@ -638,7 +645,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     filterset_class = TimeSeriesPredictServingFilter
     ordering = ("-id",)
-    permission_key = "dataset.timeseries_predict_serving"
+    permission_key = "serving.timeseries_predict_serving"
 
     MLFLOW_PREFIX = "TimeseriesPredict"  # MLflow 命名前缀
 
@@ -1200,7 +1207,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("timeseries_predict-View")
+    @HasPermission("timeseries_predict-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行时间序列预测
@@ -1356,6 +1363,11 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
     filterset_class = TimeSeriesPredictDatasetReleaseFilter
     ordering = ("-id",)
     permission_key = "dataset.timeseries_predict_dataset_release"
+
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
 
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):

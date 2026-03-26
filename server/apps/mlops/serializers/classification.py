@@ -1,6 +1,11 @@
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.classification import *
 from rest_framework import serializers
+from apps.mlops.utils.group_scope import (
+    assert_team_ownership,
+    get_current_team,
+    validate_requested_teams,
+)
 
 
 class ClassificationDatasetSerializer(AuthSerializer):
@@ -12,15 +17,21 @@ class ClassificationDatasetSerializer(AuthSerializer):
         model = ClassificationDataset
         fields = "__all__"
 
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
+
 
 class ClassificationServingSerializer(AuthSerializer):
     """分类任务服务序列化器"""
 
-    permission_key = "dataset.classification_serving"
+    permission_key = "serving.classification_serving"
 
     class Meta:
         model = ClassificationServing
         fields = "__all__"
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
 
 
 class ClassificationTrainDataSerializer(AuthSerializer):
@@ -82,6 +93,12 @@ class ClassificationTrainDataSerializer(AuthSerializer):
         except pd.errors.ParserError as e:
             raise serializers.ValidationError(f"无效的CSV格式: {str(e)}")
 
+    def validate_dataset(self, value):
+        assert_team_ownership(
+            value, get_current_team(self.context["request"]), "dataset"
+        )
+        return value
+
     def to_representation(self, instance):
         """
         自定义返回数据，根据 include_train_data 参数动态控制 train_data 字段
@@ -131,7 +148,7 @@ class ClassificationTrainDataSerializer(AuthSerializer):
 class ClassificationTrainJobSerializer(AuthSerializer):
     """分类任务训练作业序列化器"""
 
-    permission_key = "dataset.classification_train_job"
+    permission_key = "train_job.classification_train_job"
 
     class Meta:
         model = ClassificationTrainJob
@@ -143,6 +160,9 @@ class ClassificationTrainJobSerializer(AuthSerializer):
                 "help_text": "自动生成，无需手动提供",
             }
         }
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
 
 
 class ClassificationDatasetReleaseSerializer(AuthSerializer):
@@ -164,6 +184,12 @@ class ClassificationDatasetReleaseSerializer(AuthSerializer):
             "file_size": {"required": False},
             "status": {"required": False},
         }
+
+    def validate_dataset(self, value):
+        assert_team_ownership(
+            value, get_current_team(self.context["request"]), "dataset"
+        )
+        return value
 
     def create(self, validated_data):
         """

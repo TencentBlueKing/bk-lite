@@ -5,6 +5,8 @@ import { useState, useImperativeHandle, useEffect, useRef, forwardRef } from 're
 import { useTranslation } from '@/utils/i18n';
 import { DatasetType, ModalRef } from '@/app/mlops/types';
 import useMlopsManageApi from '@/app/mlops/api/manage';
+import GroupTreeSelect from '@/components/group-tree-select';
+import { useUserInfoContext } from '@/context/userInfo';
 
 interface DatasetModalProps {
   user?: any;
@@ -16,6 +18,8 @@ interface DatasetModalProps {
 
 const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activeTag }, ref) => {
   const { t } = useTranslation();
+  const { selectedGroup } = useUserInfoContext();
+  const defaultTeam = selectedGroup?.id ? [Number(selectedGroup.id)] : [];
   const {
     addDataset,
     updateDataset,
@@ -26,6 +30,7 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
   const [formData, setFormData] = useState<any>({
     name: '',
     description: '',
+    team: defaultTeam,
   });
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const formRef = useRef<FormInstance>(null);
@@ -35,7 +40,14 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
       setIsModalOpen(true);
       setType(type);
       setTitle(title as string);
-      setFormData(form);
+      setFormData({
+        name: '',
+        description: '',
+        ...form,
+        team: Array.isArray(form?.team)
+          ? form.team.map((id: string | number) => Number(id))
+          : defaultTeam,
+      });
     }
   }));
 
@@ -52,13 +64,17 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
     setConfirmLoading(true);
     try {
       const [tagName] = activeTag;
-      const { name, description } = await formRef.current?.validateFields();
+      if (!formRef.current) {
+        return;
+      }
+      const { name, description, team } = await formRef.current.validateFields();
       if (type === 'add') {
-        await addDataset(tagName as DatasetType, { name, description });
+        await addDataset(tagName as DatasetType, { name, description, team });
       } else if (type === 'edit') {
         await updateDataset(formData.id, tagName as DatasetType, {
           name,
-          description
+          description,
+          team,
         });
       }
       message.success(t(`datasets.${type}Success`));
@@ -104,6 +120,13 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
             rules={[{ required: true, message: t('common.inputMsg') }]}
           >
             <Input.TextArea placeholder={t('common.inputMsg')} />
+          </Form.Item>
+          <Form.Item
+            name='team'
+            label={t('mlops-common.organizations')}
+            rules={[{ required: true, message: t('common.selectMsg') }]}
+          >
+            <GroupTreeSelect multiple={true} mode='ownership' placeholder={t('common.selectMsg')} />
           </Form.Item>
         </Form>
       </OperateModal>

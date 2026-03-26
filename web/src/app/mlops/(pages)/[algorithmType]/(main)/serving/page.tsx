@@ -16,6 +16,8 @@ import { ModalRef, Option, Pagination, TableData, DatasetType } from "@/app/mlop
 import { ColumnItem } from "@/types";
 import { TrainJob } from "@/app/mlops/types/task";
 import { ALGORITHM_TYPE_I18N_KEYS } from "@/app/mlops/constants";
+import { useUserInfoContext } from '@/context/userInfo';
+import { formatGroupNames } from '@/app/mlops/utils/common';
 
 const { Search } = Input;
 
@@ -45,6 +47,7 @@ const ServingPage = () => {
   const { t } = useTranslation();
   const params = useParams();
   const algorithmType = params.algorithmType as DatasetType;
+  const { flatGroups } = useUserInfoContext();
   const modalRef = useRef<ModalRef>(null);
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getTrainJobList } = useMlopsTaskApi();
@@ -145,6 +148,21 @@ const ServingPage = () => {
           </div>
         ) : (
           <>--</>
+        );
+      }
+    },
+    {
+      title: t('mlops-common.organizations'),
+      dataIndex: 'team',
+      key: 'team',
+      width: 180,
+      render: (_, record: TableData) => {
+        const organizationText = formatGroupNames(record.team, flatGroups);
+        return (
+          <EllipsisWithTooltip
+            className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+            text={organizationText}
+          />
         );
       }
     },

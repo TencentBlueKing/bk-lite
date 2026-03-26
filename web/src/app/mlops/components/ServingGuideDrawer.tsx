@@ -14,6 +14,7 @@ import {
 } from '@/app/mlops/constants';
 import { generateCurlExample } from '@/app/mlops/utils/common';
 import servingStyle from './serving.module.scss';
+import PermissionWrapper from '@/components/permission';
 
 const { TextArea } = Input;
 
@@ -204,15 +205,17 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
 
           {/* 操作区域 */}
           <div className="flex items-center gap-3 mb-4">
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              loading={loading}
-              onClick={handleTest}
-              disabled={serving?.container_info?.state !== 'running'}
-            >
-              {t('serving-guide.sendRequest')}
-            </Button>
+            <PermissionWrapper requiredPermissions={['Predict']}>
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                loading={loading}
+                onClick={handleTest}
+                disabled={serving?.container_info?.state !== 'running'}
+              >
+                {t('serving-guide.sendRequest')}
+              </Button>
+            </PermissionWrapper>
             {serving?.container_info?.state !== 'running' && (
               <span className="text-xs text-yellow-500">{t('serving-guide.serviceNotRunning')}</span>
             )}

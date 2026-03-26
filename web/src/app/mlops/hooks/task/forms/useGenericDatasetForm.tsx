@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect, RefObject } from 'react';
 import { FormInstance, message, Form, Select, Input, InputNumber, Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type { Option } from '@/types';
+import GroupTreeSelect from '@/components/group-tree-select';
+import { useUserInfoContext } from '@/context/userInfo';
 import type { 
   TrainJob, 
   FieldConfig, 
@@ -61,6 +63,8 @@ export const useGenericDatasetForm = ({
   apiMethods
 }: UseGenericDatasetFormProps) => {
   const { t } = useTranslation();
+  const { selectedGroup } = useUserInfoContext();
+  const defaultTeam = selectedGroup?.id ? [Number(selectedGroup.id)] : [];
 
   // 动态获取算法配置
   const {
@@ -92,7 +96,8 @@ export const useGenericDatasetForm = ({
     algorithm: '',
     dataset: 0,
     dataset_version: '',
-    max_evals: 50
+    max_evals: 50,
+    team: defaultTeam,
   });
 
   // 当 formData 和 modalState.isOpen 改变时初始化表单
@@ -115,6 +120,7 @@ export const useGenericDatasetForm = ({
       dataset: Number(data.dataset) || 0,
       dataset_version: data.dataset_version ? String(data.dataset_version) : '',
       max_evals: data.max_evals || 50,
+      team: Array.isArray(data.team) ? data.team.map((id) => Number(id)) : defaultTeam,
     };
 
     // 如果没有算法配置，只返回基础字段
@@ -163,7 +169,8 @@ export const useGenericDatasetForm = ({
         max_evals: formValues.max_evals,
         status: 'pending',
         description: formValues.name || '',
-        hyperopt_config: {}
+        hyperopt_config: {},
+        team: formValues.team,
       };
     }
 
@@ -193,7 +200,8 @@ export const useGenericDatasetForm = ({
       max_evals: formValues.max_evals,
       status: 'pending',
       description: formValues.name || '',
-      hyperopt_config
+      hyperopt_config,
+      team: formValues.team,
     };
     return result;
   }, [algorithmConfigs]);
@@ -216,7 +224,8 @@ export const useGenericDatasetForm = ({
 
     if (modalState.type === 'add') {
       formRef.current.setFieldsValue({
-        max_evals: 50
+        max_evals: 50,
+        team: defaultTeam,
       });
     } else if (formData) {
       const formValues = apiToForm(formData);
@@ -338,10 +347,11 @@ export const useGenericDatasetForm = ({
       algorithm: '',
       dataset: 0,
       dataset_version: '',
-      max_evals: 50
+      max_evals: 50,
+      team: defaultTeam,
     });
     setIsShow(false);
-  }, []);
+  }, [defaultTeam]);
 
   // 渲染表单内容
   const renderFormContent = useCallback(() => {
@@ -387,7 +397,7 @@ export const useGenericDatasetForm = ({
           />
         </Form.Item>
 
-        <Form.Item name='dataset_version' label="数据集版本" rules={[{ required: true, message: '请选择数据集版本' }]}>
+        <Form.Item name='dataset_version' label="数据集版本" rules={[{ required: true, message: '请选择数据集版本' }]}> 
           <Select
             placeholder="选择一个数据集版本"
             showSearch
@@ -395,6 +405,14 @@ export const useGenericDatasetForm = ({
             loading={loadingState.select}
             options={datasetVersions}
           />
+        </Form.Item>
+
+        <Form.Item
+          name='team'
+          label={t('mlops-common.organizations')}
+          rules={[{ required: true, message: t('common.selectMsg') }]}
+        >
+          <GroupTreeSelect multiple={true} mode='ownership' placeholder={t('common.selectMsg')} />
         </Form.Item>
 
         <Form.Item 

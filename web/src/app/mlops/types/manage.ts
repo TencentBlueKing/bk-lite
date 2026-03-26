@@ -49,6 +49,7 @@ interface DataSet {
   description: string;
   icon: string;
   creator: string;
+  team?: number[];
   // user_id: string;
   // tenant_id: number;
 }
