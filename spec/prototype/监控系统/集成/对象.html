@@ -1,0 +1,1912 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlueKing Lite - 对象管理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            color: #313238;
+            min-height: 100vh;
+            font-size: 14px;
+        }
+
+        /* 顶部导航栏 */
+        .top-header {
+            background: #fff;
+            height: 60px;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+
+        .logo-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .app-switcher {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: #f5f7fa;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #646a73;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .app-switcher:hover {
+            background: rgba(0, 82, 217, 0.06);
+            color: #0052d9;
+        }
+
+        .app-switcher svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 8px;
+            margin-left: 48px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #646a73;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .nav-item.active {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.1);
+        }
+
+        .nav-item svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        a.nav-item {
+            text-decoration: none;
+        }
+
+        a.nav-item:hover,
+        a.nav-item.active {
+            color: #0052d9;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: #646a73;
+            font-size: 14px;
+        }
+
+        .header-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .header-icon:hover {
+            background: rgba(0, 0, 0, 0.04);
+            color: #0052d9;
+        }
+
+        .header-icon svg {
+            width: 20px;
+            height: 20px;
+            color: #646a73;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .user-info:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .user-info svg {
+            width: 14px;
+            height: 14px;
+            color: #979ba5;
+        }
+
+        /* 二级导航 */
+        .sub-header {
+            background: #fff;
+            height: 48px;
+            border-bottom: 1px solid #dcdee5;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+        }
+
+        .sub-nav {
+            display: flex;
+            gap: 4px;
+        }
+
+        .sub-nav-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #63656e;
+            border-radius: 4px;
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .sub-nav-item:hover {
+            color: #3a84ff;
+            background: #e1ecff;
+        }
+
+        .sub-nav-item.active {
+            color: #3a84ff;
+            background: #e1ecff;
+        }
+
+        /* 主内容区 */
+        .main-container {
+            display: flex;
+            height: calc(100vh - 108px);
+        }
+
+        /* 左侧导航 - 对象类型 */
+        .left-sidebar {
+            width: 260px;
+            background: #fff;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin: 16px 16px 16px 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            border: 1px solid #dcdee5;
+        }
+
+        /* 左侧头部 */
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .sidebar-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .sidebar-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #313238;
+        }
+
+        /* 搜索框 */
+        .search-box {
+            padding: 0;
+        }
+
+        .search-input-wrapper {
+            position: relative;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #979ba5;
+            font-size: 14px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 10px 14px 10px 38px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .search-input:focus {
+            border-color: #3a84ff;
+        }
+
+        /* 新建类型按钮 - 小按钮 */
+        .btn-add-type {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background: #fff;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            color: #63656e;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-add-type:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+            background: #f0f5ff;
+        }
+
+        .btn-add-type svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* 对象类型列表 */
+        .type-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .type-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 4px;
+            user-select: none;
+        }
+
+        .type-item:hover {
+            background: #f5f7fa;
+        }
+
+        .type-item.active {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .type-item.dragging {
+            opacity: 0.5;
+            background: #e1ecff;
+        }
+
+        .type-item.drag-over {
+            border-top: 2px solid #3a84ff;
+        }
+
+        .drag-handle {
+            width: 16px;
+            height: 16px;
+            margin-right: 8px;
+            color: #c4c6cc;
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+
+        .type-item:hover .drag-handle {
+            color: #979ba5;
+        }
+
+        .type-icon {
+            width: 24px;
+            height: 24px;
+            margin-right: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f5f7fa;
+            border-radius: 4px;
+            color: #63656e;
+        }
+
+        .type-item.active .type-icon {
+            background: rgba(58, 132, 255, 0.15);
+            color: #3a84ff;
+        }
+
+        .type-name {
+            flex: 1;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .type-count {
+            padding: 2px 8px;
+            background: #f0f1f5;
+            color: #979ba5;
+            border-radius: 10px;
+            font-size: 12px;
+            margin-right: 8px;
+        }
+
+        .type-item.active .type-count {
+            background: rgba(58, 132, 255, 0.15);
+            color: #3a84ff;
+        }
+
+
+        /* 右侧内容区域 */
+        .content-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+            margin: 16px 16px 16px 0;
+        }
+
+        /* 内容标题 */
+        .content-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .content-title-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .content-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #313238;
+        }
+
+        .type-header-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .type-header-actions.hidden {
+            display: none;
+        }
+
+        .type-header-icon-btn {
+            width: 28px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+            color: #63656e;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .type-header-icon-btn:hover {
+            background: #e1ecff;
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .type-header-icon-btn.delete:hover {
+            background: #fff1f0;
+            border-color: #f5222d;
+            color: #f5222d;
+        }
+
+        .type-header-icon-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .content-subtitle {
+            font-size: 13px;
+            color: #979ba5;
+        }
+
+        /* 表格工具栏 */
+        .table-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 0;
+            margin-bottom: 16px;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .toolbar-search {
+            position: relative;
+            width: 240px;
+        }
+
+        .toolbar-search .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #979ba5;
+        }
+
+        .toolbar-search-input {
+            width: 100%;
+            padding: 8px 12px 8px 36px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .toolbar-search-input:focus {
+            border-color: #3a84ff;
+        }
+
+        .toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-primary {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary:hover {
+            background: #306ed0;
+        }
+
+        .btn-primary svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* 数据表格 */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table thead {
+            background: #fafbfc;
+        }
+
+        .data-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            color: #313238;
+            border-bottom: 1px solid #dcdee5;
+        }
+
+        .data-table td {
+            padding: 14px 16px;
+            font-size: 14px;
+            color: #313238;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .data-table tbody tr:hover {
+            background: #f5f7fa;
+        }
+
+        .data-table tbody tr.dragging {
+            opacity: 0.5;
+            background: #e1ecff;
+        }
+
+        .data-table tbody tr.drag-over {
+            border-top: 2px solid #3a84ff;
+        }
+
+        /* 表格拖拽手柄 */
+        .table-drag-handle {
+            width: 20px;
+            color: #c4c6cc;
+            cursor: grab;
+        }
+
+        .table-drag-handle:active {
+            cursor: grabbing;
+        }
+
+        tr:hover .table-drag-handle {
+            color: #979ba5;
+        }
+
+        /* 对象图标单元格 */
+        .object-icon-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .object-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            background: #f5f7fa;
+        }
+
+        .object-name {
+            font-weight: 500;
+        }
+
+        .object-name-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .sub-objects-info {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .sub-label {
+            font-size: 12px;
+            color: #979ba5;
+        }
+
+        .sub-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #f0f5ff;
+            color: #3a84ff;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+
+        .sub-count-badge {
+            display: inline-block;
+            min-width: 24px;
+            padding: 2px 8px;
+            background: #f0f5ff;
+            color: #3a84ff;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            text-align: center;
+        }
+
+        /* 来源标签 */
+        .source-tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .source-tag.builtin {
+            background: #f0f1f5;
+            color: #63656e;
+        }
+
+        .source-tag.custom {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        /* 可见开关 */
+        .visibility-switch {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            background: #dcdee5;
+            border-radius: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .visibility-switch.active {
+            background: #3a84ff;
+        }
+
+        .visibility-switch::after {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+
+        .visibility-switch.active::after {
+            left: 20px;
+        }
+
+        /* 操作按钮 */
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-action {
+            padding: 6px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            background: #fff;
+            color: #63656e;
+            transition: all 0.2s;
+        }
+
+        .btn-action:hover {
+            background: #e1ecff;
+            color: #3a84ff;
+            border-color: #3a84ff;
+        }
+
+        .btn-action.btn-delete:hover {
+            background: #fff1f0;
+            color: #f5222d;
+            border-color: #f5222d;
+        }
+
+        /* 弹窗遮罩 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        /* 弹窗 */
+        .modal {
+            background: #fff;
+            border-radius: 8px;
+            width: 480px;
+            max-height: 80vh;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #313238;
+        }
+
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 4px;
+            color: #979ba5;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: #f5f7fa;
+            color: #313238;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #313238;
+            margin-bottom: 8px;
+        }
+
+        .form-label .required {
+            color: #f5222d;
+            margin-left: 2px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .form-input:focus {
+            border-color: #3a84ff;
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-textarea:focus {
+            border-color: #3a84ff;
+        }
+
+        /* 图标选择器 */
+        .icon-picker {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 8px;
+            padding: 12px;
+            background: #f5f7fa;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .icon-option {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #fff;
+            border: 2px solid transparent;
+        }
+
+        .icon-option:hover {
+            background: #e1ecff;
+        }
+
+        .icon-option.selected {
+            border-color: #3a84ff;
+            background: #e1ecff;
+        }
+
+        /* 子对象样式 */
+        .sub-objects-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .sub-object-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sub-object-row input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .sub-object-row input:focus {
+            outline: none;
+            border-color: #3a84ff;
+        }
+
+        .sub-object-row input::placeholder {
+            color: #c4c6cc;
+        }
+
+        .btn-remove-sub {
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: #f5f7fa;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #979ba5;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .btn-remove-sub:hover {
+            background: #ffebeb;
+            color: #ea3636;
+        }
+
+        .btn-add-sub-object {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: #f5f7fa;
+            border: 1px dashed #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #63656e;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-add-sub-object:hover {
+            background: #e1ecff;
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+
+        .modal-footer {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 16px 20px;
+            border-top: 1px solid #f0f1f5;
+        }
+
+        .btn-cancel {
+            padding: 8px 20px;
+            background: #fff;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-cancel:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .btn-confirm {
+            padding: 8px 20px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-confirm:hover {
+            background: #306ed0;
+        }
+
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #dcdee5;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #c4c6cc;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            color: #979ba5;
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-text {
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <span>BlueKing Lite</span>
+            </div>
+            <div class="app-switcher">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+            <nav class="header-nav">
+                <a href="../视图/视图.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    <span>视图</span>
+                </a>
+                <a href="../搜索/搜索.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span>搜索</span>
+                </a>
+                <a href="../事件/告警.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    <span>事件</span>
+                </a>
+                <a href="集成.html" class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 11a9 9 0 0 1 9 9"/>
+                        <path d="M4 4a16 16 0 0 1 16 16"/>
+                        <circle cx="5" cy="19" r="1"/>
+                    </svg>
+                    <span>集成</span>
+                </a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+            </div>
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </div>
+            <div class="user-info">
+                <div class="user-avatar">陈</div>
+                <span>陈润翼</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- 二级导航 -->
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <a href="集成.html" class="sub-nav-item">集成</a>
+            <a href="资产.html" class="sub-nav-item">资产</a>
+            <a href="分组.html" class="sub-nav-item">分组</a>
+            <a href="对象.html" class="sub-nav-item active">对象</a>
+        </nav>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-container">
+        <!-- 左侧导航 - 对象类型 -->
+        <div class="left-sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title-row">
+                    <div class="sidebar-title">对象类型</div>
+                    <button class="btn-add-type" onclick="openAddTypeModal()" title="新建对象类型">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="search-box">
+                    <div class="search-input-wrapper">
+                        <span class="search-icon">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"/>
+                                <path d="M21 21l-4.35-4.35"/>
+                            </svg>
+                        </span>
+                        <input type="text" class="search-input" placeholder="搜索对象类型...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="type-list" id="typeList">
+                <!-- 操作系统 -->
+                <div class="type-item active" draggable="true" data-type-id="1" data-source="builtin" onclick="selectType(this, '操作系统')">
+                    <div class="drag-handle">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <circle cx="9" cy="6" r="1.5"/>
+                            <circle cx="15" cy="6" r="1.5"/>
+                            <circle cx="9" cy="12" r="1.5"/>
+                            <circle cx="15" cy="12" r="1.5"/>
+                            <circle cx="9" cy="18" r="1.5"/>
+                            <circle cx="15" cy="18" r="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="type-icon">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                            <line x1="8" y1="21" x2="16" y2="21"/>
+                            <line x1="12" y1="17" x2="12" y2="21"/>
+                        </svg>
+                    </div>
+                    <span class="type-name">操作系统</span>
+                    <span class="type-count">3</span>
+                </div>
+
+                <!-- 数据库 -->
+                <div class="type-item" draggable="true" data-type-id="2" data-source="builtin" onclick="selectType(this, '数据库')">
+                    <div class="drag-handle">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <circle cx="9" cy="6" r="1.5"/>
+                            <circle cx="15" cy="6" r="1.5"/>
+                            <circle cx="9" cy="12" r="1.5"/>
+                            <circle cx="15" cy="12" r="1.5"/>
+                            <circle cx="9" cy="18" r="1.5"/>
+                            <circle cx="15" cy="18" r="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="type-icon">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                        </svg>
+                    </div>
+                    <span class="type-name">数据库</span>
+                    <span class="type-count">12</span>
+                </div>
+
+                <!-- 网络 -->
+                <div class="type-item" draggable="true" data-type-id="3" data-source="builtin" onclick="selectType(this, '网络')">
+                    <div class="drag-handle">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <circle cx="9" cy="6" r="1.5"/>
+                            <circle cx="15" cy="6" r="1.5"/>
+                            <circle cx="9" cy="12" r="1.5"/>
+                            <circle cx="15" cy="12" r="1.5"/>
+                            <circle cx="9" cy="18" r="1.5"/>
+                            <circle cx="15" cy="18" r="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="type-icon">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="2" y1="12" x2="22" y2="12"/>
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                        </svg>
+                    </div>
+                    <span class="type-name">网络</span>
+                    <span class="type-count">2</span>
+                </div>
+
+                <!-- 中间件 -->
+                <div class="type-item" draggable="true" data-type-id="4" data-source="builtin" onclick="selectType(this, '中间件')">
+                    <div class="drag-handle">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <circle cx="9" cy="6" r="1.5"/>
+                            <circle cx="15" cy="6" r="1.5"/>
+                            <circle cx="9" cy="12" r="1.5"/>
+                            <circle cx="15" cy="12" r="1.5"/>
+                            <circle cx="9" cy="18" r="1.5"/>
+                            <circle cx="15" cy="18" r="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="type-icon">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="4" y="4" width="16" height="16" rx="2"/>
+                            <rect x="9" y="9" width="6" height="6"/>
+                            <line x1="9" y1="1" x2="9" y2="4"/>
+                            <line x1="15" y1="1" x2="15" y2="4"/>
+                            <line x1="9" y1="20" x2="9" y2="23"/>
+                            <line x1="15" y1="20" x2="15" y2="23"/>
+                            <line x1="20" y1="9" x2="23" y2="9"/>
+                            <line x1="20" y1="14" x2="23" y2="14"/>
+                            <line x1="1" y1="9" x2="4" y2="9"/>
+                            <line x1="1" y1="14" x2="4" y2="14"/>
+                        </svg>
+                    </div>
+                    <span class="type-name">中间件</span>
+                    <span class="type-count">3</span>
+                </div>
+
+                <!-- 容器（自定义） -->
+                <div class="type-item" draggable="true" data-type-id="5" data-source="custom" onclick="selectType(this, '容器')">
+                    <div class="drag-handle">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <circle cx="9" cy="6" r="1.5"/>
+                            <circle cx="15" cy="6" r="1.5"/>
+                            <circle cx="9" cy="12" r="1.5"/>
+                            <circle cx="15" cy="12" r="1.5"/>
+                            <circle cx="9" cy="18" r="1.5"/>
+                            <circle cx="15" cy="18" r="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="type-icon">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                            <line x1="12" y1="22.08" x2="12" y2="12"/>
+                        </svg>
+                    </div>
+                    <span class="type-name">容器</span>
+                    <span class="type-count">2</span>
+                </div>
+
+                <div class="type-item" draggable="true" data-type-id="6" data-source="custom" onclick="selectType(this, '自定义类型')">
+                    <div class="drag-handle">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <circle cx="9" cy="6" r="1.5"/>
+                            <circle cx="15" cy="6" r="1.5"/>
+                            <circle cx="9" cy="12" r="1.5"/>
+                            <circle cx="15" cy="12" r="1.5"/>
+                            <circle cx="9" cy="18" r="1.5"/>
+                            <circle cx="15" cy="18" r="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="type-icon">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2l2.4 4.86 5.37.78-3.89 3.79.92 5.35L12 14.27l-4.8 2.51.92-5.35-3.89-3.79 5.37-.78L12 2z"/>
+                        </svg>
+                    </div>
+                    <span class="type-name">自定义类型</span>
+                    <span class="type-count">2</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧内容区域 -->
+        <div class="content-area">
+            <div class="content-header">
+                <div class="content-title-section">
+                    <h2 class="content-title" id="currentTypeName">操作系统</h2>
+                    <div class="type-header-actions hidden" id="typeHeaderActions">
+                        <button class="type-header-icon-btn" title="编辑对象类型" onclick="openEditTypeModal(event)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 20h9"></path>
+                                <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+                            </svg>
+                        </button>
+                        <button class="type-header-icon-btn delete" title="删除对象类型" onclick="deleteCurrentType(event)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6l-1 14H6L5 6"></path>
+                                <path d="M10 11v6"></path>
+                                <path d="M14 11v6"></path>
+                                <path d="M9 6V4h6v2"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 表格工具栏 -->
+            <div class="table-toolbar">
+                <div class="toolbar-left">
+                    <div class="toolbar-search">
+                        <span class="search-icon">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <path d="M21 21l-4.35-4.35"/>
+                            </svg>
+                        </span>
+                        <input type="text" class="toolbar-search-input" placeholder="搜索对象...">
+                    </div>
+                </div>
+                <div class="toolbar-right">
+                    <button class="btn-primary" onclick="openAddObjectModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        新建对象
+                    </button>
+                </div>
+            </div>
+
+            <!-- 数据表格 -->
+            <table class="data-table" id="objectTable">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;"></th>
+                        <th>对象名称</th>
+                        <th style="width: 180px;">对象ID</th>
+                        <th style="width: 100px;">子对象数</th>
+                        <th style="width: 100px;">来源</th>
+                        <th style="width: 100px;">可见</th>
+                        <th style="width: 160px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="objectTableBody">
+                    <tr draggable="true" data-object-id="1">
+                        <td>
+                            <div class="table-drag-handle">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="object-icon-cell">
+                                <div class="object-icon">
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                                        <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+                                        <line x1="6" y1="6" x2="6.01" y2="6"/>
+                                        <line x1="6" y1="18" x2="6.01" y2="18"/>
+                                    </svg>
+                                </div>
+                                <span class="object-name">主机</span>
+                            </div>
+                        </td>
+                        <td><span class="source-tag builtin">内置</span></td>
+                        <td>
+                            <div class="visibility-switch active" onclick="toggleObjectVisibility(this)"></div>
+                        </td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="btn-action" onclick="openEditObjectModal()">编辑</button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 新建对象类型弹窗 -->
+    <div class="modal-overlay" id="addTypeModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">新建对象类型</span>
+                <div class="modal-close" onclick="closeModal('addTypeModal')">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">类型ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" placeholder="请输入对象类型ID（唯一标识）">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">类型名称 <span class="required">*</span></label>
+                    <input type="text" class="form-input" placeholder="请输入对象类型名称">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeModal('addTypeModal')">取消</button>
+                <button class="btn-confirm" onclick="confirmAddType()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建对象弹窗 -->
+    <div class="modal-overlay" id="addObjectModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">新建对象</span>
+                <div class="modal-close" onclick="closeModal('addObjectModal')">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">对象ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" placeholder="请输入对象ID（唯一标识）">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">对象名称 <span class="required">*</span></label>
+                    <input type="text" class="form-input" placeholder="请输入对象名称">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">选择图标</label>
+                    <div class="icon-picker">
+                        <div class="icon-option selected">🖥️</div>
+                        <div class="icon-option">🗄️</div>
+                        <div class="icon-option">📦</div>
+                        <div class="icon-option">🌐</div>
+                        <div class="icon-option">🔧</div>
+                        <div class="icon-option">📊</div>
+                        <div class="icon-option">🔌</div>
+                        <div class="icon-option">💾</div>
+                        <div class="icon-option">🛡️</div>
+                        <div class="icon-option">⚡</div>
+                        <div class="icon-option">🔒</div>
+                        <div class="icon-option">📡</div>
+                        <div class="icon-option">🎯</div>
+                        <div class="icon-option">🔍</div>
+                        <div class="icon-option">📈</div>
+                        <div class="icon-option">🔔</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">子对象 <span style="color: #979ba5; font-weight: normal;">（可选）</span></label>
+                    <div class="sub-objects-hint" style="font-size: 12px; color: #979ba5; margin-bottom: 12px;">
+                        子对象是指监控主对象时自动发现的关联对象，例如监控VMware时自动发现的虚拟机
+                    </div>
+                    <div id="subObjectsList" class="sub-objects-list"></div>
+                    <button type="button" class="btn-add-sub-object" onclick="addSubObjectRow()">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        添加子对象
+                    </button>
+                </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeModal('addObjectModal')">取消</button>
+                <button class="btn-confirm" onclick="confirmAddObject()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 对象数据
+        const objectData = {
+            '操作系统': [
+                { id: 1, objectId: 'host', name: '主机', icon: 'server', source: 'builtin', visible: true },
+                { id: 21, objectId: 'custom_obj_1', name: '自定义对象1', icon: 'box', source: 'custom', visible: true },
+                { id: 22, objectId: 'custom_obj_2', name: '自定义对象2', icon: 'server', source: 'custom', visible: true, subObjects: [
+                    { id: 'sub_vm', name: '虚拟机' },
+                    { id: 'sub_datastore', name: '数据存储' }
+                ]}
+            ],
+            '数据库': [
+                { id: 2, objectId: 'mysql', name: 'MySQL', icon: 'database', source: 'builtin', visible: true },
+                { id: 3, objectId: 'postgresql', name: 'PostgreSQL', icon: 'database', source: 'builtin', visible: true },
+                { id: 4, objectId: 'redis', name: 'Redis', icon: 'box', source: 'builtin', visible: true },
+                { id: 5, objectId: 'mongodb', name: 'MongoDB', icon: 'file', source: 'builtin', visible: true },
+                { id: 6, objectId: 'elasticsearch', name: 'ElasticSearch', icon: 'search', source: 'builtin', visible: true },
+                { id: 7, objectId: 'oracle', name: 'Oracle', icon: 'database', source: 'builtin', visible: false },
+                { id: 8, objectId: 'mssql', name: 'MSSQL', icon: 'database', source: 'builtin', visible: true },
+                { id: 9, objectId: 'db2', name: 'DB2', icon: 'database', source: 'builtin', visible: false },
+                { id: 10, objectId: 'clickhouse', name: 'ClickHouse', icon: 'chart', source: 'builtin', visible: true },
+                { id: 11, objectId: 'tidb', name: 'TiDB', icon: 'database', source: 'custom', visible: true },
+                { id: 12, objectId: 'oceanbase', name: 'OceanBase', icon: 'database', source: 'custom', visible: true },
+                { id: 13, objectId: 'gaussdb', name: 'GaussDB', icon: 'database', source: 'custom', visible: true }
+            ],
+            '网络': [
+                { id: 14, objectId: 'website', name: '网站', icon: 'globe', source: 'builtin', visible: true },
+                { id: 15, objectId: 'ping', name: 'Ping', icon: 'wifi', source: 'builtin', visible: true }
+            ],
+            '中间件': [
+                { id: 16, objectId: 'nginx', name: 'Nginx', icon: 'server', source: 'builtin', visible: true },
+                { id: 17, objectId: 'rabbitmq', name: 'RabbitMQ', icon: 'mail', source: 'builtin', visible: true },
+                { id: 18, objectId: 'kafka', name: 'Kafka', icon: 'activity', source: 'builtin', visible: true }
+            ],
+            '容器': [
+                { id: 19, objectId: 'docker', name: 'Docker', icon: 'box', source: 'custom', visible: true },
+                { id: 20, objectId: 'kubernetes', name: 'Kubernetes', icon: 'grid', source: 'custom', visible: true }
+            ],
+            '自定义类型': [
+                { id: 23, objectId: 'custom_device', name: '自定义设备', icon: 'box', source: 'custom', visible: true },
+                { id: 24, objectId: 'custom_service', name: '自定义服务', icon: 'chart', source: 'custom', visible: true }
+            ]
+        };
+
+        // 图标映射
+        const iconMap = {
+            'server': '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>',
+            'database': '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
+            'box': '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>',
+            'globe': '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+            'wifi': '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>',
+            'file': '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+            'search': '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>',
+            'chart': '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+            'mail': '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+            'activity': '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+            'grid': '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>'
+        };
+
+        let currentType = '操作系统';
+
+        function getCurrentTypeElement() {
+            return document.querySelector('.type-item.active');
+        }
+
+        function updateTypeHeaderActions() {
+            const actionWrapper = document.getElementById('typeHeaderActions');
+            const currentTypeElement = getCurrentTypeElement();
+            const isCustomType = currentTypeElement && currentTypeElement.dataset.source === 'custom';
+
+            actionWrapper.classList.toggle('hidden', !isCustomType);
+        }
+
+        // 选择对象类型
+        function selectType(element, typeName) {
+            document.querySelectorAll('.type-item').forEach(item => item.classList.remove('active'));
+            element.classList.add('active');
+            currentType = typeName;
+            document.getElementById('currentTypeName').textContent = typeName;
+            updateTypeHeaderActions();
+            renderObjectTable();
+        }
+
+        // 渲染对象表格
+        function renderObjectTable() {
+            const tbody = document.getElementById('objectTableBody');
+            const objects = objectData[currentType] || [];
+            
+            if (objects.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7">
+                            <div class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <div class="empty-text">暂无对象，点击"新建对象"添加</div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = objects.map(obj => `
+                <tr draggable="true" data-object-id="${obj.id}">
+                    <td>
+                        <div class="table-drag-handle">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                <circle cx="9" cy="6" r="1.5"/>
+                                <circle cx="15" cy="6" r="1.5"/>
+                                <circle cx="9" cy="12" r="1.5"/>
+                                <circle cx="15" cy="12" r="1.5"/>
+                                <circle cx="9" cy="18" r="1.5"/>
+                                <circle cx="15" cy="18" r="1.5"/>
+                            </svg>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="object-icon-cell">
+                            <div class="object-icon">${iconMap[obj.icon] || iconMap['box']}</div>
+                            <span class="object-name">${obj.name}</span>
+                        </div>
+                    </td>
+                    <td><code style="background: #f5f7fa; padding: 2px 8px; border-radius: 4px; font-size: 13px;">${obj.objectId}</code></td>
+                    <td style="text-align: center;">${obj.subObjects && obj.subObjects.length > 0 ? `<span class="sub-count-badge">${obj.subObjects.length}</span>` : '<span style="color: #c4c6cc;">-</span>'}</td>
+                    <td><span class="source-tag ${obj.source}">${obj.source === 'builtin' ? '内置' : '自定义'}</span></td>
+                    <td>
+                        <div class="visibility-switch ${obj.visible ? 'active' : ''}" onclick="toggleObjectVisibility(this, ${obj.id})"></div>
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            ${obj.source === 'custom' ? '<button class="btn-action" onclick="openEditObjectModal(' + obj.id + ')">编辑</button><button class="btn-action btn-delete" onclick="deleteObject(' + obj.id + ')">删除</button>' : ''}
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+
+            initTableDragAndDrop();
+        }
+
+
+        // 切换对象可见性
+        function toggleObjectVisibility(element, objectId) {
+            element.classList.toggle('active');
+            // 更新数据
+            const objects = objectData[currentType];
+            const obj = objects.find(o => o.id === objectId);
+            if (obj) {
+                obj.visible = element.classList.contains('active');
+            }
+        }
+
+        // 打开新建类型弹窗
+        function openAddTypeModal() {
+            document.getElementById('addTypeModal').classList.add('show');
+            document.querySelector('#addTypeModal .modal-title').textContent = '新建对象类型';
+        }
+
+        function openEditTypeModal(event) {
+            if (event) event.stopPropagation();
+
+            const currentTypeElement = getCurrentTypeElement();
+            if (!currentTypeElement || currentTypeElement.dataset.source !== 'custom') return;
+
+            document.getElementById('addTypeModal').classList.add('show');
+            document.querySelector('#addTypeModal .modal-title').textContent = '编辑对象类型';
+        }
+
+        // 打开新建对象弹窗
+        function openAddObjectModal() {
+            document.getElementById('addObjectModal').classList.add('show');
+        }
+
+        // 打开编辑对象弹窗
+        function openEditObjectModal(objectId) {
+            document.getElementById('addObjectModal').classList.add('show');
+            document.querySelector('#addObjectModal .modal-title').textContent = '编辑对象';
+        }
+
+        // 关闭弹窗
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('show');
+        }
+
+        // 确认新建类型
+        function confirmAddType() {
+            closeModal('addTypeModal');
+        }
+
+        function deleteCurrentType(event) {
+            if (event) event.stopPropagation();
+
+            const currentTypeElement = getCurrentTypeElement();
+            if (!currentTypeElement || currentTypeElement.dataset.source !== 'custom') return;
+
+            const currentObjects = objectData[currentType] || [];
+            if (currentObjects.length > 0) {
+                alert('该对象类型下存在对象，无法删除');
+                return;
+            }
+
+            if (!confirm('确定要删除当前对象类型吗？')) return;
+
+            delete objectData[currentType];
+            const nextTypeElement = currentTypeElement.previousElementSibling || currentTypeElement.nextElementSibling;
+            currentTypeElement.remove();
+
+            if (nextTypeElement) {
+                selectType(nextTypeElement, nextTypeElement.querySelector('.type-name').textContent.trim());
+                return;
+            }
+
+            currentType = '';
+            document.getElementById('currentTypeName').textContent = '对象类型';
+            updateTypeHeaderActions();
+            renderObjectTable();
+        }
+
+        // 确认新建对象
+        function confirmAddObject() {
+            closeModal('addObjectModal');
+        }
+
+        // 子对象管理
+        let subObjectCounter = 0;
+
+        function addSubObjectRow() {
+            const container = document.getElementById('subObjectsList');
+            const rowId = ++subObjectCounter;
+            const row = document.createElement('div');
+            row.className = 'sub-object-row';
+            row.id = `subObjectRow_${rowId}`;
+            row.innerHTML = `
+                <input type="text" placeholder="子对象名称" class="sub-obj-name">
+                <input type="text" placeholder="子对象ID" class="sub-obj-id">
+                <button type="button" class="btn-remove-sub" onclick="removeSubObjectRow(${rowId})">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            `;
+            container.appendChild(row);
+        }
+
+        function removeSubObjectRow(rowId) {
+            const row = document.getElementById(`subObjectRow_${rowId}`);
+            if (row) row.remove();
+        }
+
+        function clearSubObjects() {
+            document.getElementById('subObjectsList').innerHTML = '';
+            subObjectCounter = 0;
+        }
+
+        // 删除对象
+        function deleteObject(objectId) {
+            if (confirm('确定要删除这个对象吗？')) {
+                const objects = objectData[currentType];
+                const index = objects.findIndex(o => o.id === objectId);
+                if (index > -1) {
+                    objects.splice(index, 1);
+                    renderObjectTable();
+                }
+            }
+        }
+
+        // 图标选择器
+        document.querySelectorAll('.icon-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.icon-option').forEach(o => o.classList.remove('selected'));
+                this.classList.add('selected');
+            });
+        });
+
+        // 初始化对象类型拖拽
+        function initTypeDragAndDrop() {
+            const typeList = document.getElementById('typeList');
+            const items = typeList.querySelectorAll('.type-item');
+            let draggedItem = null;
+
+            items.forEach(item => {
+                item.addEventListener('dragstart', function(e) {
+                    draggedItem = this;
+                    this.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+
+                item.addEventListener('dragend', function() {
+                    this.classList.remove('dragging');
+                    items.forEach(item => item.classList.remove('drag-over'));
+                });
+
+                item.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                });
+
+                item.addEventListener('dragenter', function() {
+                    if (this !== draggedItem) {
+                        this.classList.add('drag-over');
+                    }
+                });
+
+                item.addEventListener('dragleave', function() {
+                    this.classList.remove('drag-over');
+                });
+
+                item.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    if (this !== draggedItem) {
+                        const allItems = [...typeList.querySelectorAll('.type-item')];
+                        const draggedIndex = allItems.indexOf(draggedItem);
+                        const targetIndex = allItems.indexOf(this);
+                        
+                        if (draggedIndex < targetIndex) {
+                            typeList.insertBefore(draggedItem, this.nextSibling);
+                        } else {
+                            typeList.insertBefore(draggedItem, this);
+                        }
+                    }
+                    this.classList.remove('drag-over');
+                });
+            });
+        }
+
+        // 初始化表格拖拽
+        function initTableDragAndDrop() {
+            const tbody = document.getElementById('objectTableBody');
+            const rows = tbody.querySelectorAll('tr[draggable="true"]');
+            let draggedRow = null;
+
+            rows.forEach(row => {
+                row.addEventListener('dragstart', function(e) {
+                    draggedRow = this;
+                    this.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+
+                row.addEventListener('dragend', function() {
+                    this.classList.remove('dragging');
+                    rows.forEach(r => r.classList.remove('drag-over'));
+                });
+
+                row.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                });
+
+                row.addEventListener('dragenter', function() {
+                    if (this !== draggedRow) {
+                        this.classList.add('drag-over');
+                    }
+                });
+
+                row.addEventListener('dragleave', function() {
+                    this.classList.remove('drag-over');
+                });
+
+                row.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    if (this !== draggedRow) {
+                        const allRows = [...tbody.querySelectorAll('tr[draggable="true"]')];
+                        const draggedIndex = allRows.indexOf(draggedRow);
+                        const targetIndex = allRows.indexOf(this);
+                        
+                        if (draggedIndex < targetIndex) {
+                            tbody.insertBefore(draggedRow, this.nextSibling);
+                        } else {
+                            tbody.insertBefore(draggedRow, this);
+                        }
+                    }
+                    this.classList.remove('drag-over');
+                });
+            });
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            renderObjectTable();
+            initTypeDragAndDrop();
+            updateTypeHeaderActions();
+        });
+    </script>
+</body>
+</html>

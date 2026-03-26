@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlueKing Lite - 事件告警</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            color: #313238;
+            min-height: 100vh;
+            font-size: 14px;
+        }
+
+        /* ==================== 顶部导航栏 ==================== */
+        .top-header {
+            background: #fff;
+            height: 60px;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+
+        .logo-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .app-switcher {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: #f5f7fa;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #646a73;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .app-switcher:hover {
+            background: rgba(0, 82, 217, 0.06);
+            color: #0052d9;
+        }
+
+        .app-switcher svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 8px;
+            margin-left: 48px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #646a73;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .nav-item:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .nav-item.active {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.1);
+        }
+
+        .nav-item svg {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+
+        a.nav-item {
+            text-decoration: none;
+        }
+
+        a.nav-item:hover,
+        a.nav-item.active {
+            color: #0052d9;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: #646a73;
+            font-size: 14px;
+        }
+
+        .header-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .header-icon:hover {
+            background: rgba(0, 0, 0, 0.04);
+            color: #0052d9;
+        }
+
+        .header-icon svg {
+            width: 20px;
+            height: 20px;
+            color: #646a73;
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .user-avatar:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .user-info:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        .user-info svg {
+            width: 14px;
+            height: 14px;
+            color: #979ba5;
+        }
+
+        /* ==================== 二级导航 ==================== */
+        .sub-header {
+            background: #fff;
+            height: 48px;
+            border-bottom: 1px solid #dcdee5;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+        }
+
+        .sub-nav {
+            display: flex;
+            gap: 4px;
+        }
+
+        .sub-nav-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #63656e;
+            border-radius: 4px;
+            font-weight: 500;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .sub-nav-item:hover {
+            color: #3a84ff;
+            background: #e1ecff;
+        }
+
+        .sub-nav-item.active {
+            color: #3a84ff;
+            background: #e1ecff;
+        }
+
+        .sub-nav-item svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* ==================== 主内容区 ==================== */
+        .main-container {
+            display: flex;
+            height: calc(100vh - 108px);
+        }
+
+        /* ==================== 左侧导航 ==================== */
+        .left-sidebar {
+            width: 180px;
+            background: #fff;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin: 16px 16px 16px 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            border: 1px solid #dcdee5;
+        }
+
+        /* 搜索框 */
+        .search-box {
+            padding: 12px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .search-input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .search-input:focus {
+            border-color: #3a84ff;
+        }
+
+        .search-btn {
+            padding: 8px 12px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .search-btn:hover {
+            background: #0052d9;
+        }
+
+        .search-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* 树形菜单 */
+        .tree-menu {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 8px 16px;
+        }
+
+        .tree-node {
+            user-select: none;
+        }
+
+        .tree-node-content {
+            display: flex;
+            align-items: center;
+            padding: 8px 8px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #63656e;
+        }
+
+        .tree-node-content:hover {
+            background: #f5f7fa;
+        }
+
+        .tree-node-content.active {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .tree-node-icon {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 4px;
+            color: #979ba5;
+            font-size: 10px;
+            transition: transform 0.2s;
+        }
+
+        .tree-node-icon.expanded {
+            transform: rotate(90deg);
+        }
+
+        .tree-node-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tree-children {
+            display: none;
+            padding-left: 20px;
+        }
+
+        .tree-children.expanded {
+            display: block;
+        }
+
+        .tree-leaf {
+            display: flex;
+            align-items: center;
+            padding: 6px 8px 6px 20px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #63656e;
+        }
+
+        .tree-leaf:hover {
+            background: #f5f7fa;
+        }
+
+        .tree-leaf.active {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        /* ==================== 右侧内容区域 ==================== */
+        .content-area {
+            flex: 1;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+            margin: 16px 16px 16px 0;
+            border: 1px solid #dcdee5;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* 内容Tab */
+        .content-tabs {
+            display: flex;
+            gap: 24px;
+            padding: 0 20px;
+            border-bottom: 1px solid #dcdee5;
+        }
+
+        .content-tab {
+            padding: 16px 0;
+            font-size: 14px;
+            color: #63656e;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+        }
+
+        .content-tab:hover {
+            color: #3a84ff;
+        }
+
+        .content-tab.active {
+            color: #3a84ff;
+            border-bottom-color: #3a84ff;
+            font-weight: 500;
+        }
+
+        /* 搜索条件区域 */
+        .search-conditions {
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .conditions-title {
+            font-size: 14px;
+            color: #313238;
+            margin-bottom: 12px;
+        }
+
+        .conditions-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .conditions-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .condition-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .condition-label {
+            font-size: 13px;
+            color: #63656e;
+        }
+
+        .condition-select {
+            min-width: 140px;
+            padding: 8px 32px 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #63656e;
+            background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23979ba5' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 10px center;
+            appearance: none;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .condition-select:focus {
+            border-color: #3a84ff;
+        }
+
+        .conditions-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-icon {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+            color: #63656e;
+            transition: all 0.2s;
+        }
+
+        .btn-icon:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .btn-icon svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .btn-close {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 7px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+            color: #63656e;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .btn-close:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .btn-close svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* 分布图区域 */
+        .distribution-chart {
+            padding: 16px 20px;
+            border-bottom: 1px solid #dcdee5;
+        }
+
+        .chart-title {
+            font-size: 14px;
+            color: #313238;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .chart-title .info-icon {
+            width: 14px;
+            height: 14px;
+            color: #979ba5;
+            cursor: help;
+        }
+
+        .chart-container {
+            height: 80px;
+            position: relative;
+        }
+
+        .chart-y-axis {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 20px;
+            width: 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #979ba5;
+        }
+
+        .chart-area {
+            position: absolute;
+            left: 35px;
+            right: 0;
+            top: 0;
+            bottom: 0;
+        }
+
+        .chart-grid {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            bottom: 20px;
+            border-left: 1px dashed #e5e7eb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .chart-grid-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            border-top: 1px dashed #e5e7eb;
+        }
+
+        .chart-bars {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            bottom: 20px;
+            display: flex;
+            align-items: flex-end;
+            padding: 0 2px;
+        }
+
+        .chart-bar {
+            flex: 1;
+            margin: 0 1px;
+            min-width: 2px;
+            max-width: 8px;
+        }
+
+        .chart-bar.critical {
+            background: #ea3636;
+        }
+
+        .chart-bar.warning {
+            background: #ff9c01;
+        }
+
+        .chart-bar.info {
+            background: #3a84ff;
+        }
+
+        .chart-x-axis {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #979ba5;
+        }
+
+        /* 告警列表区域 */
+        .alert-list {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .list-toolbar {
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .list-search-wrapper {
+            position: relative;
+            width: 200px;
+        }
+
+        .list-search-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .list-search-input:focus {
+            border-color: #3a84ff;
+        }
+
+        .list-search-btn {
+            padding: 8px 16px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .list-search-btn:hover {
+            background: #0052d9;
+        }
+
+        .list-search-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* 表格 */
+        .table-container {
+            flex: 1;
+            overflow: auto;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .data-table thead {
+            background: #fafbfc;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .data-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 500;
+            color: #313238;
+            border-bottom: 1px solid #dcdee5;
+            white-space: nowrap;
+        }
+
+        .data-table th.sortable {
+            cursor: pointer;
+        }
+
+        .data-table th.sortable:hover {
+            background: #f0f1f5;
+        }
+
+        .data-table th .sort-icon {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-left: 4px;
+            vertical-align: middle;
+            color: #979ba5;
+        }
+
+        .data-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f1f5;
+            color: #63656e;
+        }
+
+        .data-table tbody tr:hover {
+            background: #f5f7fa;
+        }
+
+        /* 级别标签 */
+        .level-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .level-tag.critical {
+            background: #ea3636;
+            color: white;
+        }
+
+        .level-tag.warning {
+            background: #ff9c01;
+            color: white;
+        }
+
+        .level-tag.error {
+            background: #ea3636;
+            color: white;
+        }
+
+        .level-tag svg {
+            width: 12px;
+            height: 12px;
+        }
+
+        /* 类型标签 */
+        .type-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #f0f1f5;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #63656e;
+        }
+
+        /* 状态标签 */
+        .status-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #e1ecff;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #3a84ff;
+        }
+
+        /* 操作按钮 */
+        .action-link {
+            color: #3a84ff;
+            cursor: pointer;
+            font-size: 13px;
+            margin-right: 12px;
+        }
+
+        .action-link:hover {
+            color: #0052d9;
+        }
+
+        /* 分页 */
+        .pagination {
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            border-top: 1px solid #dcdee5;
+            font-size: 13px;
+            color: #63656e;
+        }
+
+        .pagination-info {
+            margin-right: 16px;
+        }
+
+        .pagination-btn {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+            color: #63656e;
+            font-size: 13px;
+        }
+
+        .pagination-btn:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .pagination-btn.active {
+            background: #3a84ff;
+            border-color: #3a84ff;
+            color: white;
+        }
+
+        .pagination-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .pagination-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .pagination-select {
+            padding: 6px 24px 6px 8px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #63656e;
+            background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23979ba5' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 6px center;
+            appearance: none;
+            cursor: pointer;
+            outline: none;
+        }
+
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f5f7fa;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c4c6cc;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #979ba5;
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <span>BlueKing Lite</span>
+            </div>
+            <div class="app-switcher">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <nav class="header-nav">
+                <a href="../视图/视图.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <span>视图</span>
+                </a>
+                <a href="../搜索/搜索.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="m21 21-4.35-4.35"/>
+                    </svg>
+                    <span>搜索</span>
+                </a>
+                <a href="告警.html" class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 8v4l2 2"/>
+                    </svg>
+                    <span>事件</span>
+                </a>
+                <a href="../集成/集成.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    <span>集成</span>
+                </a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+            </div>
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </div>
+            <div class="user-info">
+                <div class="user-avatar">陈</div>
+                <span>陈润翼</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- 二级导航 -->
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <a href="告警.html" class="sub-nav-item active">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                告警
+            </a>
+            <a href="策略.html" class="sub-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="3" y1="9" x2="21" y2="9"/>
+                    <line x1="9" y1="21" x2="9" y2="9"/>
+                </svg>
+                策略
+            </a>
+            <a href="模板.html" class="sub-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                模板
+            </a>
+        </nav>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-container">
+        <!-- 左侧导航 -->
+        <div class="left-sidebar">
+            <!-- 搜索框 -->
+            <div class="search-box">
+                <div class="search-input-wrapper">
+                    <input type="text" class="search-input" placeholder="搜索...">
+                </div>
+                <button class="search-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="m21 21-4.35-4.35"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- 树形菜单 -->
+            <div class="tree-menu">
+                <!-- 全部 -->
+                <div class="tree-leaf active">全部</div>
+
+                <!-- 操作系统 -->
+                <div class="tree-node">
+                    <div class="tree-node-content" onclick="toggleNode(this)">
+                        <span class="tree-node-icon expanded">▶</span>
+                        <span class="tree-node-label">操作系统</span>
+                    </div>
+                    <div class="tree-children expanded">
+                        <div class="tree-leaf">主机</div>
+                    </div>
+                </div>
+
+                <!-- 网络 -->
+                <div class="tree-node">
+                    <div class="tree-node-content" onclick="toggleNode(this)">
+                        <span class="tree-node-icon expanded">▶</span>
+                        <span class="tree-node-label">网络</span>
+                    </div>
+                    <div class="tree-children expanded">
+                        <div class="tree-leaf">网站</div>
+                        <div class="tree-leaf">Ping</div>
+                    </div>
+                </div>
+
+                <!-- 数据库 -->
+                <div class="tree-node">
+                    <div class="tree-node-content" onclick="toggleNode(this)">
+                        <span class="tree-node-icon expanded">▶</span>
+                        <span class="tree-node-label">数据库</span>
+                    </div>
+                    <div class="tree-children expanded">
+                        <div class="tree-leaf">Elasticsearch</div>
+                        <div class="tree-leaf">MySQL</div>
+                        <div class="tree-leaf">Postgres</div>
+                        <div class="tree-leaf">Redis</div>
+                        <div class="tree-leaf">Oracle</div>
+                        <div class="tree-leaf">MSSQL</div>
+                        <div class="tree-leaf">MongoDB</div>
+                    </div>
+                </div>
+
+                <!-- 中间件 -->
+                <div class="tree-node">
+                    <div class="tree-node-content" onclick="toggleNode(this)">
+                        <span class="tree-node-icon expanded">▶</span>
+                        <span class="tree-node-label">中间件</span>
+                    </div>
+                    <div class="tree-children expanded">
+                        <div class="tree-leaf">RabbitMQ</div>
+                        <div class="tree-leaf">Nginx</div>
+                        <div class="tree-leaf">Apache</div>
+                        <div class="tree-leaf">Consul</div>
+                        <div class="tree-leaf">Tomcat</div>
+                        <div class="tree-leaf">Zookeeper</div>
+                        <div class="tree-leaf">ActiveMQ</div>
+                        <div class="tree-leaf">Kafka</div>
+                        <div class="tree-leaf">Minio</div>
+                    </div>
+                </div>
+
+                <!-- 网络设备 -->
+                <div class="tree-node">
+                    <div class="tree-node-content" onclick="toggleNode(this)">
+                        <span class="tree-node-icon expanded">▶</span>
+                        <span class="tree-node-label">网络设备</span>
+                    </div>
+                    <div class="tree-children expanded">
+                        <div class="tree-leaf">交换机</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧内容区域 -->
+        <div class="content-area">
+            <!-- 内容Tab -->
+            <div class="content-tabs">
+                <div class="content-tab active">活跃告警</div>
+                <div class="content-tab">历史告警</div>
+            </div>
+
+            <!-- 搜索条件区域 -->
+            <div class="search-conditions">
+                <div class="conditions-title">搜索条件</div>
+                <div class="conditions-row">
+                    <div class="conditions-left">
+                        <div class="condition-item">
+                            <span class="condition-label">级别</span>
+                            <select class="condition-select">
+                                <option value="">全部</option>
+                                <option value="critical">严重</option>
+                                <option value="warning">警告</option>
+                                <option value="error">错误</option>
+                            </select>
+                        </div>
+                        <div class="condition-item">
+                            <span class="condition-label">状态</span>
+                            <select class="condition-select">
+                                <option value="">全部</option>
+                                <option value="new">新</option>
+                                <option value="ack">已确认</option>
+                                <option value="resolved">已解决</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="conditions-right">
+                        <button class="btn-icon" title="刷新">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 4 23 10 17 10"/>
+                                <polyline points="1 20 1 14 7 14"/>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                            </svg>
+                        </button>
+                        <button class="btn-close">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <line x1="15" y1="9" x2="9" y2="15"/>
+                                <line x1="9" y1="9" x2="15" y2="15"/>
+                            </svg>
+                            关闭
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 分布图区域 -->
+            <div class="distribution-chart">
+                <div class="chart-title">
+                    分布图
+                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-y-axis">
+                        <span>12</span>
+                        <span>0</span>
+                    </div>
+                    <div class="chart-area">
+                        <div class="chart-grid">
+                            <div class="chart-grid-line" style="top: 50%"></div>
+                        </div>
+                        <div class="chart-bars">
+                            <!-- 模拟柱状图数据 -->
+                            <div class="chart-bar warning" style="height: 8%"></div>
+                            <div class="chart-bar warning" style="height: 5%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar critical" style="height: 5%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar" style="height: 0%"></div>
+                            <div class="chart-bar critical" style="height: 100%"></div>
+                        </div>
+                        <div class="chart-x-axis">
+                            <span>2026-02-27 09:50:00</span>
+                            <span>2026-02-05 10:50:00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 告警列表 -->
+            <div class="alert-list">
+                <div class="list-toolbar">
+                    <div class="list-search-wrapper">
+                        <input type="text" class="list-search-input" placeholder="搜索...">
+                    </div>
+                    <button class="list-search-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path d="m21 21-4.35-4.35"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>级别</th>
+                                <th class="sortable">时间 <span class="sort-icon">↕</span></th>
+                                <th>告警名称</th>
+                                <th>告警类型</th>
+                                <th>资产</th>
+                                <th>资产类型</th>
+                                <th>状态</th>
+                                <th>通知</th>
+                                <th>操作员</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>
+                                    <span class="level-tag critical">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                            <line x1="12" y1="9" x2="12" y2="13"/>
+                                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                        </svg>
+                                        严重
+                                    </span>
+                                </td>
+                                <td>2026-02-27 09:50:02</td>
+                                <td>HostCPU Usage</td>
+                                <td><span class="type-tag">阈值</span></td>
+                                <td>172.16.32.33</td>
+                                <td>主机</td>
+                                <td><span class="status-tag">新</span></td>
+                                <td>未通知</td>
+                                <td>--</td>
+                                <td>
+                                    <span class="action-link">详情</span>
+                                    <span class="action-link">关闭</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <span class="level-tag warning">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                            <line x1="12" y1="9" x2="12" y2="13"/>
+                                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                        </svg>
+                                        警告
+                                    </span>
+                                </td>
+                                <td>2026-02-05 16:35:03</td>
+                                <td>Host5 Minute Average Load</td>
+                                <td><span class="type-tag">阈值</span></td>
+                                <td>172.16.32.38</td>
+                                <td>主机</td>
+                                <td><span class="status-tag">新</span></td>
+                                <td>未通知</td>
+                                <td>--</td>
+                                <td>
+                                    <span class="action-link">详情</span>
+                                    <span class="action-link">关闭</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <span class="level-tag error">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                            <line x1="12" y1="9" x2="12" y2="13"/>
+                                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                        </svg>
+                                        错误
+                                    </span>
+                                </td>
+                                <td>2026-02-05 16:30:01</td>
+                                <td>Host5 Minute Average Load</td>
+                                <td><span class="type-tag">阈值</span></td>
+                                <td>172.16.32.124</td>
+                                <td>主机</td>
+                                <td><span class="status-tag">新</span></td>
+                                <td>未通知</td>
+                                <td>--</td>
+                                <td>
+                                    <span class="action-link">详情</span>
+                                    <span class="action-link">关闭</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <span class="level-tag critical">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                            <line x1="12" y1="9" x2="12" y2="13"/>
+                                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                        </svg>
+                                        严重
+                                    </span>
+                                </td>
+                                <td>2026-02-05 16:25:01</td>
+                                <td>Host5 Minute Average Load</td>
+                                <td><span class="type-tag">阈值</span></td>
+                                <td>172.16.32.42</td>
+                                <td>主机</td>
+                                <td><span class="status-tag">新</span></td>
+                                <td>未通知</td>
+                                <td>--</td>
+                                <td>
+                                    <span class="action-link">详情</span>
+                                    <span class="action-link">关闭</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <span class="level-tag warning">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                            <line x1="12" y1="9" x2="12" y2="13"/>
+                                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                        </svg>
+                                        警告
+                                    </span>
+                                </td>
+                                <td>2026-02-05 16:25:01</td>
+                                <td>Host5 Minute Average Load</td>
+                                <td><span class="type-tag">阈值</span></td>
+                                <td>172.16.32.18</td>
+                                <td>主机</td>
+                                <td><span class="status-tag">新</span></td>
+                                <td>未通知</td>
+                                <td>--</td>
+                                <td>
+                                    <span class="action-link">详情</span>
+                                    <span class="action-link">关闭</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 分页 -->
+                <div class="pagination">
+                    <span class="pagination-info">共 26 项</span>
+                    <button class="pagination-btn" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                    </button>
+                    <button class="pagination-btn active">1</button>
+                    <button class="pagination-btn">2</button>
+                    <button class="pagination-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                    </button>
+                    <select class="pagination-select">
+                        <option>20 / page</option>
+                        <option>50 / page</option>
+                        <option>100 / page</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 切换树节点展开/收起
+        function toggleNode(element) {
+            const icon = element.querySelector('.tree-node-icon');
+            const children = element.nextElementSibling;
+            
+            if (icon && children) {
+                icon.classList.toggle('expanded');
+                children.classList.toggle('expanded');
+            }
+        }
+
+        // Tab切换
+        document.querySelectorAll('.content-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.content-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // 树形菜单选择
+        document.querySelectorAll('.tree-leaf').forEach(leaf => {
+            leaf.addEventListener('click', function() {
+                document.querySelectorAll('.tree-leaf').forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

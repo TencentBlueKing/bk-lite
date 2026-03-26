@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlueKing Lite - 视图</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            color: #1f2329;
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        /* ==================== 顶部导航栏 ==================== */
+        .top-header {
+            background: #fff;
+            height: 60px;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+
+        .logo-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .app-switcher {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: #f5f7fa;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #646a73;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .app-switcher:hover {
+            background: rgba(0, 82, 217, 0.06);
+            color: #0052d9;
+        }
+
+        .app-switcher svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 8px;
+            margin-left: 48px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #646a73;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .nav-item.active {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.1);
+        }
+
+        .nav-item svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        a.nav-item {
+            text-decoration: none;
+        }
+
+        a.nav-item:hover,
+        a.nav-item.active {
+            color: #0052d9;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: #646a73;
+            font-size: 14px;
+        }
+
+        .header-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .header-icon:hover {
+            background: rgba(0, 0, 0, 0.04);
+            color: #0052d9;
+        }
+
+        .header-icon svg {
+            width: 20px;
+            height: 20px;
+            color: #646a73;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .user-info:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .user-info svg {
+            width: 14px;
+            height: 14px;
+            color: #979ba5;
+        }
+
+        /* ==================== 主内容区 ==================== */
+        .main-container {
+            display: flex;
+            height: calc(100vh - 60px);
+        }
+
+        /* ==================== 左侧导航 ==================== */
+        .left-sidebar {
+            width: 260px;
+            background: #fff;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin: 16px 0 16px 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            border: 1px solid #dcdee5;
+        }
+
+        /* 搜索框 */
+        .sidebar-search {
+            padding: 16px;
+        }
+
+        .search-input-wrapper {
+            position: relative;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #979ba5;
+            width: 16px;
+            height: 16px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 10px 14px 10px 36px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .search-input:focus {
+            border-color: #3a84ff;
+        }
+
+        /* 树形菜单 */
+        .tree-menu {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 12px 20px;
+        }
+
+        .tree-group {
+            margin-bottom: 8px;
+        }
+
+        .tree-group-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 12px 12px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #313238;
+            font-weight: 500;
+            border-radius: 4px;
+        }
+
+        .tree-group-header:hover {
+            background: #f5f7fa;
+        }
+
+        .tree-expand-icon {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #979ba5;
+        }
+
+        .tree-expand-icon svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .tree-expand-icon.expanded svg {
+            transform: rotate(90deg);
+        }
+
+        .tree-children {
+            padding-left: 24px;
+        }
+
+        .tree-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #63656e;
+            border-radius: 4px;
+            margin-bottom: 2px;
+        }
+
+        .tree-item:hover {
+            background: #f5f7fa;
+            color: #3a84ff;
+        }
+
+        .tree-item.active {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .tree-item-icon {
+            font-size: 12px;
+            color: #c4c6cc;
+        }
+
+        .tree-item-count {
+            margin-left: auto;
+            color: #979ba5;
+            font-size: 12px;
+        }
+
+        /* ==================== 内容区 ==================== */
+        .content-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: 20px;
+            gap: 16px;
+        }
+
+        /* 内容头部工具栏 */
+        .content-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .toolbar-search {
+            width: 240px;
+            padding: 10px 14px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .toolbar-search:focus {
+            border-color: #3a84ff;
+        }
+
+        .toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .toolbar-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 16px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+            font-size: 13px;
+            color: #63656e;
+            cursor: pointer;
+        }
+
+        .toolbar-btn:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .toolbar-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .toolbar-btn.primary {
+            background: #3a84ff;
+            border-color: #3a84ff;
+            color: #fff;
+        }
+
+        .toolbar-btn.primary:hover {
+            background: #306ed0;
+        }
+
+        /* ==================== 表格卡片 ==================== */
+        .table-card {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+
+        .table-container {
+            flex: 1;
+            overflow: auto;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .data-table th {
+            position: sticky;
+            top: 0;
+            background: #fafbfd;
+            padding: 16px 20px;
+            text-align: left;
+            font-weight: 500;
+            color: #313238;
+            border-bottom: 1px solid #dcdee5;
+            white-space: nowrap;
+        }
+
+        .data-table th .sort-icon {
+            color: #c4c6cc;
+            margin-left: 6px;
+            cursor: pointer;
+        }
+
+        .data-table th .sort-icon svg {
+            width: 14px;
+            height: 14px;
+            vertical-align: middle;
+        }
+
+        .data-table td {
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f1f5;
+            color: #63656e;
+            vertical-align: middle;
+        }
+
+        .data-table tr:hover td {
+            background: #f5f7fa;
+        }
+
+        /* 名称列 */
+        .host-name {
+            color: #3a84ff;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .host-name:hover {
+            text-decoration: underline;
+        }
+
+        /* 状态标签 */
+        .status-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-tag.normal {
+            background: #e5f6ea;
+            color: #2dcb56;
+        }
+
+        .status-tag.offline {
+            background: #f5f7fa;
+            color: #979ba5;
+        }
+
+        /* 进度条 */
+        .progress-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 160px;
+        }
+
+        .progress-bar {
+            flex: 1;
+            height: 8px;
+            background: #f0f1f5;
+            border-radius: 4px;
+            overflow: hidden;
+            min-width: 80px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #3a84ff;
+            border-radius: 4px;
+        }
+
+        .progress-fill.warning {
+            background: #ff9c01;
+        }
+
+        .progress-fill.danger {
+            background: #ea3636;
+        }
+
+        .progress-value {
+            min-width: 55px;
+            text-align: right;
+            color: #63656e;
+            font-size: 13px;
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+
+        /* 操作列 */
+        .action-links {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .action-link {
+            color: #3a84ff;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .action-link:hover {
+            text-decoration: underline;
+        }
+
+        /* ==================== 分页 ==================== */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 16px 20px;
+            background: #fff;
+            border-top: 1px solid #f0f1f5;
+            gap: 12px;
+        }
+
+        .page-info {
+            font-size: 13px;
+            color: #63656e;
+        }
+
+        .page-nav {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .page-btn {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+            font-size: 13px;
+            color: #63656e;
+            cursor: pointer;
+        }
+
+        .page-btn:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .page-btn.active {
+            background: #3a84ff;
+            border-color: #3a84ff;
+            color: #fff;
+        }
+
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .page-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .page-size-select {
+            padding: 6px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #63656e;
+            outline: none;
+        }
+
+
+        /* ==================== 刷新按钮组 ==================== */
+        .refresh-group {
+            display: flex;
+            align-items: center;
+        }
+
+        .refresh-group .refresh-manual-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            cursor: pointer;
+            border: 1px solid #dcdee5;
+            border-radius: 6px 0 0 6px;
+            border-right: none;
+            background: #fff;
+            color: #646a73;
+            transition: all 0.2s;
+        }
+
+        .refresh-group .refresh-manual-btn:hover {
+            border-color: #0052d9;
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.04);
+        }
+
+        .refresh-group .refresh-manual-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .refresh-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .refresh-button {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            padding: 8px 12px;
+            height: 36px;
+            border-radius: 0 6px 6px 0;
+            transition: all 0.2s;
+            font-weight: 500;
+            font-size: 13px;
+            color: #646a73;
+            border: 1px solid #dcdee5;
+            background: #fff;
+        }
+
+        .refresh-button:hover {
+            border-color: #0052d9;
+            color: #0052d9;
+        }
+
+        .refresh-button.active {
+            background: rgba(0, 82, 217, 0.06);
+            color: #0052d9;
+            border-color: rgba(0, 82, 217, 0.4);
+        }
+
+        .refresh-button svg {
+            width: 12px;
+            height: 12px;
+        }
+
+        .refresh-dropdown-content {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            background: #fff;
+            min-width: 100px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            z-index: 1000;
+            overflow: hidden;
+            animation: dropdownFadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes dropdownFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-6px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .refresh-dropdown.show .refresh-dropdown-content {
+            display: block;
+        }
+
+        .refresh-option {
+            padding: 10px 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+            color: #63656e;
+        }
+
+        .refresh-option:hover {
+            background: #f5f7fa;
+            color: #0052d9;
+        }
+
+        .refresh-option.active {
+            background: rgba(0, 82, 217, 0.08);
+            color: #0052d9;
+            font-weight: 500;
+        }
+        /* ==================== 滚动条样式 ==================== */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #dcdee5;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #c4c6cc;
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <span>BlueKing Lite</span>
+            </div>
+            <div class="app-switcher">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+            <nav class="header-nav">
+                <a href="视图.html" class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    <span>视图</span>
+                </a>
+                <a href="../搜索/搜索.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span>搜索</span>
+                </a>
+                <a href="../事件/告警.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    <span>事件</span>
+                </a>
+                <a href="../集成/集成.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 11a9 9 0 0 1 9 9"/>
+                        <path d="M4 4a16 16 0 0 1 16 16"/>
+                        <circle cx="5" cy="19" r="1"/>
+                    </svg>
+                    <span>集成</span>
+                </a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+            </div>
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </div>
+            <div class="user-info">
+                <div class="user-avatar">陈</div>
+                <span>陈润翼</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-container">
+        <!-- 左侧导航 -->
+        <div class="left-sidebar">
+            <!-- 搜索框 -->
+            <div class="sidebar-search">
+                <div class="search-input-wrapper">
+                    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <input type="text" class="search-input" placeholder="搜索...">
+                </div>
+            </div>
+
+            <!-- 树形菜单 -->
+            <div class="tree-menu">
+                <!-- 操作系统 -->
+                <div class="tree-group">
+                    <div class="tree-group-header" onclick="toggleGroup(this)">
+                        <span class="tree-expand-icon expanded">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 18l6-6-6-6"/>
+                            </svg>
+                        </span>
+                        <span>操作系统</span>
+                    </div>
+                    <div class="tree-children">
+                        <div class="tree-item active">
+                            <span class="tree-item-icon">└</span>
+                            <span>主机</span>
+                            <span class="tree-item-count">(28)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 网络 -->
+                <div class="tree-group">
+                    <div class="tree-group-header" onclick="toggleGroup(this)">
+                        <span class="tree-expand-icon expanded">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 18l6-6-6-6"/>
+                            </svg>
+                        </span>
+                        <span>网络</span>
+                    </div>
+                    <div class="tree-children">
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>网站</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Ping</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 数据库 -->
+                <div class="tree-group">
+                    <div class="tree-group-header" onclick="toggleGroup(this)">
+                        <span class="tree-expand-icon expanded">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 18l6-6-6-6"/>
+                            </svg>
+                        </span>
+                        <span>数据库</span>
+                    </div>
+                    <div class="tree-children">
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Elasticsearch</span>
+                            <span class="tree-item-count">(3)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>MySQL</span>
+                            <span class="tree-item-count">(2)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Postgres</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Redis</span>
+                            <span class="tree-item-count">(7)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Oracle</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>MSSQL</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>MongoDB</span>
+                            <span class="tree-item-count">(3)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 中间件 -->
+                <div class="tree-group">
+                    <div class="tree-group-header" onclick="toggleGroup(this)">
+                        <span class="tree-expand-icon expanded">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 18l6-6-6-6"/>
+                            </svg>
+                        </span>
+                        <span>中间件</span>
+                    </div>
+                    <div class="tree-children">
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>RabbitMQ</span>
+                            <span class="tree-item-count">(2)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Nginx</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Apache</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Consul</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Tomcat</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Zookeeper</span>
+                            <span class="tree-item-count">(3)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>ActiveMQ</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Kafka</span>
+                            <span class="tree-item-count">(3)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>Minio</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 网络设备 -->
+                <div class="tree-group">
+                    <div class="tree-group-header" onclick="toggleGroup(this)">
+                        <span class="tree-expand-icon expanded">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 18l6-6-6-6"/>
+                            </svg>
+                        </span>
+                        <span>网络设备</span>
+                    </div>
+                    <div class="tree-children">
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>交换机</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>路由器</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>防火墙</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                        <div class="tree-item">
+                            <span class="tree-item-icon">└</span>
+                            <span>负载均衡</span>
+                            <span class="tree-item-count">(0)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 内容区 -->
+        <div class="content-area">
+            <!-- 表格卡片 -->
+            <div class="table-card">
+                <!-- 工具栏 -->
+                <div class="content-toolbar">
+                    <div class="toolbar-left">
+                        <input type="text" class="toolbar-search" placeholder="搜索主机名称...">
+                    </div>
+                    <div class="toolbar-right">
+                        <!-- 刷新按钮组：手动刷新 + 自动刷新配置 -->
+                        <div class="refresh-group">
+                            <!-- 左侧：手动刷新按钮 -->
+                            <button class="refresh-manual-btn" onclick="performRefresh()" title="立即刷新">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="23 4 23 10 17 10"/>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                </svg>
+                            </button>
+                            <!-- 右侧：自动刷新周期下拉 -->
+                            <div class="refresh-dropdown" id="refreshDropdown">
+                                <button class="refresh-button" onclick="toggleRefreshDropdown()">
+                                    <span id="refreshLabel">关闭</span>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M6 9l6 6 6-6"/>
+                                    </svg>
+                                </button>
+                                <div class="refresh-dropdown-content">
+                                    <div class="refresh-option active" onclick="selectRefreshInterval('off', '关闭')">关闭</div>
+                                    <div class="refresh-option" onclick="selectRefreshInterval(60000, '1m')">1m</div>
+                                    <div class="refresh-option" onclick="selectRefreshInterval(300000, '5m')">5m</div>
+                                    <div class="refresh-option" onclick="selectRefreshInterval(600000, '10m')">10m</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>名称 <span class="sort-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5"/><path d="M7 9l5-5 5 5"/></svg></span></th>
+                                <th>上报时间 <span class="sort-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5"/><path d="M7 9l5-5 5 5"/></svg></span></th>
+                                <th>上报状态</th>
+                                <th>CPU使用率</th>
+                                <th>磁盘使用率</th>
+                                <th>内存使用率</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="host-name">172.16.32.38</span></td>
+                                <td>2026-03-12 16:35:17</td>
+                                <td><span class="status-tag normal">正常</span></td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 11.61%"></div>
+                                        </div>
+                                        <span class="progress-value">11.61%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill warning" style="width: 67.89%"></div>
+                                        </div>
+                                        <span class="progress-value">67.89%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 57.06%"></div>
+                                        </div>
+                                        <span class="progress-value">57.06%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-links">
+                                        <span class="action-link">详情</span>
+                                        <span class="action-link">仪表盘</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="host-name">172.16.32.33</span></td>
+                                <td>--</td>
+                                <td><span class="status-tag offline">失联</span></td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 0%"></div>
+                                        </div>
+                                        <span class="progress-value">--</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 0%"></div>
+                                        </div>
+                                        <span class="progress-value">--</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 0%"></div>
+                                        </div>
+                                        <span class="progress-value">--</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-links">
+                                        <span class="action-link">详情</span>
+                                        <span class="action-link">仪表盘</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="host-name">172.16.32.22</span></td>
+                                <td>--</td>
+                                <td><span class="status-tag offline">失联</span></td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 0%"></div>
+                                        </div>
+                                        <span class="progress-value">--</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 0%"></div>
+                                        </div>
+                                        <span class="progress-value">--</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 0%"></div>
+                                        </div>
+                                        <span class="progress-value">--</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-links">
+                                        <span class="action-link">详情</span>
+                                        <span class="action-link">仪表盘</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="host-name">172.16.32.18</span></td>
+                                <td>2026-03-12 16:35:17</td>
+                                <td><span class="status-tag normal">正常</span></td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 7.21%"></div>
+                                        </div>
+                                        <span class="progress-value">7.21%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill danger" style="width: 84.91%"></div>
+                                        </div>
+                                        <span class="progress-value">84.91%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 23.69%"></div>
+                                        </div>
+                                        <span class="progress-value">23.69%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-links">
+                                        <span class="action-link">详情</span>
+                                        <span class="action-link">仪表盘</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="host-name">172.16.32.43</span></td>
+                                <td>2026-03-12 16:35:17</td>
+                                <td><span class="status-tag normal">正常</span></td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 27.81%"></div>
+                                        </div>
+                                        <span class="progress-value">27.81%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill danger" style="width: 82.04%"></div>
+                                        </div>
+                                        <span class="progress-value">82.04%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 47.91%"></div>
+                                        </div>
+                                        <span class="progress-value">47.91%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-links">
+                                        <span class="action-link">详情</span>
+                                        <span class="action-link">仪表盘</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="host-name">172.16.32.42</span></td>
+                                <td>2026-03-12 16:35:17</td>
+                                <td><span class="status-tag normal">正常</span></td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 33.01%"></div>
+                                        </div>
+                                        <span class="progress-value">33.01%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill warning" style="width: 69.46%"></div>
+                                        </div>
+                                        <span class="progress-value">69.46%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 51.35%"></div>
+                                        </div>
+                                        <span class="progress-value">51.35%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-links">
+                                        <span class="action-link">详情</span>
+                                        <span class="action-link">仪表盘</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="host-name">172.16.32.124</span></td>
+                                <td>2026-03-12 16:35:17</td>
+                                <td><span class="status-tag normal">正常</span></td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 5.55%"></div>
+                                        </div>
+                                        <span class="progress-value">5.55%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill warning" style="width: 76.44%"></div>
+                                        </div>
+                                        <span class="progress-value">76.44%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 37.76%"></div>
+                                        </div>
+                                        <span class="progress-value">37.76%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-links">
+                                        <span class="action-link">详情</span>
+                                        <span class="action-link">仪表盘</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="host-name">172.16.32.125</span></td>
+                                <td>2026-03-12 16:35:17</td>
+                                <td><span class="status-tag normal">正常</span></td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 16.73%"></div>
+                                        </div>
+                                        <span class="progress-value">16.73%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 45.56%"></div>
+                                        </div>
+                                        <span class="progress-value">45.56%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 44.65%"></div>
+                                        </div>
+                                        <span class="progress-value">44.65%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-links">
+                                        <span class="action-link">详情</span>
+                                        <span class="action-link">仪表盘</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="host-name">172.16.32.126</span></td>
+                                <td>2026-03-12 16:35:17</td>
+                                <td><span class="status-tag normal">正常</span></td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 6.96%"></div>
+                                        </div>
+                                        <span class="progress-value">6.96%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill warning" style="width: 62.47%"></div>
+                                        </div>
+                                        <span class="progress-value">62.47%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 29.28%"></div>
+                                        </div>
+                                        <span class="progress-value">29.28%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-links">
+                                        <span class="action-link">详情</span>
+                                        <span class="action-link">仪表盘</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="host-name">172.16.32.122</span></td>
+                                <td>2026-03-12 16:35:17</td>
+                                <td><span class="status-tag normal">正常</span></td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 17.90%"></div>
+                                        </div>
+                                        <span class="progress-value">17.90%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 47.62%"></div>
+                                        </div>
+                                        <span class="progress-value">47.62%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 44.02%"></div>
+                                        </div>
+                                        <span class="progress-value">44.02%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-links">
+                                        <span class="action-link">详情</span>
+                                        <span class="action-link">仪表盘</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="host-name">172.16.32.123</span></td>
+                                <td>2026-03-12 16:35:17</td>
+                                <td><span class="status-tag normal">正常</span></td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 40.54%"></div>
+                                        </div>
+                                        <span class="progress-value">40.54%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill warning" style="width: 76.44%"></div>
+                                        </div>
+                                        <span class="progress-value">76.44%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress-cell">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill danger" style="width: 83.75%"></div>
+                                        </div>
+                                        <span class="progress-value">83.75%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-links">
+                                        <span class="action-link">详情</span>
+                                        <span class="action-link">仪表盘</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 分页 -->
+                <div class="pagination">
+                    <span class="page-info">共 28 项</span>
+                    <div class="page-nav">
+                        <button class="page-btn" disabled>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M15 18l-6-6 6-6"/>
+                            </svg>
+                        </button>
+                        <button class="page-btn active">1</button>
+                        <button class="page-btn">2</button>
+                        <button class="page-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 18l6-6-6-6"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <select class="page-size-select">
+                        <option value="20">20 条/页</option>
+                        <option value="50">50 条/页</option>
+                        <option value="100">100 条/页</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 刷新下拉组件 ====================
+        let refreshInterval = null;
+        let currentRefreshTime = 'off';
+
+        function toggleRefreshDropdown() {
+            const dropdown = document.getElementById('refreshDropdown');
+            dropdown.classList.toggle('show');
+            
+            if (dropdown.classList.contains('show')) {
+                setTimeout(() => {
+                    document.addEventListener('click', closeDropdownOnClickOutside);
+                }, 0);
+            }
+        }
+
+        function closeDropdownOnClickOutside(event) {
+            const dropdown = document.getElementById('refreshDropdown');
+            if (!dropdown.contains(event.target)) {
+                dropdown.classList.remove('show');
+                document.removeEventListener('click', closeDropdownOnClickOutside);
+            }
+        }
+
+        function selectRefreshInterval(interval, label) {
+            // 清除现有定时器
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+
+            // 更新选中状态
+            document.querySelectorAll('.refresh-option').forEach(option => {
+                option.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // 更新按钮文本
+            document.getElementById('refreshLabel').textContent = label;
+            currentRefreshTime = interval;
+
+            // 更新按钮样式
+            const button = document.querySelector('.refresh-button');
+            if (interval === 'off') {
+                button.classList.remove('active');
+            } else {
+                button.classList.add('active');
+                // 设置自动刷新
+                refreshInterval = setInterval(() => {
+                    performRefresh();
+                }, interval);
+            }
+
+            // 关闭下拉菜单
+            document.getElementById('refreshDropdown').classList.remove('show');
+            document.removeEventListener('click', closeDropdownOnClickOutside);
+        }
+
+        function performRefresh() {
+            console.log('刷新数据...');
+            // 这里添加实际的刷新逻辑
+            // 例如：重新加载表格数据
+        }
+
+        // ==================== 树形菜单 ====================
+        function toggleGroup(header) {
+            const icon = header.querySelector('.tree-expand-icon');
+            const children = header.parentElement.querySelector('.tree-children');
+            
+            icon.classList.toggle('expanded');
+            if (children) {
+                children.style.display = children.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
+        // 树形菜单项点击
+        document.querySelectorAll('.tree-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.tree-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>
