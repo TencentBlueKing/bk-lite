@@ -476,6 +476,8 @@ class BasicNode:
     def user_message_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
         request = config["configurable"]["graph_request"]
         user_message = request.user_message
+        trace_id = config["configurable"].get("trace_id", "unknown")
+        logger.info(f"[{trace_id}] user_message_node 开始执行, original_user_message={user_message[:200]!r}")
 
         # 如果启用问题改写功能
         if config["configurable"]["graph_request"].enable_query_rewrite:
@@ -490,6 +492,7 @@ class BasicNode:
 
         state["messages"].append(HumanMessage(content=user_message))
         request.graph_user_message = user_message
+        logger.info(f"[{trace_id}] user_message_node 执行结束, appended_user_message={user_message[:200]!r}, message_count={len(state['messages'])}")
         return state
 
     def chat_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
@@ -646,6 +649,7 @@ class ToolsNodes(BasicNode):
         async def agent_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
             """Agent 节点 - 调用绑定工具的 LLM"""
             graph_request = config["configurable"]["graph_request"]
+            trace_id = config["configurable"].get("trace_id", "unknown")
 
             # 构建系统提示
             final_system_prompt = TemplateLoader.render_template(
@@ -667,13 +671,51 @@ class ToolsNodes(BasicNode):
             if not any(isinstance(m, SystemMessage) for m in messages):
                 messages = [SystemMessage(content=final_system_prompt)] + list(messages)
 
+            logger.info(
+                f"[{trace_id}] ReAct agent_node 准备调用 LLM, model={graph_request.model!r}, "
+                f"bound_tool_count={len(tools)}, bound_tool_names={[tool.name for tool in tools]}, "
+                f"message_count={len(messages)}, message_types={[type(m).__name__ for m in messages]}, "
+                f"last_message_preview={str(getattr(messages[-1], 'content', ''))[:200]!r}"
+            )
+
             # 调用 LLM
-            response = await llm_with_tools.ainvoke(messages)
+            try:
+                response = await llm_with_tools.ainvoke(messages)
+            except Exception as e:
+                logger.exception(f"[{trace_id}] ReAct agent_node 调用 LLM 异常: {e}")
+                raise
+
+            if response is None:
+                logger.warning(f"[{trace_id}] ReAct agent_node 收到空响应: response=None")
+                return {"messages": []}
+
+            tool_calls = getattr(response, "tool_calls", None) or []
+            logger.info(
+                f"[{trace_id}] ReAct agent_node 返回: message_type={type(response).__name__}, "
+                f"tool_call_count={len(tool_calls)}, content_preview={str(getattr(response, 'content', ''))[:200]!r}"
+            )
+            if tool_calls:
+                logger.info(f"[{trace_id}] ReAct agent_node tool_calls: {tool_calls}")
 
             return {"messages": [response]}
 
         # ========== 工具节点：执行工具调用 ==========
         tool_node = tools_node if tools_node else ToolNode(tools, handle_tool_errors=True)
+
+        async def logged_tool_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
+            """带日志的工具节点包装器。"""
+            trace_id = config["configurable"].get("trace_id", "unknown")
+            messages = state.get("messages", [])
+            last_message = messages[-1] if messages else None
+            tool_calls = getattr(last_message, "tool_calls", None) or []
+            logger.info(f"[{trace_id}] ReAct tools_node 开始执行, tool_call_count={len(tool_calls)}, tool_calls={tool_calls}")
+            result = await tool_node.ainvoke(state, config=config)
+            result_messages = result.get("messages", []) if isinstance(result, dict) else []
+            logger.info(
+                f"[{trace_id}] ReAct tools_node 执行结束, result_message_count={len(result_messages)}, "
+                f"result_types={[type(msg).__name__ for msg in result_messages]}"
+            )
+            return result
 
         # ========== 条件函数：判断是否继续调用工具 ==========
         def should_continue(state: Dict[str, Any]) -> str:
@@ -686,9 +728,14 @@ class ToolsNodes(BasicNode):
 
             # 如果最后一条消息有工具调用，继续执行工具
             if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                logger.info(f"ReAct should_continue: 检测到 tool_calls，进入 tools 节点: {last_message.tool_calls}")
                 return "continue"
 
             # 否则结束
+            logger.info(
+                "ReAct should_continue: 未检测到 tool_calls，结束循环, "
+                f"last_message_type={type(last_message).__name__}, content_preview={str(getattr(last_message, 'content', ''))[:200]!r}"
+            )
             return "end"
 
         # ========== Wrapper 节点：入口点，兼容现有 API ==========
@@ -700,7 +747,7 @@ class ToolsNodes(BasicNode):
         # ========== 添加节点到图 ==========
         graph_builder.add_node(wrapper_node_name, wrapper_node)
         graph_builder.add_node(agent_node_name, agent_node)
-        graph_builder.add_node(tools_node_name, tool_node)
+        graph_builder.add_node(tools_node_name, logged_tool_node)
 
         # ========== 添加边 ==========
         # wrapper -> agent

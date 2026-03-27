@@ -54,6 +54,7 @@ class ChatFlowEngine:
         self.start_node_id = start_node_id
         self.entry_type = entry_type or WorkFlowExecuteType.OPENAI  # 默认为 openai
         self.execution_id = execution_id or str(uuid.uuid4())
+        self.task_result: Optional[WorkFlowTaskResult] = None
         self.variable_manager = VariableManager()
         self.execution_contexts: Dict[str, NodeExecutionContext] = {}
 
@@ -128,6 +129,8 @@ class ChatFlowEngine:
                 "end_time": self._to_datetime(context.end_time),
                 "duration_ms": duration_ms,
             }
+            if self.task_result:
+                defaults["task_result"] = self.task_result
 
             WorkFlowTaskNodeResult.objects.update_or_create(
                 execution_id=self.execution_id,
@@ -136,6 +139,100 @@ class ChatFlowEngine:
             )
         except Exception as e:
             logger.exception(f"记录节点执行明细失败: execution_id={self.execution_id}, node_id={node_id}, error={str(e)}")
+
+    def _get_execute_type(self, start_node_type: str = None) -> str:
+        """获取执行类型"""
+        execute_type = WorkFlowExecuteType.OPENAI
+        effective_type = self.entry_type or start_node_type
+        if effective_type and effective_type.lower() in [choice[0] for choice in WorkFlowExecuteType.choices]:
+            execute_type = effective_type.lower()
+        return execute_type
+
+    def _ensure_execution_result_started(self, input_data: Dict[str, Any], start_node_type: str = None) -> WorkFlowTaskResult:
+        """确保执行主记录在任务开始时创建"""
+        if self.task_result:
+            return self.task_result
+
+        task_result = WorkFlowTaskResult.objects.filter(bot_work_flow=self.instance, execution_id=self.execution_id).order_by("-id").first()
+        if task_result:
+            self.task_result = task_result
+            return task_result
+
+        self.task_result = WorkFlowTaskResult.objects.create(
+            bot_work_flow=self.instance,
+            execution_id=self.execution_id,
+            status=WorkFlowTaskStatus.RUNNING,
+            input_data=json.dumps(input_data, ensure_ascii=False),
+            output_data={},
+            execute_type=self._get_execute_type(start_node_type),
+        )
+        return self.task_result
+
+    def _build_execution_output_data(self) -> Dict[str, Any]:
+        """构建执行结果摘要"""
+        total_nodes = len(self.execution_contexts)
+        completed_nodes = 0
+        failed_nodes = 0
+        running_nodes = 0
+        pending_nodes = 0
+        final_node_id = None
+        final_node_index = -1
+        final_node_name = ""
+        final_node_type = ""
+        failed_node_id = None
+        failed_node_name = ""
+        failed_node_type = ""
+        failed_error = ""
+
+        for node_id, context in self.execution_contexts.items():
+            node_index = self.variable_manager.get_variable(f"node_{node_id}_index")
+            node_type = self.variable_manager.get_variable(f"node_{node_id}_type") or ""
+            node_name = self.variable_manager.get_variable(f"node_{node_id}_name") or ""
+            status_value = context.status.value if hasattr(context.status, "value") else str(context.status)
+
+            if status_value == NodeStatus.COMPLETED.value:
+                completed_nodes += 1
+            elif status_value == NodeStatus.FAILED.value:
+                failed_nodes += 1
+                failed_node_id = node_id
+                failed_node_name = node_name
+                failed_node_type = node_type
+                failed_error = context.error_message or ""
+            elif status_value == NodeStatus.RUNNING.value:
+                running_nodes += 1
+            else:
+                pending_nodes += 1
+
+            if isinstance(node_index, int) and node_index > final_node_index:
+                final_node_index = node_index
+                final_node_id = node_id
+                final_node_name = node_name
+                final_node_type = node_type
+
+        return {
+            "summary": {
+                "execution_id": self.execution_id,
+                "total_nodes": total_nodes,
+                "completed_nodes": completed_nodes,
+                "failed_nodes": failed_nodes,
+                "running_nodes": running_nodes,
+                "pending_nodes": pending_nodes,
+                "final_node": {
+                    "node_id": final_node_id,
+                    "node_name": final_node_name,
+                    "node_type": final_node_type,
+                    "node_index": final_node_index if final_node_index >= 0 else None,
+                },
+                "failed_node": {
+                    "node_id": failed_node_id,
+                    "node_name": failed_node_name,
+                    "node_type": failed_node_type,
+                    "error": failed_error,
+                }
+                if failed_node_id
+                else None,
+            }
+        }
 
     async def _record_node_execution_result_async(self, node_id: str, context: NodeExecutionContext) -> None:
         """异步记录节点执行明细（用于 async 上下文）
@@ -193,8 +290,10 @@ class ChatFlowEngine:
         if validation_errors:
             return self._create_error_response("流程验证失败")
 
-        # 获取起始节点和最后节点
         start_node = self._get_start_node()
+        self._ensure_execution_result_started(input_data, start_node.get("type", "") if start_node else None)
+
+        # 获取起始节点和最后节点
         last_node = self.nodes[-1] if self.nodes else None
 
         # 判断协议类型
@@ -204,6 +303,9 @@ class ChatFlowEngine:
         # 检查是否需要流式执行
         needs_streaming = (is_agui_protocol or is_openai_protocol) or (last_node and last_node.get("type") == "agents")
         if not needs_streaming:
+            self._record_execution_result(
+                input_data, {"success": False, "error": "当前流程不支持SSE"}, False, start_node.get("type", "") if start_node else None
+            )
             return self._create_error_response("当前流程不支持SSE")
 
         # 查找目标agents节点及前置节点
@@ -235,6 +337,12 @@ class ChatFlowEngine:
                     logger.info(f"[SSE-Engine] 意图分类结果: {intent_result!r}, 目标节点: {target_agent_node.get('id') if target_agent_node else None}")
 
             if not target_agent_node:
+                self._record_execution_result(
+                    input_data,
+                    {"success": False, "error": "未找到可执行的agents节点（意图路由失败）"},
+                    False,
+                    start_node.get("type", "") if start_node else None,
+                )
                 return self._create_error_response("未找到可执行的agents节点（意图路由失败）")
 
         # 根据协议类型选择执行方法
@@ -250,6 +358,9 @@ class ChatFlowEngine:
             logger.error(f"[SSE-Engine] agents节点不支持流式执行: {target_agent_node.get('id')}")
 
         if not execute_method:
+            self._record_execution_result(
+                input_data, {"success": False, "error": "agents节点不支持流式执行"}, False, start_node.get("type", "") if start_node else None
+            )
             return self._create_error_response("agents节点不支持流式执行")
 
         # 定义一个嵌套的异步生成器函数 - 完全模仿 agui_chat.py 的工作模式
@@ -963,77 +1074,8 @@ class ChatFlowEngine:
             start_node_type: 启动节点类型（已废弃，使用 self.entry_type）
         """
         try:
-            # 使用实例的 entry_type，优先级：self.entry_type > start_node_type > 默认值
-            execute_type = WorkFlowExecuteType.OPENAI  # 默认值
-            effective_type = self.entry_type or start_node_type
-            if effective_type:
-                if effective_type.lower() in [choice[0] for choice in WorkFlowExecuteType.choices]:
-                    execute_type = effective_type.lower()
-
-            # 主表仅保存执行摘要，节点全量输入输出在 WorkFlowTaskNodeResult 中维护
-            total_nodes = len(self.execution_contexts)
-            completed_nodes = 0
-            failed_nodes = 0
-            running_nodes = 0
-            pending_nodes = 0
-            final_node_id = None
-            final_node_index = -1
-            final_node_name = ""
-            final_node_type = ""
-            failed_node_id = None
-            failed_node_name = ""
-            failed_node_type = ""
-            failed_error = ""
-
-            for node_id, context in self.execution_contexts.items():
-                node_index = self.variable_manager.get_variable(f"node_{node_id}_index")
-                node_type = self.variable_manager.get_variable(f"node_{node_id}_type") or ""
-                node_name = self.variable_manager.get_variable(f"node_{node_id}_name") or ""
-                status_value = context.status.value if hasattr(context.status, "value") else str(context.status)
-
-                if status_value == NodeStatus.COMPLETED.value:
-                    completed_nodes += 1
-                elif status_value == NodeStatus.FAILED.value:
-                    failed_nodes += 1
-                    failed_node_id = node_id
-                    failed_node_name = node_name
-                    failed_node_type = node_type
-                    failed_error = context.error_message or ""
-                elif status_value == NodeStatus.RUNNING.value:
-                    running_nodes += 1
-                else:
-                    pending_nodes += 1
-
-                if isinstance(node_index, int) and node_index > final_node_index:
-                    final_node_index = node_index
-                    final_node_id = node_id
-                    final_node_name = node_name
-                    final_node_type = node_type
-
-            output_data = {
-                "summary": {
-                    "execution_id": self.execution_id,
-                    "total_nodes": total_nodes,
-                    "completed_nodes": completed_nodes,
-                    "failed_nodes": failed_nodes,
-                    "running_nodes": running_nodes,
-                    "pending_nodes": pending_nodes,
-                    "final_node": {
-                        "node_id": final_node_id,
-                        "node_name": final_node_name,
-                        "node_type": final_node_type,
-                        "node_index": final_node_index if final_node_index >= 0 else None,
-                    },
-                    "failed_node": {
-                        "node_id": failed_node_id,
-                        "node_name": failed_node_name,
-                        "node_type": failed_node_type,
-                        "error": failed_error,
-                    }
-                    if failed_node_id
-                    else None,
-                }
-            }
+            task_result = self._ensure_execution_result_started(input_data, start_node_type)
+            output_data = self._build_execution_output_data()
 
             # 确定状态
             status = WorkFlowTaskStatus.SUCCESS if success else WorkFlowTaskStatus.FAIL
@@ -1049,16 +1091,13 @@ class ChatFlowEngine:
             else:
                 last_output = str(result)
 
-            # 创建执行结果记录
-            task_result = WorkFlowTaskResult.objects.create(
-                bot_work_flow=self.instance,
-                execution_id=self.execution_id,
-                status=status,
-                input_data=input_data_str,
-                output_data=output_data,
-                last_output=last_output,
-                execute_type=execute_type,
-            )
+            task_result.status = status
+            task_result.input_data = input_data_str
+            task_result.output_data = output_data
+            task_result.last_output = last_output
+            task_result.execute_type = self._get_execute_type(start_node_type)
+            task_result.finished_at = timezone.now()
+            task_result.save(update_fields=["status", "input_data", "output_data", "last_output", "execute_type", "finished_at"])
 
             WorkFlowTaskNodeResult.objects.filter(execution_id=self.execution_id, task_result__isnull=True).update(task_result=task_result)
 
@@ -1153,6 +1192,7 @@ class ChatFlowEngine:
 
             # 获取并验证起始节点
             start_node = self._get_start_node()
+            self._ensure_execution_result_started(input_data, start_node.get("type", "") if start_node else None)
             chosen_start_node = self.start_node_id or (self.entry_nodes[0] if self.entry_nodes else None)
             if not chosen_start_node or not start_node:
                 error_msg = "没有找到起始节点" if not chosen_start_node else f"指定的起始节点不存在: {chosen_start_node}"

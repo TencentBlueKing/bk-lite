@@ -190,6 +190,7 @@ error:
   vendor_api_base_required: 供应商 API 地址不能为空
   vendor_api_key_required: 供应商 API Key 不能为空
   vendor_sync_not_supported: 当前仅支持 OpenAI-compatible 供应商同步
+  chat_flow_test_running: 当前 Bot 已有正在执行中的工作流测试任务。
 tools:
   kubernetes:
     name: Kubernetes工具
