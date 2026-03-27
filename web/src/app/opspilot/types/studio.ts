@@ -56,6 +56,7 @@ export interface WorkflowTaskResult {
   execute_type: string;
   bot_work_flow: number;
   execution_duration?: number;
+  duration_ms?: number;
   error_log?: string;
   execution_id?: string;
 }
@@ -265,6 +266,7 @@ export interface WorkflowLogDetail {
   output_data: unknown;
   status: string;
   execution_duration?: number;
+  duration_ms?: number;
 }
 
 export interface WorkflowLogDetailResponse {

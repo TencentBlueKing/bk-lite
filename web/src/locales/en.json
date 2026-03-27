@@ -147,7 +147,10 @@
     "markAllAsRead": "Mark All as Read",
     "markAllAsReadConfirm": "Are you sure you want to mark all notifications as read?",
     "markAllAsReadCxt": "Once marked, all unread notifications will be set to read and this action cannot be undone.",
-    "noUnreadNotifications": "No unread notifications"
+    "noUnreadNotifications": "No unread notifications",
+    "sessionExpiredTitle": "Session expired",
+    "sessionExpiredDescription": "Your backend login has expired. Please sign in again without leaving this page.",
+    "reloginSuccess": "Signed in successfully"
   },
   "userInfo": {
     "basicInfo": "Basic Information",
