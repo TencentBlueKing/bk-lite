@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 
-from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
+from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.model import ModelManage
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -8,10 +8,20 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 load_dotenv()
 
 
-# 纳管数据（数据纳管到数据库）
 class Management:
-    def __init__(self, organization, inst_name, model_id, old_data, new_data, unique_keys, collect_time, task_id,
-                 collect_plugin=None):
+    def __init__(
+        self,
+        organization,
+        inst_name,
+        model_id,
+        old_data,
+        new_data,
+        unique_keys,
+        collect_time,
+        task_id,
+        collect_plugin=None,
+        data_cleanup_strategy=None,
+    ):
         self.organization = organization
         self.collect_time = collect_time
         self.collect_plugin = collect_plugin
@@ -22,6 +32,7 @@ class Management:
         self.unique_keys = unique_keys
         self.check_attr_map = self.get_check_attr_map()
         self.task_id = task_id
+        self.data_cleanup_strategy = data_cleanup_strategy or DataCleanupStrategy.NO_CLEANUP
         self.old_map, self.new_map = self.format_data()
         self.add_list, self.update_list, self.delete_list = self.contrast(self.old_map, self.new_map)
 
@@ -50,10 +61,6 @@ class Management:
         return old_map, new_map
 
     def contrast(self, old_map, new_map):
-        """数据对比
-        数据删除逻辑：
-        查询不到数据：不动cmdb数据，查询到数据，对比删除
-        """
         add_list, update_list, delete_list = [], [], []
         for key, info in new_map.items():
             info["model_id"] = self.model_id
@@ -62,13 +69,17 @@ class Management:
             else:
                 info.update(_id=old_map[key]["_id"])
                 update_list.append(info)
-        if getattr(self.collect_plugin, "_MODEL_ID", None) is not None:
-            # 如果插件有定义模型ID，则需要删除cmdb数据
-            if new_map:
-                for key, info in old_map.items():
-                    info["model_id"] = self.model_id
-                    if key not in new_map:
-                        delete_list.append(info)
+
+        should_delete = (
+            self.data_cleanup_strategy == DataCleanupStrategy.IMMEDIATELY and getattr(self.collect_plugin, "_MODEL_ID", None) is not None and new_map
+        )
+
+        if should_delete:
+            for key, info in old_map.items():
+                info["model_id"] = self.model_id
+                if key not in new_map:
+                    delete_list.append(info)
+
         return add_list, update_list, delete_list
 
     def add_inst(self, inst_list):
@@ -118,12 +129,9 @@ class Management:
                     )
                     assos = instance_info.pop("assos", [])
                     exist_items = [i for i in exist_items if i["_id"] != instance_info["_id"]]
-                    entity = ag.set_entity_properties(
-                        INSTANCE, [instance_info["_id"]], instance_info, self.check_attr_map, exist_items
-                    )
+                    entity = ag.set_entity_properties(INSTANCE, [instance_info["_id"]], instance_info, self.check_attr_map, exist_items)
                     # 更新关联
-                    assos_result = self.setting_assos(
-                        dict(model_id=self.model_id, _id=entity[0]["_id"], inst_name=entity[0]["inst_name"]), assos)
+                    assos_result = self.setting_assos(dict(model_id=self.model_id, _id=entity[0]["_id"], inst_name=entity[0]["inst_name"]), assos)
                     exist_items.append(entity[0])
                     result["success"].append(dict(inst_info=entity[0], assos_result=assos_result))
                 except Exception as e:
@@ -179,9 +187,7 @@ class Management:
 
                     dst_id = dst_entity[0]["_id"]
                     asso_info = self.set_asso_info(dst_id, src_info, dst_info)
-                    ag.create_edge(
-                        INSTANCE_ASSOCIATION, src_info["_id"], INSTANCE, dst_id, INSTANCE, asso_info, "model_asst_id"
-                    )
+                    ag.create_edge(INSTANCE_ASSOCIATION, src_info["_id"], INSTANCE, dst_id, INSTANCE, asso_info, "model_asst_id")
                     asso_info["src_inst_name"] = src_info["inst_name"]
                     asso_info["dst_inst_name"] = dst_info["inst_name"]
                     assos_result["success"].append(asso_info)
