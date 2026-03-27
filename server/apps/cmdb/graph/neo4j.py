@@ -8,6 +8,7 @@ from neo4j.graph import Path
 
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
 from apps.cmdb.graph.format_type import FORMAT_TYPE
+from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
@@ -50,11 +51,13 @@ class Neo4jClient:
         """将使用fetchall查询的结果转换成列表类型"""
         result = []
         for i in data:
-            result.append({
-                "src": self.entity_to_dict((i[0].start_node,)),
-                "edge": self.edge_to_dict((i[0].relationships[0],)),
-                "dst": self.entity_to_dict((i[0].end_node,)),
-            })
+            result.append(
+                {
+                    "src": self.entity_to_dict((i[0].start_node,)),
+                    "edge": self.edge_to_dict((i[0].relationships[0],)),
+                    "dst": self.entity_to_dict((i[0].end_node,)),
+                }
+            )
         return result if return_entity else [i["edge"] for i in result]
 
     def edge_to_dict(self, data: tuple):
@@ -76,17 +79,18 @@ class Neo4jClient:
         return properties_str
 
     def create_entity(
-            self,
-            label: str,
-            properties: dict,
-            check_attr_map: dict,
-            exist_items: list,
-            operator: str = None,
+        self,
+        label: str,
+        properties: dict,
+        check_attr_map: dict,
+        exist_items: list,
+        operator: str = None,
+        attrs: list = None,
     ):
         """
         快速创建一个实体
         """
-        result = self._create_entity(label, properties, check_attr_map, exist_items, operator)
+        result = self._create_entity(label, properties, check_attr_map, exist_items, operator, attrs)
         return result
 
     @staticmethod
@@ -109,6 +113,22 @@ class Neo4jClient:
             message += f"{check_attr_map[attr]} exist；"
 
         raise BaseAppException(message)
+
+    @staticmethod
+    def check_unique_rules(
+        items,
+        unique_rules,
+        exist_items,
+        attrs_by_id,
+        exclude_instance_ids=None,
+    ):
+        raise_unique_rule_conflict_if_needed(
+            unique_rules=unique_rules,
+            items=items,
+            exist_items=exist_items,
+            attrs_by_id=attrs_by_id,
+            exclude_instance_ids=exclude_instance_ids,
+        )
 
     def check_required_attr(self, item, check_attr_map, is_update=False):
         """校验必填属性"""
@@ -135,19 +155,35 @@ class Neo4jClient:
         return {k: v for k, v in item.items() if k in check_attr_map}
 
     def _create_entity(
-            self,
-            label: str,
-            properties: dict,
-            check_attr_map: dict,
-            exist_items: list,
-            operator: str = None,
+        self,
+        label: str,
+        properties: dict,
+        check_attr_map: dict,
+        exist_items: list,
+        operator: str = None,
+        attrs: list = None,
     ):
         # 校验必填项标签非空
         if not label:
             raise BaseAppException("label is empty")
 
+        if attrs:
+            from apps.cmdb.validators import FieldValidator
+
+            validation_errors = FieldValidator.validate_instance_data(properties, attrs)
+            if validation_errors:
+                error_msg = "; ".join([f"{err['field_name']}: {err['error']}" for err in validation_errors])
+                raise BaseAppException(f"字段校验失败: {error_msg}")
+
         # 校验唯一属性
         self.check_unique_attr(properties, check_attr_map.get("is_only", {}), exist_items)
+
+        self.check_unique_rules(
+            [properties],
+            check_attr_map.get("unique_rules", []),
+            exist_items,
+            check_attr_map.get("attrs_by_id", {}),
+        )
 
         # 校验必填项
         self.check_required_attr(properties, check_attr_map.get("is_required", {}))
@@ -163,14 +199,14 @@ class Neo4jClient:
         return self.entity_to_dict(entity)
 
     def create_edge(
-            self,
-            label: str,
-            a_id: int,
-            a_label: str,
-            b_id: int,
-            b_label: str,
-            properties: dict,
-            check_asst_key: str,
+        self,
+        label: str,
+        a_id: int,
+        a_label: str,
+        b_id: int,
+        b_label: str,
+        properties: dict,
+        check_asst_key: str,
     ):
         """
         快速创建一条边
@@ -179,14 +215,14 @@ class Neo4jClient:
         return result
 
     def _create_edge(
-            self,
-            label: str,
-            a_id: int,
-            a_label: str,
-            b_id: int,
-            b_label: str,
-            properties: dict,
-            check_asst_key: str = "model_asst_id",
+        self,
+        label: str,
+        a_id: int,
+        a_label: str,
+        b_id: int,
+        b_label: str,
+        properties: dict,
+        check_asst_key: str = "model_asst_id",
     ):
         # 校验必填项标签非空
         if not label:
@@ -212,19 +248,20 @@ class Neo4jClient:
         return self.edge_to_dict(edge)
 
     def batch_create_entity(
-            self,
-            label: str,
-            properties_list: list,
-            check_attr_map: dict,
-            exist_items: list,
-            operator: str = None,
+        self,
+        label: str,
+        properties_list: list,
+        check_attr_map: dict,
+        exist_items: list,
+        operator: str = None,
+        attrs: list = None,
     ):
         """批量创建实体"""
         results = []
         for index, properties in enumerate(properties_list):
             result = {}
             try:
-                entity = self._create_entity(label, properties, check_attr_map, exist_items, operator)
+                entity = self._create_entity(label, properties, check_attr_map, exist_items, operator, attrs)
                 result.update(data=entity, success=True, message="")
                 exist_items.append(entity)
             except Exception as e:
@@ -234,12 +271,12 @@ class Neo4jClient:
         return results
 
     def batch_create_edge(
-            self,
-            label: str,
-            a_label: str,
-            b_label: str,
-            edge_list: list,
-            check_asst_key: str,
+        self,
+        label: str,
+        a_label: str,
+        b_label: str,
+        edge_list: list,
+        check_asst_key: str,
     ):
         """批量创建边"""
         results = []
@@ -290,7 +327,7 @@ class Neo4jClient:
             params_str += method(param)
             params_str += param_type
 
-        return f"({params_str[:-len(param_type)]})" if params_str else params_str
+        return f"({params_str[: -len(param_type)]})" if params_str else params_str
 
     def format_final_params(self, search_params: list, search_param_type: str = "AND", permission_params=""):
         search_params_str = self.format_search_params(search_params, search_param_type)
@@ -304,15 +341,15 @@ class Neo4jClient:
         return f"{search_params_str} AND {permission_params}"
 
     def query_entity(
-            self,
-            label: str,
-            params: list,
-            page: dict = None,
-            order: str = None,
-            order_type: str = "ASC",
-            param_type="AND",
-            permission_params: str = "",
-            permission_or_creator_filter: dict = None,
+        self,
+        label: str,
+        params: list,
+        page: dict = None,
+        order: str = None,
+        order_type: str = "ASC",
+        param_type="AND",
+        permission_params: str = "",
+        permission_or_creator_filter: dict = None,
     ):
         """
         查询实体
@@ -345,8 +382,7 @@ class Neo4jClient:
                 params_str = f"{params_str} AND {permission_params}"
         else:
             # 原有逻辑
-            params_str = self.format_final_params(params, search_param_type=param_type,
-                                                  permission_params=permission_params)
+            params_str = self.format_final_params(params, search_param_type=param_type, permission_params=permission_params)
 
         params_str = f"WHERE {params_str}" if params_str else params_str
 
@@ -393,11 +429,11 @@ class Neo4jClient:
         return self.entity_to_list(objs)
 
     def query_edge(
-            self,
-            label: str,
-            params: list,
-            param_type: str = "AND",
-            return_entity: bool = False,
+        self,
+        label: str,
+        params: list,
+        param_type: str = "AND",
+        return_entity: bool = False,
     ):
         """
         查询边
@@ -429,13 +465,13 @@ class Neo4jClient:
         return properties_str if properties_str == "" else properties_str[:-1]
 
     def set_entity_properties(
-            self,
-            label: str,
-            entity_ids: list,
-            properties: dict,
-            check_attr_map: dict,
-            exist_items: list,
-            check: bool = True,
+        self,
+        label: str,
+        entity_ids: list,
+        properties: dict,
+        check_attr_map: dict,
+        exist_items: list,
+        check: bool = True,
     ):
         """
         设置实体属性
@@ -449,6 +485,14 @@ class Neo4jClient:
                 is_update=True,
             )
 
+            self.check_unique_rules(
+                [properties],
+                check_attr_map.get("unique_rules", []),
+                exist_items,
+                check_attr_map.get("attrs_by_id", {}),
+                exclude_instance_ids=set(entity_ids),
+            )
+
             # 校验必填项
             self.check_required_attr(properties, check_attr_map.get("is_required", {}), is_update=True)
 
@@ -458,12 +502,7 @@ class Neo4jClient:
         nodes = self.batch_update_node_properties(label, entity_ids, properties)
         return self.entity_to_list(nodes)
 
-    def batch_update_entity_properties(self,
-                                       label: str,
-                                       entity_ids: list,
-                                       properties: dict,
-                                       check_attr_map: dict,
-                                       check: bool = True):
+    def batch_update_entity_properties(self, label: str, entity_ids: list, properties: dict, check_attr_map: dict, check: bool = True):
         """批量更新实体属性"""
         if check:
             # 校验必填项
@@ -535,16 +574,10 @@ class Neo4jClient:
         params_str = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
         if params_str:
             params_str = f"AND {params_str}"
-        src_objs = self.session.run(
-            f"MATCH p=(n{label_str})-[*]->(m{label_str}) WHERE NOT (m)-->() {params_str} RETURN p"
-        )
-        dst_objs = self.session.run(
-            f"MATCH p=(m{label_str})-[*]->(n{label_str}) WHERE NOT (m)<--() {params_str} RETURN p"
-        )
+        src_objs = self.session.run(f"MATCH p=(n{label_str})-[*]->(m{label_str}) WHERE NOT (m)-->() {params_str} RETURN p")
+        dst_objs = self.session.run(f"MATCH p=(m{label_str})-[*]->(n{label_str}) WHERE NOT (m)<--() {params_str} RETURN p")
 
-        return dict(
-            src_result=self.format_topo(inst_id, src_objs, True), dst_result=self.format_topo(inst_id, dst_objs, False)
-        )
+        return dict(src_result=self.format_topo(inst_id, src_objs, True), dst_result=self.format_topo(inst_id, dst_objs, False))
 
     def query_topo_lite(self, label: str, inst_id: int, depth: int = 3, exclude_ids=None):
         """查询实例拓扑（轻量）：限制返回层级，减少前端一次性渲染与网络传输压力"""
@@ -555,12 +588,8 @@ class Neo4jClient:
         params_str = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
         where_clause = f"WHERE {params_str}" if params_str else ""
 
-        src_objs = self.session.run(
-            f"MATCH p=(n{label_str})-[*1..{probe_depth}]->(m{label_str}) {where_clause} RETURN p"
-        )
-        dst_objs = self.session.run(
-            f"MATCH p=(m{label_str})-[*1..{probe_depth}]->(n{label_str}) {where_clause} RETURN p"
-        )
+        src_objs = self.session.run(f"MATCH p=(n{label_str})-[*1..{probe_depth}]->(m{label_str}) {where_clause} RETURN p")
+        dst_objs = self.session.run(f"MATCH p=(m{label_str})-[*1..{probe_depth}]->(n{label_str}) {where_clause} RETURN p")
 
         return dict(
             src_result=self.format_topo_lite(inst_id, src_objs, True, depth=depth, exclude_ids=exclude_ids),
@@ -590,20 +619,14 @@ class Neo4jClient:
                 for node in nodes:
                     entity_map[node.id] = dict(_id=node.id, _label=list(node.labels)[0], **node._properties)
                 for relationship in relationships:
-                    edge_map[relationship.id] = dict(
-                        _id=relationship.id, _label=relationship.type, **relationship._properties
-                    )
+                    edge_map[relationship.id] = dict(_id=relationship.id, _label=relationship.type, **relationship._properties)
 
         edges = list(edge_map.values())
         edges = [edge for edge in edges if edge["src_inst_id"] != edge["dst_inst_id"]]
         if exclude_id_set:
             for node_id in exclude_id_set:
                 entity_map.pop(node_id, None)
-            edges = [
-                edge
-                for edge in edges
-                if edge["src_inst_id"] not in exclude_id_set and edge["dst_inst_id"] not in exclude_id_set
-            ]
+            edges = [edge for edge in edges if edge["src_inst_id"] not in exclude_id_set and edge["dst_inst_id"] not in exclude_id_set]
         entities = list(entity_map.values())
         if start_id not in entity_map:
             return {}
@@ -625,9 +648,7 @@ class Neo4jClient:
 
         if level >= max_depth:
             # 只在达到最大层级时返回 has_more，用于前端展示“+”
-            node["has_more"] = any(
-                edge.get(f"{entity_key}_inst_id") == entity["_id"] for edge in edges
-            )
+            node["has_more"] = any(edge.get(f"{entity_key}_inst_id") == entity["_id"] for edge in edges)
             return node
 
         for edge in edges:
@@ -647,7 +668,6 @@ class Neo4jClient:
                     node["children"].append(child_node)
         return node
 
-    
     @staticmethod
     def get_topo_config() -> dict:
         try:
@@ -703,13 +723,13 @@ class Neo4jClient:
 
         # 为每一个关系生成相应的MATCH部分
         for i, relation in enumerate(edge_list):
-            self_obj = relation['self_obj']
-            target_obj = relation['target_obj']
-            assoc = relation['assoc']
+            self_obj = relation["self_obj"]
+            target_obj = relation["target_obj"]
+            assoc = relation["assoc"]
 
             # 处理self_obj
             if self_obj not in node_aliases:
-                node_aliases[self_obj] = f'v{i}'
+                node_aliases[self_obj] = f"v{i}"
             self_alias = node_aliases[self_obj]
 
             # 添加self_obj节点
@@ -720,7 +740,7 @@ class Neo4jClient:
 
             # 处理target_obj
             if target_obj not in node_aliases:
-                node_aliases[target_obj] = f'v{i + 1}'
+                node_aliases[target_obj] = f"v{i + 1}"
             target_alias = node_aliases[target_obj]
             if edge_type == "dst":
                 rep_alias = target_alias
@@ -743,10 +763,7 @@ class Neo4jClient:
         src_objs = self.session.run(self.convert_to_cypher_match(label_str, model_id, params_str, dst=False))
         dst_objs = self.session.run(self.convert_to_cypher_match(label_str, model_id, params_str, dst=True))
 
-        return dict(
-            src_result=self.format_topo(inst_id, src_objs, True),
-            dst_result=self.format_topo(inst_id, dst_objs, False)
-        )
+        return dict(src_result=self.format_topo(inst_id, src_objs, True), dst_result=self.format_topo(inst_id, dst_objs, False))
 
     def format_topo(self, start_id, objs, entity_is_src=True):
         """格式化拓扑数据"""
@@ -766,9 +783,7 @@ class Neo4jClient:
                 for node in nodes:
                     entity_map[node.id] = dict(_id=node.id, _label=list(node.labels)[0], **node._properties)
                 for relationship in relationships:
-                    edge_map[relationship.id] = dict(
-                        _id=relationship.id, _label=relationship.type, **relationship._properties
-                    )
+                    edge_map[relationship.id] = dict(_id=relationship.id, _label=relationship.type, **relationship._properties)
 
         edges = list(edge_map.values())
         # 去除自己指向自己的边
@@ -830,8 +845,8 @@ class Neo4jClient:
         model_list = []
         instance_conditions = []
         for perm_param in instance_permission_params:
-            model_id = perm_param.get('model_id')
-            instance_names = perm_param.get('inst_names', [])
+            model_id = perm_param.get("model_id")
+            instance_names = perm_param.get("inst_names", [])
             if model_id and instance_names:
                 # 对于有具体实例权限的模型，只统计指定的实例
                 condition = f"(n.model_id = '{model_id}' AND n.inst_name IN {instance_names})"
@@ -857,9 +872,9 @@ class Neo4jClient:
 
         return instance_condition_str
 
-    def entity_count(self, label: str, group_by_attr: str, params: list, permission_params: str = "",
-                     instance_permission_params: list = {}, created: str = ""):
-
+    def entity_count(
+        self, label: str, group_by_attr: str, params: list, permission_params: str = "", instance_permission_params: list = {}, created: str = ""
+    ):
         label_str = f":{label}" if label else ""
 
         # 首先应用基础查询参数和组织权限
@@ -879,8 +894,7 @@ class Neo4jClient:
 
         return {i[group_by_attr]: i["count"] for i in data}
 
-    def full_text(self, search: str, permission_params: str = "", instance_permission_params: dict = None,
-                  created: str = ""):
+    def full_text(self, search: str, permission_params: str = "", instance_permission_params: dict = None, created: str = ""):
         """全文检索"""
         if instance_permission_params is None:
             instance_permission_params = {}
@@ -916,12 +930,12 @@ class Neo4jClient:
         return self.entity_to_list(objs)
 
     def batch_save_entity(
-            self,
-            label: str,
-            properties_list: list,
-            check_attr_map: dict,
-            exist_items: list,
-            operator: str = None,
+        self,
+        label: str,
+        properties_list: list,
+        check_attr_map: dict,
+        exist_items: list,
+        operator: str = None,
     ):
         """批量保存实体，支持新增与更新"""
         unique_key = check_attr_map.get(ModelConstraintKey.unique.value, {}).keys()
@@ -943,9 +957,9 @@ class Neo4jClient:
                 if node:
                     # 节点更新
                     try:
-                        results = self.batch_update_entity_properties(label=label, entity_ids=[node.get("_id")],
-                                                                      properties=properties,
-                                                                      check_attr_map=check_attr_map)
+                        results = self.batch_update_entity_properties(
+                            label=label, entity_ids=[node.get("_id")], properties=properties, check_attr_map=check_attr_map
+                        )
                         results["data"] = results["data"][0]
                         update_results.append(results)
                     except Exception as e:
@@ -957,6 +971,7 @@ class Neo4jClient:
                     add_nodes.append(properties)
         else:
             add_nodes = properties_list
-        add_results = self.batch_create_entity(label=label, properties_list=add_nodes, check_attr_map=check_attr_map,
-                                               exist_items=exist_items, operator=operator)
+        add_results = self.batch_create_entity(
+            label=label, properties_list=add_nodes, check_attr_map=check_attr_map, exist_items=exist_items, operator=operator
+        )
         return add_results, update_results

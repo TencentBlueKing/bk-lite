@@ -21,6 +21,16 @@ import { useModelApi } from '@/app/cmdb/api';
 import { useModelDetail } from '../context';
 import type { AttrGroup, AttrItem } from '@/app/cmdb/types/assetManage';
 
+const getUniqueTagMeta = (uniqueType?: string, isOnly?: boolean) => {
+  if (uniqueType === 'joint') {
+    return { color: 'purple', textKey: 'Model.jointUnique' };
+  }
+  if (uniqueType === 'single' || isOnly) {
+    return { color: 'green', textKey: 'Model.singleUnique' };
+  }
+  return { color: 'default', textKey: 'no' };
+}
+
 const Attributes: React.FC = () => {
   const { confirm } = Modal;
   const { t } = useTranslation();
@@ -93,13 +103,16 @@ const attrRef = useRef<any>(null);
     {
       title: t('unique'),
       key: 'is_only',
-      dataIndex: 'is_only',
+      dataIndex: 'unique_display_type',
       width: 100,
-      render: (is_only: unknown) => (
-        <Tag color={is_only ? 'green' : 'geekblue'}>
-          {is_only ? 'YES' : 'NO'}
-        </Tag>
-      ),
+      render: (_: unknown, record: AttrItem) => {
+        const meta = getUniqueTagMeta(record.unique_display_type, record.is_only)
+        return (
+          <Tag color={meta.color}>
+            {meta.textKey === 'no' ? t('no') : t(meta.textKey)}
+          </Tag>
+        )
+      },
     },
     {
       title: t('required'),
