@@ -197,6 +197,13 @@ def _handle_text_message_content_event(data_json: dict, state: dict, show_think:
 
 
 def _handle_tool_transition_event(event_type: str, data_json: dict, state: dict, show_think: bool, enable_thinking_split: bool) -> list[str]:
+    logger.info(
+        "[AGUI Chat] tool transition event: type=%s, tool_name=%s, tool_call_id=%s, parent_message_id=%s",
+        event_type,
+        data_json.get("tool_name"),
+        data_json.get("tool_call_id"),
+        data_json.get("parent_message_id"),
+    )
     if event_type == "TOOL_CALL_START":
         parent_message_id = data_json.get("parent_message_id")
         if state["buffer_pre_tool_content"] and parent_message_id == state["active_message_id"]:
