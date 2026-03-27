@@ -91,12 +91,20 @@ def filter_queryset_by_parent_team(queryset, request, parent_team_lookup):
     Returns:
         A filtered ``QuerySet``.
     """
+    user = getattr(request, "user", None)
+    if getattr(user, "is_superuser", False):
+        return queryset
+
     current_team = get_current_team(request)
     return queryset.filter(**{f"{parent_team_lookup}__contains": current_team})
 
 
-def assert_team_ownership(team_owned_obj, current_team, field_name):
+def assert_team_ownership(team_owned_obj, current_team, field_name, request=None):
     """Raise ``ValidationError`` when ``team_owned_obj`` is not visible to the current team."""
+    user = getattr(request, "user", None) if request is not None else None
+    if getattr(user, "is_superuser", False):
+        return
+
     owned_teams = getattr(team_owned_obj, "team", None) or []
     if current_team not in owned_teams:
         raise serializers.ValidationError({field_name: "所选资源不属于当前组"})
@@ -107,6 +115,4 @@ def assert_parent_team_matches(team_owned_obj, parent_obj, field_name):
     owner_team = getattr(team_owned_obj, "team", None) or []
     parent_team = getattr(parent_obj, "team", None) or []
     if owner_team != parent_team:
-        raise serializers.ValidationError(
-            {field_name: "关联资源与当前对象的组归属不一致"}
-        )
+        raise serializers.ValidationError({field_name: "关联资源与当前对象的组归属不一致"})
