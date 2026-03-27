@@ -45,11 +45,13 @@ const IntegrationDetailLayout = ({
         {
           title: '接入说明',
           name: 'configure',
+          icon: 'settings-fill',
           url: `/monitor/integration/list/detail/configure?${queryString}`,
         },
         {
           title: '指标',
           name: 'metric',
+          icon: 'chart-bar',
           url: `/monitor/integration/list/detail/metric?${queryString}`,
         },
       ]

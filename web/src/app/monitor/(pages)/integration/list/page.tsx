@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import { Spin, Input, Button, Tag, message, Empty, Dropdown, Popconfirm } from 'antd';
+import { Spin, Input, Button, Tag, message, Empty, Dropdown, Menu, Modal } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
@@ -26,6 +26,8 @@ import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 import CreateTemplateModal from './createTemplateModal';
+
+const { confirm } = Modal;
 
 const Integration = () => {
   const { isLoading } = useApiClient();
@@ -262,6 +264,19 @@ const Integration = () => {
     onTxtClear();
   };
 
+  const handleDeleteTemplateConfirm = (id: number) => {
+    confirm({
+      title: t('common.deleteTitle'),
+      content: t('common.deleteContent'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      onOk() {
+        return handleDeleteTemplate(id);
+      }
+    });
+  };
+
   const linkToDetial = (app: ObjectItem) => {
     const parentObject: any = objects.find(
       (item) => item.id === app.parent_monitor_object
@@ -289,6 +304,24 @@ const Integration = () => {
     setSelectedApp(app);
     setExportDisabled(false); // Enable the export button
   };
+
+  const renderTemplateActionMenu = (app: ObjectItem) => (
+    <Menu onClick={(e) => e.domEvent.stopPropagation()}>
+      <Menu.Item className="!p-0" onClick={() => openCreateTemplateModal(app)}>
+        <Button type="text" className="w-full !justify-start">
+          编辑
+        </Button>
+      </Menu.Item>
+      <Menu.Item
+        className="!p-0"
+        onClick={() => handleDeleteTemplateConfirm(app.id as number)}
+      >
+        <Button type="text" className="w-full !justify-start">
+          删除
+        </Button>
+      </Menu.Item>
+    </Menu>
+  );
 
   return (
     <div className="w-full flex overflow-hidden">
@@ -397,31 +430,8 @@ const Integration = () => {
                       {app.is_custom_api && (
                         <div className="absolute top-[12px] right-[12px]" onClick={(e) => e.stopPropagation()}>
                           <Dropdown
-                            menu={{
-                              items: [
-                                { key: 'edit', label: '编辑' },
-                                { key: 'delete', label: '删除' }
-                              ],
-                              onClick: ({ key }) => {
-                                if (key === 'edit') {
-                                  openCreateTemplateModal(app);
-                                }
-                              }
-                            }}
-                            dropdownRender={(menu) => (
-                              <div>
-                                {menu}
-                                <Popconfirm
-                                  title={t('common.deleteTitle')}
-                                  description={t('common.deleteContent')}
-                                  okText={t('common.confirm')}
-                                  cancelText={t('common.cancel')}
-                                  onConfirm={() => handleDeleteTemplate(app.id as number)}
-                                >
-                                  <div className="px-[12px] py-[8px] cursor-pointer text-[var(--color-danger)]">删除</div>
-                                </Popconfirm>
-                              </div>
-                            )}
+                            dropdownRender={() => renderTemplateActionMenu(app)}
+                            placement="bottomRight"
                             trigger={['click']}
                           >
                             <Button type="text" icon={<EllipsisOutlined />} />

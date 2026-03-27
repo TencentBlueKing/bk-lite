@@ -18,7 +18,12 @@ import {
   Typography,
   message
 } from 'antd';
-import { CopyOutlined, PlusOutlined, UploadOutlined, DeleteOutlined } from '@ant-design/icons';
+import {
+  CopyOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  UploadOutlined
+} from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '@/utils/i18n';
@@ -39,7 +44,11 @@ type SampleFormat = 'curl' | 'python' | 'javascript';
 
 const formatJson = (value: Record<string, any>) => JSON.stringify(value, null, 2);
 
-const buildCurlExample = (endpoint: string, token: string, payload: Record<string, any>) => {
+const buildCurlExample = (
+  endpoint: string,
+  token: string,
+  payload: Record<string, any>
+) => {
   const payloadText = JSON.stringify(payload, null, 2)
     .split('\n')
     .map((line) => `  ${line}`)
@@ -51,7 +60,11 @@ const buildCurlExample = (endpoint: string, token: string, payload: Record<strin
   -d '${payloadText}\n  '`;
 };
 
-const buildPythonExample = (endpoint: string, token: string, payload: Record<string, any>) => `import requests
+const buildPythonExample = (
+  endpoint: string,
+  token: string,
+  payload: Record<string, any>
+) => `import requests
 
 url = '${endpoint}'
 headers = {
@@ -64,7 +77,11 @@ response = requests.post(url, headers=headers, json=payload, timeout=10)
 print(response.status_code)
 print(response.json())`;
 
-const buildJavascriptExample = (endpoint: string, token: string, payload: Record<string, any>) => `const endpoint = '${endpoint}';
+const buildJavascriptExample = (
+  endpoint: string,
+  token: string,
+  payload: Record<string, any>
+) => `const endpoint = '${endpoint}';
 
 const payload = ${formatJson(payload)};
 
@@ -330,7 +347,10 @@ const CustomApiAccess: React.FC = () => {
             'demo-instance-id',
           metrics: [
             {
-              name: defaultMetric?.name || source.instances?.[0]?.metrics?.[0]?.name || 'demo_metric',
+              name:
+                defaultMetric?.name ||
+                source.instances?.[0]?.metrics?.[0]?.name ||
+                'demo_metric',
               value: source.instances?.[0]?.metrics?.[0]?.value ?? 1,
               tags: source.instances?.[0]?.metrics?.[0]?.tags || {}
             }
@@ -369,7 +389,9 @@ const CustomApiAccess: React.FC = () => {
       }
       message.success(t('common.importSuccess'));
       await fetchInstances();
-      setSelectedInstanceIds((prev) => Array.from(new Set([...prev, ...createdIds])));
+      setSelectedInstanceIds((prev) =>
+        Array.from(new Set([...prev, ...createdIds]))
+      );
     } finally {
       setSubmitting(false);
     }
@@ -436,11 +458,13 @@ const CustomApiAccess: React.FC = () => {
     []
   );
 
-  const sectionCardClass = 'rounded-[16px] border border-[var(--color-border)] shadow-none';
-
-  const renderCodeBlock = (title: string, content: string, tone: 'default' | 'error' = 'default') => (
-    <div className="rounded-[16px] border border-[#1f2937] bg-[#111827] overflow-hidden">
-      <div className="flex items-center justify-between border-b border-[#1f2937] px-[16px] py-[12px]">
+  const renderCodeBlock = (
+    title: string,
+    content: string,
+    tone: 'default' | 'error' = 'default'
+  ) => (
+    <div className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[#111827]">
+      <div className="flex items-center justify-between border-b border-[#1f2937] px-[12px] py-[10px]">
         <Typography.Text className="text-[13px] font-medium text-[#e5e7eb]">
           {title}
         </Typography.Text>
@@ -479,10 +503,7 @@ const CustomApiAccess: React.FC = () => {
     const orgValues = record.organization || record.organizations || [];
     if (!orgValues.length) return '--';
     return orgValues.map((item: string | number) => (
-      <Tag
-        key={`${record.instance_id}-${item}`}
-        className="mb-[4px] rounded-full border-0 bg-[var(--color-primary-bg)] px-[10px] py-[2px] text-[12px] text-[var(--color-primary)]"
-      >
+      <Tag key={`${record.instance_id}-${item}`}>
         {organizationNameMap.get(String(item)) || item}
       </Tag>
     ));
@@ -490,215 +511,224 @@ const CustomApiAccess: React.FC = () => {
 
   return (
     <Spin spinning={loading || submitting}>
-      <Space direction="vertical" size={20} className="w-full">
-        {!apiSecretExists && (
-          <Alert
-            type="warning"
-            showIcon
-            message="当前组织未配置系统管理 API 密钥，请先前往系统管理创建。"
-          />
-        )}
+      <div className="px-[10px]">
+        <Space direction="vertical" size={20} className="w-full">
+          {!apiSecretExists && (
+            <Alert
+              type="warning"
+              showIcon
+              message="当前组织未配置系统管理 API 密钥，请先前往系统管理创建。"
+            />
+          )}
 
-        <div className="rounded-[20px] border border-[var(--color-border)] bg-[var(--color-bg-1)] p-[24px]">
-          <div className="mb-[20px]">
-            <Typography.Title level={4} className="!mb-[4px]">
-              接入配置
-            </Typography.Title>
-            <Typography.Text type="secondary">
-              按组织选择 API 密钥与监控资产，完成后即可直接复制接入示例。
-            </Typography.Text>
+          <div>
+            <b className="text-[14px] flex mb-[10px] ml-[-10px]">接入配置</b>
+            <Card>
+              <Form layout="vertical">
+                <Form.Item label="组织">
+                  <div className="flex items-start gap-4">
+                    <div className="w-[320px]">
+                      <Select
+                        value={selectedOrganization}
+                        placeholder="请选择组织"
+                        options={organizationOptions}
+                        onChange={(value) => setSelectedOrganization(value)}
+                      />
+                    </div>
+                    <div className="text-[var(--color-text-3)] flex-1">
+                      默认使用右上角当前组织，也可以切换到其他有权限的组织。
+                    </div>
+                  </div>
+                </Form.Item>
+
+                <Form.Item label="API 密钥">
+                  <div className="flex items-start gap-4">
+                    <div className="w-[420px] rounded-md border border-[var(--color-border)] bg-[var(--color-fill-1)] px-[12px] py-[10px]">
+                      <div className="flex items-start justify-between gap-[12px]">
+                        <Typography.Text className="break-all font-mono text-[13px] leading-[1.7]">
+                          {apiSecret || '--'}
+                        </Typography.Text>
+                        <Button
+                          type="link"
+                          icon={<CopyOutlined />}
+                          className="shrink-0 px-0"
+                          disabled={!apiSecret}
+                          onClick={() => copyText(apiSecret, 'API 密钥已复制')}
+                        >
+                          复制
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="text-[var(--color-text-3)] flex-1">
+                      当前组织对应的系统管理 API 密钥，用于第三方上报鉴权。
+                    </div>
+                  </div>
+                </Form.Item>
+              </Form>
+            </Card>
           </div>
 
-          <Space direction="vertical" size={16} className="w-full">
-            <Card className={sectionCardClass} title="组织" styles={{ body: { paddingTop: 12 } }}>
-              <Typography.Paragraph type="secondary" className="!mb-[12px]">
-                默认使用右上角当前组织，也可以切换到其他有权限的组织。
-              </Typography.Paragraph>
-              <Select
-                className="w-full max-w-[520px]"
-                value={selectedOrganization}
-                placeholder="请选择组织"
-                options={organizationOptions}
-                onChange={(value) => setSelectedOrganization(value)}
-              />
-            </Card>
+          <div>
+            <b className="text-[14px] flex mb-[10px] ml-[-10px]">监控资产</b>
+            <Card>
+              <Space direction="vertical" size={16} className="w-full">
+                <div className="flex items-center justify-between mb-[10px]">
+                  <span className="text-[14px]">
+                    监控对象
+                    <span
+                      className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
+                      style={{ fontFamily: 'SimSun, sans-serif' }}
+                    >
+                      *
+                    </span>
+                  </span>
+                  <div className="flex gap-[8px]">
+                    <Button
+                      icon={<PlusOutlined />}
+                      type="primary"
+                      onClick={() => setCreateVisible(true)}
+                    >
+                      新建资产
+                    </Button>
+                    <Button onClick={openSelectAssetsModal}>选择已有资产</Button>
+                    <Button
+                      icon={<UploadOutlined />}
+                      onClick={() =>
+                        importRef.current?.showModal({
+                          title: t('common.import'),
+                          columns: [
+                            { name: 'id', label: 'ID', required: true, is_only: true },
+                            {
+                              name: 'instance_name',
+                              label: '实例名称',
+                              required: true
+                            }
+                          ],
+                          groupList: organizationList.current
+                        })
+                      }
+                    >
+                      导入
+                    </Button>
+                    <Button
+                      icon={<DeleteOutlined />}
+                      onClick={() => setSelectedInstanceIds([])}
+                      disabled={!selectedInstanceIds.length}
+                    >
+                      清空
+                    </Button>
+                  </div>
+                </div>
 
-            <Card className={sectionCardClass} title="API 密钥" styles={{ body: { paddingTop: 12 } }}>
-              <Typography.Paragraph type="secondary" className="!mb-[12px]">
-                当前组织对应的系统管理 API 密钥，用于第三方上报鉴权。
-              </Typography.Paragraph>
-              <div className="flex min-h-[92px] items-start justify-between rounded-[14px] border border-[var(--color-border)] bg-[var(--color-fill-1)] px-[16px] py-[14px]">
-                <Typography.Text className="break-all font-mono text-[13px] leading-[1.7]">
-                  {apiSecret || '--'}
+                {selectedAssets.length ? (
+                  <Table
+                    rowKey="instance_id"
+                    pagination={false}
+                    dataSource={selectedAssets}
+                    columns={[
+                      {
+                        title: '实例名称',
+                        dataIndex: 'instance_name',
+                        key: 'instance_name'
+                      },
+                      {
+                        title: '实例ID',
+                        dataIndex: 'instance_id',
+                        key: 'instance_id',
+                        render: (value) => <Typography.Text copyable>{value}</Typography.Text>
+                      },
+                      {
+                        title: '组织',
+                        dataIndex: 'organization',
+                        key: 'organization',
+                        render: (_, record) => renderOrganizationTags(record)
+                      }
+                    ]}
+                  />
+                ) : (
+                  <div
+                    className="flex items-center justify-center"
+                    style={{ minHeight: '240px' }}
+                  >
+                    <Empty description="请选择或创建监控资产" />
+                  </div>
+                )}
+              </Space>
+            </Card>
+          </div>
+
+          <div>
+            <b className="text-[14px] flex mb-[10px] ml-[-10px]">API 端点</b>
+            <Card>
+              <div className="flex items-center justify-between rounded-[14px] border border-[var(--color-border)] bg-[var(--color-fill-1)] px-[16px] py-[14px]">
+                <Typography.Text className="font-mono text-[13px]">
+                  {doc?.endpoint || '--'}
                 </Typography.Text>
                 <Button
                   type="text"
                   icon={<CopyOutlined />}
-                  className="ml-[12px] shrink-0"
-                  disabled={!apiSecret}
-                  onClick={() => copyText(apiSecret, 'API 密钥已复制')}
+                  disabled={!doc?.endpoint}
+                  onClick={() => copyText(doc?.endpoint || '', 'API 端点已复制')}
                 >
                   复制
                 </Button>
               </div>
             </Card>
-          </Space>
-        </div>
+          </div>
 
-        <Card className={sectionCardClass} title="监控资产">
-          <Space direction="vertical" size={16} className="w-full">
-            <div className="flex flex-wrap items-center gap-[12px] rounded-[14px] bg-[var(--color-fill-1)] px-[16px] py-[12px]">
-              <Button icon={<PlusOutlined />} type="primary" onClick={() => setCreateVisible(true)}>
-                新建资产
-              </Button>
-              <Button onClick={openSelectAssetsModal}>选择已有资产</Button>
-              <Button
-                icon={<UploadOutlined />}
-                onClick={() =>
-                  importRef.current?.showModal({
-                    title: t('common.import'),
-                    columns: [
-                      { name: 'id', label: 'ID', required: true, is_only: true },
-                      {
-                        name: 'instance_name',
-                        label: '实例名称',
-                        required: true
-                      }
-                    ],
-                    groupList: organizationList.current
-                  })
-                }
-              >
-                导入新资产
-              </Button>
-              <Button
-                icon={<DeleteOutlined />}
-                onClick={() => setSelectedInstanceIds([])}
-                disabled={!selectedInstanceIds.length}
-              >
-                清空选择
-              </Button>
-            </div>
+          <div>
+            <b className="text-[14px] flex mb-[10px] ml-[-10px]">请求示例</b>
+            <Card>
+              <Space direction="vertical" size={16} className="w-full">
+                <Segmented
+                  value={sampleFormat}
+                  options={[
+                    { label: 'cURL', value: 'curl' },
+                    { label: 'Python', value: 'python' },
+                    { label: 'JavaScript', value: 'javascript' }
+                  ]}
+                  onChange={(value) => setSampleFormat(value as SampleFormat)}
+                />
+                {renderCodeBlock('请求示例', sampleCode)}
+              </Space>
+            </Card>
+          </div>
 
-            <div className="rounded-[16px] border border-[var(--color-border)] bg-[var(--color-fill-1)] px-[18px] py-[16px]">
-              <div className="flex flex-wrap items-center justify-between gap-[12px]">
-                <div>
-                  <Typography.Text className="text-[14px] font-medium">
-                    已选择资产 {selectedInstanceIds.length} 个
-                  </Typography.Text>
-                  <Typography.Paragraph type="secondary" className="!mb-0 !mt-[6px]">
-                    仅展示所属组织包含当前组织的资产。点击“选择已有资产”可在弹框中批量选择。
-                  </Typography.Paragraph>
-                </div>
-                <Button type="default" onClick={openSelectAssetsModal}>
-                  重新选择
-                </Button>
-              </div>
-            </div>
-
-            {selectedAssets.length ? (
+          <div>
+            <b className="text-[14px] flex mb-[10px] ml-[-10px]">请求参数说明</b>
+            <Card>
               <Table
-                rowKey="instance_id"
+                rowKey="key"
                 pagination={false}
-                dataSource={selectedAssets}
+                dataSource={requestParamDocs}
                 columns={[
-                  {
-                    title: '实例名称',
-                    dataIndex: 'instance_name',
-                    key: 'instance_name'
-                  },
-                  {
-                    title: '实例ID',
-                    dataIndex: 'instance_id',
-                    key: 'instance_id',
-                    render: (value) => <Typography.Text copyable>{value}</Typography.Text>
-                  },
-                  {
-                    title: '组织',
-                    dataIndex: 'organization',
-                    key: 'organization',
-                    render: (_, record) => renderOrganizationTags(record)
-                  }
+                  { title: '参数', dataIndex: 'name', key: 'name' },
+                  { title: '类型', dataIndex: 'type', key: 'type' },
+                  { title: '必填', dataIndex: 'required', key: 'required' },
+                  { title: '说明', dataIndex: 'description', key: 'description' }
                 ]}
               />
-            ) : (
-              <div className="rounded-[16px] border border-dashed border-[var(--color-border)] bg-[var(--color-fill-1)] px-[24px] py-[36px]">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={
-                    <div>
-                      <div className="mb-[6px] text-[14px] font-medium text-[var(--color-text-1)]">
-                        还未选择监控资产
-                      </div>
-                      <div className="text-[13px] text-[var(--color-text-3)]">
-                        请先选择组织，再从该组织下可访问的资产中挑选需要接入监控数据的对象。
-                      </div>
-                    </div>
-                  }
-                />
-              </div>
-            )}
-          </Space>
-        </Card>
-
-        <Card className={sectionCardClass} title="API 端点">
-          <div className="flex items-center justify-between rounded-[14px] border border-[var(--color-border)] bg-[var(--color-fill-1)] px-[16px] py-[14px]">
-            <Typography.Text className="font-mono text-[13px]">
-              {doc?.endpoint || '--'}
-            </Typography.Text>
-            <Button
-              type="text"
-              icon={<CopyOutlined />}
-              disabled={!doc?.endpoint}
-              onClick={() => copyText(doc?.endpoint || '', 'API 端点已复制')}
-            >
-              复制
-            </Button>
+            </Card>
           </div>
-        </Card>
 
-        <Card className={sectionCardClass} title="请求示例">
-          <Space direction="vertical" size={16} className="w-full">
-            <Segmented
-              value={sampleFormat}
-              options={[
-                { label: 'cURL', value: 'curl' },
-                { label: 'Python', value: 'python' },
-                { label: 'JavaScript', value: 'javascript' }
-              ]}
-              onChange={(value) => setSampleFormat(value as SampleFormat)}
-            />
-            {renderCodeBlock('请求示例', sampleCode)}
-          </Space>
-        </Card>
+          <div>
+            <b className="text-[14px] flex mb-[10px] ml-[-10px]">响应格式</b>
+            <Card>
+              <Space direction="vertical" size={16} className="w-full">
+                <div>
+                  <Typography.Title level={5}>成功响应</Typography.Title>
+                  {renderCodeBlock('成功响应 (200)', successResponse)}
+                </div>
+                <div>
+                  <Typography.Title level={5}>错误响应</Typography.Title>
+                  {renderCodeBlock('错误响应 (401)', errorResponse, 'error')}
+                </div>
+              </Space>
+            </Card>
+          </div>
+        </Space>
+      </div>
 
-        <Card className={sectionCardClass} title="请求参数说明">
-          <Table
-            rowKey="key"
-            pagination={false}
-            dataSource={requestParamDocs}
-            columns={[
-              { title: '参数', dataIndex: 'name', key: 'name' },
-              { title: '类型', dataIndex: 'type', key: 'type' },
-              { title: '必填', dataIndex: 'required', key: 'required' },
-              { title: '说明', dataIndex: 'description', key: 'description' }
-            ]}
-          />
-        </Card>
-
-        <Card className={sectionCardClass} title="响应格式">
-          <Space direction="vertical" size={16} className="w-full">
-            <div>
-              <Typography.Title level={5}>成功响应</Typography.Title>
-              {renderCodeBlock('成功响应 (200)', successResponse)}
-            </div>
-            <div>
-              <Typography.Title level={5}>错误响应</Typography.Title>
-              {renderCodeBlock('错误响应 (401)', errorResponse, 'error')}
-            </div>
-          </Space>
-        </Card>
-      </Space>
       <ExcelImportModal ref={importRef} onSuccess={handleImport} />
       <OperateModal
         open={selectVisible}
@@ -714,12 +744,9 @@ const CustomApiAccess: React.FC = () => {
         }
       >
         <Space direction="vertical" size={16} className="w-full">
-          <div className="rounded-[14px] border border-[var(--color-border)] bg-[var(--color-fill-1)] px-[16px] py-[14px]">
-            <Typography.Text className="text-[14px] font-medium">选择接入资产</Typography.Text>
-            <Typography.Paragraph type="secondary" className="!mb-0 !mt-[6px]">
-              仅展示所属组织包含当前组织的资产。确认后，请求示例会自动按所选资产生成批量上报 payload。
-            </Typography.Paragraph>
-          </div>
+          <Typography.Paragraph type="secondary" className="!mb-0">
+            仅展示所属组织包含当前组织的资产。确认后，请求示例会自动按所选资产生成批量上报 payload。
+          </Typography.Paragraph>
           <Input
             ref={assetSearchRef}
             placeholder="按实例名称或实例 ID 搜索"
@@ -756,6 +783,7 @@ const CustomApiAccess: React.FC = () => {
           />
         </Space>
       </OperateModal>
+
       <OperateModal
         open={createVisible}
         title="新建资产"
@@ -770,9 +798,7 @@ const CustomApiAccess: React.FC = () => {
             >
               {t('common.confirm')}
             </Button>
-            <Button onClick={() => setCreateVisible(false)}>
-              {t('common.cancel')}
-            </Button>
+            <Button onClick={() => setCreateVisible(false)}>{t('common.cancel')}</Button>
           </div>
         }
       >
