@@ -48,8 +48,24 @@ class CollectModelLIstSerializer(AuthSerializer):
 
     class Meta:
         model = CollectModels
-        fields = ["id", "name", "task_type", "driver_type", "model_id", "exec_status", "updated_at", "message",
-                  "exec_time", "created_by", "input_method", "params", "team", "permissions"]
+        fields = [
+            "id",
+            "name",
+            "task_type",
+            "driver_type",
+            "model_id",
+            "exec_status",
+            "updated_at",
+            "message",
+            "exec_time",
+            "created_by",
+            "input_method",
+            "params",
+            "team",
+            "permissions",
+            "data_cleanup_strategy",
+            "expire_days",
+        ]
 
     @staticmethod
     def get_message(instance):

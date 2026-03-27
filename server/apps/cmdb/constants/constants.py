@@ -263,6 +263,24 @@ class CollectInputMethod(object):
     )
 
 
+class DataCleanupStrategy(object):
+    """
+    数据清理策略
+    """
+
+    NO_CLEANUP = "no_cleanup"  # 不清理（默认）
+    IMMEDIATELY = "immediately"  # 及时清理：采集同步时立即删除不存在的实例
+    AFTER_EXPIRATION = "after_expiration"  # 过期删除：定时任务检查过期实例并删除
+
+    CHOICE = (
+        (NO_CLEANUP, "不清理"),
+        (IMMEDIATELY, "及时清理"),
+        (AFTER_EXPIRATION, "过期删除"),
+    )
+
+    DEFAULT = NO_CLEANUP
+
+
 class CollectDriverTypes(object):
     """
     采集驱动类型
@@ -517,6 +535,4 @@ VIEW = "View"
 APP_NAME = "cmdb"
 
 # ===========
-SECRET_KEY = os.getenv(
-    "SECRET_KEY", "cmdb_secret_key_2025_cb9c88c61e374c51a9a83f1b2b2c1b1d"
-)
+SECRET_KEY = os.getenv("SECRET_KEY", "cmdb_secret_key_2025_cb9c88c61e374c51a9a83f1b2b2c1b1d")

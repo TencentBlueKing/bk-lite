@@ -9,7 +9,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils.timezone import now
 
-from apps.cmdb.constants.constants import CollectRunStatusType, OPERATOR_COLLECT_TASK
+from apps.cmdb.constants.constants import CollectRunStatusType, OPERATOR_COLLECT_TASK, DataCleanupStrategy
 from apps.cmdb.models import CREATE_INST, UPDATE_INST, DELETE_INST, EXECUTE
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
@@ -68,7 +68,9 @@ class CollectModelService(object):
             "is_interval": is_interval,
             "cycle_value": data["scan_cycle"]["value"],
             "cycle_value_type": data["scan_cycle"]["value_type"],
-            "team": data["team"]  # 把组织单独抽出来，方便权限控制
+            "team": data["team"],  # 把组织单独抽出来，方便权限控制
+            "expire_days":data.get("expire_days", 0),
+            "data_cleanup_strategy": data.get("data_cleanup_strategy", DataCleanupStrategy.NO_CLEANUP),
         }
 
         for key in not_required:

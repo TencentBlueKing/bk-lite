@@ -2,22 +2,32 @@ from datetime import datetime
 from typing import Type
 from django.utils import timezone
 from apps.cmdb.collection.common import Management
-from apps.cmdb.constants.constants import INSTANCE
+from apps.cmdb.constants.constants import INSTANCE, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 
 
-# 指标纳管（纳管控制器）
 class MetricsCannula:
-    def __init__(self, inst_id, organization: list, inst_name: str, task_id: int, collect_plugin: Type,
-                 manual: bool = False, default_metrics: dict = None, filter_collect_task=True):
+    def __init__(
+        self,
+        inst_id,
+        organization: list,
+        inst_name: str,
+        task_id: int,
+        collect_plugin: Type,
+        manual: bool = False,
+        default_metrics: dict = None,
+        filter_collect_task=True,
+        data_cleanup_strategy: str = None,
+    ):
         self.inst_id = inst_id
         self.organization = organization
         self.task_id = str(task_id)
-        self.manual = False if default_metrics else manual  # 是否手动
+        self.manual = False if default_metrics else manual
         self.inst_name = inst_name
         self.collect_plugin = collect_plugin
         self.filter_collect_task = filter_collect_task
-        self.collect_data = {}  # 采集后的原始数据
+        self.data_cleanup_strategy = data_cleanup_strategy or DataCleanupStrategy.NO_CLEANUP
+        self.collect_data = {}
         self.collect_params = {}
         self.raw_data = []
         self.collection_metrics = default_metrics or self.get_collection_metrics()
@@ -33,11 +43,11 @@ class MetricsCannula:
         result = new_metrics.run()
         self.collect_data = new_metrics.result
         for i in new_metrics.raw_data:
-            if i.get('metric'):
-                if i['value'][0]:
+            if i.get("metric"):
+                if i["value"][0]:
                     # 往原始数据中打入vm指标的时间，为“数据实际上报时间”
-                    i['metric']['__time__'] = datetime.fromtimestamp(i['value'][0], timezone.utc).isoformat()
-                self.raw_data.append(i['metric'])
+                    i["metric"]["__time__"] = datetime.fromtimestamp(i["value"][0], timezone.utc).isoformat()
+                self.raw_data.append(i["metric"])
         return result
 
     @staticmethod
@@ -76,7 +86,8 @@ class MetricsCannula:
                     ["inst_name"],
                     self.now_time,
                     self.task_id,
-                    collect_plugin=self.collect_plugin
+                    collect_plugin=self.collect_plugin,
+                    data_cleanup_strategy=self.data_cleanup_strategy,
                 )
                 all_count = all_count + len(metrics)
                 if self.manual:
@@ -87,7 +98,6 @@ class MetricsCannula:
                 else:
                     collect_result = management.controller()
                 result[model_id] = collect_result
-        result['__raw_data__'] = self.raw_data
-        result['all'] = all_count
+        result["__raw_data__"] = self.raw_data
+        result["all"] = all_count
         return result
-

@@ -244,7 +244,7 @@ class FieldGroupViewSet(viewsets.ModelViewSet):
 
         try:
             data = FieldGroupService.get_model_with_groups(
-                model_id=model_id, language=request.user.locale
+                model_info=model_info, language=request.user.locale
             )
             return WebUtils.response_success(data)
 
