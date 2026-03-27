@@ -79,7 +79,7 @@ def _verify_token(token):
     login_expired_time_set = SystemSettings.objects.filter(key="login_expired_time").first()
     login_expired_time = 3600 * 24
     if login_expired_time_set:
-        login_expired_time = int(login_expired_time_set.value) * 3600
+        login_expired_time = float(login_expired_time_set.value) * 3600
 
     if time_now - login_expired_time > user_info["login_time"]:
         raise Exception("Token is invalid")
@@ -867,7 +867,7 @@ def wechat_user_register(user_id, nick_name):
             Q(name="normal", app__in=["opspilot", "ops-console"])
             | Q(
                 name="guest",
-                app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node"],
+                app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job"],
             )
         ).values_list("id", flat=True)
     )
