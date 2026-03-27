@@ -55,13 +55,8 @@ class ClassificationTrainDataSerializer(AuthSerializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request:
-            self.include_train_data = (
-                request.query_params.get("include_train_data", "false").lower()
-                == "true"
-            )
-            self.include_metadata = (
-                request.query_params.get("include_metadata", "false").lower() == "true"
-            )
+            self.include_train_data = request.query_params.get("include_train_data", "false").lower() == "true"
+            self.include_metadata = request.query_params.get("include_metadata", "false").lower() == "true"
         else:
             self.include_train_data = False
             self.include_metadata = False
@@ -94,9 +89,8 @@ class ClassificationTrainDataSerializer(AuthSerializer):
             raise serializers.ValidationError(f"无效的CSV格式: {str(e)}")
 
     def validate_dataset(self, value):
-        assert_team_ownership(
-            value, get_current_team(self.context["request"]), "dataset"
-        )
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "dataset", request=request)
         return value
 
     def to_representation(self, instance):
@@ -121,9 +115,7 @@ class ClassificationTrainDataSerializer(AuthSerializer):
                     row["index"] = i
 
                 representation["train_data"] = data_list
-                logger.info(
-                    f"Successfully loaded train_data for instance {instance.id}: {len(data_list)} rows"
-                )
+                logger.info(f"Successfully loaded train_data for instance {instance.id}: {len(data_list)} rows")
 
             except Exception as e:
                 logger.error(
@@ -186,9 +178,8 @@ class ClassificationDatasetReleaseSerializer(AuthSerializer):
         }
 
     def validate_dataset(self, value):
-        assert_team_ownership(
-            value, get_current_team(self.context["request"]), "dataset"
-        )
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "dataset", request=request)
         return value
 
     def create(self, validated_data):
@@ -204,16 +195,12 @@ class ClassificationDatasetReleaseSerializer(AuthSerializer):
 
         # 如果提供了文件ID，则执行文件打包逻辑
         if train_file_id and val_file_id and test_file_id:
-            return self._create_from_files(
-                validated_data, train_file_id, val_file_id, test_file_id
-            )
+            return self._create_from_files(validated_data, train_file_id, val_file_id, test_file_id)
         else:
             # 否则使用标准创建（适用于直接上传ZIP文件的场景）
             return super().create(validated_data)
 
-    def _create_from_files(
-        self, validated_data, train_file_id, val_file_id, test_file_id
-    ):
+    def _create_from_files(self, validated_data, train_file_id, val_file_id, test_file_id):
         """
         从训练数据文件ID创建数据集发布版本（异步）
 
@@ -229,29 +216,15 @@ class ClassificationDatasetReleaseSerializer(AuthSerializer):
 
         try:
             # 验证文件是否存在
-            train_obj = ClassificationTrainData.objects.get(
-                id=train_file_id, dataset=dataset
-            )
-            val_obj = ClassificationTrainData.objects.get(
-                id=val_file_id, dataset=dataset
-            )
-            test_obj = ClassificationTrainData.objects.get(
-                id=test_file_id, dataset=dataset
-            )
+            train_obj = ClassificationTrainData.objects.get(id=train_file_id, dataset=dataset)
+            val_obj = ClassificationTrainData.objects.get(id=val_file_id, dataset=dataset)
+            test_obj = ClassificationTrainData.objects.get(id=test_file_id, dataset=dataset)
 
             # 检查是否已有相同版本的记录（幂等性保护）
-            existing = (
-                ClassificationDatasetRelease.objects.filter(
-                    dataset=dataset, version=version
-                )
-                .exclude(status="failed")
-                .first()
-            )
+            existing = ClassificationDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(status="failed").first()
 
             if existing:
-                logger.info(
-                    f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}"
-                )
+                logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
                 return existing
 
             # 创建 pending 状态的发布记录
@@ -263,9 +236,7 @@ class ClassificationDatasetReleaseSerializer(AuthSerializer):
                 validated_data["name"] = f"{dataset.name}_v{version}"
 
             if not description:
-                validated_data["description"] = (
-                    f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
-                )
+                validated_data["description"] = f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
 
             release = ClassificationDatasetRelease.objects.create(**validated_data)
 
@@ -273,12 +244,8 @@ class ClassificationDatasetReleaseSerializer(AuthSerializer):
             from apps.mlops.tasks.classification import publish_dataset_release_async
 
             try:
-                result = publish_dataset_release_async.delay(
-                    release.id, train_file_id, val_file_id, test_file_id
-                )
-                logger.info(
-                    f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}, Task ID: {result.id}"
-                )
+                result = publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
+                logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}, Task ID: {result.id}")
 
             except Exception as task_error:
                 logger.error(
@@ -288,9 +255,7 @@ class ClassificationDatasetReleaseSerializer(AuthSerializer):
                 # 任务投递失败，更新发布状态为失败
                 release.status = "failed"
                 release.save(update_fields=["status"])
-                raise serializers.ValidationError(
-                    f"投递异步任务失败: {str(task_error)}"
-                )
+                raise serializers.ValidationError(f"投递异步任务失败: {str(task_error)}")
 
             return release
 
