@@ -26,6 +26,7 @@ from apps.cmdb.constants.field_constraints import (
 )
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.display_field import ExcludeFieldsCache
+from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
@@ -135,9 +136,7 @@ class FalkorDBClient:
         logger.debug(f"[CQL Query] {query}")
         if params:
             # 脱敏参数日志
-            safe_params = {
-                k: "***" if "password" in k.lower() else v for k, v in params.items()
-            }
+            safe_params = {k: "***" if "password" in k.lower() else v for k, v in params.items()}
             logger.debug(f"[CQL Params] {safe_params}")
 
         try:
@@ -152,9 +151,7 @@ class FalkorDBClient:
             return result
         except Exception as e:
             execution_time = (time.time() - start_time) * 1000
-            logger.error(
-                f"[CQL Error] 查询失败，耗时: {execution_time:.2f}ms，错误: {str(e)}"
-            )
+            logger.error(f"[CQL Error] 查询失败，耗时: {execution_time:.2f}ms，错误: {str(e)}")
             raise
 
     def entity_to_list(self, data):
@@ -172,9 +169,7 @@ class FalkorDBClient:
                 attrs = ExcludeFieldsCache.get_model_attrs(model_id)
 
                 if attrs:
-                    result_list = self._deserialize_table_fields_in_result_list(
-                        result_list, attrs
-                    )
+                    result_list = self._deserialize_table_fields_in_result_list(result_list, attrs)
             except Exception as e:
                 logger.warning(f"[entity_to_list] 表格字段反序列化失败: {e}")
 
@@ -277,9 +272,7 @@ class FalkorDBClient:
         """
         快速创建一个实体
         """
-        result = self._create_entity(
-            label, properties, check_attr_map, exist_items, operator, attrs
-        )
+        result = self._create_entity(label, properties, check_attr_map, exist_items, operator, attrs)
         return result
 
     @staticmethod
@@ -287,11 +280,7 @@ class FalkorDBClient:
         """校验唯一属性"""
         not_only_attr = set()
 
-        check_attrs = (
-            [i for i in check_attr_map.keys() if i in item]
-            if is_update
-            else check_attr_map.keys()
-        )
+        check_attrs = [i for i in check_attr_map.keys() if i in item] if is_update else check_attr_map.keys()
 
         for exist_item in exist_items:
             for attr in check_attrs:
@@ -309,15 +298,27 @@ class FalkorDBClient:
 
         raise BaseAppException(message)
 
+    @staticmethod
+    def check_unique_rules(
+        items,
+        unique_rules,
+        exist_items,
+        attrs_by_id,
+        exclude_instance_ids=None,
+    ):
+        raise_unique_rule_conflict_if_needed(
+            unique_rules=unique_rules,
+            items=items,
+            exist_items=exist_items,
+            attrs_by_id=attrs_by_id,
+            exclude_instance_ids=exclude_instance_ids,
+        )
+
     def check_required_attr(self, item, check_attr_map, is_update=False):
         """校验必填属性"""
         not_required_attr = set()
 
-        check_attrs = (
-            [i for i in check_attr_map.keys() if i in item]
-            if is_update
-            else check_attr_map.keys()
-        )
+        check_attrs = [i for i in check_attr_map.keys() if i in item] if is_update else check_attr_map.keys()
 
         for attr in check_attrs:
             if not item.get(attr):
@@ -354,9 +355,7 @@ class FalkorDBClient:
             return properties
 
         # 识别 table 类型字段
-        table_field_ids = {
-            attr.get("attr_id") for attr in attrs if attr.get("attr_type") == "table"
-        }
+        table_field_ids = {attr.get("attr_id") for attr in attrs if attr.get("attr_type") == "table"}
 
         if not table_field_ids:
             return properties
@@ -364,35 +363,22 @@ class FalkorDBClient:
         # 序列化表格字段
         serialized_properties = properties.copy()
         for field_id in table_field_ids:
-            if field_id in serialized_properties and isinstance(
-                serialized_properties[field_id], list
-            ):
+            if field_id in serialized_properties and isinstance(serialized_properties[field_id], list):
                 try:
-                    serialized_properties[field_id] = json.dumps(
-                        serialized_properties[field_id], ensure_ascii=False
-                    )
-                    logger.debug(
-                        f"[_serialize_table_fields] 序列化表格字段: {field_id}, "
-                        f"原始类型: list, 序列化后类型: str"
-                    )
+                    serialized_properties[field_id] = json.dumps(serialized_properties[field_id], ensure_ascii=False)
+                    logger.debug(f"[_serialize_table_fields] 序列化表格字段: {field_id}, 原始类型: list, 序列化后类型: str")
                 except Exception as e:
-                    logger.warning(
-                        f"[_serialize_table_fields] 表格字段序列化失败: {field_id}, 错误: {e}"
-                    )
+                    logger.warning(f"[_serialize_table_fields] 表格字段序列化失败: {field_id}, 错误: {e}")
                     # 序列化失败时保持原值,让后续处理决定如何处理
 
         return serialized_properties
 
-    def _deserialize_table_fields_in_result_list(
-        self, result_list: list, attrs: list = None
-    ):
+    def _deserialize_table_fields_in_result_list(self, result_list: list, attrs: list = None):
         """反序列化结果列表中的表格字段"""
         if not result_list or not attrs:
             return result_list
 
-        table_field_ids = {
-            attr.get("attr_id") for attr in attrs if attr.get("attr_type") == "table"
-        }
+        table_field_ids = {attr.get("attr_id") for attr in attrs if attr.get("attr_type") == "table"}
 
         if not table_field_ids:
             return result_list
@@ -402,15 +388,9 @@ class FalkorDBClient:
                 if field_id in item and isinstance(item[field_id], str):
                     try:
                         item[field_id] = json.loads(item[field_id])
-                        logger.debug(
-                            f"[_deserialize_table_fields] 反序列化字段: {field_id}, "
-                            f"原始类型: str, 反序列化后类型: list"
-                        )
+                        logger.debug(f"[_deserialize_table_fields] 反序列化字段: {field_id}, 原始类型: str, 反序列化后类型: list")
                     except (json.JSONDecodeError, TypeError) as e:
-                        logger.warning(
-                            f"[_deserialize_table_fields] 反序列化失败: {field_id}, "
-                            f"错误: {e}, 使用空列表"
-                        )
+                        logger.warning(f"[_deserialize_table_fields] 反序列化失败: {field_id}, 错误: {e}, 使用空列表")
                         item[field_id] = []
 
         return result_list
@@ -435,17 +415,17 @@ class FalkorDBClient:
 
             validation_errors = FieldValidator.validate_instance_data(properties, attrs)
             if validation_errors:
-                error_msg = "; ".join(
-                    [
-                        f"{err['field_name']}: {err['error']}"
-                        for err in validation_errors
-                    ]
-                )
+                error_msg = "; ".join([f"{err['field_name']}: {err['error']}" for err in validation_errors])
                 raise BaseAppException(f"字段校验失败: {error_msg}")
 
         # 校验唯一属性
-        self.check_unique_attr(
-            properties, check_attr_map.get("is_only", {}), exist_items
+        self.check_unique_attr(properties, check_attr_map.get("is_only", {}), exist_items)
+
+        self.check_unique_rules(
+            [properties],
+            check_attr_map.get("unique_rules", []),
+            exist_items,
+            check_attr_map.get("attrs_by_id", {}),
         )
 
         # 校验必填项
@@ -486,9 +466,7 @@ class FalkorDBClient:
         """
         快速创建一条边
         """
-        result = self._create_edge(
-            label, a_id, a_label, b_id, b_label, properties, check_asst_key
-        )
+        result = self._create_edge(label, a_id, a_label, b_id, b_label, properties, check_asst_key)
         return result
 
     def _create_edge(
@@ -581,9 +559,7 @@ class FalkorDBClient:
         for index, properties in enumerate(properties_list):
             result = {}
             try:
-                entity = self._create_entity(
-                    label, properties, check_attr_map, exist_items, operator, attrs
-                )
+                entity = self._create_entity(label, properties, check_attr_map, exist_items, operator, attrs)
                 result.update(data=entity, success=True, message="")
                 exist_items.append(entity)
             except Exception as e:
@@ -607,9 +583,7 @@ class FalkorDBClient:
             try:
                 a_id = edge_info["src_id"]
                 b_id = edge_info["dst_id"]
-                edge = self._create_edge(
-                    label, a_id, a_label, b_id, b_label, edge_info, check_asst_key
-                )
+                edge = self._create_edge(label, a_id, a_label, b_id, b_label, edge_info, check_asst_key)
                 result.update(data=edge, success=True)
             except Exception as e:
                 message = f"article {index + 1} data, {e}"
@@ -637,16 +611,10 @@ class FalkorDBClient:
             str: 条件字符串（参数存入 collector）
         """
         # 使用传入的 collector 或实例 collector
-        collector = (
-            param_collector if param_collector is not None else self._param_collector
-        )
+        collector = param_collector if param_collector is not None else self._param_collector
 
         # 如果使用实例 collector 且没有传入外部 collector，重置它（独立查询）
-        if (
-            collector is self._param_collector
-            and param_collector is None
-            and self.ENABLE_PARAMETERIZATION
-        ):
+        if collector is self._param_collector and param_collector is None and self.ENABLE_PARAMETERIZATION:
             collector.reset()
 
         params_conditions = []
@@ -677,13 +645,9 @@ class FalkorDBClient:
 
         return final_str, collector.get_params() if self.ENABLE_PARAMETERIZATION else {}
 
-    def format_final_params(
-        self, search_params: list, search_param_type: str = "AND", permission_params=""
-    ):
+    def format_final_params(self, search_params: list, search_param_type: str = "AND", permission_params=""):
         """格式化最终参数"""
-        search_params_str, _ = self.format_search_params(
-            search_params, search_param_type
-        )
+        search_params_str, _ = self.format_search_params(search_params, search_param_type)
 
         if not search_params_str:
             return permission_params
@@ -753,12 +717,8 @@ class FalkorDBClient:
             )
 
             # 调试日志
-            logger.debug(
-                f"[query_entity] org_id={organization_id}, query_list={query_list}"
-            )
-            logger.debug(
-                f"[query_entity] org_base={org_base_permission_str}, org_perm={org_permission_str}"
-            )
+            logger.debug(f"[query_entity] org_id={organization_id}, query_list={query_list}")
+            logger.debug(f"[query_entity] org_base={org_base_permission_str}, org_perm={org_permission_str}")
 
             # 组合组织条件（避免多余括号）
             org_filters = []
@@ -814,16 +774,12 @@ class FalkorDBClient:
         count = None
         if page:
             count_str = f"MATCH (n{label_str}) {params_str} RETURN COUNT(n) AS count"
-            _result = self._execute_query(
-                count_str, params=query_params if self.ENABLE_PARAMETERIZATION else None
-            )
+            _result = self._execute_query(count_str, params=query_params if self.ENABLE_PARAMETERIZATION else None)
             result = FormatDBResult(_result).to_list_of_lists()
             count = result[0] if result else 0
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
-        objs = self._execute_query(
-            sql_str, params=query_params if self.ENABLE_PARAMETERIZATION else None
-        )
+        objs = self._execute_query(sql_str, params=query_params if self.ENABLE_PARAMETERIZATION else None)
         return self.entity_to_list(objs), count
 
     def query_entity_by_id(self, id: int):
@@ -877,9 +833,7 @@ class FalkorDBClient:
             objs = self._execute_query(query, params=params)
         else:
             queries = f"AND n.model_id= '{model_id}'" if model_id else ""
-            objs = self._execute_query(
-                f"MATCH (n) WHERE n.inst_name IN {inst_names} {queries} RETURN n"
-            )
+            objs = self._execute_query(f"MATCH (n) WHERE n.inst_name IN {inst_names} {queries} RETURN n")
 
         if not objs:
             return []
@@ -902,9 +856,7 @@ class FalkorDBClient:
         params_str = f"WHERE {params_str}" if params_str else params_str
 
         query = f"MATCH p=(a)-[n{label_str}]->(b) {params_str} RETURN p"
-        objs = self._execute_query(
-            query, params=query_params if self.ENABLE_PARAMETERIZATION else None
-        )
+        objs = self._execute_query(query, params=query_params if self.ENABLE_PARAMETERIZATION else None)
 
         return self.edge_to_list(objs, return_entity)
 
@@ -919,9 +871,7 @@ class FalkorDBClient:
             params = {"id": validated_id}
             objs = self._execute_query(query, params=params)
         else:
-            objs = self._execute_query(
-                f"MATCH p=(a)-[n]->(b) WHERE ID(n) = {validated_id} RETURN p"
-            )
+            objs = self._execute_query(f"MATCH p=(a)-[n]->(b) WHERE ID(n) = {validated_id} RETURN p")
 
         edges = self.edge_to_list(objs, return_entity)
         return edges[0]
@@ -965,15 +915,19 @@ class FalkorDBClient:
                 is_update=True,
             )
 
-            # 校验必填项
-            self.check_required_attr(
-                properties, check_attr_map.get("is_required", {}), is_update=True
+            self.check_unique_rules(
+                [properties],
+                check_attr_map.get("unique_rules", []),
+                exist_items,
+                check_attr_map.get("attrs_by_id", {}),
+                exclude_instance_ids=set(entity_ids),
             )
 
+            # 校验必填项
+            self.check_required_attr(properties, check_attr_map.get("is_required", {}), is_update=True)
+
             # 取出可编辑属性
-            properties = self.get_editable_attr(
-                properties, check_attr_map.get("editable", {})
-            )
+            properties = self.get_editable_attr(properties, check_attr_map.get("editable", {}))
 
         # 根据 label 类型执行不同的校验逻辑
         if label == INSTANCE and attrs:
@@ -982,22 +936,13 @@ class FalkorDBClient:
 
             validation_errors = FieldValidator.validate_instance_data(properties, attrs)
             if validation_errors:
-                error_msg = "; ".join(
-                    [
-                        f"{err['field_name']}: {err['error']}"
-                        for err in validation_errors
-                    ]
-                )
+                error_msg = "; ".join([f"{err['field_name']}: {err['error']}" for err in validation_errors])
                 raise BaseAppException(f"字段校验失败: {error_msg}")
 
         elif label == MODEL and "attrs" in properties:
             # 模型：确保字段定义包含必要的默认值
             try:
-                attrs_list = (
-                    json.loads(properties["attrs"])
-                    if isinstance(properties["attrs"], str)
-                    else properties["attrs"]
-                )
+                attrs_list = json.loads(properties["attrs"]) if isinstance(properties["attrs"], str) else properties["attrs"]
 
                 # 为每个字段补充默认值
                 for attr in attrs_list:
@@ -1050,27 +995,16 @@ class FalkorDBClient:
             if attrs:
                 from apps.cmdb.validators import FieldValidator
 
-                validation_errors = FieldValidator.validate_instance_data(
-                    properties, attrs
-                )
+                validation_errors = FieldValidator.validate_instance_data(properties, attrs)
                 if validation_errors:
-                    error_msg = "; ".join(
-                        [
-                            f"{err['field_name']}: {err['error']}"
-                            for err in validation_errors
-                        ]
-                    )
+                    error_msg = "; ".join([f"{err['field_name']}: {err['error']}" for err in validation_errors])
                     raise BaseAppException(f"字段校验失败: {error_msg}")
 
             # 校验必填项
-            self.check_required_attr(
-                properties, check_attr_map.get("is_required", {}), is_update=True
-            )
+            self.check_required_attr(properties, check_attr_map.get("is_required", {}), is_update=True)
 
             # 取出可编辑属性
-            properties = self.get_editable_attr(
-                properties, check_attr_map.get("editable", {})
-            )
+            properties = self.get_editable_attr(properties, check_attr_map.get("editable", {}))
             if not properties:
                 return []
 
@@ -1080,16 +1014,10 @@ class FalkorDBClient:
         nodes = self.batch_update_node_properties(label, entity_ids, properties)
         return {"data": self.entity_to_list(nodes), "success": True, "message": ""}
 
-    def batch_update_node_properties(
-        self, label: str, node_ids: Union[int, List[int]], properties: dict
-    ):
+    def batch_update_node_properties(self, label: str, node_ids: Union[int, List[int]], properties: dict):
         """批量更新节点属性（参数化版本）"""
         validated_label = CQLValidator.validate_label(label) if label else ""
-        validated_ids = (
-            CQLValidator.validate_ids(node_ids)
-            if isinstance(node_ids, list)
-            else [CQLValidator.validate_id(node_ids)]
-        )
+        validated_ids = CQLValidator.validate_ids(node_ids) if isinstance(node_ids, list) else [CQLValidator.validate_id(node_ids)]
 
         if not properties:
             raise BaseAppException("properties is empty")
@@ -1107,18 +1035,14 @@ class FalkorDBClient:
 
             label_str = f":{validated_label}" if validated_label else ""
             set_clause = ", ".join(set_parts)
-            query = (
-                f"MATCH (n{label_str}) WHERE ID(n) IN $ids SET {set_clause} RETURN n"
-            )
+            query = f"MATCH (n{label_str}) WHERE ID(n) IN $ids SET {set_clause} RETURN n"
 
             nodes = self._execute_query(query, params=params)
         else:
             # 旧逻辑
             label_str = f":{validated_label}" if validated_label else ""
             properties_str = self.format_properties_set(properties)
-            nodes = self._execute_query(
-                f"MATCH (n{label_str}) WHERE ID(n) IN {validated_ids} SET {properties_str} RETURN n"
-            )
+            nodes = self._execute_query(f"MATCH (n{label_str}) WHERE ID(n) IN {validated_ids} SET {properties_str} RETURN n")
 
         return nodes
 
@@ -1146,9 +1070,7 @@ class FalkorDBClient:
 
         if self.ENABLE_PARAMETERIZATION:
             param_collector = ParameterCollector()
-            params_str, query_params = self.format_search_params(
-                params, param_collector=param_collector
-            )
+            params_str, query_params = self.format_search_params(params, param_collector=param_collector)
             params_str = f"WHERE {params_str}" if params_str else ""
             self._execute_query(
                 f"MATCH (n{label_str}) {params_str} REMOVE {properties_str} RETURN n",
@@ -1157,9 +1079,7 @@ class FalkorDBClient:
         else:
             params_str, _ = self.format_search_params(params)
             params_str = f"WHERE {params_str}" if params_str else ""
-            self._execute_query(
-                f"MATCH (n{label_str}) {params_str} REMOVE {properties_str} RETURN n"
-            )
+            self._execute_query(f"MATCH (n{label_str}) {params_str} REMOVE {properties_str} RETURN n")
 
     def batch_delete_entity(self, label: str, entity_ids: list):
         """批量删除实体（参数化版本）"""
@@ -1173,9 +1093,7 @@ class FalkorDBClient:
             params = {"ids": validated_ids}
             self._execute_query(query, params=params)
         else:
-            self._execute_query(
-                f"MATCH (n{label_str}) WHERE ID(n) IN {validated_ids} DETACH DELETE n"
-            )
+            self._execute_query(f"MATCH (n{label_str}) WHERE ID(n) IN {validated_ids} DETACH DELETE n")
 
     def detach_delete_entity(self, label: str, id: int):
         """删除实体，以及实体的关联关系（参数化版本）"""
@@ -1189,9 +1107,7 @@ class FalkorDBClient:
             params = {"id": validated_id}
             self._execute_query(query, params=params)
         else:
-            self._execute_query(
-                f"MATCH (n{label_str}) WHERE ID(n) = {validated_id} DETACH DELETE n"
-            )
+            self._execute_query(f"MATCH (n{label_str}) WHERE ID(n) = {validated_id} DETACH DELETE n")
 
     def delete_edge(self, edge_id: int):
         """删除边（参数化版本）"""
@@ -1202,9 +1118,7 @@ class FalkorDBClient:
             params = {"id": validated_id}
             self._execute_query(query, params=params)
         else:
-            self._execute_query(
-                f"MATCH ()-[n]->() WHERE ID(n) = {validated_id} DELETE n"
-            )
+            self._execute_query(f"MATCH ()-[n]->() WHERE ID(n) = {validated_id} DELETE n")
 
     def entity_objs(self, label: str, params: list, permission_params: str = ""):
         validated_label = CQLValidator.validate_label(label) if label else ""
@@ -1212,9 +1126,7 @@ class FalkorDBClient:
 
         if self.ENABLE_PARAMETERIZATION:
             param_collector = ParameterCollector()
-            params_str, query_params = self.format_search_params(
-                params, param_collector=param_collector
-            )
+            params_str, query_params = self.format_search_params(params, param_collector=param_collector)
 
             conditions = []
             if params_str:
@@ -1224,13 +1136,9 @@ class FalkorDBClient:
 
             where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
             sql_str = f"MATCH (n{label_str}) {where_clause} RETURN n"
-            inst_objs = self._execute_query(
-                sql_str, params=query_params if query_params else None
-            )
+            inst_objs = self._execute_query(sql_str, params=query_params if query_params else None)
         else:
-            params_str = self.format_final_params(
-                params, permission_params=permission_params
-            )
+            params_str = self.format_final_params(params, permission_params=permission_params)
             params_str = f"WHERE {params_str}" if params_str else params_str
             sql_str = f"MATCH (n{label_str}) {params_str} RETURN n"
             inst_objs = self._execute_query(sql_str)
@@ -1276,9 +1184,7 @@ class FalkorDBClient:
     def get_topo_config() -> dict:
         try:
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            topo_config_path = os.path.join(
-                base_dir, "support-files", "topo_config.json"
-            )
+            topo_config_path = os.path.join(base_dir, "support-files", "topo_config.json")
 
             if not os.path.isfile(topo_config_path):
                 logger.warning("Topo config file not found: %s", topo_config_path)
@@ -1293,18 +1199,13 @@ class FalkorDBClient:
             return data
 
         except (OSError, json.JSONDecodeError) as e:
-            logger.error(
-                "Failed to load topo config: %s, error: %s", topo_config_path, e
-            )
+            logger.error("Failed to load topo config: %s, error: %s", topo_config_path, e)
             return {}
 
-    def convert_to_cypher_match(
-        self, label_str: str, model_id: str, params_str: str, dst: bool = True
-    ) -> str:
+    def convert_to_cypher_match(self, label_str: str, model_id: str, params_str: str, dst: bool = True) -> str:
         edge_type = "dst" if dst else "src"
         default_match = (
-            f"MATCH p={f'(m{label_str})-[*]->(n{label_str})' if dst else f'(n{label_str})-[*]->(m{label_str})'} "
-            f"WHERE 1=1 {params_str} RETURN p"
+            f"MATCH p={f'(m{label_str})-[*]->(n{label_str})' if dst else f'(n{label_str})-[*]->(m{label_str})'} WHERE 1=1 {params_str} RETURN p"
         )
 
         topo_path = self.get_topo_config().get(model_id)
@@ -1337,18 +1238,14 @@ class FalkorDBClient:
             if i == 0:
                 if edge_type == "src":
                     rep_alias = self_alias
-                cypher_parts.append(
-                    f"({self_alias}:instance {{model_id: '{validated_self_obj}'}})"
-                )
+                cypher_parts.append(f"({self_alias}:instance {{model_id: '{validated_self_obj}'}})")
 
             if target_obj not in node_aliases:
                 node_aliases[target_obj] = f"v{i + 1}"
             target_alias = node_aliases[target_obj]
             if edge_type == "dst":
                 rep_alias = target_alias
-            cypher_parts.append(
-                f"-[:{validated_assoc}]->({target_alias}:instance {{model_id: '{validated_target_obj}'}})"
-            )
+            cypher_parts.append(f"-[:{validated_assoc}]->({target_alias}:instance {{model_id: '{validated_target_obj}'}})")
 
         match_path = "".join(cypher_parts)
         where_clause = f"WHERE 1=1 {params_str.replace('n', rep_alias)}"
@@ -1372,19 +1269,13 @@ class FalkorDBClient:
             query_params = {"inst_id": inst_id}
             params_str = f"AND ID(n) = $inst_id"
         else:
-            params_str, _ = self.format_search_params(
-                [{"field": "id", "type": "id=", "value": inst_id}]
-            )
+            params_str, _ = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
             if params_str:
                 params_str = f"AND {params_str}"
             query_params = None
 
-        src_query = self.convert_to_cypher_match(
-            label_str, model_id, params_str, dst=False
-        )
-        dst_query = self.convert_to_cypher_match(
-            label_str, model_id, params_str, dst=True
-        )
+        src_query = self.convert_to_cypher_match(label_str, model_id, params_str, dst=False)
+        dst_query = self.convert_to_cypher_match(label_str, model_id, params_str, dst=True)
 
         src_objs = self._execute_query(src_query, params=query_params)
         dst_objs = self._execute_query(dst_query, params=query_params)
@@ -1394,9 +1285,7 @@ class FalkorDBClient:
             dst_result=self.format_topo(inst_id, dst_objs, False),
         )
 
-    def query_topo_lite(
-        self, label: str, inst_id: int, depth: int = 3, exclude_ids=None
-    ):
+    def query_topo_lite(self, label: str, inst_id: int, depth: int = 3, exclude_ids=None):
         """查询实例拓扑：限制返回层级，减少前端一次性渲染与网络传输压力"""
 
         depth = max(1, int(depth))
@@ -1411,35 +1300,19 @@ class FalkorDBClient:
 
         if self.ENABLE_PARAMETERIZATION:
             query_params = {"inst_id": inst_id}
-            src_query = (
-                f"MATCH p=(n{label_str})-[*1..{probe_depth}]->(m{label_str}) "
-                "WHERE ID(n) = $inst_id RETURN p"
-            )
-            dst_query = (
-                f"MATCH p=(m{label_str})-[*1..{probe_depth}]->(n{label_str}) "
-                "WHERE ID(n) = $inst_id RETURN p"
-            )
+            src_query = f"MATCH p=(n{label_str})-[*1..{probe_depth}]->(m{label_str}) WHERE ID(n) = $inst_id RETURN p"
+            dst_query = f"MATCH p=(m{label_str})-[*1..{probe_depth}]->(n{label_str}) WHERE ID(n) = $inst_id RETURN p"
         else:
             query_params = None
-            src_query = (
-                f"MATCH p=(n{label_str})-[*1..{probe_depth}]->(m{label_str}) "
-                f"WHERE ID(n) = {inst_id} RETURN p"
-            )
-            dst_query = (
-                f"MATCH p=(m{label_str})-[*1..{probe_depth}]->(n{label_str}) "
-                f"WHERE ID(n) = {inst_id} RETURN p"
-            )
+            src_query = f"MATCH p=(n{label_str})-[*1..{probe_depth}]->(m{label_str}) WHERE ID(n) = {inst_id} RETURN p"
+            dst_query = f"MATCH p=(m{label_str})-[*1..{probe_depth}]->(n{label_str}) WHERE ID(n) = {inst_id} RETURN p"
 
         src_objs = self._execute_query(src_query, params=query_params)
         dst_objs = self._execute_query(dst_query, params=query_params)
 
         return dict(
-            src_result=self.format_topo_lite(
-                inst_id, src_objs, True, depth=depth, exclude_ids=exclude_ids
-            ),
-            dst_result=self.format_topo_lite(
-                inst_id, dst_objs, False, depth=depth, exclude_ids=exclude_ids
-            ),
+            src_result=self.format_topo_lite(inst_id, src_objs, True, depth=depth, exclude_ids=exclude_ids),
+            dst_result=self.format_topo_lite(inst_id, dst_objs, False, depth=depth, exclude_ids=exclude_ids),
         )
 
     def format_topo(self, start_id, objs, entity_is_src=True):
@@ -1458,13 +1331,9 @@ class FalkorDBClient:
                 relationships = getattr(element, "_edges", [])  # 获取所有节点
                 for node in nodes:
                     props = {k: v for k, v in node.properties.items() if k != "_id"}
-                    entity_map[node.id] = dict(
-                        _id=node.id, _label=node.labels[0], **props
-                    )
+                    entity_map[node.id] = dict(_id=node.id, _label=node.labels[0], **props)
                 for relationship in relationships:
-                    props = {
-                        k: v for k, v in relationship.properties.items() if k != "_id"
-                    }
+                    props = {k: v for k, v in relationship.properties.items() if k != "_id"}
                     edge_map[relationship.id] = dict(
                         _id=relationship.id,
                         _label=relationship.relation,
@@ -1499,21 +1368,15 @@ class FalkorDBClient:
 
         for edge in edges:
             if edge[f"{entity_key}_inst_id"] == entity["_id"]:
-                child_entity = self.find_entity_by_id(
-                    edge[f"{child_entity_key}_inst_id"], entities
-                )
+                child_entity = self.find_entity_by_id(edge[f"{child_entity_key}_inst_id"], entities)
                 if child_entity:
-                    child_node = self.create_node(
-                        child_entity, edges, entities, entity_is_src
-                    )
+                    child_node = self.create_node(child_entity, edges, entities, entity_is_src)
                     child_node["model_asst_id"] = edge["model_asst_id"]
                     child_node["asst_id"] = edge["asst_id"]
                     node["children"].append(child_node)
         return node
 
-    def format_topo_lite(
-        self, start_id, objs, entity_is_src=True, depth: int = 3, exclude_ids=None
-    ):
+    def format_topo_lite(self, start_id, objs, entity_is_src=True, depth: int = 3, exclude_ids=None):
         """格式化拓扑数据：限制层级并支持排除父节点集合"""
 
         all_results = objs.result_set
@@ -1535,13 +1398,9 @@ class FalkorDBClient:
                 relationships = getattr(element, "_edges", [])
                 for node in nodes:
                     props = {k: v for k, v in node.properties.items() if k != "_id"}
-                    entity_map[node.id] = dict(
-                        _id=node.id, _label=node.labels[0], **props
-                    )
+                    entity_map[node.id] = dict(_id=node.id, _label=node.labels[0], **props)
                 for relationship in relationships:
-                    props = {
-                        k: v for k, v in relationship.properties.items() if k != "_id"
-                    }
+                    props = {k: v for k, v in relationship.properties.items() if k != "_id"}
                     edge_map[relationship.id] = dict(
                         _id=relationship.id,
                         _label=relationship.relation,
@@ -1549,19 +1408,12 @@ class FalkorDBClient:
                     )
 
         edges = list(edge_map.values())
-        edges = [
-            edge for edge in edges if edge.get("src_inst_id") != edge.get("dst_inst_id")
-        ]
+        edges = [edge for edge in edges if edge.get("src_inst_id") != edge.get("dst_inst_id")]
 
         if exclude_id_set:
             for node_id in exclude_id_set:
                 entity_map.pop(node_id, None)
-            edges = [
-                edge
-                for edge in edges
-                if edge.get("src_inst_id") not in exclude_id_set
-                and edge.get("dst_inst_id") not in exclude_id_set
-            ]
+            edges = [edge for edge in edges if edge.get("src_inst_id") not in exclude_id_set and edge.get("dst_inst_id") not in exclude_id_set]
 
         entities = list(entity_map.values())
         if start_id not in entity_map:
@@ -1588,9 +1440,7 @@ class FalkorDBClient:
         node = {
             "_id": entity.get("_id"),
             "model_id": entity.get("model_id"),
-            "inst_name": entity.get("inst_name")
-            or entity.get("ip_addr")
-            or str(entity.get("_id")),
+            "inst_name": entity.get("inst_name") or entity.get("ip_addr") or str(entity.get("_id")),
             "children": [],
         }
 
@@ -1600,16 +1450,12 @@ class FalkorDBClient:
             entity_key, child_entity_key = "dst", "src"
 
         if level >= max_depth:
-            node["has_more"] = any(
-                edge.get(f"{entity_key}_inst_id") == entity.get("_id") for edge in edges
-            )
+            node["has_more"] = any(edge.get(f"{entity_key}_inst_id") == entity.get("_id") for edge in edges)
             return node
 
         for edge in edges:
             if edge.get(f"{entity_key}_inst_id") == entity.get("_id"):
-                child_entity = self.find_entity_by_id(
-                    edge.get(f"{child_entity_key}_inst_id"), entities
-                )
+                child_entity = self.find_entity_by_id(edge.get(f"{child_entity_key}_inst_id"), entities)
                 if child_entity:
                     child_node = self.create_node_lite(
                         child_entity,
@@ -1631,9 +1477,7 @@ class FalkorDBClient:
                 return entity
         return None
 
-    def entity_count(
-        self, label: str, group_by_attr: str, format_permission_dict: dict
-    ):
+    def entity_count(self, label: str, group_by_attr: str, format_permission_dict: dict):
         """
         按指定字段分组统计实体数量（参数化版本）
 
@@ -1659,9 +1503,7 @@ class FalkorDBClient:
         # 构建权限参数 这里的参数是在基础参数基础上做AND 查询的 每个for的数据之间的关系是OR的关系
         permission_filters = []
         for organization_id, query_list in format_permission_dict.items():
-            organization_query = [
-                {"field": "organization", "type": "list[]", "value": [organization_id]}
-            ]
+            organization_query = [{"field": "organization", "type": "list[]", "value": [organization_id]}]
 
             if self.ENABLE_PARAMETERIZATION:
                 base_permission_str, base_params = self.format_search_params(
@@ -1669,16 +1511,10 @@ class FalkorDBClient:
                     param_type="AND",
                     param_collector=param_collector,
                 )
-                org_permission_str, org_params = self.format_search_params(
-                    query_list, param_type="OR", param_collector=param_collector
-                )
+                org_permission_str, org_params = self.format_search_params(query_list, param_type="OR", param_collector=param_collector)
             else:
-                base_permission_str, _ = self.format_search_params(
-                    organization_query, param_type="AND"
-                )
-                org_permission_str, _ = self.format_search_params(
-                    query_list, param_type="OR"
-                )
+                base_permission_str, _ = self.format_search_params(organization_query, param_type="AND")
+                org_permission_str, _ = self.format_search_params(query_list, param_type="OR")
 
             if base_permission_str and org_permission_str:
                 # org_permission_str 已经有括号，只需要外层括号保证 AND 优先级
@@ -1745,9 +1581,7 @@ class FalkorDBClient:
                 ]
             }
         """
-        logger.info(
-            f"[全文检索统计] 开始查询，关键词: {search}, 区分大小写: {case_sensitive}"
-        )
+        logger.info(f"[全文检索统计] 开始查询，关键词: {search}, 区分大小写: {case_sensitive}")
 
         # 获取排除字段
         exclude_fields = ExcludeFieldsCache.get_exclude_fields()
@@ -1821,16 +1655,9 @@ class FalkorDBClient:
         where_clause = " AND ".join(conditions) if conditions else "true"
 
         # 执行统计查询
-        query = (
-            f"MATCH (n:{INSTANCE}) "
-            f"WHERE {where_clause} "
-            f"RETURN n.model_id AS model_id, COUNT(n) AS count "
-            f"ORDER BY count DESC"
-        )
+        query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n.model_id AS model_id, COUNT(n) AS count ORDER BY count DESC"
 
-        result = self._execute_query(
-            query, params=query_params if self.ENABLE_PARAMETERIZATION else None
-        )
+        result = self._execute_query(query, params=query_params if self.ENABLE_PARAMETERIZATION else None)
         formatted_result = FormatDBResult(result).to_result_of_count()
 
         # 构建返回结果
@@ -1840,9 +1667,7 @@ class FalkorDBClient:
             model_stats.append({"model_id": model_id, "count": count})
             total += count
 
-        logger.info(
-            f"[全文检索统计] 查询成功，总数: {total}, 模型数: {len(model_stats)}"
-        )
+        logger.info(f"[全文检索统计] 查询成功，总数: {total}, 模型数: {len(model_stats)}")
 
         return {"total": total, "model_stats": model_stats}
 
@@ -1882,10 +1707,7 @@ class FalkorDBClient:
                 "data": [{...}, {...}]  # 分页数据
             }
         """
-        logger.info(
-            f"[全文检索数据] 开始查询，关键词: {search}, 模型: {model_id}, "
-            f"页码: {page}, 每页: {page_size}, 区分大小写: {case_sensitive}"
-        )
+        logger.info(f"[全文检索数据] 开始查询，关键词: {search}, 模型: {model_id}, 页码: {page}, 每页: {page_size}, 区分大小写: {case_sensitive}")
 
         # 参数校验
         if not model_id:
@@ -1976,13 +1798,9 @@ class FalkorDBClient:
         where_clause = " AND ".join(conditions) if conditions else "true"
 
         # 第一步：查询该模型的总数
-        count_query = (
-            f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN COUNT(n) AS total"
-        )
+        count_query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN COUNT(n) AS total"
 
-        count_result = self._execute_query(
-            count_query, params=query_params if self.ENABLE_PARAMETERIZATION else None
-        )
+        count_result = self._execute_query(count_query, params=query_params if self.ENABLE_PARAMETERIZATION else None)
         count_data = FormatDBResult(count_result).to_list_of_lists()
         total = count_data[0] if count_data else 0
 
@@ -1990,23 +1808,12 @@ class FalkorDBClient:
 
         # 第二步：查询分页数据
         skip = (page - 1) * page_size
-        data_query = (
-            f"MATCH (n:{INSTANCE}) "
-            f"WHERE {where_clause} "
-            f"RETURN n "
-            f"ORDER BY ID(n) "
-            f"SKIP {skip} LIMIT {page_size}"
-        )
+        data_query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n ORDER BY ID(n) SKIP {skip} LIMIT {page_size}"
 
-        data_result = self._execute_query(
-            data_query, params=query_params if self.ENABLE_PARAMETERIZATION else None
-        )
+        data_result = self._execute_query(data_query, params=query_params if self.ENABLE_PARAMETERIZATION else None)
         data = self.entity_to_list(data_result)
 
-        logger.info(
-            f"[全文检索数据] 查询成功，模型: {model_id}, 总数: {total}, "
-            f"返回: {len(data)} 条数据"
-        )
+        logger.info(f"[全文检索数据] 查询成功，模型: {model_id}, 总数: {total}, 返回: {len(data)} 条数据")
 
         return {
             "model_id": model_id,
@@ -2111,9 +1918,7 @@ class FalkorDBClient:
 
         query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n"
 
-        objs = self._execute_query(
-            query, params=query_params if self.ENABLE_PARAMETERIZATION else None
-        )
+        objs = self._execute_query(query, params=query_params if self.ENABLE_PARAMETERIZATION else None)
         result = self.entity_to_list(objs)
 
         logger.info(f"[全文检索] 查询成功，返回: {len(result)} 条数据")
@@ -2135,9 +1940,7 @@ class FalkorDBClient:
         if unique_key:
             properties_map = {}
             for properties in properties_list:
-                properties_key = tuple(
-                    [properties.get(k) for k in unique_key if k in properties]
-                )
+                properties_key = tuple([properties.get(k) for k in unique_key if k in properties])
                 # 对参数中的节点按唯一键进行去重
                 properties_map[properties_key] = properties
             # 已有节点处理
