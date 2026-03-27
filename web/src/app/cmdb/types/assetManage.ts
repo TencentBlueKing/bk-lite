@@ -353,10 +353,17 @@ export interface FullInfoGroupItem {
   can_delete: boolean;
 }
 
+export interface FullInfoUniqueRuleItem {
+  rule_id: string;
+  order: number;
+  field_ids: string[];
+}
+
 export interface ModelFullInfo {
   model_id: string;
   model_name: string;
   groups: FullInfoGroupItem[];
+  unique_rules?: FullInfoUniqueRuleItem[];
   total_groups: number;
   total_attrs: number;
 }
