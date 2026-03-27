@@ -1269,18 +1269,6 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               {({ getFieldValue }) => (
                 <Form.Item label=" " colon={false} className="ml-[-80px]">
                   <div className="flex items-center gap-8">
-                    {getFieldValue('attr_type') !== 'enum' &&
-                      getFieldValue('attr_type') !== 'tag' && (
-                        <Form.Item<AttrFieldType>
-                          name="is_only"
-                          valuePropName="checked"
-                          className="mb-0"
-                        >
-                          <Checkbox disabled={type === 'edit'}>
-                            {t('unique')}
-                          </Checkbox>
-                        </Form.Item>
-                    )}
                     <Form.Item<AttrFieldType>
                       name="is_required"
                       valuePropName="checked"

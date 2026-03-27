@@ -35,6 +35,18 @@ export const useModelApi = () => {
   const deleteModelAttr = (modelId: string, attrId: string) =>
     del(`/cmdb/api/model/${modelId}/attr/${attrId}/`);
 
+  const getModelUniqueRules = (modelId: string, editingRuleId?: string) =>
+    get(`/cmdb/api/model/${modelId}/unique_rules/${editingRuleId ? `?editing_rule_id=${editingRuleId}` : ''}`.replace('/?', '?'));
+
+  const createModelUniqueRule = (modelId: string, params: { field_ids: string[] }) =>
+    post(`/cmdb/api/model/${modelId}/unique_rules/`, params);
+
+  const updateModelUniqueRule = (modelId: string, ruleId: string, params: { field_ids: string[] }) =>
+    put(`/cmdb/api/model/${modelId}/unique_rules/${ruleId}/`, params);
+
+  const deleteModelUniqueRule = (modelId: string, ruleId: string) =>
+    del(`/cmdb/api/model/${modelId}/unique_rules/${ruleId}/`);
+
   // 获取模型关联列表
   const getModelAssociations = (modelId: string) =>
     get(`/cmdb/api/model/${modelId}/association/`);
@@ -178,6 +190,10 @@ export const useModelApi = () => {
     createModelAttr,
     updateModelAttr,
     deleteModelAttr,
+    getModelUniqueRules,
+    createModelUniqueRule,
+    updateModelUniqueRule,
+    deleteModelUniqueRule,
     getModelAssociations,
     createModelAssociation,
     deleteModelAssociation,
