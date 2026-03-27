@@ -19,7 +19,12 @@ import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
 import { useModelApi } from '@/app/cmdb/api';
 import { useModelDetail } from '../context';
-import type { AttrGroup, AttrItem } from '@/app/cmdb/types/assetManage';
+import type {
+  AttrGroup,
+  AttrItem,
+  FullInfoUniqueRuleItem,
+  UniqueDisplayType,
+} from '@/app/cmdb/types/assetManage';
 
 const getUniqueTagMeta = (uniqueType?: string, isOnly?: boolean) => {
   if (uniqueType === 'joint') {
@@ -29,6 +34,31 @@ const getUniqueTagMeta = (uniqueType?: string, isOnly?: boolean) => {
     return { color: 'green', textKey: 'Model.singleUnique' };
   }
   return { color: 'default', textKey: 'no' };
+}
+
+const getAttrUniqueDisplayType = (
+  attr: AttrItem,
+  uniqueRules: FullInfoUniqueRuleItem[] = []
+): UniqueDisplayType => {
+  const attrId = attr.attr_id
+  const jointFieldIds = new Set(
+    uniqueRules
+      .filter((rule) => rule.field_ids.length > 1)
+      .flatMap((rule) => rule.field_ids)
+  )
+  const singleFieldIds = new Set(
+    uniqueRules
+      .filter((rule) => rule.field_ids.length === 1)
+      .flatMap((rule) => rule.field_ids)
+  )
+
+  if (jointFieldIds.has(attrId)) {
+    return 'joint'
+  }
+  if (attr.is_only || singleFieldIds.has(attrId)) {
+    return 'single'
+  }
+  return 'none'
 }
 
 const Attributes: React.FC = () => {
@@ -171,6 +201,7 @@ const attrRef = useRef<any>(null);
     try {
       const data: any = await getModelAttrGroupsFullInfo(modelId!);
       const apiGroups = data.groups || [];
+      const uniqueRules = data.unique_rules || [];
 
       setGroups(apiGroups);
 
@@ -179,6 +210,7 @@ const attrRef = useRef<any>(null);
         const groupAttrs = (group.attrs || []).map((attr: any) => ({
           ...attr,
           group_id: String(group.id),
+          unique_display_type: getAttrUniqueDisplayType(attr, uniqueRules),
         }));
         allAttrs.push(...groupAttrs);
       });
