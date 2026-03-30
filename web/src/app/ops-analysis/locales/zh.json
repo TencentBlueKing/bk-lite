@@ -214,6 +214,7 @@
     "dataFetchFailed": "数据获取失败",
     "inputName": "请输入组件名称",
     "paramSettings": "参数设置",
+    "noParamSettings": "暂无需配置参数",
     "barColor": "柱状图颜色",
     "selectInstance": "请选择实例",
     "dataFormatMismatch": "数据格式不匹配",
