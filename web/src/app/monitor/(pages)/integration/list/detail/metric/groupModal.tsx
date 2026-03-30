@@ -16,11 +16,12 @@ import { useTranslation } from '@/utils/i18n';
 
 interface GroupModalProps {
   monitorObject: number;
+  pluginId?: number;
   onSuccess: () => void;
 }
 
 const GroupMoadal = forwardRef<ModalRef, GroupModalProps>(
-  ({ onSuccess, monitorObject }, ref) => {
+  ({ onSuccess, monitorObject, pluginId }, ref) => {
     const { post, put } = useApiClient();
     const { t } = useTranslation();
     const formRef = useRef<FormInstance>(null);
@@ -62,6 +63,7 @@ const GroupMoadal = forwardRef<ModalRef, GroupModalProps>(
         const requestParams = {
           ...params,
           monitor_object: monitorObject,
+          monitor_plugin: pluginId,
         };
         const requestType = type === 'add' ? post : put;
         await requestType(url, requestParams);
