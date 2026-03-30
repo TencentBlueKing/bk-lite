@@ -1,18 +1,17 @@
 import asyncio
-import os
 import json
 import logging
+import os
 import re
 import shlex
 import shutil
-import uuid
 import stat
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from service.runtime import current_entrypoint_command
-
 
 logger = logging.getLogger(__name__)
 BASE_TASK_DIR = Path(os.getenv("ANSIBLE_WORK_DIR", "/tmp/ansible-executor"))
@@ -182,6 +181,13 @@ def _quote_inventory_value(value: Any) -> str:
     return escaped
 
 
+def _get_password_auth_ssh_common_args(item: dict[str, Any]) -> str:
+    explicit_args = item.get("ansible_ssh_common_args") or item.get("ssh_common_args")
+    if explicit_args:
+        return str(explicit_args)
+    return "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+
 def _build_host_credentials_inventory(
     workspace: Path, host_credentials: list[dict[str, Any]]
 ) -> str:
@@ -205,6 +211,11 @@ def _build_host_credentials_inventory(
         password = item.get("password")
         if password:
             parts.append(f"ansible_password={_quote_inventory_value(password)}")
+            if str(connection).strip().lower() == "ssh":
+                parts.append(
+                    "ansible_ssh_common_args="
+                    f"{_quote_inventory_value(_get_password_auth_ssh_common_args(item))}"
+                )
 
         private_key_file = item.get("private_key_file")
         private_key_content = item.get("private_key_content")
