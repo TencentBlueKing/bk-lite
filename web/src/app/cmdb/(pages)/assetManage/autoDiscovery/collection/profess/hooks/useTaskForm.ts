@@ -30,6 +30,11 @@ export const getCycleFormValues = (data: any) => {
   };
 };
 
+export const getCleanupFormValues = (data: any) => ({
+  cleanupStrategy: data?.data_cleanup_strategy,
+  cleanupDays: data?.expire_days,
+});
+
 export const useTaskForm = ({
   editId,
   onSuccess,
@@ -67,13 +72,18 @@ export const useTaskForm = ({
       // console.log('test2.5:getCollectDetail', data.cycle_value_type);
       useAssetManageStore.getState().setScanCycleType(data.cycle_value_type || null);
       const cycleFields = getCycleFormValues(data);
-      form.setFieldsValue({
+      const cleanupFields = getCleanupFormValues(data);
+
+      const formattedData = {
         ...data,
         taskName: data.name,
         instId: data.instances?.[0]?._id,
         ...cycleFields,
-      });
-      return data;
+        ...cleanupFields,
+      };
+
+      form.setFieldsValue(formattedData);
+      return formattedData;
     } catch (error) {
       console.error('Failed to fetch task detail:', error);
     } finally {

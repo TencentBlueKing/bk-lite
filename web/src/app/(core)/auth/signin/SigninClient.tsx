@@ -9,13 +9,16 @@ import { saveAuthToken } from "@/utils/crossDomainAuth";
 import { buildOauthCallbackBridgeUrl, buildThirdLoginCallbackUrl, resolveThirdLoginFlag } from "@/utils/authRedirect";
 
 interface SigninClientProps {
-  searchParams: {
+  searchParams?: {
     callbackUrl: string;
     error: string;
     third_login?: string;
     thirdLogin?: string;
   };
-  signinErrors: Record<string | "default", string>;
+  signinErrors?: Record<string | "default", string>;
+  mode?: 'page' | 'modal';
+  onAuthenticated?: () => void;
+  showThirdPartyLogin?: boolean;
 }
 
 type AuthStep = 'login' | 'reset-password' | 'otp-verification';
@@ -43,7 +46,17 @@ interface BkSettings {
   url?: string;
 }
 
-export default function SigninClient({ searchParams: { callbackUrl, error, third_login, thirdLogin }, signinErrors }: SigninClientProps) {
+export default function SigninClient({
+  searchParams,
+  signinErrors = {},
+  mode = 'page',
+  onAuthenticated,
+  showThirdPartyLogin = true,
+}: SigninClientProps) {
+  const callbackUrl = searchParams?.callbackUrl || "/";
+  const error = searchParams?.error || "";
+  const third_login = searchParams?.third_login;
+  const thirdLogin = searchParams?.thirdLogin;
   const thirdLoginFlag = resolveThirdLoginFlag(thirdLogin, third_login);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -304,6 +317,12 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
         );
 
         console.log('SignIn successful, redirecting to:', targetUrl);
+
+        if (onAuthenticated) {
+          onAuthenticated();
+          return;
+        }
+
         window.location.href = targetUrl;
       } else {
         console.error('SignIn failed with unknown error');
@@ -342,7 +361,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
     <form onSubmit={handleLoginSubmit} className="flex flex-col space-y-6 w-full">
       <div className="space-y-2">
         <div className="flex justify-between items-center">
-          <label htmlFor="domain" className="text-sm font-medium text-[var(--color-text-1)]">Domain</label>
+          <label htmlFor="domain" className="text-sm font-medium text-(--color-text-1)">Domain</label>
           {loadingDomains && (
             <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
           )}
@@ -393,7 +412,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="username" className="text-sm font-medium text-[var(--color-text-1)]">Username</label>
+        <label htmlFor="username" className="text-sm font-medium text-(--color-text-1)">Username</label>
         <Input
           id="username"
           placeholder="Enter your username"
@@ -406,7 +425,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="password" className="text-sm font-medium text-[var(--color-text-1)]">Password</label>
+        <label htmlFor="password" className="text-sm font-medium text-(--color-text-1)">Password</label>
         <Input.Password
           id="password"
           placeholder="Enter your password"
@@ -466,10 +485,10 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
         <div className="mt-6">
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[var(--color-border-3)]"></div>
+              <div className="w-full border-t border-(--color-border-3)"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-[var(--color-bg)] text-[var(--color-text-1)]">Or continue with</span>
+              <span className="px-2 bg-(--color-bg) text-(--color-text-1)">Or continue with</span>
             </div>
           </div>
 
@@ -491,10 +510,10 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
       <div className="mt-6">
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-[var(--color-border-3)]"></div>
+            <div className="w-full border-t border-(--color-border-3)"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-[var(--color-bg)] text-[var(--color-text-1)]">Or continue with</span>
+            <span className="px-2 bg-(--color-bg) text-(--color-text-1)">Or continue with</span>
           </div>
         </div>
 
@@ -527,10 +546,54 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
     );
   };
 
+  const content = (
+    <div className="w-full max-w-md">
+      {mode === 'page' && (
+        <div className="text-center mb-10">
+          <div className="flex justify-center mb-6">
+            <Image src="/logo-site.png" alt="Logo" width={60} height={60} className="h-14 w-auto" />
+          </div>
+          <h2 className="text-3xl font-bold text-(--color-text-1)">
+            {authStep === 'login' && 'Sign In'}
+            {authStep === 'reset-password' && 'Reset Password'}
+            {authStep === 'otp-verification' && 'Verify Identity'}
+          </h2>
+          <p className="text-(--color-text-3) mt-2">
+            {authStep === 'login' && 'Enter your credentials to continue'}
+            {authStep === 'reset-password' && 'Create a new password to secure your account'}
+            {authStep === 'otp-verification' && 'Complete the verification process'}
+          </p>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded mb-6">
+          <p className="font-medium">{signinErrors[error.toLowerCase()] || signinErrors.default || error}</p>
+        </div>
+      )}
+
+      {formError && (
+        <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded mb-6">
+          <p className="font-medium">{formError}</p>
+        </div>
+      )}
+
+      {authStep === 'login' && renderLoginForm()}
+      {authStep === 'reset-password' && renderPasswordResetForm()}
+      {authStep === 'otp-verification' && renderOtpVerificationForm()}
+
+      {showThirdPartyLogin && authStep === 'login' && renderWechatLoginSection()}
+    </div>
+  );
+
+  if (mode === 'modal') {
+    return <div className="mx-auto w-full max-w-md px-2 py-4">{content}</div>;
+  }
+
   return (
     <div className="flex w-[calc(100%+2rem)] h-screen -m-4">
       <div
-        className="w-3/5 hidden md:block bg-gradient-to-br from-blue-500 to-indigo-700"
+        className="w-3/5 hidden md:block bg-linear-to-br from-blue-500 to-indigo-700"
         style={{
           backgroundImage: "url('/system-login-bg.jpg')",
           backgroundSize: "cover",
@@ -539,41 +602,9 @@ export default function SigninClient({ searchParams: { callbackUrl, error, third
       >
       </div>
 
-      <div className="w-full h-full md:w-2/5 flex items-center justify-center p-8 bg-[var(--bg-color-1)] overflow-y-auto">
-        <div className="w-full h-full max-w-md">
-          <div className="text-center mb-10">
-            <div className="flex justify-center mb-6">
-              <Image src="/logo-site.png" alt="Logo" width={60} height={60} className="h-14 w-auto" />
-            </div>
-            <h2 className="text-3xl font-bold text-[var(--color-text-1)]">
-              {authStep === 'login' && 'Sign In'}
-              {authStep === 'reset-password' && 'Reset Password'}
-              {authStep === 'otp-verification' && 'Verify Identity'}
-            </h2>
-            <p className="text-[var(--color-text-3)] mt-2">
-              {authStep === 'login' && 'Enter your credentials to continue'}
-              {authStep === 'reset-password' && 'Create a new password to secure your account'}
-              {authStep === 'otp-verification' && 'Complete the verification process'}
-            </p>
-          </div>
-
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded mb-6">
-              <p className="font-medium">{signinErrors[error.toLowerCase()]}</p>
-            </div>
-          )}
-
-          {formError && (
-            <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded mb-6">
-              <p className="font-medium">{formError}</p>
-            </div>
-          )}
-
-          {authStep === 'login' && renderLoginForm()}
-          {authStep === 'reset-password' && renderPasswordResetForm()}
-          {authStep === 'otp-verification' && renderOtpVerificationForm()}
-
-          {authStep === 'login' && renderWechatLoginSection()}
+      <div className="w-full h-full md:w-2/5 flex items-center justify-center p-8 bg-(--bg-color-1) overflow-y-auto">
+        <div className="w-full h-full flex items-center justify-center">
+          {content}
         </div>
       </div>
     </div>

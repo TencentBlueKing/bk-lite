@@ -14,6 +14,7 @@ from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.field_group import FieldGroup
 from apps.cmdb.services.model import ModelManage
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import cmdb_logger as logger
 
 
 class FieldGroupService:
@@ -21,7 +22,7 @@ class FieldGroupService:
 
     @staticmethod
     def create_group(
-        model_id: str, group_name: str, created_by: str, **kwargs
+            model_id: str, group_name: str, created_by: str, **kwargs
     ) -> FieldGroup:
         """
         创建字段分组
@@ -49,16 +50,16 @@ class FieldGroupService:
 
         # 3. 检查分组名称是否已存在
         if FieldGroup.objects.filter(
-            model_id=model_id, group_name=group_name.strip()
+                model_id=model_id, group_name=group_name.strip()
         ).exists():
             raise BaseAppException(f"分组名称'{group_name}'已存在")
 
         # 4. 获取当前最大order值
         max_order = (
-            FieldGroup.objects.filter(model_id=model_id).aggregate(
-                max_order=Max("order")
-            )["max_order"]
-            or 0
+                FieldGroup.objects.filter(model_id=model_id).aggregate(
+                    max_order=Max("order")
+                )["max_order"]
+                or 0
         )
 
         # 5. 创建分组
@@ -104,7 +105,7 @@ class FieldGroupService:
             # 检查新名称是否已存在
             if new_group_name != old_name:
                 if FieldGroup.objects.filter(
-                    model_id=model_id, group_name=new_group_name
+                        model_id=model_id, group_name=new_group_name
                 ).exists():
                     raise BaseAppException(f"分组名称'{new_group_name}'已存在")
 
@@ -309,12 +310,12 @@ class FieldGroupService:
         return list(FieldGroup.objects.filter(model_id=model_id).order_by("order"))
 
     @staticmethod
-    def get_model_with_groups(model_id: str, language: str = "zh-Hans") -> Dict:
+    def get_model_with_groups(model_info: dict, language: str = "zh-Hans") -> Dict:
         """
         获取模型完整信息（包含分组和属性）
 
         Args:
-            model_id: 模型ID
+            model_info: 模型ID
             language: 语言
 
         Returns:
@@ -337,10 +338,14 @@ class FieldGroupService:
                 "total_attrs": int
             }
         """
-        # 1. 获取模型基本信息
-        model_info = ModelManage.search_model_info(model_id)
-        if not model_info:
-            raise BaseAppException("模型不存在")
+        model_id = model_info["model_id"]
+        unique_rules = model_info.get("unique_rules", [])
+        if unique_rules:
+            try:
+                unique_rules = json.loads(unique_rules)
+            except Exception as e:
+                logger.error(f"模型{model_id}的unique_rules解析失败: {str(e)}")
+                unique_rules = []
 
         # 2. 获取所有分组
         groups = FieldGroup.objects.filter(model_id=model_id).order_by("order")
@@ -355,7 +360,7 @@ class FieldGroupService:
                 attr
                 for attr in attrs
                 if attr.get("attr_group") == group.group_name
-                and not attr.get("is_display_field")
+                   and not attr.get("is_display_field")
             ]
 
             # 按FieldGroup中存储的attr_orders排序分组内的属性
@@ -389,6 +394,7 @@ class FieldGroupService:
             "groups": groups_data,
             "total_groups": len(groups_data),
             "total_attrs": len(attrs),
+            "unique_rules":unique_rules
         }
 
     @staticmethod
@@ -497,7 +503,7 @@ class FieldGroupService:
 
     @staticmethod
     def update_attr_group(
-        model_id: str, attr_id: str, new_group_name: str, order_id: int = None
+            model_id: str, attr_id: str, new_group_name: str, order_id: int = None
     ) -> Dict:
         """
         修改单个属性的分组（支持跨分组移动）
@@ -603,7 +609,7 @@ class FieldGroupService:
 
     @staticmethod
     def reorder_group_attrs(
-        model_id: str, group_name: str, attr_orders: List[str]
+            model_id: str, group_name: str, attr_orders: List[str]
     ) -> Dict:
         """
         调整分组内属性的顺序
@@ -650,7 +656,7 @@ class FieldGroupService:
 
         # 5. 校验：attr_orders必须包含该分组的所有属性
         if set(attr_orders) != set(
-            i for i in group_attr_ids if not i.endswith("_display")
+                i for i in group_attr_ids if not i.endswith("_display")
         ):
             missing = group_attr_ids - set(attr_orders)
             raise BaseAppException(f"缺少属性：{', '.join(missing)}")

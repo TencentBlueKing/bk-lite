@@ -3,6 +3,7 @@ import useApiClient from '@/utils/request';
 import { useMenus } from '@/context/menus';
 import { MenuItem } from '@/types/index';
 import { getClientIdFromRoute, mapClientName } from '@/utils/route';
+import { isSessionExpiredState } from '@/utils/sessionExpiry';
 
 interface Permissions {
   [url: string]: string[];
@@ -138,6 +139,11 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const fetchMenus = useCallback(async () => {
+    if (isSessionExpiredState()) {
+      setLoading(false);
+      return;
+    }
+
     if (!apiLoading && !menuLoading) {
       setLoading(true);
       try {

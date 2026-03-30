@@ -117,6 +117,16 @@
             "Edit",
             "Delete"
           ]
+        },
+        {
+          "id": "object",
+          "name": "Object",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
         }
       ]
     }

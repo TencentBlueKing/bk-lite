@@ -94,6 +94,8 @@ export const K8S_FORM_INITIAL_VALUES = {
   intervalMinutes: 30,
   intervalValue: 30,
   timeout: 300,
+  cleanupStrategy: 'no_cleanup',
+  cleanupDays: 3,
 };
 
 export const VM_FORM_INITIAL_VALUES = {
@@ -104,6 +106,8 @@ export const VM_FORM_INITIAL_VALUES = {
   port: '443',
   timeout: 300,
   sslVerify: false,
+  cleanupStrategy: 'no_cleanup',
+  cleanupDays: 3,
 };
 
 export const SNMP_FORM_INITIAL_VALUES = {
@@ -118,6 +122,8 @@ export const SNMP_FORM_INITIAL_VALUES = {
   integrity: 'sha',
   privacy: 'aes',
   hasNetworkTopo: true,
+  cleanupStrategy: 'no_cleanup',
+  cleanupDays: 3,
 };
 
 export const SQL_FORM_INITIAL_VALUES = {
@@ -129,6 +135,8 @@ export const SQL_FORM_INITIAL_VALUES = {
   password: '',
   port: '3306',
   timeout: 10,
+  cleanupStrategy: 'no_cleanup',
+  cleanupDays: 3,
 };
 
 export const CLOUD_FORM_INITIAL_VALUES = {
@@ -139,7 +147,9 @@ export const CLOUD_FORM_INITIAL_VALUES = {
   accessKey: '',
   accessSecret: '',
   regionId: '',
-  timeout: 300
+  timeout: 300,
+  cleanupStrategy: 'no_cleanup',
+  cleanupDays: 3,
 };
 
 export const HOST_FORM_INITIAL_VALUES = {
@@ -150,7 +160,9 @@ export const HOST_FORM_INITIAL_VALUES = {
   username: '',
   password: '',
   port: '22',
-  timeout: 10
+  timeout: 10,
+  cleanupStrategy: 'no_cleanup',
+  cleanupDays: 3,
 };
 
 export const validateCycleTime = (
@@ -416,5 +428,4 @@ export const NETWORK_DEVICE_OPTIONS = [
     label: '负载均衡',
   },
 ]
-
 

@@ -14,6 +14,7 @@ import { getIconUrl } from '@/app/cmdb/utils/common';
 import { EditTwoTone, DeleteTwoTone, CopyOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { ClassificationItem } from '@/app/cmdb/types/assetManage';
+import type { MenuItem } from '@/types';
 import { useTranslation } from '@/utils/i18n';
 import { useClassificationApi, useModelApi } from '@/app/cmdb/api';
 import { ModelDetailContext } from './context';
@@ -128,6 +129,30 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
     });
   };
 
+  const detailMenuItems: MenuItem[] = [
+    {
+      name: 'attributes',
+      title: t('Model.attributes'),
+      url: '/cmdb/assetManage/management/detail/attributes',
+      icon: '',
+      operation: [],
+    },
+    {
+      name: 'associations',
+      title: t('Model.relationships'),
+      url: '/cmdb/assetManage/management/detail/associations',
+      icon: '',
+      operation: [],
+    },
+    {
+      name: 'uniqueRules',
+      title: t('Model.uniqueRules'),
+      url: '/cmdb/assetManage/management/detail/uniqueRules',
+      icon: '',
+      operation: [],
+    },
+  ];
+
   return (
     <ModelDetailContext.Provider value={modelDetail}>
       <div className={`${attrLayoutStyle.attrLayout}`}>
@@ -220,6 +245,7 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
           <WithSideMenuLayout
             showBackButton={true}
             onBackButtonClick={handleBackButtonClick}
+            customMenuItems={detailMenuItems}
           >
             {children}
           </WithSideMenuLayout>
