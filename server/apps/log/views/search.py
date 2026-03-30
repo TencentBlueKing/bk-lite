@@ -11,11 +11,7 @@ from apps.log.filters.log_group import SearchConditionFilter
 
 
 class LogSearchViewSet(ViewSet):
-    @action(methods=["get"], detail=False, url_path="field_names")
-    def field_names(self, request):
-        """
-        Search available log field_names.
-        """
+    def _field_values_response(self, request):
         field = request.query_params.get("filed", "")
         start_time = request.query_params.get("start_time", "")
         end_time = request.query_params.get("end_time", "")
@@ -24,8 +20,20 @@ class LogSearchViewSet(ViewSet):
         if not field:
             return WebUtils.response_error("Field parameter is required.")
 
-        data = SearchService.field_names(start_time, end_time, field, limit)
+        data = SearchService.field_values(start_time, end_time, field, limit)
         return WebUtils.response_success(data)
+
+    @action(methods=["get"], detail=False, url_path="field_names")
+    def field_names(self, request):
+        """
+        Backward-compatible alias for available log field values.
+        """
+        return self._field_values_response(request)
+
+    @action(methods=["get"], detail=False, url_path="field_values")
+    def field_values(self, request):
+        """Search available log field values."""
+        return self._field_values_response(request)
 
     @action(methods=["post"], detail=False, url_path="search")
     def search(self, request):
@@ -70,9 +78,7 @@ class LogSearchViewSet(ViewSet):
         if not is_valid:
             return WebUtils.response_error(error_msg)
 
-        data = SearchService.search_hits(
-            query, start_time, end_time, field, fields_limit, step, log_groups
-        )
+        data = SearchService.search_hits(query, start_time, end_time, field, fields_limit, step, log_groups)
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="top_stats")
@@ -109,9 +115,7 @@ class LogSearchViewSet(ViewSet):
         # 解析log_groups参数
         log_groups = []
         if log_groups_param:
-            log_groups = [
-                group.strip() for group in log_groups_param.split(",") if group.strip()
-            ]
+            log_groups = [group.strip() for group in log_groups_param.split(",") if group.strip()]
 
         if not log_groups:
             return WebUtils.response_error("log_groups parameter is required.")
@@ -230,6 +234,4 @@ class SearchConditionViewSet(ModelViewSet):
         search_condition_name = instance.name
         instance.delete()
 
-        return WebUtils.response_success(
-            {"message": f"搜索条件 '{search_condition_name}' 删除成功"}
-        )
+        return WebUtils.response_success({"message": f"搜索条件 '{search_condition_name}' 删除成功"})

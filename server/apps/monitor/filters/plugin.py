@@ -9,9 +9,11 @@ class MonitorPluginFilter(FilterSet):
         lookup_expr="exact",
         label="监控对象",
         required=False,  # 设置为非必填
-        method='filter_monitor_object'  # 使用自定义过滤方法
+        method="filter_monitor_object",  # 使用自定义过滤方法
     )
     name = CharFilter(field_name="name", lookup_expr="icontains", label="插件名称")
+    template_type = CharFilter(field_name="template_type", lookup_expr="exact", label="模板类型")
+    template_id = CharFilter(field_name="template_id", lookup_expr="icontains", label="模板ID")
 
     def filter_monitor_object(self, queryset, name, value):
         """自定义过滤方法：为空时返回全部，否则按监控对象ID过滤"""
@@ -21,4 +23,4 @@ class MonitorPluginFilter(FilterSet):
 
     class Meta:
         model = MonitorPlugin
-        fields = ["monitor_object_id", "name"]
+        fields = ["monitor_object_id", "name", "template_type", "template_id"]
