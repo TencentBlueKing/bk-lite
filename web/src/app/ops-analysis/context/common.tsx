@@ -23,12 +23,13 @@ const OpsAnalysisContext = createContext<OpsAnalysisContextType | undefined>(
 export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
   const [tagList, setTagList] = useState<TagItem[]>([]);
   const [tagsLoading, setTagsLoading] = useState(false);
+  const [hasFetchedTags, setHasFetchedTags] = useState(false);
 
   const { getTagList } = useNamespaceApi();
 
   const fetchTags = useCallback(async () => {
-    // 如果已经有数据，直接返回
-    if (tagList.length > 0) {
+    // 如果已经获取过数据，直接返回（即使为空）
+    if (hasFetchedTags) {
       return;
     }
 
@@ -37,12 +38,13 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
       const response = await getTagList({ page: 1, page_size: 10000 });
       const responseTagList = response?.items || [];
       setTagList(responseTagList);
+      setHasFetchedTags(true);
     } catch (err) {
       console.error('获取标签列表失败:', err);
     } finally {
       setTagsLoading(false);
     }
-  }, [getTagList, tagList.length]);
+  }, [getTagList, hasFetchedTags]);
 
   const value: OpsAnalysisContextType = {
     tagList,
