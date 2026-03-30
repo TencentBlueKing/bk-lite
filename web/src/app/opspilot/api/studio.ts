@@ -1,3 +1,5 @@
+import { useSession } from 'next-auth/react';
+import { useAuth } from '@/context/auth';
 import useApiClient from '@/utils/request';
 import type {
   LogSearchParams,
@@ -24,6 +26,7 @@ import type {
   WorkflowLogResponse,
   WorkflowLogDetailParams,
   WorkflowLogDetailResponse,
+  WorkflowExecutionDetailItem,
   ChatApplicationParams,
   ChatApplicationResponse,
   WebChatSession,
@@ -33,6 +36,9 @@ import type {
 
 export const useStudioApi = () => {
   const { get, post, del, patch } = useApiClient();
+  const { data: session } = useSession();
+  const authContext = useAuth();
+  const token = (session?.user as any)?.token || authContext?.token || null;
 
   const fetchLogs = async (params: LogSearchParams): Promise<LogSearchResponse> => {
     return get('/opspilot/bot_mgmt/history/search_log/', { params });
@@ -44,6 +50,23 @@ export const useStudioApi = () => {
 
   const fetchExecutionOutputData = async (params: { execution_id: string; id: number }): Promise<Record<string, unknown>> => {
     return get('/opspilot/bot_mgmt/workflow_task_result/execution_output_data/', { params });
+  };
+
+  const fetchExecutionDetail = async (executionId: string): Promise<WorkflowExecutionDetailItem[]> => {
+    const query = new URLSearchParams({ execution_id: executionId });
+    const response = await fetch(`/api/proxy/opspilot/bot_mgmt/workflow_task_result/execution_detail/?${query.toString()}`, {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || 'Failed to fetch execution detail');
+    }
+
+    const data = await response.json();
+    return Array.isArray(data) ? data : data?.data || [];
   };
 
   const fetchChannels = async (botId: string | null): Promise<ChannelProps[]> => {
@@ -147,6 +170,7 @@ export const useStudioApi = () => {
     fetchLogs,
     fetchWorkflowTaskResult,
     fetchExecutionOutputData,
+    fetchExecutionDetail,
     fetchChannels,
     fetchBotDetail,
     updateChannel,
