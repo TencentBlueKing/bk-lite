@@ -5,6 +5,7 @@ import { Form, Input, Select, Collapse } from 'antd';
 import { CaretRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import ChatflowEditor, { ChatflowEditorRef } from '@/app/opspilot/components/chatflow/ChatflowEditor';
+import type { ChatflowExecutionState } from '@/app/opspilot/components/chatflow/types';
 import Icon from '@/components/icon';
 
 const { Option } = Select;
@@ -85,12 +86,12 @@ const NodeLibraryItem = ({ type, icon, label, onDragStart }: {
 
   return (
     <div
-      className="flex items-center p-2 text-[var(--color-text-2)] border border-gray-200 rounded cursor-grab hover:border-blue-400 hover:bg-blue-50 hover:text-[var(--color-primary)] transition-all duration-200 flex-1"
+      className="flex flex-1 items-center rounded border border-gray-200 p-2 text-(--color-text-2) cursor-grab transition-all duration-200 hover:border-blue-400 hover:bg-blue-50 hover:text-(--color-primary)"
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <Icon type={icon} className="text-blue-500 mr-2 text-sm flex-shrink-0" />
+      <Icon type={icon} className="mr-2 text-sm text-blue-500 shrink-0" />
       <span className="text-xs truncate">{label}</span>
     </div>
   );
@@ -102,6 +103,8 @@ interface ChatflowSettingsProps {
   onClear?: () => void;
   onSaveWorkflow?: (workflowData: { nodes: any[], edges: any[] }) => void;
   workflowData?: { nodes: any[], edges: any[] } | null;
+  initialExecutionId?: string | null;
+  onExecutionStateChange?: (state: ChatflowExecutionState) => void;
 }
 
 const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
@@ -109,7 +112,9 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
   groups,
   onClear,
   onSaveWorkflow,
-  workflowData
+  workflowData,
+  initialExecutionId,
+  onExecutionStateChange,
 }) => {
   const { t } = useTranslation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -147,7 +152,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
   return (
     <div className="w-full flex h-full">
       {/* Left Sidebar - Combined Information and Nodes */}
-      <div className={`transition-all duration-300 ease-in-out border-r border-[var(--color-border-2)] overflow-y-auto h-[calc(100vh-200px)] ${
+      <div className={`transition-all duration-300 ease-in-out border-r border-(--color-border-2) overflow-y-auto h-[calc(100vh-200px)] ${
         isSidebarCollapsed ? 'w-0 opacity-0' : 'w-80'
       }`}>
         <div>
@@ -222,7 +227,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
                       key={category.key}
                       header={
                         <div className="flex items-center">
-                          <span className="text-xs mt-[3px]">{t(category.labelKey)}</span>
+                          <span className="mt-0.75 text-xs">{t(category.labelKey)}</span>
                         </div>
                       }
                     >
@@ -250,7 +255,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
       <div className="relative">
         <button
           onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 w-6 h-6 bg-[var(--color-bg)] border border-gray-300 rounded-full shadow-sm hover:bg-gray-50 flex items-center justify-center transition-colors"
+          className="absolute top-1/2 z-10 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-gray-300 bg-(--color-bg) shadow-sm transition-colors hover:bg-gray-50"
           style={{ left: '0px' }}
           title={isSidebarCollapsed ? t('chatflow.expandSidebar') : t('chatflow.collapseSidebar')}
         >
@@ -266,7 +271,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
         isSidebarCollapsed ? 'pl-8' : 'pl-4'
       }`}>
         <div className="flex items-center mb-2 px-2">
-          <h2 className="font-semibold text-sm text-[var(--color-text-1)]">{t('chatflow.canvas')}</h2>
+          <h2 className="text-sm font-semibold text-(--color-text-1)">{t('chatflow.canvas')}</h2>
           <button
             onClick={handleClearClick}
             className="text-gray-500 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50 ml-2"
@@ -280,6 +285,8 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
             ref={chatflowEditorRef}
             onSave={handleWorkflowChange}
             initialData={workflowData}
+            initialExecutionId={initialExecutionId}
+            onExecutionStateChange={onExecutionStateChange}
           />
         </div>
       </div>
