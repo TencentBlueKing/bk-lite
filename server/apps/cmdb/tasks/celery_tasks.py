@@ -25,9 +25,7 @@ def sync_collect_task(instance_id):
     if not instance:
         return
     if instance.exec_status == CollectRunStatusType.NOT_START:
-        CollectModels._default_manager.filter(id=instance_id).update(
-            exec_status=CollectRunStatusType.RUNNING
-        )
+        CollectModels._default_manager.filter(id=instance_id).update(exec_status=CollectRunStatusType.RUNNING)
     # # 防止周期触发与延迟补跑重叠导致同一任务并发执行
     # if instance.exec_status == CollectRunStatusType.RUNNING:
     #     logger.info("采集任务已在执行中，跳过重复执行 task_id={}".format(instance_id))
@@ -57,11 +55,7 @@ def sync_collect_task(instance_id):
     except Exception as err:
         import traceback
 
-        logger.error(
-            "同步数据失败 task_id={}, error={}".format(
-                instance_id, traceback.format_exc()
-            )
-        )
+        logger.error("同步数据失败 task_id={}, error={}".format(instance_id, traceback.format_exc()))
         exec_error_message = "同步数据失败, error={}".format(err)
         result = {}
         format_data = {}
@@ -73,50 +67,20 @@ def sync_collect_task(instance_id):
         instance.format_data = format_data
         collect_digest = {
             "add": len(format_data.get("add", [])),
-            "add_error": len(
-                [i for i in format_data.get("add", []) if i.get("_status") != "success"]
-            ),
+            "add_error": len([i for i in format_data.get("add", []) if i.get("_status") != "success"]),
             "update": len(format_data.get("update", [])),
-            "update_error": len(
-                [
-                    i
-                    for i in format_data.get("update", [])
-                    if i.get("_status") != "success"
-                ]
-            ),
+            "update_error": len([i for i in format_data.get("update", []) if i.get("_status") != "success"]),
             "delete": len(format_data.get("delete", [])),
-            "delete_error": len(
-                [
-                    i
-                    for i in format_data.get("delete", [])
-                    if i.get("_status") != "success"
-                ]
-            ),
+            "delete_error": len([i for i in format_data.get("delete", []) if i.get("_status") != "success"]),
             "association": len(format_data.get("association", [])),
-            "association_error": len(
-                [
-                    i
-                    for i in format_data.get("association", [])
-                    if i.get("_status") != "success"
-                ]
-            ),
-            "all": format_data.get(
-                "all", 0
-            ),  # 总数是发现的正常数据总数，例如：扫描了10个ip，其中6个是真的ip，4个ip不存在，总数为6
+            "association_error": len([i for i in format_data.get("association", []) if i.get("_status") != "success"]),
+            "all": format_data.get("all", 0),  # 总数是发现的正常数据总数，例如：扫描了10个ip，其中6个是真的ip，4个ip不存在，总数为6
         }
         # add是需要新增的数据，add_success是实际新增成功的数据（实际到cmdb的数据），add_error是新增失败的数据，其他以此类推
-        collect_digest["add_success"] = (
-            collect_digest["add"] - collect_digest["add_error"]
-        )
-        collect_digest["update_success"] = (
-            collect_digest["update"] - collect_digest["update_error"]
-        )
-        collect_digest["delete_success"] = (
-            collect_digest["delete"] - collect_digest["delete_error"]
-        )
-        collect_digest["association_success"] = (
-            collect_digest["association"] - collect_digest["association_error"]
-        )
+        collect_digest["add_success"] = collect_digest["add"] - collect_digest["add_error"]
+        collect_digest["update_success"] = collect_digest["update"] - collect_digest["update_error"]
+        collect_digest["delete_success"] = collect_digest["delete"] - collect_digest["delete_error"]
+        collect_digest["association_success"] = collect_digest["association"] - collect_digest["association_error"]
         # 如果任务执行失败，添加错误信息提示
         if task_exec_status == CollectRunStatusType.ERROR:
             collect_digest["message"] = exec_error_message
@@ -136,11 +100,7 @@ def sync_collect_task(instance_id):
     except Exception as err:
         import traceback
 
-        logger.error(
-            "保存采集结果失败 task_id={}, error={}".format(
-                instance_id, traceback.format_exc()
-            )
-        )
+        logger.error("保存采集结果失败 task_id={}, error={}".format(instance_id, traceback.format_exc()))
         CollectModels._default_manager.filter(id=instance_id).update(
             exec_status=CollectRunStatusType.ERROR,
             collect_digest={"message": "保存采集结果失败: {}".format(err)},
@@ -158,9 +118,9 @@ def sync_periodic_update_task_status():
     """
     logger.info("==开始周期执行修改采集状态==")
     five_minutes_ago = datetime.now() - timedelta(minutes=5)
-    rows = CollectModels._default_manager.filter(
-        exec_status=CollectRunStatusType.RUNNING, exec_time__lt=five_minutes_ago
-    ).update(exec_status=CollectRunStatusType.ERROR)
+    rows = CollectModels._default_manager.filter(exec_status=CollectRunStatusType.RUNNING, exec_time__lt=five_minutes_ago).update(
+        exec_status=CollectRunStatusType.ERROR
+    )
     logger.info("开始周期执行修改采集状态完成, rows={}".format(rows))
 
 
@@ -189,19 +149,13 @@ def sync_cmdb_display_fields_task(data: dict):
         from apps.cmdb.display_field import DisplayFieldSynchronizer
 
         logger.info(
-            f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, "
-            f"组织数: {len(data.get('organizations', []))}, "
-            f"用户数: {len(data.get('users', []))}"
+            f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, 组织数: {len(data.get('organizations', []))}, 用户数: {len(data.get('users', []))}"
         )
 
         # 执行同步
         result = DisplayFieldSynchronizer.sync_all(data)
 
-        logger.info(
-            f"[SyncCMDBDisplayFields] 同步完成, "
-            f"组织更新实例数: {result.get('organizations', 0)}, "
-            f"用户更新实例数: {result.get('users', 0)}"
-        )
+        logger.info(f"[SyncCMDBDisplayFields] 同步完成, 组织更新实例数: {result.get('organizations', 0)}, 用户更新实例数: {result.get('users', 0)}")
 
         return {
             "result": True,
@@ -218,15 +172,10 @@ def sync_cmdb_display_fields_task(data: dict):
 
 
 @shared_task
-def sync_public_enum_library_snapshots_task(
-    library_id: str, trigger: str, operator: str | None = None
-) -> dict:
+def sync_public_enum_library_snapshots_task(library_id: str, trigger: str, operator: str | None = None) -> dict:
     from apps.cmdb.services.public_enum_library import sync_library_snapshots
 
-    logger.info(
-        f"[SyncPublicEnumSnapshots] task started library_id={library_id}, "
-        f"trigger={trigger}, operator={operator}"
-    )
+    logger.info(f"[SyncPublicEnumSnapshots] task started library_id={library_id}, trigger={trigger}, operator={operator}")
     return sync_library_snapshots(library_id, trigger, operator)
 
 
@@ -240,3 +189,11 @@ def send_subscription_notifications(
     event_groups: list[dict] | None = None,
 ) -> None:
     SubscriptionTaskService.send_notifications(event_groups=event_groups)
+
+
+@shared_task
+def daily_data_cleanup_task() -> dict:
+    from apps.cmdb.services.data_cleanup_service import DataCleanupService
+
+    logger.info("Starting daily data cleanup task")
+    return DataCleanupService.run_daily_cleanup()

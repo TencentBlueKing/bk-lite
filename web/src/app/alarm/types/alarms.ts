@@ -354,6 +354,7 @@ export interface AlarmTableProps {
   onRefresh: () => void;
   onSelectionChange: (keys: React.Key[]) => void;
   extraActions?: (record: TableDataItem) => React.ReactNode;
+  readonly?: boolean;
 }
 export interface EventRawData {
   item: string;

@@ -36,9 +36,11 @@ from apps.mlops.serializers.algorithm_config import (
     AlgorithmConfigListSerializer,
 )
 from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+from apps.mlops.views.base import TeamModelViewSet
+from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 
 
-class AnomalyDetectionDatasetViewSet(ModelViewSet):
+class AnomalyDetectionDatasetViewSet(TeamModelViewSet):
     queryset = AnomalyDetectionDataset.objects.all()
     serializer_class = AnomalyDetectionDatasetSerializer
     pagination_class = CustomPageNumberPagination
@@ -67,7 +69,7 @@ class AnomalyDetectionDatasetViewSet(ModelViewSet):
         return super().update(request, *args, **kwargs)
 
 
-class AnomalyDetectionTrainJobViewSet(ModelViewSet):
+class AnomalyDetectionTrainJobViewSet(TeamModelViewSet):
     queryset = AnomalyDetectionTrainJob.objects.select_related(
         "dataset_version", "dataset_version__dataset"
     ).all()
@@ -75,7 +77,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
     filterset_class = AnomalyDetectionTrainJobFilter
     pagination_class = CustomPageNumberPagination
     ordering = ("-id",)
-    permission_key = "dataset.anomaly_detection_train_job"
+    permission_key = "train_job.anomaly_detection_train_job"
 
     MLFLOW_PREFIX = "AnomalyDetection"  # MLflow 命名前缀
 
@@ -603,6 +605,11 @@ class AnomalyDetectionTrainDataViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     permission_key = "dataset.anomaly_detection_train_data"
 
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
+
     @HasPermission("anomaly_detection-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -632,6 +639,11 @@ class AnomalyDetectionDatasetReleaseViewSet(ModelViewSet):
     filterset_class = AnomalyDetectionDatasetReleaseFilter
     pagination_class = CustomPageNumberPagination
     permission_key = "dataset.anomaly_detection_dataset_release"
+
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
 
     @HasPermission("anomaly_detection-View")
     def list(self, request, *args, **kwargs):
@@ -750,7 +762,7 @@ class AnomalyDetectionDatasetReleaseViewSet(ModelViewSet):
             )
 
 
-class AnomalyDetectionServingViewSet(ModelViewSet):
+class AnomalyDetectionServingViewSet(TeamModelViewSet):
     queryset = AnomalyDetectionServing.objects.select_related(
         "train_job", "train_job__dataset_version", "train_job__dataset_version__dataset"
     ).all()
@@ -1323,7 +1335,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("anomaly_detection-View")
+    @HasPermission("anomaly_detection-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行异常检测

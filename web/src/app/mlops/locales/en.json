@@ -20,6 +20,7 @@
     "action": "Action",
     "type": "Type",
     "status": "Status",
+    "organizations": "Organizations",
     "creator": "Creator",
     "owner": "Owner",
     "createdAt": "Created At",

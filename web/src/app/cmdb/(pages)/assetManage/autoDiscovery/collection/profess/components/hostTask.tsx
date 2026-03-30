@@ -7,6 +7,7 @@ import { CaretRightOutlined } from '@ant-design/icons';
 import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
+import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import {
   HOST_FORM_INITIAL_VALUES,
@@ -93,8 +94,13 @@ const HostTask: React.FC<HostTaskFormProps> = ({
   });
 
   // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
-  const buildFormValues = (values: any, isCopy: boolean, ipRange?: string[]) => ({
+  const buildFormValues = (
+    values: any,
+    isCopy: boolean,
+    ipRange?: string[],
+  ) => ({
     ipRange,
+    ...getCleanupFormValues(values),
     ...values,
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],

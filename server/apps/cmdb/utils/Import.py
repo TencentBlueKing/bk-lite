@@ -19,6 +19,7 @@ from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models import CREATE_INST_ASST
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.unique_rule import build_unique_rule_context
 from apps.cmdb.validators.field_validator import (
     normalize_tag_field_option,
     normalize_tag_input_values,
@@ -78,13 +79,13 @@ class Import:
             dict: 包含各类字段映射的字典
         """
         field_maps = {
-            "need_val_to_id": {},      # 需要值到ID转换的字段（枚举、组织、用户）
-            "need_update_type": {},    # 需要类型转换的字段
-            "org_user": {},            # 组织/用户字段标识
-            "table_fields": set(),     # 表格字段
-            "tag_fields": set(),       # 标签字段
-            "enum_select_mode": {},    # 枚举字段选择模式
-            "attr_name_map": {},       # 属性ID到名称的映射
+            "need_val_to_id": {},  # 需要值到ID转换的字段（枚举、组织、用户）
+            "need_update_type": {},  # 需要类型转换的字段
+            "org_user": {},  # 组织/用户字段标识
+            "table_fields": set(),  # 表格字段
+            "tag_fields": set(),  # 标签字段
+            "enum_select_mode": {},  # 枚举字段选择模式
+            "attr_name_map": {},  # 属性ID到名称的映射
         }
 
         for attr_info in self.attrs:
@@ -99,15 +100,11 @@ class Import:
             elif attr_type == "tag":
                 field_maps["tag_fields"].add(attr_id)
             elif attr_type in {ORGANIZATION, USER, ENUM}:
-                field_maps["need_val_to_id"][attr_id] = {
-                    i["name"]: i["id"] for i in attr_info["option"]
-                }
+                field_maps["need_val_to_id"][attr_id] = {i["name"]: i["id"] for i in attr_info["option"]}
                 if attr_type in {ORGANIZATION, USER}:
                     field_maps["org_user"][attr_id] = attr_type
                 if attr_type == ENUM:
-                    field_maps["enum_select_mode"][attr_id] = attr_info.get(
-                        "enum_select_mode", ENUM_SELECT_MODE_DEFAULT
-                    )
+                    field_maps["enum_select_mode"][attr_id] = attr_info.get("enum_select_mode", ENUM_SELECT_MODE_DEFAULT)
 
         return field_maps
 
@@ -150,9 +147,7 @@ class Import:
             attr_name = field_maps["attr_name_map"].get(key, key)
             return None, f"第{row_index}行，字段'{attr_name}'标签格式解析失败"
 
-    def _process_org_user_field(
-        self, key, value, row_index, field_maps, allowed_org_set
-    ):
+    def _process_org_user_field(self, key, value, row_index, field_maps, allowed_org_set):
         """处理组织/用户字段。
 
         Returns:
@@ -264,9 +259,7 @@ class Import:
             tuple[list[int], str|None, bool]: (org_ids, error_msg, organization_cell_provided)
         """
 
-        normalized_values = [
-            v.strip() if isinstance(v, str) else v for v in (value_list or [])
-        ]
+        normalized_values = [v.strip() if isinstance(v, str) else v for v in (value_list or [])]
         organization_cell_provided = any(v not in (None, "") for v in normalized_values)
 
         if not organization_cell_provided:
@@ -286,17 +279,12 @@ class Import:
                 query_names.add(raw)
 
         # 先在全量组织表中定位，再根据 allowed_org_set 判定“越界”还是“无效”
-        group_rows = list(
-            Group.objects.filter(name__in=query_names).values("id", "name", "parent_id")
-        )
+        group_rows = list(Group.objects.filter(name__in=query_names).values("id", "name", "parent_id"))
 
         parent_ids = {r["parent_id"] for r in group_rows if r.get("parent_id")}
         parent_name_map = {}
         if parent_ids:
-            parent_name_map = {
-                r["id"]: r["name"]
-                for r in Group.objects.filter(id__in=parent_ids).values("id", "name")
-            }
+            parent_name_map = {r["id"]: r["name"] for r in Group.objects.filter(id__in=parent_ids).values("id", "name")}
 
         rows_by_name = {}
         for r in group_rows:
@@ -320,11 +308,7 @@ class Import:
                 parent_name = parts[-2] if len(parts) >= 2 else None
                 candidates = rows_by_name.get(leaf_name, [])
                 if parent_name:
-                    candidates = [
-                        c
-                        for c in candidates
-                        if parent_name_map.get(c.get("parent_id")) == parent_name
-                    ]
+                    candidates = [c for c in candidates if parent_name_map.get(c.get("parent_id")) == parent_name]
 
                 if not candidates:
                     invalid_values.append(raw)
@@ -388,9 +372,7 @@ class Import:
 
         return enum_id, None, organization_cell_provided
 
-    def _process_cell_value(
-        self, key, value, row_index, field_maps, allowed_org_set, item
-    ):
+    def _process_cell_value(self, key, value, row_index, field_maps, allowed_org_set, item):
         """处理单个单元格的值。
 
         Args:
@@ -408,9 +390,7 @@ class Import:
 
         # 处理类型转换字段
         if key in field_maps["need_update_type"]:
-            converted, error_msg = self._process_type_conversion_field(
-                key, value, row_index, field_maps
-            )
+            converted, error_msg = self._process_type_conversion_field(key, value, row_index, field_maps)
             if error_msg:
                 return True, error_msg, organization_cell_provided
             item[key] = converted
@@ -418,9 +398,7 @@ class Import:
 
         # 处理表格字段
         if key in field_maps["table_fields"]:
-            parsed, error_msg = self._process_table_field(
-                key, value, row_index, field_maps
-            )
+            parsed, error_msg = self._process_table_field(key, value, row_index, field_maps)
             if error_msg:
                 return True, error_msg, organization_cell_provided
             item[key] = parsed
@@ -428,9 +406,7 @@ class Import:
 
         # 处理标签字段
         if key in field_maps["tag_fields"]:
-            normalized, error_msg = self._process_tag_field(
-                key, value, row_index, field_maps
-            )
+            normalized, error_msg = self._process_tag_field(key, value, row_index, field_maps)
             if error_msg:
                 return True, error_msg, organization_cell_provided
             item[key] = normalized
@@ -439,18 +415,14 @@ class Import:
         # 处理枚举/组织/用户字段
         if key in field_maps["need_val_to_id"]:
             if key in field_maps["org_user"]:
-                enum_id, error_msg, provided = self._process_org_user_field(
-                    key, value, row_index, field_maps, allowed_org_set
-                )
+                enum_id, error_msg, provided = self._process_org_user_field(key, value, row_index, field_maps, allowed_org_set)
                 organization_cell_provided = provided
                 if error_msg:
                     return True, error_msg, organization_cell_provided
                 if enum_id:
                     item[key] = enum_id
             else:
-                enum_ids, error_msg = self._process_enum_field(
-                    key, value, row_index, field_maps
-                )
+                enum_ids, error_msg = self._process_enum_field(key, value, row_index, field_maps)
                 if error_msg:
                     return True, error_msg, organization_cell_provided
                 if enum_ids:
@@ -460,9 +432,7 @@ class Import:
         # 普通字段直接赋值
         return False, None, organization_cell_provided
 
-    def _process_excel_row(
-        self, row, keys, row_index, field_maps, allowed_org_set, asso_key_map
-    ):
+    def _process_excel_row(self, row, keys, row_index, field_maps, allowed_org_set, asso_key_map):
         """处理Excel中的一行数据。
 
         Returns:
@@ -496,9 +466,7 @@ class Import:
                 continue
 
             # 处理单元格值
-            handled, error_msg, _ = self._process_cell_value(
-                key, value, row_index, field_maps, allowed_org_set, item
-            )
+            handled, error_msg, _ = self._process_cell_value(key, value, row_index, field_maps, allowed_org_set, item)
 
             if error_msg:
                 self.validation_errors.append(error_msg)
@@ -509,9 +477,7 @@ class Import:
             if not handled:
                 item[key] = value
 
-        row_has_validation_errors = (
-            len(self.validation_errors) > row_validation_errors_count
-        )
+        row_has_validation_errors = len(self.validation_errors) > row_validation_errors_count
 
         return item, row_has_data, row_has_validation_errors
 
@@ -535,9 +501,7 @@ class Import:
         sheet1 = wb.worksheets[0]
 
         if sheet1.title != self.model_id:
-            raise ValueError(
-                f"Excel sheet name '{sheet1.title}' does not match model_id '{self.model_id}'."
-            )
+            raise ValueError(f"Excel sheet name '{sheet1.title}' does not match model_id '{self.model_id}'.")
 
         # 获取列键名
         keys = [cell.value for cell in sheet1[3]]
@@ -551,12 +515,8 @@ class Import:
 
         # 处理数据行
         result = []
-        for row_index, row in enumerate(
-            sheet1.iter_rows(min_row=4, min_col=1), start=4
-        ):
-            item, row_has_data, row_has_errors = self._process_excel_row(
-                row, keys, row_index, field_maps, allowed_org_set, asso_key_map
-            )
+        for row_index, row in enumerate(sheet1.iter_rows(min_row=4, min_col=1), start=4):
+            item, row_has_data, row_has_errors = self._process_excel_row(row, keys, row_index, field_maps, allowed_org_set, asso_key_map)
 
             if row_has_data and len(item) > 1 and not row_has_errors:
                 result.append(item)
@@ -565,19 +525,16 @@ class Import:
 
     def get_check_attr_map(self):
         check_attr_map = dict(is_only={}, is_required={}, editable={})
+        unique_ctx = build_unique_rule_context(self.model_id)
         for attr in self.attrs:
             if attr.get(ModelConstraintKey.unique.value, False):
-                check_attr_map[ModelConstraintKey.unique.value][attr["attr_id"]] = attr[
-                    "attr_name"
-                ]
+                check_attr_map[ModelConstraintKey.unique.value][attr["attr_id"]] = attr["attr_name"]
             if attr.get(ModelConstraintKey.required.value, False):
-                check_attr_map[ModelConstraintKey.required.value][attr["attr_id"]] = (
-                    attr["attr_name"]
-                )
+                check_attr_map[ModelConstraintKey.required.value][attr["attr_id"]] = attr["attr_name"]
             if attr.get(ModelConstraintKey.editable.value, True):
-                check_attr_map[ModelConstraintKey.editable.value][attr["attr_id"]] = (
-                    attr["attr_name"]
-                )
+                check_attr_map[ModelConstraintKey.editable.value][attr["attr_id"]] = attr["attr_name"]
+        check_attr_map["unique_rules"] = unique_ctx.unique_rules
+        check_attr_map["attrs_by_id"] = unique_ctx.attrs_by_id
         return check_attr_map
 
     def _prepare_instances_for_save(self, inst_list):
@@ -597,9 +554,7 @@ class Import:
         processed_inst_list = []
         for inst_data in inst_list:
             # 1. 字段格式校验
-            validation_errors = FieldValidator.validate_instance_data(
-                inst_data, self.attrs
-            )
+            validation_errors = FieldValidator.validate_instance_data(inst_data, self.attrs)
             if validation_errors:
                 for err in validation_errors:
                     error_msg = f"实例 {inst_data.get('inst_name', '未命名')}，字段 '{err['field_name']}'：{err['error']}"
@@ -608,9 +563,7 @@ class Import:
                 continue
 
             # 2. 生成 _display 冗余字段
-            inst_data = DisplayFieldHandler.build_display_fields(
-                self.model_id, inst_data, self.attrs
-            )
+            inst_data = DisplayFieldHandler.build_display_fields(self.model_id, inst_data, self.attrs)
             processed_inst_list.append(inst_data)
 
         return processed_inst_list
@@ -647,11 +600,7 @@ class Import:
 
     def _normalize_and_merge_tag_records(self, records: list[dict]) -> list[dict]:
         tag_attr = next(
-            (
-                attr
-                for attr in self.attrs
-                if attr.get("attr_id") == TAG_ATTR_ID and attr.get("attr_type") == "tag"
-            ),
+            (attr for attr in self.attrs if attr.get("attr_id") == TAG_ATTR_ID and attr.get("attr_type") == "tag"),
             None,
         )
         if not tag_attr:
@@ -681,9 +630,7 @@ class Import:
             normalized_records.append(data)
 
         if config.mode == TAG_MODE_FREE and merged_values:
-            ModelManage.merge_tag_options_from_values(
-                self.model_id, list(merged_values)
-            )
+            ModelManage.merge_tag_options_from_values(self.model_id, list(merged_values))
 
         return normalized_records
 
@@ -693,13 +640,9 @@ class Import:
         result = self.inst_list_save(inst_list)
         return result
 
-    def import_inst_list_support_edit(
-        self, file_stream: bytes, allowed_org_ids: list = None
-    ):
+    def import_inst_list_support_edit(self, file_stream: bytes, allowed_org_ids: list = None):
         """将excel主机数据导入"""
-        inst_list, asso_key_map = self.format_excel_data(
-            file_stream, allowed_org_ids=allowed_org_ids
-        )
+        inst_list, asso_key_map = self.format_excel_data(file_stream, allowed_org_ids=allowed_org_ids)
         self.inst_list = inst_list
         # 执行导入（有错误的已在 format_excel_data 中被过滤）
         add_results, update_results = self.inst_list_update(inst_list)
@@ -715,13 +658,9 @@ class Import:
         # 将验证错误转换为失败结果（这些数据在 Excel 解析或字段校验阶段就被过滤了）
         validation_failed_results = []
         if self.validation_errors:
-            logger.warning(
-                f"数据导入过程中发现 {len(self.validation_errors)} 个验证错误，对应数据已跳过"
-            )
+            logger.warning(f"数据导入过程中发现 {len(self.validation_errors)} 个验证错误，对应数据已跳过")
             for error in self.validation_errors:
-                validation_failed_results.append(
-                    {"success": False, "data": {}, "message": error}
-                )
+                validation_failed_results.append({"success": False, "data": {}, "message": error})
 
         # 合并结果：验证失败 + 新增失败/成功 + 更新失败/成功
         all_add_results = validation_failed_results + add_results
@@ -746,9 +685,7 @@ class Import:
                 data = ""
                 self.import_result_message["add"]["success"] += 1
             else:
-                data = "实例 {} 新增失败: {}".format(
-                    inst_name, item.get("message", "未知错误")
-                )
+                data = "实例 {} 新增失败: {}".format(inst_name, item.get("message", "未知错误"))
                 self.import_result_message["add"]["error"] += 1
             self.import_result_message["add"]["data"].append(data)
 
@@ -759,9 +696,7 @@ class Import:
                 data = ""
                 self.import_result_message["update"]["success"] += 1
             else:
-                data = "实例 {} 更新失败: {}".format(
-                    inst_name, item.get("message", "未知错误")
-                )
+                data = "实例 {} 更新失败: {}".format(inst_name, item.get("message", "未知错误"))
                 self.import_result_message["update"]["error"] += 1
             self.import_result_message["update"]["data"].append(data)
 
@@ -784,10 +719,7 @@ class Import:
             return
 
         model_asso_map = {
-            i["model_asst_id"]: i["src_model_id"]
-            if self.model_id != i["src_model_id"]
-            else i["dst_model_id"]
-            for i in self.model_asso_map.values()
+            i["model_asst_id"]: i["src_model_id"] if self.model_id != i["src_model_id"] else i["dst_model_id"] for i in self.model_asso_map.values()
         }
 
         with GraphClient() as ag:
@@ -796,12 +728,8 @@ class Import:
                 INSTANCE,
                 [{"field": "model_id", "type": "str=", "value": self.model_id}],
             )
-            self.inst_name_id_map[self.model_id] = {
-                item["inst_name"]: item["_id"] for item in exist_items
-            }
-            self.inst_id_name_map[self.model_id] = {
-                item["_id"]: item["inst_name"] for item in exist_items
-            }
+            self.inst_name_id_map[self.model_id] = {item["inst_name"]: item["_id"] for item in exist_items}
+            self.inst_id_name_map[self.model_id] = {item["_id"]: item["inst_name"] for item in exist_items}
 
             # 获取关联模型的实例名称与ID映射
             for asso_key, inst_name_list in asso_key_map.items():
@@ -812,13 +740,9 @@ class Import:
                     INSTANCE,
                     [{"field": "model_id", "type": "str=", "value": src_model}],
                 )
-                self.inst_name_id_map[src_model] = {
-                    item["inst_name"]: item["_id"] for item in exist_items
-                }
+                self.inst_name_id_map[src_model] = {item["inst_name"]: item["_id"] for item in exist_items}
                 # 反转实例名称与ID映射
-                self.inst_id_name_map[src_model] = {
-                    item["_id"]: item["inst_name"] for item in exist_items
-                }
+                self.inst_id_name_map[src_model] = {item["_id"]: item["inst_name"] for item in exist_items}
 
     def get_model_asso_map(self):
         """
@@ -867,21 +791,15 @@ class Import:
 
             for _model_src_inst_name, _dst_inst_name_list in inst_name_list.items():
                 # 导入模型的实例名称的ID 源ID
-                import_model_inst_name_id = self.inst_name_id_map[self.model_id].get(
-                    _model_src_inst_name
-                )
+                import_model_inst_name_id = self.inst_name_id_map[self.model_id].get(_model_src_inst_name)
                 if not import_model_inst_name_id:
                     continue
                 # 目标模型ID
-                _dst_inst_model_id = (
-                    dst_model_id if self.model_id == src_model_id else src_model_id
-                )
+                _dst_inst_model_id = dst_model_id if self.model_id == src_model_id else src_model_id
 
                 for dst_inst_name in _dst_inst_name_list:
                     # 目标模型的实例名称的ID
-                    _dst_inst_id = self.inst_name_id_map[_dst_inst_model_id].get(
-                        dst_inst_name
-                    )
+                    _dst_inst_id = self.inst_name_id_map[_dst_inst_model_id].get(dst_inst_name)
                     if not _dst_inst_id:
                         continue
                     if self.model_id == src_model_id:
@@ -908,9 +826,7 @@ class Import:
         result = []
         for add_asso in add_asso_list:
             try:
-                asso = self.instance_association_create(
-                    add_asso, operator=self.operator
-                )
+                asso = self.instance_association_create(add_asso, operator=self.operator)
             except Exception as err:
                 asso = {"success": False, "message": "创建关联失败: {}".format(err)}
             result.append(asso)
@@ -934,9 +850,7 @@ class Import:
             logger.error("校验关联约束失败: {}".format(traceback.format_exc()))
             return {
                 "success": False,
-                "message": "【{}】与【{}】的关联关系【{}】创建失败！校验关联约束失败! ".format(
-                    src_inst_name, dst_inst_name, model_asst_id
-                ),
+                "message": "【{}】与【{}】的关联关系【{}】创建失败！校验关联约束失败! ".format(src_inst_name, dst_inst_name, model_asst_id),
             }
 
         with GraphClient() as ag:
@@ -952,13 +866,9 @@ class Import:
                 )
             except BaseAppException as e:
                 if e.message == "edge already exists":
-                    message = "关联 【{}】与【{}】的关联关系【{}】 已存在".format(
-                        src_inst_name, dst_inst_name, model_asst_id
-                    )
+                    message = "关联 【{}】与【{}】的关联关系【{}】 已存在".format(src_inst_name, dst_inst_name, model_asst_id)
                 else:
-                    message = "【{}】与【{}】的关联关系【{}】创建失败！".format(
-                        src_inst_name, dst_inst_name, model_asst_id
-                    )
+                    message = "【{}】与【{}】的关联关系【{}】创建失败！".format(src_inst_name, dst_inst_name, model_asst_id)
                 return {"success": False, "message": message}
 
         asso_info = InstanceManage.instance_association_by_asso_id(edge["_id"])
@@ -974,7 +884,5 @@ class Import:
         return {
             "success": True,
             "data": edge,
-            "message": "【{}】与【{}】的关联关系【{}】创建成功".format(
-                src_inst_name, dst_inst_name, model_asst_id
-            ),
+            "message": "【{}】与【{}】的关联关系【{}】创建成功".format(src_inst_name, dst_inst_name, model_asst_id),
         }

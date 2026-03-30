@@ -1,6 +1,11 @@
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.anomaly_detection import *
 from rest_framework import serializers
+from apps.mlops.utils.group_scope import (
+    assert_team_ownership,
+    get_current_team,
+    validate_requested_teams,
+)
 
 
 class AnomalyDetectionDatasetSerializer(AuthSerializer):
@@ -11,6 +16,9 @@ class AnomalyDetectionDatasetSerializer(AuthSerializer):
     class Meta:
         model = AnomalyDetectionDataset
         fields = "__all__"
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
 
 
 class AnomalyDetectionTrainDataSerializer(AuthSerializer):
@@ -32,13 +40,8 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request:
-            self.include_train_data = (
-                request.query_params.get("include_train_data", "false").lower()
-                == "true"
-            )
-            self.include_metadata = (
-                request.query_params.get("include_metadata", "false").lower() == "true"
-            )
+            self.include_train_data = request.query_params.get("include_train_data", "false").lower() == "true"
+            self.include_metadata = request.query_params.get("include_metadata", "false").lower() == "true"
         else:
             self.include_train_data = False
             self.include_metadata = False
@@ -59,7 +62,7 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
             # 检查数据类型
             if df["value"].isnull().any():
                 raise serializers.ValidationError("'value'列包含空值")
-            
+
             if df["label"].isnull().any():
                 raise serializers.ValidationError("'label'列包含空值")
 
@@ -69,6 +72,11 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
             return value
         except pd.errors.ParserError as e:
             raise serializers.ValidationError(f"无效的CSV格式: {str(e)}")
+
+    def validate_dataset(self, value):
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "dataset", request=request)
+        return value
 
     def to_representation(self, instance):
         """
@@ -92,9 +100,7 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
                         # 尝试解析各种日期格式
                         df["timestamp"] = pd.to_datetime(df["timestamp"])
                         # 转换为 Unix 时间戳（秒）
-                        df["timestamp"] = (
-                            df["timestamp"].astype("int64") / 1e9
-                        ).astype("int64")
+                        df["timestamp"] = (df["timestamp"].astype("int64") / 1e9).astype("int64")
                     except Exception as e:
                         logger.warning(f"Failed to parse timestamp column: {e}")
                         # 如果解析失败，尝试保持原值
@@ -105,9 +111,7 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
                     row["index"] = i
 
                 representation["train_data"] = data_list
-                logger.info(
-                    f"Successfully loaded train_data for instance {instance.id}: {len(data_list)} rows"
-                )
+                logger.info(f"Successfully loaded train_data for instance {instance.id}: {len(data_list)} rows")
 
             except Exception as e:
                 logger.error(
@@ -149,6 +153,11 @@ class AnomalyDetectionDatasetReleaseSerializer(AuthSerializer):
             "status": {"required": False},
         }
 
+    def validate_dataset(self, value):
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "dataset", request=request)
+        return value
+
     def create(self, validated_data):
         """
         自定义创建方法，支持从文件ID创建数据集发布版本
@@ -162,16 +171,12 @@ class AnomalyDetectionDatasetReleaseSerializer(AuthSerializer):
 
         # 如果提供了文件ID，则执行文件打包逻辑
         if train_file_id and val_file_id and test_file_id:
-            return self._create_from_files(
-                validated_data, train_file_id, val_file_id, test_file_id
-            )
+            return self._create_from_files(validated_data, train_file_id, val_file_id, test_file_id)
         else:
             # 否则使用标准创建（适用于直接上传ZIP文件的场景）
             return super().create(validated_data)
 
-    def _create_from_files(
-        self, validated_data, train_file_id, val_file_id, test_file_id
-    ):
+    def _create_from_files(self, validated_data, train_file_id, val_file_id, test_file_id):
         """
         从训练数据文件ID创建数据集发布版本（异步）
 
@@ -186,29 +191,15 @@ class AnomalyDetectionDatasetReleaseSerializer(AuthSerializer):
 
         try:
             # 验证文件是否存在
-            train_obj = AnomalyDetectionTrainData.objects.get(
-                id=train_file_id, dataset=dataset
-            )
-            val_obj = AnomalyDetectionTrainData.objects.get(
-                id=val_file_id, dataset=dataset
-            )
-            test_obj = AnomalyDetectionTrainData.objects.get(
-                id=test_file_id, dataset=dataset
-            )
+            train_obj = AnomalyDetectionTrainData.objects.get(id=train_file_id, dataset=dataset)
+            val_obj = AnomalyDetectionTrainData.objects.get(id=val_file_id, dataset=dataset)
+            test_obj = AnomalyDetectionTrainData.objects.get(id=test_file_id, dataset=dataset)
 
             # 检查是否已有相同版本的记录（幂等性保护）
-            existing = (
-                AnomalyDetectionDatasetRelease.objects.filter(
-                    dataset=dataset, version=version
-                )
-                .exclude(status="failed")
-                .first()
-            )
+            existing = AnomalyDetectionDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(status="failed").first()
 
             if existing:
-                logger.info(
-                    f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}"
-                )
+                logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
                 return existing
 
             # 创建 pending 状态的发布记录
@@ -220,22 +211,16 @@ class AnomalyDetectionDatasetReleaseSerializer(AuthSerializer):
                 validated_data["name"] = f"{dataset.name}_v{version}"
 
             if not description:
-                validated_data["description"] = (
-                    f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
-                )
+                validated_data["description"] = f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
 
             release = AnomalyDetectionDatasetRelease.objects.create(**validated_data)
 
             # 触发异步任务
             from apps.mlops.tasks.anomaly_detection import publish_dataset_release_async
 
-            publish_dataset_release_async.delay(
-                release.id, train_file_id, val_file_id, test_file_id
-            )
+            publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
 
-            logger.info(
-                f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}"
-            )
+            logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
 
             return release
 
@@ -248,7 +233,7 @@ class AnomalyDetectionDatasetReleaseSerializer(AuthSerializer):
 
 
 class AnomalyDetectionTrainJobSerializer(AuthSerializer):
-    permission_key = "dataset.anomaly_detection_train_job"
+    permission_key = "train_job.anomaly_detection_train_job"
 
     class Meta:
         model = AnomalyDetectionTrainJob
@@ -266,10 +251,11 @@ class AnomalyDetectionTrainJobSerializer(AuthSerializer):
         """
         # 只在创建时验证（更新时不强制要求）
         if not self.instance and not attrs.get("dataset_version"):
-            raise serializers.ValidationError(
-                {"dataset_version": "创建训练任务时必须指定数据集版本"}
-            )
+            raise serializers.ValidationError({"dataset_version": "创建训练任务时必须指定数据集版本"})
         return super().validate(attrs)
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
 
 
 class TimeSeriesDataSerializer(serializers.Serializer):
@@ -284,16 +270,10 @@ class AnomalyDetectionPredictRequestSerializer(serializers.Serializer):
     """异常检测预测请求序列化器"""
 
     model_name = serializers.CharField(max_length=100, help_text="模型名称")
-    model_version = serializers.CharField(
-        max_length=50, default="latest", help_text="模型版本，默认为latest"
-    )
-    algorithm = serializers.ChoiceField(
-        choices=[("RandomForest", "RandomForest")], help_text="算法类型"
-    )
+    model_version = serializers.CharField(max_length=50, default="latest", help_text="模型版本，默认为latest")
+    algorithm = serializers.ChoiceField(choices=[("RandomForest", "RandomForest")], help_text="算法类型")
     data = TimeSeriesDataSerializer(many=True, help_text="时序数据列表")
-    anomaly_threshold = serializers.FloatField(
-        default=0.5, min_value=0.0, max_value=1.0, help_text="异常判定阈值，范围[0,1]"
-    )
+    anomaly_threshold = serializers.FloatField(default=0.5, min_value=0.0, max_value=1.0, help_text="异常判定阈值，范围[0,1]")
 
     def validate_data(self, value):
         """验证时序数据"""
@@ -332,3 +312,6 @@ class AnomalyDetectionServingSerializer(AuthSerializer):
     class Meta:
         model = AnomalyDetectionServing
         fields = "__all__"
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)

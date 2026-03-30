@@ -1,4 +1,5 @@
 import { MetricItem, ListItem, UserProfile } from "@/app/mlops/types";
+import type { Group } from '@/types';
 import { useLocalizedTime } from "@/hooks/useLocalizedTime";
 import dayjs from "dayjs";
 
@@ -47,7 +48,7 @@ export const generateUniqueRandomColor = (() => {
   const generatedColors = new Set<string>();
   return (): string => {
     const letters = '0123456789ABCDEF';
-    let color;
+    let color = '';
     do {
       color = '#';
       for (let i = 0; i < 6; i++) {
@@ -137,11 +138,28 @@ export const exportToCSV = (data: any[], columns: string[]) => {
 
 export const getName = (targetID: string, data: UserProfile[] | null) => {
   if (data) {
-    const target: UserProfile = data.find(u => u.id == targetID) as UserProfile;
+    const target = data.find((u) => String(u.id) === String(targetID));
     const name = target?.first_name + target?.last_name;
     return name || '--';
   }
   return '--';
+};
+
+export const getGroupNamesByIds = (groupIds: Array<string | number> | undefined, groups: Group[] = []): string[] => {
+  if (!Array.isArray(groupIds) || groupIds.length === 0) {
+    return [];
+  }
+
+  const groupNameMap = new Map(groups.map((group) => [String(group.id), group.name]));
+
+  return groupIds
+    .map((groupId) => groupNameMap.get(String(groupId)))
+    .filter((name): name is string => Boolean(name));
+};
+
+export const formatGroupNames = (groupIds: Array<string | number> | undefined, groups: Group[] = []): string => {
+  const groupNames = getGroupNamesByIds(groupIds, groups);
+  return groupNames.length > 0 ? groupNames.join(' / ') : '--';
 };
 
 // Generate curl example for serving API

@@ -7,6 +7,7 @@ import { CaretRightOutlined } from '@ant-design/icons';
 import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
+import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import {
   SNMP_FORM_INITIAL_VALUES,
@@ -133,6 +134,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
     const credential = values.credential || {};
     return {
       ipRange,
+      ...getCleanupFormValues(values),
       ...values,
       ...credential,
       taskName: isCopy ? '' : values.name,

@@ -160,6 +160,25 @@ const TargetPage = () => {
     setPagination(pag);
   };
 
+  const getDriverSelectOptions = () => {
+    if (modalType === 'add') {
+      return [{ label: t('job.driverAnsible'), value: 'ansible' }];
+    }
+
+    const options = [
+      { label: t('job.driverAnsible'), value: 'ansible' },
+      { label: t('job.driverSSH'), value: 'ssh' },
+      { label: 'Sidecar', value: 'sidecar' },
+    ];
+
+    const currentDriver = form.getFieldValue('driver');
+    if (currentDriver && !options.some((option) => option.value === currentDriver)) {
+      return [...options, { label: currentDriver, value: currentDriver }];
+    }
+
+    return options;
+  };
+
   const handleDelete = (record: Target) => {
     Modal.confirm({
       title: t('job.deleteTarget'),
@@ -357,13 +376,13 @@ const TargetPage = () => {
       render: (_: unknown, record: Target) => (
         <div className="flex items-center gap-3">
           <a
-            className="text-[var(--color-primary)] cursor-pointer"
+            className="text-(--color-primary) cursor-pointer"
             onClick={() => openEditModal(record)}
           >
             {t('job.editRule')}
           </a>
           <a
-            className="text-[var(--color-primary)] cursor-pointer"
+            className="text-(--color-primary) cursor-pointer"
             onClick={() => handleDelete(record)}
           >
             {t('job.deleteTarget')}
@@ -377,7 +396,7 @@ const TargetPage = () => {
     <div className="w-full h-full flex flex-col">
       {/* Header */}
       <div
-        className="rounded-lg px-6 py-4 mb-4 flex-shrink-0"
+        className="mb-4 rounded-lg px-6 py-4 shrink-0"
         style={{
           background: 'var(--color-bg-1)',
           border: '1px solid var(--color-border-1)',
@@ -403,7 +422,7 @@ const TargetPage = () => {
         }}
       >
         {/* Toolbar */}
-        <div className="flex justify-between items-center mb-4 flex-shrink-0">
+        <div className="mb-4 flex items-center justify-between shrink-0">
           <SearchCombination
             fieldConfigs={fieldConfigs}
             onChange={handleSearchChange}
@@ -523,11 +542,7 @@ const TargetPage = () => {
           >
             <Select
               placeholder={t('job.selectDriver')}
-              options={[
-                { label: t('job.driverAnsible'), value: 'ansible' },
-                { label: t('job.driverSSH'), value: 'ssh' },
-                { label: 'Sidecar', value: 'sidecar' },
-              ]}
+              options={getDriverSelectOptions()}
             />
           </Form.Item>
           <div

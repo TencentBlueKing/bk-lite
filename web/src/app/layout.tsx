@@ -20,6 +20,7 @@ import '@/styles/globals.css';
 import { MenuItem } from '@/types/index'
 import WithSideMenuLayout from '@/components/sub-layout'
 import { shouldRenderSecondLayerMenu } from '@/utils/menuHelpers'
+import { isSessionExpiredState } from '@/utils/sessionExpiry'
 
 const Loader = () => (
   <div className="flex justify-center items-center h-screen">
@@ -51,7 +52,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
 
   const isPathInMenu = useCallback((path: string, menus: MenuItem[]): boolean => {
     for (const menu of menus) {
-      if (menu.url?.startsWith(path)) {
+      if (path?.startsWith(menu.url)) {
         return true;
       }
       if (menu.children && isPathInMenu(path, menu.children)) {
@@ -63,6 +64,11 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const checkPermission = async () => {
+      if (isSessionExpiredState()) {
+        setIsAllowed(true);
+        return;
+      }
+
       if ((pathname && authPaths.includes(pathname)) || !isAuthenticated) {
         setIsAllowed(true);
         return;
@@ -89,7 +95,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     };
 
     checkPermission();
-  }, [isLoading, pathname, isAuthenticated, status, session, router]);
+  }, [isLoading, pathname, isAuthenticated, status, session, router, configMenus, hasPermission]);
 
   const hideTopMenu = useMemo(() => {
     return pathname?.startsWith('/opspilot/studio/chat');

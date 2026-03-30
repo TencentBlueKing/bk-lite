@@ -4,7 +4,11 @@ import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { useTranslation } from '@/utils/i18n';
 import { Form, Spin } from 'antd';
-import { getCycleFormValues, useTaskForm } from '../hooks/useTaskForm';
+import {
+  getCleanupFormValues,
+  getCycleFormValues,
+  useTaskForm,
+} from '../hooks/useTaskForm';
 import { K8S_FORM_INITIAL_VALUES } from '@/app/cmdb/constants/professCollection';
 import { formatTaskValues } from '../hooks/formatTaskValues';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
@@ -67,6 +71,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
   // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
   const buildFormValues = (values: any, isCopy: boolean) => ({
     ...getCycleFormValues(values),
+    ...getCleanupFormValues(values),
     ...values,
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],

@@ -17,6 +17,7 @@ interface TrainJob {
   dataset_version?: string | number;
   max_evals?: number;
   hyperopt_config?: HyperoptConfig;
+  team?: number[];
 }
 
 // 超参数配置类型
@@ -67,6 +68,7 @@ export interface CreateTrainJobParams {
   status: 'pending' | 'running' | 'completed' | 'failed';
   description: string;
   hyperopt_config: HyperoptConfig;
+  team: number[];
 }
 
 export interface UpdateTrainJobParams extends Partial<CreateTrainJobParams> {
@@ -80,6 +82,7 @@ export interface TrainJobFormValues {
   dataset: number;
   dataset_version: number | string;  // 表单中使用字符串（Select 组件），提交时转为数字
   max_evals: number;
+  team: number[];
   // 动态算法参数（根据 AlgorithmConfig 生成）
   [key: string]: unknown;
 }

@@ -64,6 +64,7 @@ export interface AttrFieldType {
   attr_name: string;
   attr_type: string;
   is_only?: boolean;
+  unique_display_type?: UniqueDisplayType;
   is_required: boolean;
   editable: boolean;
   option: AttrOption;
@@ -292,8 +293,36 @@ export interface AttrItem {
   is_required: boolean;
   editable: boolean;
   is_only: boolean;
+  unique_display_type?: UniqueDisplayType;
   group_id?: string;
   order?: number;
+}
+
+export type UniqueDisplayType = 'none' | 'single' | 'joint'
+
+export interface ModelUniqueRuleItem {
+  rule_id: string;
+  order: number;
+  field_ids: string[];
+  field_names: string[];
+}
+
+export interface UniqueRuleFieldMeta {
+  attr_id: string;
+  attr_name: string;
+  attr_type: string;
+  is_required: boolean;
+  selectable: boolean;
+  disabled_reason: string;
+}
+
+export interface UniqueRuleListResponse {
+  rules: ModelUniqueRuleItem[];
+  candidate_fields: UniqueRuleFieldMeta[];
+}
+
+export interface UniqueRulePayload {
+  field_ids: string[];
 }
 
 // 获取模型完整信息接口相关类型
@@ -324,10 +353,17 @@ export interface FullInfoGroupItem {
   can_delete: boolean;
 }
 
+export interface FullInfoUniqueRuleItem {
+  rule_id: string;
+  order: number;
+  field_ids: string[];
+}
+
 export interface ModelFullInfo {
   model_id: string;
   model_name: string;
   groups: FullInfoGroupItem[];
+  unique_rules?: FullInfoUniqueRuleItem[];
   total_groups: number;
   total_attrs: number;
 }

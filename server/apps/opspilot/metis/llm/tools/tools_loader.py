@@ -6,6 +6,7 @@ from loguru import logger
 
 # 静态导入所有工具模块
 from apps.opspilot.metis.llm.tools import (
+    agent_browser,
     browser_use,
     date,
     elasticsearch,
@@ -46,6 +47,7 @@ class ToolsLoader:
 
     # 静态定义所有工具模块映射
     TOOL_MODULES = {
+        "agent_browser": (agent_browser, False),
         "browser_use": (browser_use, False),
         # "cmdb": ("apps.opspilot.metis.llm.tools.cmdb", False),  # 临时关闭 CMDB tools
         "current_time": (date, False),

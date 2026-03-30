@@ -46,6 +46,11 @@ export const formatTaskValues = ({
     driver_type: driverType,
     accessPointId: values.access_point?.[0]?.id,
     team: values.organization || [],
+    data_cleanup_strategy: values.cleanupStrategy,
+    expire_days:
+      values.cleanupStrategy === 'after_expiration'
+        ? (values.cleanupDays ?? 0)
+        : 0,
     params: {},
   };
 };

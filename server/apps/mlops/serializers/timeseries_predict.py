@@ -3,6 +3,11 @@ from rest_framework import serializers
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.timeseries_predict import *
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.utils.group_scope import (
+    assert_team_ownership,
+    get_current_team,
+    validate_requested_teams,
+)
 
 
 class TimeSeriesPredictDatasetSerializer(AuthSerializer):
@@ -14,6 +19,9 @@ class TimeSeriesPredictDatasetSerializer(AuthSerializer):
         model = TimeSeriesPredictDataset
         fields = "__all__"
 
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
+
 
 class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
     """
@@ -24,7 +32,7 @@ class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
     - config_url: FileField，自动同步到MinIO（Model.save()处理）
     """
 
-    permission_key = "dataset.timeseries_predict_train_job"
+    permission_key = "train_job.timeseries_predict_train_job"
 
     class Meta:
         model = TimeSeriesPredictTrainJob
@@ -42,10 +50,11 @@ class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
         """
         # 只在创建时验证（更新时不强制要求）
         if not self.instance and not attrs.get("dataset_version"):
-            raise serializers.ValidationError(
-                {"dataset_version": "创建训练任务时必须指定数据集版本"}
-            )
+            raise serializers.ValidationError({"dataset_version": "创建训练任务时必须指定数据集版本"})
         return super().validate(attrs)
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
 
 
 class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
@@ -64,13 +73,8 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request:
-            self.include_train_data = (
-                request.query_params.get("include_train_data", "false").lower()
-                == "true"
-            )
-            self.include_metadata = (
-                request.query_params.get("include_metadata", "false").lower() == "true"
-            )
+            self.include_train_data = request.query_params.get("include_train_data", "false").lower() == "true"
+            self.include_metadata = request.query_params.get("include_metadata", "false").lower() == "true"
         else:
             self.include_train_data = False
             self.include_metadata = False
@@ -99,6 +103,11 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
         except pd.errors.ParserError as e:
             raise serializers.ValidationError(f"无效的CSV格式: {str(e)}")
 
+    def validate_dataset(self, value):
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "dataset", request=request)
+        return value
+
     def to_representation(self, instance):
         """
         自定义返回数据，根据 include_train_data 参数动态控制 train_data 字段
@@ -121,9 +130,7 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
                         # 尝试解析各种日期格式
                         df["timestamp"] = pd.to_datetime(df["timestamp"])
                         # 转换为 Unix 时间戳（秒）
-                        df["timestamp"] = (
-                            df["timestamp"].astype("int64") / 1e9
-                        ).astype("int64")
+                        df["timestamp"] = (df["timestamp"].astype("int64") / 1e9).astype("int64")
                     except Exception as e:
                         logger.warning(f"Failed to parse timestamp column: {e}")
                         # 如果解析失败，尝试保持原值
@@ -134,9 +141,7 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
                     row["index"] = i
 
                 representation["train_data"] = data_list
-                logger.info(
-                    f"Successfully loaded train_data for instance {instance.id}: {len(data_list)} rows"
-                )
+                logger.info(f"Successfully loaded train_data for instance {instance.id}: {len(data_list)} rows")
 
             except Exception as e:
                 logger.error(
@@ -161,11 +166,14 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
 class TimeSeriesPredictServingSerializer(AuthSerializer):
     """时间序列预测服务序列化器"""
 
-    permission_key = "dataset.timeseries_predict_serving"
+    permission_key = "serving.timeseries_predict_serving"
 
     class Meta:
         model = TimeSeriesPredictServing
         fields = "__all__"
+
+    def validate_team(self, value):
+        return validate_requested_teams(self.context["request"], value)
 
 
 class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
@@ -188,6 +196,11 @@ class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
             "status": {"required": False},
         }
 
+    def validate_dataset(self, value):
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "dataset", request=request)
+        return value
+
     def create(self, validated_data):
         """
         自定义创建方法，支持从文件ID创建数据集发布版本
@@ -199,16 +212,12 @@ class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
 
         # 如果提供了文件ID，则执行文件打包逻辑
         if train_file_id and val_file_id and test_file_id:
-            return self._create_from_files(
-                validated_data, train_file_id, val_file_id, test_file_id
-            )
+            return self._create_from_files(validated_data, train_file_id, val_file_id, test_file_id)
         else:
             # 否则使用标准创建（适用于直接上传ZIP文件的场景）
             return super().create(validated_data)
 
-    def _create_from_files(
-        self, validated_data, train_file_id, val_file_id, test_file_id
-    ):
+    def _create_from_files(self, validated_data, train_file_id, val_file_id, test_file_id):
         """
         从训练数据文件ID创建数据集发布版本（异步）
 
@@ -221,29 +230,15 @@ class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
 
         try:
             # 验证文件是否存在
-            train_obj = TimeSeriesPredictTrainData.objects.get(
-                id=train_file_id, dataset=dataset
-            )
-            val_obj = TimeSeriesPredictTrainData.objects.get(
-                id=val_file_id, dataset=dataset
-            )
-            test_obj = TimeSeriesPredictTrainData.objects.get(
-                id=test_file_id, dataset=dataset
-            )
+            train_obj = TimeSeriesPredictTrainData.objects.get(id=train_file_id, dataset=dataset)
+            val_obj = TimeSeriesPredictTrainData.objects.get(id=val_file_id, dataset=dataset)
+            test_obj = TimeSeriesPredictTrainData.objects.get(id=test_file_id, dataset=dataset)
 
             # 检查是否已有相同版本的记录（幂等性保护）
-            existing = (
-                TimeSeriesPredictDatasetRelease.objects.filter(
-                    dataset=dataset, version=version
-                )
-                .exclude(status="failed")
-                .first()
-            )
+            existing = TimeSeriesPredictDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(status="failed").first()
 
             if existing:
-                logger.info(
-                    f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}"
-                )
+                logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
                 return existing
 
             # 创建 pending 状态的发布记录
@@ -255,22 +250,16 @@ class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
                 validated_data["name"] = f"{dataset.name}_v{version}"
 
             if not description:
-                validated_data["description"] = (
-                    f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
-                )
+                validated_data["description"] = f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
 
             release = TimeSeriesPredictDatasetRelease.objects.create(**validated_data)
 
             # 触发异步任务
             from apps.mlops.tasks.timeseries import publish_dataset_release_async
 
-            publish_dataset_release_async.delay(
-                release.id, train_file_id, val_file_id, test_file_id
-            )
+            publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
 
-            logger.info(
-                f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}"
-            )
+            logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
 
             return release
 

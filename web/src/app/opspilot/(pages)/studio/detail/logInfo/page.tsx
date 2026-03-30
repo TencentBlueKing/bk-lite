@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState, useCallback } from 'react';
 import { Input, Spin, Drawer, Button, Tag, Tooltip, Timeline, Segmented } from 'antd';
-import { ClockCircleOutlined, SyncOutlined } from '@ant-design/icons';
+import { ClockCircleOutlined, SyncOutlined, RightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import type { ColumnType } from 'antd/es/table';
@@ -47,8 +47,21 @@ const StudioLogsPage: React.FC = () => {
     current: 1,
     pageSize: 10,
   });
+  const [expandedExecutionNodes, setExpandedExecutionNodes] = useState<string[]>([]);
   const searchParams = useSearchParams();
   const botId = searchParams ? searchParams.get('id') : null;
+
+  const toggleExecutionNode = (nodeKey: string) => {
+    setExpandedExecutionNodes((prev) => (
+      prev.includes(nodeKey)
+        ? prev.filter((key) => key !== nodeKey)
+        : [...prev, nodeKey]
+    ));
+  };
+
+  useEffect(() => {
+    setExpandedExecutionNodes([]);
+  }, [selectedWorkflow?.id, workflowDrawerVisible]);
 
   // Fetch bot details and set bot type
   const fetchBotData = useCallback(async () => {
@@ -107,6 +120,8 @@ const StudioLogsPage: React.FC = () => {
 
       const res = await fetchWorkflowTaskResult(params);
       setData((res?.items || []).map((item: any, index: number) => {
+        const executionDuration = item.execution_duration ?? item.duration_ms ?? 0;
+
         return {
           key: index.toString(),
           id: item.id,
@@ -117,7 +132,7 @@ const StudioLogsPage: React.FC = () => {
           last_output: item.last_output,
           execute_type: item.execute_type,
           bot_work_flow: item.bot_work_flow,
-          execution_duration: item.execution_duration || 0,
+          execution_duration: Number(executionDuration) || 0,
           error_log: item.error_log || '',
           execution_id: item.execution_id || '',
         };
@@ -250,7 +265,7 @@ const StudioLogsPage: React.FC = () => {
   const renderJsonData = (data: any) => {
     if (!data) return '-';
     if (typeof data === 'object') {
-      return <pre className="bg-[var(--color-fill-1)] p-2 rounded text-xs overflow-auto max-h-60">{JSON.stringify(data, null, 2)}</pre>;
+      return <pre className="bg-(--color-fill-1) p-2 rounded text-xs overflow-auto max-h-60">{JSON.stringify(data, null, 2)}</pre>;
     }
     return String(data);
   };
@@ -303,6 +318,8 @@ const StudioLogsPage: React.FC = () => {
         items={nodes.map((node, idx) => {
           const browserSteps = getBrowserSteps(node.output);
           const executionLabel = t('studio.logs.executionProcess');
+          const executionPanelKey = `${node.id}-execution-process`;
+          const isExecutionExpanded = expandedExecutionNodes.includes(executionPanelKey);
 
           return {
             color: idx === nodes.length - 1 ? 'green' : 'blue',
@@ -319,25 +336,55 @@ const StudioLogsPage: React.FC = () => {
                   </div>
                   {browserSteps.length > 0 && (
                     <div>
-                      <div className="flex items-center gap-2 mb-3 text-sm">
-                        <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                        </svg>
-                        {executionLabel.replace('{{count}}', String(browserSteps.length))}
-                      </div>
-                      <div className="space-y-2">
-                        {browserSteps.map((step, stepIndex) => (
-                          <div
-                            key={`${node.id}-step-${stepIndex}`}
-                            className={`rounded px-3 py-2 text-sm ${
-                              stepIndex % 2 === 0
-                                ? 'bg-[var(--color-fill-2)]'
-                                : 'bg-[var(--color-fill-1)]'
-                            }`}
-                          >
-                            {step}
+                      <div
+                        className="bg-(--color-bg) overflow-hidden rounded-2xl border shadow-sm"
+                        style={{ borderColor: 'var(--color-border-1)' }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleExecutionNode(executionPanelKey)}
+                          className="w-full px-4 py-2.5 text-left transition-colors hover:bg-(--color-fill-1)"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500">
+                              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-(--color-text-1) text-sm font-semibold">
+                                {executionLabel.replace('{{count}}', String(browserSteps.length))}
+                              </div>
+                            </div>
+                            <RightOutlined
+                              className={`text-(--color-text-3) text-xs transition-transform duration-200 ${isExecutionExpanded ? 'rotate-90' : ''}`}
+                            />
                           </div>
-                        ))}
+                        </button>
+
+                        {isExecutionExpanded && (
+                          <div className="border-(--color-border-1) border-t px-4 pb-4 pt-3">
+                            <div className="space-y-2">
+                              {browserSteps.map((step, stepIndex) => (
+                                <div key={`${node.id}-step-${stepIndex}`} className="flex items-start gap-3 pl-2">
+                                  <span className="mt-3 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-semibold leading-none text-white shadow-sm">
+                                    {stepIndex + 1}
+                                  </span>
+                                  <div
+                                    className={`min-w-0 flex-1 rounded-2xl border px-4 py-3 text-sm leading-6 ${
+                                      stepIndex % 2 === 0
+                                        ? 'bg-(--color-fill-2)'
+                                        : 'bg-(--color-fill-1)'
+                                    }`}
+                                    style={{ borderColor: 'var(--color-border-1)' }}
+                                  >
+                                    {step}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

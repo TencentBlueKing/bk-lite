@@ -57,6 +57,7 @@ const useMlopsModelReleaseApi = () => {
     model_version: string;
     train_job: string;
     status: string;
+    team: number[];
   }) => {
     return await post(`/mlops/anomaly_detection_servings/`, params);
   };
@@ -68,6 +69,7 @@ const useMlopsModelReleaseApi = () => {
     model_version: string;
     train_job: string;
     status: string;
+    team: number[];
   }) => {
     return await post(`/mlops/timeseries_predict_servings/`, params);
   };
@@ -79,6 +81,7 @@ const useMlopsModelReleaseApi = () => {
     model_version: string;
     train_job: string;
     status: string;
+    team: number[];
   }) => {
     return await post(`/mlops/log_clustering_servings/`, params);
   };
@@ -90,6 +93,7 @@ const useMlopsModelReleaseApi = () => {
     model_version: string;
     train_job: string;
     status: string;
+    team: number[];
   }) => {
     return await post(`/mlops/classification_servings/`, params);
   };
@@ -101,6 +105,7 @@ const useMlopsModelReleaseApi = () => {
     model_version: string;
     train_job: string;
     status: string;
+    team: number[];
   }) => {
     return await post(`/mlops/image_classification_servings/`, params);
   };
@@ -112,6 +117,7 @@ const useMlopsModelReleaseApi = () => {
     model_version: string;
     train_job: string;
     status: string;
+    team: number[];
   }) => {
     return await post(`/mlops/object_detection_servings/`, params);
   };
@@ -153,6 +159,7 @@ const useMlopsModelReleaseApi = () => {
     model_version?: string;
     train_job?: string;
     status?: string;
+    team?: number[];
   }) => {
     return await patch(`/mlops/anomaly_detection_servings/${id}/`, params);
   };
@@ -164,6 +171,7 @@ const useMlopsModelReleaseApi = () => {
     model_version?: string;
     train_job?: string;
     status?: string;
+    team?: number[];
   }) => {
     return await patch(`/mlops/timeseries_predict_servings/${id}/`, params);
   };
@@ -175,6 +183,7 @@ const useMlopsModelReleaseApi = () => {
     model_version?: string;
     train_job?: string;
     status?: string;
+    team?: number[];
   }) => {
     return await patch(`/mlops/log_clustering_servings/${id}/`, params);
   };
@@ -186,6 +195,7 @@ const useMlopsModelReleaseApi = () => {
     model_version?: string;
     train_job?: string;
     status?: string;
+    team?: number[];
   }) => {
     return await patch(`/mlops/classification_servings/${id}/`, params)
   };
@@ -197,6 +207,7 @@ const useMlopsModelReleaseApi = () => {
     model_version?: string;
     train_job?: string;
     status?: string;
+    team?: number[];
   }) => {
     return await patch(`/mlops/image_classification_servings/${id}/`, params)
   };
@@ -208,6 +219,7 @@ const useMlopsModelReleaseApi = () => {
     model_version?: string;
     train_job?: string;
     status?: string;
+    team?: number[];
   }) => {
     return await patch(`/mlops/object_detection_servings/${id}/`, params)
   };

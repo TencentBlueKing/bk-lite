@@ -37,9 +37,11 @@ from apps.mlops.serializers.algorithm_config import (
     AlgorithmConfigListSerializer,
 )
 from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+from apps.mlops.views.base import TeamModelViewSet
+from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 
 
-class ClassificationDatasetViewSet(ModelViewSet):
+class ClassificationDatasetViewSet(TeamModelViewSet):
     queryset = ClassificationDataset.objects.all()
     serializer_class = ClassificationDatasetSerializer
     pagination_class = CustomPageNumberPagination
@@ -68,7 +70,7 @@ class ClassificationDatasetViewSet(ModelViewSet):
         return super().update(request, *args, **kwargs)
 
 
-class ClassificationServingViewSet(ModelViewSet):
+class ClassificationServingViewSet(TeamModelViewSet):
     queryset = ClassificationServing.objects.select_related(
         "train_job", "train_job__dataset_version", "train_job__dataset_version__dataset"
     ).all()
@@ -76,7 +78,7 @@ class ClassificationServingViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     filterset_class = ClassificationServingFilter
     ordering = ("-id",)
-    permission_key = "dataset.classification_serving"
+    permission_key = "serving.classification_serving"
 
     MLFLOW_PREFIX = "Classification"  # MLflow 命名前缀
 
@@ -648,7 +650,7 @@ class ClassificationServingViewSet(ModelViewSet):
         return mlflow_service.resolve_model_uri(model_name, "latest")
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("classification-View")
+    @HasPermission("classification-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用 serving 服务进行分类预测
@@ -766,6 +768,11 @@ class ClassificationTrainDataViewSet(ModelViewSet):
     ordering = ("-id",)
     permission_key = "dataset.classification_train_data"
 
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
+
     @HasPermission("classification-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -787,7 +794,7 @@ class ClassificationTrainDataViewSet(ModelViewSet):
         return super().update(request, *args, **kwargs)
 
 
-class ClassificationTrainJobViewSet(ModelViewSet):
+class ClassificationTrainJobViewSet(TeamModelViewSet):
     queryset = ClassificationTrainJob.objects.select_related(
         "dataset_version", "dataset_version__dataset"
     ).all()
@@ -795,7 +802,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     filterset_class = ClassificationTrainJobFilter
     ordering = ("-id",)
-    permission_key = "dataset.classification_train_job"
+    permission_key = "train_job.classification_train_job"
 
     MLFLOW_PREFIX = "Classification"  # MLflow 命名前缀
 
@@ -1316,6 +1323,11 @@ class ClassificationDatasetReleaseViewSet(ModelViewSet):
     filterset_class = ClassificationDatasetReleaseFilter
     ordering = ("-id",)
     permission_key = "dataset.classification_dataset_release"
+
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
 
     @HasPermission("classification-View")
     def list(self, request, *args, **kwargs):

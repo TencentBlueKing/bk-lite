@@ -1,12 +1,24 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import axios from 'axios';
 import { useSession, signIn } from 'next-auth/react';
 import type { Session } from 'next-auth';
 import { useRouter, usePathname } from 'next/navigation';
-import { Spin } from 'antd';
+import { Spin, message } from 'antd';
 import { useLocale } from '@/context/locale';
+import { useTranslation } from '@/utils/i18n';
 import { saveAuthToken } from '@/utils/crossDomainAuth';
+import SigninClient from '@/app/(core)/auth/signin/SigninClient';
+import {
+  createSessionExpiredRequestError,
+  emitSessionExpired,
+  isAuthPath,
+  isSessionExpiredState,
+  resetSessionExpiredState,
+  SESSION_EXPIRED_EVENT,
+  shouldTriggerSessionExpiry,
+} from '@/utils/sessionExpiry';
 
 // Type assertion helper for session
 type ExtendedSession = Session & {
@@ -29,6 +41,10 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+const modalSigninErrors: Record<string | 'default', string> = {
+  default: 'Unable to sign in.',
+};
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -46,12 +62,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [hasCheckedExistingAuth, setHasCheckedExistingAuth] = useState<boolean>(false);
   const [isAutoSigningIn, setIsAutoSigningIn] = useState<boolean>(false);
   const [isCheckingExistingAuth, setIsCheckingExistingAuth] = useState<boolean>(false);
+  const [sessionExpiredOpen, setSessionExpiredOpen] = useState<boolean>(false);
   const router = useRouter();
   const pathname = usePathname();
   const { setLocale } = useLocale();
+  const { t } = useTranslation();
 
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/callback'];
+  const isCurrentAuthPath = isAuthPath(pathname);
   const isSessionValid = extendedSession && extendedSession.user && (extendedSession.user.id || extendedSession.user.username);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const nativeFetch = window.fetch.bind(window);
+
+    window.fetch = async (input, init) => {
+      if (shouldTriggerSessionExpiry(input) && isSessionExpiredState()) {
+        throw createSessionExpiredRequestError();
+      }
+
+      const response = await nativeFetch(input, init);
+
+      if (response.status === 401 && shouldTriggerSessionExpiry(input)) {
+        emitSessionExpired({ reason: 'global-fetch-session-expired', status: 401 });
+      }
+
+      return response;
+    };
+
+    const axiosRequestInterceptor = axios.interceptors.request.use((config) => {
+      if (shouldTriggerSessionExpiry(config.url) && isSessionExpiredState()) {
+        return Promise.reject(createSessionExpiredRequestError());
+      }
+
+      return config;
+    });
+
+    const axiosResponseInterceptor = axios.interceptors.response.use(
+      (response) => {
+        if (response.status === 401 && shouldTriggerSessionExpiry(response.config.url)) {
+          emitSessionExpired({ reason: 'global-axios-session-expired', status: 401 });
+        }
+
+        return response;
+      },
+      (error) => {
+        if (axios.isAxiosError(error) && error.response?.status === 401 && shouldTriggerSessionExpiry(error.config?.url)) {
+          emitSessionExpired({ reason: 'global-axios-session-expired', status: 401 });
+        }
+
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      window.fetch = nativeFetch;
+      axios.interceptors.request.eject(axiosRequestInterceptor);
+      axios.interceptors.response.eject(axiosResponseInterceptor);
+    };
+  }, []);
 
   // Check existing authentication using get_bk_settings API
   const checkExistingAuthentication = async () => {
@@ -139,7 +211,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const performInitialAuthCheck = async () => {
       // Only check once and skip for auth pages
-      if (hasCheckedExistingAuth || (pathname && authPaths.includes(pathname))) {
+      if (hasCheckedExistingAuth || isCurrentAuthPath) {
         setIsCheckingAuth(false);
         return;
       }
@@ -160,7 +232,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     performInitialAuthCheck();
-  }, [pathname, hasCheckedExistingAuth]);
+  }, [hasCheckedExistingAuth, isCurrentAuthPath, pathname]);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      if (isCurrentAuthPath) {
+        return;
+      }
+
+      setSessionExpiredOpen(true);
+      setIsCheckingAuth(false);
+    };
+
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired as EventListener);
+
+    return () => {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired as EventListener);
+    };
+  }, [isCurrentAuthPath]);
 
   // Process session changes
   useEffect(() => {
@@ -180,7 +269,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // If current path is auth-related page, allow access
-    if (pathname && authPaths.includes(pathname)) {
+    if (isCurrentAuthPath) {
       setIsCheckingAuth(false);
       return;
     }
@@ -197,7 +286,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // 3. Have completed the initial auth check
       // 4. Not currently checking existing auth (新增条件)
       if (pathname && !authPaths.includes(pathname) && !isAutoSigningIn && hasCheckedExistingAuth && !isCheckingExistingAuth) {
-        router.push('/auth/signin');
+        if (sessionExpiredOpen) {
+          setIsCheckingAuth(false);
+        } else {
+          router.push('/auth/signin');
+        }
       }
       return;
     }
@@ -213,7 +306,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       localStorage.setItem('locale', userLocale);
     }
-  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth]); // 添加 isCheckingExistingAuth 依赖
+  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth, isCurrentAuthPath, sessionExpiredOpen]);
+
+  const handleReloginSuccess = () => {
+    setSessionExpiredOpen(false);
+    resetSessionExpiredState();
+    message.success(t('common.reloginSuccess'));
+    window.location.reload();
+  };
 
   // Show loading state until authentication state is determined
   if ((status === 'loading' || isCheckingAuth || isAutoSigningIn || isCheckingExistingAuth) && pathname && !authPaths.includes(pathname)) {
@@ -234,6 +334,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{ token, isAuthenticated, isCheckingAuth }}>
       {children}
+      {sessionExpiredOpen && !isCurrentAuthPath && (
+        <div className="fixed inset-0 z-1200 flex items-center justify-center bg-black/35 px-4">
+          <div className="w-full max-w-130 rounded-2xl border border-(--color-border-1) bg-(--color-bg-1) p-6 shadow-2xl">
+            <div className="mb-6 text-center">
+              <div className="text-lg font-semibold text-(--color-text-1)">
+                {t('common.sessionExpiredTitle')}
+              </div>
+              <div className="mt-2 text-sm text-(--color-text-3)">
+                {t('common.sessionExpiredDescription')}
+              </div>
+            </div>
+            <SigninClient
+              mode="modal"
+              signinErrors={modalSigninErrors}
+              onAuthenticated={handleReloginSuccess}
+              showThirdPartyLogin={false}
+            />
+          </div>
+        </div>
+      )}
     </AuthContext.Provider>
   );
 };

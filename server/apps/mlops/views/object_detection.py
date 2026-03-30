@@ -37,9 +37,11 @@ from apps.mlops.serializers.algorithm_config import (
     AlgorithmConfigListSerializer,
 )
 from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+from apps.mlops.views.base import TeamModelViewSet
+from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 
 
-class ObjectDetectionDatasetViewSet(ModelViewSet):
+class ObjectDetectionDatasetViewSet(TeamModelViewSet):
     """目标检测数据集视图集"""
 
     queryset = ObjectDetectionDataset.objects.all()
@@ -79,6 +81,11 @@ class ObjectDetectionTrainDataViewSet(ModelViewSet):
     filterset_class = ObjectDetectionTrainDataFilter
     ordering = ("-id",)
     permission_key = "dataset.object_detection_train_data"
+
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
 
     @HasPermission("object_detection-View")
     def list(self, request, *args, **kwargs):
@@ -158,6 +165,11 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
     filterset_class = ObjectDetectionDatasetReleaseFilter
     ordering = ("-created_at",)
     permission_key = "dataset.object_detection_dataset_release"
+
+    def get_queryset(self):
+        return filter_queryset_by_parent_team(
+            super().get_queryset(), self.request, "dataset__team"
+        )
 
     @HasPermission("object_detection-View")
     def list(self, request, *args, **kwargs):
@@ -259,7 +271,7 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
             )
 
 
-class ObjectDetectionTrainJobViewSet(ModelViewSet):
+class ObjectDetectionTrainJobViewSet(TeamModelViewSet):
     """目标检测训练任务视图集"""
 
     queryset = ObjectDetectionTrainJob.objects.select_related(
@@ -797,7 +809,7 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             )
 
 
-class ObjectDetectionServingViewSet(ModelViewSet):
+class ObjectDetectionServingViewSet(TeamModelViewSet):
     """目标检测服务视图集"""
 
     queryset = ObjectDetectionServing.objects.select_related(
@@ -1330,7 +1342,7 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="predict")
-    @HasPermission("object_detection-View")
+    @HasPermission("object_detection-Predict")
     def predict(self, request, *args, **kwargs):
         """
         调用目标检测 serving 服务进行预测

@@ -14,7 +14,8 @@ from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
-from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
+from apps.opspilot.enum import WorkFlowTaskStatus
+from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill, WorkFlowTaskResult
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.services.skill_execute_service import SkillExecuteService
 from apps.opspilot.tasks import chat_flow_test_execute_task
@@ -574,24 +575,11 @@ def execute_chat_flow(request, bot_id, node_id):
     # 获取Bot的工作流配置
     bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
     if not bot_chat_flow:
-        return JsonResponse(
-            {
-                "result": False,
-                "message": loader.get(
-                    "error.no_chat_flow_configured",
-                    "No chat flow configured for this bot.",
-                ),
-            }
-        )
+        return JsonResponse({"result": False, "message": loader.get("error.no_chat_flow_configured", "No chat flow configured for this bot.")})
 
     # 检查工作流是否有配置数据
     if not bot_chat_flow.flow_json:
-        return JsonResponse(
-            {
-                "result": False,
-                "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty."),
-            }
-        )
+        return JsonResponse({"result": False, "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty.")})
 
     try:
         # 创建ChatFlow引擎 - 使用数据库中的工作流配置
@@ -615,22 +603,17 @@ def execute_chat_flow(request, bot_id, node_id):
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
 
         if is_test:
+            has_running_test = WorkFlowTaskResult.objects.filter(bot_work_flow__bot_id=bot_obj.id, status=WorkFlowTaskStatus.RUNNING).exists()
+            if has_running_test:
+                msg = loader.get("error.chat_flow_test_running", "A workflow test execution is already running for this bot.")
+                return JsonResponse({"result": False, "message": msg})
+
             execution_id = str(uuid.uuid4())
             input_data["entry_type"] = node_type
             input_data["execution_id"] = execution_id
 
             async_task = chat_flow_test_execute_task.delay(bot_chat_flow.id, node_id, input_data, node_type, execution_id)
-            return JsonResponse(
-                {
-                    "result": True,
-                    "data": {
-                        "status": "accepted",
-                        "execution_id": execution_id,
-                        "task_id": async_task.id,
-                    },
-                },
-                status=202,
-            )
+            return JsonResponse({"result": True, "data": {"status": "accepted", "execution_id": execution_id, "task_id": async_task.id}})
 
         # 区分流式响应节点类型：openai、agui、embedded_chat、mobile、web_chat
         stream_node_types = ["openai", "agui", "embedded_chat", "mobile", "web_chat"]

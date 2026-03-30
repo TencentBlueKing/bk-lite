@@ -418,7 +418,7 @@ const FieldList: React.FC<FieldListProps> = ({
                       <li
                         key={field}
                         className={`${searchStyle.listItem} ${isExpanded ? searchStyle.expanded : ''}`}
-                        draggable={!searchText && !isExpanded}
+                        draggable={!isExpanded}
                         onDragStart={(e) => handleDragStart(e, index)}
                         onDragEnd={handleDragEnd}
                         onDragOver={handleDragOver}
@@ -429,7 +429,7 @@ const FieldList: React.FC<FieldListProps> = ({
                       >
                         <div className={searchStyle.fieldHeader}>
                           <div className="flex items-center flex-1 min-w-0">
-                            {!searchText && (
+                            {!isExpanded && (
                               <HolderOutlined
                                 className={`${searchStyle.dragHandle} cursor-grab mr-[4px]`}
                               />

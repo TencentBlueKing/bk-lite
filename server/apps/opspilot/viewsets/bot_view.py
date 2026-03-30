@@ -6,11 +6,12 @@ from django.http import JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.opspilot.enum import BotTypeChoice, WorkFlowExecuteType
-from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, UserPin, WorkFlowConversationHistory
+from apps.opspilot.enum import BotTypeChoice, WorkFlowExecuteType, WorkFlowTaskStatus
+from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, UserPin, WorkFlowConversationHistory, WorkFlowTaskResult
 from apps.opspilot.serializers import BotSerializer
 from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
@@ -55,6 +56,25 @@ class BotViewSet(AuthViewSet):
             )
         )
         return self._list(new_queryset.order_by("-is_pinned_for_user", "-id"))
+
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+        if not isinstance(response, Response) or not isinstance(response.data, dict):
+            return response
+
+        bot_id = response.data.get("id") or kwargs.get("pk")
+        execution_id = (
+            WorkFlowTaskResult.objects.filter(
+                bot_work_flow__bot_id=bot_id,
+                status=WorkFlowTaskStatus.RUNNING,
+                finished_at__isnull=True,
+            )
+            .order_by("-run_time", "-id")
+            .values_list("execution_id", flat=True)
+            .first()
+        )
+        response.data["execution_id"] = execution_id or ""
+        return response
 
     @action(methods=["POST"], detail=True)
     @HasPermission("bot_settings-Edit")

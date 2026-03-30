@@ -20,6 +20,7 @@
     "action": "操作",
     "type": "类型",
     "status": "状态",
+    "organizations": "组织",
     "creator": "创建人",
     "owner": "所有者",
     "createdAt": "创建时间",

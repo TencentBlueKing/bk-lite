@@ -27,6 +27,7 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
   onRefresh,
   onSelectionChange,
   extraActions,
+  readonly = false,
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -44,7 +45,7 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       fixed: 'left',
       render: (_: any, { level }: AlarmTableDataItem) => {
         const target = levelList.find(
-          (item) => item.level_id === Number(level)
+          (item) => item.level_id === Number(level),
         );
         return (
           <Tag color={levelMap[level || '']}>
@@ -167,18 +168,18 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       title: t('alarmCommon.action'),
       key: 'action',
       fixed: 'right',
-      width: 220,
+      width: readonly ? 110 : 220,
       render: (_: any, record: AlarmTableDataItem) => (
         <div className="flex items-center">
           <Button
-            className="mr-[12px]"
+            className={!readonly ? 'mr-[12px]' : ''}
             type="link"
             onClick={() => onOpenDetail(record)}
           >
             {t('common.detail')}
           </Button>
-          {extraActions && extraActions(record)}
-          <AlarmAction rowData={[record]} onAction={onRefresh} />
+          {!readonly && extraActions && extraActions(record)}
+          {!readonly && <AlarmAction rowData={[record]} onAction={onRefresh} />}
         </div>
       ),
     },
@@ -186,7 +187,7 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
 
   const onOpenDetail = (
     row: AlarmTableDataItem,
-    defaultTab: string = 'baseInfo'
+    defaultTab: string = 'baseInfo',
   ) => {
     detailRef.current?.showModal({
       title: row.title,
@@ -206,9 +207,17 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
         loading={loading}
         rowKey="id"
         onChange={onChange}
-        rowSelection={{ selectedRowKeys, onChange: onSelectionChange }}
+        rowSelection={
+          readonly
+            ? undefined
+            : { selectedRowKeys, onChange: onSelectionChange }
+        }
       />
-      <AlertDetail ref={detailRef} handleAction={onRefresh} />
+      <AlertDetail
+        ref={detailRef}
+        handleAction={onRefresh}
+        readonly={readonly}
+      />
     </>
   );
 };

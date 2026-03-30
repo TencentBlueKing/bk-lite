@@ -195,6 +195,7 @@ error:
   vendor_api_base_required: Vendor API base URL is required
   vendor_api_key_required: Vendor API key is required
   vendor_sync_not_supported: Only OpenAI-compatible vendors are supported for synchronization
+  chat_flow_test_running: A workflow test execution is already running for this bot.
 tools:
   kubernetes:
     name: Kubernetes Tools

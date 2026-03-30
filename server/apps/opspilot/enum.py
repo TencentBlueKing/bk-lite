@@ -72,5 +72,6 @@ class WorkFlowExecuteType(models.TextChoices):
 class WorkFlowTaskStatus(models.TextChoices):
     """工作流任务状态枚举"""
 
+    RUNNING = "running", _("Running")
     SUCCESS = "success", _("Success")
     FAIL = "fail", _("Fail")

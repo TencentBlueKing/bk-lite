@@ -1,7 +1,7 @@
 """
 MLOps Model Mixins
 
-Shared mixin classes for mlops models to reduce code duplication.
+Shared behavioral mixin classes for mlops models.
 """
 
 
@@ -41,7 +41,9 @@ class TrainDataFileCleanupMixin:
             with transaction.atomic():
                 try:
                     # Use select_for_update to prevent race conditions
-                    old_instance = self.__class__.objects.select_for_update().get(pk=self.pk)
+                    old_instance = self.__class__.objects.select_for_update().get(
+                        pk=self.pk
+                    )
                     old_file = getattr(old_instance, file_field_name)
                     new_file = getattr(self, file_field_name)
 

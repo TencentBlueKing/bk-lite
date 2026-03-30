@@ -275,6 +275,7 @@ class WorkFlowTaskResult(models.Model):
     bot_work_flow = models.ForeignKey(BotWorkFlow, on_delete=models.CASCADE, verbose_name="机器人工作流")
     execution_id = models.CharField(max_length=36, default="", blank=True, db_index=True, verbose_name="执行实例ID")
     run_time = models.DateTimeField(auto_now_add=True, verbose_name="运行时间")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
     status = models.CharField(max_length=50, verbose_name="状态")
     input_data = models.TextField(verbose_name="输入数据")
     output_data = models.JSONField(verbose_name="输出数据", default=dict)

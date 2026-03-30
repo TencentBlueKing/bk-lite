@@ -79,7 +79,7 @@ def _verify_token(token):
     login_expired_time_set = SystemSettings.objects.filter(key="login_expired_time").first()
     login_expired_time = 3600 * 24
     if login_expired_time_set:
-        login_expired_time = int(login_expired_time_set.value) * 3600
+        login_expired_time = float(login_expired_time_set.value) * 3600
 
     if time_now - login_expired_time > user_info["login_time"]:
         raise Exception("Token is invalid")
@@ -287,7 +287,11 @@ def search_users(query_params):
 @nats_client.register
 def init_user_default_attributes(user_id, group_name, default_group_id):
     try:
-        role_ids = list(Role.objects.filter(name="guest", app__in=["opspilot", "cmdb", "monitor", "alarm", "node"]).values_list("id", flat=True))
+        role_ids = list(
+            Role.objects.filter(name="guest", app__in=["opspilot", "cmdb", "monitor", "alarm", "log", "node", "mlops", "job"]).values_list(
+                "id", flat=True
+            )
+        )
         normal_role = Role.objects.get(name="normal", app="opspilot")
         user = User.objects.get(id=user_id)
         top_group, _ = Group.objects.get_or_create(
@@ -867,7 +871,7 @@ def wechat_user_register(user_id, nick_name):
             Q(name="normal", app__in=["opspilot", "ops-console"])
             | Q(
                 name="guest",
-                app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node"],
+                app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job"],
             )
         ).values_list("id", flat=True)
     )

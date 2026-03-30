@@ -9,7 +9,7 @@
         "operateFailed": "操作失败",
         "notNotified": "未通知",
         "success": "成功",
-        "fail": "失败",
+        "failed": "失败",
         "partialSuccess": "部分成功",
         "advanced": "高级",
         "partialFailure": "部分失败",
