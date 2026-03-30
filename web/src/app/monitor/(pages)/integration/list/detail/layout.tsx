@@ -43,7 +43,7 @@ const IntegrationDetailLayout = ({
     templateType === 'custom_api'
       ? [
         {
-          title: '接入说明',
+          title: '配置',
           name: 'configure',
           icon: 'settings-fill',
           url: `/monitor/integration/list/detail/configure?${queryString}`,
@@ -51,7 +51,7 @@ const IntegrationDetailLayout = ({
         {
           title: '指标',
           name: 'metric',
-          icon: 'chart-bar',
+          icon: 'guanli',
           url: `/monitor/integration/list/detail/metric?${queryString}`,
         },
       ]
