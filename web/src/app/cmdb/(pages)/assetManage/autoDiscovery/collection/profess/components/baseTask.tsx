@@ -151,6 +151,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const [instLoading, setInstLoading] = useState(false);
     const [ipRangeOrg, setIpRangeOrg] = useState<number[]>([]);
     const [selectedInstIds, setSelectedInstIds] = useState<number[]>([]);
+    const cleanupStrategyValue = Form.useWatch('cleanupStrategy', form);
     const [instPagination, setInstPagination] = useState({
       current: 1,
       pageSize: 10,
@@ -196,6 +197,15 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         setSelectedKeys(selectedInsts.map((item) => item._id));
       }
     }, [selectedData, instData]);
+
+    useEffect(() => {
+      if (cleanupStrategyValue === 'after_expiration') {
+        const currentDays = form.getFieldValue('cleanupDays');
+        if (!currentDays || currentDays === 0) {
+          form.setFieldsValue({ cleanupDays: 3 });
+        }
+      }
+    }, [cleanupStrategyValue, form]);
 
     const fetchInstData = async (modelId: string, page = 1, pageSize = 10) => {
       try {
@@ -461,27 +471,28 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               <Radio.Group>
                 <div className="flex flex-col gap-3">
                   {/* 每天一次 */}
-                  {editingId && scan_cycle_type !== "cycle"
-                    ? (
-                      <div className="flex items-center" title={t('Collection.cycleDeprecated')}>
-                        <Radio value={CYCLE_OPTIONS.DAILY} disabled={true}>
-                          {t('Collection.dailyAt')}
-                          <Form.Item
-                            name="dailyTime"
-                            noStyle
-                            dependencies={['cycle']}
-                            rules={rules.dailyTime}
-                          >
-                            <TimePicker
-                              className="w-40 ml-2"
-                              format="HH:mm"
-                              placeholder={t('common.selectTip')}
-                            />
-                          </Form.Item>
-                        </Radio>
-                      </div>
-                    )
-                    : (null)}
+                  {editingId && scan_cycle_type !== 'cycle' ? (
+                    <div
+                      className="flex items-center"
+                      title={t('Collection.cycleDeprecated')}
+                    >
+                      <Radio value={CYCLE_OPTIONS.DAILY} disabled={true}>
+                        {t('Collection.dailyAt')}
+                        <Form.Item
+                          name="dailyTime"
+                          noStyle
+                          dependencies={['cycle']}
+                          rules={rules.dailyTime}
+                        >
+                          <TimePicker
+                            className="w-40 ml-2"
+                            format="HH:mm"
+                            placeholder={t('common.selectTip')}
+                          />
+                        </Form.Item>
+                      </Radio>
+                    </div>
+                  ) : null}
                   {/* 每隔几分钟执行一次 */}
                   <div className="flex items-center">
                     <Radio value={CYCLE_OPTIONS.INTERVAL}>
@@ -504,11 +515,15 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     </Radio>
                   </div>
                   {/* 执行一次 */}
-                  {editingId && scan_cycle_type !== "cycle"
-                    ? (<Radio value={CYCLE_OPTIONS.ONCE} disabled={true} title={t('Collection.cycleDeprecated')}>
+                  {editingId && scan_cycle_type !== 'cycle' ? (
+                    <Radio
+                      value={CYCLE_OPTIONS.ONCE}
+                      disabled={true}
+                      title={t('Collection.cycleDeprecated')}
+                    >
                       {t('Collection.executeOnce')}
-                    </Radio>)
-                    : (null)}
+                    </Radio>
+                  ) : null}
                 </div>
               </Radio.Group>
             </Form.Item>
@@ -601,20 +616,23 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                             ) {
                               return Promise.reject(
                                 new Error(
-                                  t('common.inputMsg') + t('Collection.ipRange')
-                                )
+                                  t('common.inputMsg') +
+                                    t('Collection.ipRange'),
+                                ),
                               );
                             }
 
                             const ipToNumber = (ip: string) =>
-                              ip.split('.').reduce(
-                                (acc, curr) => acc * 256 + Number(curr),
-                                0
-                              );
+                              ip
+                                .split('.')
+                                .reduce(
+                                  (acc, curr) => acc * 256 + Number(curr),
+                                  0,
+                                );
 
                             if (ipToNumber(value[0]) > ipToNumber(value[1])) {
                               return Promise.reject(
-                                new Error(t('Collection.ipRangeOrderInvalid'))
+                                new Error(t('Collection.ipRangeOrderInvalid')),
                               );
                             }
 
@@ -680,24 +698,25 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               </>
             )}
             {/* 接入点 */}
-            {normalizedTaskType !== 'k8s' && normalizedTaskType !== 'kubernetes' && (
-              <Form.Item
-                label={t('Collection.accessPoint')}
-                name="accessPointId"
-                required
-                rules={[
-                  {
-                    required: true,
-                    message: t('required'),
-                  },
-                ]}
-              >
-                <Select
-                  placeholder={t('common.selectTip')}
-                  options={accessPoints}
-                  loading={accessPointLoading}
-                />
-              </Form.Item>
+            {normalizedTaskType !== 'k8s' &&
+              normalizedTaskType !== 'kubernetes' && (
+                <Form.Item
+                  label={t('Collection.accessPoint')}
+                  name="accessPointId"
+                  required
+                  rules={[
+                    {
+                      required: true,
+                      message: t('required'),
+                    },
+                  ]}
+                >
+                  <Select
+                    placeholder={t('common.selectTip')}
+                    options={accessPoints}
+                    loading={accessPointLoading}
+                  />
+                </Form.Item>
             )}
           </div>
           {children}
@@ -737,6 +756,79 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     min={timeoutProps.min}
                     addonAfter={timeoutProps.addonAfter}
                   />
+                </Form.Item>
+                <Form.Item
+                  label={t('Collection.cleanupStrategy')}
+                  name="cleanupStrategy"
+                  initialValue="no_cleanup"
+                >
+                  <Radio.Group className="m-2">
+                    <Space direction="vertical" className="w-full gap-3">
+                      <div>
+                        <Radio value="immediately">
+                          {t('Collection.immediately')}
+                        </Radio>
+                        <div className="text-xs text-gray-400 ml-6 mt-1">
+                          {t('Collection.immediatelyDesc')}
+                        </div>
+                        <div className="text-xs text-gray-400 ml-6">
+                          {t('Collection.immediatelyTip')}
+                        </div>
+                      </div>
+                      <div>
+                        <Radio value="after_expiration">
+                          {t('Collection.afterExpiration')}
+                        </Radio>
+                        {cleanupStrategyValue === 'after_expiration' && (
+                          <div className="ml-6 mt-1 flex items-center gap-1">
+                            <span className="text-sm text-gray-600 flex-shrink-0">
+                              {t('Collection.afterExpirationPrefix')}
+                            </span>
+                            <Form.Item
+                              name="cleanupDays"
+                              noStyle
+                              initialValue={3}
+                              rules={[
+                                {
+                                  validator: (_rule, value) => {
+                                    if (
+                                      cleanupStrategyValue ===
+                                        'after_expiration' &&
+                                      !value
+                                    ) {
+                                      return Promise.reject(
+                                        new Error(t('required')),
+                                      );
+                                    }
+                                    return Promise.resolve();
+                                  },
+                                },
+                              ]}
+                            >
+                              <InputNumber min={1} max={365} className="w-20" />
+                            </Form.Item>
+                            <span className="text-sm text-gray-600 flex-shrink-0">
+                              {t('Collection.afterExpirationSuffix')}
+                            </span>
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-400 ml-6 mt-1">
+                          {t('Collection.afterExpirationTip')}
+                        </div>
+                      </div>
+                      <div>
+                        <Radio value="no_cleanup">
+                          {t('Collection.doNotClean')}
+                        </Radio>
+                        <div className="text-xs text-gray-400 ml-6 mt-1">
+                          {t('Collection.doNotCleanDesc')}
+                        </div>
+                        <div className="text-xs text-gray-400 ml-6">
+                          {t('Collection.doNotCleanTip')}
+                        </div>
+                      </div>
+                    </Space>
+                  </Radio.Group>
                 </Form.Item>
               </Collapse.Panel>
             </Collapse>
@@ -794,7 +886,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                 fetchInstData(
                   isCommonSelectInstTask ? modelId : relateType,
                   page,
-                  pageSize
+                  pageSize,
                 ),
             }}
             rowSelection={{

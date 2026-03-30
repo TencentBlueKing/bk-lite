@@ -8,6 +8,7 @@ import { CaretRightOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
+import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import { Form, Spin, Input, Collapse, Select, message } from 'antd';
 import {
@@ -116,6 +117,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
   const buildFormValues = (values: any, isCopy: boolean) => {
     const regionItem = values.credential?.regions;
     return {
+      ...getCleanupFormValues(values),
       ...values,
       taskName: isCopy ? '' : values.name,
       accessKey: isCopy ? values.credential?.accessKey : PASSWORD_PLACEHOLDER,

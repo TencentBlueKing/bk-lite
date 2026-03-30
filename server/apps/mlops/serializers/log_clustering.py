@@ -43,13 +43,8 @@ class LogClusteringTrainDataSerializer(AuthSerializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request:
-            self.include_train_data = (
-                request.query_params.get("include_train_data", "false").lower()
-                == "true"
-            )
-            self.include_metadata = (
-                request.query_params.get("include_metadata", "false").lower() == "true"
-            )
+            self.include_train_data = request.query_params.get("include_train_data", "false").lower() == "true"
+            self.include_metadata = request.query_params.get("include_metadata", "false").lower() == "true"
         else:
             self.include_train_data = False
             self.include_metadata = False
@@ -72,9 +67,7 @@ class LogClusteringTrainDataSerializer(AuthSerializer):
                 data_list = [{"log": line} for line in lines if line.strip()]
 
                 representation["train_data"] = data_list
-                logger.info(
-                    f"Successfully loaded train_data for instance {instance.id}: {len(data_list)} logs"
-                )
+                logger.info(f"Successfully loaded train_data for instance {instance.id}: {len(data_list)} logs")
 
             except Exception as e:
                 logger.error(
@@ -96,9 +89,8 @@ class LogClusteringTrainDataSerializer(AuthSerializer):
         return representation
 
     def validate_dataset(self, value):
-        assert_team_ownership(
-            value, get_current_team(self.context["request"]), "dataset"
-        )
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "dataset", request=request)
         return value
 
 
@@ -123,9 +115,8 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
         }
 
     def validate_dataset(self, value):
-        assert_team_ownership(
-            value, get_current_team(self.context["request"]), "dataset"
-        )
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "dataset", request=request)
         return value
 
     def create(self, validated_data):
@@ -141,16 +132,12 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
 
         # 如果提供了文件ID，则执行文件打包逻辑
         if train_file_id and val_file_id and test_file_id:
-            return self._create_from_files(
-                validated_data, train_file_id, val_file_id, test_file_id
-            )
+            return self._create_from_files(validated_data, train_file_id, val_file_id, test_file_id)
         else:
             # 否则使用标准创建（适用于直接上传ZIP文件的场景）
             return super().create(validated_data)
 
-    def _create_from_files(
-        self, validated_data, train_file_id, val_file_id, test_file_id
-    ):
+    def _create_from_files(self, validated_data, train_file_id, val_file_id, test_file_id):
         """
         从训练数据文件ID创建数据集发布版本（异步）
 
@@ -165,29 +152,15 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
 
         try:
             # 验证文件是否存在
-            train_obj = LogClusteringTrainData.objects.get(
-                id=train_file_id, dataset=dataset
-            )
-            val_obj = LogClusteringTrainData.objects.get(
-                id=val_file_id, dataset=dataset
-            )
-            test_obj = LogClusteringTrainData.objects.get(
-                id=test_file_id, dataset=dataset
-            )
+            train_obj = LogClusteringTrainData.objects.get(id=train_file_id, dataset=dataset)
+            val_obj = LogClusteringTrainData.objects.get(id=val_file_id, dataset=dataset)
+            test_obj = LogClusteringTrainData.objects.get(id=test_file_id, dataset=dataset)
 
             # 检查是否已有相同版本的记录（幂等性保护）
-            existing = (
-                LogClusteringDatasetRelease.objects.filter(
-                    dataset=dataset, version=version
-                )
-                .exclude(status="failed")
-                .first()
-            )
+            existing = LogClusteringDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(status="failed").first()
 
             if existing:
-                logger.info(
-                    f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}"
-                )
+                logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
                 return existing
 
             # 创建 pending 状态的发布记录
@@ -199,22 +172,16 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
                 validated_data["name"] = f"{dataset.name}_v{version}"
 
             if not description:
-                validated_data["description"] = (
-                    f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
-                )
+                validated_data["description"] = f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
 
             release = LogClusteringDatasetRelease.objects.create(**validated_data)
 
             # 触发异步任务
             from apps.mlops.tasks.log_clustering import publish_dataset_release_async
 
-            publish_dataset_release_async.delay(
-                release.id, train_file_id, val_file_id, test_file_id
-            )
+            publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
 
-            logger.info(
-                f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}"
-            )
+            logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
 
             return release
 
@@ -253,9 +220,7 @@ class LogClusteringTrainJobSerializer(AuthSerializer):
         """
         # 只在创建时验证（更新时不强制要求）
         if not self.instance and not attrs.get("dataset_version"):
-            raise serializers.ValidationError(
-                {"dataset_version": "创建训练任务时必须指定数据集版本"}
-            )
+            raise serializers.ValidationError({"dataset_version": "创建训练任务时必须指定数据集版本"})
         return super().validate(attrs)
 
     def validate_team(self, value):

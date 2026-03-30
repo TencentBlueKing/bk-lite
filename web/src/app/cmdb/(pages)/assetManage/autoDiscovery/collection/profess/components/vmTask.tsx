@@ -6,6 +6,7 @@ import styles from '../index.module.scss';
 import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
+import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { CaretRightOutlined } from '@ant-design/icons';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import { Form, Spin, Input, Switch, Collapse, InputNumber } from 'antd';
@@ -92,6 +93,7 @@ const VMTask: React.FC<VMTaskFormProps> = ({
 
   // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
   const buildFormValues = (values: any, isCopy: boolean) => ({
+    ...getCleanupFormValues(values),
     ...values,
     taskName: isCopy ? '' : values.name,
     enterType:

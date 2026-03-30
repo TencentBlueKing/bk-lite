@@ -23,6 +23,8 @@ export interface CollectTask {
   driver_type: string;
   model_id: string;
   exec_status: number;
+  data_cleanup_strategy?: string;
+  expire_days?: number;
   updated_at: string;
   message: CollectTaskMessage;
   exec_time: string | null;

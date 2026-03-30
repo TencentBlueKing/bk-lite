@@ -3,12 +3,13 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Badge, Popover, Tabs, Empty, Spin, Modal, Tooltip, Typography, message } from 'antd';
 import { BellOutlined, DeleteOutlined, CheckCircleOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
-import useApiClient from '@/utils/request';
+import useApiClient, { isSilentRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { usePolling } from '@/hooks/usePolling';
 import { useClientData } from '@/context/client';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import Icon from '@/components/icon';
+import { isSessionExpiredState } from '@/utils/sessionExpiry';
 
 interface Notification {
   id: number;
@@ -33,11 +34,17 @@ const Notifications = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const fetchUnreadCount = useCallback(async () => {
+    if (isSessionExpiredState()) {
+      return;
+    }
+
     try {
       const response = await get('/console_mgmt/notifications/unread_count/');
       setUnreadCount(response.count);
     } catch (error) {
-      console.error('Failed to fetch unread count:', error);
+      if (!isSilentRequestError(error)) {
+        console.error('Failed to fetch unread count:', error);
+      }
     }
   }, [get]);
 
@@ -45,7 +52,7 @@ const Notifications = () => {
     fetchUnreadCount();
   }, [fetchUnreadCount]);
 
-  usePolling(fetchUnreadCount, 30000, true);
+  usePolling(fetchUnreadCount, 30000, !isSessionExpiredState());
 
   const appIconMap = new Map(
     clientData
@@ -54,6 +61,10 @@ const Notifications = () => {
   );
 
   const fetchNotifications = useCallback(async (pageNum: number, isUnreadOnly: boolean) => {
+    if (isSessionExpiredState()) {
+      return;
+    }
+
     setLoading(true);
     try {
       const url = isUnreadOnly
@@ -68,7 +79,9 @@ const Notifications = () => {
       }
       setHasMore(response.count > notifications.length + response.items.length);
     } catch (error) {
-      console.error('Failed to fetch notifications:', error);
+      if (!isSilentRequestError(error)) {
+        console.error('Failed to fetch notifications:', error);
+      }
     } finally {
       setLoading(false);
     }

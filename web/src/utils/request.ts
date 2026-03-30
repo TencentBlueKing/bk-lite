@@ -2,8 +2,14 @@ import axios, { AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } 
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { useAuth } from '@/context/auth';
 import { message } from 'antd';
-import { signIn, signOut, useSession } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 import { useTranslation } from '@/utils/i18n';
+import {
+  createSessionExpiredRequestError,
+  emitSessionExpired,
+  isSessionExpiredState,
+  SESSION_EXPIRED_REQUEST_ERROR,
+} from '@/utils/sessionExpiry';
 
 const apiClient = axios.create({
   baseURL: '/api/proxy',
@@ -27,6 +33,18 @@ const handleResponse = (response: AxiosResponse, onError?: () => void) => {
   return data;
 };
 
+export const isSilentRequestError = (error: unknown) => {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    return error.code === 'ECONNABORTED' || status === 401;
+  }
+
+  return error instanceof Error && [
+    'No token available',
+    SESSION_EXPIRED_REQUEST_ERROR,
+  ].includes(error.message);
+};
+
 const useApiClient = () => {
   const { t } = useTranslation();
   const authContext = useAuth();
@@ -45,10 +63,14 @@ const useApiClient = () => {
   useEffect(() => {
     const requestInterceptor = apiClient.interceptors.request.use(
       (config: InternalAxiosRequestConfig) => {
+        if (isSessionExpiredState()) {
+          return Promise.reject(createSessionExpiredRequestError());
+        }
+
         if (!tokenRef.current) {
-          signIn();
           return Promise.reject(new Error('No token available'));
         }
+
         config.headers.Authorization = `Bearer ${tokenRef.current}`;
         return config;
       },
@@ -64,9 +86,8 @@ const useApiClient = () => {
           const { status } = error.response;
           const messageText = error.response?.data?.message;
           if (status === 401) {
-            signOut({ redirect: false }).then(() => {
-              signIn();
-            });
+            emitSessionExpired({ reason: 'api-session-expired', status });
+            return Promise.reject(error);
           } else if ([400, 403].includes(status)) {
             message.error(messageText);
             return Promise.reject(new Error(messageText));

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import useApiClient from '@/utils/request';
 import { ClientData, AppConfigItem } from '@/types/index';
+import { isSessionExpiredState } from '@/utils/sessionExpiry';
 
 interface ClientDataContextType {
   clientData: ClientData[];
@@ -65,6 +66,11 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       return;
     }
 
+    if (isSessionExpiredState()) {
+      setLoading(false);
+      return;
+    }
+
     if (apiLoading) {
       return;
     }
@@ -85,6 +91,11 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   // 获取用户配置的应用列表
   const fetchAppConfig = useCallback(async () => {
+    if (isSessionExpiredState()) {
+      setAppConfigLoading(false);
+      return [];
+    }
+
     try {
       setAppConfigLoading(true);
       const data = await get('/console_mgmt/user_app_sets/current_user_apps/');
@@ -131,6 +142,10 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, [initialize, loading, apiLoading, clientData]);
 
   const refresh = useCallback(async () => {
+    if (isSessionExpiredState()) {
+      return [];
+    }
+
     try {
       const data = await get('/core/api/get_client/');
       if (data) {

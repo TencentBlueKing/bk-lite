@@ -120,6 +120,8 @@ const StudioLogsPage: React.FC = () => {
 
       const res = await fetchWorkflowTaskResult(params);
       setData((res?.items || []).map((item: any, index: number) => {
+        const executionDuration = item.execution_duration ?? item.duration_ms ?? 0;
+
         return {
           key: index.toString(),
           id: item.id,
@@ -130,7 +132,7 @@ const StudioLogsPage: React.FC = () => {
           last_output: item.last_output,
           execute_type: item.execute_type,
           bot_work_flow: item.bot_work_flow,
-          execution_duration: item.execution_duration || 0,
+          execution_duration: Number(executionDuration) || 0,
           error_log: item.error_log || '',
           execution_id: item.execution_id || '',
         };

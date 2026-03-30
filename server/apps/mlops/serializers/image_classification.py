@@ -40,13 +40,8 @@ class ImageClassificationTrainDataSerializer(AuthSerializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request:
-            self.include_train_data = (
-                request.query_params.get("include_train_data", "false").lower()
-                == "true"
-            )
-            self.include_metadata = (
-                request.query_params.get("include_metadata", "false").lower() == "true"
-            )
+            self.include_train_data = request.query_params.get("include_train_data", "false").lower() == "true"
+            self.include_metadata = request.query_params.get("include_metadata", "false").lower() == "true"
         else:
             self.include_train_data = False
             self.include_metadata = False
@@ -64,9 +59,8 @@ class ImageClassificationTrainDataSerializer(AuthSerializer):
         return representation
 
     def validate_dataset(self, value):
-        assert_team_ownership(
-            value, get_current_team(self.context["request"]), "dataset"
-        )
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "dataset", request=request)
         return value
 
 
@@ -101,9 +95,8 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
         return value
 
     def validate_dataset(self, value):
-        assert_team_ownership(
-            value, get_current_team(self.context["request"]), "dataset"
-        )
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "dataset", request=request)
         return value
 
     def create(self, validated_data):
@@ -117,16 +110,12 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
 
         # 如果提供了文件ID，则执行文件打包逻辑
         if train_file_id and val_file_id and test_file_id:
-            return self._create_from_files(
-                validated_data, train_file_id, val_file_id, test_file_id
-            )
+            return self._create_from_files(validated_data, train_file_id, val_file_id, test_file_id)
         else:
             # 否则使用标准创建（适用于直接上传ZIP文件的场景）
             return super().create(validated_data)
 
-    def _create_from_files(
-        self, validated_data, train_file_id, val_file_id, test_file_id
-    ):
+    def _create_from_files(self, validated_data, train_file_id, val_file_id, test_file_id):
         """
         从训练数据文件ID创建数据集发布版本（异步）
 
@@ -139,29 +128,15 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
 
         try:
             # 验证文件是否存在
-            train_obj = ImageClassificationTrainData.objects.get(
-                id=train_file_id, dataset=dataset
-            )
-            val_obj = ImageClassificationTrainData.objects.get(
-                id=val_file_id, dataset=dataset
-            )
-            test_obj = ImageClassificationTrainData.objects.get(
-                id=test_file_id, dataset=dataset
-            )
+            train_obj = ImageClassificationTrainData.objects.get(id=train_file_id, dataset=dataset)
+            val_obj = ImageClassificationTrainData.objects.get(id=val_file_id, dataset=dataset)
+            test_obj = ImageClassificationTrainData.objects.get(id=test_file_id, dataset=dataset)
 
             # 检查是否已有相同版本的记录（幂等性保护）
-            existing = (
-                ImageClassificationDatasetRelease.objects.filter(
-                    dataset=dataset, version=version
-                )
-                .exclude(status="failed")
-                .first()
-            )
+            existing = ImageClassificationDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(status="failed").first()
 
             if existing:
-                logger.info(
-                    f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}"
-                )
+                logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
                 return existing
 
             # 创建 pending 状态的发布记录
@@ -173,9 +148,7 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
                 validated_data["name"] = f"{dataset.name}_{version}"
 
             if not description:
-                validated_data["description"] = (
-                    f"从数据集文件自动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
-                )
+                validated_data["description"] = f"从数据集文件自动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
 
             release = ImageClassificationDatasetRelease.objects.create(**validated_data)
 
@@ -184,13 +157,9 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
                 publish_dataset_release_async,
             )
 
-            publish_dataset_release_async.delay(
-                release.id, train_file_id, val_file_id, test_file_id
-            )
+            publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
 
-            logger.info(
-                f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}"
-            )
+            logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
 
             return release
 
@@ -214,30 +183,18 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
         # 如果未提供文件ID，dataset_file 必须提供（直接上传模式）
         if not (train_file_id and val_file_id and test_file_id):
             if not attrs.get("dataset_file"):
-                raise serializers.ValidationError(
-                    {"dataset_file": "必须提供数据集文件或训练数据文件ID"}
-                )
+                raise serializers.ValidationError({"dataset_file": "必须提供数据集文件或训练数据文件ID"})
 
         if dataset and version:
             if self.instance:
                 # 更新操作，排除自身
-                exists = (
-                    ImageClassificationDatasetRelease.objects.filter(
-                        dataset=dataset, version=version
-                    )
-                    .exclude(pk=self.instance.pk)
-                    .exists()
-                )
+                exists = ImageClassificationDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(pk=self.instance.pk).exists()
             else:
                 # 创建操作
-                exists = ImageClassificationDatasetRelease.objects.filter(
-                    dataset=dataset, version=version
-                ).exists()
+                exists = ImageClassificationDatasetRelease.objects.filter(dataset=dataset, version=version).exists()
 
             if exists:
-                raise serializers.ValidationError(
-                    {"version": f"数据集 {dataset.name} 的版本 {version} 已存在"}
-                )
+                raise serializers.ValidationError({"version": f"数据集 {dataset.name} 的版本 {version} 已存在"})
 
         return attrs
 
@@ -247,9 +204,7 @@ class ImageClassificationTrainJobSerializer(AuthSerializer):
 
     permission_key = "train_job.image_classification_train_job"
 
-    dataset_version_name = serializers.CharField(
-        source="dataset_version.name", read_only=True
-    )
+    dataset_version_name = serializers.CharField(source="dataset_version.name", read_only=True)
     config_url_display = serializers.SerializerMethodField()
 
     class Meta:
@@ -275,9 +230,7 @@ class ImageClassificationTrainJobSerializer(AuthSerializer):
 
         # 验证必须包含 hyperparams 部分
         if "hyperparams" not in value:
-            raise serializers.ValidationError(
-                "hyperopt_config 必须包含 hyperparams 字段"
-            )
+            raise serializers.ValidationError("hyperopt_config 必须包含 hyperparams 字段")
 
         hyperparams = value["hyperparams"]
         if not isinstance(hyperparams, dict):
@@ -300,9 +253,7 @@ class ImageClassificationServingSerializer(AuthSerializer):
     permission_key = "serving.image_classification_serving"
 
     train_job_name = serializers.CharField(source="train_job.name", read_only=True)
-    train_job_algorithm = serializers.CharField(
-        source="train_job.algorithm", read_only=True
-    )
+    train_job_algorithm = serializers.CharField(source="train_job.algorithm", read_only=True)
     actual_port = serializers.SerializerMethodField()
     container_status = serializers.SerializerMethodField()
 
@@ -326,9 +277,7 @@ class ImageClassificationServingSerializer(AuthSerializer):
     def validate_model_version(self, value):
         """验证模型版本格式"""
         if value != "latest" and not value.isdigit():
-            raise serializers.ValidationError(
-                "模型版本必须是 'latest' 或正整数（如：1, 2, 3）"
-            )
+            raise serializers.ValidationError("模型版本必须是 'latest' 或正整数（如：1, 2, 3）")
         return value
 
     def validate_team(self, value):

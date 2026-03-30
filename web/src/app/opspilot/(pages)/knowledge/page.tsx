@@ -11,6 +11,8 @@ import styles from '@/app/opspilot/styles/common.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import { getIconTypeByIndex } from '@/app/opspilot/utils/knowledgeBaseUtils';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
+import { isSilentRequestError } from '@/utils/request';
+import { isSessionExpiredState } from '@/utils/sessionExpiry';
 
 const { Search } = Input;
 
@@ -30,7 +32,7 @@ const KnowledgePage = () => {
   const isFetching = useRef(false);
 
   const fetchCards = useCallback(async (reset = false) => {
-    if (isFetching.current || (!reset && !hasMore)) return;
+    if (isSessionExpiredState() || isFetching.current || (!reset && !hasMore)) return;
 
     isFetching.current = true;
 
@@ -64,8 +66,10 @@ const KnowledgePage = () => {
       if (hasMoreData) {
         setCurrentPage(pageToFetch + 1);
       }
-    } catch {
-      message.error(t('common.fetchFailed'));
+    } catch (error) {
+      if (!isSilentRequestError(error) && !isSessionExpiredState()) {
+        message.error(t('common.fetchFailed'));
+      }
     } finally {
       isFetching.current = false;
       if (reset) {
@@ -77,6 +81,10 @@ const KnowledgePage = () => {
   }, [currentPage, searchTerm, hasMore]);
 
   useEffect(() => {
+    if (isSessionExpiredState()) {
+      return;
+    }
+
     setCurrentPage(1);
     setCards([]);
     setHasMore(true);
@@ -85,7 +93,7 @@ const KnowledgePage = () => {
 
   // Intersection Observer设置
   useEffect(() => {
-    if (!loadMoreRef.current || loading || loadingMore || !hasMore) return;
+    if (isSessionExpiredState() || !loadMoreRef.current || loading || loadingMore || !hasMore) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -191,10 +199,10 @@ const KnowledgePage = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-4">
           <PermissionWrapper
             requiredPermissions={['Add']}
-            className="p-4 rounded-xl flex items-center justify-center shadow-md cursor-pointer bg-[var(--color-bg)]"
+            className="bg-(--color-bg) flex items-center justify-center rounded-xl p-4 shadow-md cursor-pointer"
           >
             <div
-              className="w-full h-full flex items-center justify-center min-h-[120px]"
+              className="flex h-full min-h-30 w-full items-center justify-center"
               onClick={() => { setIsModalVisible(true); setEditingCard(null); }}
             >
               <Icon type="tianjia" className="text-2xl" />
@@ -204,7 +212,7 @@ const KnowledgePage = () => {
           {filteredCards.map((card, index) => (
             <div
               key={card.id}
-              className="p-4 rounded-xl relative shadow-md cursor-pointer bg-[var(--color-bg)]"
+              className="bg-(--color-bg) relative rounded-xl p-4 shadow-md cursor-pointer"
               onClick={() => router.push(`/opspilot/knowledge/detail?id=${card.id}&name=${card.name}&desc=${card.introduction}`)}
             >
               <div className="absolute top-6 right-2" onClick={(e) => e.stopPropagation()}>
@@ -218,12 +226,12 @@ const KnowledgePage = () => {
                 <div className="rounded-full">
                   <Icon type={getIconTypeByIndex(index)} className="text-4xl" />
                 </div>
-                <h3 className="ml-2 text-sm font-semibold truncate text-[var(--color-text-1)]" title={card.name}>
+                <h3 className="ml-2 truncate text-sm font-semibold text-(--color-text-1)" title={card.name}>
                   {card.name}
                 </h3>
               </div>
-              <p className="mt-3 mb-2 text-xs line-clamp-3 h-[50px] text-[var(--color-text-3)]">{card.introduction}</p>
-              <div className="flex items-end justify-end text-[var(--color-text-4)] font-mini w-full text-right">
+              <p className="mt-3 mb-2 h-12.5 text-xs line-clamp-3 text-(--color-text-3)">{card.introduction}</p>
+              <div className="font-mini flex w-full items-end justify-end text-right text-(--color-text-4)">
                 <span>{t('knowledge.form.owner')}: {card.created_by} ｜ {t('knowledge.form.group')}: {Array.isArray(card.team_name) ? card.team_name.join(',') : '--'}</span>
               </div>
             </div>
