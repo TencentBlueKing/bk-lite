@@ -6,23 +6,16 @@ import os
 import ssl
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
-from nats.js.api import (
-    AckPolicy,
-    ConsumerConfig,
-    DeliverPolicy,
-    RetentionPolicy,
-    StorageType,
-    StreamConfig,
-)
-from nats.js.errors import NotFoundError
 import nats.errors
-
 from core.config import ServiceConfig
+from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy, RetentionPolicy, StorageType, StreamConfig
+from nats.js.errors import NotFoundError
 from service.ansible_runner import (
     cleanup_workspace,
+    parse_ansible_output_per_host,
     prepare_adhoc_execution,
     prepare_playbook_execution,
     run_command,
@@ -30,7 +23,6 @@ from service.ansible_runner import (
     to_playbook_request,
 )
 from service.task_store import TaskStore
-
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -89,9 +81,7 @@ class AnsibleNATSService:
 
     async def _ensure_stream_and_consumer(self):
         subject_pattern = f"{self.config.js_subject_prefix}.>"
-        retry_subject = (
-            f"ansible_executor.callback.retry.{self.config.nats_instance_id}"
-        )
+        retry_subject = f"ansible_executor.callback.retry.{self.config.nats_instance_id}"
 
         owner_stream = None
         try:
@@ -108,9 +98,7 @@ class AnsibleNATSService:
             self.config.js_stream = owner_stream
 
         try:
-            retry_owner_stream = await self.js.find_stream_name_by_subject(
-                retry_subject
-            )
+            retry_owner_stream = await self.js.find_stream_name_by_subject(retry_subject)
             expected_retry_stream = f"{self.config.js_stream}_CALLBACK_RETRY"
             if retry_owner_stream != expected_retry_stream:
                 raise ValueError(
@@ -138,9 +126,7 @@ class AnsibleNATSService:
             # Stream create/update may fail with overlap when another stream already owns this subject.
             # Surface a clearer startup error for operators.
             if "overlap" in str(err).lower():
-                owner_stream = await self.js.find_stream_name_by_subject(
-                    subject_pattern
-                )
+                owner_stream = await self.js.find_stream_name_by_subject(subject_pattern)
                 raise ValueError(
                     f"stream subject conflict: '{subject_pattern}' is already owned by '{owner_stream}'. "
                     f"Set a unique ANSIBLE_JS_NAMESPACE or ANSIBLE_JS_SUBJECT_PREFIX."
@@ -215,9 +201,7 @@ class AnsibleNATSService:
                 ) from err
             raise
 
-        retry_durable = (
-            f"{self.config.js_durable}-callback-retry-{self.config.nats_instance_id}"
-        )
+        retry_durable = f"{self.config.js_durable}-callback-retry-{self.config.nats_instance_id}"
         retry_consumer_config = ConsumerConfig(
             durable_name=retry_durable,
             ack_policy=AckPolicy.EXPLICIT,
@@ -260,9 +244,7 @@ class AnsibleNATSService:
             stream=retry_stream,
         )
 
-    async def _invoke_callback(
-        self, callback: dict[str, Any] | None, payload: dict[str, Any]
-    ):
+    async def _invoke_callback(self, callback: dict[str, Any] | None, payload: dict[str, Any]):
         if not callback or not isinstance(callback, dict):
             return
 
@@ -274,25 +256,15 @@ class AnsibleNATSService:
             logger.warning("skip invalid callback config: %s", callback)
             return
         if not subject:
-            subject = (
-                f"{namespace}.{method_name}.{instance_id}"
-                if instance_id
-                else f"{namespace}.{method_name}"
-            )
+            subject = f"{namespace}.{method_name}.{instance_id}" if instance_id else f"{namespace}.{method_name}"
 
         timeout = int(callback.get("timeout", self.config.callback_timeout))
-        request_payload = json.dumps(
-            {"args": [payload], "kwargs": {}}, ensure_ascii=False
-        ).encode("utf-8")
+        request_payload = json.dumps({"args": [payload], "kwargs": {}}, ensure_ascii=False).encode("utf-8")
 
         await self.nc.request(subject, request_payload, timeout=timeout)
-        logger.info(
-            "callback sent: subject=%s task_id=%s", subject, payload.get("task_id")
-        )
+        logger.info("callback sent: subject=%s task_id=%s", subject, payload.get("task_id"))
 
-    async def _enqueue_callback_retry(
-        self, callback: dict[str, Any], payload: dict[str, Any], reason: str
-    ):
+    async def _enqueue_callback_retry(self, callback: dict[str, Any], payload: dict[str, Any], reason: str):
         retry_payload = {
             "callback": callback,
             "payload": payload,
@@ -312,9 +284,7 @@ class AnsibleNATSService:
         error = ""
         callback = task.callback
         started_at = self._now_iso()
-        self.task_store.update_status(
-            task.task_id, "running", {"started_at": started_at}, self._now_iso()
-        )
+        self.task_store.update_status(task.task_id, "running", {"started_at": started_at}, self._now_iso())
 
         try:
             if task.task_type == "adhoc":
@@ -334,29 +304,31 @@ class AnsibleNATSService:
         if not success and not error:
             error = f"ansible {task.task_type} failed with exit code {code}"
 
+        parsed_results = parse_ansible_output_per_host(output) if output else []
+
         result = {
             "task_id": task.task_id,
             "task_type": task.task_type,
             "status": "success" if success else "failed",
             "success": success,
-            "result": output,
+            "result": parsed_results if parsed_results else output,
+            "result_summary": {
+                "stdout_combined": output,
+                "host_count": len(parsed_results),
+            },
             "error": error,
             "started_at": started_at,
             "finished_at": self._now_iso(),
         }
         final_status = "success" if success else "failed"
-        self.task_store.update_status(
-            task.task_id, final_status, result, self._now_iso()
-        )
+        self.task_store.update_status(task.task_id, final_status, result, self._now_iso())
 
         if callback:
             try:
                 await self._invoke_callback(callback, result)
             except Exception as callback_err:
                 result["callback_error"] = str(callback_err)
-                self.task_store.update_status(
-                    task.task_id, "callback_failed", result, self._now_iso()
-                )
+                self.task_store.update_status(task.task_id, "callback_failed", result, self._now_iso())
                 await self._enqueue_callback_retry(callback, result, str(callback_err))
 
         return result
@@ -384,9 +356,7 @@ class AnsibleNATSService:
                 await self._run_task(task)
                 await msg.ack()
             except Exception as err:
-                logger.exception(
-                    "worker task failed worker=%s error=%s", worker_id, err
-                )
+                logger.exception("worker task failed worker=%s error=%s", worker_id, err)
                 meta = msg.metadata
                 if meta and meta.num_delivered >= self.config.js_max_deliver:
                     dlq_payload = {
@@ -457,9 +427,7 @@ class AnsibleNATSService:
                 return
             task = self.task_store.get_task(task_id)
             if not task:
-                await msg.respond(
-                    _build_error(instance_id, "", f"task not found: {task_id}")
-                )
+                await msg.respond(_build_error(instance_id, "", f"task not found: {task_id}"))
                 return
             await msg.respond(
                 json.dumps(
@@ -498,9 +466,7 @@ class AnsibleNATSService:
 
         if inserted:
             subject = f"{self.config.js_subject_prefix}.{task_type}.{instance_id}"
-            await self.js.publish(
-                subject, json.dumps(task.to_json(), ensure_ascii=False).encode("utf-8")
-            )
+            await self.js.publish(subject, json.dumps(task.to_json(), ensure_ascii=False).encode("utf-8"))
             await msg.respond(self._build_accepted(task_id, duplicate=False))
         else:
             await msg.respond(self._build_accepted(task_id, duplicate=True))
@@ -558,9 +524,7 @@ class AnsibleNATSService:
             logger.info("subscribed subject: %s", subject)
 
         worker_count = max(1, self.config.max_workers)
-        self.workers = [
-            asyncio.create_task(self._worker_loop(i + 1)) for i in range(worker_count)
-        ]
+        self.workers = [asyncio.create_task(self._worker_loop(i + 1)) for i in range(worker_count)]
         self.workers.append(asyncio.create_task(self._callback_retry_loop()))
         logger.info("workers started: %s", worker_count)
 
