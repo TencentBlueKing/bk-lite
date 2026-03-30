@@ -27,13 +27,13 @@ interface ApiResponse<T> {
   items: T[];
 }
 
-const EntityList = <T,>({ 
-  endpoint, 
-  queryParams = {}, 
-  CardComponent, 
-  ModifyModalComponent, 
-  itemTypeSingle, 
-  beforeDelete, 
+const EntityList = <T,>({
+  endpoint,
+  queryParams = {},
+  CardComponent,
+  ModifyModalComponent,
+  itemTypeSingle,
+  beforeDelete,
   onCreateFromTemplate,
   onTogglePin,
   pageSize = 20
@@ -99,15 +99,15 @@ const EntityList = <T,>({
 
   const fetchItems = useCallback(async (reset = false) => {
     if (isFetching.current || (!reset && !hasMore)) return;
-    
+
     isFetching.current = true;
-    
+
     if (reset) {
       setLoading(true);
     } else {
       setLoadingMore(true);
     }
-    
+
     try {
       const params = {
         ...queryParams,
@@ -116,7 +116,7 @@ const EntityList = <T,>({
         name: searchTerm,
         ...(selectedTypes.length > 0 && { [searchField]: selectedTypes.join(',') })
       };
-      
+
       const queryString = new URLSearchParams(
         Object.entries(params).reduce((acc, [key, value]) => {
           if (value !== undefined && value !== null) {
@@ -126,17 +126,17 @@ const EntityList = <T,>({
         }, {} as Record<string, string>)
       ).toString();
       const response = await get<ApiResponse<T>>(`${endpoint}?${queryString}`);
-      
+
       if (reset) {
         setItems(response.items || []);
         setCurrentPage(1);
       } else {
         setItems(prevItems => [...prevItems, ...(response.items || [])]);
       }
-      
+
       const hasMoreData = (reset ? 1 : currentPage) * pageSize < (response.count || 0);
       setHasMore(hasMoreData);
-      
+
       if (hasMoreData) {
         setCurrentPage(prev => prev + 1);
       }
@@ -306,9 +306,9 @@ const EntityList = <T,>({
               requiredPermissions={['Add']}
               className={`shadow-md p-4 rounded-xl flex items-center justify-center cursor-pointer ${styles.addNew}`}
             >
-              <div className="w-full h-full flex flex-col items-center justify-center min-h-[150px] pl-10">
+              <div className="w-full h-full flex flex-col items-center justify-center min-h-37.5 pl-10">
                 <div
-                  className="w-full flex items-center justify-start cursor-pointer hover:text-[var(--color-primary)]"
+                  className="w-full flex items-center justify-start cursor-pointer hover:text-(--color-primary)"
                   onClick={() => { setIsModalVisible(true); setEditingItem(null); }}
                 >
                   <div className="flex items-start mb-4">
@@ -317,7 +317,7 @@ const EntityList = <T,>({
                   </div>
                 </div>
                 <div
-                  className="w-full flex items-center justify-start cursor-pointer hover:text-[var(--color-primary)]"
+                  className="w-full flex items-center justify-start cursor-pointer hover:text-(--color-primary)"
                   onClick={handleCreateFromTemplate}
                 >
                   <div className="flex items-start">
@@ -333,7 +333,7 @@ const EntityList = <T,>({
               className={`shadow-md p-4 rounded-xl flex items-center justify-center cursor-pointer ${styles.addNew}`}
             >
               <div
-                className="w-full h-full flex items-center justify-center min-h-[150px]"
+                className="w-full h-full flex items-center justify-center min-h-37.5"
                 onClick={() => { setIsModalVisible(true); setEditingItem(null); }}
               >
                 <div className="text-center">

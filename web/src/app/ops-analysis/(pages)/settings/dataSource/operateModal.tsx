@@ -667,17 +667,27 @@ const OperateModal: React.FC<OperateModalProps> = ({
             },
           ]}
         >
-          <Checkbox.Group
-            options={namespaceList.map((ns: NamespaceItem) => ({
-              label: ns.name,
-              value: ns.id,
-            }))}
-            disabled={namespaceLoading}
-          />
-          {namespaceLoading && (
+          {namespaceLoading ? (
             <div style={{ textAlign: 'center', padding: '8px 0' }}>
               <Spin size="small" />
             </div>
+          ) : namespaceList.length === 0 ? (
+            <div
+              style={{
+                paddingLeft: '4px',
+                color: 'var(--color-text-4)',
+                fontSize: '13px',
+              }}
+            >
+              {t('common.noData')}
+            </div>
+          ) : (
+            <Checkbox.Group
+              options={namespaceList.map((ns: NamespaceItem) => ({
+                label: ns.name,
+                value: ns.id,
+              }))}
+            />
           )}
         </Form.Item>
         <Form.Item
@@ -692,17 +702,27 @@ const OperateModal: React.FC<OperateModalProps> = ({
             },
           ]}
         >
-          <Checkbox.Group
-            options={tagList.map((tag: TagItem) => ({
-              label: tag.name,
-              value: tag.id,
-            }))}
-            disabled={tagsLoading}
-          />
-          {tagsLoading && (
+          {tagsLoading ? (
             <div style={{ textAlign: 'center', padding: '8px 0' }}>
               <Spin size="small" />
             </div>
+          ) : tagList.length === 0 ? (
+            <div
+              style={{
+                paddingLeft: '4px',
+                color: 'var(--color-text-4)',
+                fontSize: '13px',
+              }}
+            >
+              {t('common.noData')}
+            </div>
+          ) : (
+            <Checkbox.Group
+              options={tagList.map((tag: TagItem) => ({
+                label: tag.name,
+                value: tag.id,
+              }))}
+            />
           )}
         </Form.Item>
         <Form.Item

@@ -71,15 +71,17 @@ def ansible_task_callback(data: dict):
     """
     Ansible 任务执行回调
 
-    由 Ansible Executor 执行完成后调用，更新 JobExecution 状态和结果。
+    由新版本 Ansible Executor 执行完成后调用，更新 JobExecution 状态和结果。
+
+    仅支持结构化的 per-host 结果数组，不再兼容旧版字符串输出。
 
     Args:
         data: 回调数据，包含以下字段：
             - task_id: 任务ID（对应 JobExecution.id）
             - task_type: 任务类型（adhoc/playbook）
             - status: 执行状态（success/failed）
-            - success: 是否成功
-            - result: ansible 命令输出
+            - success: 任务级是否成功
+            - result: per-host 结果数组，每项至少包含 host/status/stdout/stderr/exit_code/error_message
             - error: 错误信息
             - started_at: 开始时间（ISO格式）
             - finished_at: 结束时间（ISO格式）
@@ -87,6 +89,8 @@ def ansible_task_callback(data: dict):
     Returns:
         {"success": True/False, "message": "..."}
     """
+    logger.info(f"[ansible_task_callback] {data}")
+
     task_id = data.get("task_id")
     if not task_id:
         logger.warning("[ansible_task_callback] 缺少 task_id")
@@ -103,40 +107,92 @@ def ansible_task_callback(data: dict):
         logger.info(f"[ansible_task_callback] 任务已处于终态: task_id={task_id}, status={execution.status}")
         return {"success": True, "message": "任务已处理"}
 
-    # 解析回调数据
-    success = data.get("success", False)
-    result_output = data.get("result", "")
+    # 解析新版本结构化回调数据
+    raw_result = data.get("result", [])
     error_output = data.get("error", "")
     finished_at_str = data.get("finished_at")
-
-    # 确定最终状态
-    final_status = ExecutionStatus.SUCCESS if success else ExecutionStatus.FAILED
-
-    # 构建执行结果
     target_list = execution.target_list or []
     execution_results = []
+
+    if not (isinstance(raw_result, list) and raw_result and all(isinstance(item, dict) for item in raw_result)):
+        logger.warning(f"[ansible_task_callback] 非法的新版本结果格式: task_id={task_id}, result={raw_result}")
+        return {"success": False, "message": "非法的新版本结果格式"}
+
+    target_map = {}
     for target_info in target_list:
-        target_result = {
-            "target_key": str(target_info.get("target_id", "")),
-            "name": target_info.get("name", ""),
-            "ip": target_info.get("ip", ""),
-            "status": final_status,
-            "stdout": result_output,
-            "stderr": error_output,
-            "exit_code": 0 if success else 1,
-            "error_message": error_output if not success else "",
-            "started_at": execution.started_at.isoformat() if execution.started_at else "",
-            "finished_at": finished_at_str or timezone.now().isoformat(),
-        }
-        execution_results.append(target_result)
+        target_map[str(target_info.get("ip", ""))] = target_info
+        target_map[str(target_info.get("target_id", ""))] = target_info
+
+    seen_target_keys = set()
+    for host_result in raw_result:
+        host_key = str(host_result.get("host", ""))
+        target_info = target_map.get(host_key)
+        if not target_info:
+            logger.warning(f"[ansible_task_callback] 结果中的主机未匹配到目标: task_id={task_id}, host={host_key}")
+            return {"success": False, "message": f"结果中的主机未匹配到目标: {host_key}"}
+
+        target_key = str(target_info.get("target_id", ""))
+        if target_key in seen_target_keys:
+            logger.warning(f"[ansible_task_callback] 结果中的主机重复: task_id={task_id}, host={host_key}")
+            return {"success": False, "message": f"结果中的主机重复: {host_key}"}
+        seen_target_keys.add(target_key)
+
+        host_status = host_result.get("status")
+        final_status = ExecutionStatus.SUCCESS if host_status == "success" else ExecutionStatus.FAILED
+        execution_results.append(
+            {
+                "target_key": target_key,
+                "name": target_info.get("name", host_key),
+                "ip": target_info.get("ip", host_key),
+                "status": final_status,
+                "stdout": str(host_result.get("stdout", "")),
+                "stderr": str(host_result.get("stderr", "")),
+                "exit_code": host_result.get("exit_code", 0),
+                "error_message": str(host_result.get("error_message", "")),
+                "started_at": execution.started_at.isoformat() if execution.started_at else "",
+                "finished_at": finished_at_str or timezone.now().isoformat(),
+            }
+        )
+
+    if len(execution_results) < len(target_list):
+        existing_keys = {item["target_key"] for item in execution_results}
+        for target_info in target_list:
+            target_key = str(target_info.get("target_id", ""))
+            if target_key in existing_keys:
+                continue
+            execution_results.append(
+                {
+                    "target_key": target_key,
+                    "name": target_info.get("name", ""),
+                    "ip": target_info.get("ip", ""),
+                    "status": ExecutionStatus.FAILED,
+                    "stdout": "",
+                    "stderr": str(error_output or "未收到该目标执行结果"),
+                    "exit_code": 1,
+                    "error_message": str(error_output or "未收到该目标执行结果"),
+                    "started_at": execution.started_at.isoformat() if execution.started_at else "",
+                    "finished_at": finished_at_str or timezone.now().isoformat(),
+                }
+            )
 
     # 更新执行记录
-    execution.status = final_status
+    execution.status = (
+        ExecutionStatus.FAILED if any(item.get("status") == ExecutionStatus.FAILED for item in execution_results) else ExecutionStatus.SUCCESS
+    )
     execution.execution_results = execution_results
     execution.finished_at = timezone.now()
-    execution.success_count = len(target_list) if success else 0
-    execution.failed_count = 0 if success else len(target_list)
-    execution.save(update_fields=["status", "execution_results", "finished_at", "success_count", "failed_count", "updated_at"])
+    execution.success_count = sum(1 for item in execution_results if item.get("status") == ExecutionStatus.SUCCESS)
+    execution.failed_count = sum(1 for item in execution_results if item.get("status") == ExecutionStatus.FAILED)
+    execution.save(
+        update_fields=[
+            "status",
+            "execution_results",
+            "finished_at",
+            "success_count",
+            "failed_count",
+            "updated_at",
+        ]
+    )
 
-    logger.info(f"[ansible_task_callback] 任务完成: task_id={task_id}, status={final_status}")
+    logger.info(f"[ansible_task_callback] 任务完成: task_id={task_id}, status={execution.status}")
     return {"success": True, "message": "回调处理成功"}

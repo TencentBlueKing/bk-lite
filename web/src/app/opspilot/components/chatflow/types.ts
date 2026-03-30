@@ -118,6 +118,8 @@ export interface ChatflowNodeData {
   type: NodeType;
   config?: NodeConfig;
   description?: string;
+  executionStatus?: 'pending' | 'running' | 'completed' | 'failed' | string;
+  executionDuration?: number | null;
   _timestamp?: number;
   [key: string]: unknown;
 }
@@ -128,11 +130,29 @@ export interface ChatflowNode extends Node {
 
 export interface ChatflowEditorRef {
   clearCanvas: () => void;
+  openExecutionPreview: () => void;
+  closeExecutionPreview: () => void;
+}
+
+export interface ChatflowExecutionSummary {
+  status: 'idle' | 'running' | 'success' | 'failed';
+  title?: string;
+  reason?: string | null;
+}
+
+export interface ChatflowExecutionState {
+  summary: ChatflowExecutionSummary;
+  previewOpen: boolean;
+  latestExecutionId: string;
+  openPreview: () => void;
+  closePreview: () => void;
 }
 
 export interface ChatflowEditorProps {
   onSave?: (nodes: Node[], edges: import('@xyflow/react').Edge[]) => void;
   initialData?: { nodes: Node[], edges: import('@xyflow/react').Edge[] } | null;
+  initialExecutionId?: string | null;
+  onExecutionStateChange?: (state: ChatflowExecutionState) => void;
 }
 
 export const isChatflowNode = (node: Node): node is ChatflowNode => {

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { PlayCircleOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, CloseOutlined, LoadingOutlined, CheckOutlined, ExclamationOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import type { ChatflowNodeData } from '../types';
@@ -14,6 +14,8 @@ interface BaseNodeProps {
   data: ChatflowNodeData;
   id: string;
   selected?: boolean;
+  executionStatus?: 'pending' | 'running' | 'completed' | 'failed' | string;
+  executionDuration?: number | null;
   onConfig: (id: string) => void;
   onDelete?: (id: string) => void;
   icon: string;
@@ -30,6 +32,8 @@ export const BaseNode = ({
   data,
   id,
   selected,
+  executionStatus,
+  executionDuration,
   onConfig,
   onDelete,
   icon,
@@ -42,6 +46,40 @@ export const BaseNode = ({
   outputHandleIds = []
 }: BaseNodeProps) => {
   const { t } = useTranslation();
+  const normalizedStatus = executionStatus === 'completed' || executionStatus === 'failed' || executionStatus === 'running' || executionStatus === 'pending'
+    ? executionStatus
+    : undefined;
+  const isPending = normalizedStatus === 'pending';
+  const isCompleted = normalizedStatus === 'completed';
+  const isFailed = normalizedStatus === 'failed';
+  const isRunning = normalizedStatus === 'running';
+  let executionStateClassName = '';
+
+  if (isPending) {
+    executionStateClassName = styles.nodePending;
+  } else if (isCompleted) {
+    executionStateClassName = styles.nodeCompleted;
+  } else if (isFailed) {
+    executionStateClassName = styles.nodeFailed;
+  } else if (isRunning) {
+    executionStateClassName = styles.nodeRunning;
+  }
+
+  const renderStatusIcon = () => {
+    if (isRunning) {
+      return <LoadingOutlined spin />;
+    }
+
+    if (isCompleted) {
+      return <CheckOutlined />;
+    }
+
+    if (isFailed) {
+      return <ExclamationOutlined />;
+    }
+
+    return <span className={styles.statusIconHollow} />;
+  };
 
   const handleNodeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -65,14 +103,14 @@ export const BaseNode = ({
 
   return (
     <div
-      className={`${styles.nodeContainer} ${selected ? styles.selected : ''} group relative cursor-pointer`}
+      className={`${styles.nodeContainer} ${executionStateClassName} ${selected ? styles.selected : ''} group relative cursor-pointer`}
       onClick={handleNodeClick}
     >
       {hasInput && (
         <Handle
           type="target"
           position={Position.Left}
-          className={`${handleColorClasses[color as keyof typeof handleColorClasses] || handleColorClasses.blue} !border-2 !border-white shadow-md`}
+          className={`${handleColorClasses[color as keyof typeof handleColorClasses] || handleColorClasses.blue} border-2! border-white! shadow-md`}
           isConnectable={true}
           isConnectableStart={false}
           isConnectableEnd={true}
@@ -90,6 +128,11 @@ export const BaseNode = ({
       <div className={styles.nodeHeader}>
         <Icon type={icon} className={`${styles.nodeIcon} text-${color}-500`} />
         <span className={styles.nodeTitle}>{data.label}</span>
+        {normalizedStatus && (
+          <span className={styles.nodeStatusBadge} data-status={normalizedStatus}>
+            {renderStatusIcon()}
+          </span>
+        )}
         {isTriggerNode && (
           <button
             onClick={handleExecuteClick}
@@ -102,6 +145,9 @@ export const BaseNode = ({
       </div>
 
       <div className={styles.nodeContent}>
+        {executionDuration !== undefined && executionDuration !== null && !isCompleted && (
+          <div className={styles.nodeExecutionMeta}>{executionDuration}ms</div>
+        )}
         <div className={styles.nodeConfigInfo}>
           {formatConfigInfo(data, t)}
         </div>
@@ -116,7 +162,7 @@ export const BaseNode = ({
         <Handle
           type="source"
           position={Position.Right}
-          className={`${handleColorClasses[color as keyof typeof handleColorClasses] || handleColorClasses.blue} !border-2 !border-white shadow-md`}
+          className={`${handleColorClasses[color as keyof typeof handleColorClasses] || handleColorClasses.blue} border-2! border-white! shadow-md`}
           isConnectable={true}
           isConnectableStart={true}
           isConnectableEnd={false}
@@ -128,12 +174,12 @@ export const BaseNode = ({
           {Array.from({ length: multipleOutputsCount }).map((_, index) => {
             const total = multipleOutputsCount;
             const topPercent = ((index + 1) / (total + 1)) * 100;
-            const colors = ['!bg-blue-500', '!bg-green-500', '!bg-purple-500', '!bg-orange-500', '!bg-pink-500', '!bg-cyan-500'];
+            const colors = ['bg-blue-500!', 'bg-green-500!', 'bg-purple-500!', 'bg-orange-500!', 'bg-pink-500!', 'bg-cyan-500!'];
             const colorClass = colors[index % colors.length];
             const label = outputLabels[index] || `${index + 1}`;
             // 使用自定义 Handle ID，如果没有则使用默认的 output-{index}
             const handleId = outputHandleIds[index] || `output-${index}`;
-            
+
             return (
               <React.Fragment key={handleId}>
                 <Handle
@@ -141,8 +187,8 @@ export const BaseNode = ({
                   type="source"
                   position={Position.Right}
                   id={handleId}
-                  className={`${colorClass} !border-2 !border-white shadow-md`}
-                  style={{ 
+                  className={`${colorClass} border-2! border-white! shadow-md`}
+                  style={{
                     top: `${topPercent}%`,
                     transform: 'translateY(-50%)',
                     width: '14px',
@@ -154,9 +200,9 @@ export const BaseNode = ({
                   isConnectableEnd={false}
                 />
                 {label && (
-                  <span 
+                  <span
                     className="absolute text-xs px-2 py-1 rounded bg-white shadow-sm border border-gray-200 font-medium pointer-events-none whitespace-nowrap"
-                    style={{ 
+                    style={{
                       top: `${topPercent}%`,
                       left: '100%',
                       marginLeft: '8px',

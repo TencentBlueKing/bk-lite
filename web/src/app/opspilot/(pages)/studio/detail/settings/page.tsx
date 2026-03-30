@@ -11,6 +11,7 @@ import { Skill } from '@/app/opspilot/types/skill';
 import { CustomChatMessage } from '@/app/opspilot/types/global';
 import OperateModal from '@/app/opspilot/components/studio/operateModal';
 import CustomChat from '@/app/opspilot/components/custom-chat';
+import type { ChatflowExecutionState } from '@/app/opspilot/components/chatflow/types';
 import PermissionWrapper from '@/components/permission';
 import styles from '@/app/opspilot/styles/common.module.scss';
 import Icon from '@/components/icon';
@@ -21,6 +22,9 @@ import { useStudio } from '@/app/opspilot/context/studioContext';
 
 const { Option } = Select;
 const { TextArea } = Input;
+
+const actionButtonClassName = 'inline-flex h-7 items-center rounded-md px-2.5 text-[11px] font-medium leading-none';
+const actionTagClassName = 'mb-0 mr-0 inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium leading-none';
 
 const StudioSettingsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -44,6 +48,14 @@ const StudioSettingsPage: React.FC = () => {
   const [botType, setBotType] = useState<number>(1);
   // Move workflow data state to top level
   const [workflowData, setWorkflowData] = useState<{ nodes: any[], edges: any[] }>({ nodes: [], edges: [] });
+  const [initialExecutionId, setInitialExecutionId] = useState<string | null>(null);
+  const [chatflowExecutionState, setChatflowExecutionState] = useState<ChatflowExecutionState>({
+    summary: { status: 'idle' },
+    previewOpen: false,
+    latestExecutionId: '',
+    openPreview: () => {},
+    closePreview: () => {},
+  });
 
   // Track unsaved changes for workflow
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -75,6 +87,7 @@ const StudioSettingsPage: React.FC = () => {
 
         const currentBotType = botData.bot_type || 1;
         setBotType(currentBotType);
+        setInitialExecutionId(currentBotType === 3 ? botData.execution_id || null : null);
 
         // Handle workflow data for workflow bot type
         if (currentBotType === 3 && botData.workflow_data) {
@@ -94,6 +107,7 @@ const StudioSettingsPage: React.FC = () => {
         } else {
           // Non-workflow type, clear workflow data
           setWorkflowData({ nodes: [], edges: [] });
+          setInitialExecutionId(null);
         }
 
         let initialRasaModel = botData.rasa_model;
@@ -236,7 +250,7 @@ const StudioSettingsPage: React.FC = () => {
       {online && (
         <Menu.Item key="offline" onClick={toggleOnline}>
           <div className="flex justify-end items-center">
-            <span className="mr-[5px] text-gray-500">{t('studio.off')}</span>
+            <span className="mr-1.25 text-gray-500">{t('studio.off')}</span>
             <Icon type="offline" />
           </div>
         </Menu.Item>
@@ -413,7 +427,7 @@ const StudioSettingsPage: React.FC = () => {
       {online && (
         <Menu.Item key="offline" onClick={toggleOnline}>
           <div className="flex justify-end items-center">
-            <span className="mr-[5px] text-gray-500">{t('studio.off')}</span>
+            <span className="mr-1.25 text-gray-500">{t('studio.off')}</span>
             <Icon type="offline" />
           </div>
         </Menu.Item>
@@ -421,27 +435,89 @@ const StudioSettingsPage: React.FC = () => {
     </Menu>
   );
 
+  const renderChatflowExecutionAction = () => {
+    const { summary, previewOpen, latestExecutionId, openPreview } = chatflowExecutionState;
+    if (summary.status === 'idle') {
+      return null;
+    }
+
+    const label = summary.status === 'running'
+      ? t('chatflow.preview.running')
+      : summary.status === 'failed'
+        ? t('chatflow.preview.failed')
+        : t('chatflow.preview.success');
+
+    const statusColor = summary.status === 'running'
+      ? 'processing'
+      : summary.status === 'failed'
+        ? 'error'
+        : 'success';
+
+    const logButton = (
+      <Button
+        size="small"
+        type={previewOpen ? 'primary' : 'default'}
+        className={actionButtonClassName}
+        onClick={openPreview}
+      >
+        {t('chatflow.preview.logTitle')}
+      </Button>
+    );
+
+    const statusTag = (
+      <Tag color={statusColor} className={actionTagClassName}>
+        {label}
+      </Tag>
+    );
+
+    if (summary.status === 'failed' && summary.reason) {
+      return (
+        <div className="flex items-center gap-2">
+          {logButton}
+          <span title={summary.reason}>{statusTag}</span>
+        </div>
+      );
+    }
+
+    if (latestExecutionId) {
+      return (
+        <div className="flex items-center gap-2">
+          <span title={latestExecutionId}>{logButton}</span>
+          <span title={latestExecutionId}>{statusTag}</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-2">
+        {logButton}
+        {statusTag}
+      </div>
+    );
+  };
+
   // Render chatflow interface for bot_type 3
   if (botType === 3) {
     return (
       <div className="relative flex w-full h-full">
         {(pageLoading || saveLoading) && (
           <div
-            className={`absolute inset-0 flex justify-center items-center min-h-[500px] ${overlayBgClass} bg-opacity-50 z-50`}>
+            className={`absolute inset-0 flex justify-center items-center min-h-125 ${overlayBgClass} bg-opacity-50 z-50`}>
             <Spin size="large" />
           </div>
         )}
         {!pageLoading && (
           <div className="w-full flex flex-col h-full">
-            <div className="absolute top-0 right-0 flex items-center space-x-4 z-10">
+            <div className="absolute top-0 right-0 z-10 flex items-center gap-2">
+              {renderChatflowExecutionAction()}
               <Tag
                 color={online ? 'green' : ''}
-                className={`${styles.statusTag} ${online ? styles.online : styles.offline}`}
+                className={`${styles.statusTag} ${actionTagClassName} ${online ? styles.online : styles.offline}`}
               >
                 {online ? t('studio.on') : t('studio.off')}
               </Tag>
               <Dropdown overlay={chatflowMenu} trigger={['click']}>
-                <Button icon={<DownOutlined />} size="small" type="primary">
+                <Button icon={<DownOutlined />} size="small" type="primary" className={actionButtonClassName}>
                   {t('common.settings')}
                 </Button>
               </Dropdown>
@@ -453,6 +529,8 @@ const StudioSettingsPage: React.FC = () => {
               onClear={handleClearCanvas}
               onSaveWorkflow={handleSaveWorkflow}
               workflowData={workflowData}
+              initialExecutionId={initialExecutionId}
+              onExecutionStateChange={setChatflowExecutionState}
             />
           </div>
         )}
@@ -465,22 +543,22 @@ const StudioSettingsPage: React.FC = () => {
     <div className="relative flex w-full">
       {(pageLoading || saveLoading) && (
         <div
-          className={`absolute inset-0 flex justify-center items-center min-h-[500px] ${overlayBgClass} bg-opacity-50 z-50`}>
+          className={`absolute inset-0 flex justify-center items-center min-h-125 ${overlayBgClass} bg-opacity-50 z-50`}>
           <Spin size="large" />
         </div>
       )}
       {!pageLoading && (
         <div className={`w-full flex transition-all ${showCustomChat ? 'justify-between' : 'justify-center'}`}>
           <div className={`w-full sm:w-3/4 lg:w-2/3 xl:w-1/2 ${showCustomChat ? 'overflow-y-auto h-[calc(100vh-230px)]' : ''}`}>
-            <div className="absolute top-0 right-0 flex items-center space-x-4">
+            <div className="absolute top-0 right-0 flex items-center gap-2">
               <Tag
                 color={online ? 'green' : ''}
-                className={`${styles.statusTag} ${online ? styles.online : styles.offline}`}
+                className={`${styles.statusTag} ${actionTagClassName} ${online ? styles.online : styles.offline}`}
               >
                 {online ? t('studio.on') : t('studio.off')}
               </Tag>
               <Dropdown overlay={menu} trigger={['click']}>
-                <Button icon={<DownOutlined />} size="small" type="primary">
+                <Button icon={<DownOutlined />} size="small" type="primary" className={actionButtonClassName}>
                   {t('common.settings')}
                 </Button>
               </Dropdown>
@@ -488,7 +566,7 @@ const StudioSettingsPage: React.FC = () => {
             <div className="space-y-4">
               <div className="mb-6">
                 <h2 className="font-semibold mb-2 text-base">{t('studio.information')}</h2>
-                <div className="px-4 pt-[24px] border rounded-md shadow-sm">
+                <div className="border rounded-md px-4 pt-6 shadow-sm">
                   <Form form={form} labelCol={{ flex: '0 0 128px' }} wrapperCol={{ flex: '1' }}>
                     <Form.Item
                       label={t('studio.form.name')}
@@ -611,7 +689,7 @@ const StudioSettingsPage: React.FC = () => {
                         </>
                       )}
                     </div>
-                    <div className="border-t border-[var(--color-border-1)] py-4">
+                    <div className="border-t border-(--color-border-1) py-4">
                       <div className="flex items-center justify-between">
                         <span className='text-sm'>{t('studio.settings.portMapping')}</span>
                         <Switch size="small" checked={isPortMappingEnabled} onChange={(checked) => {
@@ -653,7 +731,7 @@ const StudioSettingsPage: React.FC = () => {
                               key={channel.id}
                               className={`relative flex items-center rounded-md p-4 text-center ${styles.selectedCommonItem}`}
                             >
-                              <Icon type={IconMap[channel.name]} className="text-3xl mr-[5px]" />
+                              <Icon type={IconMap[channel.name]} className="mr-1.25 text-3xl" />
                               {channel.name}
                               <CheckOutlined className={`${styles.checkedIcon}`} />
                             </div>
@@ -699,7 +777,7 @@ const StudioSettingsPage: React.FC = () => {
                             </>
                           )}
                         </div>
-                        <div className="border-t border-[var(--color-border-1)] py-4">
+                        <div className="border-t border-(--color-border-1) py-4">
                           <div className="flex items-center justify-between">
                             <span className='text-sm'>{t('studio.settings.portMapping')}</span>
                             <Switch size="small" checked={isPortMappingEnabled} onChange={(checked) => {

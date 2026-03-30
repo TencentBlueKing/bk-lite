@@ -127,7 +127,7 @@ const ProviderPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-full w-full rounded-3xl bg-white p-5 shadow-sm lg:p-6">
+    <div className="min-h-full w-full rounded-3xl">
       <div className="mb-4 flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="text-[16px] font-semibold leading-tight" style={{ color: 'var(--color-text-1)' }}>
