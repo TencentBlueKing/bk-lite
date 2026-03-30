@@ -24,6 +24,29 @@ const SECTION_TITLE_MAP: Record<ProviderResourceType, string> = {
   ocr_provider: '图像模型',
 };
 
+const SECTION_STYLE_MAP: Record<ProviderResourceType, { topGlow: string; panelGlow: string; headerBg: string }> = {
+  llm_model: {
+    topGlow: 'linear-gradient(180deg, rgba(231, 240, 253, 0.62) 0%, rgba(244, 249, 255, 0.38) 42%, rgba(255, 255, 255, 0) 100%)',
+    panelGlow: 'rgba(147, 197, 253, 0.14)',
+    headerBg: 'linear-gradient(135deg, rgba(249, 252, 255, 1) 0%, rgba(238, 246, 255, 0.94) 100%)',
+  },
+  embed_provider: {
+    topGlow: 'linear-gradient(180deg, rgba(231, 240, 253, 0.62) 0%, rgba(244, 249, 255, 0.38) 42%, rgba(255, 255, 255, 0) 100%)',
+    panelGlow: 'rgba(147, 197, 253, 0.14)',
+    headerBg: 'linear-gradient(135deg, rgba(249, 252, 255, 1) 0%, rgba(238, 246, 255, 0.94) 100%)',
+  },
+  rerank_provider: {
+    topGlow: 'linear-gradient(180deg, rgba(231, 240, 253, 0.62) 0%, rgba(244, 249, 255, 0.38) 42%, rgba(255, 255, 255, 0) 100%)',
+    panelGlow: 'rgba(147, 197, 253, 0.14)',
+    headerBg: 'linear-gradient(135deg, rgba(249, 252, 255, 1) 0%, rgba(238, 246, 255, 0.94) 100%)',
+  },
+  ocr_provider: {
+    topGlow: 'linear-gradient(180deg, rgba(231, 240, 253, 0.62) 0%, rgba(244, 249, 255, 0.38) 42%, rgba(255, 255, 255, 0) 100%)',
+    panelGlow: 'rgba(147, 197, 253, 0.14)',
+    headerBg: 'linear-gradient(135deg, rgba(249, 252, 255, 1) 0%, rgba(238, 246, 255, 0.94) 100%)',
+  },
+};
+
 const EMPTY_MODELS: ModelSectionState = {
   llm_model: [],
   embed_provider: [],
@@ -188,18 +211,33 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {MODEL_TABS.map(({ type }) => {
             const sectionModels = filteredModelsByType[type];
+            const sectionStyle = SECTION_STYLE_MAP[type];
 
             return (
               <section
                 key={type}
-                className="flex flex-col overflow-hidden rounded-2xl border bg-white"
+                className="relative flex flex-col overflow-hidden rounded-2xl border bg-white"
                 style={{
-                  borderColor: 'var(--color-border-2)',
+                  borderColor: 'rgba(191, 219, 254, 0.7)',
+                  background: 'linear-gradient(180deg, rgba(249, 252, 255, 0.97) 0%, rgba(255, 255, 255, 0.99) 34%, rgba(255, 255, 255, 1) 100%)',
+                  boxShadow: '0 14px 28px rgba(148, 163, 184, 0.08)',
                   height: 'calc((100vh - 360px) / 2)',
                   minHeight: 240,
                 }}
               >
-                <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: 'var(--color-border-2)', background: 'var(--color-bg-1)' }}>
+                <div
+                  className="pointer-events-none absolute inset-x-0 top-0 h-24"
+                  style={{ background: sectionStyle.topGlow }}
+                />
+                <div
+                  className="pointer-events-none absolute -top-7 left-10 h-20 w-36 rounded-full blur-3xl"
+                  style={{ background: sectionStyle.panelGlow }}
+                />
+
+                <div
+                  className="relative flex items-center justify-between border-b px-4 py-3"
+                  style={{ borderColor: 'rgba(191, 219, 254, 0.55)', background: sectionStyle.headerBg }}
+                >
                   <div className="flex items-center gap-2">
                     <h3 className="text-base font-semibold" style={{ color: 'var(--color-text-1)' }}>{SECTION_TITLE_MAP[type]}</h3>
                     <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>{t('provider.model.totalCount', undefined, { count: modelsByType[type].length })}</span>
@@ -210,11 +248,11 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
                 </div>
 
                 {sectionModels.length === 0 ? (
-                  <div className="flex flex-1 items-center justify-center px-4 py-8">
+                  <div className="relative flex flex-1 items-center justify-center px-4 py-8">
                     <Empty description={t('provider.model.empty')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                   </div>
                 ) : (
-                  <div className="flex-1 overflow-auto">
+                  <div className="relative flex-1 overflow-auto bg-white/82 backdrop-blur-[2px]">
                     <div className="min-w-160">
                       <div className="grid grid-cols-[1.2fr_1.4fr_1fr_88px_100px] border-b px-4 py-3 text-xs font-medium" style={{ borderColor: 'var(--color-border-2)', color: 'var(--color-text-3)' }}>
                         <span>{t('provider.model.modelName')}</span>
