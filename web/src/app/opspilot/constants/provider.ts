@@ -50,11 +50,11 @@ export const VENDOR_OPTIONS: Array<{
   defaultApiBase: string;
 }> = [
   { value: 'openai', label: 'OpenAI', icon: 'GPT', defaultApiBase: 'https://api.openai.com/v1' },
-  { value: 'azure', label: 'Azure', icon: 'Default', defaultApiBase: 'https://{resource}.openai.azure.com/' },
+  { value: 'azure', label: 'Azure', icon: 'azure', defaultApiBase: 'https://{resource}.openai.azure.com/' },
   { value: 'aliyun', label: '阿里云', icon: 'Alibaba', defaultApiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
   { value: 'zhipu', label: '智谱', icon: 'Zhipu', defaultApiBase: 'https://open.bigmodel.cn/api/paas/v4' },
   { value: 'baidu', label: '百度', icon: 'Baidu', defaultApiBase: 'https://qianfan.baidubce.com/v2' },
-  { value: 'anthropic', label: 'Anthropic', icon: 'Default', defaultApiBase: 'https://api.anthropic.com' },
+  { value: 'anthropic', label: 'Anthropic', icon: 'Anthropic', defaultApiBase: 'https://api.anthropic.com' },
   { value: 'deepseek', label: 'DeepSeek', icon: 'DeepSeek', defaultApiBase: 'https://api.deepseek.com/v1' },
   { value: 'other', label: '其他', icon: 'Default', defaultApiBase: '' },
 ];
