@@ -131,8 +131,17 @@ const buildRequestParamDocs = (doc: PushAccessDoc | null) => [
     name: 'instances[].instance_id',
     type: 'string',
     required: '是',
-    description: '监控资产实例 ID，可直接从资产列表中复制'
+    description: '实例唯一标识主维度，一级对象必填，二级对象也必须携带'
   },
+  ...((doc?.instance_id_keys || [])
+    .filter((key) => key !== 'instance_id')
+    .map((key) => ({
+      key: `instance_key_${key}`,
+      name: `instances[].${key}`,
+      type: 'string',
+      required: '是',
+      description: `实例联合标识维度 ${key}`
+    }))),
   {
     key: 'metrics',
     name: 'instances[].metrics[]',
@@ -176,6 +185,43 @@ const copyText = async (text: string, successText = '复制成功') => {
   message.success(successText);
 };
 
+const parseInternalInstanceId = (
+  internalInstanceId: string,
+  instanceIdKeys: string[]
+) => {
+  const keys = instanceIdKeys?.length ? instanceIdKeys : ['instance_id'];
+  const rawDimensions: Record<string, string> = {};
+
+  if (!internalInstanceId) {
+    return rawDimensions;
+  }
+
+  const quotedValues = Array.from(
+    internalInstanceId.matchAll(/'([^']*)'|"([^"]*)"/g)
+  ).map((match) => match[1] ?? match[2] ?? '');
+
+  const values = quotedValues.length ? quotedValues : [internalInstanceId];
+
+  keys.forEach((key, index) => {
+    rawDimensions[key] = values[index] || '';
+  });
+
+  return rawDimensions;
+};
+
+const buildInstanceIdentityLabel = (
+  instance: PushAccessInstanceItem,
+  instanceIdKeys: string[]
+) => {
+  const rawInstance =
+    instance.raw_instance ||
+    parseInternalInstanceId(instance.instance_id || '', instanceIdKeys);
+  const keys = instanceIdKeys?.length ? instanceIdKeys : ['instance_id'];
+  return keys
+    .map((key) => rawInstance[key] || '--')
+    .join(' / ');
+};
+
 const CustomApiAccess: React.FC = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
@@ -206,6 +252,8 @@ const CustomApiAccess: React.FC = () => {
   const [selectVisible, setSelectVisible] = useState(false);
   const [assetKeyword, setAssetKeyword] = useState('');
   const [draftSelectedInstanceIds, setDraftSelectedInstanceIds] = useState<React.Key[]>([]);
+  const [assetPage, setAssetPage] = useState(1);
+  const [assetPageSize, setAssetPageSize] = useState(10);
 
   const organizationOptions = useMemo(
     () =>
@@ -249,7 +297,6 @@ const CustomApiAccess: React.FC = () => {
       setDoc(data);
       setApiSecret(data?.api_secret || '');
       setApiSecretExists(Boolean(data?.api_secret_exists));
-      setSelectedInstanceIds((data?.instances || []).map((item) => item.instance_id));
     } finally {
       setLoading(false);
     }
@@ -269,12 +316,6 @@ const CustomApiAccess: React.FC = () => {
       const data = await getInstanceList(objectId, { page_size: -1 });
       const nextInstances = data?.results || [];
       setInstances(nextInstances);
-      setSelectedInstanceIds((prev) => {
-        if (!prev.length && doc?.instances?.length) {
-          return doc.instances.map((item) => item.instance_id);
-        }
-        return prev;
-      });
       return nextInstances;
     } finally {
       setInstanceLoading(false);
@@ -315,8 +356,10 @@ const CustomApiAccess: React.FC = () => {
     if (!keyword) return availableInstances;
     return availableInstances.filter((item) => {
       const name = String(item.instance_name || '').toLowerCase();
-      const id = String(item.instance_id || '').toLowerCase();
-      return name.includes(keyword) || id.includes(keyword);
+      const rawValues = Object.values(item.raw_instance || {})
+        .map((value) => String(value).toLowerCase())
+        .join(' ');
+      return name.includes(keyword) || rawValues.includes(keyword);
     });
   }, [availableInstances, assetKeyword]);
 
@@ -333,6 +376,14 @@ const CustomApiAccess: React.FC = () => {
     const source = doc?.payload_example || {};
     const selectedInstance = selectedAssets[0];
     const defaultMetric = doc?.metrics?.[0];
+    const selectedRawInstance = selectedInstance?.raw_instance || {};
+    const sourceInstance = source.instances?.[0] || {};
+    const instanceIdKeys = doc?.instance_id_keys || ['instance_id'];
+    const normalizedInstance = instanceIdKeys.reduce<Record<string, any>>((acc, key) => {
+      acc[key] =
+        selectedRawInstance[key] || sourceInstance[key] || (key === 'instance_id' ? 'demo-instance-id' : `demo-${key}`);
+      return acc;
+    }, {});
 
     return {
       ...source,
@@ -340,11 +391,8 @@ const CustomApiAccess: React.FC = () => {
       token: apiSecret || '<API_TOKEN>',
       instances: [
         {
-          ...(source.instances?.[0] || {}),
-          instance_id:
-            selectedInstance?.instance_id ||
-            source.instances?.[0]?.instance_id ||
-            'demo-instance-id',
+          ...sourceInstance,
+          ...normalizedInstance,
           metrics: [
             {
               name:
@@ -491,6 +539,7 @@ const CustomApiAccess: React.FC = () => {
   const openSelectAssetsModal = () => {
     setDraftSelectedInstanceIds(selectedInstanceIds);
     setAssetKeyword('');
+    setAssetPage(1);
     setSelectVisible(true);
   };
 
@@ -524,6 +573,7 @@ const CustomApiAccess: React.FC = () => {
           <div>
             <b className="text-[14px] flex mb-[10px] ml-[-10px]">接入配置</b>
             <Card>
+              <Space direction="vertical" size={16} className="w-full">
               <Form layout="vertical">
                 <Form.Item label="组织">
                   <div className="flex items-start gap-4">
@@ -535,23 +585,29 @@ const CustomApiAccess: React.FC = () => {
                         onChange={(value) => setSelectedOrganization(value)}
                       />
                     </div>
-                    <div className="text-[var(--color-text-3)] flex-1">
-                      默认使用右上角当前组织，也可以切换到其他有权限的组织。
-                    </div>
                   </div>
                 </Form.Item>
 
                 <Form.Item label="API 密钥">
                   <div className="flex items-start gap-4">
-                    <div className="w-[420px] rounded-md border border-[var(--color-border)] bg-[var(--color-fill-1)] px-[12px] py-[10px]">
-                      <div className="flex items-start justify-between gap-[12px]">
-                        <Typography.Text className="break-all font-mono text-[13px] leading-[1.7]">
+                    <div className="w-[560px] rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-1)] px-[14px] py-[12px] shadow-sm">
+                      <div className="flex items-center justify-between gap-[12px]">
+                        <div className="flex min-w-0 items-center gap-[10px]">
+                          <span className="rounded-md bg-[var(--color-fill-2)] px-[8px] py-[2px] text-[12px] text-[var(--color-text-2)]">
+                            Token
+                          </span>
+                        <Typography.Text
+                          className="min-w-0 flex-1 truncate font-mono text-[13px] leading-[1.7] text-[var(--color-text-1)]"
+                          title={apiSecret || '--'}
+                        >
                           {apiSecret || '--'}
                         </Typography.Text>
+                        </div>
                         <Button
-                          type="link"
+                          type="default"
+                          size="small"
                           icon={<CopyOutlined />}
-                          className="shrink-0 px-0"
+                          className="shrink-0"
                           disabled={!apiSecret}
                           onClick={() => copyText(apiSecret, 'API 密钥已复制')}
                         >
@@ -559,22 +615,13 @@ const CustomApiAccess: React.FC = () => {
                         </Button>
                       </div>
                     </div>
-                    <div className="text-[var(--color-text-3)] flex-1">
-                      当前组织对应的系统管理 API 密钥，用于第三方上报鉴权。
-                    </div>
                   </div>
                 </Form.Item>
               </Form>
-            </Card>
-          </div>
-
-          <div>
-            <b className="text-[14px] flex mb-[10px] ml-[-10px]">监控资产</b>
-            <Card>
-              <Space direction="vertical" size={16} className="w-full">
+              <div>
                 <div className="flex items-center justify-between mb-[10px]">
                   <span className="text-[14px]">
-                    监控对象
+                    监控资产
                     <span
                       className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
                       style={{ fontFamily: 'SimSun, sans-serif' }}
@@ -632,10 +679,14 @@ const CustomApiAccess: React.FC = () => {
                         key: 'instance_name'
                       },
                       {
-                        title: '实例ID',
+                        title: '实例标识',
                         dataIndex: 'instance_id',
                         key: 'instance_id',
-                        render: (value) => <Typography.Text copyable>{value}</Typography.Text>
+                        render: (_, record) => (
+                          <Typography.Text copyable>
+                            {buildInstanceIdentityLabel(record, doc?.instance_id_keys || ['instance_id'])}
+                          </Typography.Text>
+                        )
                       },
                       {
                         title: '组织',
@@ -653,6 +704,7 @@ const CustomApiAccess: React.FC = () => {
                     <Empty description="请选择或创建监控资产" />
                   </div>
                 )}
+              </div>
               </Space>
             </Card>
           </div>
@@ -732,6 +784,7 @@ const CustomApiAccess: React.FC = () => {
       <ExcelImportModal ref={importRef} onSuccess={handleImport} />
       <OperateModal
         open={selectVisible}
+        width={900}
         title="选择接入资产"
         onCancel={() => setSelectVisible(false)}
         footer={
@@ -755,9 +808,21 @@ const CustomApiAccess: React.FC = () => {
           />
           <Table
             rowKey="instance_id"
-            pagination={false}
             loading={instanceLoading}
             dataSource={selectableAssets}
+            scroll={{ x: 760, y: 420 }}
+            pagination={{
+              current: assetPage,
+              pageSize: assetPageSize,
+              total: selectableAssets.length,
+              showSizeChanger: true,
+              pageSizeOptions: ['10', '20', '50'],
+              showTotal: (total) => `共 ${total} 条`,
+              onChange: (page, pageSize) => {
+                setAssetPage(page);
+                setAssetPageSize(pageSize);
+              }
+            }}
             rowSelection={{
               selectedRowKeys: draftSelectedInstanceIds,
               onChange: (keys) => setDraftSelectedInstanceIds(keys)
@@ -766,17 +831,27 @@ const CustomApiAccess: React.FC = () => {
               {
                 title: '资产名称',
                 dataIndex: 'instance_name',
-                key: 'instance_name'
+                key: 'instance_name',
+                width: 260,
+                ellipsis: false,
+                render: (value) => value || '--'
               },
               {
-                title: '资产ID',
+                title: '实例标识',
                 dataIndex: 'instance_id',
-                key: 'instance_id'
+                key: 'instance_id',
+                width: 260,
+                render: (_, record) => (
+                  <Typography.Text copyable className="font-mono text-[13px]">
+                    {buildInstanceIdentityLabel(record, doc?.instance_id_keys || ['instance_id'])}
+                  </Typography.Text>
+                )
               },
               {
                 title: '所属组织',
                 dataIndex: 'organization',
                 key: 'organization',
+                width: 220,
                 render: (_, record) => renderOrganizationTags(record)
               }
             ]}

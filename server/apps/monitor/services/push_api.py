@@ -11,6 +11,7 @@ from apps.base.models import UserAPISecret
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import Metric, MonitorInstance, MonitorPlugin
 from apps.monitor.models.monitor_object import MonitorInstanceOrganization
+from apps.monitor.utils.dimension import build_dimensions, parse_instance_id
 from apps.rpc.system_mgmt import SystemMgmt
 from nats_client.clients import get_nc_client
 
@@ -37,18 +38,43 @@ class PushAPIService:
     @staticmethod
     def get_custom_template_document(plugin: MonitorPlugin, team: int, user):
         plugin_qs = MonitorPlugin._default_manager.filter(pk=getattr(plugin, "pk", None))
+        monitor_objects = list(plugin_qs.values("monitor_object__id", "monitor_object__name", "monitor_object__instance_id_keys"))
         metrics = list(
             Metric._default_manager.filter(monitor_plugin=plugin)
             .order_by("sort_order", "id")
             .values("name", "display_name", "description", "unit", "data_type", "dimensions")
         )
-        monitor_objects = plugin_qs.values_list("monitor_object__id", flat=True)
+        monitor_object_ids = [item["monitor_object__id"] for item in monitor_objects]
+        primary_object = monitor_objects[0] if monitor_objects else {"monitor_object__instance_id_keys": ["instance_id"]}
+        instance_id_keys = primary_object.get("monitor_object__instance_id_keys") or ["instance_id"]
         instances = list(
-            MonitorInstance._default_manager.filter(monitor_object_id__in=monitor_objects, is_deleted=False)
+            MonitorInstance._default_manager.filter(monitor_object_id__in=monitor_object_ids, is_deleted=False)
             .order_by("name")
             .values("id", "name")[:200]
         )
         token = PushAPIService.get_team_secret(user.username, user.domain, team)
+
+        instance_items = []
+        for item in instances:
+            raw_dimensions = build_dimensions(item["id"], instance_id_keys)
+            instance_items.append(
+                {
+                    "instance_id": item["id"],
+                    "instance_name": item["name"],
+                    "raw_instance": raw_dimensions,
+                }
+            )
+
+        payload_instance: dict[str, Any] = {}
+        for key in instance_id_keys:
+            payload_instance[key] = f"demo-{key}" if key != "instance_id" else "demo-instance-id"
+        payload_instance["metrics"] = [
+            {
+                "name": metrics[0]["name"] if metrics else "demo_metric",
+                "value": 1,
+                "tags": {},
+            }
+        ]
 
         return {
             "template_id": plugin.template_id,
@@ -59,25 +85,15 @@ class PushAPIService:
             "api_secret": token.api_secret if token else "",
             "api_secret_exists": bool(token),
             "metrics": metrics,
-            "monitor_object_ids": list(monitor_objects),
-            "instances": [{"instance_id": item["id"], "instance_name": item["name"]} for item in instances],
+            "monitor_object_ids": monitor_object_ids,
+            "instance_id_keys": instance_id_keys,
+            "instances": instance_items,
             "endpoint": "/api/v1/monitor/open_api/push_api/report/",
             "payload_example": {
                 "template_id": plugin.template_id,
                 "organization": team,
                 "timestamp": 1710000000,
-                "instances": [
-                    {
-                        "instance_id": instances[0]["id"] if instances else '("demo-instance")',
-                        "metrics": [
-                            {
-                                "name": metrics[0]["name"] if metrics else "demo_metric",
-                                "value": 1,
-                                "tags": {},
-                            }
-                        ],
-                    }
-                ],
+                "instances": [payload_instance],
             },
         }
 
@@ -223,9 +239,25 @@ class PushAPIService:
             "template_id": template.template_id,
             "allowed_object_ids": allowed_object_ids,
             "metric_map": metric_map,
+            "instance_id_keys_map": {item.id: (item.instance_id_keys or ["instance_id"]) for item in template.monitor_object.all()},
         }
         cache.set(cache_key, meta, timeout=PushAPIService.TEMPLATE_META_CACHE_TTL)
         return meta
+
+    @staticmethod
+    def build_internal_instance_id(instance_data: dict, instance_id_keys: list[str]) -> str:
+        normalized_keys = instance_id_keys or ["instance_id"]
+        values = []
+        missing_keys = []
+        for key in normalized_keys:
+            value = instance_data.get(key)
+            if value in (None, ""):
+                missing_keys.append(key)
+            else:
+                values.append(str(value))
+        if missing_keys:
+            raise BaseAppException(f"实例标识缺少字段: {', '.join(missing_keys)}")
+        return str(tuple(values))
 
     @staticmethod
     def _to_ns(timestamp: Any) -> int:
@@ -277,8 +309,16 @@ class PushAPIService:
         template_meta = PushAPIService.get_template_meta(payload["template_id"])
         allowed_object_ids = set(template_meta["allowed_object_ids"])
         metric_map = template_meta["metric_map"]
+        instance_id_keys_map = template_meta.get("instance_id_keys_map") or {}
 
-        instance_ids = [str(item.get("instance_id")) for item in payload.get("instances", []) if item.get("instance_id")]
+        object_instance_ids: dict[int, list[str]] = {}
+        for object_id, keys in instance_id_keys_map.items():
+            try:
+                object_instance_ids[object_id] = [PushAPIService.build_internal_instance_id(item, keys) for item in payload.get("instances", [])]
+            except BaseAppException:
+                continue
+
+        instance_ids = list({instance_id for item_ids in object_instance_ids.values() for instance_id in item_ids if instance_id})
         instance_map, org_map = PushAPIService._batch_load_instances(instance_ids)
 
         accepted_lines = []
@@ -286,27 +326,47 @@ class PushAPIService:
         accepted_instance_ids = set()
 
         for inst in payload.get("instances", []):
-            instance_id = str(inst.get("instance_id") or "")
-            if not instance_id:
+            if inst.get("instance_id") in (None, ""):
                 filtered_details.append({"instance_id": "", "reason": "instance_id不能为空"})
                 continue
 
-            instance = instance_map.get(instance_id)
+            matched_instance_id = ""
+            instance = None
+            instance_id_keys = ["instance_id"]
+            build_errors = []
+            for object_id, keys in instance_id_keys_map.items():
+                try:
+                    candidate_instance_id = PushAPIService.build_internal_instance_id(inst, keys)
+                except BaseAppException as exc:
+                    build_errors.append(str(exc))
+                    continue
+                candidate_instance = instance_map.get(candidate_instance_id)
+                if candidate_instance and candidate_instance.monitor_object_id == object_id:
+                    matched_instance_id = candidate_instance_id
+                    instance = candidate_instance
+                    instance_id_keys = keys
+                    break
+
             if not instance:
-                filtered_details.append({"instance_id": instance_id, "reason": "实例不存在"})
+                filtered_details.append(
+                    {
+                        "instance_id": inst.get("instance_id", ""),
+                        "reason": build_errors[0] if build_errors else "实例不存在",
+                    }
+                )
                 continue
 
             if instance.monitor_object_id not in allowed_object_ids:
-                filtered_details.append({"instance_id": instance_id, "reason": "实例对象与模板不匹配"})
+                filtered_details.append({"instance_id": inst.get("instance_id", ""), "reason": "实例对象与模板不匹配"})
                 continue
 
-            if token_team not in org_map.get(instance_id, set()):
-                filtered_details.append({"instance_id": instance_id, "reason": "实例组织与token组织不匹配"})
+            if token_team not in org_map.get(matched_instance_id, set()):
+                filtered_details.append({"instance_id": inst.get("instance_id", ""), "reason": "实例组织与token组织不匹配"})
                 continue
 
             metrics = inst.get("metrics") or []
             if not metrics:
-                filtered_details.append({"instance_id": instance_id, "reason": "metrics不能为空"})
+                filtered_details.append({"instance_id": inst.get("instance_id", ""), "reason": "metrics不能为空"})
                 continue
 
             valid_metric_found = False
@@ -314,15 +374,15 @@ class PushAPIService:
                 metric_name = metric.get("name")
                 metric_meta = metric_map.get(metric_name)
                 if not metric_meta:
-                    filtered_details.append({"instance_id": instance_id, "reason": f"指标不存在: {metric_name}"})
+                    filtered_details.append({"instance_id": inst.get("instance_id", ""), "reason": f"指标不存在: {metric_name}"})
                     continue
 
                 tags = {
-                    "instance_id": instance_id,
+                    "instance_id": inst.get("instance_id"),
                     "template_id": template_meta["template_id"],
                     "organization": token_team,
                 }
-                for dim in metric_meta["instance_id_keys"]:
+                for dim in instance_id_keys:
                     value = inst.get(dim)
                     if value not in (None, ""):
                         tags[dim] = value
@@ -340,7 +400,7 @@ class PushAPIService:
                 valid_metric_found = True
 
             if valid_metric_found:
-                accepted_instance_ids.add(instance_id)
+                accepted_instance_ids.add(matched_instance_id)
 
         return {
             "template_id": template_meta["template_id"],

@@ -150,7 +150,8 @@ export interface PushAccessDoc {
   api_secret: string;
   api_secret_exists: boolean;
   metrics: PushAccessMetricItem[];
-  instances: { instance_id: string; instance_name: string }[];
+  instances: PushAccessInstanceItem[];
+  instance_id_keys: string[];
   monitor_object_ids: number[];
   endpoint: string;
   payload_example: Record<string, any>;
@@ -159,6 +160,7 @@ export interface PushAccessDoc {
 export interface PushAccessInstanceItem {
   instance_id: string;
   instance_name: string;
+  raw_instance?: Record<string, string>;
   organizations?: Array<string | number>;
   [key: string]: any;
 }
