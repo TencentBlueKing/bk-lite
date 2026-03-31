@@ -1,6 +1,8 @@
-import uuid
-import requests
 import re
+import os
+import uuid
+
+import requests
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
@@ -45,12 +47,38 @@ class RegionService:
 
         env_vars = RegionService._get_env_vars_dict(cloud_region_id)
 
-        webhook_url = env_vars.get("WEBHOOK_SERVER_URL")
+        webhook_url = env_vars.get("WEBHOOK_SERVER_URL") or os.getenv("WEBHOOK_SERVER_URL")
         if not webhook_url:
-            logger.error(
-                f"Missing WEBHOOK_SERVER_URL for cloud region {cloud_region_id}"
-            )
+            logger.error(f"Missing WEBHOOK_SERVER_URL for cloud region {cloud_region_id}")
             raise BaseAppException("Webhook configuration missing")
+
+        server_url = env_vars.get("NODE_SERVER_URL")
+        nats_url = env_vars.get("NATS_SERVERS")
+        nats_username = env_vars.get("NATS_USERNAME")
+        nats_password = env_vars.get("NATS_PASSWORD")
+        nats_monitor_username = os.getenv("NATS_ADMIN_USERNAME")
+        nats_monitor_password = os.getenv("NATS_ADMIN_PASSWORD")
+
+        missing_vars = []
+        if not server_url:
+            missing_vars.append("NODE_SERVER_URL")
+        if not nats_url:
+            missing_vars.append("NATS_SERVERS")
+        if not nats_username:
+            missing_vars.append("NATS_USERNAME")
+        if not nats_password:
+            missing_vars.append("NATS_PASSWORD")
+        if not nats_monitor_username:
+            missing_vars.append("NATS_ADMIN_USERNAME")
+        if not nats_monitor_password:
+            missing_vars.append("NATS_ADMIN_PASSWORD")
+        if missing_vars:
+            logger.error(
+                "Missing required environment variables in cloud region %s: %s",
+                cloud_region_id,
+                ", ".join(missing_vars),
+            )
+            raise BaseAppException("Cloud region environment configuration is incomplete")
 
         proxy_ip = cloud_region.proxy_address
         if not proxy_ip:
@@ -65,21 +93,22 @@ class RegionService:
             "node_id": node_id,
             "zone_id": str(cloud_region_id),
             "zone_name": cloud_region.name,
-            "server_url": env_vars.get("NODE_SERVER_URL"),
-            "nats_url": env_vars.get("NATS_SERVERS"),
-            "nats_username": env_vars.get("NATS_USERNAME"),
-            "nats_password": env_vars.get("NATS_PASSWORD"),
+            "server_url": server_url,
+            "nats_url": nats_url,
+            "nats_username": nats_username,
+            "nats_password": nats_password,
             "api_token": api_token,
             "redis_password": redis_password,
             "proxy_ip": proxy_ip,
-            "nats_admin_username": env_vars.get("NATS_ADMIN_USERNAME"),
-            "nats_admin_password": env_vars.get("NATS_ADMIN_PASSWORD"),
+            "nats_monitor_username": nats_monitor_username,
+            "nats_monitor_password": nats_monitor_password,
             "traefik_web_port": env_vars.get("TRAEFIK_WEB_PORT", "443"),
         }
 
         webhook_api_url = f"{webhook_url.rstrip('/')}/infra/proxy"
 
         try:
+            logger.info(str(webhook_params))
             response = requests.post(
                 webhook_api_url,
                 json=webhook_params,
@@ -89,45 +118,33 @@ class RegionService:
             )
 
             if response.status_code != 200:
-                logger.error(
-                    f"Webhook API error: status={response.status_code}, region={cloud_region_id}"
-                )
+                logger.error(f"Webhook API error: status={response.status_code}, region={cloud_region_id}, body={response.text}")
                 raise BaseAppException("Failed to generate deploy script")
 
             webhook_response = response.json()
             if webhook_response.get("status") == "error":
                 error_msg = webhook_response.get("message", "Unknown error")
-                logger.error(
-                    f"Webhook returned error for region {cloud_region_id}: {error_msg}"
-                )
+                logger.error(f"Webhook returned error for region {cloud_region_id}: {error_msg}")
                 raise BaseAppException(f"Webhook error: {error_msg}")
 
             deploy_script = webhook_response.get("install_script")
             if not deploy_script or not deploy_script.strip():
-                logger.error(
-                    f"Empty deploy script returned for region {cloud_region_id}"
-                )
+                logger.error(f"Empty deploy script returned for region {cloud_region_id}")
                 raise BaseAppException("Invalid response from webhook API")
 
-            logger.info(
-                f"Successfully retrieved deploy script for cloud region {cloud_region_id}"
-            )
+            logger.info(f"Successfully retrieved deploy script for cloud region {cloud_region_id}")
             return deploy_script
 
         except requests.Timeout:
             logger.error(f"Webhook API timeout for cloud region {cloud_region_id}")
             raise BaseAppException("Deploy script request timeout")
         except requests.RequestException as e:
-            logger.error(
-                f"Webhook API request failed for region {cloud_region_id}: {str(e)}"
-            )
+            logger.error(f"Webhook API request failed for region {cloud_region_id}: {str(e)}")
             raise BaseAppException("Failed to connect to webhook service")
         except BaseAppException:
             raise
         except Exception as e:
-            logger.exception(
-                f"Unexpected error generating deploy script for region {cloud_region_id}"
-            )
+            logger.exception(f"Unexpected error generating deploy script for region {cloud_region_id}")
             raise BaseAppException("Failed to generate deploy script")
 
     @staticmethod
@@ -208,9 +225,7 @@ class RegionService:
             # 如果没有配置代理地址，记录警告但继续执行
             proxy_address = cloud_region.proxy_address
             if not proxy_address:
-                logger.warning(
-                    f"No proxy address configured for cloud region {cloud_region_id}, using default values"
-                )
+                logger.warning(f"No proxy address configured for cloud region {cloud_region_id}, using default values")
 
             # 获取默认云区域的所有预置环境变量
             default_env_vars = SidecarEnv.objects.filter(
@@ -219,9 +234,7 @@ class RegionService:
             )
 
             if not default_env_vars.exists():
-                logger.warning(
-                    f"No environment variables found in default cloud region"
-                )
+                logger.warning(f"No environment variables found in default cloud region")
                 return 0
 
             # 提取默认云区域的地址（从 NODE_SERVER_URL 中提取）
@@ -229,19 +242,13 @@ class RegionService:
             if proxy_address:
                 for env_var in default_env_vars:
                     if env_var.key == NodeConstants.SERVER_URL_KEY:
-                        default_address = RegionService._extract_default_address(
-                            env_var.value
-                        )
+                        default_address = RegionService._extract_default_address(env_var.value)
                         break
 
                 if default_address:
-                    logger.info(
-                        f"Extracted default address: {default_address}, will replace with: {proxy_address}"
-                    )
+                    logger.info(f"Extracted default address: {default_address}, will replace with: {proxy_address}")
                 else:
-                    logger.warning(
-                        f"Could not extract default address from NODE_SERVER_URL"
-                    )
+                    logger.warning(f"Could not extract default address from NODE_SERVER_URL")
 
             # 批量创建环境变量
             new_env_vars = []
@@ -249,17 +256,9 @@ class RegionService:
                 new_value = env_var.value
 
                 # 对特殊环境变量进行地址替换
-                if (
-                    proxy_address
-                    and default_address
-                    and env_var.key in NodeConstants.PROXY_ADDRESS_REPLACE_KEYS
-                ):
-                    new_value = RegionService._replace_address(
-                        env_var.value, default_address, proxy_address
-                    )
-                    logger.info(
-                        f"Replaced {env_var.key}: {env_var.value} -> {new_value}"
-                    )
+                if proxy_address and default_address and env_var.key in NodeConstants.PROXY_ADDRESS_REPLACE_KEYS:
+                    new_value = RegionService._replace_address(env_var.value, default_address, proxy_address)
+                    logger.info(f"Replaced {env_var.key}: {env_var.value} -> {new_value}")
 
                 new_env_vars.append(
                     SidecarEnv(
@@ -273,26 +272,18 @@ class RegionService:
                 )
 
             # 使用 bulk_create 批量创建，ignore_conflicts=True 避免重复创建
-            created_count = len(
-                SidecarEnv.objects.bulk_create(new_env_vars, ignore_conflicts=True)
-            )
+            created_count = len(SidecarEnv.objects.bulk_create(new_env_vars, ignore_conflicts=True))
 
-            logger.info(
-                f"Initialized {created_count} environment variables for cloud region {cloud_region_id}"
-            )
+            logger.info(f"Initialized {created_count} environment variables for cloud region {cloud_region_id}")
             return created_count
 
         except Exception as e:
-            logger.exception(
-                f"Failed to initialize environment variables for cloud region {cloud_region_id}"
-            )
+            logger.exception(f"Failed to initialize environment variables for cloud region {cloud_region_id}")
             # 不抛出异常，避免影响云区域创建流程
             return 0
 
     @staticmethod
-    def update_env_vars_on_proxy_change(
-        cloud_region_id, old_proxy_address, new_proxy_address
-    ):
+    def update_env_vars_on_proxy_change(cloud_region_id, old_proxy_address, new_proxy_address):
         """当云区域的 proxy_address 修改时，更新相关环境变量
 
         Args:
@@ -312,18 +303,12 @@ class RegionService:
             ).first()
 
             if not default_env_var:
-                logger.warning(
-                    f"Could not find NODE_SERVER_URL in default cloud region"
-                )
+                logger.warning(f"Could not find NODE_SERVER_URL in default cloud region")
                 return 0
 
-            default_address = RegionService._extract_default_address(
-                default_env_var.value
-            )
+            default_address = RegionService._extract_default_address(default_env_var.value)
             if not default_address:
-                logger.warning(
-                    f"Could not extract default address from NODE_SERVER_URL"
-                )
+                logger.warning(f"Could not extract default address from NODE_SERVER_URL")
                 return 0
 
             # 确定旧地址和新地址
@@ -332,9 +317,7 @@ class RegionService:
             new_address = new_proxy_address if new_proxy_address else default_address
 
             if old_address == new_address:
-                logger.info(
-                    f"Proxy address not changed for cloud region {cloud_region_id}, skip update"
-                )
+                logger.info(f"Proxy address not changed for cloud region {cloud_region_id}, skip update")
                 return 0
 
             # 获取需要更新的环境变量
@@ -344,35 +327,25 @@ class RegionService:
             )
 
             if not env_vars_to_update.exists():
-                logger.warning(
-                    f"No environment variables to update for cloud region {cloud_region_id}"
-                )
+                logger.warning(f"No environment variables to update for cloud region {cloud_region_id}")
                 return 0
 
             # 批量更新环境变量
             updated_count = 0
             for env_var in env_vars_to_update:
                 old_value = env_var.value
-                new_value = RegionService._replace_address(
-                    old_value, old_address, new_address
-                )
+                new_value = RegionService._replace_address(old_value, old_address, new_address)
 
                 if old_value != new_value:
                     env_var.value = new_value
                     env_var.save(update_fields=["value"])
                     updated_count += 1
-                    logger.info(
-                        f"Updated {env_var.key} for cloud region {cloud_region_id}: {old_value} -> {new_value}"
-                    )
+                    logger.info(f"Updated {env_var.key} for cloud region {cloud_region_id}: {old_value} -> {new_value}")
 
-            logger.info(
-                f"Updated {updated_count} environment variables for cloud region {cloud_region_id}"
-            )
+            logger.info(f"Updated {updated_count} environment variables for cloud region {cloud_region_id}")
             return updated_count
 
         except Exception as e:
-            logger.exception(
-                f"Failed to update environment variables for cloud region {cloud_region_id}"
-            )
+            logger.exception(f"Failed to update environment variables for cloud region {cloud_region_id}")
             # 不抛出异常，避免影响云区域更新流程
             return 0

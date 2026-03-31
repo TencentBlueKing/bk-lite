@@ -583,6 +583,7 @@ const Configure = () => {
       <GroupModal
         ref={groupRef}
         monitorObject={+activeTab}
+        pluginId={+pluginID}
         onSuccess={operateGroup}
       />
       <MetricModal

@@ -38,11 +38,11 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
 
   const isAuthenticated = status === 'authenticated' && !!session && !(session.user as any)?.temporary_pwd;
   const isAuthLoading = status === 'loading';
-  
+
   const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
   const authPaths = ['/auth/signin', '/auth/signout'];
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
- 
+
   const shouldRenderMenu = useMemo(() => {
     if (pathname?.startsWith('/ops-console')) {
       return false;

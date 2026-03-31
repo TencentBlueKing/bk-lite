@@ -1,10 +1,10 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import { Spin, Input, Button, Tag, message, Empty } from 'antd';
+import { Spin, Input, Button, Tag, message, Empty, Dropdown, Menu, Modal } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
-import { PlusOutlined } from '@ant-design/icons';
+import { EllipsisOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import { getIconByObjectName } from '@/app/monitor/utils/common';
@@ -25,14 +25,23 @@ import Permission from '@/components/permission';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
+import CreateTemplateModal from './createTemplateModal';
+
+const { confirm } = Modal;
 
 const Integration = () => {
   const { isLoading } = useApiClient();
   const { getMonitorObject, getMonitorPlugin } = useMonitorApi();
-  const { updateMonitorObject } = useIntegrationApi();
+  const {
+    updateMonitorObject,
+    createCustomApiTemplate,
+    updateCustomApiTemplate,
+    deleteCustomApiTemplate
+  } = useIntegrationApi();
   const { t } = useTranslation();
   const router = useRouter();
   const importRef = useRef<ModalRef>(null);
+  const createTemplateRef = useRef<ModalRef>(null);
   const authContext = useAuth();
   const token = authContext?.token || null;
   const tokenRef = useRef(token);
@@ -226,6 +235,48 @@ const Integration = () => {
     });
   };
 
+  const openCreateTemplateModal = (app?: any) => {
+    createTemplateRef.current?.showModal({
+      title: app ? t('common.edit') : t('common.add'),
+      type: app ? 'edit' : 'add',
+      form: app || {}
+    });
+  };
+
+  const handleTemplateSubmit = async (
+    values: Record<string, any>,
+    mode: 'add' | 'edit',
+    id?: number
+  ) => {
+    if (mode === 'edit' && id) {
+      await updateCustomApiTemplate(id, values);
+      message.success(t('common.updateSuccess'));
+    } else {
+      await createCustomApiTemplate(values);
+      message.success(t('common.addSuccess'));
+    }
+    onTxtClear();
+  };
+
+  const handleDeleteTemplate = async (id: number) => {
+    await deleteCustomApiTemplate(id);
+    message.success(t('common.deleteSuccess'));
+    onTxtClear();
+  };
+
+  const handleDeleteTemplateConfirm = (id: number) => {
+    confirm({
+      title: t('common.deleteTitle'),
+      content: t('common.deleteContent'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      onOk() {
+        return handleDeleteTemplate(id);
+      }
+    });
+  };
+
   const linkToDetial = (app: ObjectItem) => {
     const parentObject: any = objects.find(
       (item) => item.id === app.parent_monitor_object
@@ -240,6 +291,7 @@ const Integration = () => {
       name: objectInfo.name || '',
       plugin_name: app?.name,
       plugin_id: app?.id,
+      template_type: app?.template_type,
       plugin_display_name: app?.display_name,
       plugin_description: app?.display_description || '--'
     };
@@ -252,6 +304,24 @@ const Integration = () => {
     setSelectedApp(app);
     setExportDisabled(false); // Enable the export button
   };
+
+  const renderTemplateActionMenu = (app: ObjectItem) => (
+    <Menu onClick={(e) => e.domEvent.stopPropagation()}>
+      <Menu.Item className="!p-0" onClick={() => openCreateTemplateModal(app)}>
+        <Button type="text" className="w-full !justify-start">
+          编辑
+        </Button>
+      </Menu.Item>
+      <Menu.Item
+        className="!p-0"
+        onClick={() => handleDeleteTemplateConfirm(app.id as number)}
+      >
+        <Button type="text" className="w-full !justify-start">
+          删除
+        </Button>
+      </Menu.Item>
+    </Menu>
+  );
 
   return (
     <div className="w-full flex overflow-hidden">
@@ -271,32 +341,39 @@ const Integration = () => {
         />
       </div>
       <div className="w-full bg-[var(--color-bg-1)] p-5">
-        <div className="flex">
-          <Input
-            className="mb-[20px] w-[400px]"
-            placeholder={t('common.searchPlaceHolder')}
-            value={searchText}
-            allowClear
-            onChange={onSearchTxtChange}
-            onPressEnter={onTxtPressEnter}
-            onClear={onTxtClear}
-          />
-          <div className="hidden">
-            <Button
-              className="mx-[8px]"
-              type="primary"
-              onClick={openImportModal}
-            >
-              {t('common.import')}
-            </Button>
-            <Button
-              disabled={exportDisabled}
-              loading={exportLoading}
-              onClick={exportMetric}
-            >
-              {t('common.export')}
-            </Button>
+        <div className="mb-[20px] flex items-start justify-between gap-[16px]">
+          <div className="flex flex-1 items-start">
+            <Input
+              className="w-[400px]"
+              placeholder={t('common.searchPlaceHolder')}
+              value={searchText}
+              allowClear
+              onChange={onSearchTxtChange}
+              onPressEnter={onTxtPressEnter}
+              onClear={onTxtClear}
+            />
+            <div className="hidden">
+              <Button
+                className="mx-[8px]"
+                type="primary"
+                onClick={openImportModal}
+              >
+                {t('common.import')}
+              </Button>
+              <Button
+                disabled={exportDisabled}
+                loading={exportLoading}
+                onClick={exportMetric}
+              >
+                {t('common.export')}
+              </Button>
+            </div>
           </div>
+          <Permission requiredPermissions={['Setting']}>
+            <Button type="primary" onClick={() => openCreateTemplateModal()}>
+              新建模版
+            </Button>
+          </Permission>
         </div>
         <Spin spinning={pageLoading}>
           {!pluginList.length ? (
@@ -341,6 +418,7 @@ const Integration = () => {
                           <Tag className="mt-[4px]">
                             {app.collect_type || '--'}
                           </Tag>
+                          {app.is_custom_api && <Tag className="mt-[4px] ml-[6px]">自建</Tag>}
                         </div>
                       </div>
                       <p
@@ -349,6 +427,17 @@ const Integration = () => {
                       >
                         {app.display_description || '--'}
                       </p>
+                      {app.is_custom_api && (
+                        <div className="absolute top-[12px] right-[12px]" onClick={(e) => e.stopPropagation()}>
+                          <Dropdown
+                            dropdownRender={() => renderTemplateActionMenu(app)}
+                            placement="bottomRight"
+                            trigger={['click']}
+                          >
+                            <Button type="text" icon={<EllipsisOutlined />} />
+                          </Dropdown>
+                        </div>
+                      )}
                       <div className="w-full h-[32px] flex justify-center items-end">
                         <Permission
                           requiredPermissions={['Setting']}
@@ -376,6 +465,7 @@ const Integration = () => {
         </Spin>
       </div>
       <ImportModal ref={importRef} onSuccess={onTxtClear} />
+      <CreateTemplateModal ref={createTemplateRef} objects={objects} onSubmit={handleTemplateSubmit} />
     </div>
   );
 };

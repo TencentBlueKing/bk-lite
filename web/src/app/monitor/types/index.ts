@@ -198,6 +198,9 @@ export interface GroupInfo {
 export interface ObjectItem {
   id: number;
   name: string;
+  template_id?: string;
+  template_type?: string;
+  is_custom_api?: boolean;
   type: string;
   plugin_name?: string;
   plugin_id?: number;

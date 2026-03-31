@@ -62,39 +62,39 @@ const EntityCard: React.FC<EntityCardProps> = ({
         <PermissionWrapper
           requiredPermissions={['Edit']}
           instPermissions={permissions}>
-          <span 
-            className="block" 
-            onClick={() => onMenuClick('edit', { 
-              id, 
-              name, 
-              introduction, 
-              created_by, 
-              team_name, 
-              team, 
-              online, 
-              skill_type, 
-              bot_type 
+          <span
+            className="block"
+            onClick={() => onMenuClick('edit', {
+              id,
+              name,
+              introduction,
+              created_by,
+              team_name,
+              team,
+              online,
+              skill_type,
+              bot_type
             })}>
             {t('common.edit')}
           </span>
         </PermissionWrapper>
       </Menu.Item>
       <Menu.Item key={`delete-${id}`}>
-        <PermissionWrapper 
-          requiredPermissions={['Delete']} 
+        <PermissionWrapper
+          requiredPermissions={['Delete']}
           instPermissions={permissions}>
-          <span 
-            className="block" 
-            onClick={() => onMenuClick('delete', { 
-              id, 
-              name, 
-              introduction, 
-              created_by, 
-              team_name, 
-              team, 
-              online, 
-              skill_type, 
-              bot_type 
+          <span
+            className="block"
+            onClick={() => onMenuClick('delete', {
+              id,
+              name,
+              introduction,
+              created_by,
+              team_name,
+              team,
+              online,
+              skill_type,
+              bot_type
             })}>
             {t('common.delete')}
           </span>
@@ -121,7 +121,7 @@ const EntityCard: React.FC<EntityCardProps> = ({
 
       return botTypeMap[bot_type] || iconTypeMapping[getStableRandom(id, iconTypeMapping.length)];
     }
-    
+
     return iconTypeMapping[getStableRandom(id, iconTypeMapping.length)];
   };
 
@@ -130,15 +130,15 @@ const EntityCard: React.FC<EntityCardProps> = ({
 
   const handlePinClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onMenuClick('pin', { 
-      id, 
-      name, 
-      introduction, 
-      created_by, 
-      team_name, 
-      team, 
-      online, 
-      skill_type, 
+    onMenuClick('pin', {
+      id,
+      name,
+      introduction,
+      created_by,
+      team_name,
+      team,
+      online,
+      skill_type,
       bot_type,
       is_pinned
     });
@@ -151,7 +151,7 @@ const EntityCard: React.FC<EntityCardProps> = ({
     >
       {showPinButton && (
         <Tooltip title={is_pinned ? t('common.unpin') : t('common.pin')}>
-          <div 
+          <div
             className="absolute top-2 left-2 z-10 cursor-pointer w-6 h-6 rounded-full flex items-center justify-center bg-[rgba(0,0,0,0.3)] hover:bg-[rgba(0,0,0,0.5)] transition-colors"
             onClick={handlePinClick}
           >
@@ -170,7 +170,7 @@ const EntityCard: React.FC<EntityCardProps> = ({
           </div>
         </Dropdown>
       </div>
-      <div className="w-full h-[50px] relative">
+      <div className="w-full h-12.5 relative">
         <Image alt="avatar" src={avatar} layout="fill" objectFit="cover" className="rounded-t-xl" />
       </div>
       <div className={`w-14 h-14 rounded-full flex justify-center items-center ${styles.iconContainer}`}>
@@ -181,7 +181,7 @@ const EntityCard: React.FC<EntityCardProps> = ({
           title={name}
           description={
             <>
-              <p className={`mt-3 mb-2 text-xs line-clamp-3 h-[50px] ${styles.desc}`}>{introduction}</p>
+              <p className={`mt-3 mb-2 text-xs line-clamp-3 h-12.5 ${styles.desc}`}>{introduction}</p>
               <div className="flex items-end justify-between">
                 <div className="font-normal flex items-center">
                   {online !== undefined && (
@@ -192,13 +192,13 @@ const EntityCard: React.FC<EntityCardProps> = ({
                     </Tag>
                   )}
                   {modelName !== undefined && modelName && (
-                    <Tag className="font-mini px-[2px] leading-inherit mr-2" color="blue">{modelName}</Tag>
+                    <Tag className="font-mini px-0.5 leading-inherit mr-2" color="blue">{modelName}</Tag>
                   )}
                   {skillType !== undefined && skillType && (
-                    <Tag className="font-mini px-[2px] leading-inherit mr-2" color="purple">{skillType}</Tag>
+                    <Tag className="font-mini px-0.5 leading-inherit mr-2" color="purple">{skillType}</Tag>
                   )}
                 </div>
-                <div className="flex items-end justify-end text-[var(--color-text-4)] font-mini w-full text-right overflow-hidden">
+                <div className="flex items-end justify-end text-(--color-text-4) font-mini w-full text-right overflow-hidden">
                   <EllipsisWithTooltip
                     text={`${t('skill.form.group')}: ${Array.isArray(team_name) ? team_name.join(',') : '--'} | ${t('skill.form.owner')}: ${created_by}`}
                     className="overflow-hidden whitespace-nowrap text-ellipsis"
