@@ -547,7 +547,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
                 "api_token": "xxx",
                 "download_url": "xxx",
                 "group_id": "1",
-                "install_dir": "C:\\bklite\\fusion-collectors",
+                "install_dir": "C:\\fusion-collectors",
                 "node_id": "xxx",
                 "node_name": "xxx",
                 "server_url": "xxx",
