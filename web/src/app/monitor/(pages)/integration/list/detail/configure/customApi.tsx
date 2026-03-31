@@ -39,10 +39,29 @@ import GroupTreeSelector from '@/components/group-tree-select';
 import { Organization } from '@/app/monitor/types';
 import { useCommon } from '@/app/monitor/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
+import { Group } from '@/types/index';
 
 type SampleFormat = 'curl' | 'python' | 'javascript';
 
 const formatJson = (value: Record<string, any>) => JSON.stringify(value, null, 2);
+
+const getGroupDisplayPath = (group: Group, flatGroups: Group[]) => {
+  const names: string[] = [];
+  let current: Group | undefined = group;
+
+  while (current) {
+    if (current.name) {
+      names.unshift(current.name);
+    }
+
+    const parentId = (current as Group & { parent_id?: string }).parent_id || current.parentId;
+    current = parentId
+      ? flatGroups.find((item) => item.id === parentId)
+      : undefined;
+  }
+
+  return names.join('/');
+};
 
 const buildCurlExample = (
   endpoint: string,
@@ -259,7 +278,7 @@ const CustomApiAccess: React.FC = () => {
     () =>
       (userInfo.flatGroups || []).map((item) => ({
         value: Number(item.id),
-        label: item.path || item.name
+        label: getGroupDisplayPath(item, userInfo.flatGroups || []) || item.name
       })),
     [userInfo.flatGroups]
   );
@@ -269,7 +288,7 @@ const CustomApiAccess: React.FC = () => {
       new Map(
         (userInfo.flatGroups || []).map((item) => [
           String(item.id),
-          item.path || item.name || String(item.id)
+          getGroupDisplayPath(item, userInfo.flatGroups || []) || item.name || String(item.id)
         ])
       ),
     [userInfo.flatGroups]
