@@ -13,4 +13,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.cmdb.tasks.celery_tasks.check_subscription_rules",
         "schedule": crontab(minute="*/5"),
     },
+    "daily_data_cleanup": {
+        "task": "apps.cmdb.tasks.celery_tasks.daily_data_cleanup_task",
+        "schedule": crontab(hour=2, minute=0),
+    },
 }

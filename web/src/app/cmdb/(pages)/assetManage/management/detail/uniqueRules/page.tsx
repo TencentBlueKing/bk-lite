@@ -8,7 +8,7 @@ import PermissionWrapper from '@/components/permission'
 import { useTranslation } from '@/utils/i18n'
 import { useModelApi } from '@/app/cmdb/api'
 import { useModelDetail } from '../context'
-import type { ModelUniqueRuleItem, UniqueRuleFieldMeta, UniqueRuleListResponse } from '@/app/cmdb/types/assetManage'
+import type { ModelUniqueRuleItem, UniqueRuleListResponse } from '@/app/cmdb/types/assetManage'
 import UniqueRuleModal, { UniqueRuleModalRef } from './uniqueRuleModal'
 
 const UniqueRulesPage: React.FC = () => {
@@ -27,15 +27,12 @@ const UniqueRulesPage: React.FC = () => {
 
   const [loading, setLoading] = useState(false)
   const [rules, setRules] = useState<ModelUniqueRuleItem[]>([])
-  const [candidateFields, setCandidateFields] = useState<UniqueRuleFieldMeta[]>([])
-
   const loadData = async (editingRuleId?: string) => {
     if (!modelId) return
     setLoading(true)
     try {
       const data = await getModelUniqueRules(modelId, editingRuleId) as UniqueRuleListResponse
       setRules(data.rules || [])
-      setCandidateFields(data.candidate_fields || [])
     } finally {
       setLoading(false)
     }
@@ -54,60 +51,77 @@ const UniqueRulesPage: React.FC = () => {
     })
   }
 
+  const handleEdit = async (record: ModelUniqueRuleItem) => {
+    const data = (await getModelUniqueRules(
+      modelId!,
+      record.rule_id,
+    )) as UniqueRuleListResponse;
+    modalRef.current?.showModal({
+      mode: 'edit',
+      rule: record,
+      candidateFields: data.candidate_fields || [],
+    });
+  };
+
+  const handleDelete = (record: ModelUniqueRuleItem) => {
+    confirm({
+      title: t('common.delConfirm'),
+      content: t('common.delConfirmCxt'),
+      onOk: async () => {
+        await deleteModelUniqueRule(modelId!, record.rule_id);
+        message.success(t('successfullyDeleted'));
+        await loadData();
+      },
+    });
+  };
+
   const columns: ColumnsType<ModelUniqueRuleItem> = [
     {
-      title: t('Model.uniqueRuleFields'),
+      title: t('Model.uniqueRules'),
       dataIndex: 'field_names',
       key: 'field_names',
-      render: (_, record) => record.field_names.join(' + '),
+      render: (_, record) => (
+        <span className="font-medium text-[var(--color-text-1)]">
+          {record.field_names.join('+')}
+        </span>
+      ),
     },
     {
-      title: t('action'),
+      title: t('common.action'),
       key: 'action',
-      width: 180,
+      width: 100,
       render: (_, record) => (
         <Space>
-          <PermissionWrapper requiredPermissions={['Edit Model']} instPermissions={modelPermission}>
-            <Button
-              type="link"
-              onClick={async () => {
-                const data = await getModelUniqueRules(modelId!, record.rule_id) as UniqueRuleListResponse
-                modalRef.current?.showModal({
-                  mode: 'edit',
-                  rule: record,
-                  candidateFields: data.candidate_fields || [],
-                })
-              }}
-            >
+          <PermissionWrapper
+            requiredPermissions={['Edit Model']}
+            instPermissions={modelPermission}
+          >
+            <Button type="link" onClick={() => handleEdit(record)}>
               {t('common.edit')}
             </Button>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit Model']} instPermissions={modelPermission}>
-            <Button
-              type="link"
-              danger
-              onClick={() => {
-                confirm({
-                  title: t('common.delConfirm'),
-                  content: t('common.delConfirmCxt'),
-                  onOk: async () => {
-                    await deleteModelUniqueRule(modelId!, record.rule_id)
-                    message.success(t('successfullyDeleted'))
-                    await loadData()
-                  },
-                })
-              }}
-            >
+          <PermissionWrapper
+            requiredPermissions={['Edit Model']}
+            instPermissions={modelPermission}
+          >
+            <Button type="link" onClick={() => handleDelete(record)}>
               {t('common.delete')}
             </Button>
           </PermissionWrapper>
         </Space>
       ),
     },
-  ]
+  ];
 
   return (
     <div>
+      <Alert
+        className="mb-[12px]"
+        type="info"
+        showIcon
+        banner
+        message={t('Model.uniqueRuleTip')}
+      />
       <div className="flex justify-end mb-[16px]">
         <PermissionWrapper requiredPermissions={['Edit Model']} instPermissions={modelPermission}>
           <Button
@@ -119,15 +133,6 @@ const UniqueRulesPage: React.FC = () => {
           </Button>
         </PermissionWrapper>
       </div>
-      {candidateFields.length === 0 && (
-        <Alert
-          className="mb-[16px]"
-          type="info"
-          showIcon
-          message={t('Model.noEligibleUniqueFields')}
-          description={t('Model.noEligibleUniqueFieldsDesc')}
-        />
-      )}
       <CustomTable
         size="middle"
         columns={columns}
@@ -135,6 +140,7 @@ const UniqueRulesPage: React.FC = () => {
         loading={loading}
         rowKey="rule_id"
         pagination={false}
+        scroll={{ y: 'calc(100vh - 450px)' }}
       />
       <UniqueRuleModal
         ref={modalRef}

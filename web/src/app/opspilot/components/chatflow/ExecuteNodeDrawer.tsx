@@ -1,47 +1,12 @@
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
-import { Drawer, Form, Input, Button, Typography, Alert } from 'antd';
+import React from 'react';
+import { Drawer, Form, Input, Button, Typography } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { NodeExecutionResult } from './hooks/useNodeExecution';
-import { ToolCallInfo, initToolCallTooltips, renderToolCallCard } from '../custom-chat-sse/toolCallRenderer';
-import MarkdownIt from 'markdown-it';
-import DOMPurify from 'dompurify';
-import hljs from 'highlight.js';
-import 'highlight.js/styles/atom-one-dark.css';
-import styles from '../custom-chat/index.module.scss';
 
 const { TextArea } = Input;
 const { Text } = Typography;
-
-const md = new MarkdownIt({
-  html: false,
-  highlight: function (str: string, lang: string) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(str, { language: lang }).value;
-      } catch {}
-    }
-    return '';
-  },
-});
-
-// XSS sanitization config
-const sanitizeHtml = (html: string): string => {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img'],
-    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'src', 'alt', 'width', 'height'],
-    ALLOW_DATA_ATTR: false,
-  });
-};
-
-const sanitizeToolCallHtml = (html: string): string => {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['span', 'style', 'div', 'button', 'pre'],
-    ALLOWED_ATTR: ['class', 'style', 'data-tool-id', 'data-open'],
-    ALLOW_DATA_ATTR: true,
-  });
-};
 
 interface ExecuteNodeDrawerProps {
   visible: boolean;
@@ -70,117 +35,12 @@ const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  useEffect(() => {
-    if (visible && typeof window !== 'undefined') {
-      initToolCallTooltips();
-    }
-  }, [visible]);
-
-  const renderToolCalls = (toolCalls?: Map<string, ToolCallInfo>) => {
-    if (!toolCalls || toolCalls.size === 0) return null;
-
-    const toolCallsHtml = Array.from(toolCalls.entries())
-      .map(([id, info]) => renderToolCallCard(id, info))
-      .join('');
-
-    return (
-      <div
-        className="mb-3"
-        dangerouslySetInnerHTML={{ __html: sanitizeToolCallHtml(toolCallsHtml) }}
-      />
-    );
-  };
-
-  const renderedContent = useMemo(() => {
-    const content = result?.content || streamingContent;
-    if (!content) return '';
-    return sanitizeHtml(md.render(content));
-  }, [result?.content, streamingContent]);
-
-  const renderSSEResult = () => {
-    const content = result?.content || streamingContent;
-    const hasContent = content || (result?.toolCalls && result.toolCalls.size > 0);
-
-    if (!hasContent && !loading) return null;
-
-    return (
-      <div className="mt-4">
-        <h3 className="mb-2 font-medium">{t('chatflow.executeResult')}</h3>
-        <div className="bg-(--color-fill-1) p-4 rounded-md">
-          {renderToolCalls(result?.toolCalls)}
-
-          {content && (
-            <div
-              dangerouslySetInnerHTML={{ __html: renderedContent }}
-              className={styles.markdownBody}
-            />
-          )}
-
-          {loading && !content && !result?.toolCalls?.size && (
-            <div className="flex items-center gap-2 text-(--color-text-3)">
-              <span className="inline-flex gap-1">
-                <span className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                <span className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                <span className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderJSONResult = () => {
-    if (!result || result.isSSE) return null;
-
-    return (
-      <div className="mt-4">
-        <h3 className="mb-2 font-medium">{t('chatflow.executeResult')}</h3>
-        <div className="bg-(--color-fill-1) p-4 rounded-md">
-          <pre className="whitespace-pre-wrap text-sm overflow-auto max-h-60 font-mono">
-            {JSON.stringify(result.rawResponse?.content ?? result.rawResponse, null, 2)}
-          </pre>
-        </div>
-      </div>
-    );
-  };
-
-  const renderError = () => {
-    if (!result?.error) return null;
-
-    return (
-      <Alert
-        className="mt-4"
-        type="error"
-        message={t('chatflow.executeFailed')}
-        description={result.error}
-        showIcon
-      />
-    );
-  };
-
-  const renderResult = () => {
-    if (result?.error) {
-      return renderError();
-    }
-
-    if (result?.isSSE || loading || streamingContent) {
-      return renderSSEResult();
-    }
-
-    if (result && !result.isSSE) {
-      return renderJSONResult();
-    }
-
-    return null;
-  };
-
   return (
     <Drawer
       title={t('chatflow.executeNode')}
       open={visible}
       onClose={onClose}
-      width={520}
+      width={420}
       placement="right"
       footer={
         <div className="flex justify-end gap-2">
@@ -224,7 +84,13 @@ const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
           </Form.Item>
         </Form>
 
-        {renderResult()}
+        <div className="rounded-2xl border border-(--color-border-1) bg-(--color-fill-1) p-4 text-sm leading-6 text-(--color-text-3)">
+          {loading
+            ? t('chatflow.preview.executingHint')
+            : (result?.error || result?.content || streamingContent)
+              ? t('chatflow.preview.executionTransferred')
+              : t('chatflow.preview.executeDrawerHint')}
+        </div>
       </div>
     </Drawer>
   );

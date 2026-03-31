@@ -1,18 +1,17 @@
 import asyncio
-import os
 import json
 import logging
+import os
 import re
 import shlex
 import shutil
-import uuid
 import stat
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from service.runtime import current_entrypoint_command
-
 
 logger = logging.getLogger(__name__)
 BASE_TASK_DIR = Path(os.getenv("ANSIBLE_WORK_DIR", "/tmp/ansible-executor"))
@@ -182,6 +181,93 @@ def _quote_inventory_value(value: Any) -> str:
     return escaped
 
 
+def _get_password_auth_ssh_common_args(item: dict[str, Any]) -> str:
+    explicit_args = item.get("ansible_ssh_common_args") or item.get("ssh_common_args")
+    if explicit_args:
+        return str(explicit_args)
+    return "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+
+def _normalize_ansible_host_status(raw_status: str) -> str:
+    normalized = str(raw_status).strip().upper()
+    if normalized in {"SUCCESS", "CHANGED", "SKIPPED"}:
+        return "success"
+    return "failed"
+
+
+def _build_parsed_host_result(
+    host: str, raw_status: str, exit_code: int | None, output_lines: list[str]
+) -> dict[str, Any]:
+    output = "\n".join(output_lines).strip()
+    status = _normalize_ansible_host_status(raw_status)
+    final_exit_code = (
+        exit_code if exit_code is not None else (0 if status == "success" else 1)
+    )
+    stdout = output if status == "success" else ""
+    stderr = "" if status == "success" else output
+    return {
+        "host": host,
+        "status": status,
+        "raw_status": str(raw_status).strip().upper(),
+        "stdout": stdout,
+        "stderr": stderr,
+        "exit_code": final_exit_code,
+        "error_message": "" if status == "success" else output,
+    }
+
+
+def parse_ansible_output_per_host(output: str) -> list[dict[str, Any]]:
+    host_line_pattern = re.compile(
+        r"^(\S+)\s+\|\s+(SUCCESS|CHANGED|FAILED|UNREACHABLE!?|SKIPPED)(?:\s+\|\s+rc=(-?\d+))?\s+(>>|=>)\s*(.*)$"
+    )
+    results: list[dict[str, Any]] = []
+    current_host: str | None = None
+    current_status: str | None = None
+    current_exit_code: int | None = None
+    current_output_lines: list[str] = []
+    preamble_lines: list[str] = []
+
+    for line in str(output or "").splitlines():
+        matched = host_line_pattern.match(line)
+        if matched:
+            if current_host and current_status:
+                results.append(
+                    _build_parsed_host_result(
+                        current_host,
+                        current_status,
+                        current_exit_code,
+                        current_output_lines,
+                    )
+                )
+            current_host = matched.group(1)
+            current_status = matched.group(2)
+            rc_text = matched.group(3)
+            current_exit_code = int(rc_text) if rc_text is not None else None
+            initial_output = matched.group(5).strip()
+            current_output_lines = list(preamble_lines)
+            preamble_lines = []
+            if initial_output:
+                current_output_lines.append(initial_output)
+            continue
+
+        if current_host:
+            current_output_lines.append(line)
+        else:
+            preamble_lines.append(line)
+
+    if current_host and current_status:
+        results.append(
+            _build_parsed_host_result(
+                current_host,
+                current_status,
+                current_exit_code,
+                current_output_lines,
+            )
+        )
+
+    return results
+
+
 def _build_host_credentials_inventory(
     workspace: Path, host_credentials: list[dict[str, Any]]
 ) -> str:
@@ -205,6 +291,11 @@ def _build_host_credentials_inventory(
         password = item.get("password")
         if password:
             parts.append(f"ansible_password={_quote_inventory_value(password)}")
+            if str(connection).strip().lower() == "ssh":
+                parts.append(
+                    "ansible_ssh_common_args="
+                    f"{_quote_inventory_value(_get_password_auth_ssh_common_args(item))}"
+                )
 
         private_key_file = item.get("private_key_file")
         private_key_content = item.get("private_key_content")

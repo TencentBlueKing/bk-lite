@@ -43,10 +43,17 @@ class BaseCollect(object):
         if self.COLLECT_PLUGIN is None:
             raise NotImplementedError("Please implement the collect plugin")
 
-        metrics_cannula = MetricsCannula(inst_id=self.inst_id, organization=self.organization, inst_name=self.inst_name,
-                                         task_id=self.task_id, collect_plugin=self.COLLECT_PLUGIN,
-                                         manual=bool(self.task.input_method), default_metrics=self.default_metrics,
-                                         filter_collect_task=self.filter_collect_task)
+        metrics_cannula = MetricsCannula(
+            inst_id=self.inst_id,
+            organization=self.organization,
+            inst_name=self.inst_name,
+            task_id=self.task_id,
+            collect_plugin=self.COLLECT_PLUGIN,
+            manual=bool(self.task.input_method),
+            default_metrics=self.default_metrics,
+            filter_collect_task=self.filter_collect_task,
+            data_cleanup_strategy=self.task.data_cleanup_strategy,
+        )
         result = metrics_cannula.collect_controller()
         format_data = self.format_collect_data(result)
         return metrics_cannula.collect_data, format_data
@@ -66,16 +73,14 @@ class BaseCollect(object):
                 for status, data in datas.items():
                     for i in data:
                         assos_result = i.pop("assos_result", {})
-                        format_assos_result = self.format_assos_result(
-                            assos_result)
+                        format_assos_result = self.format_assos_result(assos_result)
                         if format_assos_result:
-                            format_data["association"].extend(
-                                format_assos_result)
+                            format_data["association"].extend(format_assos_result)
 
                         _data = {"_status": status}
                         if status == "failed":
                             update_data = i.get("instance_info")
-                            update_data['_error'] = i.get("error", "")
+                            update_data["_error"] = i.get("error", "")
                         else:
                             update_data = i.get("inst_info")
                         if not update_data:

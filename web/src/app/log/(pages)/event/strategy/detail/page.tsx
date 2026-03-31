@@ -89,7 +89,10 @@ const StrategyOperation = () => {
   };
 
   const getAllFields = async () => {
-    const data = await getFields();
+    const data = await getFields({
+      query: form.getFieldValue('query') || '*',
+      log_groups: form.getFieldValue('log_groups') || []
+    });
     setFieldList(data || []);
   };
 

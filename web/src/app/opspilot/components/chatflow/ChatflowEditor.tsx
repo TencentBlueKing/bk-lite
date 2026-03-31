@@ -47,8 +47,9 @@ import { useHelperLines } from './hooks/useHelperLines';
 import { useAutoLayout } from './hooks/useAutoLayout';
 import HelperLines from './HelperLines';
 import { PartitionOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
+import ExecutionPreviewPanel from './ExecutionPreviewPanel';
 
-const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onSave, initialData }, ref) => {
+const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onSave, initialData, initialExecutionId, onExecutionStateChange }, ref) => {
   const { t } = useTranslation();
   const reactFlowWrapper = useRef<HTMLDivElement>(null as any);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
@@ -90,7 +91,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   );
 
   // 使用自定义 Hooks
-  const executionProps = useNodeExecution(t);
+  const executionProps = useNodeExecution(t, initialExecutionId);
   const { handleDeleteNode, handleKeyDown } = useNodeDeletion({
     setNodes,
     setEdges,
@@ -108,6 +109,40 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
     onSave,
     t,
   });
+
+  const decoratedNodes = useMemo(() => (
+    nodes.map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        executionStatus: normalizeExecutionStatus(executionProps.executionStatusMap[node.id]),
+        executionDuration: executionProps.executionDurationMap[node.id],
+      },
+    }))
+  ), [nodes, executionProps.executionDurationMap, executionProps.executionStatusMap]);
+
+  const decoratedEdges = useMemo(() => {
+    const hasExecutionState = Object.keys(executionProps.executionStatusMap).length > 0;
+    if (!hasExecutionState) {
+      return edges;
+    }
+
+    return edges.map((edge) => {
+      const targetStatus = normalizeExecutionStatus(executionProps.executionStatusMap[edge.target]);
+      const sourceStatus = normalizeExecutionStatus(executionProps.executionStatusMap[edge.source]);
+      const edgeStatus = targetStatus || (sourceStatus === 'failed' ? 'failed' : undefined);
+
+      if (!edgeStatus) {
+        return edge;
+      }
+
+      return {
+        ...edge,
+        className: `edge-status-${edgeStatus}`,
+        animated: edgeStatus === 'running',
+      };
+    });
+  }, [edges, executionProps.executionStatusMap]);
 
   // Auto-save
   useEffect(() => {
@@ -142,7 +177,44 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
     lastSaveData.current = JSON.stringify({ nodes: [], edges: [] });
   }, [setNodes, setEdges]);
 
-  useImperativeHandle(ref, () => ({ clearCanvas }), [clearCanvas]);
+  useImperativeHandle(ref, () => ({
+    clearCanvas,
+    openExecutionPreview: executionProps.openPreviewPanel,
+    closeExecutionPreview: executionProps.closePreviewPanel,
+  }), [clearCanvas, executionProps.closePreviewPanel, executionProps.openPreviewPanel]);
+
+  useEffect(() => {
+    onExecutionStateChange?.({
+      summary: executionProps.executionSummary,
+      previewOpen: executionProps.isPreviewOpen,
+      latestExecutionId: executionProps.latestExecutionId,
+      openPreview: executionProps.openPreviewPanel,
+      closePreview: executionProps.closePreviewPanel,
+    });
+  }, [
+    executionProps.closePreviewPanel,
+    executionProps.executionSummary,
+    executionProps.isPreviewOpen,
+    executionProps.latestExecutionId,
+    executionProps.openPreviewPanel,
+    onExecutionStateChange,
+  ]);
+
+  function normalizeExecutionStatus(status?: string) {
+    if (status === 'success') {
+      return 'completed';
+    }
+
+    if (status === 'fail') {
+      return 'failed';
+    }
+
+    if (status === 'pending' || status === 'running' || status === 'completed' || status === 'failed') {
+      return status;
+    }
+
+    return undefined;
+  }
 
   const handleAutoLayout = useCallback(
     async (direction: 'LR' | 'TB') => {
@@ -183,6 +255,8 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       const NodeComponentWithProps = (props: any) => (
         <Component
           {...props}
+          executionStatus={props.data?.executionStatus}
+          executionDuration={props.data?.executionDuration}
           onDelete={(...args: unknown[]) => deleteNodeRef.current?.apply(null, args as any)}
           onConfig={(...args: unknown[]) => configNodeRef.current?.apply(null, args as any)}
         />
@@ -371,8 +445,8 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       >
         <ReactFlowProvider>
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
+            nodes={decoratedNodes}
+            edges={decoratedEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
@@ -431,6 +505,18 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
             <HelperLines horizontal={helperLines.horizontal} vertical={helperLines.vertical} />
           </ReactFlow>
         </ReactFlowProvider>
+
+        <ExecutionPreviewPanel
+          open={executionProps.isPreviewOpen}
+          loading={executionProps.executionDetailLoading}
+          title={executionProps.executeNodeId ? `${t('chatflow.preview.logTitle')} · ${executionProps.executeNodeId}` : t('chatflow.preview.logTitle')}
+          executionId={executionProps.latestExecutionId}
+          streamingContent={executionProps.streamingContent || executionProps.executeResult?.content || ''}
+          rawExecutionData={executionProps.executeResult?.rawResponse}
+          items={executionProps.executionDetails}
+          activeNodeId={executionProps.activeExecutionNodeId}
+          onClose={executionProps.closePreviewPanel}
+        />
       </div>
 
       <NodeConfigDrawer

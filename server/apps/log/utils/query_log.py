@@ -17,7 +17,23 @@ class VictoriaMetricsAPI:
         self.ssl_verify = VictoriaLogsConstants.SSL_VERIFY
         self.auth = HTTPBasicAuth(self.username, self.password)
 
-    def field_names(self, start, end, field, limit=100):
+    def all_field_names(self, query, start, end):
+        data = {
+            "query": query or "*",
+            "start": start,
+            "end": end,
+            "ignore_pipes": 1,
+        }
+        response = requests.get(
+            f"{self.host}/select/logsql/field_names",
+            params=data,
+            auth=self.auth,
+            verify=self.ssl_verify,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def field_values(self, start, end, field, limit=100):
         data = {
             "query": f"{field}:*",
             "field": field,
@@ -26,7 +42,7 @@ class VictoriaMetricsAPI:
             "limit": limit,
         }
         response = requests.get(
-            f"{self.host}/select/logsql/field_names",
+            f"{self.host}/select/logsql/field_values",
             params=data,
             auth=self.auth,
             verify=self.ssl_verify,
@@ -165,9 +181,7 @@ class VictoriaMetricsAPI:
                     logger.debug("VictoriaLogs响应连接已关闭")
 
         except requests.exceptions.ConnectTimeout:
-            logger.error(
-                "异步VictoriaLogs连接超时", extra={"host": self.host, "timeout": "10秒"}
-            )
+            logger.error("异步VictoriaLogs连接超时", extra={"host": self.host, "timeout": "10秒"})
             raise
         except requests.exceptions.ReadTimeout:
             logger.error(

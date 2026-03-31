@@ -149,7 +149,7 @@ class TargetViewSet(AuthViewSet):
             query_data["os"] = os_type
 
         # 组织权限过滤
-        current_team = request.COOKIES.get("current_team")
+        current_team = int(request.COOKIES.get("current_team") or "0")
         if current_team:
             query_data["organization_ids"] = [current_team]
 
