@@ -4,7 +4,6 @@ import { TreeItem, TableDataItem, TreeSortData } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import type { TreeProps, TreeDataNode } from 'antd';
 import { cloneDeep } from 'lodash';
-import { findTreeParentKey } from '@/app/monitor/utils/common';
 
 const { Search } = Input;
 
@@ -25,7 +24,7 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
   draggable = false,
   showAllMenu = false,
   onNodeSelect,
-  onNodeDrag,
+  onNodeDrag
 }) => {
   const { t } = useTranslation();
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
@@ -76,7 +75,7 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
         ) {
           return {
             ...item,
-            children,
+            children
           };
         }
         return null;
@@ -107,7 +106,7 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
       ) {
         return {
           ...item,
-          children: originalItem.children,
+          children: originalItem.children
         };
       }
       return item;
@@ -146,13 +145,23 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
         dropLevel === 2 ||
         dropNode.dragOverGapBottom
       ) {
+        // 拖拽到最后一个下方时，dropNode.dragOverGapBottom 为 true
+        // 此时 targetKey 应该是 dropNode 自身（一级节点没有父节点）
         const targetKey = dropNode.dragOverGapBottom
-          ? findTreeParentKey(data, dropKey)
+          ? dropKey // 直接使用 dropKey，因为一级节点没有父节点
           : dropKey;
         const draggingIndex = _data.findIndex((item) => item.key === dragKey);
         const targetIndex = _data.findIndex((item) => item.key === targetKey);
+        if (draggingIndex === -1 || targetIndex === -1) return;
         const [draggedItem] = _data.splice(draggingIndex, 1);
-        _data.splice(targetIndex, 0, draggedItem);
+        // 如果拖到下方，需要插入到 targetIndex 后面
+        const insertIndex = dropNode.dragOverGapBottom
+          ? targetIndex + 1
+          : targetIndex;
+        // 考虑删除元素后索引的变化
+        const adjustedIndex =
+          draggingIndex < insertIndex ? insertIndex - 1 : insertIndex;
+        _data.splice(adjustedIndex, 0, draggedItem);
         onNodeDrag && onNodeDrag(getTreeSortData(_data), _data);
       }
       return;
@@ -211,9 +220,9 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
     return data.map((item) => {
       return {
         type: item.key,
-        name_list: (item.children || []).map(
+        object_list: (item.children || []).map(
           (child: TableDataItem) => child.label
-        ),
+        )
       };
     });
   };

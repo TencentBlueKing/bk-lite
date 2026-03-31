@@ -641,7 +641,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
             {/* 对象选择 */}
             <div>
               <label className="text-xs font-medium text-[var(--color-text-3)] mb-[10px] block">
-                {t('monitor.object')}
+                {t('monitor.monitorObject')}
               </label>
               <Select
                 className="w-full"
