@@ -834,7 +834,7 @@ def enrich_attrs_with_unique_display(
         result.append({**attr, "unique_display_type": unique_display_type})
 
     if model_id:
-        logger.info(
+        logger.debug(
             "[UniqueRule] enrich unique display model_id=%s attr_count=%s single_count=%s joint_count=%s",
             model_id,
             len(result),
