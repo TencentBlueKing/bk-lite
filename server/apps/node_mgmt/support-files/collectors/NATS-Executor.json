@@ -24,7 +24,7 @@
         "icon": "caijixinxi",
         "node_operating_system": "windows",
         "service_type": "exec",
-        "executable_path": "C:\\bklite\\fusion-collectors\\bin\\nats-executor.exe",
+        "executable_path": "C:\\fusion-collectors\\bin\\nats-executor.exe",
         "execute_parameters": "--config %s",
         "validation_parameters": "",
         "default_template": "",

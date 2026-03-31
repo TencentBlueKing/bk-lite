@@ -6,7 +6,7 @@
     "icon": "",
     "node_operating_system": "windows",
     "service_type": "exec",
-    "executable_path": "C:\\bklite\\fusion-collectors\\bin\\winlogbeat\\winlogbeat.exe",
+    "executable_path": "C:\\fusion-collectors\\bin\\winlogbeat\\winlogbeat.exe",
     "execute_parameters": "-c %s",
     "validation_parameters": "",
     "default_template": "",
