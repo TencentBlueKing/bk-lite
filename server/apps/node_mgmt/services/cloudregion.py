@@ -73,7 +73,12 @@ class RegionService:
         if not nats_monitor_password:
             missing_vars.append("NATS_ADMIN_PASSWORD")
         if missing_vars:
-            raise BaseAppException(f"Missing required environment variables in cloud region {cloud_region_id}: {', '.join(missing_vars)}")
+            logger.error(
+                "Missing required environment variables in cloud region %s: %s",
+                cloud_region_id,
+                ", ".join(missing_vars),
+            )
+            raise BaseAppException("Cloud region environment configuration is incomplete")
 
         proxy_ip = cloud_region.proxy_address
         if not proxy_ip:
