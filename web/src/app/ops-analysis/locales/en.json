@@ -214,6 +214,7 @@
     "dataFetchFailed": "Data fetch failed",
     "inputName": "Please enter widget name",
     "paramSettings": "Parameter Settings",
+    "noParamSettings": "No configurable parameters",
     "barColor": "Bar Color",
     "selectInstance": "Please select instance",
     "dataFormatMismatch": "Data format mismatch",
