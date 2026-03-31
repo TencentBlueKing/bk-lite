@@ -20,14 +20,40 @@ from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 
 class MonitorObjectService:
     @staticmethod
+    def validate_new_instance_name_unique(monitor_object_id, monitor_instance_name):
+        if not monitor_instance_name:
+            return
+        exists = MonitorInstance.objects.filter(
+            monitor_object_id=monitor_object_id,
+            name=monitor_instance_name,
+            is_deleted=False,
+        ).exists()
+        if exists:
+            raise BaseAppException("实例名称已存在")
+
+    @staticmethod
+    def validate_update_instance_name_unique(instance, monitor_instance_name):
+        if not monitor_instance_name or instance.name == monitor_instance_name:
+            return
+        exists = (
+            MonitorInstance.objects.filter(
+                monitor_object_id=instance.monitor_object_id,
+                name=monitor_instance_name,
+                is_deleted=False,
+            )
+            .exclude(id=instance.id)
+            .exists()
+        )
+        if exists:
+            raise BaseAppException("实例名称已存在")
+
+    @staticmethod
     def get_instances_by_metric(metric: str, instance_id_keys: list):
         """获取监控对象实例"""
         metrics = VictoriaMetricsAPI().query(metric, step="20m")
         instance_map = {}
         for metric_info in metrics.get("data", {}).get("result", []):
-            instance_id = str(
-                tuple([metric_info["metric"].get(i) for i in instance_id_keys])
-            )
+            instance_id = str(tuple([metric_info["metric"].get(i) for i in instance_id_keys]))
             if not instance_id:
                 continue
             agent_id = metric_info.get("metric", {}).get("agent_id")
@@ -52,9 +78,7 @@ class MonitorObjectService:
     @staticmethod
     def add_attr(items: list):
         # 状态计算, 补充组织
-        org_objs = MonitorInstanceOrganization.objects.filter(
-            monitor_instance_id__in=[i["instance_id"] for i in items]
-        )
+        org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[i["instance_id"] for i in items])
         org_map = {}
         for org in org_objs:
             if org.monitor_instance_id not in org_map:
@@ -70,9 +94,7 @@ class MonitorObjectService:
                 conf_info["status"] = "unavailable"
 
     @staticmethod
-    def get_monitor_instance(
-        monitor_object_id, page, page_size, name, qs, add_metrics=False
-    ):
+    def get_monitor_instance(monitor_object_id, page, page_size, name, qs, add_metrics=False):
         """获取监控对象实例"""
         start = (page - 1) * page_size
         end = start + page_size
@@ -129,11 +151,7 @@ class MonitorObjectService:
             for metric_obj in metrics_obj:
                 query_parts = []
                 for i, key in enumerate(metric_obj.instance_id_keys):
-                    values_set = {
-                        re.escape(str(item[i]))
-                        for item in instance_ids
-                        if len(item) > i and item[i] is not None
-                    }
+                    values_set = {re.escape(str(item[i])) for item in instance_ids if len(item) > i and item[i] is not None}
                     if not values_set:
                         continue
                     values = "|".join(values_set)  # 去重并拼接
@@ -144,14 +162,7 @@ class MonitorObjectService:
                 metrics = VictoriaMetricsAPI().query(query)
                 _metric_map = {}
                 for metric in metrics.get("data", {}).get("result", []):
-                    instance_id = str(
-                        tuple(
-                            [
-                                metric["metric"].get(i)
-                                for i in metric_obj.instance_id_keys
-                            ]
-                        )
-                    )
+                    instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
                     value = metric["value"][1]
                     if instance_id not in _metric_map:
                         _metric_map[instance_id] = value
@@ -169,13 +180,9 @@ class MonitorObjectService:
         return dict(count=count, results=result)
 
     @staticmethod
-    def generate_monitor_instance_id(
-        monitor_object_id, monitor_instance_name, interval
-    ):
+    def generate_monitor_instance_id(monitor_object_id, monitor_instance_name, interval):
         """生成监控对象实例ID"""
-        obj = MonitorInstance.objects.filter(
-            monitor_object_id=monitor_object_id, name=monitor_instance_name
-        ).first()
+        obj = MonitorInstance.objects.filter(monitor_object_id=monitor_object_id, name=monitor_instance_name).first()
         if obj:
             obj.interval = interval
             obj.save()
@@ -210,7 +217,7 @@ class MonitorObjectService:
     def set_object_order(order_data: list):
         """
         设置监控对象排序
-        :param order_data: [{"type": "OS", "name_list": ["Host"]}, ...]
+        :param order_data: [{"type": "OS", "object_list": ["Host"]}, ...]
         """
         with transaction.atomic():
             type_updates = []
@@ -219,18 +226,16 @@ class MonitorObjectService:
             # 批量收集需要更新的数据
             for idx, item in enumerate(order_data):
                 type_id = item.get("type")
-                name_list = item.get("name_list", [])
+                object_list = item.get("object_list", [])
 
                 # 创建或获取分类对象
-                obj_type, created = MonitorObjectType.objects.get_or_create(
-                    id=type_id, defaults={"order": idx}
-                )
+                obj_type, created = MonitorObjectType.objects.get_or_create(id=type_id, defaults={"order": idx})
                 if not created and obj_type.order != idx:
                     obj_type.order = idx
                     type_updates.append(obj_type)
 
                 # 收集需要更新的监控对象
-                for name_idx, name in enumerate(name_list):
+                for name_idx, name in enumerate(object_list):
                     objects = MonitorObject.objects.filter(name=name, type_id=type_id)
                     for obj in objects:
                         if obj.order != name_idx:
@@ -258,6 +263,7 @@ class MonitorObjectService:
         if not instance:
             raise BaseAppException("Monitor instance does not exist")
         if name:
+            MonitorObjectService.validate_update_instance_name_unique(instance, name)
             instance.name = name
             instance.save()
 
@@ -272,9 +278,7 @@ class MonitorObjectService:
         if not instance_ids or not organizations:
             return
 
-        MonitorInstanceOrganization.objects.filter(
-            monitor_instance_id__in=instance_ids, organization__in=organizations
-        ).delete()
+        MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=instance_ids, organization__in=organizations).delete()
 
     @staticmethod
     def add_instances_organizations(instance_ids, organizations):
@@ -285,11 +289,7 @@ class MonitorObjectService:
         creates = []
         for instance_id in instance_ids:
             for org in organizations:
-                creates.append(
-                    MonitorInstanceOrganization(
-                        monitor_instance_id=instance_id, organization=org
-                    )
-                )
+                creates.append(MonitorInstanceOrganization(monitor_instance_id=instance_id, organization=org))
         MonitorInstanceOrganization.objects.bulk_create(creates, ignore_conflicts=True)
 
     @staticmethod
@@ -300,19 +300,11 @@ class MonitorObjectService:
 
         with transaction.atomic():
             # 删除旧的组织关联
-            MonitorInstanceOrganization.objects.filter(
-                monitor_instance_id__in=instance_ids
-            ).delete()
+            MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=instance_ids).delete()
 
             # 添加新的组织关联
             creates = []
             for instance_id in instance_ids:
                 for org in organizations:
-                    creates.append(
-                        MonitorInstanceOrganization(
-                            monitor_instance_id=instance_id, organization=org
-                        )
-                    )
-            MonitorInstanceOrganization.objects.bulk_create(
-                creates, ignore_conflicts=True
-            )
+                    creates.append(MonitorInstanceOrganization(monitor_instance_id=instance_id, organization=org))
+            MonitorInstanceOrganization.objects.bulk_create(creates, ignore_conflicts=True)

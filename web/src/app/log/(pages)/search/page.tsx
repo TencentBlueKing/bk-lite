@@ -53,6 +53,16 @@ import ConditionList from './conditionList';
 const { Option } = Select;
 const PAGE_LIMIT = 100;
 
+const quoteLogsqlToken = (value: unknown) => {
+  const normalized = String(value ?? '');
+  const escaped = normalized
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
+  return `"${escaped}"`;
+};
+
 const SearchView: React.FC = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
@@ -168,6 +178,7 @@ const SearchView: React.FC = () => {
       setGroupList(list);
       setGroups(ids);
       if (list.length) {
+        await getAllFieldsByConfig({ logGroups: ids });
         getLogData('init', { logGroups: ids });
       }
     } finally {
@@ -178,7 +189,13 @@ const SearchView: React.FC = () => {
   const getAllFields = async () => {
     setTreeLoading(true);
     try {
-      const data = await getFields();
+      const { query, start_time, end_time, log_groups } = getSearchParams();
+      const data = await getFields({
+        query,
+        start_time,
+        end_time,
+        log_groups
+      });
       setFields(data || []);
     } finally {
       setTreeLoading(false);
@@ -255,6 +272,7 @@ const SearchView: React.FC = () => {
   };
 
   const onRefresh = () => {
+    getAllFields();
     getLogData('refresh');
   };
 
@@ -268,22 +286,22 @@ const SearchView: React.FC = () => {
 
   const addToQuery = (row: TableDataItem, type: string) => {
     const currentText = searchTextRef.current;
+    const trimmedText = currentText.trim();
     if (type === 'field') {
-      const pattern = /fields/;
-      if (currentText.match(pattern)) {
-        searchTextRef.current = currentText.replace(
-          pattern,
-          `fields ${row.label},`
-        );
+      const fieldLabel = `${String(row.label || '')}:`;
+      if (!trimmedText) {
+        searchTextRef.current = fieldLabel;
+      } else if (/(\||\(|AND|OR)$/i.test(trimmedText)) {
+        searchTextRef.current = `${trimmedText} ${fieldLabel}`;
       } else {
-        searchTextRef.current = currentText
-          ? `${currentText} | fields ${row.label}`
-          : `fields ${row.label}`;
+        searchTextRef.current = `${trimmedText} | ${fieldLabel}`;
       }
     } else {
+      const fieldLabel = quoteLogsqlToken(row.label);
+      const fieldValue = quoteLogsqlToken(row.value);
       searchTextRef.current = currentText
-        ? `${row.label}:${row.value} | ${currentText}`
-        : `${row.label}:${row.value}`;
+        ? `${fieldLabel}:${fieldValue} | ${currentText}`
+        : `${fieldLabel}:${fieldValue}`;
     }
     setDefaultSearchText(searchTextRef.current);
   };
@@ -295,6 +313,7 @@ const SearchView: React.FC = () => {
       selectValue: 0
     }));
     const times = arr.map((item) => dayjs(item).valueOf());
+    getAllFieldsByConfig({ times });
     getLogData('refresh', { times });
   };
 
@@ -344,11 +363,32 @@ const SearchView: React.FC = () => {
         ? null
         : [dayjs(start), dayjs(end)]
     });
+    getAllFieldsByConfig({
+      logGroups: log_groups,
+      text: query,
+      times: [start, end]
+    });
     getLogData('refresh', {
       logGroups: log_groups,
       text: query,
       times: [start, end]
     });
+  };
+
+  const getAllFieldsByConfig = async (extra?: SearchConfig) => {
+    setTreeLoading(true);
+    try {
+      const params = getParams(extra);
+      const data = await getFields({
+        query: params.query,
+        start_time: params.start_time,
+        end_time: params.end_time,
+        log_groups: params.log_groups
+      });
+      setFields(data || []);
+    } finally {
+      setTreeLoading(false);
+    }
   };
 
   // 获取时间范围的方法

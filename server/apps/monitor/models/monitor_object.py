@@ -7,6 +7,7 @@ from apps.core.models.time_info import TimeInfo
 class MonitorObjectType(TimeInfo, MaintainerInfo):
     """监控对象分类"""
     id = models.CharField(primary_key=True, max_length=100, verbose_name='分类ID')
+    name = models.CharField(max_length=100, blank=True, default='', verbose_name='分类名称')
     description = models.TextField(blank=True, verbose_name='分类描述')
     order = models.IntegerField(default=999, db_index=True, verbose_name='排序')
 
@@ -20,6 +21,7 @@ class MonitorObject(TimeInfo, MaintainerInfo):
     LEVEL_CHOICES = [('base', 'Base'), ('derivative', 'Derivative')]
 
     name = models.CharField(unique=True, max_length=100, verbose_name='监控对象')
+    display_name = models.CharField(max_length=100, blank=True, default='', verbose_name='监控对象显示名称')
     icon = models.CharField(max_length=100, default="", verbose_name='监控对象图标')
     type = models.ForeignKey(
         MonitorObjectType,
@@ -37,6 +39,7 @@ class MonitorObject(TimeInfo, MaintainerInfo):
     default_metric = models.TextField(blank=True, verbose_name='默认指标')
     instance_id_keys = models.JSONField(default=list, verbose_name='联合唯一实例ID键列表')
     supplementary_indicators = models.JSONField(default=list, verbose_name='对象实例补充指标')
+    is_visible = models.BooleanField(default=True, verbose_name='是否可见')
 
     class Meta:
         verbose_name = '监控对象'

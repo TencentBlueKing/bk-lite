@@ -4,11 +4,11 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.services.infra import InfraService
 from apps.monitor.services.node_mgmt import InstanceConfigService
+from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
 class ManualCollectService:
-
     @staticmethod
     def check_collect_status(object_id, instance_id) -> bool:
         """
@@ -40,12 +40,7 @@ class ManualCollectService:
         """
         关联组织到手动采集实例
         """
-        creates = [
-            MonitorInstanceOrganization(
-                monitor_instance_id=instance_id,
-                organization=org_id
-            ) for org_id in organization_ids
-        ]
+        creates = [MonitorInstanceOrganization(monitor_instance_id=instance_id, organization=org_id) for org_id in organization_ids]
         MonitorInstanceOrganization.objects.bulk_create(creates, ignore_conflicts=True)
 
     @staticmethod
@@ -59,13 +54,13 @@ class ManualCollectService:
             organization_ids,
         )
 
-
     @staticmethod
     def create_manual_collect_instance(data: dict):
         """
         创建手动采集实例
         """
         organizations = data.pop("organizations", [])
+        MonitorObjectService.validate_new_instance_name_unique(data.get("monitor_object_id"), data.get("name"))
         instance_id = str(tuple([data["id"]]))
         data.update(id=instance_id)
         # 建实例
@@ -102,7 +97,7 @@ class ManualCollectService:
         env_vars = node_mgmt_rpc.get_cloud_region_envconfig(cloud_region_id)
 
         # 从云区域环境变量中获取服务器地址
-        server_url = env_vars.get('NODE_SERVER_URL')
+        server_url = env_vars.get("NODE_SERVER_URL")
         if not server_url:
             raise BaseAppException(f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}")
 
@@ -114,13 +109,7 @@ class ManualCollectService:
 
         # 构造 curl 命令，使用令牌而不是直接传递参数
         # 添加 -k 参数跳过 SSL 证书验证（针对自签名证书或内网环境）
-        install_command = (
-            f"curl -sSLk -X POST "
-            f"-H 'Content-Type: application/json' "
-            f"{api_url} "
-            f"-d '{{\"token\":\"{token}\"}}' "
-            f"| kubectl apply -f -"
-        )
+        install_command = f"curl -sSLk -X POST -H 'Content-Type: application/json' {api_url} -d '{{\"token\":\"{token}\"}}' | kubectl apply -f -"
         return install_command
 
     @staticmethod

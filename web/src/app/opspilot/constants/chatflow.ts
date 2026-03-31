@@ -19,15 +19,15 @@ export const nodeConfig = {
 export const TRIGGER_NODE_TYPES = ['celery', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'] as const;
 
 export const handleColorClasses = {
-  green: '!bg-green-500',
-  purple: '!bg-purple-500',
-  blue: '!bg-blue-500',
-  orange: '!bg-orange-500',
-  teal: '!bg-teal-500',
-  indigo: '!bg-indigo-500',
-  yellow: '!bg-yellow-500',
-  cyan: '!bg-cyan-500',
-  pink: '!bg-pink-500',
+  green: 'bg-green-500!',
+  purple: 'bg-purple-500!',
+  blue: 'bg-blue-500!',
+  orange: 'bg-orange-500!',
+  teal: 'bg-teal-500!',
+  indigo: 'bg-indigo-500!',
+  yellow: 'bg-yellow-500!',
+  cyan: 'bg-cyan-500!',
+  pink: 'bg-pink-500!',
 } as const;
 
 export const getDefaultConfig = (nodeType: string) => {

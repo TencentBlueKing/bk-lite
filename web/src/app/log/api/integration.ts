@@ -14,6 +14,13 @@ interface NodeConfigParam {
   instances?: Omit<IntegrationLogInstance, 'key'>[];
 }
 
+interface GetFieldsParams {
+  query?: string;
+  start_time?: string;
+  end_time?: string;
+  log_groups?: React.Key[];
+}
+
 const useIntegrationApi = () => {
   const { get, post, put, del, patch } = useApiClient();
 
@@ -39,7 +46,7 @@ const useIntegrationApi = () => {
     return await get('/log/collect_types/display_category_enum/');
   };
 
-  const getFields = async (params = {}) => {
+  const getFields = async (params: GetFieldsParams = {}) => {
     return await get('/log/collect_types/all_attrs/', {
       params
     });
@@ -53,7 +60,7 @@ const useIntegrationApi = () => {
       limit?: number;
     } = {}
   ) => {
-    return await get(`/log/search/field_names/`, {
+    return await get(`/log/search/field_values/`, {
       params
     });
   };

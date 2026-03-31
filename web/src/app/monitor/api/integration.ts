@@ -8,7 +8,7 @@ import {
 import { AxiosRequestConfig } from 'axios';
 
 const useIntegrationApi = () => {
-  const { get, post, del } = useApiClient();
+  const { get, post, del, put } = useApiClient();
 
   const getInstanceGroupRule = async (
     params: {
@@ -134,6 +134,30 @@ const useIntegrationApi = () => {
     return await get(`/monitor/api/monitor_plugin/${data.id}/ui_template/`);
   };
 
+  const getPushAccessDoc = async (id: React.Key, params?: { team?: React.Key }) => {
+    return await get(`/monitor/api/monitor_plugin/${id}/push_access/`, {
+      params,
+    });
+  };
+
+  const createCustomApiTemplate = async (data: Record<string, any>) => {
+    return await post(`/monitor/api/monitor_plugin/`, data);
+  };
+
+  const updateCustomApiTemplate = async (id: React.Key, data: Record<string, any>) => {
+    return await put(`/monitor/api/monitor_plugin/${id}/`, data);
+  };
+
+  const deleteCustomApiTemplate = async (id: React.Key) => {
+    return await del(`/monitor/api/monitor_plugin/${id}/`);
+  };
+
+  const getCurrentApiSecret = async (params?: { team?: React.Key }) => {
+    return await get(`/monitor/api/system_mgmt/api_secret/`, {
+      params,
+    });
+  };
+
   const getUiTemplateByParams = async (params: {
     collector: string;
     collect_type: string;
@@ -215,6 +239,11 @@ const useIntegrationApi = () => {
     updateMonitorInstance,
     setInstancesGroup,
     getUiTemplate,
+    getPushAccessDoc,
+    createCustomApiTemplate,
+    updateCustomApiTemplate,
+    deleteCustomApiTemplate,
+    getCurrentApiSecret,
     getInstanceListByPrimaryObject,
     getCloudRegionList,
     createK8sInstance,

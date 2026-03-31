@@ -5,6 +5,7 @@ import { Tooltip } from 'antd';
 import WithSideMenuLayout from '@/components/sub-layout';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Icon from '@/components/icon';
+import { MenuItem } from '@/types/index';
 
 const IntegrationDetailLayout = ({
   children,
@@ -17,6 +18,8 @@ const IntegrationDetailLayout = ({
   const desc = searchParams.get('plugin_description');
   const objId = searchParams.get('id') || '';
   const icon = searchParams.get('icon');
+  const templateType = searchParams.get('template_type');
+  const queryString = searchParams.toString();
 
   const handleBackButtonClick = () => {
     const params = new URLSearchParams({ objId });
@@ -36,12 +39,31 @@ const IntegrationDetailLayout = ({
     </div>
   );
 
+  const customMenuItems: MenuItem[] | undefined =
+    templateType === 'custom_api'
+      ? [
+        {
+          title: '配置',
+          name: 'configure',
+          icon: 'settings-fill',
+          url: `/monitor/integration/list/detail/configure?${queryString}`,
+        },
+        {
+          title: '指标',
+          name: 'metric',
+          icon: 'guanli',
+          url: `/monitor/integration/list/detail/metric?${queryString}`,
+        },
+      ]
+      : undefined;
+
   return (
     <WithSideMenuLayout
       topSection={<TopSection />}
       showBackButton={true}
       onBackButtonClick={handleBackButtonClick}
       layoutType="sideMenu"
+      customMenuItems={customMenuItems}
     >
       {children}
     </WithSideMenuLayout>

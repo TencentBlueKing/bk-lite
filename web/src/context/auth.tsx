@@ -129,27 +129,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const checkExistingAuthentication = async () => {
     try {
       setIsCheckingExistingAuth(true);
-      
+
       const response = await fetch('/api/proxy/core/api/get_bk_settings/', {
         method: "GET",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Cache-Control": "no-cache, no-store, must-revalidate",
           "Pragma": "no-cache",
         },
         credentials: 'include',
       });
-      
+
       const responseData = await response.json();
-      
+
       if (response.ok && responseData.result && responseData.data) {
         // Try different paths to find user data
         const userData = responseData.data.user;
-        
+
         // Check if we have valid user information
         if (userData && (userData.username || userData.id)) {
           setIsAutoSigningIn(true);
-          
+
           const userDataForAuth = {
             id: userData.id,
             username: userData.username,
@@ -181,7 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             skipValidation: 'true',
             userData: JSON.stringify(userDataForAuth),
           });
-          
+
           if (result?.ok) {
             setTimeout(() => {
               setIsAutoSigningIn(false);
@@ -202,7 +202,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsCheckingExistingAuth(false);
     }
-    
+
     setIsAutoSigningIn(false);
     return false;
   };
@@ -217,11 +217,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       setHasCheckedExistingAuth(true);
-      
+
       // Always check for existing authentication first, regardless of current session status
       // This ensures we don't miss existing auth when session loads quickly
       const hasExistingAuth = await checkExistingAuthentication();
-      
+
       if (!hasExistingAuth) {
         // Only stop checking if we're sure there's no existing auth AND session is loaded
         if (status !== 'loading') {
@@ -279,7 +279,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(null);
       setIsAuthenticated(false);
       setIsCheckingAuth(false);
-      
+
       // Only redirect if:
       // 1. Not currently auto signing in
       // 2. Not on auth pages
@@ -322,7 +322,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         <div className="text-center">
           <Spin size="large" />
           <p className="mt-4 text-gray-600">
-            {isAutoSigningIn ? 'Auto signing in...' : 
+            {isAutoSigningIn ? 'Auto signing in...' :
             isCheckingExistingAuth ? 'Checking existing authentication...' :
             isCheckingAuth ? 'Checking Authentication...' : 'Loading...'}
           </p>
