@@ -308,7 +308,7 @@ export interface NodeWorkload {
 
 export interface TreeSortData {
   type: string;
-  name_list: string[];
+  object_list: string[];
 }
 
 export interface ObjectIconMap {

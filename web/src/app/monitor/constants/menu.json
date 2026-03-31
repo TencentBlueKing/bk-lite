@@ -90,6 +90,12 @@
           "icon": "zuzhiguanli",
           "url": "/monitor/integration/group",
           "name": "group"
+        },
+        {
+          "title": "对象",
+          "icon": "moxing5",
+          "url": "/monitor/integration/object",
+          "name": "object"
         }
       ]
     }
@@ -185,6 +191,12 @@
           "icon": "zuzhiguanli",
           "url": "/monitor/integration/group",
           "name": "group"
+        },
+        {
+          "title": "Object",
+          "icon": "moxing5",
+          "url": "/monitor/integration/object",
+          "name": "object"
         }
       ]
     }

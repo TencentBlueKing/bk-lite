@@ -210,7 +210,7 @@ class MonitorObjectService:
     def set_object_order(order_data: list):
         """
         设置监控对象排序
-        :param order_data: [{"type": "OS", "name_list": ["Host"]}, ...]
+        :param order_data: [{"type": "OS", "object_list": ["Host"]}, ...]
         """
         with transaction.atomic():
             type_updates = []
@@ -219,7 +219,7 @@ class MonitorObjectService:
             # 批量收集需要更新的数据
             for idx, item in enumerate(order_data):
                 type_id = item.get("type")
-                name_list = item.get("name_list", [])
+                object_list = item.get("object_list", [])
 
                 # 创建或获取分类对象
                 obj_type, created = MonitorObjectType.objects.get_or_create(
@@ -230,7 +230,7 @@ class MonitorObjectService:
                     type_updates.append(obj_type)
 
                 # 收集需要更新的监控对象
-                for name_idx, name in enumerate(name_list):
+                for name_idx, name in enumerate(object_list):
                     objects = MonitorObject.objects.filter(name=name, type_id=type_id)
                     for obj in objects:
                         if obj.order != name_idx:

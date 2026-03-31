@@ -1,4 +1,4 @@
-from django_filters import FilterSet, CharFilter
+from django_filters import FilterSet, CharFilter, NumberFilter
 
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectOrganizationRule
 
@@ -6,10 +6,11 @@ from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectOrgan
 class MonitorObjectFilter(FilterSet):
     name = CharFilter(field_name="name", lookup_expr="icontains", label="指标对象名称")
     type = CharFilter(field_name="type", lookup_expr="exact", label="指标对象类型")
+    parent = NumberFilter(field_name="parent", lookup_expr="exact", label="父对象ID")
 
     class Meta:
         model = MonitorObject
-        fields = ["name", "type"]
+        fields = ["name", "type", "parent"]
 
 
 class MonitorObjectOrganizationRuleFilter(FilterSet):
