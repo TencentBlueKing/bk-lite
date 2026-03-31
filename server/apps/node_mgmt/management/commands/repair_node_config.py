@@ -3,6 +3,7 @@ from apps.node_mgmt.models.sidecar import Node
 from django.core.management import BaseCommand
 from apps.core.logger import node_logger as logger
 from apps.node_mgmt.services.sidecar import Sidecar
+from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 from apps.node_mgmt.utils.sidecar import format_tags_dynamic
 
 
@@ -19,6 +20,7 @@ class Command(BaseCommand):
                 tags_data = format_tags_dynamic(node.tags, allowed_prefixes)
                 node_types = tags_data.get(ControllerConstants.NODE_TYPE_TAG, [])
                 Sidecar.create_default_config(node, node_types)
+                converge_collector_action_task_for_node.delay(node.id)
             except Exception as e:
                 logger.error(f"修复节点 {node.id} 默认配置失败: {e}")
         logger.info("修复节点默认配置完成...")
