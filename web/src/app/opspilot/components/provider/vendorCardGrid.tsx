@@ -42,6 +42,14 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
     ].reduce((total, count) => total + (count || 0), 0);
   };
 
+  const getVendorDescription = (vendor: ModelVendor) => {
+    if (vendor.description?.trim()) {
+      return vendor.description.trim();
+    }
+
+    return `${VENDOR_LABEL_MAP[vendor.vendor_type]} API 服务`;
+  };
+
   const showDeleteConfirm = (vendor: ModelVendor) => {
     Modal.confirm({
       title: t('provider.vendor.deleteConfirm'),
@@ -72,9 +80,10 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
   }
 
   return (
-    <div className="grid w-full grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+    <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
       {vendors.map((vendor) => {
         const totalModels = getModelCount(vendor);
+        const description = getVendorDescription(vendor);
         const menuItems = [
           {
             key: 'edit',
@@ -91,60 +100,90 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
           <Card
             key={vendor.id}
             hoverable
-            className="h-full rounded-2xl border transition-all duration-200 hover:-translate-y-0.5"
-            bodyStyle={{ padding: 14, height: '100%' }}
+            className="group h-full overflow-hidden rounded-[26px] border-0 transition-all duration-300 hover:-translate-y-1"
+            bodyStyle={{ padding: 0, height: '100%' }}
             style={{
-              borderColor: 'var(--color-border-2)',
-              boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)',
+              background: '#ffffff',
+              boxShadow: '0 14px 28px rgba(148, 163, 184, 0.10)',
+              border: '1px solid rgba(191, 219, 254, 0.7)',
             }}
             onClick={() => onOpen(vendor)}
           >
-            <div className="flex min-h-22 flex-col justify-between gap-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex min-w-0 items-start gap-2">
-                  <div
-                    className="flex h-10 w-10 items-center justify-center rounded-xl border bg-white"
-                    style={{ borderColor: 'var(--color-border-2)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)' }}
-                  >
-                    <Image
-                      src={`/app/models/${VENDOR_ICON_MAP[vendor.vendor_type]}.svg`}
-                      alt={vendor.name}
-                      width={20}
-                      height={20}
-                      className="object-contain"
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1 pt-0.5">
-                    <div className="truncate text-base font-semibold leading-tight" style={{ color: 'var(--color-text-1)' }}>{vendor.name}</div>
-                    <div className="mt-0.5 text-[10px] font-medium" style={{ color: 'var(--color-text-3)' }}>{VENDOR_LABEL_MAP[vendor.vendor_type]}</div>
-                    <Tag color="blue" className="mt-1.5 rounded-full border-0 px-2 py-0 text-[10px] font-medium leading-5">
-                      {t('provider.vendor.enabledModels', undefined, { count: totalModels })}
-                    </Tag>
-                  </div>
-                </div>
+            <div className="relative flex min-h-42 flex-col overflow-hidden px-5 py-4.5">
+              <div
+                className="pointer-events-none absolute inset-x-0 top-0 h-22"
+                style={{
+                  background: 'linear-gradient(180deg, rgba(239, 246, 255, 0.95) 0%, rgba(255, 255, 255, 0) 100%)',
+                }}
+              />
+              <div
+                className="pointer-events-none absolute -top-8 left-8 h-18 w-32 rounded-full blur-3xl"
+                style={{ background: 'rgba(147, 197, 253, 0.18)' }}
+              />
 
-                <div onClick={(event) => event.stopPropagation()}>
-                  <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
-                    <button
-                      type="button"
-                      className="flex h-7 w-7 items-center justify-center rounded-lg border bg-white hover:border-blue-400 hover:text-blue-500"
-                      style={{ borderColor: 'var(--color-border-2)', color: 'var(--color-text-2)' }}
+              <div className="relative flex flex-1 flex-col">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border shadow-[0_10px_24px_rgba(96,165,250,0.14)] backdrop-blur-sm"
+                      style={{
+                        borderColor: 'rgba(191, 219, 254, 0.9)',
+                        background: 'linear-gradient(145deg, rgba(248, 251, 255, 0.96) 0%, rgba(231, 242, 255, 0.92) 100%)',
+                      }}
                     >
-                      <MoreOutlined />
-                    </button>
-                  </Dropdown>
-                </div>
-              </div>
+                      <Image
+                        src={`/app/models/${VENDOR_ICON_MAP[vendor.vendor_type]}.svg`}
+                        alt={vendor.name}
+                        width={24}
+                        height={24}
+                        className="object-contain"
+                      />
+                    </div>
 
-              <div className="flex items-center justify-end pt-0.5" onClick={(event) => event.stopPropagation()}>
-                <Tooltip title={vendor.enabled ? t('common.enable') : t('common.disable')}>
-                  <Switch
-                    size="small"
-                    checked={vendor.enabled}
-                    loading={switchLoadingId === vendor.id}
-                    onChange={(checked) => handleToggleEnabled(vendor, checked)}
-                  />
-                </Tooltip>
+                    <div className="min-w-0 flex-1 pt-0.5">
+                      <div className="truncate text-[16px] font-semibold leading-tight tracking-[-0.01em] text-(--color-text-1)">{vendor.name}</div>
+                      <Tag
+                        color="blue"
+                        className="mt-1 rounded-full border-blue-200/80 bg-white/90 px-2 py-0 text-[10px] font-medium leading-4.5 text-blue-600 shadow-[0_4px_10px_rgba(59,130,246,0.08)]"
+                      >
+                        {VENDOR_LABEL_MAP[vendor.vendor_type]}
+                      </Tag>
+                    </div>
+                  </div>
+
+                  <div className="opacity-0 transition-opacity duration-200 group-hover:opacity-100" onClick={(event) => event.stopPropagation()}>
+                    <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
+                      <button
+                        type="button"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white/88 text-(--color-text-2) shadow-[0_4px_12px_rgba(148,163,184,0.08)] backdrop-blur-sm hover:border-blue-200 hover:text-blue-500"
+                      >
+                        <MoreOutlined />
+                      </button>
+                    </Dropdown>
+                  </div>
+                </div>
+
+                <div className="mt-3 line-clamp-1 text-[13px] leading-6 text-slate-600">
+                  {description}
+                </div>
+
+                <div className="mt-auto pt-3">
+                  <div className="h-px w-full bg-linear-to-r from-sky-100 via-slate-100 to-transparent" />
+                  <div className="flex items-center justify-between gap-4 pt-3.5">
+                    <div className="text-[12px] font-medium tracking-[0.01em] text-slate-600">{totalModels} 个模型</div>
+
+                    <div onClick={(event) => event.stopPropagation()}>
+                      <Tooltip title={vendor.enabled ? t('common.enable') : t('common.disable')}>
+                        <Switch
+                          size="small"
+                          checked={vendor.enabled}
+                          loading={switchLoadingId === vendor.id}
+                          onChange={(checked) => handleToggleEnabled(vendor, checked)}
+                        />
+                      </Tooltip>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </Card>
