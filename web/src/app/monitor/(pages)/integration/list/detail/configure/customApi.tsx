@@ -9,21 +9,15 @@ import {
   Form,
   Input,
   InputRef,
-  Segmented,
   Select,
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
-  Typography,
   message
 } from 'antd';
-import {
-  CopyOutlined,
-  DeleteOutlined,
-  PlusOutlined,
-  UploadOutlined
-} from '@ant-design/icons';
+import { CopyOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '@/utils/i18n';
@@ -39,10 +33,33 @@ import GroupTreeSelector from '@/components/group-tree-select';
 import { Organization } from '@/app/monitor/types';
 import { useCommon } from '@/app/monitor/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
+import { Group } from '@/types/index';
+import { useCopy } from '@/hooks/useCopy';
+import CodeEditor from '@/app/monitor/components/codeEditor';
 
 type SampleFormat = 'curl' | 'python' | 'javascript';
 
-const formatJson = (value: Record<string, any>) => JSON.stringify(value, null, 2);
+const formatJson = (value: Record<string, any>) =>
+  JSON.stringify(value, null, 2);
+
+const getGroupDisplayPath = (group: Group, flatGroups: Group[]) => {
+  const names: string[] = [];
+  let current: Group | undefined = group;
+
+  while (current) {
+    if (current.name) {
+      names.unshift(current.name);
+    }
+
+    const parentId =
+      (current as Group & { parent_id?: string }).parent_id || current.parentId;
+    current = parentId
+      ? flatGroups.find((item) => item.id === parentId)
+      : undefined;
+  }
+
+  return names.join('/');
+};
 
 const buildCurlExample = (
   endpoint: string,
@@ -133,7 +150,7 @@ const buildRequestParamDocs = (doc: PushAccessDoc | null) => [
     required: '是',
     description: '实例唯一标识主维度，一级对象必填，二级对象也必须携带'
   },
-  ...((doc?.instance_id_keys || [])
+  ...(doc?.instance_id_keys || [])
     .filter((key) => key !== 'instance_id')
     .map((key) => ({
       key: `instance_key_${key}`,
@@ -141,7 +158,7 @@ const buildRequestParamDocs = (doc: PushAccessDoc | null) => [
       type: 'string',
       required: '是',
       description: `实例联合标识维度 ${key}`
-    }))),
+    })),
   {
     key: 'metrics',
     name: 'instances[].metrics[]',
@@ -217,13 +234,12 @@ const buildInstanceIdentityLabel = (
     instance.raw_instance ||
     parseInternalInstanceId(instance.instance_id || '', instanceIdKeys);
   const keys = instanceIdKeys?.length ? instanceIdKeys : ['instance_id'];
-  return keys
-    .map((key) => rawInstance[key] || '--')
-    .join(' / ');
+  return keys.map((key) => rawInstance[key] || '--').join(' / ');
 };
 
 const CustomApiAccess: React.FC = () => {
   const { t } = useTranslation();
+  const { copy } = useCopy();
   const searchParams = useSearchParams();
   const pluginId = searchParams.get('plugin_id') || '';
   const objectId = Number(searchParams.get('id') || 0);
@@ -244,14 +260,18 @@ const CustomApiAccess: React.FC = () => {
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [instances, setInstances] = useState<PushAccessInstanceItem[]>([]);
   const [selectedOrganization, setSelectedOrganization] = useState<number>();
-  const [selectedInstanceIds, setSelectedInstanceIds] = useState<React.Key[]>([]);
+  const [selectedInstanceIds, setSelectedInstanceIds] = useState<React.Key[]>(
+    []
+  );
   const [sampleFormat, setSampleFormat] = useState<SampleFormat>('curl');
   const [apiSecret, setApiSecret] = useState('');
   const [apiSecretExists, setApiSecretExists] = useState(true);
   const [createVisible, setCreateVisible] = useState(false);
   const [selectVisible, setSelectVisible] = useState(false);
   const [assetKeyword, setAssetKeyword] = useState('');
-  const [draftSelectedInstanceIds, setDraftSelectedInstanceIds] = useState<React.Key[]>([]);
+  const [draftSelectedInstanceIds, setDraftSelectedInstanceIds] = useState<
+    React.Key[]
+  >([]);
   const [assetPage, setAssetPage] = useState(1);
   const [assetPageSize, setAssetPageSize] = useState(10);
 
@@ -259,7 +279,7 @@ const CustomApiAccess: React.FC = () => {
     () =>
       (userInfo.flatGroups || []).map((item) => ({
         value: Number(item.id),
-        label: item.path || item.name
+        label: getGroupDisplayPath(item, userInfo.flatGroups || []) || item.name
       })),
     [userInfo.flatGroups]
   );
@@ -269,7 +289,9 @@ const CustomApiAccess: React.FC = () => {
       new Map(
         (userInfo.flatGroups || []).map((item) => [
           String(item.id),
-          item.path || item.name || String(item.id)
+          getGroupDisplayPath(item, userInfo.flatGroups || []) ||
+            item.name ||
+            String(item.id)
         ])
       ),
     [userInfo.flatGroups]
@@ -293,7 +315,10 @@ const CustomApiAccess: React.FC = () => {
     if (!pluginId) return;
     setLoading(true);
     try {
-      const data = await getPushAccessDoc(pluginId, team ? { team } : undefined);
+      const data = await getPushAccessDoc(
+        pluginId,
+        team ? { team } : undefined
+      );
       setDoc(data);
       setApiSecret(data?.api_secret || '');
       setApiSecretExists(Boolean(data?.api_secret_exists));
@@ -379,11 +404,16 @@ const CustomApiAccess: React.FC = () => {
     const selectedRawInstance = selectedInstance?.raw_instance || {};
     const sourceInstance = source.instances?.[0] || {};
     const instanceIdKeys = doc?.instance_id_keys || ['instance_id'];
-    const normalizedInstance = instanceIdKeys.reduce<Record<string, any>>((acc, key) => {
-      acc[key] =
-        selectedRawInstance[key] || sourceInstance[key] || (key === 'instance_id' ? 'demo-instance-id' : `demo-${key}`);
-      return acc;
-    }, {});
+    const normalizedInstance = instanceIdKeys.reduce<Record<string, any>>(
+      (acc, key) => {
+        acc[key] =
+          selectedRawInstance[key] ||
+          sourceInstance[key] ||
+          (key === 'instance_id' ? 'demo-instance-id' : `demo-${key}`);
+        return acc;
+      },
+      {}
+    );
 
     return {
       ...source,
@@ -409,7 +439,8 @@ const CustomApiAccess: React.FC = () => {
   }, [doc, selectedAssets, selectedOrganization, apiSecret]);
 
   const sampleCode = useMemo(() => {
-    const endpoint = doc?.endpoint || '/api/v1/monitor/open_api/push_api/report/';
+    const endpoint =
+      doc?.endpoint || '/api/v1/monitor/open_api/push_api/report/';
     if (sampleFormat === 'python') {
       return buildPythonExample(endpoint, apiSecret, payloadExample);
     }
@@ -506,42 +537,17 @@ const CustomApiAccess: React.FC = () => {
     []
   );
 
-  const renderCodeBlock = (
-    title: string,
-    content: string,
-    tone: 'default' | 'error' = 'default'
-  ) => (
-    <div className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[#111827]">
-      <div className="flex items-center justify-between border-b border-[#1f2937] px-[12px] py-[10px]">
-        <Typography.Text className="text-[13px] font-medium text-[#e5e7eb]">
-          {title}
-        </Typography.Text>
-        <Button
-          type="text"
-          size="small"
-          icon={<CopyOutlined />}
-          className="!text-[#cbd5e1] hover:!text-white"
-          onClick={() => copyText(content, `${title}已复制`)}
-        >
-          复制
-        </Button>
-      </div>
-      <pre
-        className={`overflow-auto p-[16px] text-[13px] leading-[1.7] ${
-          tone === 'error' ? 'text-[#fca5a5]' : 'text-[#e5e7eb]'
-        }`}
-      >
-        <code>{content}</code>
-      </pre>
-    </div>
-  );
-
   const openSelectAssetsModal = () => {
     setDraftSelectedInstanceIds(selectedInstanceIds);
     setAssetKeyword('');
     setAssetPage(1);
     setSelectVisible(true);
   };
+
+  useEffect(() => {
+    if (!selectVisible) return;
+    fetchInstances();
+  }, [selectVisible]);
 
   const handleConfirmSelectAssets = () => {
     setSelectedInstanceIds(draftSelectedInstanceIds);
@@ -571,184 +577,242 @@ const CustomApiAccess: React.FC = () => {
           )}
 
           <div>
-            <b className="text-[14px] flex mb-[10px] ml-[-10px]">接入配置</b>
-            <Card>
-              <Space direction="vertical" size={16} className="w-full">
-              <Form layout="vertical">
-                <Form.Item label="组织">
-                  <div className="flex items-start gap-4">
-                    <div className="w-[320px]">
-                      <Select
-                        value={selectedOrganization}
-                        placeholder="请选择组织"
-                        options={organizationOptions}
-                        onChange={(value) => setSelectedOrganization(value)}
-                      />
-                    </div>
+            <div className="mb-3 text-lg font-semibold">接入配置</div>
+            <Card
+              style={{
+                background: 'var(--color-fill-1)',
+                borderColor: 'var(--color-border)'
+              }}
+              styles={{
+                body: {
+                  background: 'var(--color-fill-1)',
+                  padding: 16
+                }
+              }}
+            >
+              <Form layout="vertical" requiredMark>
+                <Form.Item label="组织" required>
+                  <div className="w-1/2 max-w-full">
+                    <Select
+                      value={selectedOrganization}
+                      placeholder="请选择组织"
+                      options={organizationOptions}
+                      onChange={(value) => setSelectedOrganization(value)}
+                    />
                   </div>
                 </Form.Item>
 
-                <Form.Item label="API 密钥">
-                  <div className="flex items-start gap-4">
-                    <div className="w-[560px] rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-1)] px-[14px] py-[12px] shadow-sm">
-                      <div className="flex items-center justify-between gap-[12px]">
-                        <div className="flex min-w-0 items-center gap-[10px]">
-                          <span className="rounded-md bg-[var(--color-fill-2)] px-[8px] py-[2px] text-[12px] text-[var(--color-text-2)]">
-                            Token
-                          </span>
-                        <Typography.Text
-                          className="min-w-0 flex-1 truncate font-mono text-[13px] leading-[1.7] text-[var(--color-text-1)]"
-                          title={apiSecret || '--'}
-                        >
-                          {apiSecret || '--'}
-                        </Typography.Text>
-                        </div>
+                <Form.Item label="API 密钥" required>
+                  <div className="flex w-full items-center gap-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-3 py-2">
+                    <span className="shrink-0 text-[13px] text-[var(--color-primary)]">
+                      Token
+                    </span>
+                    <div className="min-w-0 flex-1 rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-1.5">
+                      <span
+                        className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[13px] text-[var(--color-text-1)]"
+                        title={apiSecret || '--'}
+                      >
+                        {apiSecret || '--'}
+                      </span>
+                    </div>
+                    <Button
+                      type="default"
+                      icon={<CopyOutlined />}
+                      className="shrink-0"
+                      disabled={!apiSecret}
+                      onClick={() => copy(apiSecret)}
+                    >
+                      复制
+                    </Button>
+                  </div>
+                </Form.Item>
+
+                <Form.Item label="监控资产" required className="mb-0">
+                  <Space direction="vertical" size={16} className="w-full">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
                         <Button
-                          type="default"
-                          size="small"
-                          icon={<CopyOutlined />}
-                          className="shrink-0"
-                          disabled={!apiSecret}
-                          onClick={() => copyText(apiSecret, 'API 密钥已复制')}
+                          icon={<PlusOutlined />}
+                          type="primary"
+                          onClick={() => setCreateVisible(true)}
                         >
-                          复制
+                          新建资产
+                        </Button>
+                        <Button
+                          icon={<PlusOutlined />}
+                          onClick={openSelectAssetsModal}
+                        >
+                          选择已有资产
+                        </Button>
+                        {selectedAssets.length > 0 && (
+                          <span className="text-[var(--color-text-3)]">
+                            已选择 {selectedAssets.length}{' '}
+                            个资产，将作为同一批次监控数据上报
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          icon={<UploadOutlined />}
+                          type="primary"
+                          onClick={() =>
+                            importRef.current?.showModal({
+                              title: t('common.import'),
+                              columns: [
+                                {
+                                  name: 'id',
+                                  label: 'ID',
+                                  required: true,
+                                  is_only: true
+                                },
+                                {
+                                  name: 'instance_name',
+                                  label: '实例名称',
+                                  required: true
+                                }
+                              ],
+                              groupList: organizationList.current
+                            })
+                          }
+                        >
+                          导入新资产
+                        </Button>
+                        <Button
+                          onClick={() => setSelectedInstanceIds([])}
+                          disabled={!selectedInstanceIds.length}
+                        >
+                          清空选择
                         </Button>
                       </div>
                     </div>
-                  </div>
+
+                    {selectedAssets.length ? (
+                      <Table
+                        rowKey="instance_id"
+                        pagination={false}
+                        dataSource={selectedAssets}
+                        columns={[
+                          {
+                            title: '资产名称',
+                            dataIndex: 'instance_name',
+                            key: 'instance_name'
+                          },
+                          {
+                            title: '资产ID',
+                            dataIndex: 'instance_id',
+                            key: 'instance_id',
+                            render: (_, record) => (
+                              <span className="font-mono text-[13px] text-[var(--color-text-1)]">
+                                {buildInstanceIdentityLabel(
+                                  record,
+                                  doc?.instance_id_keys || ['instance_id']
+                                )}
+                              </span>
+                            )
+                          },
+                          {
+                            title: '所属组织',
+                            dataIndex: 'organization',
+                            key: 'organization',
+                            render: (_, record) =>
+                              renderOrganizationTags(record)
+                          },
+                          {
+                            title: '操作',
+                            key: 'action',
+                            width: 80,
+                            render: (_, record) => (
+                              <Button
+                                type="link"
+                                className="px-0"
+                                onClick={() =>
+                                  setSelectedInstanceIds((prev) =>
+                                    prev.filter(
+                                      (id) => id !== record.instance_id
+                                    )
+                                  )
+                                }
+                              >
+                                移除
+                              </Button>
+                            )
+                          }
+                        ]}
+                      />
+                    ) : (
+                      <div
+                        className="flex items-center justify-center"
+                        style={{ minHeight: '240px' }}
+                      >
+                        <Empty description="请选择或创建监控资产" />
+                      </div>
+                    )}
+                  </Space>
                 </Form.Item>
               </Form>
-              <div>
-                <div className="flex items-center justify-between mb-[10px]">
-                  <span className="text-[14px]">
-                    监控资产
-                    <span
-                      className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
-                      style={{ fontFamily: 'SimSun, sans-serif' }}
-                    >
-                      *
-                    </span>
-                  </span>
-                  <div className="flex gap-[8px]">
-                    <Button
-                      icon={<PlusOutlined />}
-                      type="primary"
-                      onClick={() => setCreateVisible(true)}
-                    >
-                      新建资产
-                    </Button>
-                    <Button onClick={openSelectAssetsModal}>选择已有资产</Button>
-                    <Button
-                      icon={<UploadOutlined />}
-                      onClick={() =>
-                        importRef.current?.showModal({
-                          title: t('common.import'),
-                          columns: [
-                            { name: 'id', label: 'ID', required: true, is_only: true },
-                            {
-                              name: 'instance_name',
-                              label: '实例名称',
-                              required: true
-                            }
-                          ],
-                          groupList: organizationList.current
-                        })
-                      }
-                    >
-                      导入
-                    </Button>
-                    <Button
-                      icon={<DeleteOutlined />}
-                      onClick={() => setSelectedInstanceIds([])}
-                      disabled={!selectedInstanceIds.length}
-                    >
-                      清空
-                    </Button>
-                  </div>
-                </div>
-
-                {selectedAssets.length ? (
-                  <Table
-                    rowKey="instance_id"
-                    pagination={false}
-                    dataSource={selectedAssets}
-                    columns={[
-                      {
-                        title: '实例名称',
-                        dataIndex: 'instance_name',
-                        key: 'instance_name'
-                      },
-                      {
-                        title: '实例标识',
-                        dataIndex: 'instance_id',
-                        key: 'instance_id',
-                        render: (_, record) => (
-                          <Typography.Text copyable>
-                            {buildInstanceIdentityLabel(record, doc?.instance_id_keys || ['instance_id'])}
-                          </Typography.Text>
-                        )
-                      },
-                      {
-                        title: '组织',
-                        dataIndex: 'organization',
-                        key: 'organization',
-                        render: (_, record) => renderOrganizationTags(record)
-                      }
-                    ]}
-                  />
-                ) : (
-                  <div
-                    className="flex items-center justify-center"
-                    style={{ minHeight: '240px' }}
-                  >
-                    <Empty description="请选择或创建监控资产" />
-                  </div>
-                )}
-              </div>
-              </Space>
             </Card>
           </div>
 
           <div>
-            <b className="text-[14px] flex mb-[10px] ml-[-10px]">API 端点</b>
-            <Card>
-              <div className="flex items-center justify-between rounded-[14px] border border-[var(--color-border)] bg-[var(--color-fill-1)] px-[16px] py-[14px]">
-                <Typography.Text className="font-mono text-[13px]">
-                  {doc?.endpoint || '--'}
-                </Typography.Text>
+            <div className="mb-3 text-lg font-semibold">API端点</div>
+            <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-fill-1)] p-4">
+              <div className="flex w-full items-center gap-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-3 py-2">
+                <Tag className="m-0 shrink-0 border-0 bg-[#34d399] px-2 py-0.5 text-[12px] font-medium text-white">
+                  POST
+                </Tag>
+                <div className="min-w-0 flex-1 rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-1.5">
+                  <span
+                    className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[13px] text-[var(--color-text-1)]"
+                    title={doc?.endpoint || '--'}
+                  >
+                    {doc?.endpoint || '--'}
+                  </span>
+                </div>
                 <Button
-                  type="text"
+                  type="default"
                   icon={<CopyOutlined />}
+                  className="shrink-0"
                   disabled={!doc?.endpoint}
-                  onClick={() => copyText(doc?.endpoint || '', 'API 端点已复制')}
+                  onClick={() =>
+                    copyText(doc?.endpoint || '', 'API 端点已复制')
+                  }
                 >
                   复制
                 </Button>
               </div>
-            </Card>
+            </div>
           </div>
 
           <div>
-            <b className="text-[14px] flex mb-[10px] ml-[-10px]">请求示例</b>
-            <Card>
-              <Space direction="vertical" size={16} className="w-full">
-                <Segmented
-                  value={sampleFormat}
-                  options={[
-                    { label: 'cURL', value: 'curl' },
-                    { label: 'Python', value: 'python' },
-                    { label: 'JavaScript', value: 'javascript' }
-                  ]}
-                  onChange={(value) => setSampleFormat(value as SampleFormat)}
+            <div className="mb-3 text-lg font-semibold">请求示例</div>
+            <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-fill-1)]">
+              <Tabs
+                activeKey={sampleFormat}
+                onChange={(key) => setSampleFormat(key as SampleFormat)}
+                className="px-4"
+                items={[
+                  { label: 'cURL', key: 'curl' },
+                  { label: 'Python', key: 'python' },
+                  { label: 'JavaScript', key: 'javascript' }
+                ]}
+              />
+              <div className="px-4 pb-4">
+                <CodeEditor
+                  value={sampleCode}
+                  mode="shell"
+                  theme="monokai"
+                  readOnly
+                  width="100%"
+                  height="300px"
+                  headerOptions={{ copy: true, fullscreen: true }}
                 />
-                {renderCodeBlock('请求示例', sampleCode)}
-              </Space>
-            </Card>
+              </div>
+            </div>
           </div>
 
           <div>
-            <b className="text-[14px] flex mb-[10px] ml-[-10px]">请求参数说明</b>
-            <Card>
+            <div className="mb-3 text-lg font-semibold">请求参数说明</div>
+            <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-fill-1)] p-4">
               <Table
                 rowKey="key"
                 pagination={false}
@@ -757,23 +821,52 @@ const CustomApiAccess: React.FC = () => {
                   { title: '参数', dataIndex: 'name', key: 'name' },
                   { title: '类型', dataIndex: 'type', key: 'type' },
                   { title: '必填', dataIndex: 'required', key: 'required' },
-                  { title: '说明', dataIndex: 'description', key: 'description' }
+                  {
+                    title: '说明',
+                    dataIndex: 'description',
+                    key: 'description'
+                  }
                 ]}
               />
-            </Card>
+            </div>
           </div>
 
-          <div>
-            <b className="text-[14px] flex mb-[10px] ml-[-10px]">响应格式</b>
-            <Card>
+          <div className="mb-[10px]">
+            <div className="mb-3 text-lg font-semibold">响应示例</div>
+            <Card
+              style={{
+                background: 'var(--color-fill-1)',
+                borderColor: 'var(--color-border)'
+              }}
+              styles={{
+                body: {
+                  background: 'var(--color-fill-1)',
+                  padding: 16
+                }
+              }}
+            >
               <Space direction="vertical" size={16} className="w-full">
                 <div>
-                  <Typography.Title level={5}>成功响应</Typography.Title>
-                  {renderCodeBlock('成功响应 (200)', successResponse)}
+                  <Alert
+                    message="成功响应 (200)"
+                    type="success"
+                    showIcon={false}
+                    className="rounded-b-none border-b-0"
+                  />
+                  <pre className="m-0 overflow-auto rounded-t-none rounded-b-md border border-t-0 border-[var(--color-border)] bg-[var(--color-bg-1)] p-4 font-mono text-[13px] leading-relaxed">
+                    {successResponse}
+                  </pre>
                 </div>
                 <div>
-                  <Typography.Title level={5}>错误响应</Typography.Title>
-                  {renderCodeBlock('错误响应 (401)', errorResponse, 'error')}
+                  <Alert
+                    message="错误响应 (401)"
+                    type="error"
+                    showIcon={false}
+                    className="rounded-b-none border-b-0"
+                  />
+                  <pre className="m-0 overflow-auto rounded-t-none rounded-b-md border border-t-0 border-[var(--color-border)] bg-[var(--color-bg-1)] p-4 font-mono text-[13px] leading-relaxed">
+                    {errorResponse}
+                  </pre>
                 </div>
               </Space>
             </Card>
@@ -789,17 +882,24 @@ const CustomApiAccess: React.FC = () => {
         onCancel={() => setSelectVisible(false)}
         footer={
           <div>
-            <Button className="mr-[10px]" type="primary" onClick={handleConfirmSelectAssets}>
+            <Button
+              className="mr-[10px]"
+              type="primary"
+              onClick={handleConfirmSelectAssets}
+            >
               {t('common.confirm')}
             </Button>
-            <Button onClick={() => setSelectVisible(false)}>{t('common.cancel')}</Button>
+            <Button onClick={() => setSelectVisible(false)}>
+              {t('common.cancel')}
+            </Button>
           </div>
         }
       >
         <Space direction="vertical" size={16} className="w-full">
-          <Typography.Paragraph type="secondary" className="!mb-0">
-            仅展示所属组织包含当前组织的资产。确认后，请求示例会自动按所选资产生成批量上报 payload。
-          </Typography.Paragraph>
+          <p className="mb-0 text-[var(--color-text-3)]">
+            仅展示所属组织包含当前组织的资产。确认后，请求示例会自动按所选资产生成批量上报
+            payload。
+          </p>
           <Input
             ref={assetSearchRef}
             placeholder="按实例名称或实例 ID 搜索"
@@ -842,9 +942,29 @@ const CustomApiAccess: React.FC = () => {
                 key: 'instance_id',
                 width: 260,
                 render: (_, record) => (
-                  <Typography.Text copyable className="font-mono text-[13px]">
-                    {buildInstanceIdentityLabel(record, doc?.instance_id_keys || ['instance_id'])}
-                  </Typography.Text>
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 font-mono text-[13px] text-[var(--color-text-1)]">
+                      {buildInstanceIdentityLabel(
+                        record,
+                        doc?.instance_id_keys || ['instance_id']
+                      )}
+                    </span>
+                    <Button
+                      type="link"
+                      size="small"
+                      className="px-0"
+                      onClick={() =>
+                        copy(
+                          buildInstanceIdentityLabel(
+                            record,
+                            doc?.instance_id_keys || ['instance_id']
+                          )
+                        )
+                      }
+                    >
+                      复制
+                    </Button>
+                  </div>
                 )
               },
               {
@@ -873,7 +993,9 @@ const CustomApiAccess: React.FC = () => {
             >
               {t('common.confirm')}
             </Button>
-            <Button onClick={() => setCreateVisible(false)}>{t('common.cancel')}</Button>
+            <Button onClick={() => setCreateVisible(false)}>
+              {t('common.cancel')}
+            </Button>
           </div>
         }
       >

@@ -5,7 +5,7 @@ class ControllerConstants:
     """控制器相关常量"""
 
     # Windows 安装路径
-    WINDOWS_INSTALL_DIR = "C:\\bklite\\fusion-collectors"
+    WINDOWS_INSTALL_DIR = "C:\\fusion-collectors"
 
     CONTROLLER = [
         {
@@ -122,7 +122,7 @@ class ControllerConstants:
     # Sidecar 配置文件路径
     SIDECAR_CONFIG_PATH = {
         NodeConstants.LINUX_OS: "/etc/sidecar/sidecar.yaml",
-        NodeConstants.WINDOWS_OS: r"C:\bklite\fusion-collectors\sidecar.yaml",
+        NodeConstants.WINDOWS_OS: r"C:\fusion-collectors\sidecar.yaml",
     }
 
     # Sidecar 服务重启命令
