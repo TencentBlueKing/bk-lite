@@ -1227,6 +1227,44 @@
             line-height: 1.6;
         }
 
+        .request-format-block {
+            margin-bottom: 16px;
+            border: 1px solid #dcdee5;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .request-format-label {
+            padding: 10px 16px;
+            background: #f5f7fa;
+            border-bottom: 1px solid #eaebf0;
+            font-size: 13px;
+            color: #63656e;
+        }
+
+        .request-format-code {
+            margin: 0;
+            padding: 16px;
+            background: #fafbfd;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 14px;
+            line-height: 1.8;
+            color: #313238;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .request-format-note {
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: #f5f7fa;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #63656e;
+            line-height: 1.6;
+        }
+
         .code-tabs {
             display: flex;
             gap: 0;
@@ -1597,6 +1635,7 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            gap: 4px;
             padding: 2px 8px;
             border-radius: 999px;
             background: #f5f7fa;
@@ -1604,6 +1643,23 @@
             font-size: 12px;
             line-height: 1.4;
             max-width: 100%;
+        }
+
+        .multi-select-tag-remove {
+            border: none;
+            background: transparent;
+            padding: 0;
+            margin: 0;
+            color: inherit;
+            font-size: 14px;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0.7;
+        }
+
+        .multi-select-tag-remove:hover {
+            color: #ea3636;
+            opacity: 1;
         }
 
         .multi-select-tag.locked {
@@ -1975,66 +2031,30 @@
                     <div class="section-title">接入配置</div>
                     <div class="config-card">
                         <div class="form-group">
-                            <label class="form-label">组织<span class="required">*</span></label>
+                            <label class="form-label">云区域<span class="required">*</span></label>
                             <div class="form-row">
-                                <select class="form-select" id="organizationSelect" onchange="handleOrganizationChange(this.value)">
-                                    <option value="Default">Default</option>
-                                    <option value="Devops">Devops</option>
-                                    <option value="weops产研">weops产研</option>
+                                <select class="form-select" id="cloudAreaSelect" onchange="handleCloudAreaChange(this.value)">
+                                    <option value="华东-生产">华东-生产</option>
+                                    <option value="华东-报表">华东-报表</option>
+                                    <option value="研发-构建">研发-构建</option>
+                                    <option value="华南-预发">华南-预发</option>
+                                    <option value="容器-测试">容器-测试</option>
                                 </select>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">API秘钥<span class="required">*</span></label>
-                            <div class="auth-info" id="apiSecretContainer"></div>
-                        </div>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <div class="monitor-table-header">
-                                <div>
-                                    <div class="monitor-table-title">监控资产<span class="required">*</span></div>
-                                </div>
-                            </div>
-                            <div class="selection-toolbar">
-                                <button class="btn-create-asset" onclick="openCreateAssetModal()">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <path d="M12 5v14"></path>
-                                        <path d="M5 12h14"></path>
-                                    </svg>
-                                    新建资产
-                                </button>
-                                <button class="btn-import" onclick="openAssetModal()">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <path d="M12 5v14"></path>
-                                        <path d="M5 12h14"></path>
-                                    </svg>
-                                    选择已有资产
-                                </button>
-                                <div class="selection-summary" id="assetSummaryText"></div>
-                                <button class="btn-upload-assets" onclick="openImportAssetModal()">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                        <polyline points="7 10 12 15 17 10"></polyline>
-                                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                                    </svg>
-                                        导入新资产
-                                </button>
-                                <button class="btn-batch" id="clearAssetsButton" onclick="clearSelectedAssets()">清空选择</button>
-                            </div>
-                            <div class="selected-assets-wrap">
-                                <table class="data-table" id="selectedAssetsTable">
-                                    <thead>
-                                        <tr>
-                                            <th>资产名称</th>
-                                            <th>资产ID</th>
-                                            <th>所属组织</th>
-                                            <th style="width: 88px;">操作</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="selectedAssetsBody"></tbody>
-                                </table>
-                                <div class="empty-state-card" id="selectedAssetsEmpty">
-                                    <div class="empty-state-title">还未选择监控资产</div>
-                                    <div class="empty-state-desc">请先选择组织，再从该组织下可访问的资产中挑选需要接入监控数据的对象。</div>
+                            <label class="form-label">组织<span class="required">*</span></label>
+                            <div class="form-row">
+                                <div class="multi-select-wrapper" id="apiConfigOrgSelector" style="width: 320px;">
+                                    <button type="button" class="multi-select-trigger" onclick="toggleApiConfigOrgDropdown(event)">
+                                        <span class="multi-select-trigger-text" id="apiConfigOrgSummary"></span>
+                                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M4 6l4 4 4-4"></path>
+                                        </svg>
+                                    </button>
+                                    <div class="multi-select-panel" id="apiConfigOrgPanel">
+                                        <div id="apiConfigOrgOptions"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2047,8 +2067,8 @@
                     <div class="api-endpoint">
                         <div class="endpoint-row">
                             <span class="endpoint-method">POST</span>
-                            <code class="endpoint-url">https://api.monitor.example.com/v1/metrics/push</code>
-                            <button class="btn-copy" onclick="copyText('https://api.monitor.example.com/v1/metrics/push')">
+                            <code class="endpoint-url">https://api.monitor.example.com/receive</code>
+                            <button class="btn-copy" onclick="copyText('https://api.monitor.example.com/receive')">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -2057,6 +2077,57 @@
                             </button>
                         </div>
                     </div>
+                </div>
+
+                <!-- 请求说明 -->
+                <div class="config-section">
+                    <div class="section-title">请求体填写说明</div>
+                    <div class="request-format-block">
+                        <div class="request-format-label">请求体格式</div>
+                        <pre class="request-format-code">&lt;metric_id&gt;,&lt;tag_set&gt; &lt;field_set&gt; &lt;timestamp&gt;</pre>
+                    </div>
+                    <div class="request-format-note">一行表示一个指标点。批量上报时，在同一请求体中按换行拼接多条记录即可，每一行都遵循上面的格式；<code>&lt;timestamp&gt;</code> 可选，不传时默认使用服务端接收时间。</div>
+                    <table class="params-table">
+                        <thead>
+                            <tr>
+                                <th>标识</th>
+                                <th>标识含义</th>
+                                <th>是否必填</th>
+                                <th>说明</th>
+                                <th>示例写法</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>&lt;metric_id&gt;</code></td>
+                                <td>指标 ID</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>每一行对应一个指标，填写当前上报指标的唯一标识</td>
+                                <td><code>mysql_connections_active</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>&lt;tag_set&gt;</code></td>
+                                <td>维度标签集合</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>多个标签使用逗号分隔，建议至少包含 <code>cloud_area</code>、<code>organization</code>、<code>host</code></td>
+                                <td><code>cloud_area=华东-生产,organization=Default,host=Default-mysql-demo,env=prod</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>&lt;field_set&gt;</code></td>
+                                <td>指标字段集合</td>
+                                <td><span class="tag-required">是</span></td>
+                                <td>当前格式下建议统一写成 <code>value=&lt;metric_value&gt;</code>；整数用 <code>i</code> 结尾，浮点数直接写</td>
+                                <td><code>value=150i</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>&lt;timestamp&gt;</code></td>
+                                <td>采集时间戳</td>
+                                <td><span class="tag-optional">否</span></td>
+                                <td>位于每行末尾，使用纳秒级 Unix 时间戳；如未传入，默认使用服务端接收时间</td>
+                                <td><code>1710576000000000000</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
 
                 <!-- 请求示例 -->
@@ -2082,97 +2153,23 @@
                     </div>
                 </div>
 
-                <!-- 请求参数说明 -->
-                <div class="config-section">
-                    <div class="section-title">请求参数说明</div>
-                    <table class="params-table">
-                        <thead>
-                            <tr>
-                                <th>参数名</th>
-                                <th>类型</th>
-                                <th>必填</th>
-                                <th>说明</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><code>template_id</code></td>
-                                <td>string</td>
-                                <td><span class="tag-required">是</span></td>
-                                <td>模版 ID，当前模版固定为 <code>custom_api_template_001</code></td>
-                            </tr>
-                            <tr>
-                                <td><code>organization</code></td>
-                                <td>string</td>
-                                <td><span class="tag-required">是</span></td>
-                                <td>当前接入组织，必须与页面顶部选择的组织一致</td>
-                            </tr>
-                            <tr>
-                                <td><code>timestamp</code></td>
-                                <td>integer</td>
-                                <td><span class="tag-required">是</span></td>
-                                <td>Unix 时间戳（秒），表示本次批量上报时间</td>
-                            </tr>
-                            <tr>
-                                <td><code>assets</code></td>
-                                <td>array</td>
-                                <td><span class="tag-required">是</span></td>
-                                <td>资产数组，支持一次传递 N 个资产的监控数据</td>
-                            </tr>
-                            <tr>
-                                <td><code>assets[].asset_id</code></td>
-                                <td>string</td>
-                                <td><span class="tag-required">是</span></td>
-                                <td>资产唯一标识，对应上方已选择资产的 ID</td>
-                            </tr>
-                            <tr>
-                                <td><code>assets[].asset_name</code></td>
-                                <td>string</td>
-                                <td><span class="tag-required">是</span></td>
-                                <td>资产名称，便于服务端审计和展示</td>
-                            </tr>
-                            <tr>
-                                <td><code>assets[].metrics</code></td>
-                                <td>array</td>
-                                <td><span class="tag-required">是</span></td>
-                                <td>当前资产的指标数组</td>
-                            </tr>
-                            <tr>
-                                <td><code>assets[].metrics[].name</code></td>
-                                <td>string</td>
-                                <td><span class="tag-required">是</span></td>
-                                <td>指标名称，参考“指标”页面的指标列表</td>
-                            </tr>
-                            <tr>
-                                <td><code>assets[].metrics[].value</code></td>
-                                <td>number</td>
-                                <td><span class="tag-required">是</span></td>
-                                <td>指标值，支持整数或浮点数</td>
-                            </tr>
-                            <tr>
-                                <td><code>assets[].metrics[].tags</code></td>
-                                <td>object</td>
-                                <td><span class="tag-optional">否</span></td>
-                                <td>标签键值对，用于区分实例与环境，如 <code>{"host": "mysql-prod-01"}</code></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
                 <!-- 响应示例 -->
                 <div class="config-section">
                     <div class="section-title">响应示例</div>
                     <div class="response-block">
-                        <div class="response-status success">成功响应 (200)</div>
+                        <div class="response-status success">成功响应 (204)</div>
                         <pre id="successResponsePre"></pre>
                     </div>
                     <div class="response-block" style="margin-top: 16px;">
-                        <div class="response-status error">错误响应 (401)</div>
-<pre>{
-  "code": 40101,
-  "message": "API secret not found for organization",
-  "data": null
-}</pre>
+                        <div class="response-status error">错误响应 (400)</div>
+<pre>HTTP/1.1 400 Bad Request
+Content-Type: application/json
+
+{
+  "error": "failed to parse line protocol",
+  "detail": "missing field set in line protocol payload"
+}
+</pre>
                     </div>
                 </div>
             </div>
@@ -2543,7 +2540,7 @@
                 <span class="modal-close" onclick="closeAssetModal()">×</span>
             </div>
             <div class="modal-body">
-                <div class="asset-modal-tip">仅展示所属组织包含当前组织的资产。确认后，请求示例会自动按所选资产生成批量上报 payload。</div>
+                <div class="asset-modal-tip">仅展示所属组织包含当前组织的资产。确认后，请求示例会自动按所选资产生成批量上报的 Line Protocol 示例。</div>
                 <div class="asset-modal-toolbar">
                     <input
                         type="text"
@@ -2771,7 +2768,10 @@
         ];
 
         const apiConfigState = {
+            cloudArea: '华东-生产',
             organization: 'Default',
+            organizations: ['Default'],
+            organizationDropdownOpen: false,
             selectedAssetIds: ['mysql-prod-01', 'mysql-report-01', 'mysql-staging-01'],
             draftAssetIds: [],
             assetSearchKeyword: '',
@@ -2796,25 +2796,111 @@
             return assetCatalog.filter(asset => asset.organizations.includes(apiConfigState.organization));
         }
 
-        function getFilteredEligibleAssets() {
-            const keyword = apiConfigState.assetSearchKeyword.trim().toLowerCase();
-            const eligibleAssets = getEligibleAssets();
+        function getSelectedAssets() {
+            const eligibleAssetIds = new Set(getEligibleAssets().map(asset => asset.id));
 
-            if (!keyword) {
-                return eligibleAssets;
-            }
-
-            return eligibleAssets.filter(asset => asset.name.toLowerCase().includes(keyword));
+            return apiConfigState.selectedAssetIds
+                .filter(assetId => eligibleAssetIds.has(assetId))
+                .map(assetId => getAssetById(assetId))
+                .filter(Boolean);
         }
 
-        function getSelectedAssets() {
-            return apiConfigState.selectedAssetIds
-                .map(assetId => getAssetById(assetId))
-                .filter(asset => asset && asset.organizations.includes(apiConfigState.organization));
+        function getFilteredEligibleAssets() {
+            const keyword = apiConfigState.assetSearchKeyword.trim().toLowerCase();
+
+            if (!keyword) {
+                return getEligibleAssets();
+            }
+
+            return getEligibleAssets().filter(asset => [
+                asset.id,
+                asset.name,
+                asset.type,
+                asset.endpoint,
+                asset.cloudArea,
+                asset.env,
+                asset.role
+            ].some(value => String(value).toLowerCase().includes(keyword)));
         }
 
         function getApiSecret() {
             return currentUser.apiKeys[apiConfigState.organization] || '';
+        }
+
+        function syncPrimaryOrganization() {
+            if (!apiConfigState.organizations.length) {
+                apiConfigState.organizations = [organizationOptions[0]];
+            }
+
+            apiConfigState.organization = apiConfigState.organizations[0];
+        }
+
+        function renderApiConfigOrganizations() {
+            const summary = document.getElementById('apiConfigOrgSummary');
+            const panel = document.getElementById('apiConfigOrgPanel');
+            const options = document.getElementById('apiConfigOrgOptions');
+
+            if (summary) {
+                summary.innerHTML = apiConfigState.organizations.map(org => `
+                    <span class="multi-select-tag">
+                        <span>${org}</span>
+                        <span class="multi-select-tag-remove" onclick="removeApiConfigOrganization(event, '${org}')">×</span>
+                    </span>
+                `).join('');
+            }
+
+            if (panel) {
+                panel.classList.toggle('show', apiConfigState.organizationDropdownOpen);
+            }
+
+            if (options) {
+                options.innerHTML = organizationOptions.map(org => {
+                    const checked = apiConfigState.organizations.includes(org) ? 'checked' : '';
+                    return `
+                        <label class="multi-select-option">
+                            <span class="multi-select-option-main">
+                                <input type="checkbox" class="asset-selector-checkbox" ${checked} onchange="toggleApiConfigOrganization('${org}', this.checked)">
+                                <span>${org}</span>
+                            </span>
+                        </label>
+                    `;
+                }).join('');
+            }
+        }
+
+        function toggleApiConfigOrgDropdown(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+
+            apiConfigState.organizationDropdownOpen = !apiConfigState.organizationDropdownOpen;
+            renderApiConfigOrganizations();
+        }
+
+        function toggleApiConfigOrganization(organization, checked) {
+            if (checked) {
+                apiConfigState.organizations = [...new Set([...apiConfigState.organizations, organization])];
+            } else {
+                if (apiConfigState.organizations.length === 1 && apiConfigState.organizations.includes(organization)) {
+                    alert('至少保留一个组织');
+                    renderApiConfigOrganizations();
+                    return;
+                }
+
+                apiConfigState.organizations = apiConfigState.organizations.filter(org => org !== organization);
+            }
+
+            renderConfigState();
+        }
+
+        function removeApiConfigOrganization(event, organization) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+
+            toggleApiConfigOrganization(organization, false);
         }
 
         function ensureUniqueAssetId(baseId) {
@@ -3110,65 +3196,32 @@
             alert('模板已下载');
         }
 
-        function buildMetricPayload(asset, index) {
-            return [
-                {
-                    name: 'mysql_connections_active',
-                    value: 120 + (index * 18),
-                    tags: {
-                        host: asset.name,
-                        env: asset.env
-                    }
-                },
-                {
-                    name: 'mysql_queries_per_second',
-                    value: Number((980.5 + (index * 67.2)).toFixed(1)),
-                    tags: {
-                        host: asset.name,
-                        role: asset.role
-                    }
-                },
-                {
-                    name: 'mysql_slow_queries',
-                    value: index === 0 ? 3 : 1,
-                    tags: {
-                        host: asset.name,
-                        organization: apiConfigState.organization
-                    }
-                }
-            ];
+        function escapeLineProtocolTagValue(value) {
+            return String(value)
+                .replace(/\\/g, '\\\\')
+                .replace(/ /g, '\\ ')
+                .replace(/,/g, '\\,')
+                .replace(/=/g, '\\=');
         }
 
         function buildRequestPayload() {
-            const selectedAssets = getSelectedAssets();
-            const assets = selectedAssets.length > 0
-                ? selectedAssets.map((asset, index) => ({
-                    asset_id: asset.id,
-                    asset_name: asset.name,
-                    metrics: buildMetricPayload(asset, index)
-                }))
-                : [
-                    {
-                        asset_id: '<请选择资产>',
-                        asset_name: '<请选择资产>',
-                        metrics: [
-                            {
-                                name: 'mysql_connections_active',
-                                value: 150,
-                                tags: {
-                                    host: '<asset-host>'
-                                }
-                            }
-                        ]
-                    }
-                ];
+            syncPrimaryOrganization();
+            const sampleAssetName = `${apiConfigState.organization}-mysql-demo`;
+            const tags = [
+                `cloud_area=${escapeLineProtocolTagValue(apiConfigState.cloudArea)}`,
+                `organization=${escapeLineProtocolTagValue(apiConfigState.organization)}`,
+                `host=${escapeLineProtocolTagValue(sampleAssetName)}`,
+                'env=prod'
+            ];
+            const metrics = [
+                { metricId: 'mysql_connections_active', value: 'value=150i' },
+                { metricId: 'mysql_queries_per_second', value: 'value=1047.7' },
+                { metricId: 'mysql_slow_queries', value: 'value=2i' }
+            ];
 
-            return {
-                template_id: 'custom_api_template_001',
-                organization: apiConfigState.organization,
-                timestamp: 1710576000,
-                assets: assets
-            };
+            return metrics
+                .map(metric => `${metric.metricId},${tags.join(',')} ${metric.value} 1710576000000000000`)
+                .join('\n');
         }
 
         function renderSelectedAssets() {
@@ -3239,60 +3292,53 @@
         }
 
         function renderRequestExamples() {
-            const selectedAssets = getSelectedAssets();
-            const secret = getApiSecret() || '<请先在系统管理创建 API 秘钥>';
             const payload = buildRequestPayload();
-            const payloadText = JSON.stringify(payload, null, 2);
-            const successResponse = {
-                code: 0,
-                message: 'success',
-                data: {
-                    organization: apiConfigState.organization,
-                    received_assets: selectedAssets.length,
-                    processed_metrics: selectedAssets.length * 3
-                }
-            };
+            const payloadForPython = payload.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"');
+            const payloadForJavascript = payload.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
 
-            document.getElementById('requestExampleMeta').textContent = getApiSecret()
-                ? `当前组织 ${apiConfigState.organization}，已选择 ${selectedAssets.length} 个资产。示例代码已自动带入该组织下的 API 秘钥，并按资产批量渲染请求体。`
-                : `当前组织 ${apiConfigState.organization}，已选择 ${selectedAssets.length} 个资产。由于该组织尚未创建 API 秘钥，示例代码中会保留创建提示占位。`;
+            document.getElementById('requestExampleMeta').textContent = `当前示例按云区域 ${apiConfigState.cloudArea}、组织 ${apiConfigState.organization} 生成请求示例。请求体请根据请求体填写说明替换为真实值即可。`;
 
             document.querySelector('#curlCode pre').textContent = [
-                "curl -X POST 'https://api.monitor.example.com/v1/metrics/push' \\",
-                "  -H 'Content-Type: application/json' \\",
-                `  -H 'Authorization: Bearer ${secret}' \\`,
-                `  -d '${payloadText}'`
+                "curl -X POST 'https://api.monitor.example.com/receive' \\",
+                "  -H 'Content-Type: text/plain; charset=utf-8' \\",
+                `  --data-binary '${payload}'`
             ].join('\n');
 
             document.querySelector('#pythonCode pre').textContent = [
                 'import requests',
                 '',
-                "url = 'https://api.monitor.example.com/v1/metrics/push'",
+                "url = 'https://api.monitor.example.com/receive'",
                 'headers = {',
-                "    'Content-Type': 'application/json',",
-                `    'Authorization': 'Bearer ${secret}'`,
+                "    'Content-Type': 'text/plain; charset=utf-8'",
                 '}',
-                `payload = ${payloadText}`,
+                'payload = """',
+                `${payloadForPython}`,
+                '"""',
                 '',
-                'response = requests.post(url, json=payload, headers=headers)',
-                'print(response.json())'
+                'response = requests.post(url, data=payload.encode(\'utf-8\'), headers=headers, timeout=10)',
+                'print(response.status_code)'
             ].join('\n');
 
             document.querySelector('#javascriptCode pre').textContent = [
-                "const response = await fetch('https://api.monitor.example.com/v1/metrics/push', {",
+                'const payload = `',
+                `${payloadForJavascript}`,
+                '`;',
+                '',
+                "const response = await fetch('https://api.monitor.example.com/receive', {",
                 "  method: 'POST',",
                 '  headers: {',
-                "    'Content-Type': 'application/json',",
-                `    'Authorization': 'Bearer ${secret}'`,
+                "    'Content-Type': 'text/plain; charset=utf-8'",
                 '  },',
-                `  body: JSON.stringify(${payloadText})`,
+                '  body: payload',
                 '});',
                 '',
-                'const result = await response.json();',
-                'console.log(result);'
+                'console.log(response.status, response.ok);'
             ].join('\n');
 
-            document.getElementById('successResponsePre').textContent = JSON.stringify(successResponse, null, 2);
+            document.getElementById('successResponsePre').textContent = [
+                'HTTP/1.1 204 No Content',
+                'Content-Length: 0'
+            ].join('\n');
         }
 
         function renderAssetSelector() {
@@ -3341,19 +3387,19 @@
         }
 
         function renderConfigState() {
-            document.getElementById('organizationSelect').value = apiConfigState.organization;
-            renderSelectedAssets();
-            renderApiSecret();
+            document.getElementById('cloudAreaSelect').value = apiConfigState.cloudArea;
+            renderApiConfigOrganizations();
             renderRequestExamples();
         }
 
+        function handleCloudAreaChange(cloudArea) {
+            apiConfigState.cloudArea = cloudArea;
+            renderConfigState();
+        }
+
         function handleOrganizationChange(organization) {
-            apiConfigState.organization = organization;
-            apiConfigState.assetSearchKeyword = '';
-            apiConfigState.selectedAssetIds = apiConfigState.selectedAssetIds.filter(assetId => {
-                const asset = getAssetById(assetId);
-                return asset && asset.organizations.includes(organization);
-            });
+            apiConfigState.organizations = [organization];
+            syncPrimaryOrganization();
             renderConfigState();
         }
 
@@ -3519,7 +3565,14 @@
         }
 
         document.addEventListener('click', event => {
+            const apiConfigSelector = document.getElementById('apiConfigOrgSelector');
             const selector = document.getElementById('createAssetOrgSelector');
+
+            if (apiConfigSelector && apiConfigState.organizationDropdownOpen && !apiConfigSelector.contains(event.target)) {
+                apiConfigState.organizationDropdownOpen = false;
+                renderApiConfigOrganizations();
+            }
+
             if (!selector || !createAssetState.dropdownOpen) {
                 return;
             }
