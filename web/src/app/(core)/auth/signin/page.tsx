@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import SigninClient from "./SigninClient";
 import { buildThirdLoginCallbackUrl, resolveThirdLoginFlag } from "@/utils/authRedirect";
+import PopupAuthBridge from "./PopupAuthBridge";
 
 const signinErrors: Record<string | "default", string> = {
   default: "Unable to sign in.",
@@ -24,6 +25,8 @@ interface SignInPageProp {
     error: string;
     third_login?: string;
     thirdLogin?: string;
+    popup?: string;
+    provider?: string;
   }>;
 }
 
@@ -35,8 +38,27 @@ export default async function SigninPage({ searchParams }: SignInPageProp) {
     resolvedSearchParams.thirdLogin,
     resolvedSearchParams.third_login,
   );
+  const isPopupMode = resolvedSearchParams.popup === 'true' || resolvedSearchParams.popup === '1';
 
   if (session && session.user && session.user.id) {
+    if (isPopupMode) {
+      return (
+        <PopupAuthBridge
+          callbackUrl={resolvedSearchParams.callbackUrl}
+          thirdLogin={thirdLoginFlag}
+          user={{
+            id: session.user.id,
+            username: session.user.username,
+            token: session.user.token,
+            locale: session.user.locale,
+            temporary_pwd: session.user.temporary_pwd,
+            enable_otp: session.user.enable_otp,
+            qrcode: session.user.qrcode,
+          }}
+        />
+      );
+    }
+
     redirect(
       buildThirdLoginCallbackUrl(
         resolvedSearchParams.callbackUrl,

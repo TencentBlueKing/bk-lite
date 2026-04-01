@@ -5,8 +5,9 @@ import Image from "next/image";
 import { Select, Input } from "antd";
 import PasswordResetForm from "./PasswordResetForm";
 import OtpVerificationForm from "./OtpVerificationForm";
+import WechatQrLoginPanel from "./WechatQrLoginPanel";
 import { saveAuthToken } from "@/utils/crossDomainAuth";
-import { buildOauthCallbackBridgeUrl, buildThirdLoginCallbackUrl, resolveThirdLoginFlag } from "@/utils/authRedirect";
+import { AUTH_POPUP_SUCCESS_MESSAGE, buildOauthCallbackBridgeUrl, buildPopupSigninUrl, buildThirdLoginCallbackUrl, buildWechatPopupUrl, resolveThirdLoginFlag } from "@/utils/authRedirect";
 
 interface SigninClientProps {
   searchParams?: {
@@ -14,6 +15,8 @@ interface SigninClientProps {
     error: string;
     third_login?: string;
     thirdLogin?: string;
+    popup?: string;
+    provider?: string;
   };
   signinErrors?: Record<string | "default", string>;
   mode?: 'page' | 'modal';
@@ -22,6 +25,7 @@ interface SigninClientProps {
 }
 
 type AuthStep = 'login' | 'reset-password' | 'otp-verification';
+type ModalThirdPartyView = 'login' | 'wechat';
 
 interface LoginResponse {
   temporary_pwd?: boolean;
@@ -57,7 +61,10 @@ export default function SigninClient({
   const error = searchParams?.error || "";
   const third_login = searchParams?.third_login;
   const thirdLogin = searchParams?.thirdLogin;
+  const popup = searchParams?.popup;
+  const provider = searchParams?.provider;
   const thirdLoginFlag = resolveThirdLoginFlag(thirdLogin, third_login);
+  const isPopupWindowMode = popup === 'true' || popup === '1';
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [domain, setDomain] = useState("");
@@ -73,6 +80,8 @@ export default function SigninClient({
   const [loadingWechatSettings, setLoadingWechatSettings] = useState(true);
   const [bkSettings, setBkSettings] = useState<BkSettings | null>(null);
   const [loadingBkSettings, setLoadingBkSettings] = useState(true);
+  const [hasTriggeredPopupProvider, setHasTriggeredPopupProvider] = useState(false);
+  const [modalThirdPartyView, setModalThirdPartyView] = useState<ModalThirdPartyView>('login');
 
   useEffect(() => {
     const userAgent = navigator.userAgent.toLowerCase();
@@ -83,6 +92,85 @@ export default function SigninClient({
     fetchBkSettings();
     fetchDomainList();
   }, []);
+
+  const finishAuthentication = (targetUrl: string) => {
+    if (onAuthenticated) {
+      onAuthenticated();
+      return;
+    }
+
+    if (isPopupWindowMode && window.opener && !window.opener.closed) {
+      window.opener.postMessage({
+        type: AUTH_POPUP_SUCCESS_MESSAGE,
+        targetUrl,
+      }, window.location.origin);
+
+      window.setTimeout(() => {
+        window.close();
+      }, 100);
+      return;
+    }
+
+    window.location.href = targetUrl;
+  };
+
+  const checkExistingAuthentication = async () => {
+    try {
+      const response = await fetch('/api/proxy/core/api/get_bk_settings/', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
+        credentials: 'include',
+      });
+
+      const responseData = await response.json();
+      const userData = responseData?.data?.user;
+
+      if (response.ok && responseData?.result && userData && (userData.username || userData.id)) {
+        await completeAuthentication(userData);
+        return true;
+      }
+    } catch (existingAuthError) {
+      console.error('Failed to check existing authentication in popup:', existingAuthError);
+    }
+
+    return false;
+  };
+
+  const openThirdPartyPopup = (targetProvider: 'wechat' | 'bk') => {
+    const currentUrl = typeof window !== 'undefined' ? window.location.href : callbackUrl || '/';
+    const popupUrl = targetProvider === 'wechat'
+      ? buildWechatPopupUrl({
+        callbackUrl: currentUrl,
+        thirdLogin: true,
+      })
+      : buildPopupSigninUrl({
+        callbackUrl: currentUrl,
+        thirdLogin: true,
+        provider: targetProvider,
+      });
+
+    const width = 520;
+    const height = 760;
+    const left = window.screenX + Math.max((window.outerWidth - width) / 2, 0);
+    const top = window.screenY + Math.max((window.outerHeight - height) / 2, 0);
+
+    const openedWindow = window.open(
+      popupUrl,
+      'bklite-third-party-login',
+      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
+
+    if (!openedWindow) {
+      setFormError('Unable to open login popup. Please allow popups and try again.');
+      return;
+    }
+
+    openedWindow.focus();
+  };
 
   const fetchDomainList = async () => {
     try {
@@ -317,13 +405,7 @@ export default function SigninClient({
         );
 
         console.log('SignIn successful, redirecting to:', targetUrl);
-
-        if (onAuthenticated) {
-          onAuthenticated();
-          return;
-        }
-
-        window.location.href = targetUrl;
+        finishAuthentication(targetUrl);
       } else {
         console.error('SignIn failed with unknown error');
         setFormError("Authentication failed");
@@ -337,8 +419,19 @@ export default function SigninClient({
   };
 
   const handleWechatSignIn = async () => {
+    if (mode === 'modal' && !isPopupWindowMode) {
+      setModalThirdPartyView('wechat');
+      return;
+    }
+
     console.log("Starting WeChat login process...");
-    const oauthCallbackUrl = buildOauthCallbackBridgeUrl(callbackUrl || "/", thirdLoginFlag);
+    const oauthCallbackUrl = isPopupWindowMode
+      ? buildPopupSigninUrl({
+        callbackUrl: callbackUrl || '/',
+        thirdLogin: true,
+        provider: 'wechat',
+      })
+      : buildOauthCallbackBridgeUrl(callbackUrl || "/", thirdLoginFlag);
 
     console.log("Callback URL:", oauthCallbackUrl);
 
@@ -349,13 +442,61 @@ export default function SigninClient({
   };
 
   const handleBkSignIn = () => {
+    if (mode === 'modal' && !isPopupWindowMode) {
+      openThirdPartyPopup('bk');
+      return;
+    }
+
     if (bkSettings?.url) {
       const currentDomain = window.location.origin;
-      const bkLoginUrl = `${bkSettings.url}?callbackUrl=${encodeURIComponent(currentDomain)}`;
+      const targetCallbackUrl = isPopupWindowMode
+        ? `${currentDomain}${buildPopupSigninUrl({
+          callbackUrl: callbackUrl || '/',
+          thirdLogin: true,
+          provider: 'bk',
+        })}`
+        : currentDomain;
+      const bkLoginUrl = `${bkSettings.url}?callbackUrl=${encodeURIComponent(targetCallbackUrl)}`;
       console.log("Redirecting to BK login:", bkLoginUrl);
       window.location.href = bkLoginUrl;
     }
   };
+
+  useEffect(() => {
+    if (!isPopupWindowMode || !provider || hasTriggeredPopupProvider || authStep !== 'login') {
+      return;
+    }
+
+    if (provider === 'wechat') {
+      if (loadingWechatSettings) {
+        return;
+      }
+
+      if (!wechatSettings?.enabled) {
+        setFormError('WeChat login is not available.');
+        setHasTriggeredPopupProvider(true);
+        return;
+      }
+
+      setHasTriggeredPopupProvider(true);
+      void handleWechatSignIn();
+      return;
+    }
+
+    if (provider === 'bk') {
+      if (loadingBkSettings) {
+        return;
+      }
+
+      setHasTriggeredPopupProvider(true);
+      void (async () => {
+        const hasExistingAuth = await checkExistingAuthentication();
+        if (!hasExistingAuth) {
+          handleBkSignIn();
+        }
+      })();
+    }
+  }, [authStep, bkSettings?.is_open_logining, hasTriggeredPopupProvider, isPopupWindowMode, loadingBkSettings, loadingWechatSettings, provider, wechatSettings?.enabled]);
 
   const renderLoginForm = () => (
     <form onSubmit={handleLoginSubmit} className="flex flex-col space-y-6 w-full">
@@ -578,11 +719,19 @@ export default function SigninClient({
         </div>
       )}
 
-      {authStep === 'login' && renderLoginForm()}
+      {authStep === 'login' && modalThirdPartyView === 'login' && renderLoginForm()}
       {authStep === 'reset-password' && renderPasswordResetForm()}
       {authStep === 'otp-verification' && renderOtpVerificationForm()}
 
-      {showThirdPartyLogin && authStep === 'login' && renderWechatLoginSection()}
+      {authStep === 'login' && mode === 'modal' && modalThirdPartyView === 'wechat' && (
+        <WechatQrLoginPanel
+          callbackUrl={typeof window !== 'undefined' ? window.location.href : callbackUrl}
+          thirdLogin="true"
+          onBack={() => setModalThirdPartyView('login')}
+        />
+      )}
+
+      {showThirdPartyLogin && authStep === 'login' && modalThirdPartyView === 'login' && renderWechatLoginSection()}
     </div>
   );
 
