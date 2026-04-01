@@ -15,6 +15,7 @@ from django.http import StreamingHttpResponse
 from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
 from apps.opspilot.utils.sse_chat import _process_think_content, _split_think_content
 
 logger = logging.getLogger(__name__)
@@ -315,8 +316,13 @@ async def _generate_agui_stream(
         accumulated_content = []
         state = _init_agui_stream_state()
         enable_thinking_split = _supports_thinking_events(request)
+        execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
 
         async for sse_line in graph.agui_stream(request):
+            if execution_id and is_interrupt_requested(execution_id):
+                interrupt_data = {"type": "INTERRUPTED", "error": "执行已中断", "execution_id": execution_id, "timestamp": int(time.time() * 1000)}
+                yield _build_sse_line(interrupt_data)
+                return
             output_line = sse_line
             immediate_lines = []
             if sse_line.startswith("data: "):
@@ -420,6 +426,7 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     show_think = params.pop("show_think", True)
     skill_type = params.get("skill_type")
     params.pop("group", 0)
+    params["execution_id"] = params.get("execution_id") or params.get("thread_id") or str(int(time.time() * 1000))
 
     chat_kwargs, doc_map, title_map = chat_service.format_chat_server_kwargs(params, llm_model)
 
@@ -445,5 +452,7 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     # 使用公共的 SSE 响应头
     for key, value in create_sse_response_headers().items():
         response[key] = value
+    response["X-Execution-ID"] = params["execution_id"]
+    response["Access-Control-Expose-Headers"] = "X-Execution-ID"
 
     return response

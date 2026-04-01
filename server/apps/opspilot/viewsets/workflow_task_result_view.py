@@ -103,6 +103,8 @@ class WorkFlowTaskResultViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin
                 "start_time",
                 "end_time",
                 "duration_ms",
+                "input_data",
+                "output_data",
             )
         )
         return Response(list(node_results))

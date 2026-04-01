@@ -73,5 +73,7 @@ class WorkFlowTaskStatus(models.TextChoices):
     """工作流任务状态枚举"""
 
     RUNNING = "running", _("Running")
+    INTERRUPT_REQUESTED = "interrupt_requested", _("Interrupt Requested")
+    INTERRUPTED = "interrupted", _("Interrupted")
     SUCCESS = "success", _("Success")
     FAIL = "fail", _("Fail")

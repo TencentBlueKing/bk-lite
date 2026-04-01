@@ -30,6 +30,7 @@ from langgraph.constants import START
 from loguru import logger
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, BasicLLMResponse
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
 
 # Sensitive field patterns for masking in SSE events (logging/frontend display only)
 _SENSITIVE_FIELD_PATTERNS = frozenset(
@@ -742,6 +743,7 @@ class BasicGraph(ABC):
         message_started = False
         thinking_started = False
         show_think = bool((request.extra_config or {}).get("show_think", True))
+        execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
         browser_step_callback = create_browser_step_callback(browser_event_queue, encoder)
@@ -783,6 +785,16 @@ class BasicGraph(ABC):
             )
 
             async for stream_type, stream_data in _merge_async_streams(langgraph_stream, browser_event_queue, stop_event):
+                if execution_id and is_interrupt_requested(execution_id):
+                    yield encoder.encode(
+                        RunErrorEvent(
+                            type=EventType.RUN_ERROR,
+                            message="执行已中断",
+                            code="INTERRUPTED",
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                    return
                 if stream_type == "browser":
                     yield stream_data
                     continue

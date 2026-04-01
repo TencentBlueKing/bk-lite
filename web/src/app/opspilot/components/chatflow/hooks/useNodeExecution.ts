@@ -7,6 +7,8 @@ import type { WorkflowExecutionDetailItem } from '@/app/opspilot/types/studio';
 import { AGUIMessage, BrowserTaskReceivedValue } from '@/app/opspilot/types/chat';
 import { ToolCallInfo, syncActiveToolCallPanel, closeActiveToolCallPanel } from '../../custom-chat-sse/toolCallRenderer';
 
+const TERMINAL_EXECUTION_STATUSES = new Set(['success', 'fail', 'interrupted']);
+
 export interface NodeExecutionResult {
   isSSE: boolean;
   content: string;
@@ -48,7 +50,7 @@ const findExecutionField = (value: unknown, field: string, depth = 0): string | 
 };
 
 export const useNodeExecution = (t: any, initialExecutionId?: string | null) => {
-  const { getExecuteWorkflowSSEUrl, fetchExecutionDetail } = useStudioApi();
+  const { getExecuteWorkflowSSEUrl, fetchExecutionDetail, fetchWorkflowTaskResult } = useStudioApi();
 
   const { data: session } = useSession();
   const authContext = useAuth();
@@ -66,22 +68,29 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
   const [latestExecutionId, setLatestExecutionId] = useState('');
   const [executionSummary, setExecutionSummary] = useState<ExecutionSummary>({ status: 'idle' });
   const [activeExecutionNodeId, setActiveExecutionNodeId] = useState<string | null>(null);
+  const [hasActiveExecution, setHasActiveExecution] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const toolCallsRef = useRef<Map<string, ToolCallInfo>>(new Map());
   const executionPollTimerRef = useRef<number | null>(null);
   const latestExecutionIdRef = useRef('');
   const fetchExecutionDetailRef = useRef(fetchExecutionDetail);
+  const fetchWorkflowTaskResultRef = useRef(fetchWorkflowTaskResult);
   const executionSnapshotRef = useRef('');
   const unchangedPollCountRef = useRef(0);
   const tRef = useRef(t);
   const executeNodeIdRef = useRef('');
   const executionRequestInFlightRef = useRef(false);
   const pollingExecutionIdRef = useRef('');
+  const workflowExecutionStateRef = useRef<'unknown' | 'active' | 'terminal'>('unknown');
 
   useEffect(() => {
     fetchExecutionDetailRef.current = fetchExecutionDetail;
   }, [fetchExecutionDetail]);
+
+  useEffect(() => {
+    fetchWorkflowTaskResultRef.current = fetchWorkflowTaskResult;
+  }, [fetchWorkflowTaskResult]);
 
   useEffect(() => {
     tRef.current = t;
@@ -115,6 +124,35 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
     }
   }, []);
 
+  const interruptExecution = useCallback(async (executionId?: string) => {
+    const targetExecutionId = executionId || latestExecutionIdRef.current;
+    if (!targetExecutionId) {
+      return;
+    }
+
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      await fetch('/api/proxy/opspilot/bot_mgmt/interrupt_chat_flow_execution/', {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({
+          execution_id: targetExecutionId,
+          reason: 'user_manual',
+        }),
+      });
+    } catch (error) {
+      console.warn('Failed to interrupt chatflow execution:', error);
+    }
+  }, [token]);
+
   useEffect(() => {
     const handleExecuteNode = (event: any) => {
       const { nodeId } = event.detail;
@@ -143,6 +181,8 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
     unchangedPollCountRef.current = 0;
     setLatestExecutionId(initialExecutionId);
     setIsPreviewOpen(true);
+    setHasActiveExecution(true);
+    workflowExecutionStateRef.current = 'active';
     setExecutionSummary({
       status: 'running',
       title: tRef.current('chatflow.preview.running'),
@@ -150,12 +190,43 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
   }, [initialExecutionId]);
 
   const stopExecution = useCallback(() => {
+    const capturedExecutionId = latestExecutionIdRef.current;
+
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    stopExecutionPolling();
     setExecuteLoading(false);
-  }, []);
+    setStreamingContent('');
+    setExecuteResult(null);
+    toolCallsRef.current.clear();
+    latestExecutionIdRef.current = '';
+    setLatestExecutionId('');
+    setExecutionDetails([]);
+    setActiveExecutionNodeId(null);
+    setHasActiveExecution(false);
+    workflowExecutionStateRef.current = 'terminal';
+    setExecutionSummary({ status: 'idle' });
+    if (capturedExecutionId) {
+      void interruptExecution(capturedExecutionId);
+    }
+  }, [interruptExecution, stopExecutionPolling]);
+
+  useEffect(() => {
+    const handleStopNodeExecution = (event: any) => {
+      const targetNodeId = event.detail?.nodeId;
+      if (targetNodeId && executeNodeIdRef.current && targetNodeId !== executeNodeIdRef.current) {
+        return;
+      }
+      stopExecution();
+    };
+
+    window.addEventListener('stopNodeExecution', handleStopNodeExecution);
+    return () => {
+      window.removeEventListener('stopNodeExecution', handleStopNodeExecution);
+    };
+  }, [stopExecution]);
 
   const handleAGUIMessage = useCallback((aguiData: AGUIMessage, contentRef: { current: string }) => {
     applyExecutionMeta(aguiData);
@@ -289,6 +360,12 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
         signal: abortController.signal,
       });
 
+      const executionId = response.headers.get('X-Execution-ID');
+      if (executionId) {
+        latestExecutionIdRef.current = executionId;
+        setLatestExecutionId(executionId);
+      }
+
       const contentType = response.headers.get('Content-Type') || '';
 
       if (!contentType.includes('text/event-stream')) {
@@ -384,11 +461,15 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
         title: tRef.current('chatflow.preview.failed'),
         reason: failedNode.error_message,
       });
+      setHasActiveExecution(false);
+      workflowExecutionStateRef.current = 'terminal';
       return;
     }
 
     const hasRunningNode = details.some((item) => item.status === 'running' || item.status === 'pending');
     if (hasRunningNode) {
+      setHasActiveExecution(true);
+      workflowExecutionStateRef.current = 'active';
       setExecutionSummary({
         status: 'running',
         title: tRef.current('chatflow.preview.running'),
@@ -397,6 +478,12 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
     }
 
     if (details.length > 0) {
+      if (workflowExecutionStateRef.current !== 'terminal') {
+        setHasActiveExecution(true);
+        return;
+      }
+
+      setHasActiveExecution(false);
       setExecutionSummary({
         status: 'success',
         title: tRef.current('chatflow.preview.success'),
@@ -416,6 +503,19 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
 
     try {
       const details = await fetchExecutionDetailRef.current(executionId);
+      const botId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('id') : null;
+      if (botId) {
+        const workflowTasks = await fetchWorkflowTaskResultRef.current({
+          bot_id: botId,
+          execution_id: executionId,
+          page: 1,
+          page_size: 1,
+        });
+        const latestWorkflowTask = workflowTasks?.items?.[0];
+        if (latestWorkflowTask?.status) {
+          workflowExecutionStateRef.current = TERMINAL_EXECUTION_STATUSES.has(latestWorkflowTask.status) ? 'terminal' : 'active';
+        }
+      }
 
       if (pollingExecutionIdRef.current !== executionId) {
         return;
@@ -503,6 +603,9 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
     setExecutionDetails([]);
     latestExecutionIdRef.current = '';
     setLatestExecutionId('');
+    setActiveExecutionNodeId(executeNodeId);
+    setHasActiveExecution(true);
+    workflowExecutionStateRef.current = 'active';
     setExecutionSummary({
       status: 'running',
       title: t('chatflow.preview.running'),
@@ -514,6 +617,8 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
     try {
       const status = await handleSSEExecution(botId, executeNodeId, executeMessage);
       if (status === 'success' && !latestExecutionIdRef.current) {
+        setHasActiveExecution(false);
+        workflowExecutionStateRef.current = 'terminal';
         setExecutionSummary({
           status: 'success',
           title: t('chatflow.preview.success'),
@@ -522,6 +627,8 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
       }
     } catch (error: any) {
       console.error('Execute node error:', error);
+      setHasActiveExecution(false);
+      workflowExecutionStateRef.current = 'terminal';
       setExecutionSummary({
         status: 'failed',
         title: t('chatflow.preview.failed'),
@@ -539,9 +646,8 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
   }, [executeNodeId, executeMessage, handleSSEExecution, stopExecutionPolling, t]);
 
   const handleCloseDrawer = useCallback(() => {
-    stopExecution();
     setIsExecuteDrawerVisible(false);
-  }, [stopExecution]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -579,6 +685,7 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
     latestExecutionId,
     executionSummary,
     activeExecutionNodeId,
+    hasActiveExecution,
     executionStatusMap,
     executionDurationMap,
   };

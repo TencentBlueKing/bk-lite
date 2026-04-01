@@ -221,7 +221,12 @@ const StudioChatPage: React.FC = () => {
       
       return {
         url,
-        payload
+        payload,
+        interruptRequest: {
+          enabled: true,
+          url: '/api/proxy/opspilot/bot_mgmt/interrupt_chat_flow_execution/',
+          reason: 'user_manual'
+        }
       };
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -382,6 +387,7 @@ const StudioChatPage: React.FC = () => {
             showHeader={false}
             requirePermission={false}
             initialMessages={initialMessages}
+            removePendingBotMessageOnCancel={true}
           />
         )}
       </div>

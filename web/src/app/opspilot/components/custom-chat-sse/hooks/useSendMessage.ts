@@ -12,8 +12,20 @@ interface UseSendMessageProps {
   messages: CustomChatMessage[];
   updateMessages: (updater: CustomChatMessage[] | ((prev: CustomChatMessage[]) => CustomChatMessage[])) => void;
   setLoading: (loading: boolean) => void;
-  handleSendMessage?: (message: string, currentMessages?: any[], userMessage?: CustomChatMessage) => Promise<{ url: string; payload: any } | null>;
-  handleSSEStream: (url: string, payload: any, botMessage: CustomChatMessage) => Promise<void>;
+  handleSendMessage?: (message: string, currentMessages?: any[], userMessage?: CustomChatMessage) => Promise<{
+    url: string;
+    payload: any;
+    interruptRequest?: {
+      enabled: boolean;
+      url: string;
+      reason?: string;
+    };
+  } | null>;
+  handleSSEStream: (url: string, payload: any, botMessage: CustomChatMessage, interruptRequest?: {
+    enabled: boolean;
+    url: string;
+    reason?: string;
+  }) => Promise<void>;
   currentBotMessageRef: MutableRefObject<CustomChatMessage | null>;
   t: (key: string) => string;
 }
@@ -72,8 +84,8 @@ export const useSendMessage = ({
             return;
           }
 
-          const { url, payload } = result;
-          await handleSSEStream(url, payload, botLoadingMessage);
+          const { url, payload, interruptRequest } = result;
+          await handleSSEStream(url, payload, botLoadingMessage, interruptRequest);
         }
       } catch (error: any) {
         console.error(`${t('chat.sendFailed')}:`, error);

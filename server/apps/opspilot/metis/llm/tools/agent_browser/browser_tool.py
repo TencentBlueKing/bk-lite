@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -13,6 +14,8 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from langchain_core.tools import tool
 from loguru import logger
+
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
 
 _DEFAULT_SCREENSHOT_DIR = Path(__file__).resolve().parents[6] / "tmp" / "agent-browser"
 _URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+")
@@ -183,9 +186,9 @@ def _should_enable_headed_mode() -> bool:
     return False
 
 
-def _run_agent_browser_command(command: list[str], timeout: int) -> Dict[str, Any]:
+def _run_agent_browser_command(command: list[str], timeout: int, execution_id: str = "") -> Dict[str, Any]:
     """执行 agent-browser CLI 命令并返回结构化结果。"""
-    logger.info(f"agent_browser: 准备执行 CLI，command={command}, timeout={timeout}s")
+    logger.info(f"agent_browser: 准备执行 CLI，command={command}, timeout={timeout}s, execution_id={execution_id!r}")
     binary = _find_agent_browser_binary()
     if not binary:
         logger.warning("agent_browser: 未找到 agent-browser CLI，无法进入 subprocess 执行阶段")
@@ -204,33 +207,63 @@ def _run_agent_browser_command(command: list[str], timeout: int) -> Dict[str, An
     full_command.extend(command)
     logger.info(f"agent_browser: 即将执行 subprocess 命令: {' '.join(full_command)}")
 
+    started_at = time.monotonic()
+    process = None
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             full_command,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
-            check=False,
             shell=False,
             encoding="utf-8",
             errors="replace",
         )
-        logger.info(
-            "agent_browser: subprocess 执行完成, "
-            f"exit_code={completed.returncode}, stdout_len={len(completed.stdout)}, stderr_len={len(completed.stderr)}"
-        )
-    except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout or ""
-        stderr = exc.stderr or ""
-        logger.warning(f"agent_browser: subprocess 执行超时, timeout={timeout}s, stdout_len={len(stdout)}, stderr_len={len(stderr)}")
-        return {
-            "success": False,
-            "command": full_command,
-            "exit_code": None,
-            "stdout": stdout,
-            "stderr": stderr,
-            "error": f"agent-browser 执行超时（>{timeout}s）",
-        }
+        stdout = ""
+        stderr = ""
+        while True:
+            if execution_id and is_interrupt_requested(execution_id):
+                logger.info(f"agent_browser: 检测到中断请求，准备终止 CLI, execution_id={execution_id}")
+                process.terminate()
+                try:
+                    stdout, stderr = process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    stdout, stderr = process.communicate()
+                return {
+                    "success": False,
+                    "command": full_command,
+                    "exit_code": process.returncode,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "error": "agent-browser 执行已中断",
+                    "interrupted": True,
+                }
+
+            if time.monotonic() - started_at > timeout:
+                logger.warning(f"agent_browser: subprocess 执行超时, timeout={timeout}s")
+                process.terminate()
+                try:
+                    stdout, stderr = process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    stdout, stderr = process.communicate()
+                return {
+                    "success": False,
+                    "command": full_command,
+                    "exit_code": process.returncode,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "error": f"agent-browser 执行超时（>{timeout}s）",
+                }
+
+            if process.poll() is not None:
+                stdout, stderr = process.communicate()
+                logger.info(f"agent_browser: subprocess 执行完成, exit_code={process.returncode}, stdout_len={len(stdout)}, stderr_len={len(stderr)}")
+                completed = subprocess.CompletedProcess(full_command, process.returncode, stdout, stderr)
+                break
+
+            time.sleep(0.2)
     except OSError as exc:
         logger.exception(f"agent_browser: subprocess 启动失败: {exc}")
         return {
@@ -276,6 +309,7 @@ def _run_snapshot_command(
     selector: str = "",
     session_name: str = "",
     timeout: int = 120,
+    execution_id: str = "",
 ) -> Dict[str, Any]:
     """执行 snapshot 命令的内部帮助函数。"""
     command_args = [*_build_session_flags(session_name), "snapshot"]
@@ -287,7 +321,7 @@ def _run_snapshot_command(
         command_args.extend(["-d", str(max_depth)])
     if selector:
         command_args.extend(["-s", selector])
-    return _run_agent_browser_command(command=command_args, timeout=timeout)
+    return _run_agent_browser_command(command=command_args, timeout=timeout, execution_id=execution_id)
 
 
 def _run_wait_command(
@@ -299,6 +333,7 @@ def _run_wait_command(
     js_condition: str = "",
     session_name: str = "",
     timeout: int = 120,
+    execution_id: str = "",
 ) -> Dict[str, Any]:
     """执行 wait 命令的内部帮助函数。"""
     command_args = [*_build_session_flags(session_name), "wait"]
@@ -314,7 +349,7 @@ def _run_wait_command(
         command_args.extend(["--state", state])
     if js_condition:
         command_args.extend(["--fn", js_condition])
-    return _run_agent_browser_command(command=command_args, timeout=timeout)
+    return _run_agent_browser_command(command=command_args, timeout=timeout, execution_id=execution_id)
 
 
 def _run_screenshot_command(
@@ -324,6 +359,7 @@ def _run_screenshot_command(
     image_format: str = "png",
     session_name: str = "",
     timeout: int = 120,
+    execution_id: str = "",
 ) -> Dict[str, Any]:
     """执行 screenshot 命令的内部帮助函数。"""
     screenshot_path = _build_default_screenshot_path(filename=filename or None, image_format=image_format)
@@ -336,7 +372,7 @@ def _run_screenshot_command(
         command_args.extend(["--screenshot-format", image_format])
     command_args.append(screenshot_path)
 
-    result = _run_agent_browser_command(command=command_args, timeout=timeout)
+    result = _run_agent_browser_command(command=command_args, timeout=timeout, execution_id=execution_id)
     result["screenshot_path"] = screenshot_path
     return result
 
@@ -349,6 +385,7 @@ def _run_open_wait_and_snapshot(
     interactive_only: bool = True,
     compact: bool = True,
     timeout: int = 120,
+    execution_id: str = "",
 ) -> Dict[str, Any]:
     """执行 open + wait + snapshot 的内部组合流程。"""
     if not url:
@@ -361,7 +398,7 @@ def _run_open_wait_and_snapshot(
             "interstitial_result": None,
         }
 
-    open_result = _run_agent_browser_command(command=[*_build_session_flags(session_name), "open", url], timeout=timeout)
+    open_result = _run_agent_browser_command(command=[*_build_session_flags(session_name), "open", url], timeout=timeout, execution_id=execution_id)
     if not open_result.get("success"):
         interstitial_result = _run_security_interstitial_recovery(session_name=session_name, timeout=timeout)
         if interstitial_result.get("success"):
@@ -372,6 +409,7 @@ def _run_open_wait_and_snapshot(
                     load_state=load_state,
                     session_name=session_name,
                     timeout=timeout,
+                    execution_id=execution_id,
                 )
                 if not wait_result.get("success"):
                     return {
@@ -388,6 +426,7 @@ def _run_open_wait_and_snapshot(
                     selector_or_ms=str(wait_ms),
                     session_name=session_name,
                     timeout=timeout,
+                    execution_id=execution_id,
                 )
                 if not wait_result.get("success"):
                     return {
@@ -404,6 +443,7 @@ def _run_open_wait_and_snapshot(
                 compact=compact,
                 session_name=session_name,
                 timeout=timeout,
+                execution_id=execution_id,
             )
             return {
                 "success": bool(snapshot_result.get("success")),
@@ -430,6 +470,7 @@ def _run_open_wait_and_snapshot(
             load_state=load_state,
             session_name=session_name,
             timeout=timeout,
+            execution_id=execution_id,
         )
         if not wait_result.get("success"):
             return {
@@ -445,6 +486,7 @@ def _run_open_wait_and_snapshot(
             selector_or_ms=str(wait_ms),
             session_name=session_name,
             timeout=timeout,
+            execution_id=execution_id,
         )
         if not wait_result.get("success"):
             return {
@@ -460,6 +502,7 @@ def _run_open_wait_and_snapshot(
         compact=compact,
         session_name=session_name,
         timeout=timeout,
+        execution_id=execution_id,
     )
     return {
         "success": bool(snapshot_result.get("success")),
@@ -472,7 +515,7 @@ def _run_open_wait_and_snapshot(
 
 
 @tool(parse_docstring=True)
-def agent_browser_run(command_args: list[str], timeout: int = 120) -> Dict[str, Any]:
+def agent_browser_run(command_args: list[str], timeout: int = 120, config: Optional[dict] = None) -> Dict[str, Any]:
     """
     执行 agent-browser CLI 命令，用于浏览器自动化能力验证。
 
@@ -507,7 +550,9 @@ def agent_browser_run(command_args: list[str], timeout: int = 120) -> Dict[str, 
             "error": "timeout 必须大于 0。",
         }
 
-    result = _run_agent_browser_command(command=command_args, timeout=timeout)
+    configurable = config.get("configurable", {}) if config else {}
+    execution_id = configurable.get("execution_id", "")
+    result = _run_agent_browser_command(command=command_args, timeout=timeout, execution_id=execution_id)
     logger.info(f"agent_browser_run: 工具执行结束, success={result.get('success')}, exit_code={result.get('exit_code')}, error={result.get('error')!r}")
     return result
 
@@ -520,6 +565,7 @@ def agent_browser_screenshot(
     image_format: str = "png",
     session_name: str = "",
     timeout: int = 120,
+    config: Optional[dict] = None,
 ) -> Dict[str, Any]:
     """
     使用 agent-browser 截图，并默认保存到 server/tmp/agent-browser 目录。
@@ -552,6 +598,8 @@ def agent_browser_screenshot(
             "screenshot_path": None,
         }
 
+    configurable = config.get("configurable", {}) if config else {}
+    execution_id = configurable.get("execution_id", "")
     result = _run_screenshot_command(
         filename=filename,
         full_page=full_page,
@@ -559,6 +607,7 @@ def agent_browser_screenshot(
         image_format=image_format,
         session_name=session_name,
         timeout=timeout,
+        execution_id=execution_id,
     )
     screenshot_path = result.get("screenshot_path")
     logger.info(
@@ -577,6 +626,7 @@ def agent_browser_open_and_screenshot(
     image_format: str = "png",
     session_name: str = "",
     timeout: int = 120,
+    config: Optional[dict] = None,
 ) -> Dict[str, Any]:
     """
     打开指定 URL 后立即截图，便于调试跳转页面和页面阻塞问题。
@@ -607,7 +657,13 @@ def agent_browser_open_and_screenshot(
             "screenshot_path": None,
         }
 
-    open_result = _run_agent_browser_command(command=[*_build_session_flags(session_name), "open", url], timeout=timeout)
+    configurable = config.get("configurable", {}) if config else {}
+    execution_id = configurable.get("execution_id", "")
+    open_result = _run_agent_browser_command(
+        command=[*_build_session_flags(session_name), "open", url],
+        timeout=timeout,
+        execution_id=execution_id,
+    )
     if not open_result.get("success"):
         logger.warning(
             f"agent_browser_open_and_screenshot: 打开页面失败, error={open_result.get('error')!r}, url_candidates={open_result.get('url_candidates')}"
@@ -627,6 +683,7 @@ def agent_browser_open_and_screenshot(
         image_format=image_format,
         session_name=session_name,
         timeout=timeout,
+        execution_id=execution_id,
     )
     screenshot_path = screenshot_result.get("screenshot_path")
     final_result = {
@@ -651,6 +708,7 @@ def agent_browser_snapshot(
     selector: str = "",
     session_name: str = "",
     timeout: int = 120,
+    config: Optional[dict] = None,
 ) -> Dict[str, Any]:
     """
     获取当前页面的 snapshot，用于巡检时读取稳定的页面结构和交互元素引用。
@@ -671,6 +729,8 @@ def agent_browser_snapshot(
         f"max_depth={max_depth}, selector={selector!r}, session_name={session_name!r}, timeout={timeout}"
     )
 
+    configurable = config.get("configurable", {}) if config else {}
+    execution_id = configurable.get("execution_id", "")
     result = _run_snapshot_command(
         interactive_only=interactive_only,
         compact=compact,
@@ -678,6 +738,7 @@ def agent_browser_snapshot(
         selector=selector,
         session_name=session_name,
         timeout=timeout,
+        execution_id=execution_id,
     )
     logger.info(f"agent_browser_snapshot: 执行结束, success={result.get('success')}, exit_code={result.get('exit_code')}, error={result.get('error')!r}")
     return result
@@ -693,6 +754,7 @@ def agent_browser_wait(
     js_condition: str = "",
     session_name: str = "",
     timeout: int = 120,
+    config: Optional[dict] = None,
 ) -> Dict[str, Any]:
     """
     等待页面进入稳定状态，用于巡检流程中的加载完成判定。
@@ -715,6 +777,8 @@ def agent_browser_wait(
         f"load_state={load_state!r}, state={state!r}, js_condition={js_condition!r}, session_name={session_name!r}, timeout={timeout}"
     )
 
+    configurable = config.get("configurable", {}) if config else {}
+    execution_id = configurable.get("execution_id", "")
     result = _run_wait_command(
         selector_or_ms=selector_or_ms,
         text=text,
@@ -724,6 +788,7 @@ def agent_browser_wait(
         js_condition=js_condition,
         session_name=session_name,
         timeout=timeout,
+        execution_id=execution_id,
     )
     logger.info(f"agent_browser_wait: 执行结束, success={result.get('success')}, exit_code={result.get('exit_code')}, error={result.get('error')!r}")
     return result
@@ -738,6 +803,7 @@ def agent_browser_open_wait_and_snapshot(
     interactive_only: bool = True,
     compact: bool = True,
     timeout: int = 120,
+    config: Optional[dict] = None,
 ) -> Dict[str, Any]:
     """
     打开页面、等待稳定、再抓取 snapshot，是服务端巡检最常用的稳定读取组合。
@@ -759,6 +825,8 @@ def agent_browser_open_wait_and_snapshot(
         f"load_state={load_state!r}, wait_ms={wait_ms}, interactive_only={interactive_only}, compact={compact}, timeout={timeout}"
     )
 
+    configurable = config.get("configurable", {}) if config else {}
+    execution_id = configurable.get("execution_id", "")
     final_result = _run_open_wait_and_snapshot(
         url=url,
         session_name=session_name,
@@ -767,6 +835,7 @@ def agent_browser_open_wait_and_snapshot(
         interactive_only=interactive_only,
         compact=compact,
         timeout=timeout,
+        execution_id=execution_id,
     )
     logger.info(f"agent_browser_open_wait_and_snapshot: 执行结束, success={final_result.get('success')}, error={final_result.get('error')!r}")
     return final_result
@@ -786,6 +855,7 @@ def agent_browser_inspect(
     annotate: bool = False,
     image_format: str = "png",
     timeout: int = 120,
+    config: Optional[dict] = None,
 ) -> Dict[str, Any]:
     """
     打开页面、等待稳定、抓取 snapshot，并按需截图，是面向巡检 MVP 的统一入口。
@@ -813,6 +883,8 @@ def agent_browser_inspect(
         f"screenshot_filename={screenshot_filename!r}, full_page={full_page}, annotate={annotate}, image_format={image_format!r}, timeout={timeout}"
     )
 
+    configurable = config.get("configurable", {}) if config else {}
+    execution_id = configurable.get("execution_id", "")
     base_result = _run_open_wait_and_snapshot(
         url=url,
         session_name=session_name,
@@ -821,6 +893,7 @@ def agent_browser_inspect(
         interactive_only=interactive_only,
         compact=compact,
         timeout=timeout,
+        execution_id=execution_id,
     )
     if not base_result.get("success"):
         return {
@@ -844,6 +917,7 @@ def agent_browser_inspect(
             image_format=image_format,
             session_name=session_name,
             timeout=timeout,
+            execution_id=execution_id,
         )
         screenshot_path = screenshot_result.get("screenshot_path")
         if not screenshot_result.get("success"):
