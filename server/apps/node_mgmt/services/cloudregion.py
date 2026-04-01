@@ -56,8 +56,8 @@ class RegionService:
         nats_url = env_vars.get("NATS_SERVERS")
         nats_username = env_vars.get("NATS_USERNAME")
         nats_password = env_vars.get("NATS_PASSWORD")
-        nats_monitor_username = os.getenv("NATS_ADMIN_USERNAME")
-        nats_monitor_password = os.getenv("NATS_ADMIN_PASSWORD")
+        nats_monitor_username = os.getenv("NATS_ADMIN_USERNAME") or os.getenv("DEFAULT_ZONE_VAR_NATS_ADMIN_USERNAME")
+        nats_monitor_password = os.getenv("NATS_ADMIN_PASSWORD") or os.getenv("DEFAULT_ZONE_VAR_NATS_ADMIN_PASSWORD")
 
         missing_vars = []
         if not server_url:
