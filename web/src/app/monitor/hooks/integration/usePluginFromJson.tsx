@@ -11,7 +11,8 @@ export const usePluginFromJson = () => {
     string | number | null
   >(null);
   const { renderFormField, renderTableColumn } = useConfigRenderer();
-  const { getUiTemplate, getUiTemplateByParams } = useIntegrationApi();
+  const { getUiTemplate, getUiTemplateByParams, getUiTemplateByPlugin } =
+    useIntegrationApi();
 
   // 根据 pluginId 或参数获取配置
   const getPluginConfig = useCallback(
@@ -23,6 +24,7 @@ export const usePluginFromJson = () => {
             collector: string;
             collect_type: string;
             monitor_object_id: string;
+            monitor_plugin_id?: string | number;
           },
       mode?: 'edit'
     ) => {
@@ -33,8 +35,13 @@ export const usePluginFromJson = () => {
         let data;
         let pluginId;
         if (typeof pluginIdOrParams === 'object' && mode === 'edit') {
-          data = await getUiTemplateByParams(pluginIdOrParams);
-          pluginId = `${pluginIdOrParams.monitor_object_id}_${pluginIdOrParams.collector}_${pluginIdOrParams.collect_type}`;
+          if (pluginIdOrParams.monitor_plugin_id) {
+            pluginId = pluginIdOrParams.monitor_plugin_id;
+            data = await getUiTemplateByPlugin(pluginIdOrParams.monitor_plugin_id);
+          } else {
+            data = await getUiTemplateByParams(pluginIdOrParams);
+            pluginId = `${pluginIdOrParams.monitor_object_id}_${pluginIdOrParams.collector}_${pluginIdOrParams.collect_type}`;
+          }
         } else {
           pluginId = pluginIdOrParams as string | number;
           data = await getUiTemplate({ id: pluginId });

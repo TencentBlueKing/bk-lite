@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.monitor.models import MonitorPlugin
+from apps.monitor.services.custom_pull_plugin import CustomPullPluginService
 
 
 class MonitorPluginSerializer(serializers.ModelSerializer):
@@ -22,7 +23,7 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         display_name = attrs.get("display_name", getattr(instance, "display_name", ""))
         monitor_objects = attrs.get("monitor_object")
 
-        if template_type == "custom_api":
+        if template_type in {"api", "pull"}:
             if not template_id:
                 raise serializers.ValidationError({"template_id": "模板ID不能为空"})
             if not display_name:
@@ -38,9 +39,15 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
                         raise serializers.ValidationError({"monitor_object": "绑定对象不支持修改"})
 
             if monitor_objects is not None and len(monitor_objects) != 1:
-                raise serializers.ValidationError({"monitor_object": "自建API模板必须且只能绑定一个监控对象"})
+                raise serializers.ValidationError({"monitor_object": "自定义模板必须且只能绑定一个监控对象"})
 
         return attrs
+
+    def validate_template_type(self, value):
+        allowed = {"builtin", "api", "pull", "snmp"}
+        if value not in allowed:
+            raise serializers.ValidationError("模板类型不合法")
+        return value
 
     def get_parent_monitor_object(self, obj):
         """
@@ -62,9 +69,15 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         """
         # 手动设置 is_pre 为 False，表示用户创建的数据是非预制的
         validated_data["is_pre"] = False
-        if validated_data.get("template_type") == "custom_api":
+        template_type = validated_data.get("template_type")
+        if template_type == "api":
             validated_data["collect_type"] = "push_api"
             validated_data["collector"] = "push_api"
+        elif template_type == "pull":
+            validated_data["collect_type"] = "bkpull"
+            validated_data["collector"] = "Telegraf"
 
-        # 调用父类的 create 方法
-        return super().create(validated_data)
+        plugin = super().create(validated_data)
+        if template_type == "pull":
+            CustomPullPluginService.initialize_templates(plugin)
+        return plugin

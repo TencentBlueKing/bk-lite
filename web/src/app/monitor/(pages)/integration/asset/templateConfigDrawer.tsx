@@ -62,6 +62,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
       setLoading(true);
       try {
         const requestParams = {
+          monitor_plugin_id: targetPlugin.plugin_id,
           collect_type: targetPlugin.collect_type,
           collector: targetPlugin.collector,
         };
