@@ -509,7 +509,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
         <ExecutionPreviewPanel
           open={executionProps.isPreviewOpen}
           loading={executionProps.executionDetailLoading}
-          title={executionProps.executeNodeId ? `${t('chatflow.preview.logTitle')} · ${executionProps.executeNodeId}` : t('chatflow.preview.logTitle')}
+          title={executionProps.executeNodeName ? `${t('chatflow.preview.logTitle')} · ${executionProps.executeNodeName}` : t('chatflow.preview.logTitle')}
           executionId={executionProps.latestExecutionId}
           streamingContent={executionProps.streamingContent || executionProps.executeResult?.content || ''}
           rawExecutionData={executionProps.executeResult?.rawResponse}
@@ -530,11 +530,9 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
       <ExecuteNodeDrawer
         visible={executionProps.isExecuteDrawerVisible}
-        nodeId={executionProps.executeNodeId}
+        nodeName={executionProps.executeNodeName || executionProps.executeNodeId}
         message={executionProps.executeMessage}
-        result={executionProps.executeResult}
         loading={executionProps.executeLoading}
-        streamingContent={executionProps.streamingContent}
         onMessageChange={executionProps.setExecuteMessage}
         onExecute={executionProps.handleExecuteNode}
         onClose={executionProps.handleCloseDrawer}

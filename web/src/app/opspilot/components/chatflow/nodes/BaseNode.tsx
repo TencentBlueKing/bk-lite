@@ -91,7 +91,7 @@ export const BaseNode = ({
   const handleExecuteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     const event = new CustomEvent('executeNode', {
-      detail: { nodeId: id, nodeType: data.type }
+      detail: { nodeId: id, nodeName: data.label, nodeType: data.type }
     });
     window.dispatchEvent(event);
   };

@@ -21,7 +21,7 @@ import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
 import useCloudRegionApi from '@/app/node-manager/api/useCloudRegionApi';
-import { Target } from '@/app/job/types';
+import { Target, WinRMScheme } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
 import SearchCombination from '@/components/search-combination';
@@ -61,6 +61,54 @@ const TargetPage = () => {
 
   // Form field watchers
   const [sshCredentialType, setSshCredentialType] = useState<'key' | 'password'>('password');
+  const osType = Form.useWatch('os_type', form) || 'linux';
+
+  const winrmSchemeOptions = useMemo(
+    () => ([
+      { label: 'HTTP', value: 'http' as WinRMScheme },
+      { label: 'HTTPS', value: 'https' as WinRMScheme },
+    ]),
+    []
+  );
+
+  useEffect(() => {
+    if (!modalOpen) {
+      return;
+    }
+
+    if (osType === 'windows') {
+      const nextValues: Record<string, unknown> = {};
+
+      if (form.getFieldValue('winrm_port') === undefined) {
+        nextValues.winrm_port = 5985;
+      }
+      if (!form.getFieldValue('winrm_scheme')) {
+        nextValues.winrm_scheme = 'http';
+      }
+
+      if (Object.keys(nextValues).length > 0) {
+        form.setFieldsValue(nextValues);
+      }
+      return;
+    }
+
+    const nextValues: Record<string, unknown> = {};
+
+    if (form.getFieldValue('ssh_port') === undefined) {
+      nextValues.ssh_port = 22;
+    }
+    if (!form.getFieldValue('ssh_user')) {
+      nextValues.ssh_user = 'root';
+    }
+    if (!form.getFieldValue('ssh_credential_type')) {
+      nextValues.ssh_credential_type = 'password';
+      setSshCredentialType('password');
+    }
+
+    if (Object.keys(nextValues).length > 0) {
+      form.setFieldsValue(nextValues);
+    }
+  }, [form, modalOpen, osType]);
 
   const fetchCloudRegions = useCallback(async () => {
     try {
@@ -204,6 +252,10 @@ const TargetPage = () => {
       ssh_port: 22,
       ssh_user: 'root',
       ssh_credential_type: 'password',
+      winrm_port: 5985,
+      winrm_scheme: 'http',
+      winrm_user: '',
+      winrm_cert_validation: true,
     });
     setSshCredentialType('password');
     setModalOpen(true);
@@ -223,6 +275,10 @@ const TargetPage = () => {
       ssh_port: record.ssh_port || 22,
       ssh_user: record.ssh_user || 'root',
       ssh_credential_type: 'password',
+      winrm_port: record.winrm_port || 5985,
+      winrm_scheme: (record.winrm_scheme as WinRMScheme) || 'http',
+      winrm_user: record.winrm_user || '',
+      winrm_cert_validation: record.winrm_cert_validation ?? true,
     });
     setSshCredentialType('password');
     setModalOpen(true);
@@ -240,15 +296,25 @@ const TargetPage = () => {
         formData.append('cloud_region_id', String(values.cloud_region_id));
       }
       formData.append('driver', values.driver);
-      formData.append('ssh_port', String(values.ssh_port));
-      formData.append('ssh_user', values.ssh_user || '');
-      formData.append('ssh_credential_type', values.ssh_credential_type || 'password');
-      if (values.ssh_credential_type === 'password') {
-        formData.append('ssh_password', values.ssh_password || '');
-      } else if (values.ssh_key_file?.fileList?.[0]?.originFileObj) {
-        formData.append('ssh_key_file', values.ssh_key_file.fileList[0].originFileObj);
-      } else if (values.ssh_key_file?.file) {
-        formData.append('ssh_key_file', values.ssh_key_file.file);
+      formData.append('credential_source', 'manual');
+      formData.append('credential_id', '');
+      if (values.os_type === 'windows') {
+        formData.append('winrm_port', String(values.winrm_port));
+        formData.append('winrm_scheme', values.winrm_scheme || 'http');
+        formData.append('winrm_user', values.winrm_user || '');
+        formData.append('winrm_password', values.winrm_password || '');
+        formData.append('winrm_cert_validation', String(values.winrm_cert_validation ?? true));
+      } else {
+        formData.append('ssh_port', String(values.ssh_port));
+        formData.append('ssh_user', values.ssh_user || '');
+        formData.append('ssh_credential_type', values.ssh_credential_type || 'password');
+        if (values.ssh_credential_type === 'password') {
+          formData.append('ssh_password', values.ssh_password || '');
+        } else if (values.ssh_key_file?.fileList?.[0]?.originFileObj) {
+          formData.append('ssh_key_file', values.ssh_key_file.fileList[0].originFileObj);
+        } else if (values.ssh_key_file?.file) {
+          formData.append('ssh_key_file', values.ssh_key_file.file);
+        }
       }
       if (Array.isArray(values.team) && values.team.length > 0) {
         formData.append('team', JSON.stringify(values.team));
@@ -277,10 +343,23 @@ const TargetPage = () => {
       const res = await testTargetConnection({
         ip: values.ip,
         driver: values.driver,
-        ssh_port: values.ssh_port,
-        ssh_user: values.ssh_user,
-        ssh_password: values.ssh_password,
         cloud_region_id: values.cloud_region_id,
+        os_type: values.os_type,
+        credential_source: 'manual',
+        credential_id: '',
+        ...(values.os_type === 'windows'
+          ? {
+            winrm_port: values.winrm_port,
+            winrm_scheme: values.winrm_scheme,
+            winrm_user: values.winrm_user,
+            winrm_password: values.winrm_password,
+            winrm_cert_validation: values.winrm_cert_validation,
+          }
+          : {
+            ssh_port: values.ssh_port,
+            ssh_user: values.ssh_user,
+            ssh_password: values.ssh_password,
+          }),
       });
       if (res.success) {
         message.success(res.message || t('job.testConnectionSuccess'));
@@ -292,6 +371,14 @@ const TargetPage = () => {
     } finally {
       setTestLoading(false);
     }
+  };
+
+  const handleWinrmSchemeChange = (value: WinRMScheme) => {
+    const nextPort = value === 'https' ? 5986 : 5985;
+    form.setFieldsValue({
+      winrm_scheme: value,
+      winrm_port: nextPort,
+    });
   };
 
   const getDriverColor = (driver: string) => {
@@ -552,76 +639,130 @@ const TargetPage = () => {
             {t('job.driverHelp')}
           </div>
 
-          <Form.Item
-              name="ssh_port"
-              label={t('job.sshPort')}
-            >
-              <InputNumber min={1} max={65535} style={{ width: '100%' }} />
-            </Form.Item>
-
-            <Form.Item
-              name="ssh_user"
-              label={t('job.sshUser')}
-              rules={[{ required: true }]}
-            >
-              <Input placeholder="root" />
-            </Form.Item>
-
-            <Form.Item
-              name="ssh_credential_type"
-              label={t('job.sshCredential')}
-              required
-            >
-              <Radio.Group
-                onChange={(e) => setSshCredentialType(e.target.value)}
-              >
-                <Radio value="key">{t('job.sshKey')}</Radio>
-                <Radio value="password">{t('job.sshPassword')}</Radio>
-              </Radio.Group>
-            </Form.Item>
-
-            {sshCredentialType === 'password' ? (
+          {osType === 'windows' ? (
+            <>
               <Form.Item
-                name="ssh_password"
-                rules={[{ required: true, message: t('job.sshPasswordPlaceholder') }]}
+                name="winrm_scheme"
+                label={t('job.protocol')}
+                rules={[{ required: true }]}
               >
-                <Input.Password placeholder={t('job.sshPasswordPlaceholder')} />
+                <Select options={winrmSchemeOptions} onChange={handleWinrmSchemeChange} />
               </Form.Item>
-            ) : (
+
               <Form.Item
-                name="ssh_key_file"
-                rules={[{ required: true, message: t('job.selectKeyFile') }]}
+                name="winrm_port"
+                label={t('job.port')}
+                rules={[{ required: true }]}
               >
-                <Dragger
-                  maxCount={1}
-                  beforeUpload={() => false}
-                  accept=".pem,.key,.pub"
+                <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+              </Form.Item>
+
+              <Form.Item
+                name="winrm_user"
+                label={t('job.username')}
+                rules={[{ required: true }]}
+              >
+                <Input />
+              </Form.Item>
+
+              <Form.Item
+                name="winrm_password"
+                label={t('job.password')}
+                rules={[{ required: true, message: t('job.passwordPlaceholder') }]}
+              >
+                <Input.Password placeholder={t('job.passwordPlaceholder')} />
+              </Form.Item>
+
+              <Alert
+                type="warning"
+                showIcon
+                message={t('job.windowsTestConnectionNote')}
+                className="mb-4"
+              />
+
+              <Button
+                block
+                type="dashed"
+                loading={testLoading}
+                onClick={handleTestConnection}
+              >
+                {t('job.testConnection')}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Form.Item
+                name="ssh_port"
+                label={t('job.sshPort')}
+              >
+                <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+              </Form.Item>
+
+              <Form.Item
+                name="ssh_user"
+                label={t('job.sshUser')}
+                rules={[{ required: true }]}
+              >
+                <Input placeholder="root" />
+              </Form.Item>
+
+              <Form.Item
+                name="ssh_credential_type"
+                label={t('job.sshCredential')}
+                required
+              >
+                <Radio.Group
+                  onChange={(e) => setSshCredentialType(e.target.value)}
                 >
-                  <p className="ant-upload-drag-icon">
-                    <InboxOutlined />
-                  </p>
-                  <p className="ant-upload-text text-sm">
-                    {t('job.selectKeyFile')}
-                  </p>
-                </Dragger>
+                  <Radio value="key">{t('job.sshKey')}</Radio>
+                  <Radio value="password">{t('job.sshPassword')}</Radio>
+                </Radio.Group>
               </Form.Item>
-            )}
 
-          <Alert
-            type="warning"
-            showIcon
-            message={t('job.testConnectionNote')}
-            className="mb-4"
-          />
+              {sshCredentialType === 'password' ? (
+                <Form.Item
+                  name="ssh_password"
+                  rules={[{ required: true, message: t('job.sshPasswordPlaceholder') }]}
+                >
+                  <Input.Password placeholder={t('job.sshPasswordPlaceholder')} />
+                </Form.Item>
+              ) : (
+                <Form.Item
+                  name="ssh_key_file"
+                  rules={[{ required: true, message: t('job.selectKeyFile') }]}
+                >
+                  <Dragger
+                    maxCount={1}
+                    beforeUpload={() => false}
+                    accept=".pem,.key,.pub"
+                  >
+                    <p className="ant-upload-drag-icon">
+                      <InboxOutlined />
+                    </p>
+                    <p className="ant-upload-text text-sm">
+                      {t('job.selectKeyFile')}
+                    </p>
+                  </Dragger>
+                </Form.Item>
+              )}
 
-          <Button
-            block
-            type="dashed"
-            loading={testLoading}
-            onClick={handleTestConnection}
-          >
-            {t('job.testConnection')}
-          </Button>
+              <Alert
+                type="warning"
+                showIcon
+                message={t('job.testConnectionNote')}
+                className="mb-4"
+              />
+
+              <Button
+                block
+                type="dashed"
+                loading={testLoading}
+                onClick={handleTestConnection}
+              >
+                {t('job.testConnection')}
+              </Button>
+            </>
+          )}
         </Form>
       </OperateModal>
     </div>
