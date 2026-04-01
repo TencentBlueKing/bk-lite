@@ -70,6 +70,7 @@ export type TargetOS = 'linux' | 'windows';
 export type TargetSource = 'sync' | 'manual';
 export type CredentialSource = 'manual' | 'credential';
 export type SSHCredentialType = 'key' | 'password';
+export type WinRMScheme = 'http' | 'https';
 
 export interface Target {
   id: number;
@@ -136,6 +137,11 @@ export interface TargetFormData {
   ssh_credential_type: SSHCredentialType;
   ssh_password?: string;
   ssh_key_file?: File;
+  winrm_port: number;
+  winrm_scheme: WinRMScheme;
+  winrm_user: string;
+  winrm_password?: string;
+  winrm_cert_validation: boolean;
   team: number[];
 }
 
