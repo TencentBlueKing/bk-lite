@@ -89,6 +89,12 @@ export class DataMapper {
             case 'boolean':
               processedValue = Boolean(processedValue);
               break;
+            case 'json_string':
+              processedValue =
+                processedValue && typeof processedValue === 'object'
+                  ? JSON.stringify(processedValue, null, 2)
+                  : '';
+              break;
           }
         }
       }
@@ -127,6 +133,22 @@ export class DataMapper {
             break;
           case 'string':
             processedValue = String(processedValue);
+            break;
+          case 'json_parse':
+            processedValue = processedValue
+              ? JSON.parse(String(processedValue))
+              : {};
+            if (
+              processedValue &&
+              typeof processedValue === 'object' &&
+              !Array.isArray(processedValue) &&
+              Object.prototype.hasOwnProperty.call(
+                processedValue,
+                'X-BK-Auth-Type'
+              )
+            ) {
+              throw new Error('自定义请求头不能包含保留字段 X-BK-Auth-Type');
+            }
             break;
         }
       }

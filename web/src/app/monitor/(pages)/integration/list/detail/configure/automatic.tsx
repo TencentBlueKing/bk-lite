@@ -434,16 +434,21 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return;
     }
     form.validateFields().then((values) => {
-      const row = cloneDeep(values);
-      delete row.nodes;
-      const params =
-        configsInfo?.getParams?.(row, {
-          dataSource,
-          nodeList,
-          objectId
-        }) || {};
-      params.monitor_object_id = Number(objectId);
-      addNodesConfig(params);
+      try {
+        const row = cloneDeep(values);
+        delete row.nodes;
+        const params =
+          configsInfo?.getParams?.(row, {
+            dataSource,
+            nodeList,
+            objectId
+          }) || {};
+        params.monitor_object_id = Number(objectId);
+        params.monitor_plugin_id = Number(pluginId);
+        addNodesConfig(params);
+      } catch (error: any) {
+        message.error(error?.message || t('common.operationFailed'));
+      }
     });
   };
 

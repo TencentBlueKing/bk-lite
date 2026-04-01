@@ -17,7 +17,7 @@ class MetricGroupSerializer(serializers.ModelSerializer):
         monitor_plugin = attrs.get("monitor_plugin", getattr(self.instance, "monitor_plugin", None))
         name = attrs.get("name", getattr(self.instance, "name", None))
 
-        if monitor_plugin and monitor_plugin.template_type == "custom_api" and not monitor_plugin.template_id:
+        if monitor_plugin and monitor_plugin.template_type == "api" and not monitor_plugin.template_id:
             raise serializers.ValidationError({"monitor_plugin": "自建API模板配置异常"})
 
         queryset = MetricGroup.objects.filter(
