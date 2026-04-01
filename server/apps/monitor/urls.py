@@ -6,7 +6,7 @@ from apps.monitor.views.monitor_alert import MonitorAlertViewSet, MonitorEventVi
 from apps.monitor.views.monitor_instance import MonitorInstanceViewSet
 from apps.monitor.views.monitor_metrics import MetricGroupViewSet, MetricViewSet
 from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
-from apps.monitor.views.monitor_object import MonitorObjectViewSet
+from apps.monitor.views.monitor_object import MonitorObjectViewSet, MonitorObjectTypeViewSet
 from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
 from apps.monitor.views.node_mgmt import NodeMgmtView
 from apps.monitor.views.organization_rule import MonitorObjectOrganizationRuleViewSet
@@ -18,6 +18,7 @@ from apps.monitor.views.unit import UnitViewSet
 
 router = routers.DefaultRouter()
 router.register(r"api/monitor_object", MonitorObjectViewSet, basename="MonitorObject")
+router.register(r"api/monitor_object_type", MonitorObjectTypeViewSet, basename="MonitorObjectType")
 router.register(r"api/metrics_group", MetricGroupViewSet, basename="MetricGroupViewSet")
 router.register(r"api/metrics", MetricViewSet, basename="MetricViewSet")
 router.register(r"api/metrics_instance", MetricsInstanceViewSet, basename="MetricsInstanceViewSet")

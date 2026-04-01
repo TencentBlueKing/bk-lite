@@ -6,7 +6,12 @@ from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectOrgan
 class MonitorObjectTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = MonitorObjectType
-        fields = '__all__'
+        fields = ['id', 'name', 'description', 'order']
+        extra_kwargs = {
+            'name': {'required': True},  # name 必填
+            'description': {'required': False, 'allow_blank': True},
+            'order': {'required': False}
+        }
 
 
 class MonitorObjectSerializer(serializers.ModelSerializer):
