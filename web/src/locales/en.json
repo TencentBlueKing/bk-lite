@@ -149,7 +149,7 @@
     "markAllAsReadCxt": "Once marked, all unread notifications will be set to read and this action cannot be undone.",
     "noUnreadNotifications": "No unread notifications",
     "sessionExpiredTitle": "Session expired",
-    "sessionExpiredDescription": "Your backend login has expired. Please sign in again without leaving this page.",
+    "sessionExpiredDescription": "Please verify your identity again to continue on this page.",
     "reloginSuccess": "Signed in successfully"
   },
   "userInfo": {

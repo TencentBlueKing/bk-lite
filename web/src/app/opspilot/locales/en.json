@@ -45,6 +45,7 @@
       "nodeIndex": "Node Index",
       "triggerLogs": "Trigger Logs",
       "outputData": "Output Data",
+      "errorInfo": "Error Info",
       "executionProcess": "Execution process ({{count}} steps)",
       "title": "Conversation Logs",
       "workflowDetail": "Workflow Detail",
