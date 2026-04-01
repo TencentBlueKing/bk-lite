@@ -1232,6 +1232,46 @@
                     <button class="btn-integrate" onclick="window.location.href='模版/自定义API模版.html'">接入</button>
                 </div>
 
+                <!-- 自定义模版：自定义PULL模版 -->
+                <div class="integration-card">
+                    <div class="card-header">
+                        <div class="card-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12a7 7 0 0 1 7-7h5"/><path d="M16 2l6 3-6 3"/><path d="M19 12a7 7 0 0 1-7 7H7"/><path d="M8 22l-6-3 6-3"/></svg></div>
+                        <div class="card-info">
+                            <div class="card-title">自定义PULL模版</div>
+                            <div class="card-tags"><span class="card-object-tag">MySQL</span><span class="card-type-tag">PULL</span><span class="card-custom-tag">自定义</span></div>
+                        </div>
+                        <div class="card-menu">
+                            <div class="card-menu-trigger" onclick="toggleCardMenu(event, this)">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="12" cy="5" r="2"/>
+                                    <circle cx="12" cy="12" r="2"/>
+                                    <circle cx="12" cy="19" r="2"/>
+                                </svg>
+                            </div>
+                            <div class="card-menu-dropdown">
+                                <div class="card-menu-item" onclick="editTemplate('custom_pull_prometheus')">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                    </svg>
+                                    编辑
+                                </div>
+                                <div class="card-menu-item danger" onclick="deleteTemplate('custom_pull_prometheus')">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="3 6 5 6 21 6"/>
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                    </svg>
+                                    删除
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-description">
+                        自定义PULL模版，通过 Telegraf 定时拉取 Prometheus 暴露的 /metrics 指标并纳入统一监控
+                    </div>
+                    <button class="btn-integrate" onclick="window.location.href='模版/自定义PULL模版.html'">接入</button>
+                </div>
+
                 <!-- 自定义模版：自定义SNMP模版 -->
                 <div class="integration-card">
                     <div class="card-header">
@@ -1442,6 +1482,10 @@
                             <span class="radio-text">API</span>
                         </label>
                         <label class="radio-label">
+                            <input type="radio" name="templateType" value="PULL">
+                            <span class="radio-text">PULL</span>
+                        </label>
+                        <label class="radio-label">
                             <input type="radio" name="templateType" value="SNMP">
                             <span class="radio-text">SNMP</span>
                         </label>
@@ -1547,6 +1591,10 @@
             document.getElementById('templateName').value = '';
             document.getElementById('templateId').value = '';
             document.getElementById('templateDesc').value = '';
+            const defaultType = document.querySelector('input[name="templateType"][value="API"]');
+            if (defaultType) {
+                defaultType.checked = true;
+            }
         }
 
         // 关闭弹窗
@@ -1584,15 +1632,16 @@
             const name = document.getElementById('templateName').value;
             const id = document.getElementById('templateId').value;
             const desc = document.getElementById('templateDesc').value;
+            const templateType = document.querySelector('input[name="templateType"]:checked')?.value || 'API';
 
             if (!objectType || !object || !name || !id) {
                 alert('请填写必填项');
                 return;
             }
 
-            console.log('新建模版:', { objectType, object, name, id, desc });
+            console.log('新建模版:', { objectType, object, name, id, desc, templateType });
             closeModal('addTemplateModal');
-            alert('模版创建成功！');
+            alert(templateType + ' 模版创建成功！');
         }
 
         // 切换卡片菜单

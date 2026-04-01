@@ -1,0 +1,2085 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlueKing Lite - 自定义PULL模版</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            color: #313238;
+            min-height: 100vh;
+            font-size: 14px;
+        }
+
+        .top-header {
+            background: #fff;
+            height: 60px;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(58, 132, 255, 0.25);
+        }
+
+        .logo-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .app-switcher {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: #f5f7fa;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #646a73;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .app-switcher:hover {
+            background: rgba(0, 82, 217, 0.06);
+            color: #0052d9;
+        }
+
+        .app-switcher svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 8px;
+            margin-left: 48px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #646a73;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        .nav-item.active {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.1);
+        }
+
+        .nav-item svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        a.nav-item {
+            text-decoration: none;
+        }
+
+        a.nav-item:hover,
+        a.nav-item.active {
+            color: #0052d9;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: #646a73;
+            font-size: 14px;
+        }
+
+        .header-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .header-icon:hover {
+            background: rgba(0, 0, 0, 0.04);
+            color: #0052d9;
+        }
+
+        .header-icon svg {
+            width: 20px;
+            height: 20px;
+            color: #646a73;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .user-info:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .user-info svg {
+            width: 14px;
+            height: 14px;
+            color: #979ba5;
+        }
+
+        .sub-header {
+            background: #fff;
+            height: 48px;
+            border-bottom: 1px solid #dcdee5;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+        }
+
+        .sub-nav {
+            display: flex;
+            gap: 4px;
+        }
+
+        .sub-nav-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #63656e;
+            border-radius: 4px;
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .sub-nav-item:hover {
+            color: #3a84ff;
+            background: #e1ecff;
+        }
+
+        .sub-nav-item.active {
+            color: #3a84ff;
+            background: #e1ecff;
+        }
+
+        .template-header {
+            background: #fff;
+            padding: 24px 32px;
+            border-bottom: 1px solid #dcdee5;
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .template-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #e8fff6 0%, #d2f4e4 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .template-icon svg {
+            width: 28px;
+            height: 28px;
+            color: #14a568;
+        }
+
+        .template-info {
+            flex: 1;
+        }
+
+        .template-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #313238;
+            margin-bottom: 8px;
+        }
+
+        .template-desc {
+            font-size: 14px;
+            color: #646a73;
+            line-height: 1.6;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 180px);
+        }
+
+        .left-sidebar {
+            width: 180px;
+            background: #fff;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin: 16px 16px 16px 16px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+            border: 1px solid #dcdee5;
+        }
+
+        .sidebar-menu {
+            padding: 12px 0;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 20px;
+            cursor: pointer;
+            color: #63656e;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .sidebar-item:hover {
+            background: #f5f7fa;
+            color: #3a84ff;
+        }
+
+        .sidebar-item.active {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .sidebar-item svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .sidebar-back {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 16px 20px;
+            cursor: pointer;
+            color: #63656e;
+            font-size: 14px;
+            border-top: 1px solid #f0f1f5;
+            margin-top: auto;
+            transition: all 0.2s;
+        }
+
+        .sidebar-back:hover {
+            color: #3a84ff;
+            background: #f5f7fa;
+        }
+
+        .sidebar-back svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .content-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+            margin: 16px 16px 16px 0;
+        }
+
+        .content-panel {
+            display: none;
+        }
+
+        .content-panel.active {
+            display: block;
+        }
+
+        .config-section {
+            margin-bottom: 32px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #313238;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #313238;
+            margin-bottom: 8px;
+        }
+
+        .form-label .required {
+            color: #f5222d;
+            margin-left: 2px;
+        }
+
+        .form-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .form-input {
+            width: 320px;
+            padding: 10px 14px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .form-input:focus,
+        .table-input:focus,
+        .table-select:focus,
+        .form-select:focus {
+            border-color: #3a84ff;
+        }
+
+        .form-input-small {
+            width: 120px;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .form-input-small:focus {
+            border-color: #3a84ff;
+        }
+
+        .form-select {
+            width: 320px;
+            padding: 10px 14px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            background: #fff;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23979ba5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: #979ba5;
+            margin-left: 12px;
+        }
+
+        .input-suffix {
+            font-size: 14px;
+            color: #63656e;
+        }
+
+        .monitor-table-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .monitor-table-title {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #313238;
+        }
+
+        .monitor-table-title .required {
+            color: #f5222d;
+        }
+
+        .table-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-import {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-import:hover {
+            background: #306ed0;
+        }
+
+        .btn-import svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .btn-batch {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #fff;
+            color: #63656e;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-batch:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .btn-batch svg {
+            width: 12px;
+            height: 12px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .data-table th {
+            background: #f5f7fa;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 500;
+            color: #313238;
+            border-bottom: 1px solid #dcdee5;
+        }
+
+        .data-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f1f5;
+            vertical-align: middle;
+        }
+
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .table-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .tag-select {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            min-height: 36px;
+            padding: 4px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+        }
+
+        .tag {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            background: #f5f7fa;
+            border-radius: 2px;
+            font-size: 12px;
+            color: #63656e;
+        }
+
+        .tag-close {
+            cursor: pointer;
+            color: #979ba5;
+        }
+
+        .tag-close:hover {
+            color: #f5222d;
+        }
+
+        .btn-add {
+            color: #3a84ff;
+            font-size: 14px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .btn-add:hover {
+            text-decoration: underline;
+        }
+
+        .config-card {
+            padding: 20px;
+            background: #f5f7fa;
+            border: 1px solid #eaecf2;
+            border-radius: 6px;
+        }
+
+        .pull-overview {
+            border: 1px solid #d8f0e4;
+            border-radius: 8px;
+            background: linear-gradient(180deg, #f7fffb 0%, #eefaf3 100%);
+            padding: 20px 24px;
+        }
+
+        .pull-overview-main h3 {
+            font-size: 18px;
+            color: #1f2329;
+            margin-bottom: 10px;
+        }
+
+        .pull-overview-main p {
+            font-size: 14px;
+            color: #63656e;
+            line-height: 1.7;
+        }
+
+        .pull-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            margin-bottom: 12px;
+            border-radius: 999px;
+            background: rgba(20, 165, 104, 0.12);
+            color: #0d9a60;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .pull-flow {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .flow-node {
+            min-width: 136px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            background: #fff;
+            border: 1px solid #d8f0e4;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+            font-size: 13px;
+            font-weight: 600;
+            color: #313238;
+            text-align: center;
+        }
+
+        .flow-arrow {
+            color: #14a568;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .pull-target-tip {
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: #f5f7fa;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #63656e;
+            line-height: 1.6;
+        }
+
+        .target-summary {
+            margin-top: 12px;
+            font-size: 13px;
+            color: #63656e;
+            line-height: 1.6;
+        }
+
+        .params-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #dcdee5;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .params-table th {
+            background: #f5f7fa;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 500;
+            color: #63656e;
+            border-bottom: 1px solid #dcdee5;
+        }
+
+        .params-table td {
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #313238;
+            border-bottom: 1px solid #f0f1f5;
+            vertical-align: middle;
+        }
+
+        .params-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .table-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .table-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            background: #fff;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23979ba5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 32px;
+        }
+
+        .status-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-chip.success {
+            background: #f6ffed;
+            color: #52c41a;
+        }
+
+        .status-chip.pending {
+            background: #fff7e6;
+            color: #d48806;
+        }
+
+        .checkbox-chip-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .checkbox-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            border: 1px solid #dcdee5;
+            background: #fff;
+            font-size: 13px;
+            color: #313238;
+            cursor: pointer;
+        }
+
+        .checkbox-chip input {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .request-example-meta {
+            margin-bottom: 12px;
+            padding: 12px 16px;
+            background: #f5f7fa;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #63656e;
+            line-height: 1.6;
+        }
+
+        .code-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 0;
+            border-bottom: 1px solid #dcdee5;
+        }
+
+        .code-tab {
+            padding: 10px 20px;
+            font-size: 14px;
+            color: #63656e;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: all 0.2s;
+        }
+
+        .code-tab:hover {
+            color: #3a84ff;
+        }
+
+        .code-tab.active {
+            color: #3a84ff;
+            border-bottom-color: #3a84ff;
+        }
+
+        .code-block {
+            position: relative;
+            background: #282c34;
+            border-radius: 0 0 6px 6px;
+            overflow: hidden;
+        }
+
+        .code-block pre {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #abb2bf;
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        .btn-copy-code {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            padding: 6px 12px;
+            font-size: 12px;
+            color: #abb2bf;
+            background: #3e4451;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-copy-code:hover {
+            background: #4d5566;
+            color: #fff;
+        }
+
+        .guide-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+        }
+
+        .guide-card {
+            padding: 16px 18px;
+            border: 1px solid #eaecf2;
+            border-radius: 8px;
+            background: #fafbfd;
+        }
+
+        .guide-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #313238;
+            margin-bottom: 8px;
+        }
+
+        .guide-card p {
+            font-size: 13px;
+            color: #63656e;
+            line-height: 1.7;
+        }
+
+        .form-footer {
+            margin-top: 32px;
+        }
+
+        .btn-confirm {
+            padding: 10px 24px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-confirm:hover {
+            background: #306ed0;
+        }
+
+        .metrics-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            gap: 16px;
+        }
+
+        .metrics-toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        .metrics-search {
+            width: 240px;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            flex-shrink: 0;
+        }
+
+        .metrics-search:focus {
+            border-color: #3a84ff;
+        }
+
+        .metrics-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        .btn-add-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-add-group:hover {
+            background: #306ed0;
+        }
+
+        .btn-add-metric {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #fff;
+            color: #313238;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-add-metric:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .metric-group {
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .metric-group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #f5f7fa;
+            cursor: pointer;
+        }
+
+        .metric-group-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .drag-handle {
+            color: #979ba5;
+            cursor: grab;
+        }
+
+        .expand-icon {
+            color: #979ba5;
+            transition: transform 0.2s;
+        }
+
+        .expand-icon.expanded {
+            transform: rotate(90deg);
+        }
+
+        .metric-group-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #313238;
+        }
+
+        .metric-group-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .action-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #979ba5;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .action-icon:hover {
+            background: #e1ecff;
+            color: #3a84ff;
+        }
+
+        .action-icon svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .metric-group-content {
+            display: none;
+        }
+
+        .metric-group-content.expanded {
+            display: block;
+        }
+
+        .metric-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .metric-table th {
+            background: #fff;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 500;
+            color: #63656e;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .metric-table td {
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #313238;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .metric-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .metric-id {
+            display: inline-block;
+            max-width: 220px;
+            color: #3a84ff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: middle;
+        }
+
+        .metric-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .metric-action {
+            color: #3a84ff;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .metric-action.danger {
+            color: #ea3636;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal {
+            background: #fff;
+            border-radius: 8px;
+            width: 560px;
+            max-height: 85vh;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid #f0f1f5;
+        }
+
+        .modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #313238;
+        }
+
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 4px;
+            color: #979ba5;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: #f5f7fa;
+            color: #313238;
+        }
+
+        .modal-body {
+            padding: 24px;
+            max-height: 65vh;
+            overflow-y: auto;
+        }
+
+        .modal-form-group {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .modal-form-label {
+            width: 96px;
+            font-size: 14px;
+            color: #63656e;
+            text-align: right;
+            padding-top: 8px;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        .modal-form-label .required {
+            color: #f5222d;
+            margin-right: 4px;
+        }
+
+        .modal-form-content {
+            flex: 1;
+            margin-left: 12px;
+        }
+
+        .modal-form-input,
+        .modal-form-select,
+        .modal-form-textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .modal-form-select {
+            background: #fff;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23979ba5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+
+        .modal-form-textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: inherit;
+        }
+
+        .modal-form-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-add-field {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+            color: #63656e;
+            flex-shrink: 0;
+        }
+
+        .btn-add-field:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .multi-select-wrapper {
+            position: relative;
+        }
+
+        .multi-select-trigger {
+            width: 100%;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 12px;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            background: #fff;
+            color: #313238;
+            font-size: 14px;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .multi-select-trigger:hover {
+            border-color: #3a84ff;
+        }
+
+        .multi-select-trigger svg {
+            width: 14px;
+            height: 14px;
+            color: #979ba5;
+            flex-shrink: 0;
+        }
+
+        .multi-select-trigger-text {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .multi-select-tag {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #f5f7fa;
+            color: #63656e;
+            font-size: 12px;
+            line-height: 1.4;
+            max-width: 100%;
+        }
+
+        .multi-select-tag-remove {
+            border: none;
+            background: transparent;
+            padding: 0;
+            margin: 0;
+            color: inherit;
+            font-size: 14px;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0.7;
+        }
+
+        .multi-select-tag-remove:hover {
+            color: #ea3636;
+            opacity: 1;
+        }
+
+        .multi-select-panel {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            z-index: 20;
+            background: #fff;
+            border: 1px solid #dcdee5;
+            border-radius: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+            padding: 8px 0;
+        }
+
+        .multi-select-panel.show {
+            display: block;
+        }
+
+        .multi-select-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 12px;
+            font-size: 14px;
+            color: #313238;
+        }
+
+        .multi-select-option:hover {
+            background: #f5f7fa;
+        }
+
+        .multi-select-option-main {
+            display: flex;
+            align-items: center;
+        }
+
+        .asset-selector-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            margin-right: 8px;
+        }
+
+        .modal-footer {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 16px 24px;
+            border-top: 1px solid #f0f1f5;
+        }
+
+        .btn-modal-cancel {
+            padding: 8px 24px;
+            background: #fff;
+            border: 1px solid #dcdee5;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-modal-cancel:hover {
+            border-color: #3a84ff;
+            color: #3a84ff;
+        }
+
+        .btn-modal-confirm {
+            padding: 8px 24px;
+            background: #3a84ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-modal-confirm:hover {
+            background: #306ed0;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #dcdee5;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #c4c6cc;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-header">
+        <div class="header-left">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <span>BlueKing Lite</span>
+            </div>
+            <div class="app-switcher">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+            <nav class="header-nav">
+                <a href="../../视图/视图.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    <span>视图</span>
+                </a>
+                <a href="../../搜索/搜索.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span>搜索</span>
+                </a>
+                <a href="../../事件/告警.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    <span>事件</span>
+                </a>
+                <a href="../集成.html" class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 11a9 9 0 0 1 9 9"/>
+                        <path d="M4 4a16 16 0 0 1 16 16"/>
+                        <circle cx="5" cy="19" r="1"/>
+                    </svg>
+                    <span>集成</span>
+                </a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+            </div>
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </div>
+            <div class="user-info">
+                <div class="user-avatar">陈</div>
+                <span>陈润翼</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <div class="sub-header">
+        <nav class="sub-nav">
+            <a href="../集成.html" class="sub-nav-item active">集成</a>
+            <a href="../资产.html" class="sub-nav-item">资产</a>
+            <a href="../分组.html" class="sub-nav-item">分组</a>
+            <a href="../对象.html" class="sub-nav-item">对象</a>
+        </nav>
+    </div>
+
+    <div class="template-header">
+        <div class="template-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12a7 7 0 0 1 7-7h5"/>
+                <path d="M16 2l6 3-6 3"/>
+                <path d="M19 12a7 7 0 0 1-7 7H7"/>
+                <path d="M8 22l-6-3 6-3"/>
+            </svg>
+        </div>
+        <div class="template-info">
+            <div class="template-title">自定义PULL模版</div>
+            <div class="template-desc">自定义监控模版 - 通过 Telegraf 定时拉取 MySQL 相关 /metrics 指标数据，并统一纳入平台监控体系</div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="left-sidebar">
+            <div class="sidebar-menu">
+                <div class="sidebar-item active" onclick="switchTab('config', this)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l-.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    <span>配置</span>
+                </div>
+                <div class="sidebar-item" onclick="switchTab('metrics', this)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                    <span>指标</span>
+                </div>
+            </div>
+            <div class="sidebar-back" onclick="goBack()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 12H5"/>
+                    <polyline points="12 19 5 12 12 5"/>
+                </svg>
+            </div>
+        </div>
+
+        <div class="content-area">
+            <div class="content-panel active" id="configPanel">
+                <div class="config-section">
+                    <div class="section-title">采集配置</div>
+
+                    <div class="form-group">
+                        <label class="form-label">用户名</label>
+                        <div class="form-row">
+                            <input type="text" class="form-input" placeholder="用户名">
+                            <span class="form-hint">用于访问接口的用户名</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">密码</label>
+                        <div class="form-row">
+                            <input type="password" class="form-input" placeholder="密码">
+                            <span class="form-hint">对应的登录密码</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">间隔 <span class="required">*</span></label>
+                        <div class="form-row">
+                            <input type="number" class="form-input-small" value="10">
+                            <span class="input-suffix">s</span>
+                            <span class="form-hint">监控数据的采集时间间隔（单位：秒）</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="config-section">
+                    <div class="section-title">基本信息</div>
+
+                    <div class="monitor-table-header">
+                        <div class="monitor-table-title">监控对象 <span class="required">*</span></div>
+                        <div class="table-actions">
+                            <button class="btn-import">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                                导入
+                            </button>
+                            <button class="btn-batch">
+                                批量操作
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M6 9l6 6 6-6"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox" class="table-checkbox"></th>
+                                <th style="width: 140px;">节点</th>
+                                <th style="width: 260px;">服务器地址</th>
+                                <th style="width: 160px;">实例名称</th>
+                                <th style="width: 160px;">组</th>
+                                <th style="width: 80px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><input type="checkbox" class="table-checkbox"></td>
+                                <td>
+                                    <select class="table-select">
+                                        <option value="">请选择节点</option>
+                                        <option value="node1">节点1</option>
+                                        <option value="node2">节点2</option>
+                                    </select>
+                                </td>
+                                <td><input type="text" class="table-input" placeholder="http://localhost:2019/metrics"></td>
+                                <td><input type="text" class="table-input" placeholder="实例名称"></td>
+                                <td>
+                                    <div class="tag-select">
+                                        <span class="tag">Default <span class="tag-close">×</span></span>
+                                    </div>
+                                </td>
+                                <td><span class="btn-add">添加</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="form-footer">
+                    <button class="btn-confirm">确 认</button>
+                </div>
+            </div>
+
+            <div class="content-panel" id="metricsPanel">
+                <div class="metrics-toolbar">
+                    <div class="metrics-toolbar-left">
+                        <input type="text" class="metrics-search" placeholder="请输入指标名称">
+                    </div>
+                    <div class="metrics-actions">
+                        <button class="btn-add-group">添加组</button>
+                        <button class="btn-add-metric" onclick="openAddMetricModal()">添加指标</button>
+                    </div>
+                </div>
+
+                <div class="metric-group">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon expanded">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">表缓存</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content expanded">
+                        <table class="metric-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;"></th>
+                                    <th style="width: 220px;">ID</th>
+                                    <th style="width: 140px;">名称</th>
+                                    <th style="width: 80px;">维度</th>
+                                    <th style="width: 100px;">数据类型</th>
+                                    <th style="width: 80px;">单位</th>
+                                    <th>描述</th>
+                                    <th style="width: 120px;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        <span class="drag-handle">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                                <circle cx="9" cy="6" r="1.5"/>
+                                                <circle cx="15" cy="6" r="1.5"/>
+                                                <circle cx="9" cy="12" r="1.5"/>
+                                                <circle cx="15" cy="12" r="1.5"/>
+                                                <circle cx="9" cy="18" r="1.5"/>
+                                                <circle cx="15" cy="18" r="1.5"/>
+                                            </svg>
+                                        </span>
+                                    </td>
+                                    <td><span class="metric-id">mysql_table_open_cache_hits_rate</span></td>
+                                    <td>表缓存命中率</td>
+                                    <td>--</td>
+                                    <td>Number</td>
+                                    <td>percent</td>
+                                    <td>表缓存命中率；&lt;95% 需调整 table_open_c...</td>
+                                    <td>
+                                        <div class="metric-actions">
+                                            <span class="metric-action">编辑</span>
+                                            <span class="metric-action danger">删除</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <span class="drag-handle">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                                <circle cx="9" cy="6" r="1.5"/>
+                                                <circle cx="15" cy="6" r="1.5"/>
+                                                <circle cx="9" cy="12" r="1.5"/>
+                                                <circle cx="15" cy="12" r="1.5"/>
+                                                <circle cx="9" cy="18" r="1.5"/>
+                                                <circle cx="15" cy="18" r="1.5"/>
+                                            </svg>
+                                        </span>
+                                    </td>
+                                    <td><span class="metric-id">mysql_table_open_cache_misses...</span></td>
+                                    <td>表缓存未命中请求速率</td>
+                                    <td>--</td>
+                                    <td>Number</td>
+                                    <td>cps</td>
+                                    <td>表缓存未命中的请求次数，反映表缓存的命中...</td>
+                                    <td>
+                                        <div class="metric-actions">
+                                            <span class="metric-action">编辑</span>
+                                            <span class="metric-action danger">删除</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="metric-group collapsed">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">连接状态</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content"></div>
+                </div>
+
+                <div class="metric-group collapsed">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">网络流量</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content"></div>
+                </div>
+
+                <div class="metric-group collapsed">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">查询性能</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content"></div>
+                </div>
+
+                <div class="metric-group collapsed">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">临时表</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content"></div>
+                </div>
+
+                <div class="metric-group collapsed">
+                    <div class="metric-group-header" onclick="toggleMetricGroup(this)">
+                        <div class="metric-group-left">
+                            <span class="drag-handle">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5"/>
+                                    <circle cx="15" cy="6" r="1.5"/>
+                                    <circle cx="9" cy="12" r="1.5"/>
+                                    <circle cx="15" cy="12" r="1.5"/>
+                                    <circle cx="9" cy="18" r="1.5"/>
+                                    <circle cx="15" cy="18" r="1.5"/>
+                                </svg>
+                            </span>
+                            <span class="expand-icon">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </span>
+                            <span class="metric-group-name">InnoDB 性能</span>
+                        </div>
+                        <div class="metric-group-actions">
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </span>
+                            <span class="action-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="metric-group-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="addMetricModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">添加指标</span>
+                <span class="modal-close" onclick="closeAddMetricModal()">×</span>
+            </div>
+            <div class="modal-body">
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>ID：</label>
+                    <div class="modal-form-content">
+                        <input type="text" class="modal-form-input" placeholder="请输入ID">
+                    </div>
+                </div>
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>名称：</label>
+                    <div class="modal-form-content">
+                        <input type="text" class="modal-form-input" placeholder="请输入名称">
+                    </div>
+                </div>
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>组：</label>
+                    <div class="modal-form-content">
+                        <select class="modal-form-select">
+                            <option value="">请选择分组</option>
+                            <option value="table_cache">表缓存</option>
+                            <option value="query_perf">查询性能</option>
+                            <option value="temp_table">临时表</option>
+                            <option value="innodb">InnoDB 性能</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-form-group">
+                    <label class="modal-form-label">维度：</label>
+                    <div class="modal-form-content">
+                        <div class="modal-form-row">
+                            <input type="text" class="modal-form-input" placeholder="请输入维度（选填）">
+                            <button class="btn-add-field">+</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>公式：</label>
+                    <div class="modal-form-content">
+                        <textarea class="modal-form-textarea" placeholder="请输入公式"></textarea>
+                    </div>
+                </div>
+                <div class="modal-form-group">
+                    <label class="modal-form-label"><span class="required">*</span>数据类型：</label>
+                    <div class="modal-form-content">
+                        <select class="modal-form-select">
+                            <option value="">请选择数据类型</option>
+                            <option value="number">数字</option>
+                            <option value="enum">枚举</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-form-group">
+                    <label class="modal-form-label">描述：</label>
+                    <div class="modal-form-content">
+                        <textarea class="modal-form-textarea" placeholder="请输入描述（选填）"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" onclick="closeAddMetricModal()">取 消</button>
+                <button class="btn-modal-confirm" onclick="confirmAddMetric()">确 认</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tab, trigger) {
+            document.querySelectorAll('.sidebar-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            if (trigger) {
+                trigger.classList.add('active');
+            }
+
+            document.querySelectorAll('.content-panel').forEach(panel => {
+                panel.classList.remove('active');
+            });
+
+            if (tab === 'config') {
+                document.getElementById('configPanel').classList.add('active');
+            } else if (tab === 'metrics') {
+                document.getElementById('metricsPanel').classList.add('active');
+            }
+        }
+
+        function toggleMetricGroup(header) {
+            const group = header.closest('.metric-group');
+            const content = group.querySelector('.metric-group-content');
+            const expandIcon = header.querySelector('.expand-icon');
+
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                expandIcon.classList.remove('expanded');
+                group.classList.add('collapsed');
+            } else {
+                content.classList.add('expanded');
+                expandIcon.classList.add('expanded');
+                group.classList.remove('collapsed');
+            }
+        }
+
+        function openAddMetricModal() {
+            document.getElementById('addMetricModal').classList.add('show');
+        }
+
+        function closeAddMetricModal() {
+            document.getElementById('addMetricModal').classList.remove('show');
+        }
+
+        function confirmAddMetric() {
+            closeAddMetricModal();
+        }
+
+        function goBack() {
+            window.location.href = '../集成.html';
+        }
+    </script>
+</body>
+</html>

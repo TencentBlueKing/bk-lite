@@ -161,14 +161,20 @@
       .launcher-icon {
         width: 20px;
         height: 20px;
-        border-radius: 6px;
-        background: #e6f0ff;
+        border-radius: 0;
+        background: transparent;
         color: #3a84ff;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         font-size: 12px;
         font-weight: 700;
+      }
+
+      .launcher-icon-svg {
+        width: 100%;
+        height: 100%;
+        display: block;
       }
 
       .launcher-name {
@@ -267,6 +273,7 @@
 
       .shell.channel-clean .page-body {
         margin: 6px 0 0;
+        min-height: auto;
       }
 
       .shell.security-clean {
@@ -796,15 +803,14 @@
       .app-grid {
         display: grid;
         grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 16px;
+        gap: 12px;
       }
 
       .app-card {
         border: 1px solid #dfe7f2;
-        border-radius: 10px;
+        border-radius: 8px;
         background: #fff;
-        padding: 14px 14px 12px;
-        min-height: 132px;
+        padding: 10px 10px 8px;
         box-shadow: 0 2px 10px rgba(30, 56, 98, 0.08);
       }
 
@@ -812,14 +818,14 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 10px;
+        margin-bottom: 6px;
       }
 
       .app-name {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        font-size: 25px;
+        font-size: 21px;
         font-weight: 600;
         color: #495870;
         letter-spacing: -0.2px;
@@ -827,16 +833,26 @@
       }
 
       .app-icon-dot {
-        width: 30px;
-        height: 30px;
-        border-radius: 7px;
-        background: linear-gradient(135deg, #2f7df4, #4a95ff);
-        color: #fff;
+        width: 26px;
+        height: 26px;
+        border-radius: 0;
+        background: transparent;
+        color: #2f7df4;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 12px;
-        font-weight: 700;
+        font-size: 0;
+        font-weight: 400;
+      }
+
+      .app-icon-dot.is-console-icon {
+        color: #2f7df4;
+      }
+
+      .app-icon-svg {
+        width: 100%;
+        height: 100%;
+        display: block;
       }
 
       .app-more {
@@ -848,8 +864,7 @@
       .app-desc {
         color: #7888a3;
         font-size: 12px;
-        line-height: 20px;
-        min-height: 60px;
+        line-height: 18px;
         overflow: hidden;
         display: -webkit-box;
         line-clamp: 3;
@@ -858,7 +873,7 @@
       }
 
       .app-badge {
-        margin-top: 10px;
+        margin-top: 6px;
         display: inline-flex;
         align-items: center;
         border: 1px solid #c9defe;
@@ -1124,11 +1139,11 @@
       }
 
       .channel-title {
-        font-size: 23px;
+        font-size: 16px;
         color: #495870;
         font-weight: 600;
-        line-height: 1;
-        letter-spacing: -0.2px;
+        line-height: 1.2;
+        letter-spacing: 0;
       }
 
       .channel-desc {
@@ -2009,12 +2024,8 @@
     <div class="app">
       <header class="topbar">
         <div class="logo-area">
-          <div class="logo">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M4 8.6c0-2.6 2.1-4.7 4.7-4.7h6.6c2.6 0 4.7 2.1 4.7 4.7 0 1.7-.9 3.2-2.2 4 1.3.8 2.2 2.3 2.2 4 0 2.6-2.1 4.7-4.7 4.7H8.7C6.1 21.3 4 19.2 4 16.6c0-1.7.9-3.2 2.2-4C4.9 11.8 4 10.3 4 8.6z" stroke="#3A84FF" stroke-width="1.5"></path>
-              <circle cx="12" cy="12" r="2.5" stroke="#14A568" stroke-width="1.5"></circle>
-            </svg>
-            <span class="logo-text">BlueKing Lite</span>
+          <div class="logo" style="height:30px;align-items:center;">
+            <div class="logo-icon" style="font-size:18px;width:34px;height:30px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);color:white;border-radius:8px;font-weight:bold;">BK</div>
           </div>
           <button class="switch-app">▦ ▼</button>
           <div class="app-launcher" id="appLauncherPanel">
@@ -2033,8 +2044,6 @@
         </nav>
 
         <div class="top-right">
-          <span class="top-icon"></span>
-          <span class="top-icon"></span>
           <span class="user"><span class="avatar">A</span>admin ▼</span>
         </div>
       </header>
@@ -2192,8 +2201,8 @@
                   <article class="app-card" data-app="ITSM" data-desc="通过标准化流程管理，实现 IT 服务的全生命周期管理，提升运维效率和服务质量。"><div class="app-card-head"><strong class="app-name"><span class="app-icon-dot">IT</span>ITSM</strong><span class="app-more">⋮</span></div><p class="app-desc">通过标准化流程（事件、变更、问题管理）实现 IT 服务的全生命周期管理，提升运维效率和服务质量。</p><span class="app-badge" style="border-color:#d8eec8;color:#6fa843;background:#f2faea;">MCP</span></article>
                   <article class="app-card" data-app="OpsAnalysis" data-desc="整合运维数据，通过仪表盘、画布方式多维度分析挖掘潜在风险与优化空间。"><div class="app-card-head"><strong class="app-name"><span class="app-icon-dot">OA</span>OpsAnalysis</strong><span class="app-more">⋮</span></div><p class="app-desc">整合运维数据，通过仪表盘、画布方式多维度分析挖掘潜在风险与优化空间，为决策提供数据支撑。</p><span class="app-badge">内置</span></article>
                   <article class="app-card" data-app="MLOps" data-desc="AI 模型全生命周期管理工具，集成数据集管理、模型任务训练等功能，提升机器学习灵活性。"><div class="app-card-head"><strong class="app-name"><span class="app-icon-dot">ML</span>MLOps</strong><span class="app-more">⋮</span></div><p class="app-desc">AI 模型全生命周期管理工具，集成数据集管理、模型任务训练等功能，提升机器学习灵活性和效率。</p><span class="app-badge">内置</span></article>
-                  <article class="app-card" data-app="Lab" data-desc="AI end-to-end lifecycle management tool, integrating dataset management and model training functionalities."><div class="app-card-head"><strong class="app-name"><span class="app-icon-dot">LB</span>Lab</strong><span class="app-more">⋮</span></div><p class="app-desc">AI end-to-end lifecycle management tool, integrating dataset management and model task training functionalities.</p><span class="app-badge">内置</span></article>
-                  <article class="app-card" data-app="Playground" data-desc="Users can experience relevant capabilities here, including AIOps model testing and intelligent usage."><div class="app-card-head"><strong class="app-name"><span class="app-icon-dot">PG</span>Playground</strong><span class="app-more">⋮</span></div><p class="app-desc">Users can experience relevant capabilities here, including AIOps model testing, intelligent agent usage and more.</p><span class="app-badge">内置</span></article>
+                  <article class="app-card" data-app="Lab" data-desc="AI 端到端生命周期管理工具，集成数据集管理与模型训练等能力。"><div class="app-card-head"><strong class="app-name"><span class="app-icon-dot">LB</span>Lab</strong><span class="app-more">⋮</span></div><p class="app-desc">AI 端到端生命周期管理工具，集成数据集管理与模型训练等能力。</p><span class="app-badge">内置</span></article>
+                  <article class="app-card" data-app="Playground" data-desc="可在此体验相关能力，包括 AIOps 模型测试与智能体使用等。"><div class="app-card-head"><strong class="app-name"><span class="app-icon-dot">PG</span>Playground</strong><span class="app-more">⋮</span></div><p class="app-desc">可在此体验相关能力，包括 AIOps 模型测试、智能体使用等功能。</p><span class="app-badge">内置</span></article>
                   <article class="app-card" data-app="Job" data-desc="快速创建并执行作业，统一管理脚本执行、文件分发和定时任务。"><div class="app-card-head"><strong class="app-name"><span class="app-icon-dot">JB</span>Job</strong><span class="app-more">⋮</span></div><p class="app-desc">快速创建并执行作业，统一管理脚本执行、文件分发和定时任务。</p><span class="app-badge">内置</span></article>
                 </div>
               </div>
@@ -3006,6 +3015,8 @@
       </div>
     </div>
 
+    <script src="../../../web/public/iconfont.js"></script>
+
     <script>
       const moduleMeta = {
         organization: {
@@ -3427,6 +3438,34 @@
         { key: 'Job', icon: 'JB' },
       ];
 
+      const appConsoleIconMap = {
+        OpsPilot: 'icon-opspilot',
+        OpsConsole: 'icon-ops-console',
+        Setting: 'icon-system-manager',
+        CMDB: 'icon-cmdb',
+        Monitor: 'icon-monitor',
+        Log: 'icon-rizhi2',
+        Node: 'icon-node',
+        Alarm: 'icon-alarm',
+        ITSM: 'icon-job',
+        OpsAnalysis: 'icon-ops-analysis',
+        MLOps: 'icon-moxingguanli1',
+        Lab: 'icon-moxingguanli1',
+        Playground: 'icon-ops-console',
+        Job: 'icon-job',
+      };
+
+      function applyConsoleAppIcons() {
+        document.querySelectorAll('#appGrid .app-card').forEach((card) => {
+          const appName = card.dataset.app;
+          const iconId = appConsoleIconMap[appName];
+          const iconNode = card.querySelector('.app-icon-dot');
+          if (!iconId || !iconNode) return;
+          iconNode.classList.add('is-console-icon');
+          iconNode.innerHTML = '<svg class="app-icon-svg" aria-hidden="true"><use xlink:href="#' + iconId + '"></use></svg>';
+        });
+      }
+
       function randomColorSeed(text) {
         const colors = ['#7a49e5', '#12b5a6', '#6a7cf6', '#ff9c01', '#2d7ff9'];
         let sum = 0;
@@ -3436,8 +3475,12 @@
 
       function renderLauncherApps() {
         appLauncherGrid.innerHTML = launcherApps.map((item) => {
+          const iconId = appConsoleIconMap[item.key];
+          const iconHtml = iconId
+            ? '<svg class="launcher-icon-svg" aria-hidden="true"><use xlink:href="#' + iconId + '"></use></svg>'
+            : item.icon;
           return '<button class="launcher-item" data-launch-app="' + item.key + '">' +
-            '<span class="launcher-icon">' + item.icon + '</span>' +
+            '<span class="launcher-icon">' + iconHtml + '</span>' +
             '<span class="launcher-name">' + item.key + '</span>' +
           '</button>';
         }).join('');
@@ -4950,6 +4993,7 @@
       switchModule("organization");
       renderAdminTable();
       renderLauncherApps();
+      applyConsoleAppIcons();
 
       switchAppBtn.addEventListener('click', (e) => {
         e.preventDefault();
