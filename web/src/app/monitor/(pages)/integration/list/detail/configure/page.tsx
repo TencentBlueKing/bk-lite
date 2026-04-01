@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import configureStyle from './index.module.scss';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import K8sConfiguration from './k8s/k8sConfiguration';
-import CustomApiAccess from './customApi';
+import CustomApiAccess from './customApi/index';
 
 const Configure: React.FC = () => {
   const searchParams = useSearchParams();
