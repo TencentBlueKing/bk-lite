@@ -32,7 +32,7 @@ class GraphClient:
     def _init_client(self):
         """初始化图数据库客户端"""
         driver_type = self._get_driver_type()
-        logger.info(f"Initializing graph client with driver: {driver_type}")
+        logger.debug(f"Initializing graph client with driver: {driver_type}")
 
         if driver_type == self.DRIVER_FALKORDB:
             from apps.cmdb.graph.falkordb import FalkorDBClient

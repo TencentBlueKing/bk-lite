@@ -160,9 +160,9 @@ class FalkorDBClient:
         result = _format.to_list_of_lists()
         result_list = [self.entity_to_dict(i, _format=False) for i in result]
 
-        if result_list and result_list[0].get("model_id"):
+        if result_list and result_list[0].get("model_id") and result_list[0].get("_labels") == INSTANCE:
             try:
-                model_id = result_list[0].get("model_id")
+                model_id = str(result_list[0].get("model_id"))
 
                 from apps.cmdb.display_field.cache import ExcludeFieldsCache
 

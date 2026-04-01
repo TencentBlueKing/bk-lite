@@ -8,7 +8,7 @@ RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list.d/deb
 
 RUN apt-get update -y && \
     apt-get upgrade -y && \
-    apt-get install -y vim supervisor && \
+    apt-get install -y vim supervisor nodejs npm && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -64,6 +64,11 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
     fi
 
 RUN pip3 install -e ".[cmdb,dev,mlops,opspilot]"
+
+RUN npm install -g agent-browser && \
+    agent-browser install --with-deps && \
+    agent-browser --version && \
+    npm cache clean --force
 
 RUN PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright patchright install chromium
 
