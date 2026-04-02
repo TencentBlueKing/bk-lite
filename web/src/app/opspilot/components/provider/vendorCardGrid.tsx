@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Card, Dropdown, Empty, Modal, Switch, Tag, Tooltip, message } from 'antd';
+import { Card, Empty, Modal, Switch, Tag, Tooltip, message } from 'antd';
 import Image from 'next/image';
-import { MoreOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { VENDOR_ICON_MAP, VENDOR_LABEL_MAP } from '@/app/opspilot/constants/provider';
 import type { ModelVendor } from '@/app/opspilot/types/provider';
@@ -47,7 +47,7 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
       return vendor.description.trim();
     }
 
-    return `${VENDOR_LABEL_MAP[vendor.vendor_type]} API 服务`;
+    return '';
   };
 
   const showDeleteConfirm = (vendor: ModelVendor) => {
@@ -84,17 +84,6 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
       {vendors.map((vendor) => {
         const totalModels = getModelCount(vendor);
         const description = getVendorDescription(vendor);
-        const menuItems = [
-          {
-            key: 'edit',
-            label: <span className="block w-full" onClick={() => onEdit(vendor)}>{t('common.edit')}</span>,
-          },
-          {
-            key: 'delete',
-            danger: true,
-            label: <span className="block w-full" onClick={() => showDeleteConfirm(vendor)}>{t('common.delete')}</span>,
-          },
-        ];
 
         return (
           <Card
@@ -151,23 +140,35 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
                     </div>
                   </div>
 
-                  <div className="opacity-0 transition-opacity duration-200 group-hover:opacity-100" onClick={(event) => event.stopPropagation()}>
-                    <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
-                      <button
-                        type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white/88 text-(--color-text-2) shadow-[0_4px_12px_rgba(148,163,184,0.08)] backdrop-blur-sm hover:border-blue-200 hover:text-blue-500"
-                      >
-                        <MoreOutlined />
-                      </button>
-                    </Dropdown>
+                  <div
+                    className="flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-[14px] text-[#8FA5C3] transition-all duration-200 hover:bg-[#F3F7FF] hover:text-[#5A82E8] hover:shadow-[inset_0_0_0_1px_rgba(191,215,255,0.9)]"
+                      onClick={() => onEdit(vendor)}
+                    >
+                      <EditOutlined />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-[14px] text-[#8FA5C3] transition-all duration-200 hover:bg-[#F3F7FF] hover:text-[#5A82E8] hover:shadow-[inset_0_0_0_1px_rgba(191,215,255,0.9)]"
+                      onClick={() => showDeleteConfirm(vendor)}
+                    >
+                      <DeleteOutlined />
+                    </button>
                   </div>
                 </div>
 
-                <div className="mt-3 line-clamp-1 text-[13px] leading-6 text-slate-600">
-                  {description}
-                </div>
+                {description && (
+                  <div className="mt-3 line-clamp-1 text-[13px] leading-6 text-slate-600">
+                    {description}
+                  </div>
+                )}
 
-                <div className="mt-auto pt-3">
+                <div className={`${description ? 'mt-auto pt-3' : 'mt-auto pt-6'}`}>
                   <div className="h-px w-full bg-linear-to-r from-sky-100 via-slate-100 to-transparent" />
                   <div className="flex items-center justify-between gap-4 pt-3.5">
                     <div className="text-[12px] font-medium tracking-[0.01em] text-slate-600">{totalModels} 个模型</div>
