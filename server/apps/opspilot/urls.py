@@ -102,6 +102,11 @@ urlpatterns += [
         name="execute_chat_flow",
     ),
     path(
+        r"bot_mgmt/interrupt_chat_flow_execution/",
+        views.interrupt_chat_flow_execution,
+        name="interrupt_chat_flow_execution",
+    ),
+    path(
         r"bot_mgmt/execute_chat_flow_wechat/<int:bot_id>/",
         views.execute_chat_flow_wechat,
         name="execute_chat_flow_wechat",

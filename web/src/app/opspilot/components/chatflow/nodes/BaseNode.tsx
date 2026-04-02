@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { PlayCircleOutlined, CloseOutlined, LoadingOutlined, CheckOutlined, ExclamationOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, DisconnectOutlined, CloseOutlined, LoadingOutlined, CheckOutlined, ExclamationOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import type { ChatflowNodeData } from '../types';
@@ -15,6 +15,7 @@ interface BaseNodeProps {
   id: string;
   selected?: boolean;
   executionStatus?: 'pending' | 'running' | 'completed' | 'failed' | string;
+  showDisconnectAction?: boolean;
   executionDuration?: number | null;
   onConfig: (id: string) => void;
   onDelete?: (id: string) => void;
@@ -33,6 +34,7 @@ export const BaseNode = ({
   id,
   selected,
   executionStatus,
+  showDisconnectAction = false,
   executionDuration,
   onConfig,
   onDelete,
@@ -90,6 +92,15 @@ export const BaseNode = ({
 
   const handleExecuteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    if (showDisconnectAction) {
+      const stopEvent = new CustomEvent('stopNodeExecution', {
+        detail: { nodeId: id, nodeType: data.type }
+      });
+      window.dispatchEvent(stopEvent);
+      return;
+    }
+
     const event = new CustomEvent('executeNode', {
       detail: { nodeId: id, nodeName: data.label, nodeType: data.type }
     });
@@ -129,17 +140,17 @@ export const BaseNode = ({
         <Icon type={icon} className={`${styles.nodeIcon} text-${color}-500`} />
         <span className={styles.nodeTitle}>{data.label}</span>
         {normalizedStatus && (
-          <span className={styles.nodeStatusBadge} data-status={normalizedStatus}>
+          <span className={`${styles.nodeStatusBadge} mr-2 inline-flex h-[17px] w-[17px] items-center justify-center`} data-status={normalizedStatus}>
             {renderStatusIcon()}
           </span>
         )}
         {isTriggerNode && (
           <button
             onClick={handleExecuteClick}
-            className="ml-auto w-6 h-6 text-green-500 hover:text-green-400 flex items-center justify-center transition-colors"
-            title={t('chatflow.executeNode')}
+            className={`ml-auto flex h-6 w-6 cursor-pointer items-center justify-center transition-colors ${showDisconnectAction ? 'text-red-500 hover:text-red-400' : 'text-green-500 hover:text-green-400'}`}
+            title={showDisconnectAction ? t('common.cancel') : t('chatflow.executeNode')}
           >
-            <PlayCircleOutlined className="text-lg" />
+            {showDisconnectAction ? <DisconnectOutlined className="text-lg leading-none" /> : <PlayCircleOutlined className="text-lg leading-none" />}
           </button>
         )}
       </div>

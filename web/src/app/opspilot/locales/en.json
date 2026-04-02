@@ -28,6 +28,8 @@
         "status": "Execution Status",
         "errorLog": "Error Log",
         "statusSuccess": "Success",
+        "statusInterrupted": "Interrupted",
+        "statusInterruptRequested": "Interrupting",
         "runTime": "Time",
         "actions": "ACTIONS",
         "statusFailed": "Failed",

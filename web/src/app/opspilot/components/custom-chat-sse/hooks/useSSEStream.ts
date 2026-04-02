@@ -14,30 +14,91 @@ interface UseSSEStreamProps {
   updateMessages: (updater: (prev: CustomChatMessage[]) => CustomChatMessage[]) => void;
   setLoading: (loading: boolean) => void;
   t: (key: string) => string;
+  onCancelCleanup?: () => void;
 }
+
+interface InterruptRequestConfig {
+  enabled: boolean;
+  url: string;
+  reason?: string;
+}
+
+const extractExecutionId = (payload: unknown): string => {
+  if (!payload || typeof payload !== 'object') {
+    return '';
+  }
+
+  const record = payload as Record<string, unknown>;
+  const directExecutionId = record.execution_id;
+  if (typeof directExecutionId === 'string' && directExecutionId) {
+    return directExecutionId;
+  }
+
+  const threadId = record.threadId;
+  if (typeof threadId === 'string' && threadId) {
+    return threadId;
+  }
+
+  const runId = record.runId;
+  if (typeof runId === 'string' && runId) {
+    return runId;
+  }
+
+  return '';
+};
 
 export const useSSEStream = ({
   token,
   useAGUIProtocol,
   updateMessages,
   setLoading,
-  t
+  t,
+  onCancelCleanup,
 }: UseSSEStreamProps) => {
   const abortControllerRef = useRef<AbortController | null>(null);
   const toolCallsRef = useRef<Map<string, ToolCallInfo>>(new Map());
+  const latestExecutionIdRef = useRef<string>('');
+  const interruptRequestRef = useRef<InterruptRequestConfig | null>(null);
+  const isStreamActiveRef = useRef(false);
 
   const stopSSEConnection = useCallback(() => {
+    const currentExecutionId = latestExecutionIdRef.current;
+    const currentInterruptRequest = interruptRequestRef.current;
+    const shouldInterrupt = isStreamActiveRef.current && currentInterruptRequest?.enabled && currentExecutionId;
+
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    isStreamActiveRef.current = false;
     setLoading(false);
-  }, [setLoading]);
+    onCancelCleanup?.();
+
+    if (shouldInterrupt && token) {
+      void fetch(currentInterruptRequest.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          execution_id: currentExecutionId,
+          reason: currentInterruptRequest.reason || 'user_manual',
+        }),
+      }).catch((error) => {
+        console.warn('Failed to interrupt execution:', error);
+      });
+    }
+  }, [onCancelCleanup, setLoading, token]);
 
   const handleSSEStream = useCallback(
-    async (url: string, payload: any, botMessage: CustomChatMessage) => {
+    async (url: string, payload: any, botMessage: CustomChatMessage, interruptRequest?: InterruptRequestConfig) => {
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
+      interruptRequestRef.current = interruptRequest || null;
+      latestExecutionIdRef.current = '';
+      isStreamActiveRef.current = true;
 
       try {
         const headers: Record<string, string> = {
@@ -58,6 +119,11 @@ export const useSSEStream = ({
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const executionId = response.headers.get('X-Execution-ID');
+        if (executionId) {
+          latestExecutionIdRef.current = executionId;
         }
 
         const reader = response.body?.getReader();
@@ -99,12 +165,17 @@ export const useSSEStream = ({
               const dataStr = trimmedLine.slice(6).trim();
 
               if (dataStr === '[DONE]') {
+                isStreamActiveRef.current = false;
                 setLoading(false);
                 return;
               }
 
               try {
                 const parsedData: any = JSON.parse(dataStr);
+                const parsedExecutionId = extractExecutionId(parsedData);
+                if (parsedExecutionId && !latestExecutionIdRef.current) {
+                  latestExecutionIdRef.current = parsedExecutionId;
+                }
 
                 if (useAGUIProtocol && parsedData.type) {
                   const aguiData: AGUIMessage = parsedData;
@@ -114,6 +185,7 @@ export const useSSEStream = ({
 
                   if (shouldStop) {
                     toolCallsRef.current.clear();
+                    isStreamActiveRef.current = false;
                     setLoading(false);
                     return;
                   }
@@ -168,8 +240,10 @@ export const useSSEStream = ({
           )
         );
       } finally {
+        isStreamActiveRef.current = false;
         setLoading(false);
         abortControllerRef.current = null;
+        interruptRequestRef.current = null;
       }
     },
     [token, updateMessages, useAGUIProtocol, setLoading, t]
