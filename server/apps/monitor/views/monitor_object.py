@@ -50,10 +50,14 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         )
         children_count_map = {item['parent_id']: item['children_count'] for item in children_counts}
 
+        # 构建类型 id -> name 的映射，用于自定义类型的 fallback 显示
+        type_name_map = {t.id: t.name for t in MonitorObjectType.objects.all()}
+
         for result in results:
             _type_key = f"{LanguageConstants.MONITOR_OBJECT_TYPE}.{result['type']}"
             _name_key = f"{LanguageConstants.MONITOR_OBJECT}.{result['name']}"
-            result["display_type"] = lan.get(_type_key) or result["type"]
+            # display_type 优先级：国际化 > 类型名称 > 类型ID
+            result["display_type"] = lan.get(_type_key) or type_name_map.get(result["type"]) or result["type"]
             # display_name 优先级：国际化 > 模型字段 display_name > name
             i18n_name = lan.get(_name_key)
             result["display_name"] = i18n_name or result.get("display_name") or result["name"]
