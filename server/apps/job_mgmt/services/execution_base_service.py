@@ -121,6 +121,17 @@ class ExecutionTaskBaseService(object):
         return target.driver == ExecutorDriver.ANSIBLE
 
     @classmethod
+    def _get_manual_targets(cls, target_list: list) -> list:
+        target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
+        if not target_ids:
+            return []
+        return list(Target.objects.filter(id__in=target_ids))
+
+    @classmethod
+    def _contains_windows_manual_target(cls, target_list: list) -> bool:
+        return any(target.os_type == OSType.WINDOWS for target in cls._get_manual_targets(target_list))
+
+    @classmethod
     def _execute_script_via_ansible(cls, execution: JobExecution, target_list: list, script_content: str, script_type: str) -> None:
         """
         通过 Ansible 执行脚本（异步方式）
@@ -247,11 +258,17 @@ class ExecutionTaskBaseService(object):
                     private_key = cls._get_ssh_private_key(target)
                     if private_key:
                         cred["private_key_content"] = private_key
+                    ssh_key_passphrase = cls.decrypt_password(target.ssh_key_passphrase)
+                    if ssh_key_passphrase:
+                        cred["private_key_passphrase"] = ssh_key_passphrase
             else:
                 # Windows
                 cred["user"] = target.winrm_user
                 cred["password"] = cls.decrypt_password(target.winrm_password)
                 cred["connection"] = "winrm"
+                cred["winrm_scheme"] = target.winrm_scheme
+                cred["winrm_transport"] = target.winrm_transport
+                cred["winrm_cert_validation"] = target.winrm_cert_validation
 
             credentials.append(cred)
         return credentials
