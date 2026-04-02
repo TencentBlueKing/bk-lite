@@ -207,14 +207,19 @@ class InstanceSearch:
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=self.locale)
 
         # 获取实例的插件采集状态
-        confs = CollectConfig.objects.filter(
+        confs = CollectConfig.objects.select_related("monitor_plugin").filter(
             monitor_instance_id__in=[i["instance_id"] for i in data["results"]],
         )
         confs_map = {}
         for conf in confs:
             if conf.monitor_instance_id not in confs_map:
                 confs_map[conf.monitor_instance_id] = set()
-            confs_map[conf.monitor_instance_id].add(conf.monitor_plugin_id or (self.monitor_obj.id, conf.collector, conf.collect_type))
+            plugin_key = (
+                conf.monitor_plugin_id
+                if conf.monitor_plugin and conf.monitor_plugin.template_type == "pull"
+                else (self.monitor_obj.id, conf.collector, conf.collect_type)
+            )
+            confs_map[conf.monitor_instance_id].add(plugin_key)
 
         plugin_map, plugin_status_map = {}, {}
         plugins = MonitorPlugin.objects.filter(monitor_object=self.monitor_obj)
