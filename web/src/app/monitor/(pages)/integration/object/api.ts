@@ -60,7 +60,8 @@ const useObjectApi = () => {
 
   // 获取对象列表
   const getObjects = async (
-    params: GetObjectsParams = {}
+    params: GetObjectsParams = {},
+    signal?: AbortSignal
   ): Promise<{ results: MonitorObjectItem[]; count: number }> => {
     const queryParams: Record<string, any> = {};
 
@@ -78,7 +79,8 @@ const useObjectApi = () => {
     }
 
     const res = await get('/monitor/api/monitor_object/', {
-      params: queryParams
+      params: queryParams,
+      signal
     });
 
     // 后端返回的是数组，转换为分页格式
