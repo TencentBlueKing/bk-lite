@@ -40,6 +40,7 @@ const ObjectPage = () => {
 
   const typeModalRef = useRef<ModalRef>(null);
   const objectModalRef = useRef<ModalRef>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // 对象类型相关状态
   const [typeLoading, setTypeLoading] = useState(false);
@@ -201,7 +202,7 @@ const ObjectPage = () => {
   // 选中类型变化时加载对象列表
   useEffect(() => {
     if (selectedType) {
-      fetchObjects();
+      fetchObjects(selectedType.id);
     }
   }, [selectedType, pagination.current, pagination.pageSize]);
 
@@ -243,24 +244,44 @@ const ObjectPage = () => {
   };
 
   // 获取对象列表
-  const fetchObjects = async () => {
-    if (!selectedType) return;
+  const fetchObjects = async (typeId?: string) => {
+    const currentTypeId = typeId || selectedType?.id;
+    if (!currentTypeId) return;
+
+    // 取消上一次请求
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    // 创建新的 AbortController
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setObjectLoading(true);
     try {
-      setObjectLoading(true);
       const params = {
-        type_id: selectedType.id,
+        type_id: currentTypeId,
         page: pagination.current,
         page_size: pagination.pageSize,
         name: objectSearchText || undefined
       };
-      const data = await getObjects(params);
-      setObjectList(data?.results || []);
-      setPagination((prev) => ({
-        ...prev,
-        total: data?.count || 0
-      }));
-    } finally {
+      const data = await getObjects(params, controller.signal);
+      // 请求成功且未被取消时才更新数据和关闭 loading
+      if (!controller.signal.aborted) {
+        setObjectList(data?.results || []);
+        setPagination((prev) => ({
+          ...prev,
+          total: data?.count || 0
+        }));
+        setObjectLoading(false);
+      }
+    } catch (error: any) {
+      // 忽略取消请求的错误，不关闭 loading（让下一次请求控制）
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+        return;
+      }
+      // 其他错误时关闭 loading
       setObjectLoading(false);
+      throw error;
     }
   };
 
@@ -268,6 +289,13 @@ const ObjectPage = () => {
   const handleNodeSelect = (key: string) => {
     const type = typeList.find((t) => t.id === key);
     if (type) {
+      // 取消上一次请求
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      // 立即清空右侧列表并显示 loading，避免数据闪动
+      setObjectList([]);
+      setObjectLoading(true);
       setSelectedType(type);
       setObjectSearchText('');
       setPagination((prev) => ({ ...prev, current: 1 }));
@@ -352,6 +380,7 @@ const ObjectPage = () => {
       return;
     }
 
+    setTypeLoading(true);
     try {
       await deleteObjectType(selectedType.id);
       message.success(t('common.delSuccess'));
@@ -367,6 +396,8 @@ const ObjectPage = () => {
       }
     } catch {
       message.error(t('common.operationFailed'));
+    } finally {
+      setTypeLoading(false);
     }
   };
 
@@ -393,25 +424,30 @@ const ObjectPage = () => {
     actionType: 'add' | 'edit',
     data: ObjectTypeFormData
   ) => {
-    // 重新获取列表
-    const list = await getObjectTypes();
-    setTypeList(list || []);
+    // 重新获取列表，显示 loading
+    setTypeLoading(true);
+    try {
+      const list = await getObjectTypes();
+      setTypeList(list || []);
 
-    if (actionType === 'add' && data.id) {
-      // 新增：选中新创建的对象类型（根据后端返回的 id）
-      const newType = list?.find((item) => item.id === data.id);
-      if (newType) {
-        setSelectedType(newType);
-        setDefaultSelectedKey(newType.id);
-      }
-    } else if (actionType === 'edit' && data.id) {
-      // 编辑：更新当前选中的对象类型信息（同步右侧标题）
-      if (selectedType?.id === data.id) {
-        const updatedType = list?.find((item) => item.id === data.id);
-        if (updatedType) {
-          setSelectedType(updatedType);
+      if (actionType === 'add' && data.id) {
+        // 新增：选中新创建的对象类型（根据后端返回的 id）
+        const newType = list?.find((item) => item.id === data.id);
+        if (newType) {
+          setSelectedType(newType);
+          setDefaultSelectedKey(newType.id);
+        }
+      } else if (actionType === 'edit' && data.id) {
+        // 编辑：更新当前选中的对象类型信息（同步右侧标题）
+        if (selectedType?.id === data.id) {
+          const updatedType = list?.find((item) => item.id === data.id);
+          if (updatedType) {
+            setSelectedType(updatedType);
+          }
         }
       }
+    } finally {
+      setTypeLoading(false);
     }
   };
 
