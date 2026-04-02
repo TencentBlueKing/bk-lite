@@ -785,46 +785,54 @@ def create_qa_pairs_by_chunk(qa_pairs_id, kwargs):
 @shared_task
 def chat_flow_celery_task(bot_id, node_id, message):
     """ChatFlow周期性任务"""
-    logger.info(f"开始执行ChatFlow周期任务: bot_id={bot_id}, node_id={node_id}")
-    bot_obj = Bot.objects.filter(id=bot_id, online=True).first()
-    if not bot_obj:
-        logger.error(f"Bot {bot_id} 不存在或已下线")
-        return
-    bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
-    if not bot_chat_flow:
-        logger.error(f"Bot {bot_id} 没有配置ChatFlow")
-        return
-    try:
-        engine = create_chat_flow_engine(bot_chat_flow, node_id)
-        input_data = {
-            "last_message": message,
-            "user_id": bot_obj.created_by,
-            "bot_id": bot_id,
-            "node_id": node_id,
-        }
-        result = engine.execute(input_data)
-        logger.info(f"ChatFlow周期任务执行完成: bot_id={bot_id}, node_id={node_id}, 执行结果为{result}")
-    except Exception as e:
-        logger.error(f"ChatFlow周期任务执行失败: bot_id={bot_id}, node_id={node_id}, error={str(e)}")
+
+    def _execute():
+        logger.info(f"开始执行ChatFlow周期任务: bot_id={bot_id}, node_id={node_id}")
+        bot_obj = Bot.objects.filter(id=bot_id, online=True).first()
+        if not bot_obj:
+            logger.error(f"Bot {bot_id} 不存在或已下线")
+            return
+        bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
+        if not bot_chat_flow:
+            logger.error(f"Bot {bot_id} 没有配置ChatFlow")
+            return
+        try:
+            engine = create_chat_flow_engine(bot_chat_flow, node_id)
+            input_data = {
+                "last_message": message,
+                "user_id": bot_obj.created_by,
+                "bot_id": bot_id,
+                "node_id": node_id,
+            }
+            result = engine.execute(input_data)
+            logger.info(f"ChatFlow周期任务执行完成: bot_id={bot_id}, node_id={node_id}, 执行结果为{result}")
+        except Exception as e:
+            logger.error(f"ChatFlow周期任务执行失败: bot_id={bot_id}, node_id={node_id}, error={str(e)}")
+
+    return _run_in_native_thread(_execute)
 
 
 @shared_task
 def chat_flow_test_execute_task(workflow_id, node_id, input_data, entry_type, execution_id):
     """ChatFlow测试异步任务"""
-    logger.info(f"开始执行ChatFlow测试异步任务: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
-    workflow = BotWorkFlow.objects.filter(id=workflow_id).first()
-    if not workflow:
-        logger.error(f"ChatFlow测试异步任务失败: workflow_id={workflow_id} 不存在")
-        return
 
-    try:
-        engine = create_chat_flow_engine(workflow, node_id, entry_type=entry_type, execution_id=execution_id)
-        if entry_type:
-            engine.entry_type = entry_type
-        engine.execute(input_data)
-        logger.info(f"ChatFlow测试异步任务完成: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
-    except Exception as e:
-        logger.error(f"ChatFlow测试异步任务失败: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}, error={str(e)}")
+    def _execute():
+        logger.info(f"开始执行ChatFlow测试异步任务: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
+        workflow = BotWorkFlow.objects.filter(id=workflow_id).first()
+        if not workflow:
+            logger.error(f"ChatFlow测试异步任务失败: workflow_id={workflow_id} 不存在")
+            return
+
+        try:
+            engine = create_chat_flow_engine(workflow, node_id, entry_type=entry_type, execution_id=execution_id)
+            if entry_type:
+                engine.entry_type = entry_type
+            engine.execute(input_data)
+            logger.info(f"ChatFlow测试异步任务完成: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
+        except Exception as e:
+            logger.error(f"ChatFlow测试异步任务失败: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}, error={str(e)}")
+
+    return _run_in_native_thread(_execute)
 
 
 @shared_task

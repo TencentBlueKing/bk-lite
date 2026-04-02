@@ -38,9 +38,17 @@ class Controller:
         :param collect_type: 采集类型
         :return: 字典，key 为 type，value 为该 type 下的所有模板列表
         """
-        templates = MonitorPluginConfigTemplate.objects.filter(
-            plugin__collector=collector, plugin__collect_type=collect_type
-        ).values("type", "config_type", "file_type", "content")
+        plugin_id = self.data.get("monitor_plugin_id")
+        template_filter = (
+            MonitorPluginConfigTemplate.objects.filter(plugin_id=plugin_id)
+            if plugin_id
+            else MonitorPluginConfigTemplate.objects.filter(
+                plugin__collector=collector,
+                plugin__collect_type=collect_type,
+                plugin__template_type="builtin",
+            )
+        )
+        templates = template_filter.values("type", "config_type", "file_type", "content")
 
         # 按 type 分组
         templates_by_type = {}
@@ -106,9 +114,7 @@ class Controller:
             node_ids = instance_copy.pop("node_ids", [])
 
             if not node_ids:
-                logger.warning(
-                    f"实例 {instance_copy.get('instance_id', 'unknown')} 没有关联节点"
-                )
+                logger.warning(f"实例 {instance_copy.get('instance_id', 'unknown')} 没有关联节点")
                 continue
 
             for node_id in node_ids:
@@ -152,21 +158,18 @@ class Controller:
             logger.error(f"输入数据缺少必需字段: {e}")
             raise ValueError(f"输入数据缺少必需字段: {e}") from e
 
+        plugin_id = self.data.get("monitor_plugin_id")
         configs = self.format_configs()
         node_configs, node_child_configs, collect_configs = [], [], []
 
         templates_by_type = self.get_templates_by_collector(collector, collect_type)
 
         if not templates_by_type:
-            logger.warning(
-                f"未找到任何模板：collector={collector}, collect_type={collect_type}"
-            )
+            logger.warning(f"未找到任何模板：collector={collector}, collect_type={collect_type}")
             return
 
         if not configs:
-            logger.debug(
-                f"没有需要创建的配置：collector={collector}, collect_type={collect_type}"
-            )
+            logger.debug(f"没有需要创建的配置：collector={collector}, collect_type={collect_type}")
             return
 
         for config_info in configs:
@@ -178,16 +181,10 @@ class Controller:
             templates = templates_by_type.get(type_name)
 
             if not templates:
-                logger.warning(
-                    f"未找到模板：collector={collector}, "
-                    f"collect_type={collect_type}, "
-                    f"type={type_name}"
-                )
+                logger.warning(f"未找到模板：collector={collector}, collect_type={collect_type}, type={type_name}")
                 continue
 
-            env_config = {
-                k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")
-            }
+            env_config = {k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")}
 
             for template in templates:
                 is_child = template["config_type"] == "child"
@@ -200,19 +197,11 @@ class Controller:
                         {**config_info, "config_id": config_id.upper()},
                     )
                 except (ValueError, Exception) as e:
-                    logger.error(
-                        f"渲染模板失败：type={type_name}, "
-                        f"config_id={config_id}, "
-                        f"instance_id={config_info.get('instance_id')}, "
-                        f"错误: {e}"
-                    )
+                    logger.error(f"渲染模板失败：type={type_name}, config_id={config_id}, instance_id={config_info.get('instance_id')}, 错误: {e}")
                     continue
 
                 if is_child:
-                    child_env_config = {
-                        f"{k.upper()}__{config_id.upper()}": v
-                        for k, v in env_config.items()
-                    }
+                    child_env_config = {f"{k.upper()}__{config_id.upper()}": v for k, v in env_config.items()}
                     node_child_configs.append(
                         dict(
                             id=config_id,
@@ -241,6 +230,7 @@ class Controller:
                         id=config_id,
                         collector=collector_name,
                         monitor_instance_id=config_info["instance_id"],
+                        monitor_plugin_id=plugin_id,
                         collect_type=collect_type,
                         config_type=config_info["type"],
                         file_type=template["file_type"],
@@ -249,16 +239,12 @@ class Controller:
                 )
 
         if not collect_configs:
-            logger.warning(
-                f"没有生成任何配置：collector={collector}, collect_type={collect_type}"
-            )
+            logger.warning(f"没有生成任何配置：collector={collector}, collect_type={collect_type}")
             return
 
         # 步骤2：批量创建 CollectConfig（使用外层事务，不新建事务）
         try:
-            CollectConfig.objects.bulk_create(
-                collect_configs, batch_size=DatabaseConstants.COLLECT_CONFIG_BATCH_SIZE
-            )
+            CollectConfig.objects.bulk_create(collect_configs, batch_size=DatabaseConstants.COLLECT_CONFIG_BATCH_SIZE)
             logger.info(f"创建 CollectConfig 成功，数量={len(collect_configs)}")
         except Exception as e:
             logger.error(f"批量创建 CollectConfig 失败：{e}")
@@ -267,17 +253,10 @@ class Controller:
         # 步骤3：原子性创建配置和子配置（RPC调用，底层有事务保护，失败会抛异常）
         if node_configs or node_child_configs:
             try:
-                NodeMgmt().batch_create_configs_and_child_configs(
-                    node_configs, node_child_configs
-                )
-                logger.info(
-                    f"创建配置成功，node_config={len(node_configs)}个，child_config={len(node_child_configs)}个"
-                )
+                NodeMgmt().batch_create_configs_and_child_configs(node_configs, node_child_configs)
+                logger.info(f"创建配置成功，node_config={len(node_configs)}个，child_config={len(node_child_configs)}个")
             except Exception as e:
-                logger.error(
-                    f"RPC 调用失败，配置创建失败：node_configs={len(node_configs)}, "
-                    f"child_configs={len(node_child_configs)}, 错误: {e}"
-                )
+                logger.error(f"RPC 调用失败，配置创建失败：node_configs={len(node_configs)}, child_configs={len(node_child_configs)}, 错误: {e}")
                 raise
 
         logger.info(f"创建采集配置成功，共{len(collect_configs)}个配置")

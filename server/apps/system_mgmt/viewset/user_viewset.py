@@ -137,7 +137,9 @@ class UserViewSet(ViewSetUtils):
             if invalid_role_ids:
                 message = loader.get("error.invalid_role_ids", "Invalid role IDs: {ids}").format(ids=list(invalid_role_ids))
                 return JsonResponse({"result": False, "message": message})
-
+        is_superuser = kwargs.pop("is_superuser", False)
+        if is_superuser:
+            roles = [Role.objects.get(name="admin", app="").id]
         with transaction.atomic():
             User.objects.create(
                 username=kwargs["username"],

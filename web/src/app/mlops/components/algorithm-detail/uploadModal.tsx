@@ -202,6 +202,11 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   };
 
   const validateFileUpload = (): UploadFile[] | null => {
+    if (!fileList.length) {
+      message.error(t('datasets.pleaseUpload'));
+      return null;
+    }
+
     for (const file of fileList) {
       if (!file?.originFileObj) {
         message.error(t('datasets.pleaseUpload'));

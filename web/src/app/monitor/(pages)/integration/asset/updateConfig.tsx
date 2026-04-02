@@ -38,7 +38,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       const collector = _form.collector;
       const collect_type = _form.collect_type;
       const monitor_object_id = _form.monitor_object_id;
-      const _pluginId = `${monitor_object_id}_${collector}_${collect_type}`;
+      const _pluginId = _form.monitor_plugin_id || `${monitor_object_id}_${collector}_${collect_type}`;
       setPluginId(_pluginId);
       setConfigLoading(true);
       try {
@@ -47,6 +47,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
             collector,
             collect_type,
             monitor_object_id,
+            monitor_plugin_id: _form.monitor_plugin_id,
           },
           'edit'
         );
@@ -101,9 +102,9 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   };
 
   const operateConfig = async (params: TableDataItem) => {
-    const data = configsInfo.getParams?.(params, configForm) || {};
     try {
       setConfirmLoading(true);
+      const data = configsInfo.getParams?.(params, configForm) || {};
       await post(
         '/monitor/api/node_mgmt/update_instance_collect_config/',
         data
@@ -111,6 +112,8 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       message.success(t('common.successfullyModified'));
       handleCancel();
       onSuccess();
+    } catch (error: any) {
+      message.error(error?.message || t('common.operationFailed'));
     } finally {
       setConfirmLoading(false);
     }

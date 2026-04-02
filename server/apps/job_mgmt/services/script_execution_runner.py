@@ -43,6 +43,14 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         return True
 
     def _run_via_ansible_if_needed(self, execution, target_list: list, script_content: str) -> bool:
+        if execution.target_source == TargetSource.MANUAL and self._contains_windows_manual_target(target_list):
+            if not self._should_use_ansible(execution.target_source, target_list):
+                error_msg = "Windows 手动目标仅支持 Ansible/WinRM 执行，请将驱动切换为 Ansible"
+                logger.warning(f"[{self.task_name}] {error_msg}")
+                self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
+                execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
+                execution.save(update_fields=["execution_results", "updated_at"])
+                return True
         if not self._should_use_ansible(execution.target_source, target_list):
             return False
         try:
@@ -121,7 +129,6 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
 
         try:
             shell = ScriptType.SHELL_MAPPING.get(script_type, "sh")
-
             if target_source in (TargetSource.NODE_MGMT, TargetSource.SYNC):
                 node_id = target_info.get("node_id")
                 executor = Executor(node_id)

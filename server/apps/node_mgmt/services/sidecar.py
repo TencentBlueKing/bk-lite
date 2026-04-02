@@ -60,12 +60,8 @@ class Sidecar:
                 return hashlib.md5(encrypted_content.encode("utf-8")).hexdigest()
             except Exception as e:
                 # 加密失败，记录警告日志并回退到明文内容，使用 Django JSON 编码器处理 datetime
-                logger.warning(
-                    f"Failed to encrypt response data for ETag generation: {e}"
-                )
-                json_content = json.dumps(
-                    data, ensure_ascii=False, cls=DjangoJSONEncoder
-                )
+                logger.warning(f"Failed to encrypt response data for ETag generation: {e}")
+                json_content = json.dumps(data, ensure_ascii=False, cls=DjangoJSONEncoder)
                 return hashlib.md5(json_content.encode("utf-8")).hexdigest()
         else:
             # 不需要加密，基于 JSON 内容生成 ETag，使用 Django JSON 编码器处理 datetime
@@ -108,18 +104,13 @@ class Sidecar:
         cache.set("collectors_etag", new_etag, ControllerConstants.E_CACHE_TIMEOUT)
 
         # 返回采集器列表和新的 ETag
-        return EncryptedJsonResponse(
-            collectors_data, headers={"ETag": new_etag}, request=request
-        )
+        return EncryptedJsonResponse(collectors_data, headers={"ETag": new_etag}, request=request)
 
     @staticmethod
     def asso_groups(node_id: str, groups: list):
         if groups:
             NodeOrganization.objects.bulk_create(
-                [
-                    NodeOrganization(node_id=node_id, organization=group)
-                    for group in groups
-                ],
+                [NodeOrganization(node_id=node_id, organization=group) for group in groups],
                 ignore_conflicts=True,
                 batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
             )
@@ -149,18 +140,13 @@ class Sidecar:
     def _is_debounce_elapsed(cache_key: str) -> bool:
         now_ts = int(datetime.now(timezone.utc).timestamp())
         last_ts = cache.get(cache_key)
-        if (
-            last_ts is not None
-            and now_ts - int(last_ts) < Sidecar.CONVERGE_DEBOUNCE_SECONDS
-        ):
+        if last_ts is not None and now_ts - int(last_ts) < Sidecar.CONVERGE_DEBOUNCE_SECONDS:
             return False
         cache.set(cache_key, now_ts, timeout=Sidecar.CONVERGE_DEBOUNCE_SECONDS * 6)
         return True
 
     @staticmethod
-    def trigger_converge_tasks_if_needed(
-        node_id: str, node_ip: str, status_payload: dict
-    ):
+    def trigger_converge_tasks_if_needed(node_id: str, node_ip: str, status_payload: dict):
         action_running_exists = CollectorActionTaskNode.objects.filter(
             node_id=node_id,
             status="running",
@@ -182,9 +168,7 @@ class Sidecar:
             signature_cache_key = f"node_converge_action_signature_{node_id}"
             debounce_cache_key = f"node_converge_action_debounce_{node_id}"
             last_signature = cache.get(signature_cache_key)
-            if signature != last_signature or Sidecar._is_debounce_elapsed(
-                debounce_cache_key
-            ):
+            if signature != last_signature or Sidecar._is_debounce_elapsed(debounce_cache_key):
                 cache.set(signature_cache_key, signature, timeout=3600)
                 converge_collector_action_task_for_node.delay(node_id)
 
@@ -229,9 +213,7 @@ class Sidecar:
 
             node_ip = request.data.get("node_details", {}).get("ip", "")
             if not node_ip:
-                node_ip = (
-                    Node.objects.filter(id=node_id).values_list("ip", flat=True).first()
-                )
+                node_ip = Node.objects.filter(id=node_id).values_list("ip", flat=True).first()
             Sidecar.trigger_converge_tasks_if_needed(node_id, node_ip, node_status)
 
             response = HttpResponse(status=304)
@@ -286,9 +268,7 @@ class Sidecar:
             node = Node.objects.create(**request_data)
 
             # 关联组织
-            Sidecar.asso_groups(
-                node_id, tags_data.get(ControllerConstants.GROUP_TAG, [])
-            )
+            Sidecar.asso_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
 
             # 创建默认的配置
             Sidecar.create_default_config(node, node_types)
@@ -307,9 +287,7 @@ class Sidecar:
             # )
 
         # 预取相关数据，减少查询次数
-        new_obj = Node.objects.prefetch_related(
-            "action_set", "collectorconfiguration_set"
-        ).get(id=node_id)
+        new_obj = Node.objects.prefetch_related("action_set", "collectorconfiguration_set").get(id=node_id)
 
         # 构造响应数据
         response_data = dict(
@@ -331,9 +309,7 @@ class Sidecar:
                 task_id = action_item.get("task_id")
                 if not task_id:
                     continue
-                task_node = CollectorActionTaskNode.objects.filter(
-                    task_id=task_id, node_id=node_id
-                ).first()
+                task_node = CollectorActionTaskNode.objects.filter(task_id=task_id, node_id=node_id).first()
                 if task_node and task_node.status == "waiting":
                     task_node.status = "running"
                     task_node.result = {
@@ -381,11 +357,7 @@ class Sidecar:
                         )
 
                     execute_step = next(
-                        (
-                            step
-                            for step in steps
-                            if step.get("action") == "execute_command"
-                        ),
+                        (step for step in steps if step.get("action") == "execute_command"),
                         None,
                     )
                     if not execute_step:
@@ -404,21 +376,14 @@ class Sidecar:
                     task_node.result = result
                     task_node.save(update_fields=["result"])
 
-                    CollectorActionTask.objects.filter(
-                        id=task_id, status="waiting"
-                    ).update(status="running")
+                    CollectorActionTask.objects.filter(id=task_id, status="waiting").update(status="running")
 
             action_obj.delete()
 
         # 节点配置信息
         assignments = new_obj.collectorconfiguration_set.all()
         if assignments:
-            response_data.update(
-                assignments=[
-                    {"collector_id": i.collector_id, "configuration_id": i.id}
-                    for i in assignments
-                ]
-            )
+            response_data.update(assignments=[{"collector_id": i.collector_id, "configuration_id": i.id} for i in assignments])
 
         # 生成新的ETag - 基于实际响应内容
         new_etag = Sidecar.generate_response_etag(response_data, request)
@@ -428,9 +393,7 @@ class Sidecar:
         # 返回响应
         node_status = request_data.get("status", {})
         Sidecar.trigger_converge_tasks_if_needed(node_id, new_obj.ip, node_status)
-        return EncryptedJsonResponse(
-            status=202, data=response_data, headers={"ETag": new_etag}, request=request
-        )
+        return EncryptedJsonResponse(status=202, data=response_data, headers={"ETag": new_etag}, request=request)
 
     @staticmethod
     def get_node_config(request, node_id, configuration_id):
@@ -453,20 +416,12 @@ class Sidecar:
         # 从数据库获取节点信息
         node = Node.objects.filter(id=node_id).first()
         if not node:
-            return EncryptedJsonResponse(
-                status=404, data={"error": "Node not found"}, request=request
-            )
+            return EncryptedJsonResponse(status=404, data={"error": "Node not found"}, request=request)
 
         # 查询配置，并预取关联的子配置
-        configuration = (
-            CollectorConfiguration.objects.filter(id=configuration_id)
-            .prefetch_related("childconfig_set")
-            .first()
-        )
+        configuration = CollectorConfiguration.objects.filter(id=configuration_id).prefetch_related("childconfig_set").first()
         if not configuration:
-            return EncryptedJsonResponse(
-                status=404, data={"error": "Configuration not found"}, request=request
-            )
+            return EncryptedJsonResponse(status=404, data={"error": "Configuration not found"}, request=request)
 
         # 合并子配置内容到模板
         merged_template = configuration.config_template
@@ -483,9 +438,7 @@ class Sidecar:
             ungrouped_configs = []
             for child_config in child_configs:
                 if child_config.config_section:
-                    grouped_configs.setdefault(child_config.config_section, []).append(
-                        child_config
-                    )
+                    grouped_configs.setdefault(child_config.config_section, []).append(child_config)
                 else:
                     ungrouped_configs.append(child_config)
 
@@ -497,25 +450,15 @@ class Sidecar:
                         merged_template += header
                     for child_config in configs:
                         merged_template += f"\n# {child_config.collect_type} - {child_config.config_type}\n"
-                        merged_template += Sidecar.render_template(
-                            child_config.content, child_config.env_config
-                        )
+                        merged_template += Sidecar.render_template(child_config.content, child_config.env_config)
 
             for child_config in ungrouped_configs:
-                merged_template += (
-                    f"\n# {child_config.collect_type} - {child_config.config_type}\n"
-                )
-                merged_template += Sidecar.render_template(
-                    child_config.content, child_config.env_config
-                )
+                merged_template += f"\n# {child_config.collect_type} - {child_config.config_type}\n"
+                merged_template += Sidecar.render_template(child_config.content, child_config.env_config)
         else:
             for child_config in child_configs:
-                merged_template += (
-                    f"\n# {child_config.collect_type} - {child_config.config_type}\n"
-                )
-                merged_template += Sidecar.render_template(
-                    child_config.content, child_config.env_config
-                )
+                merged_template += f"\n# {child_config.collect_type} - {child_config.config_type}\n"
+                merged_template += Sidecar.render_template(child_config.content, child_config.env_config)
 
         configuration_data = dict(
             id=configuration.id,
@@ -533,9 +476,7 @@ class Sidecar:
             variables.update(configuration_data["env_config"])
 
         # 渲染配置模板
-        configuration_data["template"] = Sidecar.render_template(
-            configuration_data["template"], variables
-        )
+        configuration_data["template"] = Sidecar.render_template(configuration_data["template"], variables)
 
         # 生成新的 ETag - 基于实际响应内容
         new_etag = Sidecar.generate_response_etag(configuration_data, request)
@@ -548,41 +489,27 @@ class Sidecar:
         )
 
         # 返回配置信息和新的 ETag
-        return EncryptedJsonResponse(
-            configuration_data, headers={"ETag": new_etag}, request=request
-        )
+        return EncryptedJsonResponse(configuration_data, headers={"ETag": new_etag}, request=request)
 
     @staticmethod
     def get_node_config_env(request, node_id, configuration_id):
         node = Node.objects.filter(id=node_id).first()
         if not node:
-            return EncryptedJsonResponse(
-                status=404, data={"error": "Node not found"}, request=request
-            )
+            return EncryptedJsonResponse(status=404, data={"error": "Node not found"}, request=request)
 
         # 查询配置，并预取关联的子配置
-        obj = (
-            CollectorConfiguration.objects.filter(id=configuration_id)
-            .prefetch_related("childconfig_set")
-            .first()
-        )
+        obj = CollectorConfiguration.objects.filter(id=configuration_id).prefetch_related("childconfig_set").first()
         if not obj:
-            return EncryptedJsonResponse(
-                status=404, data={"error": "Configuration not found"}, request=request
-            )
+            return EncryptedJsonResponse(status=404, data={"error": "Configuration not found"}, request=request)
 
         # 获取云区域环境变量（仅获取 NATS_PASSWORD）
-        nats_pwd_obj = SidecarEnv.objects.filter(
-            key="NATS_PASSWORD", cloud_region=node.cloud_region_id
-        ).first()
+        nats_pwd_obj = SidecarEnv.objects.filter(key="NATS_PASSWORD", cloud_region=node.cloud_region_id).first()
         cloud_region_nats_password = {}
         if nats_pwd_obj:
             if nats_pwd_obj.type == "secret":
                 # 如果是密文，解密后使用
                 aes_obj = AESCryptor()
-                cloud_region_nats_password = {
-                    nats_pwd_obj.key: aes_obj.decode(nats_pwd_obj.value)
-                }
+                cloud_region_nats_password = {nats_pwd_obj.key: aes_obj.decode(nats_pwd_obj.value)}
             else:
                 # 如果是普通变量，直接使用
                 cloud_region_nats_password = {nats_pwd_obj.key: nats_pwd_obj.value}
@@ -622,9 +549,7 @@ class Sidecar:
             f"Merged env config for configuration {configuration_id}: {len(final_env_config)} variables (NATS_PASSWORD from cloud region: {'yes' if 'NATS_PASSWORD' in cloud_region_nats_password else 'no'})"
         )
 
-        return EncryptedJsonResponse(
-            data=dict(id=configuration_id, env_config=final_env_config), request=request
-        )
+        return EncryptedJsonResponse(data=dict(id=configuration_id, env_config=final_env_config), request=request)
 
     @staticmethod
     def get_cloud_region_envconfig(node_obj):
@@ -640,9 +565,7 @@ class Sidecar:
             "node__cloud_region": node_obj.cloud_region_id,
             "node__name": node_obj.name,
             "node__ip": node_obj.ip,
-            "node__ip_filter": node_obj.ip.replace(".", "-")
-            .replace("*", "-")
-            .replace("*", ">"),
+            "node__ip_filter": node_obj.ip.replace(".", "-").replace("*", "-").replace("*", ">"),
             "node__operating_system": node_obj.operating_system,
             "node__collector_configuration_directory": node_obj.collector_configuration_directory,
         }
@@ -673,23 +596,22 @@ class Sidecar:
         variables = Sidecar.get_cloud_region_envconfig(node)
         default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
 
-        is_container_node = ControllerConstants.NODE_TYPE_CONTAINER in node_types
+        resolved_node_types = set(node_types or [])
+        if node.node_type:
+            resolved_node_types.add(node.node_type)
+
+        is_container_node = ControllerConstants.NODE_TYPE_CONTAINER in resolved_node_types
 
         for collector_obj in collector_objs:
             try:
-                if (
-                    collector_obj.name
-                    in CollectorConstants.DEFAULT_CONTAINER_COLLECTOR_CONFIGS
-                ):
+                if collector_obj.name in CollectorConstants.DEFAULT_CONTAINER_COLLECTOR_CONFIGS:
                     if not is_container_node:
                         continue
 
                 if not collector_obj.default_config:
                     continue
 
-                config_template = collector_obj.default_config.get(
-                    default_sidecar_mode, None
-                )
+                config_template = collector_obj.default_config.get(default_sidecar_mode, None)
 
                 if not config_template:
                     continue
@@ -699,20 +621,34 @@ class Sidecar:
                     add_config = collector_obj.default_config.get("add_config", "")
                     if add_config:
                         config_template = config_template + "\n" + add_config
-                        logger.info(
-                            f"Node {node.id} is a container node, appending add_config for {collector_obj.name}"
-                        )
+                        logger.info(f"Node {node.id} is a container node, appending add_config for {collector_obj.name}")
 
                 # 渲染模板
                 tpl = JinjaTemplate(config_template)
                 _config_template = tpl.render(variables)
 
-                # 如果已经存在关联的配置就跳过
-                if CollectorConfiguration.objects.filter(
-                    collector=collector_obj, nodes=node
-                ).exists():
+                existing_pre_configuration = CollectorConfiguration.objects.filter(collector=collector_obj, nodes=node, is_pre=True).first()
+                if existing_pre_configuration:
+                    update_fields = []
+                    if existing_pre_configuration.config_template != _config_template:
+                        existing_pre_configuration.config_template = _config_template
+                        update_fields.append("config_template")
+                    if existing_pre_configuration.cloud_region_id != node.cloud_region_id:
+                        existing_pre_configuration.cloud_region = node.cloud_region
+                        update_fields.append("cloud_region")
+
+                    if update_fields:
+                        existing_pre_configuration.save(update_fields=update_fields)
+                        cache.delete(f"configuration_etag_{existing_pre_configuration.id}")
+                        logger.info(f"Node {node.id} updated default configuration for collector {collector_obj.name}.")
+                    else:
+                        logger.info(f"Node {node.id} default configuration for collector {collector_obj.name} is up to date.")
+                    continue
+
+                # 如果已经存在关联的自定义配置则跳过，避免覆盖用户配置
+                if CollectorConfiguration.objects.filter(collector=collector_obj, nodes=node).exists():
                     logger.info(
-                        f"Node {node.id} already has a configuration for collector {collector_obj.name}, skipping."
+                        f"Node {node.id} already has a custom configuration for collector {collector_obj.name}, skipping default configuration creation."
                     )
                     continue
 
@@ -726,6 +662,4 @@ class Sidecar:
                 configuration.nodes.add(node)
 
             except Exception as e:
-                logger.error(
-                    f"create node {node.id} {collector_obj.name} default configuration failed {e}"
-                )
+                logger.error(f"create node {node.id} {collector_obj.name} default configuration failed {e}")

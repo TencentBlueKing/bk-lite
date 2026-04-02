@@ -1,6 +1,8 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from django.db import ProgrammingError
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.language import LanguageConstants
@@ -8,7 +10,7 @@ from apps.monitor.filters.plugin import MonitorPluginFilter
 from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.services.plugin import MonitorPluginService
-from apps.monitor.services.push_api import PushAPIService
+from apps.monitor.services.template_access_guide import TemplateAccessGuideService
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -25,33 +27,42 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
 
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
         for result in results:
-            if result.get("template_type") == "custom_api":
+            if result.get("template_type") in {"api", "pull"}:
                 result["display_name"] = result.get("display_name") or result["name"]
                 result["display_description"] = result["description"]
             else:
                 plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}"
                 result["display_name"] = lan.get(f"{plugin_key}.name") or result.get("display_name") or result["name"]
                 result["display_description"] = lan.get(f"{plugin_key}.desc") or result["description"]
-            result["is_custom_api"] = result.get("template_type") == "custom_api"
+            result["is_custom"] = result.get("template_type") in {"api", "pull", "snmp"}
 
         return WebUtils.response_success(results)
 
     def destroy(self, request, *args, **kwargs):
         plugin = self.get_object()
-        if plugin.template_type == "custom_api":
-            plugin.delete()
+        if plugin.template_type in {"api", "pull"}:
+            try:
+                plugin.delete()
+            except ProgrammingError as exc:
+                if "monitor_plugin_id" in str(exc):
+                    raise BaseAppException("当前数据库缺少 monitor_collectconfig.monitor_plugin_id 字段，请先执行 monitor 应用最新迁移") from exc
+                raise
             return WebUtils.response_success()
         return super().destroy(request, *args, **kwargs)
 
-    @action(methods=["get"], detail=True, url_path="push_access")
-    def get_push_access(self, request, pk=None):
+    @action(methods=["get"], detail=True, url_path="access_guide")
+    def get_access_guide(self, request, pk=None):
         plugin = self.get_object()
-        if plugin.template_type != "custom_api":
+        if plugin.template_type != "api":
             return WebUtils.response_error(error_message="当前模板不是自建API模板")
 
-        current_team = request.query_params.get("team") or PushAPIService.resolve_current_team(request)
-        current_team = PushAPIService.resolve_team(current_team)
-        data = PushAPIService.get_custom_template_document(plugin, current_team, request.user)
+        organization_id = TemplateAccessGuideService.resolve_required_int(request.query_params.get("organization_id"), "organization_id")
+        cloud_region_id = TemplateAccessGuideService.resolve_required_int(request.query_params.get("cloud_region_id"), "cloud_region_id")
+        data = TemplateAccessGuideService.get_template_document(
+            plugin,
+            organization_id=organization_id,
+            cloud_region_id=cloud_region_id,
+        )
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="import")

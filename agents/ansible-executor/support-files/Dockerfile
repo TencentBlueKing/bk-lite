@@ -22,7 +22,8 @@ COPY support-files/service.conf /etc/supervisor/conf.d/service.conf
 
 RUN python3 -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
-    /opt/venv/bin/pip install --no-cache-dir nats-py==2.10.0 pyyaml==6.0.2 python-dotenv==1.0.0
+    /opt/venv/bin/pip install --no-cache-dir nats-py==2.10.0 pyyaml==6.0.2 python-dotenv==1.0.0 pywinrm[credssp]==0.5.0 && \
+    /opt/venv/bin/ansible-galaxy collection install ansible.windows
 
 RUN chmod +x /opt/startup.sh
 

@@ -31,10 +31,7 @@ class InstanceSearch:
     def get_parent_instance_ids(query):
         """获取父对象实例ID列表"""
         metrics = VictoriaMetricsAPI().query(query, step="10m")
-        instance_ids = [
-            metric_info["metric"].get("instance_id")
-            for metric_info in metrics.get("data", {}).get("result", [])
-        ]
+        instance_ids = [metric_info["metric"].get("instance_id") for metric_info in metrics.get("data", {}).get("result", [])]
         return instance_ids
 
     @staticmethod
@@ -42,9 +39,7 @@ class InstanceSearch:
         """获取父对象实例列表"""
         # 获取父对象实例ID
         _obj = MonitorObject.objects.filter(id=monitor_object_id).first()
-        objs = MonitorInstance.objects.filter(monitor_object_id=_obj.parent_id).values(
-            "id", "name"
-        )
+        objs = MonitorInstance.objects.filter(monitor_object_id=_obj.parent_id).values("id", "name")
 
         data = []
         for obj in objs:
@@ -59,9 +54,7 @@ class InstanceSearch:
     def get_query_params_enum(monitor_obj_name, monitor_object_id=None):
         """获取查询参数枚举"""
         if monitor_obj_name == "Pod":
-            query = (
-                "count(prometheus_remote_write_kube_pod_info{}) by (instance_id, node)"
-            )
+            query = "count(prometheus_remote_write_kube_pod_info{}) by (instance_id, node)"
             metrics = VictoriaMetricsAPI().query(query)
 
             # 使用 set 去重
@@ -90,18 +83,12 @@ class InstanceSearch:
 
             if instance_id_strs:
                 # 查询 Cluster 实例名称
-                cluster_instances = MonitorInstance.objects.filter(
-                    id__in=instance_id_strs
-                ).values("id", "name")
-                instance_name_map = {
-                    inst["id"]: inst["name"] for inst in cluster_instances
-                }
+                cluster_instances = MonitorInstance.objects.filter(id__in=instance_id_strs).values("id", "name")
+                instance_name_map = {inst["id"]: inst["name"] for inst in cluster_instances}
 
             if node_id_strs:
                 # 查询 Node 实例名称
-                node_instances = MonitorInstance.objects.filter(
-                    id__in=node_id_strs
-                ).values("id", "name")
+                node_instances = MonitorInstance.objects.filter(id__in=node_id_strs).values("id", "name")
                 node_name_map = {inst["id"]: inst["name"] for inst in node_instances}
 
             # 构建返回结果：id 使用原始维度值（用于查询），name 从数据库获取（用于展示）
@@ -140,12 +127,8 @@ class InstanceSearch:
             # 从数据库查询 Cluster 实例名称
             instance_name_map = {}
             if instance_id_strs:
-                cluster_instances = MonitorInstance.objects.filter(
-                    id__in=instance_id_strs
-                ).values("id", "name")
-                instance_name_map = {
-                    inst["id"]: inst["name"] for inst in cluster_instances
-                }
+                cluster_instances = MonitorInstance.objects.filter(id__in=instance_id_strs).values("id", "name")
+                instance_name_map = {inst["id"]: inst["name"] for inst in cluster_instances}
 
             # 构建返回结果：id 使用原始维度值（用于查询），name 从数据库获取（用于展示）
             instance_list = [
@@ -184,9 +167,7 @@ class InstanceSearch:
         items = []
         instance_id_keys = self.obj_metric_map.get("instance_id_keys")
         for metric in vm_metrics:
-            instance_id = str(
-                tuple([metric["metric"].get(i) for i in instance_id_keys])
-            )
+            instance_id = str(tuple([metric["metric"].get(i) for i in instance_id_keys]))
             if instance_id not in objs_map:
                 continue
             obj = objs_map[instance_id]
@@ -226,16 +207,19 @@ class InstanceSearch:
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=self.locale)
 
         # 获取实例的插件采集状态
-        confs = CollectConfig.objects.filter(
+        confs = CollectConfig.objects.select_related("monitor_plugin").filter(
             monitor_instance_id__in=[i["instance_id"] for i in data["results"]],
         )
         confs_map = {}
         for conf in confs:
             if conf.monitor_instance_id not in confs_map:
                 confs_map[conf.monitor_instance_id] = set()
-            confs_map[conf.monitor_instance_id].add(
-                (self.monitor_obj.id, conf.collector, conf.collect_type)
+            plugin_key = (
+                conf.monitor_plugin_id
+                if conf.monitor_plugin and conf.monitor_plugin.template_type == "pull"
+                else (self.monitor_obj.id, conf.collector, conf.collect_type)
             )
+            confs_map[conf.monitor_instance_id].add(plugin_key)
 
         plugin_map, plugin_status_map = {}, {}
         plugins = MonitorPlugin.objects.filter(monitor_object=self.monitor_obj)
@@ -243,20 +227,18 @@ class InstanceSearch:
         instance_id_keys = self.obj_metric_map.get("instance_id_keys")
 
         for plugin in plugins:
-            plugin_key = (self.monitor_obj.id, plugin.collector, plugin.collect_type)
+            plugin_key = plugin.id if plugin.template_type == "pull" else (self.monitor_obj.id, plugin.collector, plugin.collect_type)
             # 添加翻译属性
             plugin_key_name = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
             plugin_map[plugin_key] = dict(
                 name=plugin.name,
+                plugin_id=plugin.id,
                 collector=plugin.collector,
                 collect_type=plugin.collect_type,
                 display_name=lan.get(f"{plugin_key_name}.name") or plugin.name,
-                display_description=lan.get(f"{plugin_key_name}.desc")
-                or plugin.description,
+                display_description=lan.get(f"{plugin_key_name}.desc") or plugin.description,
             )
-            plugin_status_map[plugin_key] = self.get_plugin_normal_status_map(
-                instance_id_keys, plugin.status_query
-            )
+            plugin_status_map[plugin_key] = self.get_plugin_normal_status_map(instance_id_keys, plugin.status_query)
 
         # 反转插件状态映射，方便后续查询
         instance_plugin_status_map = {}
@@ -270,9 +252,7 @@ class InstanceSearch:
                 instance_plugin_time_map[(instance_id, c_tuple)] = _time
 
         # 组织映射
-        org_objs = MonitorInstanceOrganization.objects.filter(
-            monitor_instance_id__in=[i["instance_id"] for i in data["results"]]
-        )
+        org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[i["instance_id"] for i in data["results"]])
         org_map = {}
         for org in org_objs:
             if org.monitor_instance_id not in org_map:
@@ -318,9 +298,7 @@ class InstanceSearch:
                     if not plugin_info:
                         continue
                     # 补充时间信息
-                    plugin_time = instance_plugin_time_map.get(
-                        (item["instance_id"], c_tuple)
-                    )
+                    plugin_time = instance_plugin_time_map.get((item["instance_id"], c_tuple))
                     if plugin_time:
                         plugin_info = dict(plugin_info)
                         plugin_info["time"] = plugin_time
@@ -376,16 +354,14 @@ class InstanceSearch:
         )
 
     def get_plugin_normal_status_map(self, instance_id_keys, query):
+        if not query or not str(query).strip():
+            return {}
         resp = VictoriaMetricsAPI().query(query, step="20m")
         metrics = resp.get("data", {}).get("result", [])
         status_map = {}
         for metric in metrics:
-            instance_id = str(
-                tuple([metric["metric"].get(i) for i in instance_id_keys])
-            )
-            iso_time = datetime.fromtimestamp(
-                metric["value"][0], tz=timezone.utc
-            ).isoformat()
+            instance_id = str(tuple([metric["metric"].get(i) for i in instance_id_keys]))
+            iso_time = datetime.fromtimestamp(metric["value"][0], tz=timezone.utc).isoformat()
             status_map[instance_id] = iso_time
         return status_map
 
@@ -395,13 +371,7 @@ class InstanceSearch:
         if not isinstance(vm_params, dict):
             raise BaseAppException("vm_params must be an object")
 
-        params_str = ",".join(
-            [
-                f'{k}="{self._escape_promql_label_value(v)}"'
-                for k, v in vm_params.items()
-                if v is not None and str(v) != ""
-            ]
-        )
+        params_str = ",".join([f'{k}="{self._escape_promql_label_value(v)}"' for k, v in vm_params.items() if v is not None and str(v) != ""])
         if vm_params:
             if "}" in query:
                 query = query.replace("}", f",{params_str}}}")
@@ -429,11 +399,7 @@ class InstanceSearch:
         for metric_obj in metrics_obj:
             query_parts = []
             for i, key in enumerate(metric_obj.instance_id_keys):
-                values_set = {
-                    re.escape(str(item[i]))
-                    for item in instance_ids
-                    if len(item) > i and item[i] is not None
-                }
+                values_set = {re.escape(str(item[i])) for item in instance_ids if len(item) > i and item[i] is not None}
                 if not values_set:
                     continue
                 # re.escape 生成的反斜杠需要再做一次 PromQL 字符串转义，
@@ -447,11 +413,7 @@ class InstanceSearch:
             metrics = VictoriaMetricsAPI().query(query, step="10m")
             _metric_map = {}
             for metric in metrics.get("data", {}).get("result", []):
-                instance_id = str(
-                    tuple(
-                        [metric["metric"].get(i) for i in metric_obj.instance_id_keys]
-                    )
-                )
+                instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
                 value = metric["value"][1]
                 if instance_id not in _metric_map:
                     _metric_map[instance_id] = value

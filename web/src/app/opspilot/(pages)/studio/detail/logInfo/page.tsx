@@ -9,7 +9,7 @@ import useApiClient from '@/utils/request';
 import ProChatComponent from '@/app/opspilot/components/studio/proChat';
 import TimeSelector from '@/components/time-selector';
 import CustomTable from '@/components/custom-table';
-import { LogRecord, Channel, WorkflowTaskResult } from '@/app/opspilot/types/studio';
+import { LogRecord, Channel, WorkflowTaskResult, WorkflowExecutionDetailItem } from '@/app/opspilot/types/studio';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { fetchLogDetails, createConversation } from '@/app/opspilot/utils/logUtils';
 import { useStudioApi } from '@/app/opspilot/api/studio';
@@ -19,7 +19,7 @@ const { Search } = Input;
 const StudioLogsPage: React.FC = () => {
   const { t } = useTranslation();
   const { get, post } = useApiClient();
-  const { fetchLogs, fetchChannels, fetchBotDetail, fetchWorkflowTaskResult, fetchWorkflowLogs, fetchExecutionOutputData } = useStudioApi();
+  const { fetchLogs, fetchChannels, fetchBotDetail, fetchWorkflowTaskResult, fetchWorkflowLogs, fetchExecutionOutputData, fetchExecutionDetail } = useStudioApi();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [searchText, setSearchText] = useState('');
   const [dates, setDates] = useState<number[]>([]);
@@ -31,6 +31,7 @@ const StudioLogsPage: React.FC = () => {
   const [conversationLoading, setConversationLoading] = useState(false);
   const [workflowDrawerVisible, setWorkflowDrawerVisible] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowTaskResult | null>(null);
+  const [selectedWorkflowDetails, setSelectedWorkflowDetails] = useState<WorkflowExecutionDetailItem[]>([]);
   const [workflowDetailLoading, setWorkflowDetailLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [pagination, setPagination] = useState({
@@ -240,20 +241,37 @@ const StudioLogsPage: React.FC = () => {
 
   const handleWorkflowDetailClick = async (record: WorkflowTaskResult) => {
     setSelectedWorkflow(record);
+    setSelectedWorkflowDetails([]);
     setWorkflowDrawerVisible(true);
 
-    // 如果有 execution_id，则从接口获取详情数据
     if (record.execution_id) {
       setWorkflowDetailLoading(true);
       try {
-        const outputData = await fetchExecutionOutputData({
-          execution_id: record.execution_id,
-          id: record.id,
-        });
+        const [outputDataResult, executionDetailResult] = await Promise.allSettled([
+          fetchExecutionOutputData({
+            execution_id: record.execution_id,
+            id: record.id,
+          }),
+          fetchExecutionDetail(record.execution_id),
+        ]);
+
+        const outputData = outputDataResult.status === 'fulfilled' ? outputDataResult.value : record.output_data;
+        const executionDetails = executionDetailResult.status === 'fulfilled' ? executionDetailResult.value : [];
+
         setSelectedWorkflow({
           ...record,
           output_data: outputData,
         });
+
+        setSelectedWorkflowDetails(executionDetails);
+
+        if (outputDataResult.status === 'rejected') {
+          console.error('Failed to fetch workflow execution output data:', outputDataResult.reason);
+        }
+
+        if (executionDetailResult.status === 'rejected') {
+          console.error('Failed to fetch workflow execution detail:', executionDetailResult.reason);
+        }
       } catch (error) {
         console.error('Failed to fetch workflow execution detail:', error);
       } finally {
@@ -298,19 +316,99 @@ const StudioLogsPage: React.FC = () => {
     return value;
   };
 
+  const getNodeStatus = (value: any) => {
+    const parsed = parseJsonIfString(value);
+    if (parsed && typeof parsed === 'object') {
+      const status = (parsed as any).status || (parsed as any).node_status;
+      if (typeof status === 'string' && status) {
+        return status.toLowerCase();
+      }
+    }
+    return '';
+  };
+
+  const getNodeErrorMessage = (value: any) => {
+    const parsed = parseJsonIfString(value);
+    if (parsed && typeof parsed === 'object') {
+      const errorMessage = (parsed as any).error
+        || (parsed as any).error_message
+        || (parsed as any).message
+        || (parsed as any).reason;
+      if (typeof errorMessage === 'string' && errorMessage) {
+        return errorMessage;
+      }
+    }
+    return '';
+  };
+
+  const normalizeNodeStatus = (status?: string | null) => {
+    if (!status) return 'pending';
+    if (status === 'success') return 'completed';
+    if (status === 'fail') return 'failed';
+    return status;
+  };
+
+  const renderNodeStatusTag = (status?: string | null) => {
+    const normalizedStatus = normalizeNodeStatus(status);
+
+    if (normalizedStatus === 'failed') {
+      return <Tag color="error">{t('studio.logs.table.statusFailed')}</Tag>;
+    }
+
+    if (normalizedStatus === 'completed') {
+      return <Tag color="success">{t('studio.logs.table.statusSuccess')}</Tag>;
+    }
+
+    if (normalizedStatus === 'running') {
+      return <Tag color="processing">{t('studio.logs.table.statusRunning')}</Tag>;
+    }
+
+    return <Tag>{t('chatflow.preview.pending')}</Tag>;
+  };
+
   const renderWorkflowTimeline = () => {
-    if (!selectedWorkflow?.output_data) return null;
+    if (!selectedWorkflow?.output_data && selectedWorkflowDetails.length === 0) return null;
 
-    const nodes = Object.entries(selectedWorkflow.output_data).map(([key, value]: [string, any]) => ({
-      id: key,
-      name: value.name || key,
-      type: value.type,
-      index: value.index || 0,
-      input_data: value.input_data,
-      output: value.output,
-    }));
+    const outputEntries = selectedWorkflow?.output_data && typeof selectedWorkflow.output_data === 'object'
+      ? Object.entries(selectedWorkflow.output_data as Record<string, any>)
+      : [];
 
-    // 按 index 排序
+    const detailMap = new Map(selectedWorkflowDetails.map((item) => [item.node_id, item]));
+    const nodes = outputEntries.map(([key, value]: [string, any]) => {
+      const detail = detailMap.get(key);
+      const outputStatus = getNodeStatus(value.output);
+      const nodeStatus = normalizeNodeStatus(detail?.status || outputStatus);
+      const errorMessage = detail?.error_message || getNodeErrorMessage(value.output);
+
+      return {
+        id: key,
+        name: value.name || detail?.node_name || key,
+        type: value.type || detail?.node_type,
+        index: value.index ?? detail?.node_index ?? 0,
+        input_data: value.input_data ?? detail?.input_data,
+        output: value.output ?? detail?.output_data,
+        status: nodeStatus,
+        error_message: errorMessage,
+      };
+    });
+
+    selectedWorkflowDetails.forEach((detail) => {
+      if (nodes.some((node) => node.id === detail.node_id)) {
+        return;
+      }
+
+      nodes.push({
+        id: detail.node_id,
+        name: detail.node_name || detail.node_id,
+        type: detail.node_type,
+        index: detail.node_index ?? 0,
+        input_data: detail.input_data,
+        output: detail.output_data,
+        status: normalizeNodeStatus(detail.status),
+        error_message: detail.error_message || '',
+      });
+    });
+
     nodes.sort((a, b) => a.index - b.index);
 
     return (
@@ -320,16 +418,24 @@ const StudioLogsPage: React.FC = () => {
           const executionLabel = t('studio.logs.executionProcess');
           const executionPanelKey = `${node.id}-execution-process`;
           const isExecutionExpanded = expandedExecutionNodes.includes(executionPanelKey);
+          const isFailed = node.status === 'failed';
 
           return {
-            color: idx === nodes.length - 1 ? 'green' : 'blue',
+            color: isFailed ? 'red' : idx === nodes.length - 1 ? 'green' : 'blue',
             children: (
-              <div className="pb-4">
+              <div className={`pb-4 ${isFailed ? 'rounded-2xl border border-red-200 bg-red-50/60 p-4' : ''}`}>
                 <div className="font-medium text-base mb-2">
                   {node.name}
                   <Tag className="ml-2" color="blue">{node.type}</Tag>
+                  <span className="ml-2">{renderNodeStatusTag(node.status)}</span>
                 </div>
                 <div className="space-y-3">
+                  {isFailed && node.error_message && (
+                    <div className="rounded-2xl border border-red-200 bg-red-100/70 px-4 py-3">
+                      <div className="text-sm font-semibold text-red-600">{t('studio.logs.errorInfo')}</div>
+                      <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-red-500">{node.error_message}</div>
+                    </div>
+                  )}
                   <div>
                     <div className="text-gray-500 text-sm mb-1">{t('studio.logs.inputData')}:</div>
                     {renderJsonData(node.input_data)}
@@ -551,9 +657,19 @@ const StudioLogsPage: React.FC = () => {
           ? t('studio.logs.table.statusSuccess')
           : (status === 'failed' || status === 'fail')
             ? t('studio.logs.table.statusFailed')
-            : t('studio.logs.table.statusRunning');
+            : status === 'interrupted'
+              ? t('studio.logs.table.statusInterrupted')
+              : status === 'interrupt_requested'
+                ? t('studio.logs.table.statusInterruptRequested')
+                : t('studio.logs.table.statusRunning');
 
-        const statusColor = status === 'success' ? 'green' : (status === 'failed' || status === 'fail') ? 'red' : 'orange';
+        const statusColor = status === 'success'
+          ? 'green'
+          : (status === 'failed' || status === 'fail')
+            ? 'red'
+            : status === 'interrupted'
+              ? 'default'
+              : 'orange';
 
         if ((status === 'failed' || status === 'fail') && record.error_log) {
           return (

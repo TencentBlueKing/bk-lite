@@ -119,6 +119,7 @@ export interface LogSearchResponse {
 
 export interface WorkflowTaskParams {
   bot_id: string | number;
+  execution_id?: string;
   start_time?: string;
   end_time?: string;
   page?: number;

@@ -10,6 +10,7 @@ import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { saveAuthToken } from '@/utils/crossDomainAuth';
 import SigninClient from '@/app/(core)/auth/signin/SigninClient';
+import { AUTH_POPUP_SUCCESS_MESSAGE } from '@/utils/authRedirect';
 import {
   createSessionExpiredRequestError,
   emitSessionExpired,
@@ -251,6 +252,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [isCurrentAuthPath]);
 
+  useEffect(() => {
+    const handleAuthPopupMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+
+      if (event.data?.type !== AUTH_POPUP_SUCCESS_MESSAGE) {
+        return;
+      }
+
+      handleReloginSuccess();
+    };
+
+    window.addEventListener('message', handleAuthPopupMessage);
+
+    return () => {
+      window.removeEventListener('message', handleAuthPopupMessage);
+    };
+  }, []);
+
   // Process session changes
   useEffect(() => {
     // If session is loading or auto signing in, do nothing
@@ -337,19 +358,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {sessionExpiredOpen && !isCurrentAuthPath && (
         <div className="fixed inset-0 z-1200 flex items-center justify-center bg-black/35 px-4">
           <div className="w-full max-w-130 rounded-2xl border border-(--color-border-1) bg-(--color-bg-1) p-6 shadow-2xl">
-            <div className="mb-6 text-center">
-              <div className="text-lg font-semibold text-(--color-text-1)">
-                {t('common.sessionExpiredTitle')}
-              </div>
-              <div className="mt-2 text-sm text-(--color-text-3)">
-                {t('common.sessionExpiredDescription')}
+            <div className="mb-6">
+              <div className="mx-auto max-w-md text-center">
+                <div className="text-[16px] font-semibold leading-none text-(--color-text-1)">
+                  {t('common.sessionExpiredTitle')}
+                </div>
+
+                <div className="mx-auto mt-2 max-w-sm text-[12px] leading-5 text-(--color-text-3)">
+                  {t('common.sessionExpiredDescription')}
+                </div>
+
+                <div className="mx-auto mt-3 h-px w-12 bg-linear-to-r from-transparent via-[#D9E2EC] to-transparent" />
               </div>
             </div>
             <SigninClient
               mode="modal"
               signinErrors={modalSigninErrors}
               onAuthenticated={handleReloginSuccess}
-              showThirdPartyLogin={false}
+              showThirdPartyLogin
             />
           </div>
         </div>

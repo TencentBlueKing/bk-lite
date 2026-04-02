@@ -1,20 +1,17 @@
 'use client';
 
 import React from 'react';
-import { Drawer, Form, Input, Button, Typography } from 'antd';
+import { Alert, Button, Drawer, Form, Input, Typography } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { NodeExecutionResult } from './hooks/useNodeExecution';
 
 const { TextArea } = Input;
 const { Text } = Typography;
 
 interface ExecuteNodeDrawerProps {
   visible: boolean;
-  nodeId: string;
+  nodeName: string;
   message: string;
-  result: NodeExecutionResult | null;
   loading: boolean;
-  streamingContent: string;
   onMessageChange: (message: string) => void;
   onExecute: () => void;
   onClose: () => void;
@@ -23,11 +20,9 @@ interface ExecuteNodeDrawerProps {
 
 const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
   visible,
-  nodeId,
+  nodeName,
   message,
-  result,
   loading,
-  streamingContent,
   onMessageChange,
   onExecute,
   onClose,
@@ -66,7 +61,7 @@ const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
       <div>
         <div className="mb-4">
           <Text type="secondary">
-            {t('chatflow.nodeConfig.nodeName')}: {nodeId}
+            {t('chatflow.nodeConfig.nodeName')}: {nodeName}
           </Text>
         </div>
 
@@ -84,13 +79,15 @@ const ExecuteNodeDrawer: React.FC<ExecuteNodeDrawerProps> = ({
           </Form.Item>
         </Form>
 
-        <div className="rounded-2xl border border-(--color-border-1) bg-(--color-fill-1) p-4 text-sm leading-6 text-(--color-text-3)">
-          {loading
-            ? t('chatflow.preview.executingHint')
-            : (result?.error || result?.content || streamingContent)
-              ? t('chatflow.preview.executionTransferred')
-              : t('chatflow.preview.executeDrawerHint')}
-        </div>
+        <Alert
+          showIcon
+          type={loading ? 'success' : 'info'}
+          message={
+            <span className="text-xs leading-5">
+              {loading ? t('chatflow.preview.executingHint') : t('chatflow.preview.executeDrawerHint')}
+            </span>
+          }
+        />
       </div>
     </Drawer>
   );

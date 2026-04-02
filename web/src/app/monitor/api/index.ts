@@ -19,7 +19,7 @@ const useMonitorApi = () => {
   ) => {
     return await get(`/monitor/api/metrics/`, {
       params,
-      ...config,
+      ...config
     });
   };
 
@@ -29,7 +29,7 @@ const useMonitorApi = () => {
   ) => {
     return await get(`/monitor/api/metrics_group/`, {
       params,
-      ...config,
+      ...config
     });
   };
 
@@ -38,11 +38,18 @@ const useMonitorApi = () => {
       name?: string;
       add_instance_count?: boolean;
       add_policy_count?: boolean;
+      include_invisible?: boolean; // 是否包含不可见对象，默认 false
     } = {}
   ) => {
-    return await get('/monitor/api/monitor_object/', {
-      params,
+    const { include_invisible, ...queryParams } = params;
+    const result = await get('/monitor/api/monitor_object/', {
+      params: queryParams
     });
+    // 默认过滤掉不可见对象（is_visible=false）
+    if (!include_invisible && Array.isArray(result)) {
+      return result.filter((item: any) => item.is_visible !== false);
+    }
+    return result;
   };
 
   const getMonitorAlert = async (
@@ -61,7 +68,7 @@ const useMonitorApi = () => {
   ) => {
     return await get(`/monitor/api/monitor_alert/`, {
       params,
-      ...config,
+      ...config
     });
   };
 
@@ -72,7 +79,7 @@ const useMonitorApi = () => {
   ) => {
     return await get(`/monitor/api/monitor_instance/${objectId}/list/`, {
       params,
-      ...config,
+      ...config
     });
   };
 
@@ -85,7 +92,7 @@ const useMonitorApi = () => {
   ) => {
     return await get('/monitor/api/monitor_plugin/', {
       params,
-      ...config,
+      ...config
     });
   };
 
@@ -115,7 +122,7 @@ const useMonitorApi = () => {
     getMonitorPlugin,
     patchMonitorAlert,
     getAllUsers,
-    getUnitList,
+    getUnitList
   };
 };
 

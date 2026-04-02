@@ -94,9 +94,7 @@ class AnsibleExecutor(object):
         """
         if not inventory and not inventory_content:
             if not host_credentials:
-                raise ValueError(
-                    "inventory or inventory_content or host_credentials is required"
-                )
+                raise ValueError("inventory or inventory_content or host_credentials is required")
 
         request_data = {
             "inventory": inventory,
@@ -112,9 +110,7 @@ class AnsibleExecutor(object):
             "task_id": task_id or uuid.uuid4().hex,
             "execute_timeout": timeout,
         }
-        return_data = self.adhoc_client.run(
-            self.instance_id, request_data, _timeout=timeout
-        )
+        return_data = self.adhoc_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
     def playbook(
@@ -127,6 +123,8 @@ class AnsibleExecutor(object):
         host_credentials=None,
         private_key_content=None,
         private_key_passphrase=None,
+        files=None,
+        file_distribution=None,
         callback=None,
         task_id=None,
         timeout=600,
@@ -173,9 +171,7 @@ class AnsibleExecutor(object):
             raise ValueError("playbook_path or playbook_content is required")
         if not inventory and not inventory_content:
             if not host_credentials:
-                raise ValueError(
-                    "inventory or inventory_content or host_credentials is required"
-                )
+                raise ValueError("inventory or inventory_content or host_credentials is required")
 
         request_data = {
             "playbook_path": playbook_path,
@@ -185,14 +181,14 @@ class AnsibleExecutor(object):
             "host_credentials": host_credentials or [],
             "private_key_content": private_key_content,
             "private_key_passphrase": private_key_passphrase,
+            "files": files or [],
+            "file_distribution": file_distribution or {},
             "extra_vars": extra_vars or {},
             "callback": callback or {},
             "task_id": task_id or uuid.uuid4().hex,
             "execute_timeout": timeout,
         }
-        return_data = self.playbook_client.run(
-            self.instance_id, request_data, _timeout=timeout
-        )
+        return_data = self.playbook_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
     def task_query(self, task_id, timeout=10):

@@ -1,6 +1,16 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import { Spin, Input, Button, Tag, message, Empty, Dropdown, Menu, Modal } from 'antd';
+import {
+  Spin,
+  Input,
+  Button,
+  Tag,
+  message,
+  Empty,
+  Dropdown,
+  Menu,
+  Modal
+} from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
@@ -34,9 +44,9 @@ const Integration = () => {
   const { getMonitorObject, getMonitorPlugin } = useMonitorApi();
   const {
     updateMonitorObject,
-    createCustomApiTemplate,
-    updateCustomApiTemplate,
-    deleteCustomApiTemplate
+    createCustomTemplate,
+    updateCustomTemplate,
+    deleteCustomTemplate
   } = useIntegrationApi();
   const { t } = useTranslation();
   const router = useRouter();
@@ -236,10 +246,16 @@ const Integration = () => {
   };
 
   const openCreateTemplateModal = (app?: any) => {
+    const selectedObject = objects.find(
+      (item) => String(item.id) === String(objectId)
+    );
+
     createTemplateRef.current?.showModal({
       title: app ? t('common.edit') : t('common.add'),
       type: app ? 'edit' : 'add',
-      form: app || {}
+      form:
+        app ||
+        (selectedObject ? { parent_monitor_object: selectedObject.id } : {})
     });
   };
 
@@ -249,17 +265,17 @@ const Integration = () => {
     id?: number
   ) => {
     if (mode === 'edit' && id) {
-      await updateCustomApiTemplate(id, values);
+      await updateCustomTemplate(id, values);
       message.success(t('common.updateSuccess'));
     } else {
-      await createCustomApiTemplate(values);
+      await createCustomTemplate(values);
       message.success(t('common.addSuccess'));
     }
     onTxtClear();
   };
 
   const handleDeleteTemplate = async (id: number) => {
-    await deleteCustomApiTemplate(id);
+    await deleteCustomTemplate(id);
     message.success(t('common.deleteSuccess'));
     onTxtClear();
   };
@@ -309,7 +325,7 @@ const Integration = () => {
     <Menu onClick={(e) => e.domEvent.stopPropagation()}>
       <Menu.Item className="!p-0" onClick={() => openCreateTemplateModal(app)}>
         <Button type="text" className="w-full !justify-start">
-          编辑
+          {t('common.edit')}
         </Button>
       </Menu.Item>
       <Menu.Item
@@ -317,7 +333,7 @@ const Integration = () => {
         onClick={() => handleDeleteTemplateConfirm(app.id as number)}
       >
         <Button type="text" className="w-full !justify-start">
-          删除
+          {t('common.delete')}
         </Button>
       </Menu.Item>
     </Menu>
@@ -371,7 +387,7 @@ const Integration = () => {
           </div>
           <Permission requiredPermissions={['Setting']}>
             <Button type="primary" onClick={() => openCreateTemplateModal()}>
-              新建模版
+              {t('monitor.integrations.createTemplate')}
             </Button>
           </Permission>
         </div>
@@ -418,7 +434,11 @@ const Integration = () => {
                           <Tag className="mt-[4px]">
                             {app.collect_type || '--'}
                           </Tag>
-                          {app.is_custom_api && <Tag className="mt-[4px] ml-[6px]">自建</Tag>}
+                          {app.is_custom && (
+                            <Tag className="mt-[4px] ml-[6px]">
+                              {t('monitor.integrations.selfBuilt')}
+                            </Tag>
+                          )}
                         </div>
                       </div>
                       <p
@@ -427,8 +447,11 @@ const Integration = () => {
                       >
                         {app.display_description || '--'}
                       </p>
-                      {app.is_custom_api && (
-                        <div className="absolute top-[12px] right-[12px]" onClick={(e) => e.stopPropagation()}>
+                      {app.is_custom && (
+                        <div
+                          className="absolute top-[12px] right-[12px]"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <Dropdown
                             dropdownRender={() => renderTemplateActionMenu(app)}
                             placement="bottomRight"
@@ -465,7 +488,11 @@ const Integration = () => {
         </Spin>
       </div>
       <ImportModal ref={importRef} onSuccess={onTxtClear} />
-      <CreateTemplateModal ref={createTemplateRef} objects={objects} onSubmit={handleTemplateSubmit} />
+      <CreateTemplateModal
+        ref={createTemplateRef}
+        objects={objects}
+        onSubmit={handleTemplateSubmit}
+      />
     </div>
   );
 };

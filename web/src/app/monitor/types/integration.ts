@@ -120,9 +120,10 @@ export interface InstNameConfig {
 
 export interface PluginItem {
   name: string;
+  plugin_id?: number;
   template_id?: string;
   template_type?: string;
-  is_custom_api?: boolean;
+  is_custom?: boolean;
   display_description?: string;
   collector: string;
   collect_type: string;
@@ -132,7 +133,7 @@ export interface PluginItem {
   config_ids?: string[];
 }
 
-export interface PushAccessMetricItem {
+export interface TemplateAccessGuideMetricItem {
   name: string;
   display_name?: string;
   description?: string;
@@ -141,28 +142,19 @@ export interface PushAccessMetricItem {
   dimensions?: any[];
 }
 
-export interface PushAccessDoc {
+export interface TemplateAccessGuideDoc {
   template_id: string;
   display_name: string;
   plugin_id: number;
   description: string;
-  team: number;
-  api_secret: string;
-  api_secret_exists: boolean;
-  metrics: PushAccessMetricItem[];
-  instances: PushAccessInstanceItem[];
-  instance_id_keys: string[];
-  monitor_object_ids: number[];
+  metrics: TemplateAccessGuideMetricItem[];
+  organization_id: number;
+  cloud_region_id: number;
+  monitor_object_id: number;
+  instance_type: string;
+  monitor_object_name: string;
   endpoint: string;
-  payload_example: Record<string, any>;
-}
-
-export interface PushAccessInstanceItem {
-  instance_id: string;
-  instance_name: string;
-  raw_instance?: Record<string, string>;
-  organizations?: Array<string | number>;
-  [key: string]: any;
+  line_protocol_example: string;
 }
 
 export interface ConfigItem {
