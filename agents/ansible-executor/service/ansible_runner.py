@@ -1,16 +1,19 @@
 import asyncio
+import importlib
 import json
 import logging
 import os
 import re
 import shlex
 import shutil
+import ssl
 import stat
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
 from service.runtime import current_entrypoint_command
 
 logger = logging.getLogger(__name__)
@@ -46,6 +49,8 @@ class PlaybookRequest:
     private_key_content: str | None = None
     private_key_passphrase: str | None = None
     host_credentials: list[dict[str, Any]] | None = None
+    files: list[dict[str, Any]] | None = None
+    file_distribution: dict[str, Any] | None = None
 
 
 def _validate_host_credentials(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -117,7 +122,14 @@ def to_playbook_request(payload: dict[str, Any]) -> PlaybookRequest:
         raise ValueError("playbook_content must be string")
     if inventory_content is not None and not isinstance(inventory_content, str):
         raise ValueError("inventory_content must be string")
-    if not playbook_path and not playbook_content:
+    files = payload.get("files") or []
+    if not isinstance(files, list):
+        raise ValueError("files must be list")
+    file_distribution = payload.get("file_distribution") or None
+    if file_distribution is not None and not isinstance(file_distribution, dict):
+        raise ValueError("file_distribution must be object")
+
+    if not playbook_path and not playbook_content and not file_distribution:
         raise ValueError("playbook_path or playbook_content is required")
     if not inventory and not inventory_content and not host_credentials:
         raise ValueError("inventory or inventory_content or host_credentials is required")
@@ -151,7 +163,92 @@ def to_playbook_request(payload: dict[str, Any]) -> PlaybookRequest:
         private_key_content=private_key_content,
         private_key_passphrase=private_key_passphrase,
         host_credentials=host_credentials,
+        files=files,
+        file_distribution=file_distribution,
     )
+
+
+async def download_object_to_workspace(workspace: Path, bucket_name: str, file_item: dict[str, Any]) -> str:
+    file_key = str(file_item.get("file_key", "")).strip()
+    file_name = str(file_item.get("name", "")).strip() or Path(file_key).name
+    if not file_key:
+        raise ValueError("file_key is required")
+    if not file_name:
+        raise ValueError("file name is required")
+
+    nats_client_module = importlib.import_module("nats.aio.client")
+    nc = nats_client_module.Client()
+
+    connect_kwargs: dict[str, Any] = {
+        "servers": [item.strip() for item in os.getenv("NATS_SERVERS", "").split(",") if item.strip()],
+        "connect_timeout": int(os.getenv("NATS_CONNECT_TIMEOUT", "5")),
+        "name": "ansible-executor-object-store",
+    }
+    if not connect_kwargs["servers"]:
+        raise ValueError("NATS_SERVERS is required for object store download")
+
+    nats_username = os.getenv("NATS_USERNAME", "")
+    nats_password = os.getenv("NATS_PASSWORD", "")
+    if nats_username:
+        connect_kwargs["user"] = nats_username
+    if nats_password:
+        connect_kwargs["password"] = nats_password
+
+    if os.getenv("NATS_PROTOCOL", "nats").lower() == "tls":
+        tls_context = ssl.create_default_context()
+        nats_tls_ca_file = os.getenv("NATS_TLS_CA_FILE", "")
+        if nats_tls_ca_file:
+            tls_context.load_verify_locations(cafile=nats_tls_ca_file)
+        connect_kwargs["tls"] = tls_context
+
+    await nc.connect(**connect_kwargs)
+    try:
+        js = nc.jetstream(timeout=120)
+        object_store = await js.object_store(bucket_name)
+        destination = workspace / file_name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with destination.open("wb") as target_file:
+            await object_store.get(file_key, writeinto=target_file)
+        return str(destination)
+    finally:
+        await nc.close()
+
+
+def _normalize_windows_target_path(target_path: str) -> str:
+    return str(target_path).replace("\\", "/").rstrip("/")
+
+
+def _join_windows_target_path(target_path: str, file_name: str) -> str:
+    return f"{_normalize_windows_target_path(target_path)}/{file_name}"
+
+
+def _build_windows_file_distribution_playbook(downloaded_files: list[dict[str, Any]], target_path: str, overwrite: bool) -> str:
+    normalized_target_path = _normalize_windows_target_path(target_path)
+    tasks = []
+    for file_item in downloaded_files:
+        file_name = str(file_item.get("name", "")).strip()
+        local_path = str(file_item.get("local_path", "")).strip()
+        if not file_name or not local_path:
+            raise ValueError("downloaded file item requires name and local_path")
+        tasks.append(
+            {
+                "name": f"Copy {file_name} to Windows host",
+                "ansible.windows.win_copy": {
+                    "src": local_path,
+                    "dest": _join_windows_target_path(normalized_target_path, file_name),
+                    "force": bool(overwrite),
+                },
+            }
+        )
+
+    playbook = [
+        {
+            "hosts": "all",
+            "gather_facts": False,
+            "tasks": tasks,
+        }
+    ]
+    return yaml.safe_dump(playbook, allow_unicode=True, sort_keys=False)
 
 
 def _materialize_private_key(workspace: Path, key_content: str) -> str:
@@ -375,7 +472,9 @@ def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
     return cmd, workspace
 
 
-def prepare_playbook_execution(payload: PlaybookRequest) -> tuple[list[str], Path]:
+async def prepare_playbook_execution(
+    payload: PlaybookRequest,
+) -> tuple[list[str], Path]:
     workspace = create_task_workspace(payload.task_id)
     extra_vars = dict(payload.extra_vars or {})
 
@@ -386,9 +485,25 @@ def prepare_playbook_execution(payload: PlaybookRequest) -> tuple[list[str], Pat
             extra_vars.setdefault("ansible_ssh_passphrase", payload.private_key_passphrase)
 
     playbook_path = payload.playbook_path
-    if payload.playbook_content:
+    playbook_content = payload.playbook_content
+    if payload.file_distribution:
+        bucket_name = str(payload.file_distribution.get("bucket_name", "")).strip()
+        target_path = str(payload.file_distribution.get("target_path", "")).strip()
+        overwrite = bool(payload.file_distribution.get("overwrite", True))
+        if not bucket_name:
+            raise ValueError("file_distribution.bucket_name is required")
+        if not target_path:
+            raise ValueError("file_distribution.target_path is required")
+
+        downloaded_files: list[dict[str, Any]] = []
+        for file_item in payload.files or []:
+            local_path = await download_object_to_workspace(workspace, bucket_name, file_item)
+            downloaded_files.append({**file_item, "local_path": local_path})
+        playbook_content = _build_windows_file_distribution_playbook(downloaded_files, target_path, overwrite)
+
+    if playbook_content:
         playbook_file = workspace / "playbook.yml"
-        playbook_file.write_text(payload.playbook_content, encoding="utf-8")
+        playbook_file.write_text(playbook_content, encoding="utf-8")
         playbook_path = str(playbook_file)
 
     inventory_value = payload.inventory
@@ -415,6 +530,8 @@ def prepare_playbook_execution(payload: PlaybookRequest) -> tuple[list[str], Pat
             private_key_content=None,
             private_key_passphrase=None,
             host_credentials=None,
+            files=None,
+            file_distribution=None,
         )
     )
     return cmd, workspace

@@ -121,6 +121,17 @@ class ExecutionTaskBaseService(object):
         return target.driver == ExecutorDriver.ANSIBLE
 
     @classmethod
+    def _get_manual_targets(cls, target_list: list) -> list:
+        target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
+        if not target_ids:
+            return []
+        return list(Target.objects.filter(id__in=target_ids))
+
+    @classmethod
+    def _contains_windows_manual_target(cls, target_list: list) -> bool:
+        return any(target.os_type == OSType.WINDOWS for target in cls._get_manual_targets(target_list))
+
+    @classmethod
     def _execute_script_via_ansible(cls, execution: JobExecution, target_list: list, script_content: str, script_type: str) -> None:
         """
         通过 Ansible 执行脚本（异步方式）
