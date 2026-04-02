@@ -1200,10 +1200,14 @@ class ChatFlowEngine:
         """
         try:
             task_result = self._ensure_execution_result_started(input_data, start_node_type)
+            interrupted = isinstance(result, dict) and result.get("interrupted")
+            if task_result.status == WorkFlowTaskStatus.INTERRUPTED and not interrupted:
+                logger.info("跳过执行结果覆盖，执行已中断: execution_id=%s", self.execution_id)
+                return
+
             output_data = self._build_execution_output_data()
 
             # 确定状态
-            interrupted = isinstance(result, dict) and result.get("interrupted")
             status = WorkFlowTaskStatus.INTERRUPTED if interrupted else (WorkFlowTaskStatus.SUCCESS if success else WorkFlowTaskStatus.FAIL)
 
             # 准备输入数据字符串（记录第一个输入）
