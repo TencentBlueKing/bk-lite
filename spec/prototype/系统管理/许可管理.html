@@ -1,0 +1,3519 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>许可管理 - BlueKing Lite</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            color: #1f2329;
+            line-height: 1.5;
+        }
+
+            /* ====== 系统管理顶部栏样式同步 ====== */
+            .topbar {
+                height: 54px;
+                border-bottom: 1px solid #e4eaf2;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0 16px;
+                position: relative;
+                background: #fff;
+                z-index: 100;
+            }
+            .logo-area {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                position: relative;
+            }
+            .logo {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .logo-icon {
+                width: 34px;
+                height: 30px;
+                background: linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            .switch-app {
+                height: 30px;
+                min-width: 48px;
+                border: 1px solid #dbe3ef;
+                background: #f6f8fc;
+                border-radius: 10px;
+                color: #6a7488;
+                font-size: 12px;
+                cursor: pointer;
+            }
+            .switch-app.open {
+                border-color: #b7d1ff;
+                background: #edf4ff;
+                color: #3a84ff;
+            }
+            .app-launcher {
+                position: absolute;
+                left: -16px;
+                top: 42px;
+                width: 416px;
+                border: 1px solid #e4eaf2;
+                border-radius: 10px;
+                background: #fff;
+                box-shadow: 0 10px 26px rgba(31, 56, 95, 0.16);
+                padding: 12px 10px 8px;
+                display: none;
+                z-index: 40;
+            }
+            .app-launcher.show {
+                display: block;
+            }
+            .app-launcher-title {
+                margin: 0 0 10px;
+                font-size: 14px;
+                color: #313238;
+                font-weight: 600;
+            }
+            .app-launcher-grid {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 10px;
+                max-height: 344px;
+                overflow: auto;
+                padding-right: 2px;
+            }
+            .app-launcher-grid::-webkit-scrollbar {
+                width: 6px;
+            }
+            .app-launcher-grid::-webkit-scrollbar-thumb {
+                background: #d7deea;
+                border-radius: 4px;
+            }
+            .launcher-item {
+                border: 1px solid #eef2f7;
+                border-radius: 6px;
+                background: #fafbfd;
+                min-height: 70px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                color: #7a869b;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+            .launcher-item:hover {
+                border-color: #b7d1ff;
+                background: #f3f8ff;
+                color: #3a84ff;
+            }
+            .launcher-icon {
+                width: 20px;
+                height: 20px;
+                border-radius: 0;
+                background: transparent;
+                color: #3a84ff;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
+                font-weight: 700;
+            }
+            .launcher-icon-svg {
+                width: 100%;
+                height: 100%;
+                display: block;
+            }
+            .launcher-name {
+                font-size: 12px;
+                line-height: 1;
+            }
+            .app-launcher-foot {
+                margin-top: 10px;
+                height: 14px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .app-launcher-scroll-hint {
+                width: 70px;
+                height: 8px;
+                border-radius: 10px;
+                background: #eceff4;
+            }
+            .main-nav {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                transform: translate(-50%, -50%);
+                display: flex;
+                gap: 8px;
+            }
+            .main-nav .nav-item {
+                border: 0;
+                background: transparent;
+                color: #5e6679;
+                border-radius: 10px;
+                padding: 6px 12px;
+                font-size: 14px;
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+            }
+            .main-nav .nav-item.active {
+                color: #3a84ff;
+                background: #edf4ff;
+            }
+            .top-right {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                color: #717b91;
+            }
+            .avatar {
+                width: 18px;
+                height: 18px;
+                border-radius: 50%;
+                background: #3a84ff;
+                color: #fff;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 11px;
+            }
+            .user {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+            /* ====== END 顶部栏样式同步 ====== */
+    </style>
+</head>
+<body>
+
+    <!-- 统一风格顶部栏 -->
+    <header class="topbar">
+      <div class="logo-area">
+        <div class="logo" style="height:30px;align-items:center;">
+          <div class="logo-icon" style="font-size:18px;width:34px;height:30px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, #0052d9 0%, #3a84ff 50%, #699eff 100%);color:white;border-radius:8px;font-weight:bold;">BK</div>
+        </div>
+        <button class="switch-app">▦ ▼</button>
+        <div class="app-launcher" id="appLauncherPanel">
+          <p class="app-launcher-title">应用列表</p>
+          <div class="app-launcher-grid" id="appLauncherGrid"></div>
+          <div class="app-launcher-foot"><span class="app-launcher-scroll-hint"></span></div>
+        </div>
+      </div>
+
+      <nav class="main-nav" id="mainNav">
+        <button class="nav-item active" data-module="license">◉ 许可</button>
+        <button class="nav-item" data-module="organization">◉ 组织</button>
+        <button class="nav-item" data-module="application">◉ 应用</button>
+        <button class="nav-item" data-module="channel">◉ 通知渠道</button>
+        <button class="nav-item" data-module="security">◉ 安全管理</button>
+        <button class="nav-item" data-module="settings">◉ 设置</button>
+      </nav>
+
+      <div class="top-right">
+        <span class="user"><span class="avatar">A</span>admin ▼</span>
+      </div>
+    </header>
+
+    <!-- 主内容区域 -->
+    <div class="main-container">
+        <div class="content-wrapper">
+            <!-- 页面介绍卡片 -->
+            <div class="intro-card">
+                <div class="intro-content">
+                    <div class="intro-header">
+                        <div class="intro-icon">🔐</div>
+                        <div class="intro-text">
+                            <h1 class="intro-title">许可管理</h1>
+                            <p class="intro-desc">管理运维平台的许可证，包括社区版和标准版许可，配置到期提醒和通知</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 许可证列表 -->
+            <div class="section-card">
+                <div class="section-header">
+                    <div class="section-header-left">
+                        <h2 class="section-title">有效许可列表</h2>
+                        <span class="license-count">共 1 个有效许可</span>
+                    </div>
+                    <div class="section-header-right">
+                        <button class="btn-notification-settings" onclick="toggleNotificationSettings()">
+                            <span class="settings-icon">⚙️</span>
+                            <span>到期提醒设置</span>
+                            <span class="toggle-icon" id="notificationToggleIcon">▼</span>
+                        </button>
+                        <button class="btn-secondary" onclick="showHistoryLicenseDrawer()">历史许可</button>
+                        <button class="btn-primary" onclick="showAddLicenseModal()">
+                            <span class="btn-icon">➕</span>
+                            添加许可
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 到期通知设置折叠区域 -->
+                <div class="notification-settings-panel" id="notificationSettingsPanel">
+                    <div class="notification-settings-content">
+                        <div class="settings-row">
+                            <div class="settings-item">
+                                <div class="settings-label">
+                                    <span class="label-icon">👥</span>
+                                    <span class="label-text">默认通知人员</span>
+                                </div>
+                                <div class="settings-value">
+                                    <div class="user-tags">
+                                        <span class="user-tag">
+                                            <span class="user-avatar">👤</span>
+                                            <span class="user-name">张三</span>
+                                            <span class="user-email">(zhangsan@example.com)</span>
+                                        </span>
+                                        <span class="user-tag">
+                                            <span class="user-avatar">👤</span>
+                                            <span class="user-name">李四</span>
+                                            <span class="user-email">(lisi@example.com)</span>
+                                        </span>
+                                        <span class="more-users">+1人</span>
+                                    </div>
+                                    <button class="btn-edit-users" onclick="editNotification()">
+                                        <span>✏️</span>
+                                        编辑
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <div class="settings-item">
+                                <div class="settings-label">
+                                    <span class="label-icon">⏰</span>
+                                    <span class="label-text">默认提醒时间</span>
+                                </div>
+                                <div class="settings-value">
+                                    <span class="reminder-time-text">到期前 30 天</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-hint">
+                            <span class="hint-icon">💡</span>
+                            <span class="hint-text">系统将在许可到期前按设定天数向通知人员发送邮件提醒，可在"配置提醒"中为单个许可单独设置</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 标准版许可 1 -->
+                <div class="license-item standard-license no-type">
+                    <div class="license-header">
+                        <div class="license-actions">
+                            <button class="action-menu-btn" onclick="toggleActionMenu(event, 1)">
+                                <span class="menu-icon">⋮</span>
+                            </button>
+                            <div class="action-menu" id="actionMenu1">
+                                <div class="menu-item" onclick="configureLicense(1)">
+                                    <span class="menu-item-icon">⚙️</span>
+                                    <span>配置提醒</span>
+                                </div>
+                                <div class="menu-item warning" onclick="disableLicense(1)">
+                                    <span class="menu-item-icon">⏸</span>
+                                    <span>停用</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="license-body">
+                        <div class="license-detail">
+                            <span class="detail-label">有效期：</span>
+                            <span class="detail-value">2025-04-30 至 2026-04-30</span>
+                            <span class="expire-warning">剩余 30 天</span>
+                        </div>
+                        <div class="license-detail">
+                            <span class="detail-label">包含模块：</span>
+                            <div class="module-tags" id="active-modules">
+                                <span class="module-tag">CMDB</span>
+                                <span class="module-tag">监控系统</span>
+                                <span class="module-tag">告警中心</span>
+                                <span class="module-tag">日志系统</span>
+                            </div>
+                        </div>
+                        <div class="license-detail">
+                            <span class="detail-label">到期提醒：</span>
+                            <span class="detail-value">到期前 30 天提醒</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 平台模块版本 -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h2 class="section-title">平台模块</h2>
+                    <span class="module-count" id="moduleCountSummary">已激活模块：4个（共12个）</span>
+                </div>
+                <div class="modules-grid">
+                    <div class="module-card" data-module="CMDB">
+                        <div class="module-header" style="position:relative;">
+                            <div class="module-icon cmdb"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-cmdb"></use></svg></div>
+                            <h3 class="module-title-inline">CMDB</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge standard">标准版</span>
+                            </div>
+                            <span class="module-activated-badge" style="position:absolute;right:0;top:0;display:none;">已激活</span>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">配置管理数据库，管理IT资产和配置项</p>
+                            <div class="module-nodes-info" data-detail-title="节点使用详情-CMDB" style="display:none;color:#3a84ff;font-size:13px;margin-top:4px;font-weight:500;">
+                                已用 <span class="used-nodes">12</span> 节点
+                                <button class="nodes-detail-trigger" type="button" aria-label="查看节点使用详情" title="查看节点使用详情">?</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="module-card" data-module="告警中心">
+                        <div class="module-header" style="position:relative;">
+                            <div class="module-icon alert"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-alarm"></use></svg></div>
+                            <h3 class="module-title-inline">告警中心</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge standard">标准版</span>
+                            </div>
+                            <span class="module-activated-badge" style="position:absolute;right:0;top:0;display:none;">已激活</span>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">统一管理和处理各类系统告警</p>
+                        </div>
+                    </div>
+                    <div class="module-card" data-module="监控系统">
+                        <div class="module-header" style="position:relative;">
+                            <div class="module-icon monitor"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-monitor"></use></svg></div>
+                            <h3 class="module-title-inline">监控系统</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge standard">标准版</span>
+                            </div>
+                            <span class="module-activated-badge" style="position:absolute;right:0;top:0;display:none;">已激活</span>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">实时监控系统运行状态和性能指标</p>
+                            <div class="module-nodes-info" style="display:none;color:#3a84ff;font-size:13px;margin-top:4px;font-weight:500;">
+                                已用 <span class="used-nodes">12</span> 节点
+                                <button class="nodes-detail-trigger" type="button" aria-label="查看节点使用详情" title="查看节点使用详情">?</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="module-card" data-force-inactive="true">
+                        <div class="module-header">
+                            <div class="module-icon alert"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-alarm"></use></svg></div>
+                            <h3 class="module-title-inline">告警中心</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge standard">标准版</span>
+                            </div>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">统一管理和处理各类系统告警</p>
+                        </div>
+                    </div>
+                    <div class="module-card" data-module="日志系统">
+                        <div class="module-header" style="position:relative;">
+                            <div class="module-icon log"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-rizhi2"></use></svg></div>
+                            <h3 class="module-title-inline">日志系统</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge standard">标准版</span>
+                            </div>
+                            <span class="module-activated-badge" style="position:absolute;right:0;top:0;display:none;">已激活</span>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">集中收集、存储和分析系统日志</p>
+                            <div class="module-memory-info" style="display:none;color:#3a84ff;font-size:13px;margin-top:4px;font-weight:500;">已使用 128 GB 存储</div>
+                        </div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-header">
+                            <div class="module-icon performance"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-ops-analysis"></use></svg></div>
+                            <h3 class="module-title-inline">性能分析</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge standard">标准版</span>
+                            </div>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">深度分析应用性能和性能瓶颈</p>
+                        </div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-header">
+                            <div class="module-icon workflow"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-job"></use></svg></div>
+                            <h3 class="module-title-inline">流程引擎</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge community">社区版</span>
+                            </div>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">自动化运维流程和任务编排</p>
+                        </div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-header">
+                            <div class="module-icon system"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-system-manager"></use></svg></div>
+                            <h3 class="module-title-inline">系统管理</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge community">社区版</span>
+                            </div>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">统一管理系统配置、权限和用户</p>
+                        </div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-header">
+                            <div class="module-icon analysis"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-ops-analysis"></use></svg></div>
+                            <h3 class="module-title-inline">运营分析</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge community">社区版</span>
+                            </div>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">运维数据分析和业务洞察</p>
+                        </div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-header">
+                            <div class="module-icon node"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-node"></use></svg></div>
+                            <h3 class="module-title-inline">节点管理</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge community">社区版</span>
+                            </div>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">统一管理和监控所有节点资源</p>
+                        </div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-header">
+                            <div class="module-icon pilot"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-opspilot"></use></svg></div>
+                            <h3 class="module-title-inline">OpsPilot</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge community">社区版</span>
+                            </div>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">AI 驱动的智能运维助手</p>
+                        </div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-header">
+                            <div class="module-icon console"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-ops-console"></use></svg></div>
+                            <h3 class="module-title-inline">控制台</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge community">社区版</span>
+                            </div>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">统一运维操作控制中心</p>
+                        </div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-header">
+                            <div class="module-icon algorithm"><svg class="module-icon-svg" aria-hidden="true"><use xlink:href="#icon-moxingguanli1"></use></svg></div>
+                            <h3 class="module-title-inline">算法中心</h3>
+                            <div class="module-version-info">
+                                <span class="module-version-badge community">社区版</span>
+                            </div>
+                        </div>
+                        <div class="module-info">
+                            <p class="module-desc">智能算法和模型管理平台</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加许可弹窗 -->
+    <div id="addLicenseModal" class="modal">
+        <div class="modal-overlay" onclick="closeAddLicenseModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">添加许可</h3>
+                <button class="modal-close" onclick="closeAddLicenseModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">注册码</label>
+                    <div class="registration-code-box">
+                        <div class="code-display" id="registrationCode">
+                            BKLITE-2024-A3F9-B8E1-C2D4-7K9M
+                        </div>
+                        <button class="btn-copy" onclick="copyRegistrationCode()">
+                            <span class="copy-icon">📋</span>
+                            复制
+                        </button>
+                    </div>
+                    <p class="form-hint">请将此注册码复制到 <a href="https://bklite.ai/" target="_blank" class="hint-link">BKcloud</a>，申请并获取许可码</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">许可码</label>
+                    <textarea 
+                        id="licenseKey" 
+                        class="form-textarea" 
+                        placeholder="请输入申请获取的完整许可码"
+                        rows="3"
+                    ></textarea>
+                    <p class="form-hint">请输入完整的许可码，系统将自动验证并激活</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeAddLicenseModal()">取消</button>
+                <button class="btn-primary" onclick="confirmAddLicense()">确认添加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 配置提醒弹窗 -->
+    <div id="configModal" class="modal">
+        <div class="modal-overlay" onclick="closeConfigModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">配置到期提醒</h3>
+                <button class="modal-close" onclick="closeConfigModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">提醒时间</label>
+                    <div class="input-group">
+                        <span class="input-prefix">到期前</span>
+                        <input type="number" id="reminderDays" class="form-input" value="30" min="1" max="365">
+                        <span class="input-suffix">天提醒</span>
+                    </div>
+                    <p class="form-hint">系统将在许可到期前指定天数发送邮件提醒</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeConfigModal()">取消</button>
+                <button class="btn-primary" onclick="confirmConfig()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑通知人员弹窗 -->
+    <div id="notificationModal" class="modal">
+        <div class="modal-overlay" onclick="closeNotificationModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">编辑通知人员</h3>
+                <button class="modal-close" onclick="closeNotificationModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">通知人员</label>
+                    <div class="selected-users">
+                        <span class="selected-user-tag">
+                            张三
+                            <button class="remove-user">✕</button>
+                        </span>
+                        <span class="selected-user-tag">
+                            李四
+                            <button class="remove-user">✕</button>
+                        </span>
+                        <span class="selected-user-tag">
+                            王五
+                            <button class="remove-user">✕</button>
+                        </span>
+                    </div>
+                    <button class="btn-add-user">
+                        <span>➕</span>
+                        添加人员
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeNotificationModal()">取消</button>
+                <button class="btn-primary" onclick="confirmNotification()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 历史许可抽屉 -->
+    <div id="historyLicenseDrawer" class="history-drawer-wrapper">
+        <div class="history-drawer-mask" onclick="closeHistoryLicenseDrawer()"></div>
+        <div class="history-drawer-panel">
+            <div class="history-drawer-header">
+                <h3 class="history-drawer-title">历史许可</h3>
+                <button class="history-drawer-close" onclick="closeHistoryLicenseDrawer()">✕</button>
+            </div>
+            <div class="history-drawer-body">
+                <div class="history-license-card">
+                    <div class="history-license-top">
+                        <div class="history-badge-group">
+                            <span class="history-license-badge standard">⭐ 标准版</span>
+                            <span class="history-license-status expired">已过期</span>
+                        </div>
+                        <span class="history-license-op">2024-01-10 停用</span>
+                    </div>
+                    <div class="history-license-row">
+                        <span class="history-row-label">有效期：</span>
+                        <span class="history-row-value">2023-01-10 至 2024-01-10</span>
+                    </div>
+                    <div class="history-license-row">
+                        <span class="history-row-label">包含模块：</span>
+                        <div class="history-tag-group">
+                            <span class="history-tag">CMDB</span>
+                            <span class="history-tag">监控系统</span>
+                        </div>
+                    </div>
+                    <div class="history-license-row">
+                        <span class="history-row-label">停用原因：</span>
+                        <span class="history-row-value">许可到期</span>
+                    </div>
+                </div>
+
+                <div class="history-license-card">
+                    <div class="history-license-top">
+                        <div class="history-badge-group">
+                            <span class="history-license-badge standard">⭐ 标准版</span>
+                            <span class="history-license-status manual">手动停用</span>
+                        </div>
+                        <span class="history-license-op">2023-11-20 停用</span>
+                    </div>
+                    <div class="history-license-row">
+                        <span class="history-row-label">有效期：</span>
+                        <span class="history-row-value">2023-05-15 至 2024-05-15</span>
+                    </div>
+                    <div class="history-license-row">
+                        <span class="history-row-label">包含模块：</span>
+                        <div class="history-tag-group">
+                            <span class="history-tag">日志系统</span>
+                            <span class="history-tag">性能分析</span>
+                            <span class="history-tag">告警中心</span>
+                        </div>
+                    </div>
+                    <div class="history-license-row">
+                        <span class="history-row-label">停用原因：</span>
+                        <span class="history-row-value">管理员手动停用</span>
+                    </div>
+                </div>
+
+                <div class="history-license-card">
+                    <div class="history-license-top">
+                        <div class="history-badge-group">
+                            <span class="history-license-badge standard">⭐ 标准版</span>
+                            <span class="history-license-status expired">已过期</span>
+                        </div>
+                        <span class="history-license-op">2023-06-01 停用</span>
+                    </div>
+                    <div class="history-license-row">
+                        <span class="history-row-label">有效期：</span>
+                        <span class="history-row-value">2022-06-01 至 2023-06-01</span>
+                    </div>
+                    <div class="history-license-row">
+                        <span class="history-row-label">包含模块：</span>
+                        <div class="history-tag-group">
+                            <span class="history-tag">CMDB</span>
+                            <span class="history-tag">监控系统</span>
+                            <span class="history-tag">告警中心</span>
+                            <span class="history-tag">日志系统</span>
+                        </div>
+                    </div>
+                    <div class="history-license-row">
+                        <span class="history-row-label">停用原因：</span>
+                        <span class="history-row-value">许可到期</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 监控节点使用详情抽屉 -->
+    <div id="nodeUsageDrawer" class="node-usage-drawer-wrapper">
+        <div class="node-usage-drawer-mask" onclick="closeNodeUsageDrawer()"></div>
+        <div class="node-usage-drawer-panel" role="dialog" aria-modal="true" aria-label="节点使用详情">
+            <div class="node-usage-drawer-header">
+                <div class="node-usage-title-wrap">
+                    <button class="node-usage-back" type="button" onclick="closeNodeUsageDrawer()">×</button>
+                    <h3 class="node-usage-title" id="nodeUsageTitle">节点使用详情-资产管理</h3>
+                </div>
+            </div>
+            <div class="node-usage-drawer-body">
+                <div class="node-usage-summary-row">
+                    <div class="node-usage-summary-item"><strong>节点数:</strong> 12 / 12</div>
+                    <div class="node-usage-summary-item"><strong>统计时间:</strong> 2026-03-25 16:51:25</div>
+                </div>
+
+                <table class="node-usage-table">
+                    <thead>
+                        <tr>
+                            <th>模型名称</th>
+                            <th>模型ID</th>
+                            <th>使用节点数</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>主机</td><td>host</td><td>4</td></tr>
+                        <tr><td>模块</td><td>module</td><td>3</td></tr>
+                        <tr><td>集群</td><td>set</td><td>2</td></tr>
+                        <tr><td>业务</td><td>biz</td><td>3</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="node-usage-pager">
+                    <span>共4条</span>
+                    <span>每页</span>
+                    <span class="pager-size">10</span>
+                    <span>条</span>
+                    <span class="pager-page active">1</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* 主内容区域 */
+        .main-container {
+            min-height: calc(100vh - 96px);
+            background: linear-gradient(180deg, #e8f2ff 0%, #f4f7fb 88px, #f5f7fa 260px);
+        }
+
+        .content-wrapper {
+            max-width: none;
+            margin: 0;
+            padding: 10px;
+        }
+
+        /* 页面介绍卡片 */
+        .intro-card {
+            background: linear-gradient(135deg, #ffffff 0%, #f9fbff 60%, #f1f7ff 100%);
+            border-color: #e3ebf8;
+        }
+
+        .intro-card:hover {
+            box-shadow: none;
+            transform: none;
+        }
+
+        .intro-content {
+            flex: 1;
+        }
+
+        .intro-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .intro-icon {
+            font-size: 22px;
+            filter: none;
+        }
+
+        .intro-title {
+            margin-bottom: 8px;
+            font-size: 16px;
+            color: var(--text-1);
+            background: none;
+            -webkit-text-fill-color: initial;
+        }
+
+        .intro-desc {
+            font-size: 12px;
+            color: var(--text-3);
+            line-height: 1.4;
+        }
+
+        .intro-action {
+            flex-shrink: 0;
+        }
+
+        /* 按钮样式 */
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(0, 82, 217, 0.2);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #0041b3 0%, #2d6dd9 100%);
+            box-shadow: 0 4px 12px rgba(0, 82, 217, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: white;
+            color: #646a73;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-secondary:hover {
+            color: #0052d9;
+            border-color: #0052d9;
+            background: rgba(0, 82, 217, 0.04);
+        }
+
+        .btn-text {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 12px;
+            background: transparent;
+            color: #646a73;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-text:hover {
+            color: #0052d9;
+            background: rgba(0, 82, 217, 0.08);
+        }
+
+        .btn-text.warning {
+            color: #ff9500;
+        }
+
+        .btn-text.warning:hover {
+            background: rgba(255, 149, 0, 0.1);
+        }
+
+        .btn-icon {
+            font-size: 16px;
+        }
+
+        /* 区块卡片 */
+        .section-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #f0f1f2;
+        }
+
+        .section-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2329;
+        }
+
+        .license-count,
+        .module-count {
+            font-size: 13px;
+            color: #8f959e;
+        }
+
+        /* 许可证项 */
+        .license-item {
+            background: #fafbfc;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 16px;
+            border: 2px solid transparent;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .license-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .license-item:hover {
+            border-color: rgba(0, 82, 217, 0.2);
+            box-shadow: 0 4px 16px rgba(0, 82, 217, 0.08);
+        }
+
+        .community-license {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-color: rgba(14, 165, 233, 0.2);
+        }
+
+        .standard-license {
+            background: #fafbfc;
+        }
+
+        .license-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .license-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .license-type-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .license-type-badge.community {
+            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
+        }
+
+        .license-type-badge.standard {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+        }
+
+        .badge-icon {
+            font-size: 14px;
+        }
+
+        .license-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .license-status.active {
+            background: rgba(34, 197, 94, 0.1);
+            color: #16a34a;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .license-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+        }
+
+        /* 操作菜单按钮 */
+        .action-menu-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            color: #646a73;
+        }
+
+        .action-menu-btn:hover {
+            background: rgba(0, 0, 0, 0.06);
+            color: #1f2329;
+        }
+
+        .menu-icon {
+            font-size: 20px;
+            font-weight: bold;
+            line-height: 1;
+        }
+
+        /* 操作菜单下拉框 */
+        .action-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 4px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+            border: 1px solid #e5e7eb;
+            min-width: 140px;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-8px);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .action-menu.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #1f2329;
+            font-size: 14px;
+        }
+
+        .menu-item:first-child {
+            border-radius: 8px 8px 0 0;
+        }
+
+        .menu-item:last-child {
+            border-radius: 0 0 8px 8px;
+        }
+
+        .menu-item:hover {
+            background: rgba(0, 82, 217, 0.06);
+            color: #0052d9;
+        }
+
+        .menu-item.warning:hover {
+            background: rgba(239, 68, 68, 0.06);
+            color: #ef4444;
+        }
+
+        .menu-item-icon {
+            font-size: 16px;
+        }
+
+        .permanent-tag {
+            padding: 6px 14px;
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.25);
+        }
+
+        .license-body {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .license-detail {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .detail-label {
+            color: #646a73;
+            font-weight: 500;
+            min-width: 80px;
+        }
+
+        .detail-value {
+            color: #1f2329;
+        }
+
+        .detail-value.all-modules {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 13px;
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.25);
+        }
+
+        .all-modules-icon {
+            font-size: 14px;
+            animation: sparkle 2s ease-in-out infinite;
+        }
+
+        @keyframes sparkle {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.7;
+                transform: scale(1.1);
+            }
+        }
+
+        .detail-value.mono {
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 13px;
+            background: rgba(0, 0, 0, 0.04);
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+
+        .module-tags,
+        .user-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .module-tag {
+            display: inline-block;
+            padding: 4px 12px;
+            background: white;
+            color: #0052d9;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .expire-warning {
+            padding: 4px 10px;
+            background: rgba(255, 149, 0, 0.1);
+            color: #ff9500;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .expire-info.normal {
+            padding: 4px 10px;
+            background: rgba(34, 197, 94, 0.1);
+            color: #16a34a;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        /* 到期通知设置按钮 */
+        .btn-notification-settings {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            background: #ffffff;
+            border: 1px solid #d0d5dd;
+            border-radius: 8px;
+            color: #1f2329;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn-notification-settings:hover {
+            background: #f5f7fa;
+            border-color: #0052d9;
+            color: #0052d9;
+        }
+
+        .settings-icon {
+            font-size: 16px;
+        }
+
+        .toggle-icon {
+            font-size: 12px;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .toggle-icon.expanded {
+            transform: rotate(180deg);
+        }
+
+        /* 通知设置折叠面板 */
+        .notification-settings-panel {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-bottom: 0;
+        }
+
+        .notification-settings-panel.expanded {
+            max-height: 500px;
+            margin-bottom: 24px;
+        }
+
+        .notification-settings-content {
+            background: linear-gradient(135deg, #f8f9fb 0%, #ffffff 100%);
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 16px;
+        }
+
+        .settings-row {
+            margin-bottom: 20px;
+        }
+
+        .settings-row:last-of-type {
+            margin-bottom: 0;
+        }
+
+        .settings-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 24px;
+        }
+
+        .settings-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 140px;
+            color: #646a73;
+            font-weight: 500;
+            font-size: 14px;
+            padding-top: 8px;
+        }
+
+        .label-icon {
+            font-size: 18px;
+        }
+
+        .label-text {
+            white-space: nowrap;
+        }
+
+        .settings-value {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .btn-edit-users {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: #ffffff;
+            border: 1px solid #d0d5dd;
+            border-radius: 6px;
+            color: #646a73;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-edit-users:hover {
+            background: #f5f7fa;
+            border-color: #0052d9;
+            color: #0052d9;
+        }
+
+        .reminder-time-text {
+            color: #1f2329;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .settings-hint {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-top: 16px;
+            padding: 12px 16px;
+            background: rgba(0, 82, 217, 0.04);
+            border-left: 3px solid #0052d9;
+            border-radius: 6px;
+        }
+
+        .hint-icon {
+            font-size: 16px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .hint-text {
+            color: #646a73;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .more-users {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 12px;
+            background: #e5e7eb;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #646a73;
+            font-weight: 500;
+        }
+
+        .user-name {
+            font-weight: 500;
+            color: #1f2329;
+        }
+
+        /* 邮件通知设置 */
+        .notification-content {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .notification-item {
+            display: flex;
+            gap: 12px;
+            font-size: 14px;
+        }
+
+        .notification-label {
+            color: #646a73;
+            font-weight: 500;
+            min-width: 90px;
+        }
+
+        .notification-value {
+            color: #1f2329;
+        }
+
+        .user-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: #f5f7fa;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .user-avatar {
+            font-size: 16px;
+        }
+
+        .user-email {
+            color: #8f959e;
+            font-size: 12px;
+        }
+
+        /* 模块网格 */
+        .modules-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 16px;
+        }
+
+        .module-card {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 20px;
+            background: #fafbfc;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .module-card:hover {
+            border-color: #0052d9;
+            box-shadow: 0 4px 16px rgba(0, 82, 217, 0.12);
+            transform: translateY(-2px);
+        }
+
+        /* 模块头部 */
+        .module-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .module-version-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modules-grid .module-version-info {
+            display: none;
+        }
+
+        .module-version-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+            white-space: nowrap;
+        }
+
+        .module-version-badge.community {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            box-shadow: 0 2px 6px rgba(34, 197, 94, 0.2);
+        }
+
+        .module-version-badge.standard {
+            background: linear-gradient(135deg, #3a84ff 0%, #0052d9 100%);
+            box-shadow: 0 2px 6px rgba(0, 82, 217, 0.2);
+        }
+
+        /* 模块升级按钮 */
+        .btn-module-upgrade {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 12px;
+            background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(255, 107, 53, 0.25);
+            white-space: nowrap;
+        }
+
+        .btn-module-upgrade:hover {
+            background: linear-gradient(135deg, #f7931e 0%, #ff6b35 100%);
+            box-shadow: 0 3px 12px rgba(255, 107, 53, 0.35);
+            transform: translateY(-1px);
+        }
+
+        .module-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .module-icon-svg {
+            width: 72%;
+            height: 72%;
+        }
+
+        .module-info {
+            flex: 1;
+        }
+
+        .module-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2329;
+            margin-bottom: 8px;
+        }
+
+        .module-version {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .version-badge {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .version-badge.standard {
+            background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+            color: white;
+        }
+
+        .version-badge.community {
+            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+            color: white;
+        }
+
+        .version-text {
+            font-size: 12px;
+            color: #8f959e;
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+
+        .module-desc {
+            font-size: 13px;
+            color: #646a73;
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+
+        /* 弹窗样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1000;
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        .modal.show {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 680px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -45%);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, -50%);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #f0f1f2;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2329;
+        }
+
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            color: #8f959e;
+            font-size: 20px;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .modal-close:hover {
+            background: rgba(0, 0, 0, 0.06);
+            color: #1f2329;
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 16px 24px;
+            border-top: 1px solid #f0f1f2;
+        }
+
+        /* 表单样式 */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #1f2329;
+            margin-bottom: 8px;
+        }
+
+        .form-input,
+        .form-textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #1f2329;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        .form-input:focus,
+        .form-textarea:focus {
+            outline: none;
+            border-color: #0052d9;
+            box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.1);
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-hint {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #8f959e;
+        }
+
+        .hint-link {
+            color: #0052d9;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .hint-link:hover {
+            color: #3a84ff;
+            text-decoration: underline;
+        }
+
+        /* 注册码展示框 */
+        .registration-code-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            background: linear-gradient(135deg, #f8f9fb 0%, #ffffff 100%);
+            border: 2px dashed #0052d9;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .registration-code-box:hover {
+            border-color: #3a84ff;
+            background: linear-gradient(135deg, #f0f5ff 0%, #ffffff 100%);
+            box-shadow: 0 2px 8px rgba(0, 82, 217, 0.1);
+        }
+
+        .code-display {
+            flex: 1;
+            font-family: 'Courier New', Consolas, Monaco, monospace;
+            font-size: 16px;
+            font-weight: 600;
+            color: #0052d9;
+            letter-spacing: 2px;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 6px;
+            user-select: all;
+            white-space: nowrap;
+            overflow-x: auto;
+        }
+
+        .btn-copy {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #0052d9 0%, #3a84ff 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0, 82, 217, 0.2);
+        }
+
+        .btn-copy:hover {
+            background: linear-gradient(135deg, #0041b3 0%, #2d6dd9 100%);
+            box-shadow: 0 4px 12px rgba(0, 82, 217, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .btn-copy:active {
+            transform: translateY(0);
+        }
+
+        .btn-copy.copied {
+            background: linear-gradient(135deg, #2dcb56 0%, #52c41a 100%);
+        }
+
+        .copy-icon {
+            font-size: 16px;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .input-prefix,
+        .input-suffix {
+            font-size: 14px;
+            color: #646a73;
+            white-space: nowrap;
+        }
+
+        .input-group .form-input {
+            width: 100px;
+            text-align: center;
+        }
+
+        /* 选中的用户标签 */
+        .selected-users {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: #f5f7fa;
+            border-radius: 8px;
+            min-height: 60px;
+        }
+
+        .selected-user-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: white;
+            border: 1px solid #dcdee0;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .remove-user {
+            width: 18px;
+            height: 18px;
+            border: none;
+            background: rgba(0, 0, 0, 0.06);
+            color: #8f959e;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        .remove-user:hover {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+
+        .btn-add-user {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: white;
+            color: #0052d9;
+            border: 1px dashed #0052d9;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-add-user:hover {
+            background: rgba(0, 82, 217, 0.06);
+        }
+
+        /* 复选框组 */
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #1f2329;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+    </style>
+
+    <style>
+        /* System-management style overrides: keep content unchanged, only align visual language */
+        :root {
+            --bg: #f5f7fa;
+            --panel: #ffffff;
+            --line: #dcdee5;
+            --line-soft: #eaedf3;
+            --text-1: #313238;
+            --text-2: #63656e;
+            --text-3: #979ba5;
+            --primary: #3a84ff;
+            --primary-weak: #edf4ff;
+            --success: #14a568;
+            --warn: #ff9c01;
+            --danger: #ea3636;
+        }
+
+        body {
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            color: var(--text-1);
+            background: var(--bg);
+        }
+
+        .main-container {
+            min-height: calc(100vh - 96px);
+            background: linear-gradient(180deg, #e8f2ff 0%, #f4f7fb 88px, #f5f7fa 260px);
+        }
+
+        .top-header {
+            height: 54px;
+            border-bottom: 1px solid var(--line-soft);
+            padding: 0 16px;
+            background: #fff;
+        }
+
+        .logo {
+            gap: 8px;
+        }
+
+        .logo-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            box-shadow: none;
+            background: linear-gradient(135deg, #2f7df4, #4a95ff);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .logo > span {
+            font-size: 24px;
+            transform: scale(0.48);
+            transform-origin: left center;
+            width: 110px;
+            margin-left: -26px;
+            color: #5d6679;
+            font-weight: 600;
+            line-height: 1;
+        }
+
+        .header-nav {
+            margin-left: 16px;
+            gap: 8px;
+        }
+
+        .nav-item {
+            border: 0;
+            background: transparent;
+            color: #5e6679;
+            border-radius: 10px;
+            padding: 6px 12px;
+            font-size: 14px;
+            font-weight: 400;
+            transition: none;
+        }
+
+        .nav-item:hover,
+        .nav-item.active {
+            color: var(--primary);
+            background: var(--primary-weak);
+        }
+
+        .header-right {
+            gap: 12px;
+            color: #717b91;
+            font-size: 13px;
+        }
+
+        .header-right > span {
+            padding: 0;
+            border-radius: 0;
+        }
+
+        .header-right > span:hover {
+            background: transparent;
+            color: #717b91;
+        }
+
+        .sub-header {
+            height: 42px;
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--line-soft);
+            background: #fbfcfe;
+            backdrop-filter: none;
+        }
+
+        .sub-nav-item {
+            border: 0;
+            background: transparent;
+            color: #5d6573;
+            border-radius: 4px;
+            font-size: 14px;
+            padding: 5px 10px;
+            font-weight: 400;
+            transition: none;
+        }
+
+        .sub-nav-item:hover,
+        .sub-nav-item.active {
+            color: var(--primary);
+            background: var(--primary-weak);
+        }
+
+        .content-wrapper {
+            max-width: none;
+            margin: 0;
+            padding: 10px;
+        }
+
+        .intro-card,
+        .section-card {
+            border: 1px solid var(--line-soft);
+            border-radius: 6px;
+            background: #fff;
+            box-shadow: none;
+        }
+
+        .intro-card {
+            padding: 12px;
+            margin-bottom: 10px;
+            transition: none;
+        }
+
+        .intro-card:hover {
+            box-shadow: none;
+            transform: none;
+        }
+
+        .intro-icon {
+            font-size: 22px;
+            filter: none;
+        }
+
+        .intro-title {
+            margin-bottom: 8px;
+            font-size: 16px;
+            color: var(--text-1);
+            background: none;
+            -webkit-text-fill-color: initial;
+        }
+
+        .intro-desc {
+            font-size: 12px;
+            color: var(--text-3);
+            line-height: 1.4;
+        }
+
+        .section-card {
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+
+        .section-header {
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--line-soft);
+        }
+
+        .section-title {
+            font-size: 16px;
+            color: var(--text-1);
+        }
+
+        .license-count,
+        .module-count {
+            font-size: 12px;
+            color: var(--text-3);
+        }
+
+        .btn-primary,
+        .btn-secondary,
+        .btn-notification-settings,
+        .btn-edit-users,
+        .btn-add-user {
+            height: 30px;
+            padding: 0 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            box-shadow: none;
+            transform: none;
+            transition: none;
+        }
+
+        .btn-primary {
+            border: 1px solid var(--primary);
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            border-color: var(--primary);
+            background: var(--primary);
+            box-shadow: none;
+            transform: none;
+        }
+
+        .btn-secondary,
+        .btn-notification-settings,
+        .btn-edit-users {
+            border: 1px solid var(--line);
+            background: #fff;
+            color: var(--text-2);
+        }
+
+        .btn-secondary:hover,
+        .btn-notification-settings:hover,
+        .btn-edit-users:hover {
+            border-color: #b7d1ff;
+            background: #f9fbff;
+            color: var(--primary);
+        }
+
+        .btn-add-user {
+            border: 1px dashed #b7d1ff;
+            background: #f8fbff;
+            color: var(--primary);
+        }
+
+        .notification-settings-panel {
+            transition: none;
+        }
+
+        .notification-settings-content {
+            margin-top: 10px;
+            padding: 12px;
+            border: 1px solid var(--line-soft);
+            border-radius: 6px;
+            background: #fafbfd;
+        }
+
+        .settings-item {
+            gap: 12px;
+        }
+
+        .settings-label {
+            min-width: 130px;
+            padding-top: 6px;
+            font-size: 13px;
+            color: var(--text-2);
+        }
+
+        .settings-hint {
+            margin-top: 10px;
+            padding: 8px 10px;
+            border: 1px solid #bdd8ff;
+            border-left: 1px solid #bdd8ff;
+            border-radius: 6px;
+            background: #edf4ff;
+            color: #466387;
+            font-size: 12px;
+        }
+
+        .license-item {
+            border: 1px solid var(--line-soft);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+            box-shadow: none;
+        }
+
+        .license-item:hover,
+        .module-card:hover {
+            box-shadow: none;
+            transform: none;
+        }
+
+        .license-item.no-frame {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            box-shadow: none;
+        }
+
+        .license-item.no-frame:hover {
+            border: 0;
+            background: transparent;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .license-item.no-type .license-header {
+            justify-content: flex-end;
+            margin-bottom: 0;
+            height: 0;
+        }
+
+        .license-item.no-type {
+            position: relative;
+        }
+
+        .license-item.no-type .license-actions {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+        }
+
+        .community-license {
+            background: #f7fbff;
+            border-color: #d9ecff;
+        }
+
+        .license-type-badge {
+            height: 22px;
+            padding: 0 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .license-type-badge.community {
+            border: 1px solid #bce2ff;
+            background: #edf7ff;
+            color: #2f7df4;
+        }
+
+        .license-type-badge.standard {
+            border: 1px solid #ffdba0;
+            background: #fff7e8;
+            color: #c07800;
+        }
+
+        .permanent-tag,
+        .expire-warning,
+        .expire-info.normal,
+        .detail-value.all-modules {
+            border-radius: 4px;
+            box-shadow: none;
+            font-size: 12px;
+            line-height: 20px;
+            padding: 0 8px;
+        }
+
+        .permanent-tag,
+        .expire-info.normal,
+        .detail-value.all-modules {
+            border: 1px solid #bfe8cf;
+            background: #effbf4;
+            color: var(--success);
+        }
+
+        .expire-warning {
+            border: 1px solid #ffd7a1;
+            background: #fff7e7;
+            color: var(--warn);
+        }
+
+        .expire-info.normal {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            box-shadow: none;
+        }
+
+        .detail-label {
+            min-width: 72px;
+            color: var(--text-2);
+        }
+
+        .license-detail,
+        .detail-value,
+        .reminder-time-text {
+            font-size: 13px;
+            color: var(--text-1);
+        }
+
+        .module-tag,
+        .selected-user-tag {
+            border: 1px solid #d8e7ff;
+            border-radius: 10px;
+            background: #edf4ff;
+            color: #3a84ff;
+            font-size: 12px;
+            line-height: 20px;
+            padding: 0 8px;
+        }
+
+        .user-tag {
+            border: 1px solid #e1e6ef;
+            border-radius: 4px;
+            background: #fff;
+            font-size: 12px;
+            line-height: 22px;
+            padding: 0 8px;
+        }
+
+        .more-users,
+        .user-email {
+            color: var(--text-3);
+            font-size: 12px;
+        }
+
+        .modules-grid {
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 12px;
+        }
+
+        .module-card {
+            border: 1px solid #d9e3f0;
+            border-radius: 10px;
+            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+            padding: 16px 14px 14px;
+            min-height: 118px;
+            gap: 10px;
+            box-shadow: 0 2px 8px rgba(30, 56, 98, 0.06);
+        }
+
+        .module-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 0;
+            font-size: 26px;
+            background: transparent !important;
+            box-shadow: none !important;
+            color: #2f7df4;
+        }
+
+        .module-icon-svg {
+            width: 94%;
+            height: 94%;
+        }
+
+        .module-header {
+            position: relative;
+            align-items: center;
+            margin-bottom: 6px;
+            justify-content: flex-start;
+            gap: 10px;
+            padding-right: 54px;
+        }
+
+        .module-title-inline {
+            margin: 0;
+            font-size: 18px;
+            line-height: 1.2;
+            font-weight: 700;
+            color: #273247;
+            letter-spacing: 0.1px;
+            white-space: nowrap;
+        }
+
+        .module-info .module-name {
+            display: none;
+        }
+
+        .module-version-badge {
+            border: 1px solid;
+            border-radius: 4px;
+            padding: 0 8px;
+            font-size: 11px;
+            line-height: 18px;
+            box-shadow: none;
+        }
+
+        .module-version-badge.standard {
+            border-color: #ffdba0;
+            color: #c07800;
+            background: #fff7e8;
+        }
+
+        .module-version-badge.community {
+            border-color: #bce2ff;
+            color: #2f7df4;
+            background: #edf7ff;
+        }
+
+        .module-name {
+            font-size: 18px;
+            margin-bottom: 6px;
+            color: #313238;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .module-desc {
+            margin-bottom: 0;
+            font-size: 13px;
+            color: #66758e;
+            line-height: 1.45;
+        }
+
+        .modal-overlay {
+            backdrop-filter: none;
+            background: rgba(0, 0, 0, 0.45);
+        }
+
+        .modal-content {
+            width: 860px;
+            max-width: calc(100vw - 24px);
+            border-radius: 8px;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.3);
+            animation: none;
+        }
+
+        .modal-header {
+            height: 52px;
+            padding: 0 16px;
+            background: #f5f7fb;
+            border-bottom: 1px solid var(--line-soft);
+        }
+
+        .modal-title {
+            font-size: 16px;
+        }
+
+        .modal-close {
+            width: auto;
+            height: auto;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            color: #9ca2af;
+            font-size: 22px;
+        }
+
+        .modal-close:hover {
+            background: transparent;
+            color: #9ca2af;
+        }
+
+        .modal-body {
+            max-height: 560px;
+            padding: 14px 16px 10px;
+        }
+
+        .modal-footer {
+            border-top: 1px solid var(--line-soft);
+            padding: 10px 16px;
+            gap: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-label {
+            margin-bottom: 6px;
+            color: #4d5565;
+            font-size: 14px;
+            font-weight: 400;
+        }
+
+        .form-input,
+        .form-textarea {
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            font-size: 13px;
+            color: #313238;
+        }
+
+        .form-input {
+            height: 32px;
+            padding: 0 10px;
+        }
+
+        .form-textarea {
+            min-height: 80px;
+            padding: 8px 10px;
+        }
+
+        .form-input:focus,
+        .form-textarea:focus {
+            outline: none;
+            border-color: #b7d1ff;
+            box-shadow: none;
+        }
+
+        .registration-code-box {
+            border: 1px solid #bdd8ff;
+            border-radius: 6px;
+            background: #edf4ff;
+            padding: 10px;
+            gap: 8px;
+        }
+
+        .code-display {
+            border: 1px solid #d8e7ff;
+            border-radius: 4px;
+            background: #fff;
+            color: #3a84ff;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: normal;
+            line-height: 30px;
+            padding: 0 8px;
+        }
+
+        .btn-copy {
+            height: 30px;
+            border: 1px solid var(--primary);
+            border-radius: 4px;
+            background: #fff;
+            color: var(--primary);
+            padding: 0 10px;
+            box-shadow: none;
+        }
+
+        .btn-copy:hover {
+            border-color: #b7d1ff;
+            background: #f9fbff;
+            color: var(--primary);
+            box-shadow: none;
+            transform: none;
+        }
+
+        .btn-copy.copied {
+            border-color: var(--success);
+            background: #fff;
+            color: var(--success);
+        }
+
+        .selected-users {
+            min-height: 42px;
+            border: 1px solid var(--line-soft);
+            border-radius: 6px;
+            background: #fafbfd;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        .remove-user {
+            width: auto;
+            height: auto;
+            border-radius: 0;
+            background: transparent;
+            color: #8f98aa;
+            font-size: 12px;
+        }
+
+        .remove-user:hover {
+            background: transparent;
+            color: #d64a4a;
+        }
+
+        /* Aesthetic polish while keeping the same system-management style */
+        .top-header {
+            box-shadow: 0 1px 0 rgba(31, 35, 41, 0.04);
+        }
+
+        .section-card {
+            box-shadow: 0 4px 16px rgba(31, 56, 95, 0.05);
+        }
+
+        .section-card:hover {
+            box-shadow: 0 8px 24px rgba(31, 56, 95, 0.08);
+        }
+
+        .intro-card {
+            background: linear-gradient(135deg, #ffffff 0%, #f9fbff 60%, #f1f7ff 100%);
+            border-color: #e3ebf8;
+        }
+
+        .intro-title {
+            letter-spacing: 0.2px;
+            font-weight: 600;
+        }
+
+        .intro-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            background: #edf4ff;
+            color: #3a84ff;
+        }
+
+        .license-item {
+            transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+        }
+
+        .license-item:hover {
+            border-color: #cfe0fb;
+            box-shadow: 0 6px 18px rgba(31, 56, 95, 0.08);
+            transform: translateY(-1px);
+        }
+
+        .module-card {
+            transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+        }
+
+        .module-card:hover {
+            border-color: #bfd3f5;
+            box-shadow: 0 8px 18px rgba(31, 56, 95, 0.09);
+            transform: translateY(-1px);
+        }
+
+        .module-icon {
+            box-shadow: none;
+        }
+
+        .license-type-badge,
+        .module-version-badge,
+        .module-tag,
+        .selected-user-tag,
+        .user-tag,
+        .permanent-tag,
+        .expire-warning,
+        .expire-info.normal,
+        .detail-value.all-modules {
+            box-shadow: 0 1px 2px rgba(31, 35, 41, 0.06);
+        }
+
+        .btn-primary,
+        .btn-secondary,
+        .btn-notification-settings,
+        .btn-edit-users,
+        .btn-add-user,
+        .btn-copy {
+            transition: border-color 0.18s ease, background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+        }
+
+        .btn-primary:hover,
+        .btn-copy:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 14px rgba(58, 132, 255, 0.24);
+        }
+
+        .btn-secondary:hover,
+        .btn-notification-settings:hover,
+        .btn-edit-users:hover,
+        .btn-add-user:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(31, 56, 95, 0.1);
+        }
+
+        .notification-settings-content {
+            background: linear-gradient(180deg, #fbfcff 0%, #f7faff 100%);
+        }
+
+        .settings-hint {
+            border-color: #d4e4ff;
+            background: linear-gradient(180deg, #f3f8ff 0%, #edf5ff 100%);
+        }
+
+        .modal-content {
+            border: 1px solid #e6ecf7;
+        }
+
+        .modal-header {
+            background: linear-gradient(180deg, #f8faff 0%, #f3f7ff 100%);
+        }
+
+        .code-display {
+            font-weight: 700;
+            letter-spacing: 0.6px;
+        }
+
+        .action-menu {
+            border-color: #e3eaf6;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+        }
+
+        .menu-item {
+            border-radius: 4px;
+        }
+
+        .menu-item:first-child,
+        .menu-item:last-child {
+            border-radius: 4px;
+        }
+
+        .history-drawer-wrapper {
+            position: fixed;
+            inset: 0;
+            z-index: 1100;
+            pointer-events: none;
+        }
+
+        .history-drawer-mask {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.18);
+            opacity: 0;
+            transition: opacity 0.22s ease;
+        }
+
+        .history-drawer-panel {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 480px;
+            max-width: calc(100vw - 24px);
+            height: 100%;
+            background: #f3f5f9;
+            border-left: 1px solid #e4e8ef;
+            transform: translateX(100%);
+            transition: transform 0.24s ease;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -12px 0 30px rgba(15, 23, 42, 0.12);
+        }
+
+        .history-drawer-wrapper.show {
+            pointer-events: auto;
+        }
+
+        .history-drawer-wrapper.show .history-drawer-mask {
+            opacity: 1;
+        }
+
+        .history-drawer-wrapper.show .history-drawer-panel {
+            transform: translateX(0);
+        }
+
+        .history-drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 24px;
+            border-bottom: 1px solid #e4e8ef;
+            background: #f8f9fb;
+        }
+
+        .history-drawer-title {
+            font-size: 28px;
+            line-height: 1.1;
+            color: #1f2329;
+            font-weight: 700;
+        }
+
+        .history-drawer-close {
+            border: 0;
+            background: transparent;
+            color: #8f959e;
+            font-size: 22px;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .history-drawer-body {
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            overflow: auto;
+        }
+
+        .history-license-card {
+            background: #fff;
+            border: 1px solid #e2e7f0;
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+
+        .history-license-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eef1f6;
+            margin-bottom: 10px;
+            gap: 8px;
+        }
+
+        .history-badge-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .history-license-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            height: 26px;
+            border-radius: 14px;
+            padding: 0 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(135deg, #f5a623 0%, #ef8f00 100%);
+        }
+
+        .history-license-status {
+            display: inline-flex;
+            align-items: center;
+            height: 24px;
+            border-radius: 12px;
+            padding: 0 10px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .history-license-status.expired {
+            color: #e84b4b;
+            background: #ffecee;
+        }
+
+        .history-license-status.manual {
+            color: #7a808a;
+            background: #f2f4f7;
+        }
+
+        .history-license-op {
+            font-size: 13px;
+            color: #8a92a3;
+            white-space: nowrap;
+        }
+
+        .history-license-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .history-license-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .history-row-label {
+            color: #646a73;
+            min-width: 70px;
+        }
+
+        .history-row-value {
+            color: #313238;
+        }
+
+        .history-tag-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .history-tag {
+            display: inline-flex;
+            align-items: center;
+            height: 24px;
+            padding: 0 8px;
+            border: 1px solid #d8e5ff;
+            border-radius: 6px;
+            background: #f3f7ff;
+            color: #3a84ff;
+            font-size: 12px;
+            line-height: 1;
+        }
+
+        @media (max-width: 1160px) {
+            .header-nav {
+                display: none;
+            }
+
+            .content-wrapper {
+                padding: 10px;
+            }
+
+            .modules-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .settings-label {
+                min-width: 100%;
+                padding-top: 0;
+            }
+        }
+    </style>
+
+    <style>
+        /* 美化激活徽标 */
+        .module-activated-badge {
+            right: 0 !important;
+            top: 1px !important;
+            font-size: 11px !important;
+            line-height: 18px !important;
+            padding: 0 8px !important;
+            border-radius: 12px !important;
+            border: 1px solid #bde6ce !important;
+            background: #edf9f1 !important;
+            color: #1f9a5a !important;
+            font-weight: 600 !important;
+            box-shadow: none !important;
+            letter-spacing: 0.3px !important;
+        }
+
+        .module-inactive-badge {
+            position: absolute;
+            right: 0;
+            top: 1px;
+            display: inline-block;
+            font-size: 11px;
+            line-height: 18px;
+            padding: 0 8px;
+            border-radius: 12px;
+            background: #f5f7fa;
+            color: #8a93a5;
+            border: 1px solid #d9e0ea;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+
+        .nodes-detail-trigger {
+            margin-left: 6px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 1px solid #8fb6ff;
+            background: linear-gradient(135deg, #f5f9ff 0%, #dceaff 100%);
+            color: #2f7df4;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 16px;
+            text-align: center;
+            cursor: pointer;
+            padding: 0;
+            vertical-align: middle;
+            box-shadow: 0 2px 6px rgba(58, 132, 255, 0.18);
+            transition: all 0.2s ease;
+        }
+
+        .nodes-detail-trigger:hover {
+            background: linear-gradient(135deg, #eaf3ff 0%, #cfe2ff 100%);
+            border-color: #6f9eff;
+            box-shadow: 0 4px 10px rgba(58, 132, 255, 0.24);
+            transform: translateY(-1px);
+        }
+
+        .node-usage-drawer-wrapper {
+            position: fixed;
+            inset: 0;
+            z-index: 1200;
+            pointer-events: none;
+        }
+
+        .node-usage-drawer-mask {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.22);
+            opacity: 0;
+            transition: opacity 0.22s ease;
+        }
+
+        .node-usage-drawer-panel {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 760px;
+            max-width: calc(100vw - 24px);
+            height: 100%;
+            background: #fff;
+            border-left: 1px solid #e6eaf2;
+            transform: translateX(100%);
+            transition: transform 0.24s ease;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -14px 0 34px rgba(15, 23, 42, 0.16);
+        }
+
+        .node-usage-drawer-wrapper.show {
+            pointer-events: auto;
+        }
+
+        .node-usage-drawer-wrapper.show .node-usage-drawer-mask {
+            opacity: 1;
+        }
+
+        .node-usage-drawer-wrapper.show .node-usage-drawer-panel {
+            transform: translateX(0);
+        }
+
+        .node-usage-drawer-header {
+            border-bottom: 1px solid #e8edf5;
+            padding: 14px 18px;
+        }
+
+        .node-usage-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .node-usage-back {
+            border: 0;
+            background: transparent;
+            color: #7f8ba1;
+            font-size: 26px;
+            line-height: 1;
+            cursor: pointer;
+            width: 22px;
+            padding: 0;
+        }
+
+        .node-usage-title {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            color: #1f2329;
+        }
+
+        .node-usage-drawer-body {
+            padding: 14px 22px 16px;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .node-usage-summary-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            color: #505b70;
+            font-size: 14px;
+            border-bottom: 1px solid #edf2f8;
+            padding-bottom: 12px;
+        }
+
+        .node-usage-summary-item strong {
+            color: #637189;
+            font-weight: 600;
+        }
+
+        .node-usage-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            color: #2f3745;
+        }
+
+        .node-usage-table th,
+        .node-usage-table td {
+            text-align: left;
+            border-bottom: 1px solid #e9edf4;
+            padding: 10px 14px;
+            white-space: nowrap;
+        }
+
+        .node-usage-table th {
+            font-size: 14px;
+            color: #6d778b;
+            background: #f6f8fb;
+            font-weight: 600;
+        }
+
+        .node-usage-table td {
+            font-size: 14px;
+            color: #2f3745;
+        }
+
+        .node-usage-pager {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: #606f86;
+            padding-top: 6px;
+            flex-wrap: wrap;
+        }
+
+        .pager-size {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 52px;
+            height: 30px;
+            border: 1px solid #d5ddea;
+            border-radius: 6px;
+            background: #f8fafc;
+            font-size: 13px;
+            color: #4f5f78;
+            padding: 0 10px;
+        }
+
+        .pager-page {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            padding: 0 8px;
+            cursor: default;
+        }
+
+        .pager-page.active {
+            background: #edf4ff;
+            color: #3a84ff;
+            font-weight: 600;
+        }
+    </style>
+
+    <script src="../../../web/public/iconfont.js"></script>
+
+    <script>
+        const switchAppBtn = document.querySelector('.switch-app');
+        const appLauncherPanel = document.getElementById('appLauncherPanel');
+        const appLauncherGrid = document.getElementById('appLauncherGrid');
+        const launcherApps = [
+            { key: 'OpsPilot', icon: 'OP' },
+            { key: 'OpsConsole', icon: 'OC' },
+            { key: 'Setting', icon: 'ST' },
+            { key: 'CMDB', icon: 'CM' },
+            { key: 'Monitor', icon: 'MN' },
+            { key: 'Log', icon: 'LG' },
+            { key: 'Node', icon: 'ND' },
+            { key: 'Alarm', icon: 'AL' },
+            { key: 'ITSM', icon: 'IT' },
+            { key: 'OpsAnalysis', icon: 'OA' },
+            { key: 'MLOps', icon: 'ML' },
+            { key: 'Lab', icon: 'LB' },
+            { key: 'Playground', icon: 'PG' },
+            { key: 'Job', icon: 'JB' },
+        ];
+        const appConsoleIconMap = {
+            OpsPilot: 'icon-opspilot',
+            OpsConsole: 'icon-ops-console',
+            Setting: 'icon-system-manager',
+            CMDB: 'icon-cmdb',
+            Monitor: 'icon-monitor',
+            Log: 'icon-rizhi2',
+            Node: 'icon-node',
+            Alarm: 'icon-alarm',
+            ITSM: 'icon-job',
+            OpsAnalysis: 'icon-ops-analysis',
+            MLOps: 'icon-moxingguanli1',
+            Lab: 'icon-moxingguanli1',
+            Playground: 'icon-ops-console',
+            Job: 'icon-job',
+        };
+
+        function renderLauncherApps() {
+            if (!appLauncherGrid) {
+                return;
+            }
+            appLauncherGrid.innerHTML = launcherApps.map((item) => {
+                const iconId = appConsoleIconMap[item.key];
+                const iconHtml = iconId
+                    ? '<svg class="launcher-icon-svg" aria-hidden="true"><use xlink:href="#' + iconId + '"></use></svg>'
+                    : item.icon;
+                return '<button class="launcher-item" data-launch-app="' + item.key + '">' +
+                    '<span class="launcher-icon">' + iconHtml + '</span>' +
+                    '<span class="launcher-name">' + item.key + '</span>' +
+                '</button>';
+            }).join('');
+        }
+
+        function closeAppLauncher() {
+            if (appLauncherPanel) appLauncherPanel.classList.remove('show');
+            if (switchAppBtn) switchAppBtn.classList.remove('open');
+        }
+
+        function openAppLauncher() {
+            if (appLauncherPanel) appLauncherPanel.classList.add('show');
+            if (switchAppBtn) switchAppBtn.classList.add('open');
+        }
+
+        // 平台模块激活状态和监控节点用量逻辑
+        document.addEventListener('DOMContentLoaded', function() {
+            renderLauncherApps();
+
+            var activeTags = document.querySelectorAll('#active-modules .module-tag');
+            var activeModules = Array.from(activeTags).map(function(tag) {
+                return tag.textContent.trim();
+            });
+
+            document.querySelectorAll('.module-card').forEach(function(card) {
+                var name = (card.getAttribute('data-module') || '').trim();
+                if (!name) {
+                    var nameNode = card.querySelector('.module-name');
+                    name = nameNode ? nameNode.textContent.trim() : '';
+                }
+
+                var header = card.querySelector('.module-header');
+                if (!header) {
+                    return;
+                }
+                if (!header.style.position) {
+                    header.style.position = 'relative';
+                }
+
+                var activeBadge = card.querySelector('.module-activated-badge');
+                var inactiveBadge = card.querySelector('.module-inactive-badge');
+                if (!inactiveBadge) {
+                    inactiveBadge = document.createElement('span');
+                    inactiveBadge.className = 'module-inactive-badge';
+                    inactiveBadge.textContent = '未激活';
+                    header.appendChild(inactiveBadge);
+                }
+
+                var forceInactive = card.getAttribute('data-force-inactive') === 'true';
+                var isActive = !forceInactive && !!name && activeModules.includes(name);
+                if (activeBadge) {
+                    activeBadge.style.display = isActive ? 'inline-block' : 'none';
+                }
+                inactiveBadge.style.display = isActive ? 'none' : 'inline-block';
+
+                var nodesInfo = card.querySelector('.module-nodes-info');
+                if (nodesInfo) {
+                    nodesInfo.style.display = 'block';
+                    var detailTitle = nodesInfo.dataset.detailTitle || ('节点使用详情-' + name);
+                    var detailTrigger = nodesInfo.querySelector('.nodes-detail-trigger');
+                    if (detailTrigger && !detailTrigger.dataset.bound) {
+                        detailTrigger.dataset.bound = 'true';
+                        detailTrigger.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            showNodeUsageDrawer(detailTitle);
+                        });
+                    }
+                }
+
+                var memoryInfo = card.querySelector('.module-memory-info');
+                if (memoryInfo) {
+                    memoryInfo.style.display = 'block';
+                }
+            });
+
+            var uniqueModuleNames = new Set();
+            document.querySelectorAll('.module-card').forEach(function(card) {
+                var name = (card.getAttribute('data-module') || '').trim();
+                if (!name) {
+                    var titleNode = card.querySelector('.module-title-inline, .module-name');
+                    name = titleNode ? titleNode.textContent.trim() : '';
+                }
+                if (name) {
+                    uniqueModuleNames.add(name);
+                }
+            });
+
+            var activeCount = activeModules.filter(function(name) {
+                return uniqueModuleNames.has(name);
+            }).length;
+            var totalCount = uniqueModuleNames.size;
+            var moduleCountSummary = document.getElementById('moduleCountSummary');
+            if (moduleCountSummary) {
+                moduleCountSummary.textContent = '已激活模块：' + activeCount + '个（共' + totalCount + '个）';
+            }
+
+            if (switchAppBtn) {
+                switchAppBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (appLauncherPanel && appLauncherPanel.classList.contains('show')) {
+                        closeAppLauncher();
+                    } else {
+                        openAppLauncher();
+                    }
+                });
+            }
+
+            if (appLauncherGrid) {
+                appLauncherGrid.addEventListener('click', function(e) {
+                    var item = e.target.closest('[data-launch-app]');
+                    if (!item) {
+                        return;
+                    }
+                    closeAppLauncher();
+                });
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!appLauncherPanel || !switchAppBtn) {
+                return;
+            }
+            if (appLauncherPanel.contains(e.target) || switchAppBtn.contains(e.target)) {
+                return;
+            }
+            closeAppLauncher();
+        });
+
+        function showNodeUsageDrawer(title) {
+            var titleNode = document.getElementById('nodeUsageTitle');
+            if (titleNode && title) {
+                titleNode.textContent = title;
+            }
+            document.getElementById('nodeUsageDrawer').classList.add('show');
+        }
+
+        function closeNodeUsageDrawer() {
+            document.getElementById('nodeUsageDrawer').classList.remove('show');
+        }
+
+        // 切换操作菜单
+        function toggleActionMenu(event, id) {
+            event.stopPropagation();
+            const menu = document.getElementById('actionMenu' + id);
+            const allMenus = document.querySelectorAll('.action-menu');
+            
+            // 关闭其他菜单
+            allMenus.forEach(m => {
+                if (m !== menu) {
+                    m.classList.remove('show');
+                }
+            });
+            
+            // 切换当前菜单
+            menu.classList.toggle('show');
+        }
+
+        // 点击页面其他地方关闭菜单
+        document.addEventListener('click', function(event) {
+            if (!event.target.closest('.license-actions')) {
+                document.querySelectorAll('.action-menu').forEach(menu => {
+                    menu.classList.remove('show');
+                });
+            }
+        });
+
+        // 生成系统注册码
+        function generateRegistrationCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            const segments = [];
+            for (let i = 0; i < 5; i++) {
+                let segment = '';
+                for (let j = 0; j < 4; j++) {
+                    segment += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                segments.push(segment);
+            }
+            return 'BKLITE-2024-' + segments.join('-');
+        }
+
+        // 复制注册码
+        function copyRegistrationCode() {
+            const codeElement = document.getElementById('registrationCode');
+            const code = codeElement.textContent;
+            const btn = event.currentTarget;
+            
+            // 使用 Clipboard API
+            navigator.clipboard.writeText(code).then(() => {
+                // 复制成功提示
+                const originalHTML = btn.innerHTML;
+                btn.innerHTML = '<span class="copy-icon">✓</span>已复制';
+                btn.classList.add('copied');
+                
+                // 2秒后恢复
+                setTimeout(() => {
+                    btn.innerHTML = originalHTML;
+                    btn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                // 降级方案
+                const textarea = document.createElement('textarea');
+                textarea.value = code;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    const originalHTML = btn.innerHTML;
+                    btn.innerHTML = '<span class="copy-icon">✓</span>已复制';
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.innerHTML = originalHTML;
+                        btn.classList.remove('copied');
+                    }, 2000);
+                } catch (err) {
+                    alert('复制失败，请手动复制');
+                }
+                document.body.removeChild(textarea);
+            });
+        }
+
+        // 添加许可弹窗
+        function showAddLicenseModal() {
+            // 生成新的注册码
+            const newCode = generateRegistrationCode();
+            document.getElementById('registrationCode').textContent = newCode;
+            document.getElementById('addLicenseModal').classList.add('show');
+        }
+
+        function closeAddLicenseModal() {
+            document.getElementById('addLicenseModal').classList.remove('show');
+            document.getElementById('licenseKey').value = '';
+        }
+
+        function confirmAddLicense() {
+            const licenseKey = document.getElementById('licenseKey').value.trim();
+            if (!licenseKey) {
+                alert('请输入许可码');
+                return;
+            }
+            // 这里添加实际的许可验证和添加逻辑
+            alert('许可添加成功！');
+            closeAddLicenseModal();
+        }
+
+        // 配置提醒弹窗
+        let currentLicenseId = null;
+
+        function configureLicense(id) {
+            // 关闭操作菜单
+            document.querySelectorAll('.action-menu').forEach(menu => {
+                menu.classList.remove('show');
+            });
+            
+            currentLicenseId = id;
+            document.getElementById('configModal').classList.add('show');
+        }
+
+        function closeConfigModal() {
+            document.getElementById('configModal').classList.remove('show');
+            currentLicenseId = null;
+        }
+
+        function confirmConfig() {
+            const days = document.getElementById('reminderDays').value;
+            alert(`已设置到期前 ${days} 天提醒`);
+            closeConfigModal();
+        }
+
+        // 停用许可
+        function disableLicense(id) {
+            // 关闭操作菜单
+            document.querySelectorAll('.action-menu').forEach(menu => {
+                menu.classList.remove('show');
+            });
+            
+            if (confirm('确定要停用此许可吗？停用后相关模块将无法使用。')) {
+                alert('许可已停用');
+            }
+        }
+
+        // 编辑通知人员弹窗
+        function editNotification() {
+            document.getElementById('notificationModal').classList.add('show');
+        }
+
+        function closeNotificationModal() {
+            document.getElementById('notificationModal').classList.remove('show');
+        }
+
+        function confirmNotification() {
+            alert('通知设置已保存');
+            closeNotificationModal();
+        }
+
+        function showHistoryLicenseDrawer() {
+            document.getElementById('historyLicenseDrawer').classList.add('show');
+        }
+
+        function closeHistoryLicenseDrawer() {
+            document.getElementById('historyLicenseDrawer').classList.remove('show');
+        }
+
+        // 切换通知设置面板
+        function toggleNotificationSettings() {
+            const panel = document.getElementById('notificationSettingsPanel');
+            const icon = document.getElementById('notificationToggleIcon');
+            
+            panel.classList.toggle('expanded');
+            icon.classList.toggle('expanded');
+        }
+
+        // 点击遮罩层关闭弹窗
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeAddLicenseModal();
+                closeConfigModal();
+                closeNotificationModal();
+                closeHistoryLicenseDrawer();
+                closeNodeUsageDrawer();
+            }
+        });
+    </script>
+
+</body>
+</html>

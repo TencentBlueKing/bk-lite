@@ -148,8 +148,8 @@
     "markAllAsReadConfirm": "你确定要将所有通知标记为已读吗？",
     "markAllAsReadCxt": "标记后，所有未读通知将变为已读状态并无法扭转。",
     "noUnreadNotifications": "没有未读通知",
-    "sessionExpiredTitle": "登录状态已失效",
-    "sessionExpiredDescription": "检测到后端登录状态已过期，请在当前页面重新登录。",
+    "sessionExpiredTitle": "登录已过期",
+    "sessionExpiredDescription": "当前页面需要重新验证身份后继续操作。",
     "reloginSuccess": "重新登录成功"
   },
   "userInfo": {

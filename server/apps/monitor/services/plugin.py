@@ -13,7 +13,8 @@ class MonitorPluginService:
         obj = MonitorPluginUITemplate.objects.filter(
             plugin__monitor_object__id=monitor_object_id,
             plugin__collector=collector,
-            plugin__collect_type=collect_type
+            plugin__collect_type=collect_type,
+            plugin__template_type="builtin",
         ).first()
         return obj.content if obj else None
 
@@ -41,7 +42,7 @@ class MonitorPluginService:
             # 如果提供了type，确保对应的MonitorObjectType存在
             obj_type, created = MonitorObjectType.objects.get_or_create(
                 id=type_value,
-                defaults={'order': 999}  # 新导入的分类默认排序为999
+                defaults={"order": 999},  # 新导入的分类默认排序为999
             )
             data["type"] = obj_type
 
@@ -63,13 +64,7 @@ class MonitorPluginService:
         with transaction.atomic():
             plugin_obj, _ = MonitorPlugin.objects.update_or_create(
                 name=plugin,
-                defaults=dict(
-                    name=plugin,
-                    description=desc,
-                    status_query=status_query,
-                    collector=collector,
-                    collect_type=collect_type
-                ),
+                defaults=dict(name=plugin, description=desc, status_query=status_query, collector=collector, collect_type=collect_type),
             )
             plugin_obj.monitor_object.add(monitor_obj)
 
@@ -82,7 +77,8 @@ class MonitorPluginService:
                 monitor_object=monitor_obj,
                 monitor_plugin=plugin_obj,
                 name=name,
-            ) for name in new_groups_name
+            )
+            for name in new_groups_name
         ]
         MetricGroup.objects.bulk_create(create_metric_group, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
@@ -91,24 +87,15 @@ class MonitorPluginService:
 
         metrics_to_update = []
         metrics_to_create = []
-        existing_metrics = {
-            metric.name: metric
-            for metric in Metric.objects.filter(monitor_object=monitor_obj, monitor_plugin=plugin_obj)
-        }
+        existing_metrics = {metric.name: metric for metric in Metric.objects.filter(monitor_object=monitor_obj, monitor_plugin=plugin_obj)}
 
         # 删除is_pre=True但不在新指标列表中的旧指标（按插件删除）
         new_metric_names = {metric["name"] for metric in metrics}
         old_pre_metrics_to_delete = [
-            metric_name for metric_name, metric in existing_metrics.items()
-            if metric.is_pre and metric_name not in new_metric_names
+            metric_name for metric_name, metric in existing_metrics.items() if metric.is_pre and metric_name not in new_metric_names
         ]
         if old_pre_metrics_to_delete:
-            Metric.objects.filter(
-                monitor_object=monitor_obj,
-                monitor_plugin=plugin_obj,
-                name__in=old_pre_metrics_to_delete,
-                is_pre=True
-            ).delete()
+            Metric.objects.filter(monitor_object=monitor_obj, monitor_plugin=plugin_obj, name__in=old_pre_metrics_to_delete, is_pre=True).delete()
             # 从existing_metrics中移除已删除的指标
             for metric_name in old_pre_metrics_to_delete:
                 existing_metrics.pop(metric_name)
@@ -144,9 +131,11 @@ class MonitorPluginService:
                 )
 
         if metrics_to_update:
-            Metric.objects.bulk_update(metrics_to_update, [
-                "metric_group_id", "display_name", "query", "unit", "data_type", "description", "dimensions", "instance_id_keys"
-            ], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
+            Metric.objects.bulk_update(
+                metrics_to_update,
+                ["metric_group_id", "display_name", "query", "unit", "data_type", "description", "dimensions", "instance_id_keys"],
+                batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE,
+            )
 
         if metrics_to_create:
             Metric.objects.bulk_create(metrics_to_create, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
@@ -167,7 +156,7 @@ class MonitorPluginService:
                 plugin_desc=data["plugin_desc"],
                 status_query=data["status_query"],
                 collector=collector,
-                collect_type=collect_type
+                collect_type=collect_type,
             )
             if object_info.get("level") == "base":
                 base_object = object_info
@@ -217,8 +206,9 @@ class MonitorPluginService:
                     "description": i.description,
                     "dimensions": i.dimensions,
                     "instance_id_keys": i.instance_id_keys,
-                } for i in metrics
-            ]
+                }
+                for i in metrics
+            ],
         }
         return data
 
@@ -231,7 +221,7 @@ class MonitorPluginService:
             "collector": plugin_obj.collector,
             "collect_type": plugin_obj.collector,
             "is_compound_object": True,
-            "objects": []
+            "objects": [],
         }
         for monitor_obj in monitor_objs:
             object_data = MonitorPluginService.export_basic_monitor_object(plugin_obj, monitor_obj, metrics_map[monitor_obj.id])

@@ -11,7 +11,6 @@ from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
 from apps.monitor.views.node_mgmt import NodeMgmtView
 from apps.monitor.views.organization_rule import MonitorObjectOrganizationRuleViewSet
 from apps.monitor.views.plugin import MonitorPluginViewSet
-from apps.monitor.views.push_api import PushAPIViewSet
 from apps.monitor.views.system_mgmt import SystemMgmtView
 from apps.monitor.views.monitor_condition import MonitorConditionViewSet
 from apps.monitor.views.unit import UnitViewSet
@@ -45,5 +44,4 @@ router.register(
     basename="MonitorConditionViewSet",
 )
 router.register(r"open_api/infra", InfraViewSet, basename="InfraViewSet")
-router.register(r"open_api/push_api", PushAPIViewSet, basename="PushAPIViewSet")
 urlpatterns = router.urls

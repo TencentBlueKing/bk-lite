@@ -2,7 +2,6 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 
 from apps.core.utils.web_utils import WebUtils
-from apps.monitor.services.push_api import PushAPIService
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
 
 
@@ -20,13 +19,3 @@ class SystemMgmtView(ViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         data = SystemMgmtUtils.search_channel_list(teams=[int(current_team)], include_children=include_children)
         return WebUtils.response_success(data)
-
-    @action(methods=["get"], detail=False, url_path="api_secret")
-    def get_api_secret(self, request):
-        current_team = request.query_params.get("team") or request.COOKIES.get("current_team", "0")
-        try:
-            current_team = PushAPIService.resolve_team(current_team)
-        except Exception:
-            return WebUtils.response_error(error_message="Invalid current_team")
-
-        return WebUtils.response_success(PushAPIService.get_secret_preview(request.user.username, request.user.domain, current_team))

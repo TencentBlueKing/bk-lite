@@ -543,12 +543,41 @@ class ModelMigrate:
 
         return attrs if isinstance(attrs, list) else []
 
+    @staticmethod
+    def _merge_existing_attr_config(existing_attr: dict, incoming_attr: dict) -> bool:
+        changed = False
+
+        attr_name = str(incoming_attr.get("attr_name", "")).strip()
+        if attr_name and existing_attr.get("attr_name") != attr_name:
+            existing_attr["attr_name"] = attr_name
+            changed = True
+
+        if "user_prompt" in incoming_attr:
+            user_prompt = str(incoming_attr.get("user_prompt") or "")
+            if existing_attr.get("user_prompt", "") != user_prompt:
+                existing_attr["user_prompt"] = user_prompt
+                changed = True
+
+        if "option" in incoming_attr and existing_attr.get("option") != incoming_attr.get("option"):
+            existing_attr["option"] = incoming_attr.get("option")
+            changed = True
+
+        # 布尔约束仅接受布尔值，避免 Excel 空值/字符串造成脏覆盖。
+        for key in ("is_only", "is_required", "editable"):
+            value = incoming_attr.get(key)
+            if isinstance(value, bool) and existing_attr.get(key) != value:
+                existing_attr[key] = value
+                changed = True
+
+        return changed
+
     def _sync_added_attrs_to_existing_models(self, ag, attrs_by_model_id, existing_model_map):
         target_model_ids = [model_id for model_id in attrs_by_model_id.keys() if model_id in existing_model_map]
         if not target_model_ids:
             return {
                 "updated_models": [],
                 "added_attr_count": 0,
+                "updated_attr_count": 0,
                 "updated_group_count": 0,
                 "created_group_count": 0,
             }
@@ -563,23 +592,38 @@ class ModelMigrate:
 
         updated_models = []
         added_attr_count = 0
+        updated_attr_count = 0
         updated_group_count = 0
         created_group_count = 0
 
         for model_id in target_model_ids:
             existing_model = existing_model_map[model_id]
             existing_attrs = self._parse_model_attrs(existing_model.get("attrs", "[]"))
+            existing_attr_map = {
+                attr.get("attr_id"): attr
+                for attr in existing_attrs
+                if isinstance(attr, dict) and attr.get("attr_id")
+            }
             existing_attr_ids = {attr.get("attr_id") for attr in existing_attrs if isinstance(attr, dict) and attr.get("attr_id")}
 
             added_attrs = []
+            model_updated_attr_count = 0
             for attr in attrs_by_model_id.get(model_id, []):
                 attr_id = attr.get("attr_id")
-                if not attr_id or attr_id in existing_attr_ids:
+                if not attr_id:
                     continue
+
+                existing_attr = existing_attr_map.get(attr_id)
+                if existing_attr:
+                    # 命中同 attr_id：做配置更新而非重复追加。
+                    if self._merge_existing_attr_config(existing_attr, attr):
+                        model_updated_attr_count += 1
+                    continue
+
                 existing_attr_ids.add(attr_id)
                 added_attrs.append(attr)
 
-            if not added_attrs:
+            if not added_attrs and model_updated_attr_count == 0:
                 continue
 
             merged_attrs = [*existing_attrs, *added_attrs]
@@ -592,24 +636,30 @@ class ModelMigrate:
                 False,
             )
 
-            model_group_updates, model_group_creates = self._sync_added_attrs_field_groups(
-                model_id=model_id,
-                added_attrs=added_attrs,
-                field_group_map=field_group_map,
-                max_group_order=max_group_order,
-            )
+            model_group_updates = 0
+            model_group_creates = 0
+            if added_attrs:
+                model_group_updates, model_group_creates = self._sync_added_attrs_field_groups(
+                    model_id=model_id,
+                    added_attrs=added_attrs,
+                    field_group_map=field_group_map,
+                    max_group_order=max_group_order,
+                )
 
             updated_group_count += model_group_updates
             created_group_count += model_group_creates
             added_attr_count += len(added_attrs)
+            updated_attr_count += model_updated_attr_count
             updated_models.append(model_id)
 
-        for model_id in updated_models:
-            ExcludeFieldsCache.update_on_model_change(model_id)
+        if updated_models:
+            # 导入批次内统一刷新一次缓存，避免每模型触发全量刷新导致耗时放大。
+            ExcludeFieldsCache.refresh_cache()
 
         return {
             "updated_models": updated_models,
             "added_attr_count": added_attr_count,
+            "updated_attr_count": updated_attr_count,
             "updated_group_count": updated_group_count,
             "created_group_count": created_group_count,
         }
@@ -709,9 +759,10 @@ class ModelMigrate:
 
         if sync_result["updated_models"]:
             logger.info(
-                "同步模型新增属性完成: 更新模型=%s, 新增属性=%s, 更新分组=%s, 新建分组=%s",
+                "同步模型属性完成: 更新模型=%s, 新增属性=%s, 更新属性=%s, 更新分组=%s, 新建分组=%s",
                 len(sync_result["updated_models"]),
                 sync_result["added_attr_count"],
+                sync_result["updated_attr_count"],
                 sync_result["updated_group_count"],
                 sync_result["created_group_count"],
             )

@@ -44,9 +44,9 @@ const Integration = () => {
   const { getMonitorObject, getMonitorPlugin } = useMonitorApi();
   const {
     updateMonitorObject,
-    createCustomApiTemplate,
-    updateCustomApiTemplate,
-    deleteCustomApiTemplate
+    createCustomTemplate,
+    updateCustomTemplate,
+    deleteCustomTemplate
   } = useIntegrationApi();
   const { t } = useTranslation();
   const router = useRouter();
@@ -265,17 +265,17 @@ const Integration = () => {
     id?: number
   ) => {
     if (mode === 'edit' && id) {
-      await updateCustomApiTemplate(id, values);
+      await updateCustomTemplate(id, values);
       message.success(t('common.updateSuccess'));
     } else {
-      await createCustomApiTemplate(values);
+      await createCustomTemplate(values);
       message.success(t('common.addSuccess'));
     }
     onTxtClear();
   };
 
   const handleDeleteTemplate = async (id: number) => {
-    await deleteCustomApiTemplate(id);
+    await deleteCustomTemplate(id);
     message.success(t('common.deleteSuccess'));
     onTxtClear();
   };
@@ -434,7 +434,7 @@ const Integration = () => {
                           <Tag className="mt-[4px]">
                             {app.collect_type || '--'}
                           </Tag>
-                          {app.is_custom_api && (
+                          {app.is_custom && (
                             <Tag className="mt-[4px] ml-[6px]">
                               {t('monitor.integrations.selfBuilt')}
                             </Tag>
@@ -447,7 +447,7 @@ const Integration = () => {
                       >
                         {app.display_description || '--'}
                       </p>
-                      {app.is_custom_api && (
+                      {app.is_custom && (
                         <div
                           className="absolute top-[12px] right-[12px]"
                           onClick={(e) => e.stopPropagation()}

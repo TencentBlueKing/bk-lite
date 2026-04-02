@@ -1,3 +1,5 @@
+export const AUTH_POPUP_SUCCESS_MESSAGE = 'bk-lite-auth-popup-success';
+
 function isThirdLoginFlagEnabled(thirdLogin?: string | boolean | null): boolean {
   if (typeof thirdLogin === 'boolean') {
     return thirdLogin;
@@ -70,4 +72,42 @@ export function buildOauthCallbackBridgeUrl(
   }
 
   return `/auth/signin?callbackUrl=${encodeURIComponent(targetUrl)}&thirdLogin=true`;
+}
+
+export function buildPopupSigninUrl(options?: {
+  callbackUrl?: string;
+  thirdLogin?: string | boolean | null;
+  provider?: string | null;
+}): string {
+  const targetUrl = options?.callbackUrl || '/';
+  const searchParams = new URLSearchParams({
+    callbackUrl: targetUrl,
+    popup: 'true',
+  });
+
+  if (isThirdLoginFlagEnabled(options?.thirdLogin)) {
+    searchParams.set('thirdLogin', 'true');
+  }
+
+  if (options?.provider) {
+    searchParams.set('provider', options.provider);
+  }
+
+  return `/auth/signin?${searchParams.toString()}`;
+}
+
+export function buildWechatPopupUrl(options?: {
+  callbackUrl?: string;
+  thirdLogin?: string | boolean | null;
+}): string {
+  const targetUrl = options?.callbackUrl || '/';
+  const searchParams = new URLSearchParams({
+    callbackUrl: targetUrl,
+  });
+
+  if (isThirdLoginFlagEnabled(options?.thirdLogin)) {
+    searchParams.set('thirdLogin', 'true');
+  }
+
+  return `/auth/wechat-popup?${searchParams.toString()}`;
 }

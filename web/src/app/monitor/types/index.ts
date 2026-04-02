@@ -200,7 +200,7 @@ export interface ObjectItem {
   name: string;
   template_id?: string;
   template_type?: string;
-  is_custom_api?: boolean;
+  is_custom?: boolean;
   type: string;
   plugin_name?: string;
   plugin_id?: number;

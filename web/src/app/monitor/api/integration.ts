@@ -33,6 +33,7 @@ const useIntegrationApi = () => {
     instance_type?: string;
     collect_type?: string;
     collector?: string;
+    monitor_plugin_id?: string | number;
   }) => {
     return await post(`/monitor/api/node_mgmt/get_instance_asso_config/`, data);
   };
@@ -134,28 +135,25 @@ const useIntegrationApi = () => {
     return await get(`/monitor/api/monitor_plugin/${data.id}/ui_template/`);
   };
 
-  const getPushAccessDoc = async (id: React.Key, params?: { team?: React.Key }) => {
-    return await get(`/monitor/api/monitor_plugin/${id}/push_access/`, {
+  const getTemplateAccessGuide = async (
+    id: React.Key,
+    params: { organization_id: React.Key; cloud_region_id: React.Key }
+  ) => {
+    return await get(`/monitor/api/monitor_plugin/${id}/access_guide/`, {
       params,
     });
   };
 
-  const createCustomApiTemplate = async (data: Record<string, any>) => {
+  const createCustomTemplate = async (data: Record<string, any>) => {
     return await post(`/monitor/api/monitor_plugin/`, data);
   };
 
-  const updateCustomApiTemplate = async (id: React.Key, data: Record<string, any>) => {
+  const updateCustomTemplate = async (id: React.Key, data: Record<string, any>) => {
     return await put(`/monitor/api/monitor_plugin/${id}/`, data);
   };
 
-  const deleteCustomApiTemplate = async (id: React.Key) => {
+  const deleteCustomTemplate = async (id: React.Key) => {
     return await del(`/monitor/api/monitor_plugin/${id}/`);
-  };
-
-  const getCurrentApiSecret = async (params?: { team?: React.Key }) => {
-    return await get(`/monitor/api/system_mgmt/api_secret/`, {
-      params,
-    });
   };
 
   const getUiTemplateByParams = async (params: {
@@ -166,6 +164,10 @@ const useIntegrationApi = () => {
     return await get(`/monitor/api/monitor_plugin/ui_template_by_params/`, {
       params,
     });
+  };
+
+  const getUiTemplateByPlugin = async (pluginId: React.Key) => {
+    return await get(`/monitor/api/monitor_plugin/${pluginId}/ui_template/`);
   };
 
   const getInstanceListByPrimaryObject = async (
@@ -239,17 +241,17 @@ const useIntegrationApi = () => {
     updateMonitorInstance,
     setInstancesGroup,
     getUiTemplate,
-    getPushAccessDoc,
-    createCustomApiTemplate,
-    updateCustomApiTemplate,
-    deleteCustomApiTemplate,
-    getCurrentApiSecret,
+    getTemplateAccessGuide,
+    createCustomTemplate,
+    updateCustomTemplate,
+    deleteCustomTemplate,
     getInstanceListByPrimaryObject,
     getCloudRegionList,
     createK8sInstance,
     getK8sCommand,
     checkCollectStatus,
     getUiTemplateByParams,
+    getUiTemplateByPlugin,
   };
 };
 

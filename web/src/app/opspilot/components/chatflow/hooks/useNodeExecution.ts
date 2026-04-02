@@ -58,6 +58,7 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
 
   const [isExecuteDrawerVisible, setIsExecuteDrawerVisible] = useState(false);
   const [executeNodeId, setExecuteNodeId] = useState<string>('');
+  const [executeNodeName, setExecuteNodeName] = useState<string>('');
   const [executeMessage, setExecuteMessage] = useState<string>('');
   const [executeResult, setExecuteResult] = useState<NodeExecutionResult | null>(null);
   const [executeLoading, setExecuteLoading] = useState(false);
@@ -155,8 +156,9 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
 
   useEffect(() => {
     const handleExecuteNode = (event: any) => {
-      const { nodeId } = event.detail;
+      const { nodeId, nodeName } = event.detail;
       setExecuteNodeId(nodeId);
+      setExecuteNodeName(typeof nodeName === 'string' && nodeName ? nodeName : nodeId);
       setExecuteMessage('');
       setExecuteResult(null);
       setStreamingContent('');
@@ -669,6 +671,7 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
     isExecuteDrawerVisible,
     setIsExecuteDrawerVisible,
     executeNodeId,
+    executeNodeName,
     executeMessage,
     setExecuteMessage,
     executeResult,

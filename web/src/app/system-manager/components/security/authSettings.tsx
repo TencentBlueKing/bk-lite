@@ -55,7 +55,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
   const { t } = useTranslation();
 
   return (
-    <div className="bg-[var(--color-bg)] p-4 rounded-lg shadow-sm mb-4">
+    <div className="bg-(--color-bg) p-4 rounded-lg shadow-sm mb-4">
       <h3 className="text-base font-semibold mb-4">{t('system.security.loginSettings')}</h3>
       <div className="flex items-center mb-4">
         <span className="text-xs mr-4">{t('system.security.otpSetting')}</span>
@@ -70,9 +70,11 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
       <div className="flex items-center mb-4">
         <span className="text-xs mr-4">{t('system.security.loginExpiredTime')}</span>
         <InputNumber
-          min="1"
+          stringMode
+          min="0.1"
+          step="0.1"
           value={loginExpiredTime}
-          onChange={(value) => onLoginExpiredTimeChange(value?.toString() || '24')}
+          onChange={(value) => onLoginExpiredTimeChange(value || '24')}
           disabled={disabled || loading}
           addonAfter={t('system.security.hours')}
           style={{ width: '180px' }}                           
