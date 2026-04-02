@@ -114,6 +114,8 @@
         "deleteGroupConfirmSuffix": "组吗？",
         "attributes": "属性",
         "relationships": "关系",
+        "deleteBlockedByAssociationsTip": "当前模型仍存在关系。点击跳转到模型关系，手动清理后可以删除模型。",
+        "goToRelationshipsCleanup": "跳转到模型关系",
         "uniqueRules": "唯一规则",
         "uniqueRule": "校验规则",
         "addUniqueRule": "新建规则",

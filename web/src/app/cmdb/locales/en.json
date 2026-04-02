@@ -115,6 +115,8 @@
         "deleteGroupConfirmSuffix": "\"?",
         "attributes": "Attributes",
         "relationships": "Relationships",
+        "deleteBlockedByAssociationsTip": "This model still has relationships. Click to go to model relationships, clean them up manually, then delete the model.",
+        "goToRelationshipsCleanup": "Go to Relationships",
         "uniqueRules": "Unique Rules",
         "uniqueRule": "Validation Rule",
         "addUniqueRule": "Create Rule",

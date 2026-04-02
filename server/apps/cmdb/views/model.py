@@ -587,7 +587,9 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         # 检查源模型是否存在
         model_info = ModelManage.search_model_info(model_id)
         if not model_info:
-            return WebUtils.response_error("源模型不存在", status_code=status.HTTP_404_NOT_FOUND)
+            return WebUtils.response_error(
+                error_message="源模型不存在", status_code=status.HTTP_404_NOT_FOUND
+            )
 
         # 检查源模型权限
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
@@ -595,7 +597,10 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         organizations = self.organizations(request, model_info)
         # 再次确认用户所在的组织
         if not organizations:
-            return WebUtils.response_error("抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN)
+            return WebUtils.response_error(
+                error_message="抱歉！您没有此模型的权限",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
 
         has_permission = CmdbRulesFormatUtil.has_object_permission(
             obj_type=PERMISSION_MODEL,
@@ -606,7 +611,10 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             default_group_id=self.default_group_id,
         )
         if not has_permission:
-            return WebUtils.response_error("抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN)
+            return WebUtils.response_error(
+                error_message="抱歉！您没有此模型的权限",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
 
         # 获取请求参数
         new_model_id = request.data.get("new_model_id")
@@ -619,20 +627,26 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         # 参数校验
         if not new_model_id:
-            return WebUtils.response_error("新模型ID不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+            return WebUtils.response_error(
+                error_message="新模型ID不能为空",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
 
         if not IdentifierValidator.is_valid(new_model_id):
             return WebUtils.response_error(
-                IdentifierValidator.get_error_message("新模型ID"),
+                error_message=IdentifierValidator.get_error_message("新模型ID"),
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
         if not new_model_name:
-            return WebUtils.response_error("新模型名称不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+            return WebUtils.response_error(
+                error_message="新模型名称不能为空",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
 
         if not copy_attributes and not copy_relationships:
             return WebUtils.response_error(
-                "至少选择一种复制方式（属性或关系）",
+                error_message="至少选择一种复制方式（属性或关系）",
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 

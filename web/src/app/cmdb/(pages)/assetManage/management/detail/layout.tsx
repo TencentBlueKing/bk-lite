@@ -29,7 +29,7 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
   const commonContext = useCommon();
 
   const { getClassificationList } = useClassificationApi();
-  const { deleteModel, getModelDetail } = useModelApi();
+  const { deleteModel, getModelDetail, getModelAssociations } = useModelApi();
 
   const searchParams = useSearchParams();
   const modelId: string = searchParams.get('model_id') || '';
@@ -95,6 +95,27 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
       onOk() {
         return new Promise(async (resolve) => {
           try {
+            const associations = await getModelAssociations(row.model_id);
+            if (associations.length > 0) {
+              Modal.confirm({
+                title: t('common.prompt'),
+                content: t('Model.deleteBlockedByAssociationsTip'),
+                okText: t('Model.goToRelationshipsCleanup'),
+                cancelText: t('common.cancel'),
+                centered: true,
+                onOk: () => {
+                  const params = new URLSearchParams({
+                    model_id: modelId,
+                    model_name: modelDetail.model_name || '',
+                    icn: modelDetail.icn || '',
+                    classification_id: modelDetail.classification_id || '',
+                    is_pre: searchParams.get('is_pre') || 'false',
+                  }).toString();
+                  router.push(`/cmdb/assetManage/management/detail/associations?${params}`);
+                },
+              });
+              return;
+            }
             await deleteModel(row.model_id);
             message.success(t('successfullyDeleted'));
             if (commonContext?.refreshModelList) {
