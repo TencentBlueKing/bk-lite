@@ -445,13 +445,21 @@ const StudioSettingsPage: React.FC = () => {
       ? t('chatflow.preview.running')
       : summary.status === 'failed'
         ? t('chatflow.preview.failed')
-        : t('chatflow.preview.success');
+        : summary.status === 'interrupted'
+          ? t('chatflow.preview.interrupted', '已中断')
+          : summary.status === 'interrupt_requested'
+            ? t('chatflow.preview.interruptRequested', '中断中')
+            : t('chatflow.preview.success');
 
     const statusColor = summary.status === 'running'
       ? 'processing'
       : summary.status === 'failed'
         ? 'error'
-        : 'success';
+        : summary.status === 'interrupted'
+          ? 'default'
+          : summary.status === 'interrupt_requested'
+            ? 'orange'
+            : 'success';
 
     const logButton = (
       <Button

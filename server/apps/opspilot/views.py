@@ -656,15 +656,16 @@ def interrupt_chat_flow_execution(request):
     request_interrupt(execution_id, reason=kwargs.get("reason", "user_manual"))
     task_result = WorkFlowTaskResult.objects.filter(execution_id=execution_id).order_by("-id").first()
     if task_result and task_result.status not in {WorkFlowTaskStatus.SUCCESS, WorkFlowTaskStatus.FAIL, WorkFlowTaskStatus.INTERRUPTED}:
-        task_result.status = WorkFlowTaskStatus.INTERRUPT_REQUESTED
-        task_result.save(update_fields=["status"])
+        task_result.status = WorkFlowTaskStatus.INTERRUPTED
+        task_result.finished_at = datetime.datetime.now(datetime.UTC)
+        task_result.save(update_fields=["status", "finished_at"])
 
     return JsonResponse(
         {
             "result": True,
             "data": {
                 "execution_id": execution_id,
-                "status": WorkFlowTaskStatus.INTERRUPT_REQUESTED,
+                "status": WorkFlowTaskStatus.INTERRUPTED,
                 "interrupt_requested": True,
             },
         }
