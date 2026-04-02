@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
-from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, TargetSource
+from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, OSType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
@@ -156,11 +156,29 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             overwrite=overwrite,
         )
 
+    @staticmethod
+    def _normalize_target_path(target_path: str, os_type: str | None) -> str:
+        if os_type != OSType.WINDOWS:
+            return target_path
+        return str(target_path).replace("\\", "/")
+
     def download_to_manual_target(self, file_item: dict, target_id: int, target_path: str, timeout: int, overwrite: bool):
         target_obj = Target.objects.filter(id=target_id).first()
-        ssh_creds = self.get_ssh_credentials(target_id)
+        if target_obj and target_obj.os_type == OSType.WINDOWS:
+            ssh_creds = {
+                "host": target_obj.ip,
+                "username": target_obj.winrm_user,
+                "password": self.decrypt_password(target_obj.winrm_password),
+                "private_key": None,
+                "port": target_obj.winrm_port,
+                "node_id": target_obj.node_id,
+            }
+        else:
+            ssh_creds = self.get_ssh_credentials(target_id)
         if not ssh_creds:
             raise ValueError(f"无法获取目标凭据: target_id={target_id}")
+
+        normalized_target_path = self._normalize_target_path(target_path, target_obj.os_type if target_obj else None)
 
         if target_obj and target_obj.driver == ExecutorDriver.ANSIBLE:
             if not target_obj.cloud_region_id:
@@ -169,7 +187,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         else:
             instance_id = ssh_creds["node_id"]
 
-        return self.download_to_remote(instance_id, file_item, target_path, ssh_creds, timeout, overwrite)
+        return self.download_to_remote(instance_id, file_item, normalized_target_path, ssh_creds, timeout, overwrite)
 
     @staticmethod
     def get_cloud_region_name(cloud_region_id: int) -> str:

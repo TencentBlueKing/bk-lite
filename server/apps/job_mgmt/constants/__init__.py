@@ -14,4 +14,5 @@ from apps.job_mgmt.constants.choices import (  # noqa
     TargetSource,
     TriggerSource,
     WinRMScheme,
+    WinRMTransport,
 )

@@ -210,3 +210,19 @@ class WinRMScheme:
         (HTTP, "HTTP"),
         (HTTPS, "HTTPS"),
     )
+
+
+class WinRMTransport:
+    """WinRM 认证传输方式"""
+
+    BASIC = "basic"
+    NTLM = "ntlm"
+    KERBEROS = "kerberos"
+    CREDSSP = "credssp"
+
+    CHOICES = (
+        (BASIC, "Basic"),
+        (NTLM, "NTLM"),
+        (KERBEROS, "Kerberos"),
+        (CREDSSP, "CredSSP"),
+    )

@@ -247,11 +247,17 @@ class ExecutionTaskBaseService(object):
                     private_key = cls._get_ssh_private_key(target)
                     if private_key:
                         cred["private_key_content"] = private_key
+                    ssh_key_passphrase = cls.decrypt_password(target.ssh_key_passphrase)
+                    if ssh_key_passphrase:
+                        cred["private_key_passphrase"] = ssh_key_passphrase
             else:
                 # Windows
                 cred["user"] = target.winrm_user
                 cred["password"] = cls.decrypt_password(target.winrm_password)
                 cred["connection"] = "winrm"
+                cred["winrm_scheme"] = target.winrm_scheme
+                cred["winrm_transport"] = target.winrm_transport
+                cred["winrm_cert_validation"] = target.winrm_cert_validation
 
             credentials.append(cred)
         return credentials
