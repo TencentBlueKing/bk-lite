@@ -91,7 +91,26 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         try:
             data = client.get_data()
             for namespace_id, _data in data.items():
-                result.append({"namespace_id": namespace_id, "data": _data})
+                if isinstance(_data, dict):
+                    namespace_rows = _data.get("data", [])
+                    if not isinstance(namespace_rows, list):
+                        namespace_rows = []
+                    count = _data.get("count", len(namespace_rows))
+                    page = _data.get("page", request.data.get("page", 1))
+                    page_size = _data.get("page_size", request.data.get("page_size", len(namespace_rows) or 20))
+                else:
+                    namespace_rows = _data if isinstance(_data, list) else []
+                    count = len(namespace_rows)
+                    page = request.data.get("page", 1)
+                    page_size = request.data.get("page_size", len(namespace_rows) or 20)
+
+                result.append({
+                    "namespace_id": namespace_id,
+                    "data": namespace_rows,
+                    "count": count,
+                    "page": page,
+                    "page_size": page_size,
+                })
         except Exception as e:
             logger.error("获取数据源数据失败: {}".format(e))
 

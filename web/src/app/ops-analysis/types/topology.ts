@@ -1,5 +1,6 @@
 import { DirItem } from './index';
 import type { ParamItem } from './dataSource';
+import type { TableConfig } from './dashBoard';
 import type { Graph as X6Graph, Cell, Node, Edge } from '@antv/x6';
 
 // 基础几何类型
@@ -61,6 +62,7 @@ export interface TopologyNodeData {
     dataSource?: number;
     dataSourceParams?: ParamItem[];
     selectedFields?: string[];
+    tableConfig?: TableConfig;
   };
   // 样式配置
   styleConfig?: {

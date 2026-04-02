@@ -77,7 +77,30 @@ class GetNatsData:
         TODO 如果速度过慢，可以考虑使用多线程或异步方式来并发获取数据
         """
         result = {}
-        for namespace in self.namespace_list:
+        namespace_ids = self.params.pop("namespace_ids", None)
+
+        selected_namespace_ids = set()
+        if isinstance(namespace_ids, (list, tuple, set)):
+            for namespace_id in namespace_ids:
+                try:
+                    selected_namespace_ids.add(int(namespace_id))
+                except (TypeError, ValueError):
+                    continue
+        elif namespace_ids is not None:
+            try:
+                selected_namespace_ids.add(int(namespace_ids))
+            except (TypeError, ValueError):
+                pass
+
+        target_namespaces = self.namespace_list
+        if selected_namespace_ids:
+            target_namespaces = [
+                namespace
+                for namespace in self.namespace_list
+                if namespace.id in selected_namespace_ids
+            ]
+
+        for namespace in target_namespaces:
             server_url = self.namespace_server_map[namespace.id]
             nats_namespace = getattr(namespace, 'namespace', 'bk_lite')
             nats_client = self._get_client(server=server_url, namespace=nats_namespace)
@@ -90,9 +113,9 @@ class GetNatsData:
                     raise RuntimeError(f"NamePaces({self.namespace}) Module not found func({self.path})!")
 
                 return_data = fun(**self.params)
-                result[namespace.name] = return_data.get("data", [])
+                result[namespace.name] = return_data
             except Exception as e:  # noqa
-                result[namespace.name] = []
+                result[namespace.name] = {"data": [], "count": 0}
                 import traceback
                 logger.error(
                     "==获取NATS数据源数据失败==: namespace={} error={}".format(namespace.name, traceback.format_exc()))

@@ -115,6 +115,121 @@ def search_instances(params):
 
 
 @nats_client.register
+def query_asset_instances(
+    model_id=None,
+    query_list=None,
+    page=1,
+    page_size=20,
+    user_info=None,
+    **kwargs,
+):
+    """
+    查询 CMDB 资产实例（最简分页版）
+    :param model_id: 模型ID（必填）
+    :param query_list: 查询条件列表（可选，格式同 cmdb/api/instance/search）
+    :param page: 页码
+    :param page_size: 每页条数
+    :param user_info: 当前用户信息（由 operation_analysis 自动注入）
+    :return: {data: [...], count: int, page: int, page_size: int}
+    """
+    if not model_id:
+        return {"data": [], "count": 0, "page": 1, "page_size": int(page_size or 20)}
+
+    page = int(page or 1)
+    page_size = int(page_size or 20)
+    if page <= 0:
+        page = 1
+    if page_size <= 0:
+        page_size = 20
+
+    user_info = user_info or {}
+    team = user_info.get("team")
+
+    def normalize_query_list(raw_query_list):
+        if raw_query_list is None:
+            return []
+
+        if isinstance(raw_query_list, dict):
+            raw_query_list = [raw_query_list]
+
+        if not isinstance(raw_query_list, list):
+            return []
+
+        normalized = []
+
+        def add_condition(item):
+            if not item or not isinstance(item, dict):
+                return
+
+            field = item.get("field")
+            condition_type = item.get("type")
+            if not field or not condition_type:
+                return
+
+            if condition_type == "time":
+                start = item.get("start")
+                end = item.get("end")
+                if start and end:
+                    normalized.append(
+                        {"field": field, "type": "time", "start": start, "end": end}
+                    )
+                return
+
+            if "value" not in item:
+                return
+
+            value = item.get("value")
+            if value is None:
+                return
+            if isinstance(value, str) and value == "":
+                return
+            if isinstance(value, list) and not value:
+                return
+
+            normalized.append(
+                {"field": field, "type": condition_type, "value": value}
+            )
+
+        def walk(node):
+            if node is None:
+                return
+            if isinstance(node, dict):
+                add_condition(node)
+                return
+            if isinstance(node, list):
+                for sub in node:
+                    walk(sub)
+
+        walk(raw_query_list)
+        return normalized
+
+    query_params = []
+    if team is not None:
+        query_params.append({"field": "organization", "type": "list[]", "value": [int(team)]})
+
+    normalized_query_list = normalize_query_list(query_list)
+    if normalized_query_list:
+        query_params.extend(normalized_query_list)
+
+    instances, count = InstanceManage.instance_list(
+        model_id=model_id,
+        params=query_params,
+        page=page,
+        page_size=page_size,
+        order="",
+        creator="",
+        permission_map={},
+    )
+
+    return {
+        "data": instances,
+        "count": count,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@nats_client.register
 def sync_display_fields(organizations=None, users=None):
     """
     同步组织/用户的 _display 字段
