@@ -20,6 +20,34 @@ from apps.rpc.node_mgmt import NodeMgmt
 
 class InstanceConfigService:
     @staticmethod
+    def _sync_existing_instance_attrs(existing_instances, deleted_ids):
+        """同步复用/恢复实例的可变属性（除主键外）"""
+        if not existing_instances:
+            return 0
+
+        instances_to_update = []
+        for instance in existing_instances:
+            instances_to_update.append(
+                MonitorInstance(
+                    id=instance["instance_id"],
+                    name=instance.get("instance_name", ""),
+                    is_deleted=False,
+                    is_active=True,
+                )
+            )
+
+        fields = ["name", "is_active"]
+        if deleted_ids:
+            fields.append("is_deleted")
+
+        MonitorInstance.objects.bulk_update(
+            instances_to_update,
+            fields,
+            batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+        )
+        return len(instances_to_update)
+
+    @staticmethod
     def get_config_content(ids):
         result = {}
         config_objs = CollectConfig.objects.filter(id__in=ids)
@@ -299,16 +327,9 @@ class InstanceConfigService:
         created_instance_ids = []
         created_rule_ids = []
 
-        # 处理已删除的实例：恢复它们
-        if deleted_ids:
-            MonitorInstance.objects.filter(id__in=deleted_ids, is_deleted=True).update(is_deleted=False, is_active=True)
-            logger.info(f"恢复已删除实例数量: {len(deleted_ids)}")
-
-        # 处理已存在的活跃实例：确保重新激活（可能被同步任务标记为不活跃）
         if existing_instances:
-            existing_ids = [inst["instance_id"] for inst in existing_instances]
-            updated_count = MonitorInstance.objects.filter(id__in=existing_ids, is_deleted=False).update(is_active=True)
-            logger.info(f"复用已存在实例数量: {len(existing_ids)}, 重新激活: {updated_count}")
+            updated_count = InstanceConfigService._sync_existing_instance_attrs(existing_instances, deleted_ids)
+            logger.info(f"复用已存在实例数量: {len(existing_instances)}, 同步属性并激活: {updated_count}, 恢复已删除实例: {len(deleted_ids)}")
 
             # 为已存在的实例创建组织关联（如果还没有）
             for instance in existing_instances:
