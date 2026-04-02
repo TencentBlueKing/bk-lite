@@ -45,8 +45,18 @@ class CollectNetworkMetrics(CollectBase):
 
     @staticmethod
     def get_oid_map():
-        result = OidMapping.objects.all().values("model", "oid", "brand", "device_type", "built_in")
+        result = OidMapping._default_manager.all().values("model", "oid", "brand", "device_type", "built_in")
         return {i["oid"]: i for i in result}
+
+    @staticmethod
+    def get_default_oid_map(oid):
+        return {
+            "model": "未知",
+            "oid": oid,
+            "brand": "未知",
+            "device_type": "switch",
+            "built_in": False,
+        }
 
     @staticmethod
     def set_inst_name(*args, **kwargs):
@@ -119,10 +129,9 @@ class CollectNetworkMetrics(CollectBase):
                 oid = index_data["metric"]["sysobjectid"]
                 oid_data = self.oid_map.get(oid, "")
                 if not oid_data:
-                    logger.info("==OID does not exist, this instance data is skipped OID={}==".format(oid))
-                    continue
-                else:
-                    index_data["metric"].update(oid_data)
+                    oid_data = self.get_default_oid_map(oid)
+                    logger.info("==OID does not exist, use default mapping OID={}==".format(oid))
+                index_data["metric"].update(oid_data)
 
             value = index_data["value"]
             _time, value = value[0], value[1]
@@ -181,14 +190,15 @@ class CollectNetworkMetrics(CollectBase):
     def add_interface_assos(self, relationships):
         for relationship in relationships:
             source_inst_name = relationship["source_inst_name"]
-            if not self.interfaces_data.get(source_inst_name):
+            source_interface_data = self.interfaces_data.get(source_inst_name)
+            if not source_interface_data:
                 continue
             data = {'asst_id': 'connect',
                     'inst_name': relationship["target_inst_name"],
                     'model_asst_id': 'interface_connect_interface',
                     'model_id': 'interface'
                     }
-            self.interfaces_data.get(source_inst_name)["assos"].append(data)
+            source_interface_data.setdefault("assos", []).append(data)
 
     def find_interface_relationships(self, data):
         # 数据结构
