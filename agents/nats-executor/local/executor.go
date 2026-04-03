@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/hex"
 	"fmt"
 	"nats-executor/logger"
 	"nats-executor/utils"
@@ -229,7 +230,7 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	var cmd *exec.Cmd
 	switch shell {
 	case "bat", "cmd":
-		cmd = exec.CommandContext(ctx, "cmd", "/c", req.Command)
+		cmd = exec.CommandContext(ctx, "cmd", "/c", wrapCmdCommand(req.Command))
 	case "powershell":
 		cmd = exec.CommandContext(ctx, "powershell", "-Command", wrapPowerShellCommand(req.Command))
 	case "pwsh":
@@ -246,6 +247,7 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	output, err := cmd.CombinedOutput()
 	duration := time.Since(startTime)
 	decodedOutput := decodeExecuteOutput(output, shell)
+	rawSample := hex.EncodeToString(sampleBytes(output, 32))
 
 	var exitCode int
 	if exitError, ok := err.(*exec.ExitError); ok {
@@ -282,7 +284,35 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 		}
 	}
 
+	if runtime.GOOS == "windows" && (shell == ShellTypeBat || shell == ShellTypeCmd) {
+		logger.Infof(
+			"[Local Execute][Windows CMD Encoding] Instance: %s, shell=%s, bytes=%d, utf8_valid=%t, raw_hex_prefix=%s, decoded_prefix=%q",
+			instanceId,
+			shell,
+			len(output),
+			utf8.Valid(output),
+			rawSample,
+			truncateForLog(decodedOutput, 120),
+		)
+	}
+
 	return response
+}
+
+func sampleBytes(output []byte, limit int) []byte {
+	if len(output) <= limit {
+		return output
+	}
+
+	return output[:limit]
+}
+
+func truncateForLog(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+
+	return value[:limit] + "..."
 }
 
 func decodeExecuteOutput(output []byte, shell string) string {
@@ -314,6 +344,14 @@ func wrapPowerShellCommand(command string) string {
 		"$OutputEncoding = $utf8NoBom; " +
 		"if (Get-Command chcp.com -ErrorAction SilentlyContinue) { chcp.com 65001 > $null }; " +
 		command
+}
+
+func wrapCmdCommand(command string) string {
+	if runtime.GOOS != "windows" {
+		return command
+	}
+
+	return "chcp 65001 >nul && " + command
 }
 
 func decodeUTF16LEOutput(output []byte) (string, bool) {
