@@ -110,6 +110,15 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId, common?.modelList]);
 
+  const RELATION_CHANGE_EXCLUDED_FIELD_IDS = useMemo(() => new Set([
+    'inst_name',
+    'organization',
+    'collect_task',
+    'update_time',
+    'updated_time',
+    'is_collect_task',
+  ]), []);
+
   useEffect(() => {
     const relatedModelId = triggerConfig.relation_change?.related_model;
     if (!relatedModelId) {
@@ -123,6 +132,16 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
           Array.isArray(group?.attrs) ? group.attrs : []
         ));
         setRelationFields(fields);
+        const defaultFields = fields
+          .filter((f: AttrFieldType) => !RELATION_CHANGE_EXCLUDED_FIELD_IDS.has(f.attr_id))
+          .map((f: AttrFieldType) => f.attr_id);
+        setTriggerConfig((prev) => ({
+          ...prev,
+          relation_change: {
+            related_model: relatedModelId,
+            fields: defaultFields,
+          },
+        }));
       })
       .catch(() => {
         setRelationFields([]);

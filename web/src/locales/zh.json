@@ -87,6 +87,7 @@
     "appList": "应用列表",
     "clear": "清空",
     "selectAll": "全选",
+    "deselectAll": "取消全选",
     "selected": "已选",
     "items": "项",
     "actions": "操作",

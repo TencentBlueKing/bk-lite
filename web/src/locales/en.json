@@ -87,6 +87,7 @@
     "appList": "App List",
     "clear": "Clear",
     "selectAll": "Select All",
+    "deselectAll": "Deselect All",
     "selected": "Selected",
     "items": "Items",
     "actions": "ACTIONS",
