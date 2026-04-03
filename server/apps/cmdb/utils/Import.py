@@ -188,11 +188,7 @@ class Import:
                 invalid_values.append(raw_val)
 
         # 用户字段结果处理
-        if key == "operator":
-            # 主要维护人支持多选
-            if len(enum_id) == 1:
-                enum_id = enum_id[0]
-        else:
+        if key != "operator":
             if len(enum_id) >= 1:
                 enum_id = enum_id[0]
 
