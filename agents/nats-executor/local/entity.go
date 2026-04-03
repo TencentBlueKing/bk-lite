@@ -15,6 +15,7 @@ type ExecuteRequest struct {
 	ExecuteTimeout int    `json:"execute_timeout"`
 	Shell          string `json:"shell,omitempty"` // 脚本类型，支持：sh, bash, bat, cmd, powershell, pwsh，默认 "sh"
 	LogCommand     string `json:"-"`
+	LogContext     string `json:"-"`
 }
 
 type ExecuteResponse struct {

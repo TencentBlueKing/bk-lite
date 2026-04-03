@@ -9,6 +9,7 @@ import (
 	"nats-executor/logger"
 	"nats-executor/utils"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -168,12 +169,18 @@ func handleDownloadToRemoteMessage(data []byte, instanceId string, nc sshConn) (
 		defer cleanup()
 	}
 	if err != nil {
+		logger.Errorf("[SCP Transfer] Instance: %s, build_failed | download %s@%s:%d %s -> %s | error=%v", instanceId, downloadRequest.User, downloadRequest.Host, downloadRequest.Port, sourcePath, downloadRequest.TargetPath, err)
 		return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeExecutionFailure, fmt.Sprintf("Failed to build SCP command: %v", err)), true
 	}
+
+	sourceMeta := describeTransferSource(sourcePath)
+	logContext := buildTransferLogContext("download", downloadRequest.Host, downloadRequest.Port, downloadRequest.User, sourcePath, downloadRequest.TargetPath, transferAuthMethod(downloadRequest.Password, downloadRequest.PrivateKey), sourceMeta)
+	logger.Debugf("[SCP] Instance: %s, prepared | %s | timeout=%ds | command=%s", instanceId, logContext, downloadRequest.ExecuteTimeout, redactSensitiveCommand(scpCommand))
 
 	localExecuteRequest := local.ExecuteRequest{
 		Command:        scpCommand,
 		LogCommand:     redactSensitiveCommand(scpCommand),
+		LogContext:     logContext,
 		ExecuteTimeout: downloadRequest.ExecuteTimeout,
 	}
 
@@ -212,12 +219,18 @@ func handleUploadToRemoteMessage(data []byte, instanceId string) ([]byte, bool) 
 		defer cleanup()
 	}
 	if err != nil {
+		logger.Errorf("[SCP Transfer] Instance: %s, build_failed | upload %s@%s:%d %s -> %s | error=%v", instanceId, uploadRequest.User, uploadRequest.Host, uploadRequest.Port, uploadRequest.SourcePath, uploadRequest.TargetPath, err)
 		return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeExecutionFailure, fmt.Sprintf("Failed to build SCP command: %v", err)), true
 	}
+
+	sourceMeta := describeTransferSource(uploadRequest.SourcePath)
+	logContext := buildTransferLogContext("upload", uploadRequest.Host, uploadRequest.Port, uploadRequest.User, uploadRequest.SourcePath, uploadRequest.TargetPath, transferAuthMethod(uploadRequest.Password, uploadRequest.PrivateKey), sourceMeta)
+	logger.Debugf("[SCP] Instance: %s, prepared | %s | timeout=%ds | command=%s", instanceId, logContext, uploadRequest.ExecuteTimeout, redactSensitiveCommand(scpCommand))
 
 	localExecuteRequest := local.ExecuteRequest{
 		Command:        scpCommand,
 		LogCommand:     redactSensitiveCommand(scpCommand),
+		LogContext:     logContext,
 		ExecuteTimeout: uploadRequest.ExecuteTimeout,
 	}
 
@@ -301,6 +314,7 @@ func buildSCPCommand(user, host, password, privateKey string, port uint, sourceP
 }
 
 func executeSCPWithFallback(instanceId string, request local.ExecuteRequest) local.ExecuteResponse {
+	logger.Debugf("[SCP] Instance: %s, attempt | profile=modern | %s", instanceId, request.LogContext)
 	response := executeLocalSCPCommand(request, instanceId)
 	if response.Success {
 		return response
@@ -315,16 +329,104 @@ func executeSCPWithFallback(instanceId string, request local.ExecuteRequest) loc
 		return response
 	}
 
-	logger.Warnf("[SCP Execute] Instance: %s, SCP failed with modern profile, retrying with legacy profile", instanceId)
+	logger.Warnf("[SCP] Instance: %s, retry | profile=modern -> legacy | %s | reason=%s", instanceId, request.LogContext, response.Error)
 	legacyRequest := request
 	legacyRequest.Command = legacyCommand
+	legacyRequest.LogCommand = redactSensitiveCommand(legacyCommand)
 
 	legacyResponse := executeLocalSCPCommand(legacyRequest, instanceId)
 	if legacyResponse.Success {
-		logger.Warnf("[SCP Execute] Instance: %s, SCP succeeded with legacy fallback profile", instanceId)
+		logger.Infof("[SCP] Instance: %s, success | profile=legacy | %s", instanceId, request.LogContext)
+	} else {
+		logger.Warnf("[SCP] Instance: %s, failure | profile=legacy | %s | error=%s | last=%q", instanceId, request.LogContext, legacyResponse.Error, truncateTransferOutput(legacyResponse.Output))
 	}
 
 	return legacyResponse
+}
+
+func buildTransferLogContext(direction, host string, port uint, user, sourcePath, targetPath, authMethod string, sourceMeta transferSourceMeta) string {
+	return fmt.Sprintf(
+		"%s %s@%s:%d %s -> %s [auth=%s kind=%s size=%s name=%s]",
+		direction,
+		user,
+		host,
+		port,
+		sourcePath,
+		targetPath,
+		authMethod,
+		sourceMeta.Kind,
+		humanReadableSize(sourceMeta.SizeBytes),
+		sourceMeta.BaseName,
+	)
+}
+
+type transferSourceMeta struct {
+	Kind      string
+	SizeBytes int64
+	BaseName  string
+}
+
+func describeTransferSource(sourcePath string) transferSourceMeta {
+	meta := transferSourceMeta{
+		Kind:      "unknown",
+		SizeBytes: -1,
+		BaseName:  filepath.Base(sourcePath),
+	}
+
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		meta.Kind = "missing_or_inaccessible"
+		return meta
+	}
+
+	if info.IsDir() {
+		meta.Kind = "dir"
+		return meta
+	}
+
+	meta.Kind = "file"
+	meta.SizeBytes = info.Size()
+	return meta
+}
+
+func humanReadableSize(size int64) string {
+	if size < 0 {
+		return "unknown"
+	}
+	units := []string{"B", "KB", "MB", "GB", "TB"}
+	value := float64(size)
+	unit := units[0]
+	for i := 1; i < len(units) && value >= 1024; i++ {
+		value = value / 1024
+		unit = units[i]
+	}
+	if unit == "B" {
+		return fmt.Sprintf("%dB", size)
+	}
+	return fmt.Sprintf("%.1f%s", value, unit)
+}
+
+func transferAuthMethod(password, privateKey string) string {
+	if privateKey != "" {
+		return "private_key"
+	}
+	if password != "" {
+		return "password"
+	}
+	return "unknown"
+}
+
+func truncateTransferOutput(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	value = strings.ReplaceAll(value, "\n", " | ")
+	value = strings.ReplaceAll(value, "\r", " ")
+	if len(value) <= 240 {
+		return value
+	}
+	return value[:240] + "..."
 }
 
 func addLegacySCPOptions(command string) string {
