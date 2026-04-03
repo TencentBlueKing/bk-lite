@@ -59,6 +59,11 @@ export const useModelApi = () => {
   const deleteModelAssociation = (associationId: string) =>
     del(`/cmdb/api/model/association/${associationId}/`);
 
+  const batchDeleteModelAssociations = (associationIds: string[]) =>
+    post('/cmdb/api/model/association/batch_delete/', {
+      model_asst_ids: associationIds,
+    });
+
   // 获取模型关联类型列表
   const getModelAssociationTypes = () =>
     get('/cmdb/api/model/model_association_type/');
@@ -197,6 +202,7 @@ export const useModelApi = () => {
     getModelAssociations,
     createModelAssociation,
     deleteModelAssociation,
+    batchDeleteModelAssociations,
     getModelAssociationTypes,
     getModelDetail,
     getModelAttrGroups,

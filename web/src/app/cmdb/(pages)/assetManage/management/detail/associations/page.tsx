@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Input, Button, Modal, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import type { TableRowSelection } from 'antd/es/table/interface';
 import CustomTable from '@/components/custom-table';
 import AssociationsModal from './associationsModal';
 import { Tag } from 'antd';
@@ -25,6 +26,7 @@ const { confirm } = Modal;
 const Associations: React.FC = () => {
   const {
     deleteModelAssociation,
+    batchDeleteModelAssociations,
     getModelAssociations,
     getModelAssociationTypes,
   } = useModelApi();
@@ -44,7 +46,9 @@ const Associations: React.FC = () => {
     pageSize: 20,
   });
   const [loading, setLoading] = useState<boolean>(false);
+  const [batchDeleting, setBatchDeleting] = useState<boolean>(false);
   const [tableData, setTableData] = useState<any[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [modelList, setModelList] = useState<ModelItem[]>([]);
   const [assoTypeList, setAssoTypeList] = useState<AssoTypeItem[]>([]);
   const [groups, setGroups] = useState<GroupItem[]>([]);
@@ -189,6 +193,60 @@ const Associations: React.FC = () => {
     });
   };
 
+  const showBatchDeleteConfirm = () => {
+    if (!selectedRowKeys.length) {
+      return;
+    }
+    confirm({
+      title: t('common.delConfirm'),
+      content: t('Model.batchDeleteAssociationsConfirm', undefined, {
+        count: selectedRowKeys.length,
+      }),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      onOk() {
+        return new Promise(async (resolve) => {
+          try {
+            setBatchDeleting(true);
+            const result = await batchDeleteModelAssociations(selectedRowKeys as string[]);
+            const successCount = Number(result?.success_count || 0);
+            const failedCount = Number(result?.failed_count || 0);
+            if (failedCount === 0) {
+              message.success(
+                t('Model.batchDeleteAssociationsAllSuccess', undefined, {
+                  successCount,
+                })
+              );
+            } else {
+              const firstReason = result?.failed_items?.[0]?.reason || t('common.operationFailed');
+              message.warning(
+                t('Model.batchDeleteAssociationsPartialResult', undefined, {
+                  successCount,
+                  failedCount,
+                  reason: firstReason,
+                })
+              );
+            }
+            setSelectedRowKeys([]);
+            if (pagination.current > 1 && successCount >= tableData.length) {
+              pagination.current--;
+            }
+            fetchData();
+          } finally {
+            setBatchDeleting(false);
+            resolve(true);
+          }
+        });
+      },
+    });
+  };
+
+  const rowSelection: TableRowSelection<any> = {
+    selectedRowKeys,
+    onChange: (keys) => setSelectedRowKeys(keys),
+  };
+
   const onSearchTxtChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchText(e.target.value);
   };
@@ -278,6 +336,16 @@ const Associations: React.FC = () => {
               instPermissions={modelPermission}
             >
               <Button
+                danger
+                className="mr-[8px]"
+                disabled={!selectedRowKeys.length}
+                loading={batchDeleting}
+                onClick={showBatchDeleteConfirm}
+              >
+                {t('common.batchDelete')}
+                {selectedRowKeys.length > 0 ? `(${selectedRowKeys.length})` : ''}
+              </Button>
+              <Button
                 type="primary"
                 className="mr-[8px]"
                 icon={<PlusOutlined />}
@@ -295,7 +363,8 @@ const Associations: React.FC = () => {
           dataSource={tableData}
           pagination={pagination}
           loading={loading}
-          rowKey="_id"
+          rowKey="model_asst_id"
+          rowSelection={rowSelection}
           onChange={handleTableChange}
         ></CustomTable>
       </div>
