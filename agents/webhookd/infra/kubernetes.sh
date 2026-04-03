@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd infra render script
-# 接收 JSON: {"cluster_name": "xxx", "type": "metric|log", "nats_url": "nats://x.x.x.x:4222", "nats_username": "user", "nats_password": "pass", "nats_ca": "..."}
+# 接收 JSON: {"cluster_name": "xxx", "type": "metric|log|resource", "nats_url": "nats://x.x.x.x:4222", "nats_username": "user", "nats_password": "pass", "nats_ca": "..."}
 # 渲染出 K8s 配置 YAML
 set -euo pipefail
 
@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEBHOOKD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOGS_TEMPLATE=$(cat "$WEBHOOKD_DIR/bk-lite-log-collector.yaml")
 METRIC_TEMPLATE=$(cat "$WEBHOOKD_DIR/bk-lite-metric-collector.yaml")
+RESOURCE_TEMPLATE=$(cat "$WEBHOOKD_DIR/bk-lite-resource-collector.yaml")
 SECRET_TEMPLATE=$(cat <<'EOF'
 apiVersion: v1
 kind: Secret
@@ -84,7 +85,7 @@ validate_cluster_name() {
 }
 
 validate_type() {
-    [[ "$1" == "metric" || "$1" == "log" ]]
+    [[ "$1" == "metric" || "$1" == "log" || "$1" == "resource" ]]
 }
 
 require_field() {
@@ -98,7 +99,7 @@ require_field() {
 require_field "cluster_name" "$CLUSTER_NAME"
 validate_cluster_name "$CLUSTER_NAME" || { json_error "$CLUSTER_NAME" "Invalid cluster_name format (only alphanumeric, underscore and hyphen allowed)"; exit 1; }
 require_field "type" "$TYPE"
-validate_type "$TYPE" || { json_error "$CLUSTER_NAME" "Invalid type: must be 'metric' or 'log'"; exit 1; }
+validate_type "$TYPE" || { json_error "$CLUSTER_NAME" "Invalid type: must be 'metric', 'log' or 'resource'"; exit 1; }
 require_field "nats_url" "$NATS_URL"
 require_field "nats_username" "$NATS_USERNAME"
 require_field "nats_password" "$NATS_PASSWORD"
@@ -117,6 +118,8 @@ render_k8s_config() {
     local template
     if [ "$type" == "log" ]; then
         template="$LOGS_TEMPLATE"
+    elif [ "$type" == "resource" ]; then
+        template="$RESOURCE_TEMPLATE"
     else
         template="$METRIC_TEMPLATE"
     fi

@@ -36,7 +36,7 @@ Content-Type: application/json
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | cluster_name | string | 是 | 集群名称，用于标识。只允许字母、数字、下划线和连字符 |
-| type | string | 是 | 采集器类型，枚举值：`metric`（指标采集）或 `log`（日志采集） |
+| type | string | 是 | 采集器类型，枚举值：`metric`（指标采集）、`log`（日志采集）或 `resource`（K8s 资源信息采集） |
 | nats_url | string | 是 | NATS 服务器地址，格式：`nats://host:port` |
 | nats_username | string | 是 | NATS 用户名 |
 | nats_password | string | 是 | NATS 密码 |
@@ -97,6 +97,22 @@ curl -X POST \
   http://localhost:8080/infra/render
 ```
 
+### 渲染资源采集器配置
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cluster_name": "prod-cluster",
+    "type": "resource",
+    "nats_url": "nats://192.168.1.100:4222",
+    "nats_username": "admin",
+    "nats_password": "secret123",
+    "nats_ca": "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAJC1...\n-----END CERTIFICATE-----"
+  }' \
+  http://localhost:8080/infra/render
+```
+
 ### 提取 YAML 内容并保存到文件
 
 ```bash
@@ -119,7 +135,7 @@ curl -s -X POST \
 
 返回的 `yaml` 字段包含完整的 K8s 配置，由两部分组成：
 
-1. **Collector 配置**：根据 `type` 选择 metric 或 log 采集器模板
+1. **Collector 配置**：根据 `type` 选择 metric、log 或 resource 采集器模板
 2. **Secret 配置**：包含 NATS 连接信息（已 Base64 编码）
 
 可直接用于 `kubectl apply -f` 部署。
@@ -136,7 +152,7 @@ curl -s -X POST \
 ## 注意事项
 
 1. **cluster_name 命名规则**: 只允许字母、数字、下划线和连字符
-2. **type 取值**: 必须是 `metric` 或 `log`
+2. **type 取值**: 必须是 `metric`、`log` 或 `resource`
 3. **nats_ca 格式**: 需要完整的 PEM 格式证书
 4. **Content-Type**: 请求必须设置 `Content-Type: application/json`
 
