@@ -93,6 +93,7 @@
     "version": "Version",
     "noVersionLogs": "No version logs",
     "group": "Group",
+    "organization": "Organization",
     "theme": "Theme",
     "notFound": "We can't seem to find the page you're looking for.",
     "backToHome": "Back to Home",

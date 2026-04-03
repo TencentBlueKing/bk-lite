@@ -89,7 +89,7 @@
     "settings": "Settings",
     "saveSuccess": "Save Successfully",
     "delConfirm": "Do you want to delete the selected item(s)?",
-    "belongingGroup": "Belonging Group",
+    "belongingGroup": "Belonging Organization",
     "successfullyImported": "Import Successfully !",
     "fieldRequired": "Text cannot be empty. This field is required.",
     "uploadText": "Click or drag files here to upload",
