@@ -1,4 +1,8 @@
 {
+"common": {
+    "total": "Total",
+    "items": "items"
+},
   "topology": {
     "nodeConfig": {
       "width": "Width",
@@ -200,7 +204,22 @@
     "updateDataSourceSuccess": "Data source updated successfully",
     "required": "Required",
     "singleValue": "Single Value",
-    "operationFailed": "Operation failed"
+    "operationFailed": "Operation failed",
+    "table": "Table",
+    "responseFieldSchemaConfig": "API Field Definition",
+    "schemaOptionalAutoGenTip": "This setting is optional. If not configured, default columns are auto-generated from returned fields on first use.",
+    "addField": "Add Field",
+    "fieldKey": "Field Name",
+    "fieldTitle": "Display Name",
+    "fieldValueType": "Data Type",
+    "fieldDescription": "Description",
+    "duplicateFieldKeys": "Duplicate field names: ",
+    "valueTypes": {
+        "string": "String",
+        "number": "Number",
+        "boolean": "Boolean",
+        "datetime": "Datetime"
+    }
   },
   "dashboard": {
     "endTime": "End Time",
@@ -234,7 +253,29 @@
     "title": "Select Component",
     "basicSettings": "Basic Settings",
     "showHeader": "Show Header",
-    "fixed": "Fixed"
+    "fixed": "Fixed",
+    "keyword": "Keyword",
+    "searchPlaceholder": "Enter keyword to search",
+    "namespaceFilter": "Namespace Filter",
+    "allNamespaces": "Select namespace",
+    "columnSettings": "Column Settings",
+    "noPermission": "No Permission",
+    "tableSettings": "Table Settings",
+    "filterFields": "Search Fields",
+    "filterFieldKey": "Field",
+    "filterFieldLabel": "Display Name",
+    "filterInputType": "Input Type",
+    "displayColumns": "Display Columns",
+    "noDisplayColumns": "No display columns configured",
+    "reProbeColumns": "Refresh Default Columns",
+    "reProbeColumnsTip": "Re-detect and restore default columns based on the current data source and parameters, while keeping existing custom columns",
+    "reProbeSuccess": "Default columns refreshed successfully",
+    "reProbeNoFields": "No available fields detected",
+    "atLeastOneVisibleColumn": "Please keep at least one visible column",
+    "invalidConfiguredFieldsTip": "Some configured fields are not in the current available field set and may be unavailable: {{fields}}",
+    "columnVisible": "Visible",
+    "noSchemaFields": "No available fields. Please configure table fields in the data source first",
+    "noFilterFields": "No search fields configured"
   },
   "opsAnalysisSidebar": {
     "addArch": "Add Architecture",
