@@ -1,5 +1,5 @@
-import React from 'react';
-import { Card, Checkbox, InputNumber, Select } from 'antd';
+import React, { useMemo } from 'react';
+import { Card, Checkbox, Divider, InputNumber, Select, Space } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type {
   TriggerConfig,
@@ -18,6 +18,70 @@ interface TriggerTypeConfigProps {
 }
 
 const TYPES: TriggerType[] = ['attribute_change', 'relation_change', 'expiration'];
+const ATTRIBUTE_CHANGE_EXCLUDED_FIELD_IDS = new Set([
+  'inst_name',
+  'organization',
+  'collect_task',
+  'update_time',
+  'updated_time',
+  'is_collect_task',
+]);
+
+interface SelectAllDropdownProps {
+  menu: React.ReactElement;
+  allSelected: boolean;
+  noneSelected: boolean;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  selectAllText: string;
+  deselectAllText: string;
+}
+
+const SelectAllDropdown: React.FC<SelectAllDropdownProps> = ({
+  menu,
+  allSelected,
+  noneSelected,
+  onSelectAll,
+  onDeselectAll,
+  selectAllText,
+  deselectAllText,
+}) => (
+  <>
+    <Space style={{ padding: '8px 12px' }}>
+      <a
+        onClick={(e) => {
+          e.preventDefault();
+          if (!allSelected) onSelectAll();
+        }}
+        aria-disabled={allSelected}
+        style={{
+          color: allSelected ? '#bfbfbf' : undefined,
+          cursor: allSelected ? 'not-allowed' : 'pointer',
+          pointerEvents: 'auto',
+        }}
+      >
+        {selectAllText}
+      </a>
+      <Divider type="vertical" style={{ margin: 0 }} />
+      <a
+        onClick={(e) => {
+          e.preventDefault();
+          if (!noneSelected) onDeselectAll();
+        }}
+        aria-disabled={noneSelected}
+        style={{
+          color: noneSelected ? '#bfbfbf' : undefined,
+          cursor: noneSelected ? 'not-allowed' : 'pointer',
+          pointerEvents: 'auto',
+        }}
+      >
+        {deselectAllText}
+      </a>
+    </Space>
+    <Divider style={{ margin: '0 0 4px' }} />
+    {menu}
+  </>
+);
 
 const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
   value,
@@ -30,6 +94,20 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
   errors = {},
 }) => {
   const { t } = useTranslation();
+  const attributeChangeDefaultFields = useMemo(
+    () => modelFields
+      .filter((field) => !ATTRIBUTE_CHANGE_EXCLUDED_FIELD_IDS.has(field.id))
+      .map((field) => field.id),
+    [modelFields]
+  );
+  const attributeChangeAllFields = useMemo(
+    () => modelFields.map((field) => field.id),
+    [modelFields]
+  );
+  const relationChangeAllFields = useMemo(
+    () => relationFields.map((field) => field.id),
+    [relationFields]
+  );
 
   const titleMap = {
     attribute_change: t('subscription.triggerTypeAttributeChange'),
@@ -49,7 +127,7 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
     const nextConfig: TriggerConfig = { ...triggerConfig };
     if (!checked) {
       if (type === 'attribute_change' && !nextConfig.attribute_change) {
-        nextConfig.attribute_change = { fields: [] };
+        nextConfig.attribute_change = { fields: attributeChangeDefaultFields };
       }
       if (type === 'relation_change' && !nextConfig.relation_change) {
         nextConfig.relation_change = { related_model: '', fields: [] };
@@ -74,6 +152,11 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
 
     if (type === 'attribute_change') {
       const hasError = !!errors['attribute_change.fields'];
+      const selectedFields = triggerConfig.attribute_change?.fields || [];
+      const allSelected = attributeChangeAllFields.length > 0
+        && selectedFields.length === attributeChangeAllFields.length;
+      const noneSelected = selectedFields.length === 0;
+
       return (
         <div style={rowStyle}>
           <label style={labelStyle}>{t('subscription.watchFields')}</label>
@@ -83,9 +166,21 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
               style={{ width: '100%' }}
               status={hasError ? 'error' : undefined}
               placeholder={t('common.selectMsg')}
-              value={triggerConfig.attribute_change?.fields || []}
+              value={selectedFields}
               onChange={(fields) => updateConfig({ attribute_change: { fields } })}
               options={modelFields.map((i) => ({ label: i.name, value: i.id }))}
+              maxTagCount="responsive"
+              dropdownRender={(menu) => (
+                <SelectAllDropdown
+                  menu={menu}
+                  allSelected={allSelected}
+                  noneSelected={noneSelected}
+                  onSelectAll={() => updateConfig({ attribute_change: { fields: attributeChangeAllFields } })}
+                  onDeselectAll={() => updateConfig({ attribute_change: { fields: [] } })}
+                  selectAllText={t('common.selectAll')}
+                  deselectAllText={t('common.deselectAll')}
+                />
+              )}
             />
             {hasError && (
               <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>
@@ -100,6 +195,11 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
     if (type === 'relation_change') {
       const hasModelError = !!errors['relation_change.related_model'];
       const hasFieldsError = !!errors['relation_change.fields'];
+      const selectedFields = triggerConfig.relation_change?.fields || [];
+      const allSelected = relationChangeAllFields.length > 0
+        && selectedFields.length === relationChangeAllFields.length;
+      const noneSelected = selectedFields.length === 0;
+
       return (
         <div>
           <div style={rowStyle}>
@@ -135,7 +235,7 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
                 style={{ width: '100%' }}
                 status={hasFieldsError ? 'error' : undefined}
                 placeholder={t('common.selectMsg')}
-                value={triggerConfig.relation_change?.fields || []}
+                value={selectedFields}
                 onChange={(fields) =>
                   updateConfig({
                     relation_change: {
@@ -145,6 +245,28 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
                   })
                 }
                 options={relationFields.map((i) => ({ label: i.name, value: i.id }))}
+                maxTagCount="responsive"
+                dropdownRender={(menu) => (
+                  <SelectAllDropdown
+                    menu={menu}
+                    allSelected={allSelected}
+                    noneSelected={noneSelected}
+                    onSelectAll={() => updateConfig({
+                      relation_change: {
+                        related_model: triggerConfig.relation_change?.related_model || '',
+                        fields: relationChangeAllFields,
+                      },
+                    })}
+                    onDeselectAll={() => updateConfig({
+                      relation_change: {
+                        related_model: triggerConfig.relation_change?.related_model || '',
+                        fields: [],
+                      },
+                    })}
+                    selectAllText={t('common.selectAll')}
+                    deselectAllText={t('common.deselectAll')}
+                  />
+                )}
               />
               {hasFieldsError && (
                 <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>

@@ -3,7 +3,7 @@
   "plugin_desc": "Used for real-time monitoring of Consul service health, collecting status check results, analyzing passing, warning, and critical metrics to help users promptly identify issues and ensure service availability.\n",
   "status_query": "any({instance_type='consul', collect_type='middleware'}) by (instance_id)",
   "name": "Consul",
-  "icon": "zhongjianjian",
+  "icon": "cc-middleware_中间件",
   "type": "Middleware",
   "description": "",
   "default_metric": "any({instance_type='consul'}) by (instance_id)",

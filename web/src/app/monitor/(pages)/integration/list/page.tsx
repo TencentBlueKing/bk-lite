@@ -16,7 +16,6 @@ import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import { EllipsisOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import Icon from '@/components/icon';
 import { getIconByObjectName } from '@/app/monitor/utils/common';
 import { useRouter } from 'next/navigation';
 import {
@@ -416,10 +415,17 @@ const Integration = () => {
                   >
                     <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
                       <div className="flex items-center space-x-4 my-2">
-                        <Icon
-                          type={getIconByObjectName(objectName, objects)}
-                          className="text-[48px] min-w-[48px]"
-                        />
+                        <div className="w-14 h-14 min-w-[56px] rounded-lg flex items-center justify-center bg-[var(--color-fill-1)]">
+                          <img
+                            src={`/app/assets/assetModelIcon/${getIconByObjectName(objectName, objects)}.svg`}
+                            alt={objectName}
+                            className="w-12 h-12"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src =
+                                '/app/assets/assetModelIcon/cc-default_默认.svg';
+                            }}
+                          />
+                        </div>
                         <div
                           style={{
                             width: 'calc(100% - 60px)'

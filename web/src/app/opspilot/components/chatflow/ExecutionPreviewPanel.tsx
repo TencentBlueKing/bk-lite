@@ -52,6 +52,18 @@ const statusConfig = {
     borderClassName: 'border-red-200',
     icon: <CloseCircleFilled className="text-red-500" />,
   },
+  interrupted: {
+    color: 'default' as const,
+    textClassName: 'text-(--color-text-2)',
+    borderClassName: 'border-(--color-border-1)',
+    icon: <CloseCircleFilled className="text-(--color-text-3)" />,
+  },
+  interrupt_requested: {
+    color: 'processing' as const,
+    textClassName: 'text-orange-600',
+    borderClassName: 'border-orange-200',
+    icon: <ClockCircleFilled className="text-orange-500" />,
+  },
 };
 
 const ExecutionPreviewPanel: React.FC<ExecutionPreviewPanelProps> = ({
@@ -250,6 +262,8 @@ const ExecutionPreviewPanel: React.FC<ExecutionPreviewPanelProps> = ({
     if (status === 'failed') return <Tag color="error">{t('chatflow.preview.failed')}</Tag>;
     if (status === 'completed') return <Tag color="success">{t('chatflow.preview.success')}</Tag>;
     if (status === 'running') return <Tag color="processing">{t('chatflow.preview.running')}</Tag>;
+    if (status === 'interrupted') return <Tag>{t('chatflow.preview.interrupted', '已中断')}</Tag>;
+    if (status === 'interrupt_requested') return <Tag color="orange">{t('chatflow.preview.interruptRequested', '中断中')}</Tag>;
     return <Tag>{t('chatflow.preview.pending')}</Tag>;
   };
 

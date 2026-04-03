@@ -283,62 +283,47 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("model_management-Delete Model")
     @action(detail=False, methods=["delete"], url_path="association/(?P<model_asst_id>.+?)")
     def model_association_delete(self, request, model_asst_id: str):
-        association_info = ModelManage.model_association_info_search(model_asst_id)
-        src_model_id = association_info["src_model_id"]
-        dst_model_id = association_info["dst_model_id"]
-
-        # 检查源模型权限
-        src_model_info = ModelManage.search_model_info(src_model_id)
-        if not src_model_info:
-            return WebUtils.response_error("源模型不存在", status_code=status.HTTP_404_NOT_FOUND)
-
-        src_permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=src_model_id, permission_type=PERMISSION_MODEL
-        )
-
-        organizations = self.organizations(request, src_model_info)
-        # 再次确认用户所在的组织
-        if not organizations:
-            return WebUtils.response_error("抱歉！您没有源模型的权限", status_code=status.HTTP_403_FORBIDDEN)
-
-        src_has_permission = CmdbRulesFormatUtil.has_object_permission(
-            obj_type=PERMISSION_MODEL,
-            operator=OPERATE,
-            model_id=src_model_id,
-            permission_instances_map=src_permissions_map,
-            instance=src_model_info,
-            default_group_id=self.default_group_id,
-        )
-        if not src_has_permission:
-            return WebUtils.response_error("抱歉！您没有源模型的权限", status_code=status.HTTP_403_FORBIDDEN)
-
-        # 检查目标模型权限
-        dst_model_info = ModelManage.search_model_info(dst_model_id)
-        if not dst_model_info:
-            return WebUtils.response_error("目标模型不存在", status_code=status.HTTP_404_NOT_FOUND)
-
-        dst_permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=dst_model_id, permission_type=PERMISSION_MODEL
-        )
-
-        organizations = self.organizations(request, dst_model_info)
-        # 再次确认用户所在的组织
-        if not organizations:
-            return WebUtils.response_error("抱歉！您没有目标模型的权限", status_code=status.HTTP_403_FORBIDDEN)
-
-        dst_has_permission = CmdbRulesFormatUtil.has_object_permission(
-            obj_type=PERMISSION_MODEL,
-            operator=OPERATE,
-            model_id=dst_model_id,
-            permission_instances_map=dst_permissions_map,
-            instance=dst_model_info,
-            default_group_id=self.default_group_id,
-        )
-        if not dst_has_permission:
-            return WebUtils.response_error("抱歉！您没有目标模型的权限", status_code=status.HTTP_403_FORBIDDEN)
-
-        ModelManage.model_association_delete(association_info.get("_id"))
+        success, reason, error_code = self._delete_model_association_with_permission(request, model_asst_id)
+        if not success:
+            status_code = status.HTTP_403_FORBIDDEN if error_code == "permission_denied" else status.HTTP_404_NOT_FOUND
+            return WebUtils.response_error(reason, status_code=status_code)
         return WebUtils.response_success()
+
+    @HasPermission("model_management-Delete Model")
+    @action(detail=False, methods=["post"], url_path="association/batch_delete")
+    def model_association_batch_delete(self, request):
+        model_asst_ids = request.data.get("model_asst_ids", [])
+        if not isinstance(model_asst_ids, list) or not model_asst_ids:
+            return WebUtils.response_error("model_asst_ids 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+
+        if len(model_asst_ids) > 200:
+            return WebUtils.response_error("单次最多删除200条模型关系", status_code=status.HTTP_400_BAD_REQUEST)
+
+        success_ids = []
+        failed_items = []
+        for model_asst_id in model_asst_ids:
+            if not isinstance(model_asst_id, str) or not model_asst_id:
+                failed_items.append({"model_asst_id": model_asst_id, "reason": "model_asst_id 非法", "code": "invalid_id"})
+                continue
+            try:
+                success, reason, error_code = self._delete_model_association_with_permission(request, model_asst_id)
+                if success:
+                    success_ids.append(model_asst_id)
+                else:
+                    failed_items.append({"model_asst_id": model_asst_id, "reason": reason, "code": error_code})
+            except Exception as e:  # noqa: BLE001 - 批量删除应尽可能继续处理后续项
+                failed_items.append({"model_asst_id": model_asst_id, "reason": str(e), "code": "unknown_error"})
+
+        result = {
+            "requested_count": len(model_asst_ids),
+            "processed_count": len(model_asst_ids),
+            "total": len(model_asst_ids),
+            "success_count": len(success_ids),
+            "failed_count": len(failed_items),
+            "success_ids": success_ids,
+            "failed_items": failed_items,
+        }
+        return WebUtils.response_success(result)
 
     @HasPermission("model_management-View")
     @action(detail=False, methods=["get"], url_path="(?P<model_id>.+?)/association")
@@ -587,7 +572,9 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         # 检查源模型是否存在
         model_info = ModelManage.search_model_info(model_id)
         if not model_info:
-            return WebUtils.response_error("源模型不存在", status_code=status.HTTP_404_NOT_FOUND)
+            return WebUtils.response_error(
+                error_message="源模型不存在", status_code=status.HTTP_404_NOT_FOUND
+            )
 
         # 检查源模型权限
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
@@ -595,7 +582,10 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         organizations = self.organizations(request, model_info)
         # 再次确认用户所在的组织
         if not organizations:
-            return WebUtils.response_error("抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN)
+            return WebUtils.response_error(
+                error_message="抱歉！您没有此模型的权限",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
 
         has_permission = CmdbRulesFormatUtil.has_object_permission(
             obj_type=PERMISSION_MODEL,
@@ -606,7 +596,10 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             default_group_id=self.default_group_id,
         )
         if not has_permission:
-            return WebUtils.response_error("抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN)
+            return WebUtils.response_error(
+                error_message="抱歉！您没有此模型的权限",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
 
         # 获取请求参数
         new_model_id = request.data.get("new_model_id")
@@ -619,20 +612,26 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         # 参数校验
         if not new_model_id:
-            return WebUtils.response_error("新模型ID不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+            return WebUtils.response_error(
+                error_message="新模型ID不能为空",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
 
         if not IdentifierValidator.is_valid(new_model_id):
             return WebUtils.response_error(
-                IdentifierValidator.get_error_message("新模型ID"),
+                error_message=IdentifierValidator.get_error_message("新模型ID"),
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
         if not new_model_name:
-            return WebUtils.response_error("新模型名称不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+            return WebUtils.response_error(
+                error_message="新模型名称不能为空",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
 
         if not copy_attributes and not copy_relationships:
             return WebUtils.response_error(
-                "至少选择一种复制方式（属性或关系）",
+                error_message="至少选择一种复制方式（属性或关系）",
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -693,3 +692,61 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         ModelManage.import_model_config(file)
         return WebUtils.response_success(response_data="", message="模型配置导入成功")
+    def _delete_model_association_with_permission(self, request, model_asst_id: str):
+        association_info = ModelManage.model_association_info_search(model_asst_id)
+        if not association_info:
+            return False, "模型关联不存在", "not_found"
+
+        src_model_id = association_info["src_model_id"]
+        dst_model_id = association_info["dst_model_id"]
+
+        # 检查源模型权限
+        src_model_info = ModelManage.search_model_info(src_model_id)
+        if not src_model_info:
+            return False, "源模型不存在", "not_found"
+
+        src_permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=src_model_id, permission_type=PERMISSION_MODEL
+        )
+
+        organizations = self.organizations(request, src_model_info)
+        if not organizations:
+            return False, "抱歉！您没有源模型的权限", "permission_denied"
+
+        src_has_permission = CmdbRulesFormatUtil.has_object_permission(
+            obj_type=PERMISSION_MODEL,
+            operator=OPERATE,
+            model_id=src_model_id,
+            permission_instances_map=src_permissions_map,
+            instance=src_model_info,
+            default_group_id=self.default_group_id,
+        )
+        if not src_has_permission:
+            return False, "抱歉！您没有源模型的权限", "permission_denied"
+
+        # 检查目标模型权限
+        dst_model_info = ModelManage.search_model_info(dst_model_id)
+        if not dst_model_info:
+            return False, "目标模型不存在", "not_found"
+
+        dst_permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=dst_model_id, permission_type=PERMISSION_MODEL
+        )
+
+        organizations = self.organizations(request, dst_model_info)
+        if not organizations:
+            return False, "抱歉！您没有目标模型的权限", "permission_denied"
+
+        dst_has_permission = CmdbRulesFormatUtil.has_object_permission(
+            obj_type=PERMISSION_MODEL,
+            operator=OPERATE,
+            model_id=dst_model_id,
+            permission_instances_map=dst_permissions_map,
+            instance=dst_model_info,
+            default_group_id=self.default_group_id,
+        )
+        if not dst_has_permission:
+            return False, "抱歉！您没有目标模型的权限", "permission_denied"
+
+        ModelManage.model_association_delete(association_info["_id"])
+        return True, "", ""

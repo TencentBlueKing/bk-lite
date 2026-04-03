@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.serializers import TeamSerializer
-from apps.job_mgmt.constants import CredentialSource, OSType, SSHCredentialType
+from apps.job_mgmt.constants import CredentialSource, OSType, SSHCredentialType, WinRMTransport
 from apps.job_mgmt.models import Target
 from apps.node_mgmt.models import CloudRegion
 
@@ -20,6 +20,7 @@ class TargetSerializer(TeamSerializer):
     cloud_region_name = serializers.SerializerMethodField()
     # 写入字段（创建/更新时使用）
     ssh_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    ssh_key_passphrase = serializers.CharField(write_only=True, required=False, allow_blank=True)
     winrm_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     ssh_key_file = serializers.FileField(write_only=True, required=False, allow_null=True)
 
@@ -82,12 +83,15 @@ class TargetSerializer(TeamSerializer):
     def create(self, validated_data):
         """创建时加密密码字段"""
         EncryptMixin.encrypt_field("ssh_password", validated_data)
+        EncryptMixin.encrypt_field("ssh_key_passphrase", validated_data)
         EncryptMixin.encrypt_field("winrm_password", validated_data)
+        validated_data["winrm_cert_validation"] = False
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         """更新时加密密码字段"""
         EncryptMixin.encrypt_field("ssh_password", validated_data)
+        EncryptMixin.encrypt_field("ssh_key_passphrase", validated_data)
         EncryptMixin.encrypt_field("winrm_password", validated_data)
         return super().update(instance, validated_data)
 
@@ -112,10 +116,12 @@ class TargetSerializer(TeamSerializer):
             "ssh_credential_type",
             "ssh_credential_type_display",
             "ssh_password",
+            "ssh_key_passphrase",
             "ssh_key_file",
             "winrm_port",
             "winrm_scheme",
             "winrm_scheme_display",
+            "winrm_transport",
             "winrm_user",
             "winrm_password",
             "winrm_cert_validation",
@@ -149,10 +155,12 @@ class TargetTestConnectionSerializer(serializers.Serializer):
     ssh_user = serializers.CharField(required=False, allow_blank=True, default="")
     ssh_credential_type = serializers.CharField(required=False, default="password")
     ssh_password = serializers.CharField(required=False, allow_blank=True, default="")
+    ssh_key_passphrase = serializers.CharField(required=False, allow_blank=True, default="")
     ssh_key_file = serializers.FileField(required=False, allow_null=True)
     # WinRM (Windows)
     winrm_port = serializers.IntegerField(required=False, default=5986)
     winrm_scheme = serializers.CharField(required=False, default="https")
+    winrm_transport = serializers.ChoiceField(required=False, choices=WinRMTransport.CHOICES, default=WinRMTransport.NTLM)
     winrm_user = serializers.CharField(required=False, allow_blank=True, default="")
     winrm_password = serializers.CharField(required=False, allow_blank=True, default="")
     winrm_cert_validation = serializers.BooleanField(required=False, default=True)

@@ -278,7 +278,7 @@ const UserInfo: React.FC = () => {
               setGroupPanelVisible(!groupPanelVisible);
             }}
           >
-            <span>{t('common.group')}</span>
+            <span>{t('common.organization')}</span>
             <span className="flex items-center gap-1 text-xs text-[var(--color-text-4)]">
               {selectedGroup?.name}
               <RightOutlined className="text-[10px]" />

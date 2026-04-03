@@ -20,6 +20,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import WorkFlowExecuteType, WorkFlowTaskStatus
 from apps.opspilot.models import BotWorkFlow
 from apps.opspilot.models.bot_mgmt import WorkFlowConversationHistory, WorkFlowTaskNodeResult, WorkFlowTaskResult
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
 
 from .core.base_executor import BaseNodeExecutor
 from .core.enums import NodeStatus
@@ -101,6 +102,40 @@ class ChatFlowEngine:
         if not timestamp:
             return None
         return datetime.fromtimestamp(timestamp, tz=dt_timezone.utc)
+
+    def _check_interrupt_requested(self) -> bool:
+        return is_interrupt_requested(self.execution_id)
+
+    def _finalize_interrupted_execution(self, input_data: Dict[str, Any], result: Any = None, start_node_type: str = None) -> None:
+        task_result = self._ensure_execution_result_started(input_data, start_node_type)
+        output_data = self._build_execution_output_data()
+        if isinstance(result, dict):
+            last_output = json.dumps(result, ensure_ascii=False)
+        elif isinstance(result, str):
+            last_output = result
+        else:
+            last_output = str(result or "execution interrupted")
+
+        task_result.status = WorkFlowTaskStatus.INTERRUPTED
+        task_result.input_data = json.dumps(input_data, ensure_ascii=False)
+        task_result.output_data = output_data
+        task_result.last_output = last_output
+        task_result.execute_type = self._get_execute_type(start_node_type)
+        task_result.finished_at = timezone.now()
+        task_result.save(update_fields=["status", "input_data", "output_data", "last_output", "execute_type", "finished_at"])
+
+        WorkFlowTaskNodeResult.objects.filter(execution_id=self.execution_id, task_result__isnull=True).update(task_result=task_result)
+
+    def _interrupt_result(self, message: str = "执行已中断") -> Dict[str, Any]:
+        return {"success": False, "interrupted": True, "error": message, "execution_id": self.execution_id}
+
+    def _raise_if_interrupted(self, input_data: Optional[Dict[str, Any]] = None, start_node_type: str = None) -> None:
+        if not self._check_interrupt_requested():
+            return
+        result = self._interrupt_result()
+        if input_data is not None:
+            self._finalize_interrupted_execution(input_data, result, start_node_type)
+        raise InterruptedError(result["error"])
 
     def _record_node_execution_result(self, node_id: str, context: NodeExecutionContext) -> None:
         """记录节点执行明细（幂等 upsert）"""
@@ -241,6 +276,10 @@ class ChatFlowEngine:
         """
         await sync_to_async(self._record_node_execution_result, thread_sensitive=True)(node_id, context)
 
+    async def _record_execution_result_async(self, input_data: Dict[str, Any], result: Any, success: bool, start_node_type: str = None) -> None:
+        """异步记录工作流执行结果（用于 async 上下文）"""
+        await sync_to_async(self._record_execution_result, thread_sensitive=True)(input_data, result, success, start_node_type)
+
     def _get_start_node(self) -> Optional[Dict[str, Any]]:
         """获取起始节点
 
@@ -265,103 +304,179 @@ class ChatFlowEngine:
         start_node_type = start_node.get("type", "")
         return start_node_type if start_node_type in [choice[0] for choice in WorkFlowExecuteType.choices] else "restful"
 
-    def sse_execute(self, input_data: Dict[str, Any] = None):
-        """流程流式执行，支持SSE和AGUI协议，返回 StreamingHttpResponse"""
-
-        if input_data is None:
-            input_data = {}
-
-        # 提取执行上下文
+    def _prepare_sse_execution(
+        self, input_data: Dict[str, Any]
+    ) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], str, str, str, str, bool, bool, Optional[StreamingHttpResponse]]:
+        """准备 SSE 执行上下文"""
         user_id = input_data.get("user_id", "")
         input_message = input_data.get("last_message", "") or input_data.get("message", "")
         session_id = input_data.get("session_id", "")
         entry_type = input_data.get("entry_type", "openai")
         logger.info(f"[SSE-Engine] 开始执行 - flow_id: {self.instance.id}, user_id: {user_id}, entry_type: {entry_type}, 节点数: {len(self.nodes)}")
 
-        # 初始化变量管理器
         self._initialize_variables(input_data)
 
-        # 记录用户输入对话历史
         node_id = input_data.get("node_id", "")
         self._record_conversation_history(user_id, input_message, "user", entry_type, node_id, session_id)
 
-        # 验证流程
         validation_errors = self.validate_flow()
         if validation_errors:
-            return self._create_error_response("流程验证失败")
+            return None, None, user_id, entry_type, session_id, node_id, False, False, self._create_error_response("流程验证失败")
 
         start_node = self._get_start_node()
-        self._ensure_execution_result_started(input_data, start_node.get("type", "") if start_node else None)
+        start_node_type = start_node.get("type", "") if start_node else None
+        self._ensure_execution_result_started(input_data, start_node_type)
+        self._raise_if_interrupted(input_data, start_node_type)
 
-        # 获取起始节点和最后节点
         last_node = self.nodes[-1] if self.nodes else None
-
-        # 判断协议类型
         is_agui_protocol = start_node and start_node.get("type") in ["agui", "embedded_chat", "mobile", "web_chat"]
         is_openai_protocol = start_node and start_node.get("type") == "openai"
-
-        # 检查是否需要流式执行
         needs_streaming = (is_agui_protocol or is_openai_protocol) or (last_node and last_node.get("type") == "agents")
         if not needs_streaming:
             self._record_execution_result(
-                input_data, {"success": False, "error": "当前流程不支持SSE"}, False, start_node.get("type", "") if start_node else None
+                input_data,
+                {"success": False, "error": "当前流程不支持SSE"},
+                False,
+                start_node_type,
             )
-            return self._create_error_response("当前流程不支持SSE")
+            return (
+                None,
+                None,
+                user_id,
+                entry_type,
+                session_id,
+                node_id,
+                is_agui_protocol,
+                is_openai_protocol,
+                self._create_error_response("当前流程不支持SSE"),
+            )
 
-        # 查找目标agents节点及前置节点
+        return start_node, last_node, user_id, entry_type, session_id, node_id, is_agui_protocol, is_openai_protocol, None
+
+    def _resolve_sse_target_agent(
+        self,
+        input_data: Dict[str, Any],
+        start_node: Optional[Dict[str, Any]],
+        last_node: Optional[Dict[str, Any]],
+        is_agui_protocol: bool,
+        is_openai_protocol: bool,
+    ) -> tuple[Optional[Dict[str, Any]], Dict[str, Any], Optional[StreamingHttpResponse]]:
+        """解析 SSE 目标 agents 节点与最终输入数据"""
         target_agent_node, nodes_to_execute_before = self._find_target_agent_node(start_node, last_node, is_agui_protocol, is_openai_protocol)
 
-        # 为入口节点创建执行上下文记录，同时获取映射后的输出数据
         mapped_input_data = input_data
         if start_node:
             mapped_input_data = self.set_start_node_variable(input_data, start_node)
 
-        # 执行前置节点（使用映射后的数据）
         final_input_data = self._execute_prerequisite_nodes(nodes_to_execute_before, mapped_input_data)
 
-        # 如果 target_agent_node 为 None，说明路径中包含意图分类节点，需要动态路由
-        if not target_agent_node:
-            # 检查前置节点中是否有意图分类节点
-            intent_node = None
-            for node in nodes_to_execute_before:
-                if node.get("type") == "intent_classification":
-                    intent_node = node
-                    break
+        if target_agent_node:
+            return target_agent_node, final_input_data, None
 
-            if intent_node:
-                # 从 final_input_data 中获取意图分类结果
-                intent_result = final_input_data.get("intent_result")
-                if intent_result:
-                    # 根据意图结果找到对应的目标agents节点
-                    target_agent_node = self._find_agent_by_intent(intent_node.get("id"), intent_result)
-                    logger.info(f"[SSE-Engine] 意图分类结果: {intent_result!r}, 目标节点: {target_agent_node.get('id') if target_agent_node else None}")
+        intent_node = None
+        for node in nodes_to_execute_before:
+            if node.get("type") == "intent_classification":
+                intent_node = node
+                break
 
-            if not target_agent_node:
-                self._record_execution_result(
-                    input_data,
-                    {"success": False, "error": "未找到可执行的agents节点（意图路由失败）"},
-                    False,
-                    start_node.get("type", "") if start_node else None,
-                )
-                return self._create_error_response("未找到可执行的agents节点（意图路由失败）")
+        if intent_node:
+            intent_result = final_input_data.get("intent_result")
+            if intent_result:
+                target_agent_node = self._find_agent_by_intent(intent_node.get("id"), intent_result)
+                logger.info(f"[SSE-Engine] 意图分类结果: {intent_result!r}, 目标节点: {target_agent_node.get('id') if target_agent_node else None}")
 
-        # 根据协议类型选择执行方法
+        if target_agent_node:
+            return target_agent_node, final_input_data, None
+
+        start_node_type = start_node.get("type", "") if start_node else None
+        self._record_execution_result(
+            input_data,
+            {"success": False, "error": "未找到可执行的agents节点（意图路由失败）"},
+            False,
+            start_node_type,
+        )
+        return None, final_input_data, self._create_error_response("未找到可执行的agents节点（意图路由失败）")
+
+    def _resolve_sse_execute_method(
+        self,
+        input_data: Dict[str, Any],
+        start_node: Optional[Dict[str, Any]],
+        target_agent_node: Dict[str, Any],
+        is_agui_protocol: bool,
+    ):
+        """解析 agents 节点的流式执行方法"""
         executor = self._get_node_executor(target_agent_node.get("type"))
-        execute_method = None
-
         if is_agui_protocol and hasattr(executor, "agui_execute"):
             execute_method = executor.agui_execute
         elif hasattr(executor, "sse_execute"):
             execute_method = executor.sse_execute
+        else:
+            execute_method = None
 
-        if not execute_method:
-            logger.error(f"[SSE-Engine] agents节点不支持流式执行: {target_agent_node.get('id')}")
+        if execute_method:
+            return execute_method, None
 
-        if not execute_method:
-            self._record_execution_result(
-                input_data, {"success": False, "error": "agents节点不支持流式执行"}, False, start_node.get("type", "") if start_node else None
-            )
-            return self._create_error_response("agents节点不支持流式执行")
+        logger.error(f"[SSE-Engine] agents节点不支持流式执行: {target_agent_node.get('id')}")
+        self._record_execution_result(
+            input_data,
+            {"success": False, "error": "agents节点不支持流式执行"},
+            False,
+            start_node.get("type", "") if start_node else None,
+        )
+        return None, self._create_error_response("agents节点不支持流式执行")
+
+    def _create_sse_stream_response(self, generate_stream) -> StreamingHttpResponse:
+        """创建 SSE 响应"""
+        response = StreamingHttpResponse(generate_stream(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response["X-Accel-Buffering"] = "no"
+        response["Pragma"] = "no-cache"
+        response["Expires"] = "0"
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Headers"] = "Cache-Control"
+        response["X-Execution-ID"] = self.execution_id
+        response["Access-Control-Expose-Headers"] = "X-Execution-ID"
+        response["Transfer-Encoding"] = "chunked"
+        return response
+
+    def sse_execute(self, input_data: Dict[str, Any] = None):
+        """流程流式执行，支持SSE和AGUI协议，返回 StreamingHttpResponse"""
+
+        if input_data is None:
+            input_data = {}
+
+        (
+            start_node,
+            last_node,
+            user_id,
+            entry_type,
+            session_id,
+            node_id,
+            is_agui_protocol,
+            is_openai_protocol,
+            error_response,
+        ) = self._prepare_sse_execution(input_data)
+        if error_response:
+            return error_response
+
+        target_agent_node, final_input_data, error_response = self._resolve_sse_target_agent(
+            input_data,
+            start_node,
+            last_node,
+            is_agui_protocol,
+            is_openai_protocol,
+        )
+        if error_response:
+            return error_response
+
+        execute_method, error_response = self._resolve_sse_execute_method(
+            input_data,
+            start_node,
+            target_agent_node,
+            is_agui_protocol,
+        )
+        if error_response:
+            return error_response
 
         # 定义一个嵌套的异步生成器函数 - 完全模仿 agui_chat.py 的工作模式
         async def generate_stream():
@@ -390,6 +505,16 @@ class ChatFlowEngine:
                 chunk_index = 0
                 # 直接迭代异步生成器
                 async for chunk in stream_generator:
+                    if self._check_interrupt_requested():
+                        interrupt_data = {"type": "INTERRUPTED", "error": "执行已中断", "timestamp": int(time.time() * 1000)}
+                        yield f"data: {json.dumps(interrupt_data, ensure_ascii=False)}\n\n"
+                        await self._record_execution_result_async(
+                            input_data,
+                            self._interrupt_result(),
+                            False,
+                            start_node.get("type", "") if start_node else None,
+                        )
+                        return
                     chunk_index += 1
                     # 累积内容用于记录对话历史
                     if chunk.startswith("data: "):
@@ -438,7 +563,14 @@ class ChatFlowEngine:
                 # 检查是否有后续节点
                 next_nodes = self._get_next_nodes(target_agent_node.get("id"), {"success": True, "data": {}})
 
-                if next_nodes:
+                if self._check_interrupt_requested():
+                    await self._record_execution_result_async(
+                        input_data,
+                        self._interrupt_result(),
+                        False,
+                        start_node.get("type", "") if start_node else None,
+                    )
+                elif next_nodes:
                     # 有后续节点：不在此处记录，让后续节点执行完成后统一记录
                     pass
                 else:
@@ -492,18 +624,7 @@ class ChatFlowEngine:
                 ).start()
 
         # 直接使用嵌套的异步生成器创建 StreamingHttpResponse
-        response = StreamingHttpResponse(generate_stream(), content_type="text/event-stream")
-
-        # 设置 SSE 响应头
-        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response["X-Accel-Buffering"] = "no"
-        response["Pragma"] = "no-cache"
-        response["Expires"] = "0"
-        response["Access-Control-Allow-Origin"] = "*"
-        response["Access-Control-Allow-Headers"] = "Cache-Control"
-        response["Transfer-Encoding"] = "chunked"
-
-        return response
+        return self._create_sse_stream_response(generate_stream)
 
     def set_start_node_variable(self, input_data: dict[str, Any] | dict[Any, Any], start_node: dict[str, Any]) -> dict[str, Any]:
         """设置入口节点的执行上下文和变量（入口节点直接标记为完成）
@@ -730,6 +851,7 @@ class ChatFlowEngine:
         temp_engine_data = input_data.copy()
 
         for i, node in enumerate(nodes_to_execute_before):
+            self._raise_if_interrupted(input_data, node.get("type", ""))
             node_id = node.get("id")
             node_type = node.get("type")
             executor = self._get_node_executor(node_type)
@@ -868,6 +990,9 @@ class ChatFlowEngine:
 
                 # 执行每个后续节点
                 for next_node_id in next_nodes:
+                    if self._check_interrupt_requested():
+                        self._finalize_interrupted_execution(first_input_data or {}, self._interrupt_result(), self.entry_type)
+                        return
                     node_type = ""
                     try:
                         next_node = self._get_node_by_id(next_node_id)
@@ -1075,10 +1200,15 @@ class ChatFlowEngine:
         """
         try:
             task_result = self._ensure_execution_result_started(input_data, start_node_type)
+            interrupted = isinstance(result, dict) and result.get("interrupted")
+            if task_result.status == WorkFlowTaskStatus.INTERRUPTED and not interrupted:
+                logger.info("跳过执行结果覆盖，执行已中断: execution_id=%s", self.execution_id)
+                return
+
             output_data = self._build_execution_output_data()
 
             # 确定状态
-            status = WorkFlowTaskStatus.SUCCESS if success else WorkFlowTaskStatus.FAIL
+            status = WorkFlowTaskStatus.INTERRUPTED if interrupted else (WorkFlowTaskStatus.SUCCESS if success else WorkFlowTaskStatus.FAIL)
 
             # 准备输入数据字符串（记录第一个输入）
             input_data_str = json.dumps(input_data, ensure_ascii=False)
@@ -1102,7 +1232,7 @@ class ChatFlowEngine:
             WorkFlowTaskNodeResult.objects.filter(execution_id=self.execution_id, task_result__isnull=True).update(task_result=task_result)
 
         except Exception as e:
-            logger.error(f"记录工作流执行结果失败: {str(e)}")
+            logger.exception(f"记录工作流执行结果失败: {str(e)}")
             # 记录失败不影响主流程
 
     def validate_flow(self) -> List[str]:
@@ -1193,6 +1323,7 @@ class ChatFlowEngine:
             # 获取并验证起始节点
             start_node = self._get_start_node()
             self._ensure_execution_result_started(input_data, start_node.get("type", "") if start_node else None)
+            self._raise_if_interrupted(input_data, start_node.get("type", "") if start_node else None)
             chosen_start_node = self.start_node_id or (self.entry_nodes[0] if self.entry_nodes else None)
             if not chosen_start_node or not start_node:
                 error_msg = "没有找到起始节点" if not chosen_start_node else f"指定的起始节点不存在: {chosen_start_node}"
@@ -1212,6 +1343,11 @@ class ChatFlowEngine:
 
             # 执行节点链
             chain_result = self._execute_node_chain(chosen_start_node, input_data, timeout - (time.time() - start_time))
+
+            if self._check_interrupt_requested():
+                interrupt_result = self._interrupt_result()
+                self._record_execution_result(input_data, interrupt_result, False, start_node.get("type", ""))
+                return interrupt_result
 
             # 获取执行结果并记录
             execution_time = time.time() - start_time
@@ -1267,6 +1403,16 @@ class ChatFlowEngine:
         except Exception as e:
             execution_time = time.time() - start_time
             logger.error(f"流程执行失败: flow_id={self.instance.id}, error={str(e)}")
+
+            if isinstance(e, InterruptedError):
+                interrupt_result = self._interrupt_result(str(e))
+                start_node_type = None
+                if self.entry_nodes:
+                    start_node = self._get_node_by_id(self.entry_nodes[0])
+                    if start_node:
+                        start_node_type = start_node.get("type", "")
+                self._record_execution_result(input_data, interrupt_result, False, start_node_type)
+                return interrupt_result
 
             error_result = {
                 "success": False,
@@ -1448,6 +1594,7 @@ class ChatFlowEngine:
             return {"success": False, "error": f"节点不存在: {node_id}"}
 
         node_type = node.get("type", "")
+        self._raise_if_interrupted(input_data, node_type)
 
         # 使用公共方法创建执行上下文
         context = self._create_node_execution_context(node=node, input_data=input_data, status=NodeStatus.RUNNING)
@@ -1554,6 +1701,8 @@ class ChatFlowEngine:
             # 提交任务
             futures = {}
             for node_id in node_ids:
+                if self._check_interrupt_requested():
+                    break
                 future = executor.submit(self._execute_node_recursive, node_id, input_data, set(), timeout_per_node)  # 每个并行分支使用独立的访问集合
                 futures[future] = node_id
 

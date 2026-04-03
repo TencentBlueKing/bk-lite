@@ -1,16 +1,22 @@
 package local
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/hex"
 	"fmt"
 	"nats-executor/logger"
 	"nats-executor/utils"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/nats-io/nats.go"
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 type downloadConn interface{}
@@ -224,11 +230,11 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	var cmd *exec.Cmd
 	switch shell {
 	case "bat", "cmd":
-		cmd = exec.CommandContext(ctx, "cmd", "/c", req.Command)
+		cmd = exec.CommandContext(ctx, "cmd", "/c", wrapCmdCommand(req.Command))
 	case "powershell":
-		cmd = exec.CommandContext(ctx, "powershell", "-Command", req.Command)
+		cmd = exec.CommandContext(ctx, "powershell", "-Command", wrapPowerShellCommand(req.Command))
 	case "pwsh":
-		cmd = exec.CommandContext(ctx, "pwsh", "-Command", req.Command)
+		cmd = exec.CommandContext(ctx, "pwsh", "-Command", wrapPowerShellCommand(req.Command))
 	case "bash":
 		cmd = exec.CommandContext(ctx, "bash", "-c", req.Command)
 	case "sh":
@@ -240,6 +246,8 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	startTime := time.Now()
 	output, err := cmd.CombinedOutput()
 	duration := time.Since(startTime)
+	decodedOutput := decodeExecuteOutput(output, shell)
+	rawSample := hex.EncodeToString(sampleBytes(output, 32))
 
 	var exitCode int
 	if exitError, ok := err.(*exec.ExitError); ok {
@@ -247,7 +255,7 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	}
 
 	response := ExecuteResponse{
-		Output:     string(output),
+		Output:     decodedOutput,
 		InstanceId: instanceId,
 		Success:    err == nil && ctx.Err() != context.DeadlineExceeded,
 	}
@@ -256,27 +264,136 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 		response.Code = utils.ErrorCodeTimeout
 		response.Error = fmt.Sprintf("Command timed out after %v (timeout: %ds)", duration, req.ExecuteTimeout)
 		logger.Warnf("[Local Execute] Instance: %s, Command timed out after %v", instanceId, duration)
-		logger.Debugf("[Local Execute] Instance: %s, Partial output: %s", instanceId, string(output))
+		logger.Debugf("[Local Execute] Instance: %s, Partial output: %s", instanceId, decodedOutput)
 	} else if err != nil {
 		response.Code = utils.ErrorCodeExecutionFailure
 		response.Error = fmt.Sprintf("Command execution failed with exit code %d: %v", exitCode, err)
 		logger.Warnf("[Local Execute] Instance: %s, Command execution failed after %v, exit code: %d", instanceId, duration, exitCode)
 		logger.Debugf("[Local Execute] Instance: %s, Error: %v", instanceId, err)
-		logger.Debugf("[Local Execute] Instance: %s, Full output: %s", instanceId, string(output))
+		logger.Debugf("[Local Execute] Instance: %s, Full output: %s", instanceId, decodedOutput)
 
 		if contains(req.Command, "scp") || contains(req.Command, "sshpass") {
 			logger.Debugf("[Local Execute] Instance: %s, SCP Command detected - analyzing failure...", instanceId)
-			analyzeSCPFailure(instanceId, string(output), exitCode)
+			analyzeSCPFailure(instanceId, decodedOutput, exitCode)
 		}
 	} else {
 		logger.Debugf("[Local Execute] Instance: %s, Command executed successfully in %v", instanceId, duration)
 		logger.Debugf("[Local Execute] Instance: %s, Output length: %d bytes", instanceId, len(output))
 		if len(output) > 0 {
-			logger.Debugf("[Local Execute] Instance: %s, Output: %s", instanceId, string(output))
+			logger.Debugf("[Local Execute] Instance: %s, Output: %s", instanceId, decodedOutput)
 		}
 	}
 
+	if runtime.GOOS == "windows" && (shell == ShellTypeBat || shell == ShellTypeCmd) {
+		logger.Infof(
+			"[Local Execute][Windows CMD Encoding] Instance: %s, shell=%s, bytes=%d, utf8_valid=%t, raw_hex_prefix=%s, decoded_prefix=%q",
+			instanceId,
+			shell,
+			len(output),
+			utf8.Valid(output),
+			rawSample,
+			truncateForLog(decodedOutput, 120),
+		)
+	}
+
 	return response
+}
+
+func sampleBytes(output []byte, limit int) []byte {
+	if len(output) <= limit {
+		return output
+	}
+
+	return output[:limit]
+}
+
+func truncateForLog(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+
+	return value[:limit] + "..."
+}
+
+func decodeExecuteOutput(output []byte, shell string) string {
+	if decoded, ok := decodeUTF16LEOutput(output); ok {
+		return decoded
+	}
+
+	if utf8.Valid(output) {
+		return string(output)
+	}
+
+	if runtime.GOOS == "windows" && (shell == ShellTypeBat || shell == ShellTypeCmd || shell == ShellTypePowerShell || shell == ShellTypePwsh) {
+		if decoded, err := simplifiedchinese.GBK.NewDecoder().Bytes(output); err == nil {
+			return string(decoded)
+		}
+	}
+
+	return string(output)
+}
+
+func wrapPowerShellCommand(command string) string {
+	if runtime.GOOS != "windows" {
+		return command
+	}
+
+	return "$utf8NoBom = New-Object System.Text.UTF8Encoding($false); " +
+		"[Console]::InputEncoding = $utf8NoBom; " +
+		"[Console]::OutputEncoding = $utf8NoBom; " +
+		"$OutputEncoding = $utf8NoBom; " +
+		"if (Get-Command chcp.com -ErrorAction SilentlyContinue) { chcp.com 65001 > $null }; " +
+		command
+}
+
+func wrapCmdCommand(command string) string {
+	if runtime.GOOS != "windows" {
+		return command
+	}
+
+	return "chcp 65001 >nul && " + command
+}
+
+func decodeUTF16LEOutput(output []byte) (string, bool) {
+	if len(output) < 2 {
+		return "", false
+	}
+
+	fromBOM := false
+	if output[0] == 0xff && output[1] == 0xfe {
+		fromBOM = true
+		output = output[2:]
+	}
+
+	if len(output) < 2 || len(output)%2 != 0 {
+		return "", false
+	}
+
+	if !fromBOM && !looksLikeUTF16LE(output) {
+		return "", false
+	}
+
+	words := make([]uint16, 0, len(output)/2)
+	for i := 0; i < len(output); i += 2 {
+		words = append(words, uint16(output[i])|uint16(output[i+1])<<8)
+	}
+
+	return string(utf16.Decode(words)), true
+}
+
+func looksLikeUTF16LE(output []byte) bool {
+	if !bytes.Contains(output, []byte{0x00}) {
+		return false
+	}
+
+	zeroCount := 0
+	for i := 1; i < len(output); i += 2 {
+		if output[i] == 0x00 {
+			zeroCount++
+		}
+	}
+
+	return zeroCount >= len(output)/4
 }
 
 func contains(s, substr string) bool {

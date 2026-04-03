@@ -3,7 +3,7 @@
   "plugin_desc": "Used for collecting ActiveMQ topic-related metrics, enabling real-time monitoring of consumer count, enqueue/dequeue rates, and topic message backlog to ensure stable message queue operation.",
   "status_query": "any({instance_type='activemq', collect_type='middleware'}) by (instance_id)",
   "name": "ActiveMQ",
-  "icon": "02_ActiveMQ",
+  "icon": "cc-middleware_中间件",
   "type": "Middleware",
   "description": "",
   "default_metric": "any({instance_type='activemq'}) by (instance_id)",

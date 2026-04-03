@@ -29,11 +29,15 @@ export const formatTimeRange = (timeParams: any): string[] => {
 
 export const fetchWidgetData = async ({
   config,
+  dataSource,
   globalTimeRange,
+  extraParams,
   getSourceDataByApiId,
 }: {
   config: any;
+    dataSource?: any;
   globalTimeRange?: any;
+    extraParams?: Record<string, any>;
   getSourceDataByApiId: (dataSource: any, params: any) => Promise<any>;
 }) => {
   if (!config?.dataSource) {
@@ -41,18 +45,28 @@ export const fetchWidgetData = async ({
   }
 
   try {
+    const sourceParams =
+      (Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
+        ? config.dataSourceParams
+        : dataSource?.params) || [];
+
     const userParams: any = {};
-    config.dataSourceParams?.forEach((param: any) => {
+    sourceParams.forEach((param: any) => {
       userParams[param.name] = param.value;
     });
 
     const requestParams = processDataSourceParams({
-      sourceParams: config.dataSourceParams,
+      sourceParams,
       userParams,
       globalTimeRange
     });
 
-    const rawData = await getSourceDataByApiId(config.dataSource, requestParams);
+    const finalRequestParams = {
+      ...requestParams,
+      ...(extraParams || {}),
+    };
+
+    const rawData = await getSourceDataByApiId(config.dataSource, finalRequestParams);
     return rawData;
   } catch (err: any) {
     console.error('获取数据失败:', err);

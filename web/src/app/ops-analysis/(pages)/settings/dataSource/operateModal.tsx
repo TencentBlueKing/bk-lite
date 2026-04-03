@@ -7,15 +7,19 @@ import TimeSelector from '@/components/time-selector';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { v4 as uuidv4 } from 'uuid';
 import { getChartTypeList } from '@/app/ops-analysis/constants/common';
-import { PlusCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import {
+  PlusCircleOutlined,
+  MinusCircleOutlined,
+  QuestionCircleOutlined,
+} from '@ant-design/icons';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
-import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 import {
   OperateModalProps,
   ParamItem,
+  ResponseFieldDefinition,
 } from '@/app/ops-analysis/types/dataSource';
 import { NamespaceItem, TagItem } from '@/app/ops-analysis/types/namespace';
 import {
@@ -30,6 +34,7 @@ import {
   Spin,
   message,
   Empty,
+  Tooltip,
 } from 'antd';
 
 const FormTimeSelector: React.FC<{
@@ -101,11 +106,23 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const [duplicateNames, setDuplicateNames] = React.useState<string[]>([]);
   const [emptyNames, setEmptyNames] = React.useState<string[]>([]);
   const [emptyAliases, setEmptyAliases] = React.useState<string[]>([]);
-  const [namespaceList, setNamespaceList] = React.useState<NamespaceItem[]>([]);
-  const [namespaceLoading, setNamespaceLoading] = React.useState(false);
-  const { tagList, tagsLoading, fetchTags } = useOpsAnalysis();
+  const [schemaFields, setSchemaFields] = React.useState<
+    (ResponseFieldDefinition & { id: string })[]
+      >([]);
+  const [duplicateFieldKeys, setDuplicateFieldKeys] = React.useState<string[]>(
+    [],
+  );
+  const [emptyFieldKeys, setEmptyFieldKeys] = React.useState<string[]>([]);
+  const [showSchemaConfig, setShowSchemaConfig] = React.useState(true);
+  const {
+    tagList,
+    tagsLoading,
+    fetchTags,
+    namespaceList,
+    namespacesLoading,
+    fetchNamespaces,
+  } = useOpsAnalysis();
   const { createDataSource, updateDataSource } = useDataSourceApi();
-  const { getNamespaceList } = useNamespaceApi();
 
   const paramTypeOptions = [
     { label: t('dataSource.paramTypes.string'), value: 'string' },
@@ -130,20 +147,22 @@ const OperateModal: React.FC<OperateModalProps> = ({
     alias_name: '',
   });
 
-  const fetchNamespaces = async () => {
-    try {
-      setNamespaceLoading(true);
-      const { items } = await getNamespaceList({ page: 1, page_size: 10000 });
-      if (items && Array.isArray(items)) {
-        setNamespaceList(items);
-        if (!currentRow && items.length > 0) {
-          form.setFieldsValue({ namespaces: [items[0].id] });
-        }
-      }
-    } finally {
-      setNamespaceLoading(false);
-    }
-  };
+  const createDefaultSchemaField = (): ResponseFieldDefinition & {
+    id: string;
+  } => ({
+    id: uuidv4(),
+    key: '',
+    title: '',
+    value_type: 'string',
+    description: '',
+  });
+
+  const valueTypeOptions = [
+    { label: t('dataSource.valueTypes.string'), value: 'string' },
+    { label: t('dataSource.valueTypes.number'), value: 'number' },
+    { label: t('dataSource.valueTypes.boolean'), value: 'boolean' },
+    { label: t('dataSource.valueTypes.datetime'), value: 'datetime' },
+  ];
 
   useEffect(() => {
     if (!open) return;
@@ -152,7 +171,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
     setDuplicateNames([]);
     setEmptyNames([]);
     setEmptyAliases([]);
-    fetchNamespaces();
+    setSchemaFields([]);
+    setDuplicateFieldKeys([]);
+    setEmptyFieldKeys([]);
+    setShowSchemaConfig(true);
+    void fetchNamespaces();
     fetchTags();
 
     if (!currentRow) {
@@ -170,6 +193,15 @@ const OperateModal: React.FC<OperateModalProps> = ({
       groups: currentRow.groups || [],
     };
     form.setFieldsValue(formValues);
+
+    if (Array.isArray(currentRow.field_schema)) {
+      setSchemaFields(
+        currentRow.field_schema.map((field) => ({
+          ...field,
+          id: uuidv4(),
+        })),
+      );
+    }
 
     const hasValidParams =
       currentRow.params &&
@@ -191,6 +223,22 @@ const OperateModal: React.FC<OperateModalProps> = ({
       setParams([]);
     }
   }, [open, currentRow, form, selectedGroup]);
+
+  useEffect(() => {
+    if (!open || !!currentRow || namespaceList.length === 0) {
+      return;
+    }
+
+    const currentNamespaceValues = form.getFieldValue('namespaces');
+    if (
+      Array.isArray(currentNamespaceValues) &&
+      currentNamespaceValues.length > 0
+    ) {
+      return;
+    }
+
+    form.setFieldsValue({ namespaces: [namespaceList[0].id] });
+  }, [open, currentRow, namespaceList, form]);
 
   const checkDuplicateNames = (currentParams: ParamItem[]) => {
     const nameCount: { [key: string]: number } = {};
@@ -353,6 +401,191 @@ const OperateModal: React.FC<OperateModalProps> = ({
     checkDuplicateNames(newParams);
     checkEmptyValues(newParams);
   };
+
+  const checkDuplicateFieldKeys = (
+    fields: (ResponseFieldDefinition & { id: string })[],
+  ) => {
+    const keyCount: { [key: string]: number } = {};
+    const duplicates: string[] = [];
+
+    fields.forEach((field) => {
+      if (field.key && field.key.trim()) {
+        keyCount[field.key] = (keyCount[field.key] || 0) + 1;
+      }
+    });
+
+    Object.keys(keyCount).forEach((key) => {
+      if (keyCount[key] > 1) {
+        duplicates.push(key);
+      }
+    });
+
+    setDuplicateFieldKeys(duplicates);
+    return duplicates.length === 0;
+  };
+
+  const checkEmptyFieldKeys = (
+    fields: (ResponseFieldDefinition & { id: string })[],
+  ) => {
+    const emptyKeys = fields
+      .filter((f) => !f.key || !f.key.trim())
+      .map((f) => f.id);
+    setEmptyFieldKeys(emptyKeys);
+    return emptyKeys.length === 0;
+  };
+
+  const handleSchemaFieldChange = (
+    id: string,
+    fieldName: keyof ResponseFieldDefinition,
+    value: string,
+  ) => {
+    const newFields = schemaFields.map((f) =>
+      f.id === id ? { ...f, [fieldName]: value } : f,
+    );
+    setSchemaFields(newFields);
+    if (fieldName === 'key') {
+      checkDuplicateFieldKeys(newFields);
+      checkEmptyFieldKeys(newFields);
+    }
+  };
+
+  const handleAddSchemaField = (index: number) => {
+    const newField = createDefaultSchemaField();
+    const newFields = [...schemaFields];
+    newFields.splice(index + 1, 0, newField);
+    setSchemaFields(newFields);
+  };
+
+  const handleDeleteSchemaField = (id: string) => {
+    const newFields = schemaFields.filter((f) => f.id !== id);
+    setSchemaFields(newFields);
+    checkDuplicateFieldKeys(newFields);
+    checkEmptyFieldKeys(newFields);
+  };
+
+  const handleSchemaFieldDragEnd = (
+    targetTableData: (ResponseFieldDefinition & { id: string })[],
+  ) => {
+    const nextFields = (targetTableData || []).map((field) => ({
+      ...field,
+    }));
+    setSchemaFields(nextFields);
+    checkDuplicateFieldKeys(nextFields);
+    checkEmptyFieldKeys(nextFields);
+  };
+
+  const schemaFieldColumns = [
+    {
+      title: t('dataSource.fieldKey'),
+      dataIndex: 'key',
+      key: 'key',
+      width: 140,
+      render: (
+        _: unknown,
+        record: ResponseFieldDefinition & { id: string },
+      ) => (
+        <Input
+          value={record.key}
+          placeholder={t('dataSource.fieldKey')}
+          onChange={(e) =>
+            handleSchemaFieldChange(record.id, 'key', e.target.value)
+          }
+          status={
+            duplicateFieldKeys.includes(record.key) ||
+            emptyFieldKeys.includes(record.id)
+              ? 'error'
+              : undefined
+          }
+        />
+      ),
+    },
+    {
+      title: t('dataSource.fieldTitle'),
+      dataIndex: 'title',
+      key: 'title',
+      width: 140,
+      render: (
+        _: unknown,
+        record: ResponseFieldDefinition & { id: string },
+      ) => (
+        <Input
+          value={record.title}
+          placeholder={t('dataSource.fieldTitle')}
+          onChange={(e) =>
+            handleSchemaFieldChange(record.id, 'title', e.target.value)
+          }
+        />
+      ),
+    },
+    {
+      title: t('dataSource.fieldValueType'),
+      dataIndex: 'value_type',
+      key: 'value_type',
+      width: 120,
+      render: (
+        _: unknown,
+        record: ResponseFieldDefinition & { id: string },
+      ) => (
+        <Select
+          value={record.value_type}
+          options={valueTypeOptions}
+          style={{ width: '100%' }}
+          onChange={(val) =>
+            handleSchemaFieldChange(
+              record.id,
+              'value_type',
+              val as ResponseFieldDefinition['value_type'],
+            )
+          }
+        />
+      ),
+    },
+    {
+      title: t('dataSource.fieldDescription'),
+      dataIndex: 'description',
+      key: 'description',
+      width: 160,
+      render: (
+        _: unknown,
+        record: ResponseFieldDefinition & { id: string },
+      ) => (
+        <Input
+          value={record.description || ''}
+          placeholder={t('dataSource.fieldDescription')}
+          onChange={(e) =>
+            handleSchemaFieldChange(record.id, 'description', e.target.value)
+          }
+        />
+      ),
+    },
+    {
+      title: t('dataSource.operation'),
+      key: 'action',
+      width: 80,
+      render: (
+        _: unknown,
+        record: ResponseFieldDefinition & { id: string },
+        index: number,
+      ) => (
+        <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+          <Button
+            type="text"
+            size="small"
+            icon={<PlusCircleOutlined />}
+            onClick={() => handleAddSchemaField(index)}
+            style={{ border: 'none', padding: '4px' }}
+          />
+          <Button
+            type="text"
+            size="small"
+            icon={<MinusCircleOutlined />}
+            onClick={() => handleDeleteSchemaField(record.id)}
+            style={{ border: 'none', padding: '4px' }}
+          />
+        </div>
+      ),
+    },
+  ];
 
   const columns = [
     {
@@ -547,7 +780,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       setLoading(true);
 
       const validParams = params.filter(
-        (param) => param.name && param.name.trim()
+        (param) => param.name && param.name.trim(),
       );
 
       // 检查参数名称和别名是否为空
@@ -573,6 +806,27 @@ const OperateModal: React.FC<OperateModalProps> = ({
         return;
       }
 
+      // 检查表格字段配置
+      if (schemaFields.length > 0) {
+        if (!checkEmptyFieldKeys(schemaFields)) {
+          setLoading(false);
+          return;
+        }
+        if (!checkDuplicateFieldKeys(schemaFields)) {
+          setLoading(false);
+          return;
+        }
+      }
+
+      const fieldSchema = schemaFields.map(
+        ({ key, title, value_type, description }) => ({
+          key: key.trim(),
+          title: title.trim(),
+          value_type,
+          description: description?.trim() || '',
+        }),
+      );
+
       const submitData = {
         rest_api: values.rest_api,
         name: values.name.trim(),
@@ -581,6 +835,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         tag: values.tag || [],
         chart_type: values.chart_type || [],
         groups: values.groups || [],
+        field_schema: fieldSchema,
         params: params
           .filter((param) => param.name && param.name.trim())
           .map((param) => ({
@@ -667,7 +922,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             },
           ]}
         >
-          {namespaceLoading ? (
+          {namespacesLoading ? (
             <div style={{ textAlign: 'center', padding: '8px 0' }}>
               <Spin size="small" />
             </div>
@@ -814,6 +1069,75 @@ const OperateModal: React.FC<OperateModalProps> = ({
             </div>
           )}
         </div>
+        {showSchemaConfig && (
+          <div style={{ margin: '24px 0 0 66px' }}>
+            <div
+              style={{
+                marginBottom: '8px',
+                color: 'var(--color-text-1)',
+                fontSize: '14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <span>{t('dataSource.responseFieldSchemaConfig')}</span>
+                <Tooltip title={t('dataSource.schemaOptionalAutoGenTip')}>
+                  <QuestionCircleOutlined
+                    style={{ color: 'var(--color-text-3)', fontSize: 14 }}
+                  />
+                </Tooltip>
+              </span>
+              <Button
+                type="dashed"
+                size="small"
+                icon={<PlusCircleOutlined />}
+                onClick={() =>
+                  setSchemaFields([...schemaFields, createDefaultSchemaField()])
+                }
+              >
+                {t('dataSource.addField')}
+              </Button>
+            </div>
+            {schemaFields.length > 0 ? (
+              <CustomTable
+                rowKey="id"
+                columns={schemaFieldColumns}
+                dataSource={schemaFields}
+                pagination={false}
+                rowDraggable
+                onRowDragEnd={(targetTableData) =>
+                  handleSchemaFieldDragEnd(
+                    (targetTableData || []) as (ResponseFieldDefinition & {
+                      id: string;
+                    })[],
+                  )
+                }
+              />
+            ) : (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={t('common.noData')}
+              />
+            )}
+            {duplicateFieldKeys.length > 0 && (
+              <div
+                style={{
+                  color: 'var(--color-fail)',
+                  fontSize: '12px',
+                  marginTop: '2px',
+                  padding: '2px 8px',
+                }}
+              >
+                {t('dataSource.duplicateFieldKeys')}
+                {duplicateFieldKeys.join('、')}
+              </div>
+            )}
+          </div>
+        )}
       </Form>
     </Drawer>
   );

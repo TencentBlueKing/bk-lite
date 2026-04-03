@@ -176,7 +176,15 @@ const SkillSettingsPage: React.FC = () => {
     }
   };
 
-  const handleSendMessage = async (userMessage: string, currentMessages: any[] = [], userMessageObj?: any): Promise<{ url: string; payload: any } | null> => {
+  const handleSendMessage = async (userMessage: string, currentMessages: any[] = [], userMessageObj?: any): Promise<{
+    url: string;
+    payload: any;
+    interruptRequest?: {
+      enabled: boolean;
+      url: string;
+      reason?: string;
+    };
+  } | null> => {
     try {
       const values = await form.validateFields();
 
@@ -251,7 +259,12 @@ const SkillSettingsPage: React.FC = () => {
 
       return {
         url: '/api/proxy/opspilot/model_provider_mgmt/llm/execute_agui/',
-        payload
+        payload,
+        interruptRequest: {
+          enabled: true,
+          url: '/api/proxy/opspilot/bot_mgmt/interrupt_chat_flow_execution/',
+          reason: 'user_manual'
+        }
       };
     } catch (error) {
       // Display first error message when form validation fails
@@ -516,6 +529,7 @@ const SkillSettingsPage: React.FC = () => {
               guide={guideValue}
               useAGUIProtocol={true}
               initialMessages={initialMessages}
+              removePendingBotMessageOnCancel={true}
             />
           </div>
         </div>

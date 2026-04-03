@@ -28,6 +28,8 @@
         "status": "执行状态",
         "errorLog": "错误日志",
         "statusSuccess": "成功",
+        "statusInterrupted": "已中断",
+        "statusInterruptRequested": "中断中",
         "runTime": "时间",
         "actions": "操作",
         "statusFailed": "失败",

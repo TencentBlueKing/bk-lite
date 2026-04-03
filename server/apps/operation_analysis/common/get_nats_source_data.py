@@ -70,6 +70,28 @@ class GetNatsData:
 
         return client
 
+    def _get_target_namespaces(self):
+        """
+        从 params 中取出 namespace_ids（同时移除，避免透传给 NATS 接口），
+        返回本次需要查询的 namespace 列表。
+        """
+        namespace_ids = self.params.pop("namespace_ids", None)
+        if not namespace_ids:
+            return self.namespace_list
+
+        selected_ids = set()
+        items = namespace_ids if isinstance(namespace_ids, (list, tuple, set)) else [namespace_ids]
+        for item in items:
+            try:
+                selected_ids.add(int(item))
+            except (TypeError, ValueError):
+                continue
+
+        if not selected_ids:
+            return self.namespace_list
+
+        return [ns for ns in self.namespace_list if ns.id in selected_ids]
+
     def get_data(self) -> dict:
         """
         获取NATS数据源数据
@@ -77,7 +99,7 @@ class GetNatsData:
         TODO 如果速度过慢，可以考虑使用多线程或异步方式来并发获取数据
         """
         result = {}
-        for namespace in self.namespace_list:
+        for namespace in self._get_target_namespaces():
             server_url = self.namespace_server_map[namespace.id]
             nats_namespace = getattr(namespace, 'namespace', 'bk_lite')
             nats_client = self._get_client(server=server_url, namespace=nats_namespace)
@@ -90,9 +112,9 @@ class GetNatsData:
                     raise RuntimeError(f"NamePaces({self.namespace}) Module not found func({self.path})!")
 
                 return_data = fun(**self.params)
-                result[namespace.name] = return_data.get("data", [])
+                result[namespace.name] = return_data
             except Exception as e:  # noqa
-                result[namespace.name] = []
+                result[namespace.name] = {}
                 import traceback
                 logger.error(
                     "==获取NATS数据源数据失败==: namespace={} error={}".format(namespace.name, traceback.format_exc()))

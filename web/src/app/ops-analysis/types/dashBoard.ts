@@ -47,6 +47,30 @@ export interface AddComponentConfig {
   dataSource?: string | number;
   chartType?: string;
   dataSourceParams?: ParamItem[];
+  tableConfig?: TableConfig;
+}
+
+/** 表格筛选字段配置（组件级别） */
+export interface TableFilterFieldConfig {
+  key: string;
+  label: string;
+  inputType: 'keyword' | 'time_range' | 'select';
+  options?: string[];
+}
+
+/** 表格列配置（组件级别） */
+export interface TableColumnConfigItem {
+  key: string;
+  title: string;
+  visible: boolean;
+  order: number;
+  width?: number;
+}
+
+/** 表格组件配置 */
+export interface TableConfig {
+  filterFields?: TableFilterFieldConfig[];
+  columns?: TableColumnConfigItem[];
 }
 
 export interface ValueConfig {
@@ -54,11 +78,13 @@ export interface ValueConfig {
   dataSource?: string | number;
   params?: Record<string, string | number | boolean | [number, number] | null>;
   dataSourceParams?: ParamItem[];
+  tableConfig?: TableConfig;
 }
 
 export interface WidgetConfig extends ValueConfig {
   name: string;
   description?: string;
+  tableConfig?: TableConfig;
 }
 
 export interface LayoutItem {

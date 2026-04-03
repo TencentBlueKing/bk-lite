@@ -5,7 +5,7 @@ from django_minio_backend import MinioBackend
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.job_mgmt.constants import CredentialSource, ExecutorDriver, OSType, SSHCredentialType, WinRMScheme
+from apps.job_mgmt.constants import CredentialSource, ExecutorDriver, OSType, SSHCredentialType, WinRMScheme, WinRMTransport
 
 # SSH 密钥文件存储 bucket
 SSH_KEY_BUCKET = "job-mgmt-private"
@@ -52,6 +52,7 @@ class Target(TimeInfo, MaintainerInfo):
         max_length=32, choices=SSHCredentialType.CHOICES, default=SSHCredentialType.PASSWORD, verbose_name="SSH凭据类型"
     )
     ssh_password = models.CharField(max_length=256, blank=True, default="", verbose_name="SSH密码")
+    ssh_key_passphrase = models.CharField(max_length=256, blank=True, default="", verbose_name="SSH密钥口令")
 
     # SSH 密钥文件（存储到 MinIO）
     ssh_key_file = models.FileField(
@@ -65,6 +66,7 @@ class Target(TimeInfo, MaintainerInfo):
     # 手动录入时的 WinRM 凭据 (Windows)
     winrm_port = models.IntegerField(default=5986, verbose_name="WinRM端口")
     winrm_scheme = models.CharField(max_length=16, choices=WinRMScheme.CHOICES, default=WinRMScheme.HTTPS, verbose_name="WinRM协议")
+    winrm_transport = models.CharField(max_length=32, choices=WinRMTransport.CHOICES, default=WinRMTransport.NTLM, verbose_name="WinRM传输方式")
     winrm_user = models.CharField(max_length=64, blank=True, default="", verbose_name="WinRM用户名")
     winrm_password = models.CharField(max_length=256, blank=True, default="", verbose_name="WinRM密码")
     winrm_cert_validation = models.BooleanField(default=True, verbose_name="WinRM证书验证")

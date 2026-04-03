@@ -3,7 +3,7 @@
   "plugin_desc": "The host monitoring plugin is used to collect and analyze performance data of hosts, including CPU, memory, disk, and network usage.",
   "status_query": "any({instance_type='os', collect_type='host'}) by (instance_id)",
   "name": "Host",
-  "icon": "Host",
+  "icon": "cc-host_主机",
   "type": "OS",
   "description": "",
   "default_metric": "any({instance_type='os'}) by (instance_id)",

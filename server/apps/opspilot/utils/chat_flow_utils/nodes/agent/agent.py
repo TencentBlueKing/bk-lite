@@ -146,6 +146,8 @@ class AgentNode(BaseNodeExecutor):
             "enable_suggest": skill.enable_suggest,
             "enable_query_rewrite": skill.enable_query_rewrite,
             "locale": flow_input.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
+            "thread_id": flow_input.get("execution_id", ""),
+            "execution_id": flow_input.get("execution_id", ""),
         }
 
     def sse_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):

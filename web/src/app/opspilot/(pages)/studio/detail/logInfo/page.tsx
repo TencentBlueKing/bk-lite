@@ -657,9 +657,19 @@ const StudioLogsPage: React.FC = () => {
           ? t('studio.logs.table.statusSuccess')
           : (status === 'failed' || status === 'fail')
             ? t('studio.logs.table.statusFailed')
-            : t('studio.logs.table.statusRunning');
+            : status === 'interrupted'
+              ? t('studio.logs.table.statusInterrupted')
+              : status === 'interrupt_requested'
+                ? t('studio.logs.table.statusInterruptRequested')
+                : t('studio.logs.table.statusRunning');
 
-        const statusColor = status === 'success' ? 'green' : (status === 'failed' || status === 'fail') ? 'red' : 'orange';
+        const statusColor = status === 'success'
+          ? 'green'
+          : (status === 'failed' || status === 'fail')
+            ? 'red'
+            : status === 'interrupted'
+              ? 'default'
+              : 'orange';
 
         if ((status === 'failed' || status === 'fail') && record.error_log) {
           return (
