@@ -12,7 +12,7 @@
     "default_template": "",
     "introduction": "Ansible Executor is a lightweight RPC sidecar that executes Ansible ad-hoc commands and playbooks through NATS.",
     "default_config": {
-      "nats": "nats:\n  servers:\n    - \"${NATS_PROTOCOL}://${NATS_SERVERS}\"\n  username: \"${NATS_USERNAME}\"\n  password: \"${NATS_PASSWORD}\"\n  protocol: \"${NATS_PROTOCOL}\"\n  instance_id: \"${node.id}\"\n  connect_timeout: 5\n\n{% if NATS_PROTOCOL == \"tls\" %}\n  tls_ca_file: \"${NATS_TLS_CA_FILE}\"\n{% endif %}\n\nruntime:\n  max_workers: 4\n  callback_timeout: 10\n  work_dir: \"/tmp/ansible-executor\"\n  state_db_path: \"/tmp/ansible-executor/task_state.db\"\n\njetstream:\n  namespace: \"bk.ans_exec\"\n  max_deliver: 5\n  ack_wait: 300\n  backoff: [5, 15, 30, 60]\n  dlq_subject: \"bk.ans_exec.tasks.dlq\"\n"
+      "nats": "nats:\n  servers:\n    - \"${NATS_PROTOCOL}://${NATS_SERVERS}\"\n  username: \"${NATS_ADMIN_USERNAME}\"\n  password: \"${NATS_ADMIN_PASSWORD}\"\n  protocol: \"${NATS_PROTOCOL}\"\n  instance_id: \"${node.id}\"\n  connect_timeout: 5\n\n{% if NATS_PROTOCOL == \"tls\" %}\n  tls_ca_file: \"${NATS_TLS_CA_FILE}\"\n{% endif %}\n\nruntime:\n  max_workers: 4\n  callback_timeout: 10\n  work_dir: \"/tmp/ansible-executor\"\n  state_db_path: \"/tmp/ansible-executor/task_state.db\"\n\njetstream:\n  namespace: \"bk.ans_exec\"\n  max_deliver: 5\n  ack_wait: 300\n  backoff: [5, 15, 30, 60]\n  dlq_subject: \"bk.ans_exec.tasks.dlq\"\n"
     },
     "tags": ["linux"],
     "package_name": "ansible-executor"
