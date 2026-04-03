@@ -10,8 +10,9 @@
       - "{{ path }}"
       {% endfor %}
     {% endif %}
-  fields:
-    collector: "Filebeat"
-    collect_type: "kafka"
-    instance_id: "{{ instance_id }}"
-  fields_under_root: {{ fields_under_root | default(true) | lower }}
+    input:
+      fields:
+        collector: "Filebeat"
+        collect_type: "kafka"
+        instance_id: "{{ instance_id }}"
+      fields_under_root: {{ fields_under_root | default(true) | lower }}

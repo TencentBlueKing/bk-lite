@@ -10,6 +10,12 @@
       - "{{ path }}"
       {% endfor %}
     {% endif %}
+    input:
+      fields:
+        collector: "Filebeat"
+        collect_type: "redis"
+        instance_id: "{{ instance_id }}"
+      fields_under_root: {{ fields_under_root | default(true) | lower }}
 
   # ================================== Slowlog 配置 ==================================
   slowlog:
@@ -23,10 +29,9 @@
     {% if slowlog_password %}
     var.password: "{{ slowlog_password }}"
     {% endif %}
-
-  # ================================== 字段标识配置 ==================================
-  fields:
-    collector: "Filebeat"
-    collect_type: "redis"
-    instance_id: "{{ instance_id }}"
-  fields_under_root: {{ fields_under_root | default(true) | lower }}
+    input:
+      fields:
+        collector: "Filebeat"
+        collect_type: "redis"
+        instance_id: "{{ instance_id }}"
+      fields_under_root: {{ fields_under_root | default(true) | lower }}
