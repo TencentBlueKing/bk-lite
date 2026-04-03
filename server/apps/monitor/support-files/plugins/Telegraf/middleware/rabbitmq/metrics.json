@@ -3,7 +3,7 @@
   "plugin_desc": "Used for monitoring RabbitMQ's runtime status, resource usage, message flow, and queue health.",
   "status_query": "any({instance_type='rabbitmq', collect_type='middleware'}) by (instance_id)",
   "name": "RabbitMQ",
-  "icon": "rabbitmq",
+  "icon": "cc-rabbitmq_RabbitMQ",
   "type": "Middleware",
   "description": "",
   "default_metric": "any({instance_type='rabbitmq'}) by (instance_id)",
