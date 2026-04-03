@@ -638,6 +638,7 @@
       "editObject": "Edit Object",
       "searchType": "Search object type",
       "searchObject": "Search object",
+      "searchObjectId": "Search object ID",
       "selectTypeFirst": "Please select an object type from the left",
       "deleteTypeConfirm": "All configurations under this type will be lost. Are you sure to delete?",
       "cannotDeleteTypeWithObjects": "Cannot delete type with existing objects",

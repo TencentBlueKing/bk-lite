@@ -638,6 +638,7 @@
       "editObject": "编辑对象",
       "searchType": "搜索对象类型",
       "searchObject": "搜索对象",
+      "searchObjectId": "搜索对象ID",
       "selectTypeFirst": "请先选择左侧的对象类型",
       "deleteTypeConfirm": "删除后该类型下的所有配置将丢失，确定删除？",
       "cannotDeleteTypeWithObjects": "该类型下存在对象，无法删除",
