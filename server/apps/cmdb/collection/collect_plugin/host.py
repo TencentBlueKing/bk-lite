@@ -257,6 +257,8 @@ class HostCollectMetrics(CollectBase):
         """格式化数据"""
         for metric_key, metrics in self.collection_metrics_dict.items():
             model_id = metric_key.split("_info_gauge")[0]
+            if not self.model_field_mapping.get(model_id, False):
+                continue
             mapping = self.model_field_mapping.get(model_id, {})
             result = []
             for index_data in metrics:
