@@ -38,7 +38,7 @@ export const useTableConfig = (installMethod: string) => {
     },
     {
       name: 'organizations',
-      label: t('node-manager.cloudregion.node.organaziton'),
+      label: t('node-manager.cloudregion.node.organization'),
       type: 'group_select',
       required: true,
       widget_props: {
@@ -131,7 +131,7 @@ export const useTableConfig = (installMethod: string) => {
     },
     {
       name: 'organizations',
-      label: t('node-manager.cloudregion.node.organaziton'),
+      label: t('node-manager.cloudregion.node.organization'),
       type: 'group_select',
       required: true,
       widget_props: {

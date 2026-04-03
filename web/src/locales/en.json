@@ -93,7 +93,7 @@
     "actions": "ACTIONS",
     "version": "Version",
     "noVersionLogs": "No version logs",
-    "group": "Group",
+    "group": "Organization",
     "organization": "Organization",
     "theme": "Theme",
     "notFound": "We can't seem to find the page you're looking for.",

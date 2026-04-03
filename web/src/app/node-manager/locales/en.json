@@ -77,7 +77,7 @@
         "stopCollector": "Stop Component",
         "config": "Configuration",
         "nodeName": "Node Name",
-        "organaziton": "Organization",
+        "organization": "Organization",
         "restartCollectorInfo": "Are you sure to restart these components?",
         "installController": "Install Controller",
         "manualInstall": "Manual Install",

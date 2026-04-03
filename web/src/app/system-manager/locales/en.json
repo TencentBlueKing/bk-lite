@@ -15,7 +15,7 @@
       "readWrite": "Read Write",
       "actions": "Actions",
       "data": "Data",
-      "group": "Group",
+      "group": "Organization",
       "permissions": "Permissions",
       "fullPermission": "Full Permission",
       "allData": "All Data",
@@ -151,7 +151,7 @@
       "groupPermission": "Organization Permission Grant",
       "form": {
         "administrator": "Administrator",
-        "group": "Group",
+        "group": "Organization",
         "locale": "Locale",
         "zoneinfo": "zoneInfo",
         "normalusers": "Normal Users",
@@ -184,7 +184,7 @@
         "title": "Normal users have the following permissions:"
       },
       "passwordTitle": "Set Password",
-      "desc": "Display all information about the organization structure and users. You can maintain organizations at all levels, perform CRUD operations, set user information, and assign roles and groups.",
+      "desc": "Display all information about the organization structure and users. You can maintain organizations at all levels, perform CRUD operations, set user information, and assign roles and organizations.",
       "organizationRoles": "Organization Roles",
       "title": "Organization Structure",
       "passwordValidation": "Password Validation",
@@ -264,7 +264,7 @@
       "lockDuration": "Lock Duration After Failed Attempts",
       "operationDetail": "Summary",
       "threeTimes": "3 Times",
-      "rootGroup": "Root Group",
+      "rootGroup": "Root Organization",
       "hours": "hours",
       "appId": "App ID",
       "loginLocation": "Login Location",
@@ -291,7 +291,7 @@
         "smtp_usessl": "Use SSL",
         "smtp_server": "Smtp Server",
         "description": "Description",
-        "team": "Groups",
+        "team": "Organization",
         "webhook_url": "Webhook URL",
         "mail_sender": "Mail Sender",
         "port": "Port",
@@ -348,16 +348,16 @@
     "group": {
       "renameFailed": "Rename Failed",
       "selectOrganizationRoles": "Please select organization roles",
-      "deleteWithChildrenWarning": "Deleting this group will also delete all its sub-groups and users. Are you sure you want to delete?",
-      "addSubGroups": "Add Sub-Groups",
+      "deleteWithChildrenWarning": "Deleting this organization will also delete all its sub-organizations and users. Are you sure you want to delete?",
+      "addSubGroups": "Add Sub-Organizations",
       "editGroup": "Edit Organization",
-      "title": "Group",
+      "title": "Organization",
       "desc": "Display all information.You can maintain user information and assign roles.",
       "rename": "Rename",
       "renameSuccess": "Rename Success",
       "organizationRoles": "Organization Roles",
       "form": {
-        "name": "Group Name"
+        "name": "Organization Name"
       },
       "organizationRolesTooltip": "Configure unified role permissions for all users under this organization level"
     },
@@ -382,7 +382,7 @@
     },
     "data": {
       "name": "Name",
-      "group": "Group",
+      "group": "Organization",
       "deleteConfirm": "Are you sure you want to delete this data?",
       "description": "Description"
     },

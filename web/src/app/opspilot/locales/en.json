@@ -60,7 +60,7 @@
       "name": "Name",
       "owner": "Owner",
       "modelTip": "Please select the Rasa small model to be used by this application for filtering and closing simple questions, reducing API calls and token consumption of the large model.",
-      "group": "Group",
+      "group": "Organization",
       "replicaCountTip": "The number of Pilot instances running the AI application. Increasing the number of instances enhances the fault tolerance and availability of the application. The default is 1.",
       "introduction": "Introduction"
     },
@@ -406,7 +406,7 @@
     "testingFailed": "Failed to complete testing.",
     "form": {
       "embedModel": "Embed Model",
-      "group": "Group",
+      "group": "Organization",
       "name": "Name",
       "introduction": "Introduction",
       "owner": "Owner",
@@ -505,8 +505,8 @@
       "createdAt": "Created",
       "key": "Secret Key",
       "copied": "Copied to clipboard",
-      "group": "Group",
-      "selectGroup": "Select Group",
+      "group": "Organization",
+      "selectGroup": "Select Organization",
       "content": "To prevent API abuse, protect your API Key.",
       "deleteConfirm": "Are you sure you want to delete this secret key?",
       "create": "Create new Secret key"
@@ -574,7 +574,7 @@
       "temperatureTip": "Used to control the randomness and creativity of text generation; a low temperature produces more definitive results, while a high temperature increases the diversity and randomness of the text.",
       "prompt": "Prompt",
       "type": "Skill Type",
-      "group": "Group",
+      "group": "Organization",
       "temperature": "Temperature",
       "qaTypeScene": "IT Operations Document Retrieval: Quickly query configuration and operation documents.\nStandard Operating Procedures: Provide standard operating steps and precautions.\nTraining and Onboarding: Answer new employee questions and assist in learning.",
       "qaTypeDesc": "Combines retrieval and generation technologies to retrieve relevant information from external knowledge bases and generate accurate Q&A content, suitable for dynamic knowledge Q&A in open domains.",

@@ -258,7 +258,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         }
       },
       {
-        title: t('node-manager.cloudregion.node.organaziton'),
+        title: t('node-manager.cloudregion.node.organization'),
         dataIndex: 'organizations',
         width: 100,
         key: 'organizations',

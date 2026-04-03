@@ -13,7 +13,7 @@ const OPERATE_SYSTEMS: SegmentedItem[] = [
 
 const BATCH_FIELD_MAPS: Record<string, string> = {
   os: 'operateSystem',
-  organizations: 'organaziton',
+  organizations: 'organization',
   username: 'loginAccount',
   port: 'loginPort',
   password: 'loginPassword',

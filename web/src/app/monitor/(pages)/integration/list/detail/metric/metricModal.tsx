@@ -317,7 +317,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
               <Input />
             </Form.Item>
             <Form.Item<MetricInfo>
-              label={t('common.group')}
+              label={t('monitor.integrations.metricGroup')}
               name="metric_group"
               rules={[{ required: true, message: t('common.required') }]}
             >

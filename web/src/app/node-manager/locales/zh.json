@@ -77,7 +77,7 @@
         "stopCollector": "停止组件",
         "config": "配置",
         "nodeName": "节点名称",
-        "organaziton": "所属组织",
+        "organization": "所属组织",
         "restartCollectorInfo": "您确定要重新启动这些收集器吗？",
         "installController": "安装控制器",
         "manualInstall": "手动安装",
