@@ -8,10 +8,12 @@ import { Button, Input, Card, message, Modal, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { NamespaceItem } from '@/app/ops-analysis/types/namespace';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
+import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 
 const Namespace: React.FC = () => {
   const { t } = useTranslation();
   const { getNamespaceList, deleteNamespace } = useNamespaceApi();
+  const { refreshNamespaces } = useOpsAnalysis();
   const [searchKey, setSearchKey] = useState('');
   const [searchValue, setSearchValue] = useState('');
   const [filteredList, setFilteredList] = useState<NamespaceItem[]>([]);
@@ -92,6 +94,7 @@ const Namespace: React.FC = () => {
         try {
           await deleteNamespace(row.id);
           message.success(t('successfullyDeleted'));
+          await refreshNamespaces();
 
           if (pagination.current > 1 && filteredList.length === 1) {
             setPagination((prev) => ({ ...prev, current: prev.current - 1 }));
@@ -191,7 +194,7 @@ const Namespace: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col w-full h-full bg-[var(--color-bg-1)]">
+    <div className="flex flex-col w-full h-full bg-(--color-bg-1)">
       <Card
         style={{
           borderRadius: 0,
@@ -207,12 +210,12 @@ const Namespace: React.FC = () => {
         <p className="font-extrabold text-base mb-2">
           {t('namespace.introTitle')}
         </p>
-        <p className="text-sm text-[var(--color-text-2)]">
+        <p className="text-sm text-(--color-text-2)">
           {t('namespace.introMsg')}
         </p>
       </Card>
       <div className="px-6 pb-0">
-        <div className="flex justify-between mb-[20px]">
+        <div className="flex justify-between mb-5">
           <div className="flex items-center">
             <Input
               allowClear
@@ -249,6 +252,7 @@ const Namespace: React.FC = () => {
           onClose={() => setModalVisible(false)}
           onSuccess={() => {
             setModalVisible(false);
+            void refreshNamespaces();
             fetchNamespaces();
           }}
         />

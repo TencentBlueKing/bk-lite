@@ -119,6 +119,7 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
                                         verbose_name="命名空间", blank=True)
     tag = models.ManyToManyField(to=DataSourceTag, related_name='data_sources', help_text="数据源标签", blank=True)
     chart_type = JSONField(help_text="图表类型", default=list, blank=True, null=True)
+    field_schema = JSONField(default=list, blank=True, help_text="接口返回字段定义（数据源级配置，表格默认列可使用）")
 
     class Meta:
         db_table = "operation_analysis_data_source_api"
