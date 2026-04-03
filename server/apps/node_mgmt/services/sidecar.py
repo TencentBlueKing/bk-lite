@@ -9,6 +9,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants
+from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.utils.crypto_helper import EncryptedJsonResponse
 from apps.node_mgmt.models.cloud_region import SidecarEnv
@@ -502,17 +503,20 @@ class Sidecar:
         if not obj:
             return EncryptedJsonResponse(status=404, data={"error": "Configuration not found"}, request=request)
 
-        # 获取云区域环境变量（仅获取 NATS_PASSWORD）
-        nats_pwd_obj = SidecarEnv.objects.filter(key="NATS_PASSWORD", cloud_region=node.cloud_region_id).first()
-        cloud_region_nats_password = {}
-        if nats_pwd_obj:
-            if nats_pwd_obj.type == "secret":
+        # 获取云区域环境变量（仅获取 NATS_PASSWORD 和 NATS_ADMIN_PASSWORD）
+        cloud_region_secret_objs = SidecarEnv.objects.filter(
+            key__in=NodeConstants.CLOUD_REGION_NATS_SECRET_KEYS,
+            cloud_region=node.cloud_region_id,
+        )
+        cloud_region_secret_env = {}
+        aes_obj = AESCryptor()
+        for secret_obj in cloud_region_secret_objs:
+            if secret_obj.type == "secret":
                 # 如果是密文，解密后使用
-                aes_obj = AESCryptor()
-                cloud_region_nats_password = {nats_pwd_obj.key: aes_obj.decode(nats_pwd_obj.value)}
+                cloud_region_secret_env[secret_obj.key] = aes_obj.decode(secret_obj.value)
             else:
                 # 如果是普通变量，直接使用
-                cloud_region_nats_password = {nats_pwd_obj.key: nats_pwd_obj.value}
+                cloud_region_secret_env[secret_obj.key] = secret_obj.value
 
         # 合并环境变量：主配置的 env_config
         merged_env_config = {}
@@ -526,8 +530,6 @@ class Sidecar:
 
         # 解密包含password的环境变量
         decrypted_env_config = {}
-        aes_obj = AESCryptor()
-
         for key, value in merged_env_config.items():
             if "password" in key.lower() and value:
                 try:
@@ -540,13 +542,17 @@ class Sidecar:
             else:
                 decrypted_env_config[key] = str(value)
 
-        # 合并云区域环境变量（仅 NATS_PASSWORD，优先级较低，配置级的env_config会覆盖同名变量）
+        # 合并云区域环境变量（仅 NATS_PASSWORD 和 NATS_ADMIN_PASSWORD，优先级较低，配置级的env_config会覆盖同名变量）
         final_env_config = {}
-        final_env_config.update(cloud_region_nats_password)
+        final_env_config.update(cloud_region_secret_env)
         final_env_config.update(decrypted_env_config)
 
         logger.debug(
-            f"Merged env config for configuration {configuration_id}: {len(final_env_config)} variables (NATS_PASSWORD from cloud region: {'yes' if 'NATS_PASSWORD' in cloud_region_nats_password else 'no'})"
+            "Merged env config for configuration %s: %s variables (NATS_PASSWORD from cloud region: %s, NATS_ADMIN_PASSWORD from cloud region: %s)",
+            configuration_id,
+            len(final_env_config),
+            "yes" if NodeConstants.NATS_PASSWORD_KEY in cloud_region_secret_env else "no",
+            "yes" if NodeConstants.NATS_ADMIN_PASSWORD_KEY in cloud_region_secret_env else "no",
         )
 
         return EncryptedJsonResponse(data=dict(id=configuration_id, env_config=final_env_config), request=request)
