@@ -3,11 +3,14 @@ from typing import Any, Dict, Optional
 
 import pytz
 from django.contrib.auth.backends import ModelBackend
+from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.db import IntegrityError
 from django.utils import timezone as django_timezone
 from django.utils import translation
 
 from apps.base.models import User, UserAPISecret
+from apps.core.constants import VERIFY_TOKEN_USER_NOT_FOUND_CODE, VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE
+from apps.core.utils.custom_error import DoesNotExist
 from apps.rpc.system_mgmt import SystemMgmt
 
 logger = logging.getLogger("app")
@@ -22,37 +25,35 @@ CLIENT_ID_ENV_KEY = "CLIENT_ID"
 class APISecretAuthBackend(ModelBackend):
     """API密钥认证后端"""
 
-    def authenticate(self, request=None, username=None, password=None, api_token=None) -> Optional[User]:
+    def authenticate(self, request=None, username=None, password=None, api_token=None, **kwargs) -> Optional[User]:
         """使用API token进行用户认证"""
         if not api_token:
             return None
 
+        user_secret = None
         try:
-            user_secret = UserAPISecret.objects.get(api_secret=api_token)
-            user = User.objects.get(username=user_secret.username, domain=user_secret.domain)
+            user_secret = UserAPISecret._default_manager.get(api_secret=api_token)
+            user = User._default_manager.get(username=user_secret.username, domain=user_secret.domain)
             user.group_list = [user_secret.team]
             return user
 
-        except UserAPISecret.DoesNotExist:
+        except ObjectDoesNotExist:
             return None
-        except UserAPISecret.MultipleObjectsReturned:
+        except MultipleObjectsReturned:
             logger.error("Duplicate API token records detected")
             return None
-        except User.DoesNotExist:
-            logger.error("API token user not found: %s@%s", user_secret.username, user_secret.domain)
-            return None
-        except User.MultipleObjectsReturned:
-            logger.error("Duplicate users detected for API token owner: %s@%s", user_secret.username, user_secret.domain)
-            return None
         except Exception as e:
-            logger.error(f"API token authentication failed: {e}")
+            if user_secret is not None:
+                logger.error("API token authentication failed for %s@%s: %s", user_secret.username, user_secret.domain, str(e))
+            else:
+                logger.error(f"API token authentication failed: {e}")
             return None
 
 
 class AuthBackend(ModelBackend):
     """标准认证后端"""
 
-    def authenticate(self, request=None, username=None, password=None, token=None) -> Optional[User]:
+    def authenticate(self, request=None, username=None, password=None, token=None, **kwargs) -> Optional[User]:
         """使用token进行用户认证"""
         if not token:
             return None
@@ -72,6 +73,8 @@ class AuthBackend(ModelBackend):
 
             return self.set_user_info(request, user_info, rules)
 
+        except DoesNotExist:
+            raise
         except Exception as e:
             logger.error(f"Token authentication failed: {e}")
             return None
@@ -81,11 +84,21 @@ class AuthBackend(ModelBackend):
         try:
             client = SystemMgmt()
             result = client.verify_token(token)
+            if not isinstance(result, dict):
+                logger.error("Token verification returned invalid result type: %s", type(result).__name__)
+                return None
+            if not result.get("result"):
+                error_code = result.get("error_code", "")
+                error_message = result.get("message", "")
+                if error_code == VERIFY_TOKEN_USER_NOT_FOUND_CODE or error_message == VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE:
+                    raise DoesNotExist(error_message)
             if not result.get("result"):
                 return None
 
             return result
 
+        except DoesNotExist:
+            raise
         except Exception as e:
             logger.error(f"Token verification failed: {e}")
             raise
@@ -130,6 +143,8 @@ class AuthBackend(ModelBackend):
         try:
             client = SystemMgmt()
             rules = client.get_user_rules(current_group, username)
+            if not isinstance(rules, dict):
+                return {}
             return rules or {}
         except Exception as e:
             logger.error(f"Failed to get user rules for {username}: {e}")
@@ -162,7 +177,7 @@ class AuthBackend(ModelBackend):
 
         try:
             domain = user_info.get("domain", "domain.com")
-            user, created = User.objects.get_or_create(username=username, domain=domain)
+            user, created = User._default_manager.get_or_create(username=username, domain=domain)
             is_superuser = self.get_is_superuser(request, user_info)
             # 更新用户基本信息
             user.email = user_info.get("email", "")
@@ -181,6 +196,10 @@ class AuthBackend(ModelBackend):
             user.group_tree = user_info.get("group_tree", [])
             return user
 
+        except MultipleObjectsReturned:
+            domain = user_info.get("domain", "domain.com")
+            logger.error("Duplicate users detected for token owner: %s@%s", username, domain)
+            return None
         except IntegrityError as e:
             logger.error(f"Database integrity error for user {username}: {e}")
             return None

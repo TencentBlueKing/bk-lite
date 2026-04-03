@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib import auth
 from django.utils.deprecation import MiddlewareMixin
 
+from apps.core.utils.custom_error import DoesNotExist
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
 
@@ -17,6 +18,7 @@ class AuthMiddleware(MiddlewareMixin):
         "/admin/",
         "/accounts/",
     ]
+    USER_NOT_FOUND_STATUS_CODE = 460
 
     def _get_loader(self, request=None) -> LanguageLoader:
         """获取基于用户locale的LanguageLoader"""
@@ -24,6 +26,12 @@ class AuthMiddleware(MiddlewareMixin):
         if request and hasattr(request, "user") and hasattr(request.user, "locale"):
             locale = request.user.locale or "en"
         return LanguageLoader(app="core", default_lang=locale)
+
+    @staticmethod
+    def _get_loader_message(loader: LanguageLoader, key: str, default: str) -> str:
+        """获取国际化消息并确保返回字符串"""
+        message = loader.get(key, default)
+        return message if isinstance(message, str) else default
 
     def process_view(self, request, view, args, kwargs):
         """处理视图请求的认证逻辑"""
@@ -34,7 +42,13 @@ class AuthMiddleware(MiddlewareMixin):
 
             # 执行Token认证
             return self._authenticate_token(request)
-
+        except DoesNotExist as e:
+            logger.error("Authentication error for %s: %s", request.path, str(e))
+            loader = self._get_loader(request)
+            return WebUtils.response_error(
+                error_message=self._get_loader_message(loader, "error.user_does_not_exist", "User Does Not Exist"),
+                status_code=self.USER_NOT_FOUND_STATUS_CODE,
+            )
         except Exception as e:
             logger.error("Authentication error for %s: %s", request.path, str(e))
             loader = self._get_loader(request)
@@ -74,6 +88,13 @@ class AuthMiddleware(MiddlewareMixin):
 
             return None
 
+        except DoesNotExist as e:
+            logger.error("Token authentication user does not exist for %s: %s", request.path, str(e))
+            loader = self._get_loader(request)
+            return WebUtils.response_error(
+                error_message=self._get_loader_message(loader, "error.user_does_not_exist", "User Does Not Exist"),
+                status_code=self.USER_NOT_FOUND_STATUS_CODE,
+            )
         except Exception as e:
             logger.error("Token authentication error for %s: %s", request.path, str(e))
             loader = self._get_loader(request)
