@@ -148,7 +148,7 @@
         "role": "ROLE",
         "number": "NUMBER"
       },
-      "groupPermission": "Group Permission Grant",
+      "groupPermission": "Organization Permission Grant",
       "form": {
         "administrator": "Administrator",
         "group": "Group",
@@ -188,8 +188,8 @@
       "organizationRoles": "Organization Roles",
       "title": "Organization Structure",
       "passwordValidation": "Password Validation",
-      "selectedGroups": "Selected Groups",
-      "selectAllSubGroups": "All Sub-groups",
+      "selectedGroups": "Selected Organizations",
+      "selectAllSubGroups": "All Sub-organizations",
       "includeAllSubOrganizations": "Include All Sub-organizations"
     },
     "security": {

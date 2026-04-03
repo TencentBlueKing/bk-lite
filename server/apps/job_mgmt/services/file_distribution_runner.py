@@ -4,11 +4,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
-from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, TargetSource
+from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, OSType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.node_mgmt.models import CloudRegion
+from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
 from config.components.nats import NATS_NAMESPACE
 
@@ -156,11 +157,33 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             overwrite=overwrite,
         )
 
+    @staticmethod
+    def _normalize_target_path(target_path: str, os_type: str | None) -> str:
+        if os_type != OSType.WINDOWS:
+            return target_path
+        return str(target_path).replace("\\", "/")
+
     def download_to_manual_target(self, file_item: dict, target_id: int, target_path: str, timeout: int, overwrite: bool):
         target_obj = Target.objects.filter(id=target_id).first()
-        ssh_creds = self.get_ssh_credentials(target_id)
+        if target_obj and target_obj.os_type == OSType.WINDOWS and target_obj.driver == ExecutorDriver.ANSIBLE:
+            normalized_target_path = self._normalize_target_path(target_path, target_obj.os_type)
+            return self._download_to_windows_via_ansible(target_obj, [file_item], normalized_target_path, timeout, overwrite)
+
+        if target_obj and target_obj.os_type == OSType.WINDOWS:
+            ssh_creds = {
+                "host": target_obj.ip,
+                "username": target_obj.winrm_user,
+                "password": self.decrypt_password(target_obj.winrm_password),
+                "private_key": None,
+                "port": target_obj.winrm_port,
+                "node_id": target_obj.node_id,
+            }
+        else:
+            ssh_creds = self.get_ssh_credentials(target_id)
         if not ssh_creds:
             raise ValueError(f"无法获取目标凭据: target_id={target_id}")
+
+        normalized_target_path = self._normalize_target_path(target_path, target_obj.os_type if target_obj else None)
 
         if target_obj and target_obj.driver == ExecutorDriver.ANSIBLE:
             if not target_obj.cloud_region_id:
@@ -169,7 +192,39 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         else:
             instance_id = ssh_creds["node_id"]
 
-        return self.download_to_remote(instance_id, file_item, target_path, ssh_creds, timeout, overwrite)
+        return self.download_to_remote(instance_id, file_item, normalized_target_path, ssh_creds, timeout, overwrite)
+
+    def _download_to_windows_via_ansible(self, target_obj, files: list[dict], target_path: str, timeout: int, overwrite: bool) -> dict:
+        if not target_obj.cloud_region_id:
+            raise ValueError(f"目标缺少云区域配置: target_id={target_obj.id}")
+
+        ansible_node_id = self._get_ansible_node(target_obj.cloud_region_id)
+        executor = AnsibleExecutor(ansible_node_id)
+        host_credentials = self._build_host_credentials([target_obj])
+        task_id = f"file-dist-{target_obj.id}-{os.urandom(4).hex()}"
+
+        accepted = executor.playbook(
+            host_credentials=host_credentials,
+            files=files,
+            file_distribution={
+                "bucket_name": NATS_NAMESPACE,
+                "target_path": target_path,
+                "overwrite": overwrite,
+            },
+            task_id=task_id,
+            timeout=timeout,
+        )
+        accepted_result = accepted.get("result") if isinstance(accepted, dict) else {}
+        accepted_task_id = (accepted_result.get("task_id") if isinstance(accepted_result, dict) else None) or task_id
+
+        query_result = executor.task_query(accepted_task_id, timeout=min(timeout, DEFAULT_RPC_TIMEOUT))
+        task_result = query_result.get("result", {}) if isinstance(query_result, dict) else {}
+        final_result = task_result.get("result", {}) if isinstance(task_result, dict) else {}
+        if not isinstance(final_result, dict):
+            raise ValueError("Ansible 文件分发返回结果格式非法")
+        if task_result.get("status") not in {"success", "failed", "callback_failed"}:
+            raise ValueError(f"Ansible 文件分发任务未完成: status={task_result.get('status')}")
+        return final_result
 
     @staticmethod
     def get_cloud_region_name(cloud_region_id: int) -> str:

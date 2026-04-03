@@ -111,15 +111,20 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   });
 
   const decoratedNodes = useMemo(() => (
-    nodes.map((node) => ({
-      ...node,
-      data: {
-        ...node.data,
-        executionStatus: normalizeExecutionStatus(executionProps.executionStatusMap[node.id]),
-        executionDuration: executionProps.executionDurationMap[node.id],
-      },
-    }))
-  ), [nodes, executionProps.executionDurationMap, executionProps.executionStatusMap]);
+    nodes.map((node) => {
+      const resolvedExecutionStatus = normalizeExecutionStatus(executionProps.executionStatusMap[node.id]);
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          executionStatus: resolvedExecutionStatus,
+          showDisconnectAction: executionProps.executeNodeId === node.id && executionProps.hasActiveExecution,
+          executionDuration: executionProps.executionDurationMap[node.id],
+        },
+      };
+    })
+  ), [nodes, executionProps.executeNodeId, executionProps.executionDurationMap, executionProps.executionStatusMap, executionProps.hasActiveExecution]);
 
   const decoratedEdges = useMemo(() => {
     const hasExecutionState = Object.keys(executionProps.executionStatusMap).length > 0;
@@ -256,6 +261,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
         <Component
           {...props}
           executionStatus={props.data?.executionStatus}
+          showDisconnectAction={props.data?.showDisconnectAction}
           executionDuration={props.data?.executionDuration}
           onDelete={(...args: unknown[]) => deleteNodeRef.current?.apply(null, args as any)}
           onConfig={(...args: unknown[]) => configNodeRef.current?.apply(null, args as any)}

@@ -293,7 +293,7 @@ class AnsibleNATSService:
                 code, output = await run_command(cmd, request.execute_timeout)
             else:
                 request = to_playbook_request(task.payload)
-                cmd, workspace = prepare_playbook_execution(request)
+                cmd, workspace = await prepare_playbook_execution(request)
                 code, output = await run_command(cmd, request.execute_timeout)
         except Exception as err:
             error = str(err)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Spin } from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -10,11 +10,13 @@ import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransfor
 import ComPie from '../widgets/comPie';
 import ComLine from '../widgets/comLine';
 import ComBar from '../widgets/comBar';
+import ComTable from '../widgets/comTable';
 
 const componentMap: Record<string, React.ComponentType<any>> = {
   line: ComLine,
   pie: ComPie,
   bar: ComBar,
+  table: ComTable,
 };
 
 interface WidgetWrapperProps extends BaseWidgetProps {
@@ -34,22 +36,41 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const { t } = useTranslation();
   const [rawData, setRawData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [tableQueryReady, setTableQueryReady] = useState(false);
   const [dataValidation, setDataValidation] = useState<{
     isValid: boolean;
     message?: string;
   } | null>(null);
+  const [tableQueryParams, setTableQueryParams] = useState<Record<string, any>>(
+    {},
+  );
   const { getSourceDataByApiId } = useDataSourceApi();
+
+  const handleTableQueryChange = useCallback((params: Record<string, any>) => {
+    setTableQueryReady(true);
+    setTableQueryParams((prev) => {
+      if (JSON.stringify(prev) === JSON.stringify(params || {})) {
+        return prev;
+      }
+      return params || {};
+    });
+  }, []);
 
   const fetchData = async () => {
     if (!config?.dataSource) {
       setLoading(false);
+      setTableLoading(false);
       setDataValidation(null);
       return;
     }
 
+    const isTableChart = chartType === 'table';
+
     // 检查权限
     if (dataSource?.hasAuth === false) {
       setLoading(false);
+      setTableLoading(false);
       setRawData(null);
       setDataValidation({
         isValid: false,
@@ -59,12 +80,18 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     }
 
     try {
-      setLoading(true);
+      if (isTableChart) {
+        setTableLoading(true);
+      } else {
+        setLoading(true);
+      }
       setDataValidation(null);
 
       const data = await fetchWidgetData({
         config,
+        dataSource,
         globalTimeRange,
+        extraParams: chartType === 'table' ? tableQueryParams : undefined,
         getSourceDataByApiId,
       });
 
@@ -80,7 +107,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         message: t('dashboard.dataFetchFailed'),
       });
     } finally {
-      setLoading(false);
+      if (isTableChart) {
+        setTableLoading(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -96,7 +127,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
             item &&
             item.data &&
             Array.isArray(item.data) &&
-            item.data.length > 0
+            item.data.length > 0,
         );
         if (!hasValidData) return true;
       }
@@ -115,16 +146,43 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       case 'line':
       case 'bar':
         return ChartDataTransformer.validateLineBarData(data, errorMessage);
+      case 'table':
+        // Table handles its own data format, skip chart validation
+        return { isValid: true };
       default:
         return { isValid: true };
     }
   };
 
   useEffect(() => {
-    if (config?.dataSource) {
-      fetchData();
+    if (!config?.dataSource) {
+      return;
     }
-  }, [config, globalTimeRange, refreshKey, dataSource?.hasAuth]);
+
+    if (chartType === 'table' && !tableQueryReady) {
+      return;
+    }
+
+    fetchData();
+  }, [
+    config,
+    globalTimeRange,
+    refreshKey,
+    dataSource?.hasAuth,
+    tableQueryParams,
+    chartType,
+    tableQueryReady,
+  ]);
+
+  useEffect(() => {
+    if (chartType !== 'table') {
+      return;
+    }
+    setTableQueryReady(false);
+    setTableQueryParams({});
+    setTableLoading(false);
+    setLoading(false);
+  }, [chartType, config?.dataSource]);
 
   const renderError = (message: string) => (
     <div className="h-full flex flex-col items-center justify-center">
@@ -135,7 +193,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     </div>
   );
 
-  if (loading) {
+  if (loading && chartType !== 'table') {
     return (
       <div className="h-full flex items-center justify-center">
         <Spin spinning={loading} />
@@ -151,18 +209,20 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   // 如果数据校验失败，显示错误提示
   if (dataValidation && !dataValidation.isValid) {
     return renderError(
-      dataValidation.message || t('dashboard.dataCannotRenderAsChart')
+      dataValidation.message || t('dashboard.dataCannotRenderAsChart'),
     );
   }
 
   return (
     <Component
       rawData={rawData}
-      loading={loading}
+      loading={chartType === 'table' ? tableLoading : loading}
       config={config}
+      dataSource={dataSource}
       globalTimeRange={globalTimeRange}
       refreshKey={refreshKey}
       onReady={onReady}
+      onQueryChange={chartType === 'table' ? handleTableQueryChange : undefined}
       {...otherProps}
     />
   );

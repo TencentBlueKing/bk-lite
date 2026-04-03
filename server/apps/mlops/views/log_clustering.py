@@ -1199,13 +1199,14 @@ class LogClusteringServingViewSet(TeamModelViewSet):
         调用 serving 服务进行日志聚类
 
         请求参数:
-            url: 预测服务主机地址（如 http://192.168.1.100，不含端口）
-            data: 日志数据数组 [{"log": "..."}, ...]
+            data: 日志原始文本列表，list[str]，例如 ["log line 1", "log line 2"]
+            config: 可选推理配置参数（dict）
         """
         try:
             serving = self.get_object()
 
             data = request.data.get("data")
+            config = request.data.get("config")
 
             if not data:
                 return Response({"error": "data 参数不能为空"}, status=status.HTTP_400_BAD_REQUEST)
@@ -1225,6 +1226,8 @@ class LogClusteringServingViewSet(TeamModelViewSet):
                 )
 
             payload = {"data": data}
+            if config is not None:
+                payload["config"] = config
 
             response = requests.post(
                 predict_url,

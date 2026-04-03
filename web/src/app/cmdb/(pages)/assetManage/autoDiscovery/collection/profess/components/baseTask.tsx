@@ -370,11 +370,13 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
           name: '',
         });
         setAccessPoints(
-          res.nodes?.map((node: any) => ({
-            label: node.name,
-            value: node.id,
-            origin: node,
-          })) || []
+          res.nodes
+            ?.filter((node: any) => node?.node_type === 'container')
+            .map((node: any) => ({
+              label: node.name,
+              value: node.id,
+              origin: node,
+            })) || []
         );
       } catch (error) {
         console.error('获取接入点失败:', error);

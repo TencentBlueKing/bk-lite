@@ -6,7 +6,7 @@
   "objects": [
     {
       "name": "Docker",
-      "icon": "Docker",
+      "icon": "cc-docker_Docker",
       "type": "Container Management",
       "level": "base",
       "description": "",
@@ -51,7 +51,7 @@
     },
     {
       "name": "Docker Container",
-      "icon": "Docker",
+      "icon": "cc-docker-container_Docker容器",
       "type": "Container Management",
       "level": "derivative",
       "description": "",

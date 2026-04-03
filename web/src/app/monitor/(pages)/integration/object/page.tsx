@@ -84,7 +84,7 @@ const ObjectPage = () => {
                 <img
                   src={`/app/assets/assetModelIcon/${record.icon}.svg`}
                   alt={record.name}
-                  className="w-5 h-5"
+                  className="w-6 h-6"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src =
                       '/app/assets/assetModelIcon/cc-default_默认.svg';
@@ -416,7 +416,54 @@ const ObjectPage = () => {
   const handleClearSearch = () => {
     setObjectSearchText('');
     setPagination((prev) => ({ ...prev, current: 1 }));
-    fetchObjects();
+    // 直接传空字符串查询，避免状态异步更新导致使用旧值
+    fetchObjectsWithSearch('');
+  };
+
+  // 带搜索参数的获取对象列表
+  const fetchObjectsWithSearch = async (
+    searchText: string,
+    typeId?: string
+  ) => {
+    const currentTypeId = typeId || selectedType?.id;
+    if (!currentTypeId) return;
+
+    // 取消上一次请求
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    // 创建新的 AbortController
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setObjectLoading(true);
+    try {
+      const params = {
+        type_id: currentTypeId,
+        page: 1,
+        page_size: pagination.pageSize,
+        name: searchText || undefined
+      };
+      const data = await getObjects(params, controller.signal);
+      // 请求成功且未被取消时才更新数据和关闭 loading
+      if (!controller.signal.aborted) {
+        setObjectList(data?.results || []);
+        setPagination((prev) => ({
+          ...prev,
+          current: 1,
+          total: data?.count || 0
+        }));
+        setObjectLoading(false);
+      }
+    } catch (error: any) {
+      // 忽略取消请求的错误，不关闭 loading（让下一次请求控制）
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+        return;
+      }
+      // 其他错误时关闭 loading
+      setObjectLoading(false);
+      throw error;
+    }
   };
 
   // 操作成功回调
@@ -533,7 +580,7 @@ const ObjectPage = () => {
           <Input
             allowClear
             className="w-80"
-            placeholder={t('monitor.object.searchObject')}
+            placeholder={t('monitor.object.searchObjectId')}
             value={objectSearchText}
             onChange={(e) => setObjectSearchText(e.target.value)}
             onPressEnter={handleSearchObject}

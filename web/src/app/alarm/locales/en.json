@@ -54,7 +54,7 @@
         "closeAlert": "Close This Alert",
         "firstAlertTime": "First Alert Time",
         "information": "Information",
-        "assetGroup": "Asset Group",
+        "assetGroup": "Organization",
         "strategyName": "Policy Name",
         "notifier": "Notifier",
         "alertDetail": "Alert Detail",

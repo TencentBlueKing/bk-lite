@@ -3,7 +3,7 @@
   "plugin_desc": "The purpose of the website monitoring plugin is to periodically check the availability and performance of HTTP/HTTPS connections.",
   "status_query": "any({instance_type='web', collect_type='web'}) by (instance_id)",
   "name": "Website",
-  "icon": "wangzhan1",
+  "icon": "cc-cloud_云",
   "type": "Web",
   "description": "",
   "default_metric": "any({instance_type='web'}) by (instance_id)",

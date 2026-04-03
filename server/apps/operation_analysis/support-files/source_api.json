@@ -175,5 +175,72 @@
         "value": "5m"
       }
     ]
+},
+{
+    "name": "CMDB资产实例查询",
+    "desc": "分页查询CMDB资产实例（用于表格组件）",
+    "rest_api": "cmdb/query_asset_instances",
+    "tag": [
+        "cmdb"
+    ],
+    "chart_type": [
+        "table"
+    ],
+    "field_schema": [
+        {
+            "key": "namespace_id",
+            "title": "命名空间",
+            "value_type": "string",
+            "description": "命名空间（前端固定首列）"
+        },
+        {
+            "key": "model_id",
+            "title": "模型ID",
+            "value_type": "string",
+            "description": "CMDB模型ID"
+        },
+        {
+            "key": "inst_name",
+            "title": "实例名称",
+            "value_type": "string",
+            "description": "CMDB实例名称"
+        },
+        {
+            "key": "_id",
+            "title": "实例ID",
+            "value_type": "string",
+            "description": "CMDB实例内部ID"
+        }
+    ],
+    "params": [
+        {
+            "name": "model_id",
+            "type": "string",
+            "value": "",
+            "alias_name": "模型ID",
+            "filterType": "params"
+        },
+        {
+            "name": "inst_name",
+            "type": "string",
+            "value": "",
+            "alias_name": "实例名称",
+            "filterType": "params"
+        },
+        {
+            "name": "page",
+            "type": "number",
+            "value": 1,
+            "alias_name": "页码",
+            "filterType": "fixed"
+        },
+        {
+            "name": "page_size",
+            "type": "number",
+            "value": 20,
+            "alias_name": "每页条数",
+            "filterType": "fixed"
+        }
+    ]
   }
 ]

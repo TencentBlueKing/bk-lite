@@ -19,6 +19,8 @@ from langchain_core.tools import tool
 from loguru import logger
 from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
+
 # 安全配置
 MAX_RETRIES = 2
 MAX_LOGIN_FAILURES = 2  # 登录失败最大重试次数
@@ -60,6 +62,10 @@ class LoginFailureError(Exception):
         self.message = message
         self.failure_count = failure_count
         super().__init__(message)
+
+
+class BrowserExecutionInterruptedError(Exception):
+    """浏览器执行被中断异常"""
 
 
 class BrowserStepInfo(TypedDict):
@@ -945,6 +951,7 @@ def _create_login_failure_hook(
 def _create_step_callback_adapter(
     step_callback: Optional[StepCallbackType],
     max_steps: int,
+    execution_id: str = "",
 ) -> Optional[Callable[[BrowserStateSummary, AgentOutput, int], Awaitable[None]]]:
     """
     创建一个适配器，将用户回调转换为 browser-use 需要的回调格式
@@ -962,6 +969,9 @@ def _create_step_callback_adapter(
     async def adapter(browser_state: BrowserStateSummary, model_output: AgentOutput, step_number: int) -> None:
         """适配器：将 browser-use 的回调参数转换为 BrowserStepInfo"""
         import inspect
+
+        if execution_id and is_interrupt_requested(execution_id):
+            raise BrowserExecutionInterruptedError("浏览器执行已中断")
 
         # 提取动作信息
         actions = []
@@ -1015,6 +1025,7 @@ async def _browse_website_async(
     user_data_dir: Optional[str] = None,
     locale: str = "en",
     tool_name: str = "browse_website",
+    execution_id: str = "",
 ) -> Dict[str, Any]:
     """
     异步浏览网站并执行任务
@@ -1087,7 +1098,7 @@ async def _browse_website_async(
             final_task = f"首先，导航到 {url} \n 然后，{task}" if task else f"导航到 {url}"
 
         # 创建步骤回调适配器
-        register_callback = _create_step_callback_adapter(step_callback, max_steps)
+        register_callback = _create_step_callback_adapter(step_callback, max_steps, execution_id=execution_id)
 
         # 回传 browser_use 实际接收任务（final_task），用于前端展示
         if custom_event_callback is not None:
@@ -1386,6 +1397,19 @@ CORE RULES (MUST FOLLOW):
             "login_failure_count": e.failure_count,
         }
 
+    except BrowserExecutionInterruptedError as e:
+        logger.info(f"浏览器执行被中断: {e}")
+        return {
+            "success": False,
+            "content": None,
+            "url": url,
+            "task": task,
+            "has_errors": True,
+            "errors": [str(e)],
+            "steps_taken": 0,
+            "interrupted": True,
+        }
+
     except Exception as e:
         error_msg = f"浏览器操作失败: {str(e)}"
         logger.exception(error_msg)
@@ -1521,6 +1545,7 @@ def browse_website(
     llm_config = configurable.get("graph_request")
     step_callback: Optional[StepCallbackType] = configurable.get("browser_step_callback")
     custom_event_callback: Optional[CustomEventCallbackType] = configurable.get("browser_custom_event_callback")
+    execution_id = configurable.get("execution_id") or getattr(llm_config, "thread_id", "")
     forced_base_task = configurable.get("browser_use_base_task")
     forced_user_message = configurable.get("browser_use_user_message")
     force_browser_task = configurable.get("browser_use_force_task", False)
@@ -1574,6 +1599,7 @@ def browse_website(
                 user_data_dir=user_data_dir,
                 locale=locale,
                 tool_name="browse_website",
+                execution_id=execution_id,
             )
         )
         if force_browser_task and isinstance(result, dict):
@@ -1657,6 +1683,7 @@ def extract_webpage_info(
         llm_config = configurable.get("graph_request")
         step_callback: Optional[StepCallbackType] = configurable.get("browser_step_callback")
         custom_event_callback: Optional[CustomEventCallbackType] = configurable.get("browser_custom_event_callback")
+        execution_id = configurable.get("execution_id") or getattr(llm_config, "thread_id", "")
 
         llm = ChatOpenAI(
             model=llm_config.model,
@@ -1703,6 +1730,7 @@ def extract_webpage_info(
                 user_data_dir=user_data_dir,
                 locale=locale,
                 tool_name="extract_webpage_info",
+                execution_id=execution_id,
             )
         )
 

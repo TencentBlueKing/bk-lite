@@ -117,7 +117,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   guide,
   useAGUIProtocol = false,
   showHeader = true,
-  requirePermission = true
+  requirePermission = true,
+  removePendingBotMessageOnCancel = false
 }) => {
   const { t } = useTranslation();
 
@@ -180,12 +181,23 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   );
 
   // 使用自定义 Hooks
+  const removeCurrentPendingBotMessage = useCallback(() => {
+    const currentBotMessage = currentBotMessageRef.current;
+    if (!currentBotMessage) {
+      return;
+    }
+
+    updateMessages(prevMessages => prevMessages.filter(msg => msg.id !== currentBotMessage.id));
+    currentBotMessageRef.current = null;
+  }, [updateMessages]);
+
   const { handleSSEStream, stopSSEConnection } = useSSEStream({
     token,
     useAGUIProtocol,
     updateMessages,
     setLoading,
-    t
+    t,
+    onCancelCleanup: removePendingBotMessageOnCancel ? removeCurrentPendingBotMessage : undefined,
   });
 
   const { sendMessage } = useSendMessage({

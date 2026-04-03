@@ -8,7 +8,15 @@ export type BrowserStepProgressValue = BrowserStepProgressData;
 export type BrowserTaskReceivedValue = BrowserTaskReceivedData;
 
 export interface CustomChatSSEProps {
-  handleSendMessage?: (message: string, currentMessages?: any[]) => Promise<{ url: string; payload: any } | null>;
+  handleSendMessage?: (message: string, currentMessages?: any[]) => Promise<{
+    url: string;
+    payload: any;
+    interruptRequest?: {
+      enabled: boolean;
+      url: string;
+      reason?: string;
+    };
+  } | null>;
   showMarkOnly?: boolean;
   initialMessages?: CustomChatMessage[];
   mode?: 'chat' | 'display';
@@ -16,6 +24,7 @@ export interface CustomChatSSEProps {
   useAGUIProtocol?: boolean;
   showHeader?: boolean;
   requirePermission?: boolean;
+  removePendingBotMessageOnCancel?: boolean;
 }
 
 export type ActionRender = (
