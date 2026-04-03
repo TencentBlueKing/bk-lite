@@ -6,7 +6,7 @@
   "objects": [
     {
       "name": "Cluster",
-      "icon": "ks",
+      "icon": "cc-k8s-cluster_K8S集群",
       "type": "K8S",
       "level": "base",
       "description": "",
@@ -62,7 +62,7 @@
     },
     {
       "name": "Pod",
-      "icon": "rongqi2",
+      "icon": "cc-pod_Pod",
       "type": "K8S",
       "level": "derivative",
       "description": "",
@@ -165,7 +165,7 @@
     },
     {
       "name": "Node",
-      "icon": "rongqi",
+      "icon": "cc-node_Node",
       "type": "K8S",
       "level": "derivative",
       "description": "",

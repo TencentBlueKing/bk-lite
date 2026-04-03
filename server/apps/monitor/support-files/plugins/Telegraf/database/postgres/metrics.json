@@ -3,7 +3,7 @@
   "plugin_desc": "Used to collect and monitor key metrics for PostgreSQL database health and performance.",
   "status_query": "any({instance_type='postgres', collect_type='database'}) by (instance_id)",
   "name": "Postgres",
-  "icon": "postgresql",
+  "icon": "cc-postgresql_PostgreSQL",
   "type": "Database",
   "description": "",
   "default_metric": "any({instance_type='postgres'}) by (instance_id)",

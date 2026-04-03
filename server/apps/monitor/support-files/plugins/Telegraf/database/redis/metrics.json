@@ -3,7 +3,7 @@
   "plugin_desc": "Used to collect key indicators of Redis performance and resource utilization.",
   "status_query": "any({instance_type='redis', collect_type='database'}) by (instance_id)",
   "name": "Redis",
-  "icon": "Redis",
+  "icon": "cc-redis_REDIS",
   "type": "Database",
   "description": "",
   "default_metric": "any({instance_type='redis'}) by (instance_id)",
