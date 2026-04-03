@@ -84,7 +84,7 @@ const ObjectPage = () => {
                 <img
                   src={`/app/assets/assetModelIcon/${record.icon}.svg`}
                   alt={record.name}
-                  className="w-5 h-5"
+                  className="w-6 h-6"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src =
                       '/app/assets/assetModelIcon/cc-default_默认.svg';
