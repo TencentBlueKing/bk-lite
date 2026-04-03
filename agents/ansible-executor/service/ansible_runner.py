@@ -129,7 +129,39 @@ def to_playbook_request(payload: dict[str, Any]) -> PlaybookRequest:
     if file_distribution is not None and not isinstance(file_distribution, dict):
         raise ValueError("file_distribution must be object")
 
+    logger.info(
+        "to_playbook_request payload check: "
+        "task_id=%s "
+        "playbook_path=%r "
+        "playbook_content_is_none=%s "
+        "inventory=%r "
+        "inventory_content_is_none=%s "
+        "host_credentials_count=%s "
+        "files_count=%s "
+        "file_distribution=%r "
+        "payload_keys=%s",
+        payload.get("task_id", ""),
+        playbook_path,
+        playbook_content is None,
+        inventory,
+        inventory_content is None,
+        len(host_credentials),
+        len(files),
+        file_distribution,
+        sorted(payload.keys()),
+    )
+
     if not playbook_path and not playbook_content and not file_distribution:
+        logger.error(
+            "to_playbook_request validation failed: "
+            "missing playbook_path/playbook_content/file_distribution "
+            "task_id=%s "
+            "raw_file_distribution=%r "
+            "raw_payload=%r",
+            payload.get("task_id", ""),
+            payload.get("file_distribution"),
+            payload,
+        )
         raise ValueError("playbook_path or playbook_content is required")
     if not inventory and not inventory_content and not host_credentials:
         raise ValueError("inventory or inventory_content or host_credentials is required")

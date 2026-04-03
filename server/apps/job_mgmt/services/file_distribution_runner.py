@@ -214,17 +214,41 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             task_id=task_id,
             timeout=timeout,
         )
-        accepted_result = accepted.get("result") if isinstance(accepted, dict) else {}
-        accepted_task_id = (accepted_result.get("task_id") if isinstance(accepted_result, dict) else None) or task_id
+        logger.info(f"accepted data: {accepted}")
+        accepted_task_id = (accepted.get("task_id") if isinstance(accepted, dict) else None) or task_id
 
         query_result = executor.task_query(accepted_task_id, timeout=min(timeout, DEFAULT_RPC_TIMEOUT))
-        task_result = query_result.get("result", {}) if isinstance(query_result, dict) else {}
-        final_result = task_result.get("result", {}) if isinstance(task_result, dict) else {}
-        if not isinstance(final_result, dict):
+        logger.info(f"query_result data: {query_result}")
+        if not isinstance(query_result, dict):
+            logger.error(f"final_result: {query_result}")
             raise ValueError("Ansible 文件分发返回结果格式非法")
-        if task_result.get("status") not in {"success", "failed", "callback_failed"}:
-            raise ValueError(f"Ansible 文件分发任务未完成: status={task_result.get('status')}")
-        return final_result
+
+        task_status = query_result.get("status")
+        if task_status not in {"success", "failed", "callback_failed"}:
+            raise ValueError(f"Ansible 文件分发任务未完成: status={task_status}")
+
+        task_result = query_result.get("result", {})
+        if not isinstance(task_result, dict):
+            logger.error(f"final_result: {task_result}")
+            raise ValueError("Ansible 文件分发返回结果格式非法")
+
+        host_results = task_result.get("result")
+        task_error = str(task_result.get("error") or "")
+
+        if isinstance(host_results, list):
+            failed_hosts = [item for item in host_results if isinstance(item, dict) and item.get("status") != "success"]
+            error_messages = [str(item.get("error_message") or item.get("stderr") or "") for item in failed_hosts]
+            return {
+                "success": len(failed_hosts) == 0 and task_result.get("success") is True,
+                "result": host_results,
+                "error": "\n".join([msg for msg in error_messages if msg]) or task_error,
+            }
+
+        return {
+            "success": task_result.get("success") is True,
+            "result": task_result.get("result", ""),
+            "error": task_error,
+        }
 
     @staticmethod
     def get_cloud_region_name(cloud_region_id: int) -> str:

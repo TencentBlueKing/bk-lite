@@ -167,7 +167,7 @@ class AnsibleExecutor(object):
             timeout=300,
         )
         """
-        if not playbook_path and not playbook_content:
+        if not playbook_path and not playbook_content and not file_distribution:
             raise ValueError("playbook_path or playbook_content is required")
         if not inventory and not inventory_content:
             if not host_credentials:
