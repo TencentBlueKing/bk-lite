@@ -10,6 +10,8 @@ DEFAULT_TELEGRAF_HTTP_LISTENER_PATH = "/telegraf/api"
 
 
 class TemplateAccessGuideService:
+    DEFAULT_TIMESTAMP_MS_EXAMPLE = 1712052000000
+
     @staticmethod
     def resolve_required_int(value, field_name: str) -> int:
         if value in (None, ""):
@@ -72,11 +74,10 @@ class TemplateAccessGuideService:
         endpoint = TemplateAccessGuideService.get_telegraf_listener_endpoint(cloud_region_id)
 
         metric_name = metrics[0]["name"] if metrics else "demo_metric"
-        timestamp = 1710000000000000000
-        line_example = (
-            f"{metric_name},organization_id={organization_id},instance_type={monitor_object.name},"
-            f"plugin_id={getattr(plugin, 'pk', None)} value=1 {timestamp}"
+        line_without_timestamp = (
+            f"{metric_name},organization_id={organization_id},instance_type={monitor_object.name},plugin_id={getattr(plugin, 'pk', None)} value=1"
         )
+        line_with_timestamp_ms = f"{line_without_timestamp} {TemplateAccessGuideService.DEFAULT_TIMESTAMP_MS_EXAMPLE}"
 
         return {
             "template_id": plugin.template_id,
@@ -90,5 +91,7 @@ class TemplateAccessGuideService:
             "monitor_object_name": monitor_object.display_name or monitor_object.name,
             "metrics": metrics,
             "endpoint": endpoint,
-            "line_protocol_example": line_example,
+            "line_protocol_example": line_without_timestamp,
+            "line_protocol_example_without_timestamp": line_without_timestamp,
+            "line_protocol_example_with_timestamp_ms": line_with_timestamp_ms,
         }

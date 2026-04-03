@@ -185,6 +185,26 @@ API 模版详情页不是采集配置页，而是**接入引导页**。
 - `instance_type`
 - `plugin_id`
 
+时间戳规则：
+
+- 时间戳为可选项
+- 不传时间戳时，默认使用服务端接收时间
+- 如需显式传入时间戳，推荐使用 13 位毫秒时间戳
+
+引导页至少提供两种 line protocol 示例：
+
+1. **不带时间戳**
+
+```text
+demo_metric,organization_id=1,instance_type=host,plugin_id=1 value=1
+```
+
+2. **带 13 位毫秒时间戳**
+
+```text
+demo_metric,organization_id=1,instance_type=host,plugin_id=1 value=1 1712052000000
+```
+
 ### 服务端职责
 
 对于 API 模版，server 只负责：
@@ -370,6 +390,11 @@ PULL 模版详情页保留：
 5. 生成 line protocol 示例
 6. 返回模版指标元数据
 
+其中 line protocol 示例需同时返回：
+
+- 不带时间戳示例
+- 带 13 位毫秒时间戳示例
+
 #### 前端
 
 详情页使用独立目录：
@@ -471,7 +496,8 @@ Telegraf 运行配置固定为：
 2. 云区域切换后地址正确变化
 3. 接入地址来自 `TELEGRAF_HTTP_LISTENER_URL`
 4. 请求示例固定为 `POST` + line protocol
-5. 页面不再展示 token / 实例 / 响应示例
+5. 引导页同时展示“不带时间戳”与“带 13 位毫秒时间戳”两种示例
+6. 页面不再展示 token / 实例 / 响应示例
 
 ### 10.3 PULL 模版验收
 
