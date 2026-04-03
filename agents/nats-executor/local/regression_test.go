@@ -9,6 +9,11 @@ import (
 )
 
 func TestRegressionLocalExecuteOutputDecoding(t *testing.T) {
+	wrappedCmd := wrapCmdCommand("ipconfig")
+	if !strings.Contains(wrappedCmd, "chcp 65001") {
+		t.Fatalf("expected cmd command wrapper to switch code page, got %q", wrappedCmd)
+	}
+
 	wrapped := wrapPowerShellCommand("Write-Output test")
 	if !strings.Contains(wrapped, "[Console]::OutputEncoding") {
 		t.Fatalf("expected PowerShell command wrapper to force UTF-8 output, got %q", wrapped)
