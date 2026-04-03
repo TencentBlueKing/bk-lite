@@ -1,4 +1,8 @@
 {
+"common": {
+    "total": "共",
+    "items": "条"
+},
   "topology": {
     "nodeConfig": {
       "width": "宽度",
@@ -200,7 +204,22 @@
     "updateDataSourceSuccess": "更新数据源成功",
     "required": "必填",
     "singleValue": "单值",
-    "operationFailed": "操作失败"
+    "operationFailed": "操作失败",
+    "table": "表格",
+    "responseFieldSchemaConfig": "接口字段定义",
+    "schemaOptionalAutoGenTip": "该配置为可选项；如不配置，表格组件首次使用时将按返回字段自动生成默认列。",
+    "addField": "添加字段",
+    "fieldKey": "字段名",
+    "fieldTitle": "显示名称",
+    "fieldValueType": "数据类型",
+    "fieldDescription": "描述",
+    "duplicateFieldKeys": "字段名重复：",
+    "valueTypes": {
+        "string": "字符串",
+        "number": "数字",
+        "boolean": "布尔",
+        "datetime": "日期时间"
+    }
   },
   "dashboard": {
     "endTime": "结束时间",
@@ -234,7 +253,29 @@
     "title": "选择组件",
     "basicSettings": "基本设置",
     "showHeader": "显示表头",
-    "fixed": "固定"
+    "fixed": "固定",
+    "keyword": "关键字",
+    "searchPlaceholder": "请输入关键字搜索",
+    "namespaceFilter": "命名空间筛选",
+    "allNamespaces": "请选择命名空间",
+    "columnSettings": "列设置",
+    "noPermission": "暂无权限",
+    "tableSettings": "表格设置",
+    "filterFields": "搜索字段",
+    "filterFieldKey": "字段",
+    "filterFieldLabel": "显示名称",
+    "filterInputType": "输入类型",
+    "displayColumns": "展示列",
+    "noDisplayColumns": "暂无展示列",
+    "reProbeColumns": "刷新默认列",
+    "reProbeColumnsTip": "将基于当前数据源和参数重新探测并恢复默认列，同时保留已有自定义列",
+    "reProbeSuccess": "刷新默认列成功",
+    "reProbeNoFields": "未探测到可用字段",
+    "atLeastOneVisibleColumn": "请至少保留一列可见",
+    "invalidConfiguredFieldsTip": "部分已配置字段不在当前可用字段集合中，可能不可用：{{fields}}",
+    "columnVisible": "是否显示",
+    "noSchemaFields": "暂无可用字段，请先在数据源中配置表格字段",
+    "noFilterFields": "暂未配置搜索字段"
   },
   "opsAnalysisSidebar": {
     "addArch": "添加架构图",
