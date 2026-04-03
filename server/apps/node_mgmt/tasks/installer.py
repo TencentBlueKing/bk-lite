@@ -7,6 +7,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 
 from apps.node_mgmt.models import (
@@ -42,7 +43,7 @@ from apps.node_mgmt.utils.token_auth import generate_node_token
 from config.components.nats import NATS_NAMESPACE
 
 
-CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS = 300
+CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS = InstallerConstants.CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS
 
 
 def _add_steps(node_obj, step_items):
@@ -174,9 +175,7 @@ def _reconcile_controller_task_status(task_id):
     if not task_obj:
         return
 
-    running_or_waiting_exists = task_obj.controllertasknode_set.filter(
-        status__in=["waiting", "running"]
-    ).exists()
+    running_or_waiting_exists = task_obj.controllertasknode_set.filter(status__in=["waiting", "running"]).exists()
 
     task_obj.status = "running" if running_or_waiting_exists else "finished"
     task_obj.save(update_fields=["status"])
@@ -190,9 +189,7 @@ def _reconcile_controller_task_statuses(task_ids):
         item["task_id"]: item["pending_count"]
         for item in ControllerTaskNode.objects.filter(task_id__in=task_ids)
         .values("task_id")
-        .annotate(
-            pending_count=Count("id", filter=Q(status__in=["waiting", "running"]))
-        )
+        .annotate(pending_count=Count("id", filter=Q(status__in=["waiting", "running"])))
     }
 
     running_ids = []
@@ -227,9 +224,7 @@ def _parse_exception_details(error_message, exception_obj=None):
         if json_match:
             try:
                 go_response = json.loads(json_match.group())
-                if isinstance(go_response, dict) and not go_response.get(
-                    "success", True
-                ):
+                if isinstance(go_response, dict) and not go_response.get("success", True):
                     if "error" in go_response:
                         details["service_error"] = go_response["error"]
                     if "result" in go_response:
@@ -286,9 +281,7 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
         dir_map["storage_dir"],
     )
 
-    obj = SidecarEnv.objects.filter(
-        cloud_region=task_obj.cloud_region_id, key=NodeConstants.SERVER_URL_KEY
-    ).first()
+    obj = SidecarEnv.objects.filter(cloud_region=task_obj.cloud_region_id, key=NodeConstants.SERVER_URL_KEY).first()
     server_url = obj.value if obj else "null"
 
     aes_obj = AESCryptor()
@@ -298,9 +291,7 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
     base_error_message = ""
     unzip_name = ""
 
-    _batch_add_step(
-        nodes_list, "download", "running", "Downloading package to work node"
-    )
+    _batch_add_step(nodes_list, "download", "running", "Downloading package to work node")
     try:
         download_to_local(
             task_obj.work_node,
@@ -329,9 +320,7 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 f"{controller_storage_dir}/{package_obj.name}",
                 controller_storage_dir,
             )
-            _batch_update_step_status(
-                nodes_list, "success", "Package extracted successfully"
-            )
+            _batch_update_step_status(nodes_list, "success", "Package extracted successfully")
         except Exception as e:
             _batch_update_step_status(nodes_list, "error", f"Unzip failed: {str(e)}")
             base_run = False
@@ -421,16 +410,12 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 node_obj,
                 "success",
                 "File transfer completed successfully",
-                next_steps=[
-                    _build_step("run", "running", "Starting controller installation")
-                ],
+                next_steps=[_build_step("run", "running", "Starting controller installation")],
             )
             groups = ",".join([str(i) for i in node_obj.organizations])
 
             node_id = uuid.uuid4().hex
-            sidecar_token = generate_node_token(
-                node_id, node_obj.ip, task_obj.created_by
-            )
+            sidecar_token = generate_node_token(node_id, node_obj.ip, task_obj.created_by)
             install_command = get_install_command(
                 package_obj.os,
                 package_obj.name,
@@ -523,10 +508,7 @@ def converge_controller_install_connectivity_for_node(node_id):
             continue
 
         last_step = steps[-1]
-        if not (
-            last_step.get("action") == "connectivity_check"
-            and last_step.get("status") == "running"
-        ):
+        if not (last_step.get("action") == "connectivity_check" and last_step.get("status") == "running"):
             continue
 
         _update_step_status(
@@ -565,10 +547,7 @@ def timeout_controller_install_task(task_id):
             continue
 
         last_step = steps[-1]
-        if not (
-            last_step.get("action") == "connectivity_check"
-            and last_step.get("status") == "running"
-        ):
+        if not (last_step.get("action") == "connectivity_check" and last_step.get("status") == "running"):
             continue
 
         _update_step_status(
@@ -583,9 +562,7 @@ def timeout_controller_install_task(task_id):
 
 
 @shared_task
-def retry_controller(
-    task_id, task_node_ids, password=None, private_key=None, passphrase=None
-):
+def retry_controller(task_id, task_node_ids, password=None, private_key=None, passphrase=None):
     """
     重试控制器安装任务中的特定节点
 
@@ -610,9 +587,7 @@ def retry_controller(
         task_node_ids = [task_node_ids]
 
     # 获取需要重试的节点
-    retry_nodes = ControllerTaskNode.objects.filter(
-        id__in=task_node_ids, task_id=task_id
-    )
+    retry_nodes = ControllerTaskNode.objects.filter(id__in=task_node_ids, task_id=task_id)
 
     if not retry_nodes.exists():
         raise BaseAppException("No valid nodes found for retry")
@@ -729,26 +704,16 @@ def uninstall_controller(task_id):
                 node_obj,
                 "success",
                 "Installation directory removed successfully",
-                next_steps=[
-                    _build_step("delete_node", "running", "Removing node from database")
-                ],
+                next_steps=[_build_step("delete_node", "running", "Removing node from database")],
             )
-            Node.objects.filter(
-                cloud_region_id=task_obj.cloud_region_id, ip=node_obj.ip
-            ).delete()
-            _update_step_status(
-                node_obj, "success", "Node removed from database successfully"
-            )
+            Node.objects.filter(cloud_region_id=task_obj.cloud_region_id, ip=node_obj.ip).delete()
+            _update_step_status(node_obj, "success", "Node removed from database successfully")
 
         except Exception as e:
             _handle_step_exception(node_obj, str(e), e)
             overall_status = "error"
 
-        final_message = (
-            "All steps completed successfully"
-            if overall_status == "success"
-            else "Uninstallation failed"
-        )
+        final_message = "All steps completed successfully" if overall_status == "success" else "Uninstallation failed"
         _save_node_result(node_obj, overall_status, final_message)
 
     task_obj.status = "finished"
@@ -795,9 +760,7 @@ def install_collector(task_id):
                     node_obj,
                     "success",
                     "File download completed successfully",
-                    next_steps=[
-                        _build_step("unzip", "running", "Extracting collector package")
-                    ],
+                    next_steps=[_build_step("unzip", "running", "Extracting collector package")],
                 )
                 unzip_name = unzip_file(
                     node_obj.node_id,
@@ -854,24 +817,16 @@ def install_collector(task_id):
                     node_obj.node_id,
                     f"if [ -d '{executable_path}' ]; then find '{executable_path}' -type f -exec chmod +x {{}} \\; ; else chmod +x '{executable_path}'; fi",
                 )
-                _update_step_status(
-                    node_obj, "success", "Execution permissions set successfully"
-                )
+                _update_step_status(node_obj, "success", "Execution permissions set successfully")
 
         except Exception as e:
             _handle_step_exception(node_obj, str(e), e)
             overall_status = "error"
 
-        final_message = (
-            "All steps completed successfully"
-            if overall_status == "success"
-            else "Collector installation failed"
-        )
+        final_message = "All steps completed successfully" if overall_status == "success" else "Collector installation failed"
         _save_node_result(node_obj, overall_status, final_message)
 
-        collector_obj = Collector.objects.filter(
-            node_operating_system=package_obj.os, name=package_obj.object
-        ).first()
+        collector_obj = Collector.objects.filter(node_operating_system=package_obj.os, name=package_obj.object).first()
         NodeCollectorInstallStatus.objects.update_or_create(
             node_id=node_obj.node_id,
             collector_id=collector_obj.id,

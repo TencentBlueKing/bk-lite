@@ -1,11 +1,13 @@
 package local
 
 import (
+	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"nats-executor/logger"
 	"nats-executor/utils"
 	"os/exec"
@@ -219,10 +221,16 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	if req.LogCommand != "" {
 		commandForLog = req.LogCommand
 	}
+	logContext := strings.TrimSpace(req.LogContext)
+	isSCPCommand := contains(req.Command, "scp") || contains(req.Command, "sshpass")
 
 	logger.Debugf("[Local Execute] Instance: %s, Starting command execution", instanceId)
 	logger.Debugf("[Local Execute] Instance: %s, Command: %s", instanceId, commandForLog)
 	logger.Debugf("[Local Execute] Instance: %s, Timeout: %ds", instanceId, req.ExecuteTimeout)
+	if isSCPCommand {
+		logger.Infof("[SCP] Instance: %s, start | %s | timeout=%ds", instanceId, formatSCPLogContext(logContext), req.ExecuteTimeout)
+		logger.Debugf("[SCP] Instance: %s, command=%s", instanceId, commandForLog)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(req.ExecuteTimeout)*time.Second)
 	defer cancel()
@@ -244,8 +252,81 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	}
 
 	startTime := time.Now()
-	output, err := cmd.CombinedOutput()
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	stdoutWriter := io.MultiWriter(&stdoutBuf)
+	stderrWriter := io.MultiWriter(&stderrBuf)
+	var stdoutStreamWriter *scpStreamLogWriter
+	var stderrStreamWriter *scpStreamLogWriter
+	if isSCPCommand {
+		stdoutStreamWriter = newSCPStreamLogWriter(instanceId, "stdout", shell, formatSCPLogContext(logContext))
+		stderrStreamWriter = newSCPStreamLogWriter(instanceId, "stderr", shell, formatSCPLogContext(logContext))
+		stdoutWriter = io.MultiWriter(&stdoutBuf, stdoutStreamWriter)
+		stderrWriter = io.MultiWriter(&stderrBuf, stderrStreamWriter)
+	}
+	cmd.Stdout = stdoutWriter
+	cmd.Stderr = stderrWriter
+
+	if err := cmd.Start(); err != nil {
+		message := fmt.Sprintf("failed to start command: %v", err)
+		logger.Errorf("[Local Execute] Instance: %s, %s", instanceId, message)
+		if isSCPCommand {
+			logger.Warnf("[SCP] Instance: %s, failure | stage=start | cause=executor_start_failed | next=check_executor_runtime | %s | error=%v", instanceId, formatSCPLogContext(logContext), err)
+			logger.Debugf("[SCP] Instance: %s, command=%s", instanceId, commandForLog)
+		}
+		return ExecuteResponse{
+			Output:     message,
+			InstanceId: instanceId,
+			Success:    false,
+			Code:       utils.ErrorCodeExecutionFailure,
+			Error:      message,
+		}
+	}
+
+	type waitResult struct {
+		err error
+	}
+	waitCh := make(chan waitResult, 1)
+	go func() {
+		waitCh <- waitResult{err: cmd.Wait()}
+	}()
+
+	var err error
+	if isSCPCommand {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case result := <-waitCh:
+				err = result.err
+				goto commandFinished
+			case <-ticker.C:
+				elapsed := time.Since(startTime).Round(time.Second)
+				bytesSoFar := stdoutBuf.Len() + stderrBuf.Len()
+				currentOutput := decodeExecuteOutput(append(stdoutBuf.Bytes(), stderrBuf.Bytes()...), shell)
+				excerpt := outputExcerpt(currentOutput)
+				logger.Infof("[SCP] Instance: %s, running | %s | elapsed=%s | output=%dB | last=%q", instanceId, formatSCPLogContext(logContext), elapsed, bytesSoFar, excerpt)
+			case <-ctx.Done():
+				result := <-waitCh
+				err = result.err
+				goto commandFinished
+			}
+		}
+	} else {
+		result := <-waitCh
+		err = result.err
+	}
+
+commandFinished:
+	if stdoutStreamWriter != nil {
+		stdoutStreamWriter.Flush()
+	}
+	if stderrStreamWriter != nil {
+		stderrStreamWriter.Flush()
+	}
+
 	duration := time.Since(startTime)
+	output := append(stdoutBuf.Bytes(), stderrBuf.Bytes()...)
 	decodedOutput := decodeExecuteOutput(output, shell)
 	rawSample := hex.EncodeToString(sampleBytes(output, 32))
 
@@ -265,6 +346,11 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 		response.Error = fmt.Sprintf("Command timed out after %v (timeout: %ds)", duration, req.ExecuteTimeout)
 		logger.Warnf("[Local Execute] Instance: %s, Command timed out after %v", instanceId, duration)
 		logger.Debugf("[Local Execute] Instance: %s, Partial output: %s", instanceId, decodedOutput)
+		if isSCPCommand {
+			excerpt := outputExcerpt(decodedOutput)
+			cause, next := scpFailureAdvice(decodedOutput, exitCode, true)
+			logger.Warnf("[SCP] Instance: %s, timeout | cause=%s | next=%s | %s | elapsed=%s/%ds | last=%q", instanceId, cause, next, formatSCPLogContext(logContext), duration.Round(time.Second), req.ExecuteTimeout, excerpt)
+		}
 	} else if err != nil {
 		response.Code = utils.ErrorCodeExecutionFailure
 		response.Error = fmt.Sprintf("Command execution failed with exit code %d: %v", exitCode, err)
@@ -272,15 +358,20 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 		logger.Debugf("[Local Execute] Instance: %s, Error: %v", instanceId, err)
 		logger.Debugf("[Local Execute] Instance: %s, Full output: %s", instanceId, decodedOutput)
 
-		if contains(req.Command, "scp") || contains(req.Command, "sshpass") {
-			logger.Debugf("[Local Execute] Instance: %s, SCP Command detected - analyzing failure...", instanceId)
-			analyzeSCPFailure(instanceId, decodedOutput, exitCode)
+		if isSCPCommand {
+			excerpt := outputExcerpt(decodedOutput)
+			cause, next := scpFailureAdvice(decodedOutput, exitCode, false)
+			logger.Warnf("[SCP] Instance: %s, failure | cause=%s | next=%s | exit=%d | %s | duration=%s | last=%q", instanceId, cause, next, exitCode, formatSCPLogContext(logContext), duration.Round(time.Second), excerpt)
+			logger.Debugf("[SCP] Instance: %s, raw_error=%v", instanceId, err)
 		}
 	} else {
 		logger.Debugf("[Local Execute] Instance: %s, Command executed successfully in %v", instanceId, duration)
 		logger.Debugf("[Local Execute] Instance: %s, Output length: %d bytes", instanceId, len(output))
 		if len(output) > 0 {
 			logger.Debugf("[Local Execute] Instance: %s, Output: %s", instanceId, decodedOutput)
+		}
+		if isSCPCommand {
+			logger.Infof("[SCP] Instance: %s, success | %s | duration=%s | output=%dB", instanceId, formatSCPLogContext(logContext), duration.Round(time.Second), len(output))
 		}
 	}
 
@@ -313,6 +404,84 @@ func truncateForLog(value string, limit int) string {
 	}
 
 	return value[:limit] + "..."
+}
+
+type scpStreamLogWriter struct {
+	instanceId string
+	streamName string
+	shell      string
+	logContext string
+	buffer     bytes.Buffer
+}
+
+func newSCPStreamLogWriter(instanceId, streamName, shell, logContext string) *scpStreamLogWriter {
+	return &scpStreamLogWriter{
+		instanceId: instanceId,
+		streamName: streamName,
+		shell:      shell,
+		logContext: logContext,
+	}
+}
+
+func (w *scpStreamLogWriter) Write(p []byte) (int, error) {
+	written, err := w.buffer.Write(p)
+	if err != nil {
+		return written, err
+	}
+
+	reader := bufio.NewReader(bytes.NewReader(w.buffer.Bytes()))
+	var remaining bytes.Buffer
+	for {
+		line, readErr := reader.ReadString('\n')
+		if readErr != nil {
+			remaining.WriteString(line)
+			if readErr == io.EOF {
+				break
+			}
+			return written, readErr
+		}
+		w.logLine(line)
+	}
+
+	w.buffer.Reset()
+	remaining.WriteTo(&w.buffer)
+	return len(p), nil
+}
+
+func (w *scpStreamLogWriter) Flush() {
+	if w.buffer.Len() == 0 {
+		return
+	}
+	w.logLine(w.buffer.String())
+	w.buffer.Reset()
+}
+
+func (w *scpStreamLogWriter) logLine(line string) {
+	decoded := decodeExecuteOutput([]byte(line), w.shell)
+	message := strings.TrimSpace(decoded)
+	if message == "" {
+		return
+	}
+	logger.Debugf("[SCP] Instance: %s, stream=%s | %s | %q", w.instanceId, w.streamName, w.logContext, truncateForLog(message, 400))
+}
+
+func outputExcerpt(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	trimmed = strings.ReplaceAll(trimmed, "\n", " | ")
+	trimmed = strings.ReplaceAll(trimmed, "\r", " ")
+	return truncateForLog(trimmed, 240)
+}
+
+func formatSCPLogContext(logContext string) string {
+	if strings.TrimSpace(logContext) == "" {
+		return "transfer=unknown"
+	}
+
+	return logContext
 }
 
 func decodeExecuteOutput(output []byte, shell string) string {
@@ -414,7 +583,7 @@ func containsInMiddle(s, substr string) bool {
 }
 
 func analyzeSCPFailure(instanceId, output string, exitCode int) {
-	logger.Debugf("[SCP Analysis] Instance: %s, Analyzing SCP failure with exit code: %d", instanceId, exitCode)
+	logger.Debugf("[SCP] Instance: %s, analyze_failure | exit_code=%d | cause=%s | output=%q", instanceId, exitCode, classifySCPFailure(output, exitCode), outputExcerpt(output))
 
 	switch exitCode {
 	case 1:
@@ -451,6 +620,59 @@ func analyzeSCPFailure(instanceId, output string, exitCode int) {
 	}
 	if contains(output, "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED") {
 		logger.Warnf("[SCP Analysis] Instance: %s, Remote host key has changed - security risk", instanceId)
+	}
+}
+
+func scpFailureAdvice(output string, exitCode int, timedOut bool) (string, string) {
+	cause := classifySCPFailure(output, exitCode)
+	if timedOut && cause == "unknown" {
+		cause = "transfer_timeout"
+	}
+
+	switch cause {
+	case "host_key_problem":
+		return cause, "check_target_host_key_or_known_hosts"
+	case "auth_failure":
+		return cause, "check_password_private_key_or_passphrase"
+	case "network_or_dns":
+		return cause, "check_host_reachability_port_and_firewall"
+	case "path_not_found":
+		return cause, "check_source_and_target_path"
+	case "missing_sshpass":
+		return cause, "check_executor_dependencies"
+	case "transfer_timeout":
+		return cause, "check_network_speed_target_response_and_interactive_prompts"
+	default:
+		return "unknown", "check_debug_stream_and_full_output"
+	}
+}
+
+func classifySCPFailure(output string, exitCode int) string {
+	lowerOutput := strings.ToLower(output)
+
+	switch {
+	case strings.Contains(lowerOutput, "are you sure you want to continue connecting"),
+		strings.Contains(lowerOutput, "host key verification failed"),
+		strings.Contains(lowerOutput, "remote host identification has changed"),
+		exitCode == 6:
+		return "host_key_problem"
+	case strings.Contains(lowerOutput, "permission denied"),
+		strings.Contains(lowerOutput, "authentication failed"),
+		exitCode == 5:
+		return "auth_failure"
+	case strings.Contains(lowerOutput, "connection timed out"),
+		strings.Contains(lowerOutput, "i/o timeout"),
+		strings.Contains(lowerOutput, "no route to host"),
+		strings.Contains(lowerOutput, "connection refused"),
+		strings.Contains(lowerOutput, "connection reset"),
+		strings.Contains(lowerOutput, "could not resolve hostname"):
+		return "network_or_dns"
+	case strings.Contains(lowerOutput, "no such file or directory"):
+		return "path_not_found"
+	case strings.Contains(lowerOutput, "sshpass: command not found"):
+		return "missing_sshpass"
+	default:
+		return "unknown"
 	}
 }
 
