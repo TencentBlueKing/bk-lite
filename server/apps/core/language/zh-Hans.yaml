@@ -12,6 +12,7 @@ error:
   token_validation_failed: 令牌验证失败
   please_provide_token: 请提供令牌
   auth_failed: 认证失败
+  user_does_not_exist: 用户不存在
   not_authorized: 未授权
   api_secret_exists: 该用户已拥有 API 密钥
   system_error: 系统发生错误

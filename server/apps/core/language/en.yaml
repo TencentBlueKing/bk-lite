@@ -12,6 +12,7 @@ error:
   token_validation_failed: Token validation failed
   please_provide_token: Please provide Token
   auth_failed: Authentication failed
+  user_does_not_exist: User Does Not Exist
   not_authorized: Not Authorized
   api_secret_exists: This user already has an API Secret
   system_error: System error occurred
