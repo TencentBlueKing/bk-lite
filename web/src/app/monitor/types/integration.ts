@@ -155,6 +155,8 @@ export interface TemplateAccessGuideDoc {
   monitor_object_name: string;
   endpoint: string;
   line_protocol_example: string;
+  line_protocol_example_without_timestamp: string;
+  line_protocol_example_with_timestamp_ms: string;
 }
 
 export interface ConfigItem {

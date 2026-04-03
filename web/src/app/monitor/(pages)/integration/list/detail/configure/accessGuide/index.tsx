@@ -104,9 +104,9 @@ const buildRequestParamDocs = (doc: TemplateAccessGuideDoc | null) => [
   {
     key: 'timestamp',
     name: '<timestamp>',
-    type: 'timestamp(ns)',
-    required: '是',
-    description: '纳秒时间戳，示例中使用 ns 精度'
+    type: 'timestamp(ms)',
+    required: '否',
+    description: '可选时间戳；不传时默认使用服务端接收时间，传入时推荐使用 13 位毫秒时间戳，例如 1712052000000'
   },
   {
     key: 'extra_tags',
@@ -194,6 +194,16 @@ const TemplateAccessGuide: React.FC = () => {
     [doc?.line_protocol_example]
   );
 
+  const lineProtocolExampleWithoutTimestamp = useMemo(
+    () => doc?.line_protocol_example_without_timestamp || lineProtocolExample,
+    [doc?.line_protocol_example_without_timestamp, lineProtocolExample]
+  );
+
+  const lineProtocolExampleWithTimestampMs = useMemo(
+    () => doc?.line_protocol_example_with_timestamp_ms || lineProtocolExample,
+    [doc?.line_protocol_example_with_timestamp_ms, lineProtocolExample]
+  );
+
   const sampleCode = useMemo(() => {
     const endpoint = doc?.endpoint || '';
     if (sampleFormat === 'python') {
@@ -206,6 +216,22 @@ const TemplateAccessGuide: React.FC = () => {
   }, [doc?.endpoint, lineProtocolExample, sampleFormat]);
 
   const requestParamDocs = useMemo(() => buildRequestParamDocs(doc), [doc]);
+
+  const sampleExamples = useMemo(
+    () => [
+      {
+        key: 'without_timestamp',
+        title: '示例一：不传时间戳（推荐使用服务端接收时间）',
+        line: lineProtocolExampleWithoutTimestamp
+      },
+      {
+        key: 'with_timestamp_ms',
+        title: '示例二：传入 13 位毫秒时间戳',
+        line: lineProtocolExampleWithTimestampMs
+      }
+    ],
+    [lineProtocolExampleWithoutTimestamp, lineProtocolExampleWithTimestampMs]
+  );
 
   return (
     <Spin spinning={loading}>
@@ -297,15 +323,31 @@ const TemplateAccessGuide: React.FC = () => {
                 ]}
               />
               <div className="px-4 pb-4">
-                <CodeEditor
-                  value={sampleCode}
-                  mode={sampleFormat === 'python' ? 'python' : 'shell'}
-                  theme="monokai"
-                  readOnly
-                  width="100%"
-                  height="300px"
-                  headerOptions={{ copy: true, fullscreen: true }}
-                />
+                <Space direction="vertical" size={16} className="w-full">
+                  {sampleExamples.map((item) => {
+                    const exampleCode =
+                      sampleFormat === 'python'
+                        ? buildPythonExample(doc?.endpoint || '', item.line)
+                        : sampleFormat === 'javascript'
+                          ? buildJavascriptExample(doc?.endpoint || '', item.line)
+                          : buildCurlExample(doc?.endpoint || '', item.line);
+
+                    return (
+                      <div key={item.key}>
+                        <div className="mb-2 text-sm font-medium text-[var(--color-text-1)]">{item.title}</div>
+                        <CodeEditor
+                          value={exampleCode}
+                          mode={sampleFormat === 'python' ? 'python' : 'shell'}
+                          theme="monokai"
+                          readOnly
+                          width="100%"
+                          height="220px"
+                          headerOptions={{ copy: true, fullscreen: true }}
+                        />
+                      </div>
+                    );
+                  })}
+                </Space>
               </div>
             </div>
           </div>
