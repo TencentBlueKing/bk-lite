@@ -14,9 +14,21 @@ from apps.core.logger import celery_logger as logger
 
 
 class LogPolicyScan:
-    def __init__(self, policy):
+    def __init__(self, policy, scan_time=None, window_start=None, window_end=None):
         self.policy = policy
         self.vlogs_api = VictoriaMetricsAPI()
+        self.scan_time = scan_time or policy.last_run_time
+        self.window_start = window_start
+        self.window_end = window_end
+
+    def _get_scan_window(self):
+        if self.window_start is not None and self.window_end is not None:
+            return self.window_start, self.window_end
+
+        end_timestamp = int(self.scan_time.timestamp())
+        period_seconds = period_to_seconds(self.policy.period)
+        start_timestamp = end_timestamp - period_seconds
+        return start_timestamp, end_timestamp
 
     def _get_keyword_sample_limit(self, alert_condition):
         """获取关键字告警样本条数限制"""
@@ -51,10 +63,7 @@ class LogPolicyScan:
         events = []
 
         try:
-            # 修正时间计算逻辑
-            end_timestamp = int(self.policy.last_run_time.timestamp())
-            period_seconds = period_to_seconds(self.policy.period)
-            start_timestamp = end_timestamp - period_seconds
+            start_timestamp, end_timestamp = self._get_scan_window()
 
             # 构建查询条件
             alert_condition = self.policy.alert_condition
@@ -105,10 +114,7 @@ class LogPolicyScan:
         events = []
 
         try:
-            # 修正时间计算逻辑
-            end_timestamp = int(self.policy.last_run_time.timestamp())
-            period_seconds = period_to_seconds(self.policy.period)
-            start_timestamp = end_timestamp - period_seconds
+            start_timestamp, end_timestamp = self._get_scan_window()
 
             alert_condition = self.policy.alert_condition
             base_query = alert_condition.get("query", "*")
@@ -557,7 +563,7 @@ class LogPolicyScan:
                     alert_obj.value = event.get("value", alert_obj.value)
                     alert_obj.content = event["content"]
                     alert_obj.level = event["level"]
-                    alert_obj.end_event_time = self.policy.last_run_time
+                    alert_obj.end_event_time = self.scan_time
                     alerts_to_update.append(alert_obj)
                 else:
                     # 不存在活跃告警，准备创建
@@ -570,8 +576,8 @@ class LogPolicyScan:
                         value=event.get("value"),
                         content=event["content"],
                         status=AlertConstants.STATUS_NEW,
-                        start_event_time=self.policy.last_run_time,
-                        end_event_time=self.policy.last_run_time,
+                        start_event_time=self.scan_time,
+                        end_event_time=self.scan_time,
                         operator="",
                     )
                     alerts_to_create.append(alert_obj)
@@ -589,7 +595,7 @@ class LogPolicyScan:
                         policy=self.policy,
                         source_id=source_id,
                         alert=existing_alerts[source_id],
-                        event_time=self.policy.last_run_time,
+                        event_time=self.scan_time,
                         value=event.get("value"),
                         level=event["level"],
                         content=event["content"],
@@ -685,7 +691,7 @@ class LogPolicyScan:
                     source_id=first_event.source_id,
                     event_objs=related_events,
                     event_raw_data_map=event_raw_data_map,
-                    snapshot_time=self.policy.last_run_time,
+                    snapshot_time=self.scan_time,
                 )
 
             logger.debug(f"Updated snapshots for {len(alert_events_map)} alerts")

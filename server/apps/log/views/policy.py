@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
 from rest_framework import viewsets
@@ -53,27 +53,15 @@ class PolicyViewSet(viewsets.ModelViewSet):
 
         policy_permissions = permissions_result.get("data", {})
         current_teams = permissions_result.get("team", [])
-        target_collect_type_id = (
-            str(collect_type_id)
-            if collect_type_id and collect_type_id != "global"
-            else None
-        )
+        target_collect_type_id = str(collect_type_id) if collect_type_id and collect_type_id != "global" else None
         only_global = collect_type_id == "global"
 
-        all_policies = (
-            Policy.objects.select_related("collect_type")
-            .prefetch_related("policyorganization_set")
-            .all()
-        )
+        all_policies = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set").all()
 
         accessible_instances = []
         accessible_policy_ids = []
         for policy_obj in all_policies:
-            policy_collect_type_id = (
-                str(policy_obj.collect_type_id)
-                if policy_obj.collect_type_id is not None
-                else None
-            )
+            policy_collect_type_id = str(policy_obj.collect_type_id) if policy_obj.collect_type_id is not None else None
 
             if only_global and policy_collect_type_id is not None:
                 continue
@@ -84,9 +72,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             ]:
                 continue
 
-            teams = {
-                org.organization for org in policy_obj.policyorganization_set.all()
-            }
+            teams = {org.organization for org in policy_obj.policyorganization_set.all()}
             has_permission = check_instance_permission(
                 policy_obj.collect_type_id,
                 policy_obj.id,
@@ -106,17 +92,13 @@ class PolicyViewSet(viewsets.ModelViewSet):
                 }
             )
 
-        permission_map = filter_instances_with_permissions(
-            accessible_instances, policy_permissions, current_teams
-        )
+        permission_map = filter_instances_with_permissions(accessible_instances, policy_permissions, current_teams)
         queryset = Policy.objects.filter(id__in=accessible_policy_ids)
         return queryset, permission_map
 
     def list(self, request, *args, **kwargs):
         collect_type_id = request.query_params.get("collect_type") or None
-        queryset, policy_permission_map = self._get_accessible_policy_queryset(
-            request, collect_type_id
-        )
+        queryset, policy_permission_map = self._get_accessible_policy_queryset(request, collect_type_id)
         queryset = self.filter_queryset(queryset)
         queryset = queryset.distinct().select_related("collect_type")
 
@@ -161,10 +143,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
         from apps.log.models.policy import PolicyOrganization
 
         PolicyOrganization.objects.bulk_create(
-            [
-                PolicyOrganization(policy_id=policy_id, organization=org_id)
-                for org_id in organizations
-            ],
+            [PolicyOrganization(policy_id=policy_id, organization=org_id) for org_id in organizations],
             ignore_conflicts=True,
         )
 
@@ -194,10 +173,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             PolicyOrganization.objects.filter(policy_id=policy_id).delete()
             # 添加新的组织关联
             PolicyOrganization.objects.bulk_create(
-                [
-                    PolicyOrganization(policy_id=policy_id, organization=org_id)
-                    for org_id in organizations
-                ],
+                [PolicyOrganization(policy_id=policy_id, organization=org_id) for org_id in organizations],
                 ignore_conflicts=True,
             )
 
@@ -227,10 +203,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             PolicyOrganization.objects.filter(policy_id=policy_id).delete()
             # 添加新的组织关联
             PolicyOrganization.objects.bulk_create(
-                [
-                    PolicyOrganization(policy_id=policy_id, organization=org_id)
-                    for org_id in organizations
-                ],
+                [PolicyOrganization(policy_id=policy_id, organization=org_id) for org_id in organizations],
                 ignore_conflicts=True,
             )
 
@@ -304,17 +277,22 @@ class PolicyViewSet(viewsets.ModelViewSet):
         task_name = f"log_policy_task_{pk}"
         try:
             task = PeriodicTask.objects.get(name=task_name)
+            was_enabled = task.enabled
             task.enabled = enabled
             task.save()
+
+            if enabled and not was_enabled:
+                safe_now = datetime.now(timezone.utc) - timedelta(seconds=AlertConstants.INGEST_DELAY_SECONDS)
+                policy.last_run_time = safe_now
+                policy.save(update_fields=["last_run_time", "updated_at"])
+
             return WebUtils.response_success({"enabled": enabled})
         except PeriodicTask.DoesNotExist:
             return WebUtils.response_error("策略对应的定时任务不存在")
 
 
 class AlertViewSet(viewsets.ModelViewSet):
-    queryset = Alert.objects.select_related("policy", "collect_type").order_by(
-        "-created_at"
-    )
+    queryset = Alert.objects.select_related("policy", "collect_type").order_by("-created_at")
     serializer_class = AlertSerializer
     filterset_class = AlertFilter
     pagination_class = CustomPageNumberPagination
@@ -347,11 +325,7 @@ class AlertViewSet(viewsets.ModelViewSet):
             return []
 
         # 一次性获取所有策略及其关联组织，减少SQL查询
-        all_policies = (
-            Policy.objects.select_related("collect_type")
-            .prefetch_related("policyorganization_set")
-            .all()
-        )
+        all_policies = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set").all()
 
         accessible_policy_ids = []
 
@@ -361,14 +335,10 @@ class AlertViewSet(viewsets.ModelViewSet):
             policy_id = policy_obj.id
 
             # 获取策略关联的组织
-            teams = {
-                org.organization for org in policy_obj.policyorganization_set.all()
-            }
+            teams = {org.organization for org in policy_obj.policyorganization_set.all()}
 
             # 使用通用权限检查函数
-            if check_instance_permission(
-                collect_type_id, policy_id, teams, policy_permissions, cur_team
-            ):
+            if check_instance_permission(collect_type_id, policy_id, teams, policy_permissions, cur_team):
                 accessible_policy_ids.append(policy_id)
 
         return accessible_policy_ids
@@ -481,9 +451,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         alert.operator = operator
         alert.save()
 
-        return WebUtils.response_success(
-            {"status": AlertConstants.STATUS_CLOSED, "operator": operator}
-        )
+        return WebUtils.response_success({"status": AlertConstants.STATUS_CLOSED, "operator": operator})
 
     @action(methods=["get"], detail=False, url_path="last_event")
     def get_last_event(self, request):
@@ -502,9 +470,7 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         data = {
             "event": EventSerializer(event).data,
-            "raw_data": EventRawDataSerializer(event_raw_data).data
-            if event_raw_data
-            else None,
+            "raw_data": EventRawDataSerializer(event_raw_data).data if event_raw_data else None,
         }
 
         return WebUtils.response_success(data)
@@ -559,9 +525,7 @@ class AlertViewSet(viewsets.ModelViewSet):
                 return WebUtils.response_success(
                     {
                         "total": 0,
-                        "status": request.query_params.get(
-                            "status", AlertConstants.STATUS_NEW
-                        ),
+                        "status": request.query_params.get("status", AlertConstants.STATUS_NEW),
                         "time_range": {"start": None, "end": None},
                         "step_minutes": int(request.query_params.get("step", 60)),
                         "time_series": [],
@@ -580,9 +544,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         queryset = queryset.filter(status=status)
 
         # 生成时间序列统计
-        time_series_data, time_range = self._get_step_based_stats(
-            queryset, step_minutes
-        )
+        time_series_data, time_range = self._get_step_based_stats(queryset, step_minutes)
 
         return WebUtils.response_success(
             {
@@ -597,9 +559,7 @@ class AlertViewSet(viewsets.ModelViewSet):
     def _get_step_based_stats(self, queryset, step_minutes):
         """基于step动态分割时间区间进行统计，按告警级别分组"""
         # 获取数据的时间范围
-        time_range_data = queryset.aggregate(
-            min_time=models.Min("created_at"), max_time=models.Max("created_at")
-        )
+        time_range_data = queryset.aggregate(min_time=models.Min("created_at"), max_time=models.Max("created_at"))
 
         min_time = time_range_data["min_time"]
         max_time = time_range_data["max_time"]
@@ -617,9 +577,7 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         # 修复：确保包含最后一个时间点的数据
         while current_time <= max_time:
-            interval_end = min(
-                current_time + step_delta, max_time + timedelta(microseconds=1)
-            )
+            interval_end = min(current_time + step_delta, max_time + timedelta(microseconds=1))
             time_intervals.append({"start": current_time, "end": interval_end})
             current_time += step_delta
 
@@ -635,11 +593,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         result = []
         for interval in time_intervals:
             # 在内存中过滤当前时间区间的数据
-            interval_alerts = [
-                alert
-                for alert in all_alerts
-                if interval["start"] <= alert["created_at"] < interval["end"]
-            ]
+            interval_alerts = [alert for alert in all_alerts if interval["start"] <= alert["created_at"] < interval["end"]]
 
             # 在内存中按级别统计
             level_data = {}
@@ -695,9 +649,7 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         try:
             # 1. 根据告警ID获取告警对象
-            alert_obj = Alert.objects.select_related("policy", "collect_type").get(
-                id=alert_id
-            )
+            alert_obj = Alert.objects.select_related("policy", "collect_type").get(id=alert_id)
         except Alert.DoesNotExist:
             return WebUtils.response_error("告警不存在", status_code=404)
 
@@ -808,9 +760,7 @@ class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
-        return EventRawData.objects.select_related("event").order_by(
-            "-event__event_time", "-id"
-        )
+        return EventRawData.objects.select_related("event").order_by("-event__event_time", "-id")
 
     @action(methods=["get"], detail=False, url_path="by_event_id")
     def rawdata_list_by_event_id(self, request):
@@ -827,9 +777,7 @@ class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
 
         try:
             # 直接获取对应的原始数据记录
-            event_raw_data = EventRawData.objects.select_related("event").get(
-                event_id=event_id
-            )
+            event_raw_data = EventRawData.objects.select_related("event").get(event_id=event_id)
             serializer = self.get_serializer(event_raw_data)
             return WebUtils.response_success(serializer.data)
         except EventRawData.DoesNotExist:
