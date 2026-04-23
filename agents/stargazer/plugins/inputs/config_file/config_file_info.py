@@ -73,9 +73,7 @@ class ConfigFileInfo(SSHPlugin):
         if not file_name or not file_path:
             raise ValueError("config_file_name and config_file_path are required")
 
-        _file_path = Path(file_path)
-        config_file_path = _file_path / file_name
-        return config_file_path.as_posix()
+        return Path(file_path).as_posix()
 
     def _build_callback_payload(self, payload: dict) -> dict:
         status = str(payload.get("status") or "error").lower()
