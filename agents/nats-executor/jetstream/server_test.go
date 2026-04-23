@@ -1,6 +1,7 @@
 package jetstream
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -70,7 +71,7 @@ func TestDownloadToFileSucceeds(t *testing.T) {
 	}
 
 	targetDir := t.TempDir()
-	if err := client.DownloadToFile("demo-key", targetDir, "demo.txt"); err != nil {
+	if err := client.DownloadToFile(context.Background(), "demo-key", targetDir, "demo.txt"); err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
 
@@ -92,7 +93,7 @@ func TestDownloadToFilePropagatesObjectStoreError(t *testing.T) {
 		},
 	}
 
-	err := client.DownloadToFile("demo-key", t.TempDir(), "demo.txt")
+	err := client.DownloadToFile(context.Background(), "demo-key", t.TempDir(), "demo.txt")
 	if err == nil {
 		t.Fatal("expected object store error")
 	}
@@ -118,7 +119,7 @@ func TestDownloadToFilePropagatesCreateFileError(t *testing.T) {
 		},
 	}
 
-	err := client.DownloadToFile("demo-key", t.TempDir(), "demo.txt")
+	err := client.DownloadToFile(context.Background(), "demo-key", t.TempDir(), "demo.txt")
 	if err == nil {
 		t.Fatal("expected create file error")
 	}
@@ -141,7 +142,7 @@ func TestDownloadToFilePropagatesCopyError(t *testing.T) {
 		},
 	}
 
-	err := client.DownloadToFile("demo-key", t.TempDir(), "demo.txt")
+	err := client.DownloadToFile(context.Background(), "demo-key", t.TempDir(), "demo.txt")
 	if err == nil {
 		t.Fatal("expected write error")
 	}
@@ -163,7 +164,7 @@ func TestDownloadToFileRejectsUnsafeFileName(t *testing.T) {
 	tests := []string{"../evil.txt", "/tmp/evil.txt", "nested/evil.txt", `..\evil.txt`}
 	for _, fileName := range tests {
 		t.Run(fileName, func(t *testing.T) {
-			err := client.DownloadToFile("demo-key", t.TempDir(), fileName)
+			err := client.DownloadToFile(context.Background(), "demo-key", t.TempDir(), fileName)
 			if err == nil {
 				t.Fatal("expected unsafe file name to be rejected")
 			}
@@ -171,5 +172,28 @@ func TestDownloadToFileRejectsUnsafeFileName(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestDownloadToFilePassesContextToObjectStore(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := &JetStreamClient{
+		objectStore: stubObjectStore{
+			get: func(name string, opts ...nats.GetObjectOpt) (nats.ObjectResult, error) {
+				if len(opts) == 0 {
+					t.Fatal("expected context option")
+				}
+				return nil, ctx.Err()
+			},
+		},
+	}
+
+	err := client.DownloadToFile(ctx, "demo-key", t.TempDir(), "demo.txt")
+	if err == nil {
+		t.Fatal("expected context cancellation error")
+	}
+	if !strings.Contains(err.Error(), "context canceled") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

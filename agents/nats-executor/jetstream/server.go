@@ -1,6 +1,7 @@
 package jetstream
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"nats-executor/logger"
@@ -45,12 +46,15 @@ func NewJetStreamClient(nc *nats.Conn, bucketName string) (*JetStreamClient, err
 	return &JetStreamClient{nc: nc, js: js, objectStore: store}, nil
 }
 
-func (jsc *JetStreamClient) DownloadToFile(fileKey, targetPath, fileName string) error {
+func (jsc *JetStreamClient) DownloadToFile(ctx context.Context, fileKey, targetPath, fileName string) error {
 	if err := validateTargetFileName(fileName); err != nil {
 		return err
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
-	obj, err := jsc.objectStore.Get(fileKey)
+	obj, err := jsc.objectStore.Get(fileKey, nats.Context(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to get object from store with key %s: %v", fileKey, err)
 	}
@@ -66,6 +70,8 @@ func (jsc *JetStreamClient) DownloadToFile(fileKey, targetPath, fileName string)
 
 	written, err := io.Copy(file, obj)
 	if err != nil {
+		_ = file.Close()
+		_ = os.Remove(fullPath)
 		return fmt.Errorf("failed to write file: %v", err)
 	}
 
