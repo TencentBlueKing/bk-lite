@@ -6,6 +6,7 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import job_logger as logger
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import OSType, SSHCredentialType
 from apps.job_mgmt.filters.target import TargetFilter
@@ -148,10 +149,22 @@ class TargetViewSet(AuthViewSet):
         if os_type:
             query_data["os"] = os_type
 
-        # 组织权限过滤
+        # 组织与节点实例权限过滤
         current_team = int(request.COOKIES.get("current_team") or "0")
-        if current_team:
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        user_group_ids = normalize_user_group_ids(getattr(request.user, "group_list", []))
+        if current_team and (request.user.is_superuser or current_team in user_group_ids):
             query_data["organization_ids"] = [current_team]
+        elif not request.user.is_superuser:
+            query_data["organization_ids"] = []
+
+        if not request.user.is_superuser:
+            query_data["permission_data"] = {
+                "username": request.user.username,
+                "domain": request.user.domain,
+                "current_team": current_team,
+                "include_children": include_children,
+            }
 
         try:
             node_mgmt = NodeMgmt()

@@ -693,13 +693,20 @@ def _prepare_user_rules_query(group_id, username, domain, app, include_children=
     all_role_ids = get_user_all_roles(user_obj)
     is_admin = bool(set(all_role_ids).intersection(admin_list))
 
+    target_group_id = int(group_id)
+
+    # 普通用户的 current_team 来自前端 Cookie，必须先确认它属于用户可用组织；
+    # 否则下游会把伪造组织当作 team 权限返回，放大实例列表范围。
+    if not is_admin and target_group_id not in user_obj.group_list:
+        return user_obj, [], [], False, is_admin
+
     # 获取查询的组ID列表（包含子组）
     query_group_ids = []
     if include_children:
         # 使用优化后的单次查询方法替代 N+1 的 get_all_child_groups
-        query_group_ids = GroupUtils.get_group_with_descendants_filtered(int(group_id), group_list=user_obj.group_list)
+        query_group_ids = GroupUtils.get_group_with_descendants_filtered(target_group_id, group_list=user_obj.group_list)
 
-    query_group_ids.append(int(group_id))
+    query_group_ids.append(target_group_id)
     query_group_ids = list(set(query_group_ids))
     # 设置管理员团队
     admin_teams = query_group_ids[:]
