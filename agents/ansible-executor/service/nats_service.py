@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import importlib
 import json
 import ssl
@@ -276,6 +277,33 @@ class AnsibleNATSService:
             json.dumps(retry_payload, ensure_ascii=False).encode("utf-8"),
         )
 
+    @staticmethod
+    def _callback_retry_final_status(payload: dict[str, Any]) -> str:
+        if str(payload.get("status", "")).strip() in {"success", "failed"}:
+            return str(payload["status"]).strip()
+        return "success" if payload.get("success") else "failed"
+
+    async def _keep_message_in_progress(self, msg, task: asyncio.Task) -> None:
+        interval = max(1.0, min(30.0, float(self.config.js_ack_wait) / 2))
+        while not task.done():
+            await asyncio.sleep(interval)
+            if task.done():
+                break
+            try:
+                await msg.in_progress()
+            except Exception as err:
+                logger.warning("failed to extend task ack wait: %s", err)
+
+    async def _run_task_with_ack_progress(self, msg, task: "QueuedTask") -> dict[str, Any]:
+        running_task = asyncio.create_task(self._run_task(task))
+        keepalive_task = asyncio.create_task(self._keep_message_in_progress(msg, running_task))
+        try:
+            return await running_task
+        finally:
+            keepalive_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await keepalive_task
+
     async def _run_task(self, task: "QueuedTask") -> dict[str, Any]:
         workspace = None
         code = -1
@@ -356,7 +384,7 @@ class AnsibleNATSService:
                     await msg.ack()
                     continue
 
-                await self._run_task(task)
+                await self._run_task_with_ack_progress(msg, task)
                 await msg.ack()
             except Exception as err:
                 logger.exception("worker task failed worker=%s error=%s", worker_id, err)
@@ -396,7 +424,7 @@ class AnsibleNATSService:
                 await self._invoke_callback(callback, payload)
                 self.task_store.update_status(
                     task_id,
-                    "success",
+                    self._callback_retry_final_status(payload),
                     payload,
                     self._now_iso(),
                 )

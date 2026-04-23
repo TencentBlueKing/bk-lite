@@ -1,10 +1,12 @@
 import asyncio
+import contextlib
 import importlib
 import json
 import os
 import re
 import shlex
 import shutil
+import signal
 import ssl
 import stat
 import uuid
@@ -224,6 +226,7 @@ async def download_object_to_workspace(config: ServiceConfig, workspace: Path, b
         raise ValueError("file_key is required")
     if not file_name:
         raise ValueError("file name is required")
+    destination = _safe_workspace_path(workspace, file_name, "file name")
 
     nats_client_module = importlib.import_module("nats.aio.client")
     nc = nats_client_module.Client()
@@ -254,13 +257,35 @@ async def download_object_to_workspace(config: ServiceConfig, workspace: Path, b
     try:
         js = nc.jetstream(timeout=120)
         object_store = await js.object_store(bucket_name)
-        destination = workspace / file_name
         destination.parent.mkdir(parents=True, exist_ok=True)
         with destination.open("wb") as target_file:
             await object_store.get(file_key, writeinto=target_file)
         return str(destination)
     finally:
         await nc.close()
+
+
+def _safe_workspace_path(workspace: Path, relative_path: str, field_name: str) -> Path:
+    raw_path = str(relative_path).strip()
+    if not raw_path:
+        raise ValueError(f"{field_name} is required")
+    candidate = Path(raw_path)
+    if candidate.is_absolute() or any(part in {"..", ""} for part in candidate.parts):
+        raise ValueError(f"{field_name} must be a relative path inside workspace")
+
+    base = workspace.resolve()
+    target = (base / candidate).resolve(strict=False)
+    try:
+        target.relative_to(base)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must stay inside workspace") from exc
+    return target
+
+
+def _safe_extract_zip(zip_file: zipfile.ZipFile, workspace: Path) -> None:
+    for member in zip_file.infolist():
+        _safe_workspace_path(workspace, member.filename, "zip member")
+    zip_file.extractall(workspace)
 
 
 def _normalize_windows_target_path(target_path: str) -> str:
@@ -556,7 +581,7 @@ async def prepare_playbook_execution(
             local_path = await download_object_to_workspace(config, workspace, bucket_name, file_item)
             if local_path.endswith(".zip"):
                 with zipfile.ZipFile(local_path, "r") as zf:
-                    zf.extractall(workspace)
+                    _safe_extract_zip(zf, workspace)
                 # 在解压后的内容中查找 playbook.yml 入口文件
                 playbook_entry = payload.playbook_path or "playbook.yml"
                 # 支持 ZIP 内有顶层目录的情况（如 playbook-template/playbook.yml）
@@ -703,16 +728,28 @@ def build_playbook_winrm_preflight_command(payload: PlaybookRequest) -> list[str
 
 
 async def run_command(cmd: list[str], timeout: int) -> tuple[int, str]:
+    process_kwargs: dict[str, Any] = {}
+    if os.name == "posix":
+        process_kwargs["start_new_session"] = True
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
+        **process_kwargs,
     )
     try:
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
+        if os.name == "posix":
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+        else:
+            proc.kill()
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
         logger.error("command timed out: %s", " ".join(shlex.quote(part) for part in cmd))
         return 124, "command timed out"
     output, decode_strategy = decode_command_output(stdout)
