@@ -14,7 +14,6 @@ class DictDirectoryService:
 
     @staticmethod
     def get_dict_trees(request):
-
         """
         获取目录树形结构,目录和仪表盘统一作为树节点
         """
@@ -25,19 +24,39 @@ class DictDirectoryService:
         base_queryset = Directory.objects.filter(is_active=True)
         directories = GroupPermissionMixin.apply_group_filter(base_queryset, current_team).order_by("id")
 
-        # 构建仪表盘、拓扑图、架构图的查询集并应用组织过滤
-        dashboard_queryset = Dashboard.objects.filter(directory__in=directories)
-        dashboards = GroupPermissionMixin.apply_group_filter(dashboard_queryset, current_team, request.user,
-                                                             "directory.dashboard").order_by("id")
+        # 构建仪表盘、拓扑图、架构图的查询集
+        # 内置画布只需通过组织过滤（第一层），跳过实例级权限过滤（第二层）
+        dashboard_base = Dashboard.objects.filter(directory__in=directories)
+        dashboards = (
+            (
+                GroupPermissionMixin.apply_group_filter(dashboard_base.filter(is_build_in=False), current_team, request.user, "directory.dashboard")
+                | dashboard_base.filter(is_build_in=True)
+            )
+            .distinct()
+            .order_by("id")
+        )
 
-        topology_queryset = Topology.objects.filter(directory__in=directories)
-        topologies = GroupPermissionMixin.apply_group_filter(topology_queryset, current_team, request.user,
-                                                             "directory.topology",
-                                                             ).order_by("id")
+        topology_base = Topology.objects.filter(directory__in=directories)
+        topologies = (
+            (
+                GroupPermissionMixin.apply_group_filter(topology_base.filter(is_build_in=False), current_team, request.user, "directory.topology")
+                | topology_base.filter(is_build_in=True)
+            )
+            .distinct()
+            .order_by("id")
+        )
 
-        architecture_queryset = Architecture.objects.filter(directory__in=directories)
-        architectures = GroupPermissionMixin.apply_group_filter(architecture_queryset, current_team, request.user,
-                                                                "directory.architecture").order_by("id")
+        architecture_base = Architecture.objects.filter(directory__in=directories)
+        architectures = (
+            (
+                GroupPermissionMixin.apply_group_filter(
+                    architecture_base.filter(is_build_in=False), current_team, request.user, "directory.architecture"
+                )
+                | architecture_base.filter(is_build_in=True)
+            )
+            .distinct()
+            .order_by("id")
+        )
 
         # 构建所有节点映射
         all_nodes = {}
@@ -95,11 +114,7 @@ class DictDirectoryService:
         :param group_id: 组ID
         :return: 目录信息列表
         """
-        model_map = {
-            "dashboard": Dashboard,
-            "topology": Topology,
-            "architecture": Architecture
-        }
+        model_map = {"dashboard": Dashboard, "topology": Topology, "architecture": Architecture}
         model_class = model_map.get(child_module)
         if not model_class:
             return {"count": 0, "items": []}
@@ -108,12 +123,9 @@ class DictDirectoryService:
         queryset = model_class.objects.all()
         filter_queryset = GroupPermissionMixin.apply_group_filter(queryset, group_id)
         queryset_count = filter_queryset.count()
-        instances = filter_queryset[(page - 1) * page_size: page * page_size]
+        instances = filter_queryset[(page - 1) * page_size : page * page_size]
         for instance in instances:
-            result.append({
-                "id": instance.id,
-                "name": f"【{instance.directory.name}】{instance.name}" if instance.directory else instance.name
-            })
+            result.append({"id": instance.id, "name": f"【{instance.directory.name}】{instance.name}" if instance.directory else instance.name})
 
         return {"count": queryset_count, "items": result}
 
@@ -128,5 +140,5 @@ class DictDirectoryService:
         """
         queryset = DataSourceAPIModel.objects.all()
         data_sources = GroupPermissionMixin.apply_group_filter(queryset, group_id).values("id", "name")
-        result = data_sources[(page - 1) * page_size: page * page_size]
+        result = data_sources[(page - 1) * page_size : page * page_size]
         return {"count": data_sources.count(), "items": list(result)}

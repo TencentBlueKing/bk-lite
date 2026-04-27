@@ -7,19 +7,60 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.operation_analysis.filters.filters import DashboardModelFilter, DirectoryModelFilter, \
-    TopologyModelFilter, ArchitectureModelFilter
-from apps.operation_analysis.serializers.directory_serializers import DashboardModelSerializer, \
-    DirectoryModelSerializer, TopologyModelSerializer, ArchitectureModelSerializer
+from apps.operation_analysis.filters.filters import DashboardModelFilter, DirectoryModelFilter, TopologyModelFilter, ArchitectureModelFilter
+from apps.operation_analysis.serializers.directory_serializers import (
+    DashboardModelSerializer,
+    DirectoryModelSerializer,
+    TopologyModelSerializer,
+    ArchitectureModelSerializer,
+)
 from apps.operation_analysis.services.directory_service import DictDirectoryService
 from config.drf.pagination import CustomPageNumberPagination
 from apps.operation_analysis.models.models import Dashboard, Directory, Topology, Architecture
 
 
-class DirectoryModelViewSet(AuthViewSet):
+def _raise_if_builtin(instance, action_name="修改"):
+    """如果对象是内置对象，拒绝操作"""
+    if getattr(instance, "is_build_in", False):
+        from rest_framework.exceptions import PermissionDenied
+
+        raise PermissionDenied(f"内置对象不允许{action_name}")
+
+
+class BuiltinVisibleMixin:
+    """
+    内置对象跳过实例级权限过滤（但仍受组织过滤约束）。
+    在 list 中将内置对象从权限过滤中排除后合并；
+    在 retrieve 中内置对象跳过实例级校验。
+    """
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        # 内置对象：只做组织过滤，跳过实例级权限
+        builtin_qs = queryset.filter(is_build_in=True)
+        current_team = self._parse_current_team_cookie(request)
+        if current_team is not None:
+            builtin_qs = builtin_qs.filter(**{f"{self.ORGANIZATION_FIELD}__contains": int(current_team)})
+        # 普通对象：走完整权限过滤
+        normal_qs = queryset.filter(is_build_in=False)
+        filtered_normal = self.get_queryset_by_permission(request, normal_qs)
+        # 合并
+        merged = (filtered_normal | builtin_qs).distinct().order_by(self.ORDERING_FIELD)
+        return self._list(merged)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if getattr(instance, "is_build_in", False):
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
+        return super().retrieve(request, *args, **kwargs)
+
+
+class DirectoryModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     """
     目录
     """
+
     queryset = Directory.objects.all()
     serializer_class = DirectoryModelSerializer
     ordering_fields = ["id"]
@@ -39,17 +80,32 @@ class DirectoryModelViewSet(AuthViewSet):
 
     @HasPermission("view-AddCatalogue")
     def create(self, request, *args, **kwargs):
-        data = request.data
+        data = {k: v for k, v in request.data.items() if k not in ("is_build_in", "build_in_key")}
         Directory.objects.create(**data)
         return Response(data)
 
     @HasPermission("view-EditCatalogue")
     def update(self, request, *args, **kwargs):
-        Directory.objects.filter(id=kwargs["pk"]).update(**request.data)
-        return Response(request.data)
+        instance = Directory.objects.filter(id=kwargs["pk"]).first()
+        if instance:
+            _raise_if_builtin(instance, "编辑")
+        data = {k: v for k, v in request.data.items() if k not in ("is_build_in", "build_in_key")}
+        Directory.objects.filter(id=kwargs["pk"]).update(**data)
+        return Response(data)
+
+    @HasPermission("view-EditCatalogue")
+    def partial_update(self, request, *args, **kwargs):
+        instance = Directory.objects.filter(id=kwargs["pk"]).first()
+        if instance:
+            _raise_if_builtin(instance, "编辑")
+        data = {k: v for k, v in request.data.items() if k not in ("is_build_in", "build_in_key")}
+        Directory.objects.filter(id=kwargs["pk"]).update(**data)
+        return Response(data)
 
     @HasPermission("view-DeleteCatalogue")
     def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "删除")
         return super(DirectoryModelViewSet, self).destroy(request, *args, **kwargs)
 
     # @HasPermission("view-View")
@@ -59,10 +115,11 @@ class DirectoryModelViewSet(AuthViewSet):
         return Response(result)
 
 
-class DashboardModelViewSet(AuthViewSet):
+class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     """
     仪表盘
     """
+
     queryset = Dashboard.objects.all()
     serializer_class = DashboardModelSerializer
     ordering_fields = ["id"]
@@ -86,17 +143,28 @@ class DashboardModelViewSet(AuthViewSet):
 
     @HasPermission("view-EditChart")
     def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "编辑")
         return super(DashboardModelViewSet, self).update(request, *args, **kwargs)
+
+    @HasPermission("view-EditChart")
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "编辑")
+        return super(DashboardModelViewSet, self).partial_update(request, *args, **kwargs)
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "删除")
         return super(DashboardModelViewSet, self).destroy(request, *args, **kwargs)
 
 
-class TopologyModelViewSet(AuthViewSet):
+class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     """
     拓扑图
     """
+
     queryset = Topology.objects.all()
     serializer_class = TopologyModelSerializer
     ordering_fields = ["id"]
@@ -120,17 +188,28 @@ class TopologyModelViewSet(AuthViewSet):
 
     @HasPermission("view-EditChart")
     def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "编辑")
         return super(TopologyModelViewSet, self).update(request, *args, **kwargs)
+
+    @HasPermission("view-EditChart")
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "编辑")
+        return super(TopologyModelViewSet, self).partial_update(request, *args, **kwargs)
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "删除")
         return super(TopologyModelViewSet, self).destroy(request, *args, **kwargs)
 
 
-class ArchitectureModelViewSet(AuthViewSet):
+class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     """
     架构图
     """
+
     queryset = Architecture.objects.all()
     serializer_class = ArchitectureModelSerializer
     ordering_fields = ["id"]
@@ -154,8 +233,18 @@ class ArchitectureModelViewSet(AuthViewSet):
 
     @HasPermission("view-EditChart")
     def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "编辑")
         return super(ArchitectureModelViewSet, self).update(request, *args, **kwargs)
+
+    @HasPermission("view-EditChart")
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "编辑")
+        return super(ArchitectureModelViewSet, self).partial_update(request, *args, **kwargs)
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "删除")
         return super(ArchitectureModelViewSet, self).destroy(request, *args, **kwargs)

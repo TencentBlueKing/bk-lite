@@ -19,6 +19,7 @@ import {
   Spin,
   Tooltip,
   Select,
+  Tag,
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
@@ -634,6 +635,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               <div className="p-1 pt-0">
                 <h2 className="text-lg font-semibold mb-1 text-(--color-text-1)">
                   {selectedDashboard.name}
+                  {selectedDashboard.is_build_in && (
+                    <Tag color="blue" className="ml-2 text-xs align-middle">{t('common.builtIn')}</Tag>
+                  )}
                 </h2>
                 <p className="text-sm text-(--color-text-2)">
                   {selectedDashboard.desc}
@@ -683,7 +687,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                     <Button
                       type="text"
                       icon={<EditOutlined style={{ fontSize: 16 }} />}
-                      disabled={!selectedDashboard?.data_id}
+                      disabled={!selectedDashboard?.data_id || selectedDashboard?.is_build_in}
                       onClick={toggleEditMode}
                     />
                   </Tooltip>
@@ -747,6 +751,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                           type="primary"
                           icon={<PlusOutlined />}
                           onClick={openAddModal}
+                          disabled={selectedDashboard?.is_build_in}
                         >
                           {t('dashboard.addView')}
                         </Button>
