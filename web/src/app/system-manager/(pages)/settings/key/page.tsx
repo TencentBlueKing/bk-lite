@@ -1,17 +1,18 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Button, Table, Space, Popconfirm, message, Tooltip, Spin } from 'antd';
-import { CopyOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button, Table, Space, Popconfirm, message, Tooltip, Spin, Modal, Checkbox, Typography } from 'antd';
+import { CopyOutlined, DeleteOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons';
 import TopSection from '@/components/top-section';
 import PermissionWrapper from '@/components/permission';
-import { useSettingsApi } from '@/app/system-manager/api/settings';
+import { UserApiSecretListItem, useSettingsApi } from '@/app/system-manager/api/settings';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { useCopy } from '@/hooks/useCopy';
 import Cookies from 'js-cookie';
 
 interface TableData {
   id: number;
-  api_secret: string;
+  api_secret_preview: string;
   created_at: string;
   team: string;
   team_name?: string;
@@ -21,24 +22,27 @@ const initialDataSource: Array<TableData> = [];
 
 const ScrectKeyPage: React.FC = () => {
   const { t } = useTranslation();
-  const { fetchUserApiSecrets, fetchTeams, deleteUserApiSecret, createUserApiSecret } = useSettingsApi();
+  const { fetchUserApiSecrets, deleteUserApiSecret, createUserApiSecret } = useSettingsApi();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const { copy } = useCopy();
   const [dataSource, setDataSource] = useState(initialDataSource);
   const [loading, setLoading] = useState<boolean>(false);
   const [creating, setCreating] = useState<boolean>(false);
-  const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
   const [currentTeam, setCurrentTeam] = useState<string | null>(Cookies.get('current_team') || null);
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [newSecret, setNewSecret] = useState('');
+  const [savedCheckbox, setSavedCheckbox] = useState(false);
 
-  const fetchData = async (groups: any[]) => {
+  const fetchData = async () => {
     setLoading(true);
     try {
       const data = await fetchUserApiSecrets();
-      setDataSource(data.map((item: TableData) => ({
+      setDataSource(data.map((item: UserApiSecretListItem) => ({
         id: item.id,
-        api_secret: item.api_secret,
+        api_secret_preview: item.api_secret_preview,
         created_at: item.created_at,
-        team: item.team,
-        team_name: groups.find(group => group.id === item.team)?.name,
+        team: String(item.team),
+        team_name: item.team_name,
       })));
     } catch {
       message.error(t('common.fetchFailed'));
@@ -47,20 +51,8 @@ const ScrectKeyPage: React.FC = () => {
     }
   };
 
-  const fetchGroups = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchTeams();
-      setGroups(data);
-      return data;
-    } catch {
-      message.error(t('common.fetchFailed'));
-      return [];
-    }
-  };
-
   useEffect(() => {
-    fetchGroups().then((groupData) => fetchData(groupData));
+    fetchData();
   }, []);
 
   useEffect(() => {
@@ -76,7 +68,7 @@ const ScrectKeyPage: React.FC = () => {
 
   useEffect(() => {
     if (currentTeam !== dataSource?.[0]?.team) {
-      fetchData(groups);
+      fetchData();
     }
   }, [currentTeam]);
 
@@ -91,43 +83,34 @@ const ScrectKeyPage: React.FC = () => {
     }
   };
 
-  const handleCopy = (key: string) => {
-    try {
-      if (navigator?.clipboard?.writeText) {
-        navigator.clipboard.writeText(key);
-      } else {
-        const textArea = document.createElement('textarea');
-        textArea.value = key;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-      }
-      message.success(t('settings.secret.copied'));
-    } catch {
-      message.error(t('common.copyFailed'));
-    }
-  };
-
   const handleCreate = async () => {
     setCreating(true);
 
     try {
-      await createUserApiSecret();
-      message.success(t('common.addSuccess'));
-      fetchData(groups);
-    } catch {
-      message.error(t('common.saveFailed'));
+      const response = await createUserApiSecret();
+      // response could be the newly created object which contains api_secret
+      setNewSecret(response?.api_secret || '');
+      setSavedCheckbox(false);
+      setSuccessModalVisible(true);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : t('common.saveFailed'));
     } finally {
       setCreating(false);
     }
   };
 
+  const handleCloseModal = () => {
+    setSuccessModalVisible(false);
+    setNewSecret('');
+    setSavedCheckbox(false);
+    fetchData();
+  };
+
   const columns = [
     {
-      title: t('settings.secret.key'),
-      dataIndex: 'api_secret',
-      key: 'api_secret',
+      title: t('system.settings.secret.key'),
+      dataIndex: 'api_secret_preview',
+      key: 'api_secret_preview',
       ellipsis: {
         showTitle: false,
       },
@@ -139,14 +122,14 @@ const ScrectKeyPage: React.FC = () => {
       width: 200,
     },
     {
-      title: t('settings.secret.createdAt'),
+      title: t('system.settings.secret.createdAt'),
       dataIndex: 'created_at',
       key: 'created_at',
       width: 150,
       render: (text: string) => convertToLocalizedTime(text)
     },
     {
-      title: t('settings.secret.group'),
+      title: t('system.settings.secret.group'),
       dataIndex: 'team_name',
       key: 'team_name',
       width: 150,
@@ -157,17 +140,12 @@ const ScrectKeyPage: React.FC = () => {
       width: 80,
       render: (_: unknown, record: TableData) => (
         <Space size={0}>
-          <Button
-            type="text"
-            icon={<CopyOutlined />}
-            onClick={() => handleCopy(record.api_secret)}
-          ></Button>
           <PermissionWrapper requiredPermissions={['Delete']}>
             <Popconfirm
-              title={t('settings.secret.deleteConfirm')}
+              title={t('system.settings.secret.deleteConfirm')}
               onConfirm={() => handleDelete(record.id)}
-              okText="Yes"
-              cancelText="No"
+              okText={t('common.yes')}
+              cancelText={t('common.no')}
             >
               <Button type="text" icon={<DeleteOutlined />} danger></Button>
             </Popconfirm>
@@ -181,8 +159,8 @@ const ScrectKeyPage: React.FC = () => {
     <div>
       <div className="mb-4">
         <TopSection
-          title={t('settings.secret.title')}
-          content={t('settings.secret.content')}
+          title={t('system.settings.secret.title')}
+          content={t('system.settings.secret.content')}
         />
       </div>
       <section
@@ -204,7 +182,7 @@ const ScrectKeyPage: React.FC = () => {
                   loading={creating}
                   disabled={creating}
                 >
-                  {t('settings.secret.create')}
+                  {t('system.settings.secret.create')}
                 </Button>
               </PermissionWrapper>
             </div>
@@ -217,6 +195,76 @@ const ScrectKeyPage: React.FC = () => {
           </>
         )}
       </section>
+
+      <Modal
+        title={t('system.settings.secret.createSuccessTitle')}
+        open={successModalVisible}
+        closable={false}
+        maskClosable={false}
+        footer={[
+          <Checkbox
+            key="checked"
+            className='float-start py-1 text-(--color-text-1)'
+            checked={savedCheckbox}
+            onChange={(e) => setSavedCheckbox(e.target.checked)}
+          >
+            {t('system.settings.secret.confirmSave')}
+          </Checkbox>,
+          <Button
+            key="confirm"
+            type="primary"
+            disabled={!savedCheckbox}
+            onClick={handleCloseModal}
+          >
+            {t('system.settings.secret.savedAction')}
+          </Button>,
+        ]}
+      >
+        <div
+          className="mb-2 border p-4"
+          style={{
+            backgroundColor: 'var(--color-bg-active)',
+            borderColor: 'var(--color-border-2)',
+            color: 'var(--color-text-2)',
+          }}
+        >
+          <Typography.Text type="warning" className='flex'>
+            <WarningOutlined className="mr-2 mt-1 items-start text-base" />
+            <span>
+              {t('system.settings.secret.createSuccessDesc')}
+            </span>
+          </Typography.Text>
+        </div>
+
+        <div className="mb-6">
+          <div className="flex items-center gap-2">
+            <div
+              className="flex-1 break-all border p-2 font-mono"
+              style={{
+                backgroundColor: 'var(--color-fill-1)',
+                borderColor: 'var(--color-border-2)',
+                color: 'var(--color-text-1)',
+              }}
+            >
+              <Typography.Text strong className="whitespace-nowrap mr-1">
+                {t('system.settings.secret.key')}:
+              </Typography.Text>
+              {newSecret}
+            </div>
+          </div>
+          <div className="mt-1 flex justify-start">
+            <Button
+              type="link"
+              size="small"
+              className='text-xs'
+              icon={<CopyOutlined />}
+              onClick={() => copy(newSecret)}
+            >
+              {t('common.copy')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

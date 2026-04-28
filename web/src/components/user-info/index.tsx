@@ -356,12 +356,20 @@ const UserInfo: React.FC = () => {
           open={dropdownVisible}
           onOpenChange={handleOpenChange}
         >
-          <a className='cursor-pointer flex items-center gap-1.5' onClick={(e) => e.preventDefault()}>
+          <a
+            className='cursor-pointer flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-[var(--color-fill-1)]'
+            onClick={(e) => e.preventDefault()}
+          >
             <Avatar size={20} style={{ backgroundColor: 'var(--color-primary)', fontSize: '12px' }}>
               {username.charAt(0).toUpperCase()}
             </Avatar>
-            <span className="text-sm">{username}</span>
-            <DownOutlined className="text-[10px]" />
+            <span className="min-w-0 flex flex-col text-left leading-tight">
+              <span className="truncate text-sm font-medium text-[var(--color-text-1)]">{username}</span>
+              <span className="mt-0.5 max-w-[160px] truncate text-xs text-[var(--color-text-3)]">
+                {selectedGroup?.name || '--'}
+              </span>
+            </span>
+            <DownOutlined className="text-[10px] text-[var(--color-text-3)]" />
           </a>
         </Dropdown>
       )}

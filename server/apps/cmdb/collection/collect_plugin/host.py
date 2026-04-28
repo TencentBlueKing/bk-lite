@@ -285,7 +285,7 @@ class HostCollectMetrics(CollectBase):
             # 解析result字段中的JSON数据
             # VictoriaMetrics返回的JSON字符串包含转义字符（如\n），需要先反转义再解析
             result_data = {}
-            if index_data["metric"].get("collect_status", 'success') == 'failed':
+            if index_data["metric"].get("collect_status", 'failed') == 'failed':
                 continue
             index_dict = dict(
                 index_key=metric_name,

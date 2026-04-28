@@ -19,7 +19,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const fullPath = path.join(process.cwd(), 'public', 'app', filePath);
+    const base = path.resolve(process.cwd(), 'public', 'app');
+    const fullPath = path.resolve(base, filePath);
+
+    if (!fullPath.startsWith(base + path.sep)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const fileContents = fs.readFileSync(fullPath, 'utf8');
     const jsonContent = JSON.parse(fileContents);
     return NextResponse.json(jsonContent, { status: 200 });

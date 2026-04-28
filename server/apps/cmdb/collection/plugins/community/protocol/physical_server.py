@@ -42,7 +42,7 @@ class PhysicalServerIPMICollectionPlugin(BaseProtocolCollectionPlugin):
             metric_name = index_data["metric"].get("__name__")
             if metric_name not in self.metric_names:
                 continue
-            if index_data["metric"].get("collect_status", "success") == "failed":
+            if index_data["metric"].get("collect_status", "failed") == "failed":
                 continue
             self.collection_metrics_dict[metric_name].append(index_data["metric"])
 

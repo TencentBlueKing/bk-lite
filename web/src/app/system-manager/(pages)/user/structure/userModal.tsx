@@ -43,12 +43,12 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     organizationRoleIds,
     organizationRoleSourceMap,
     isSuperuser,
-    setIsSuperuser,
     showModal,
     handleCancel,
     handleConfirm,
     handleGroupChange,
     handleRoleChange,
+    handleSuperuserChange,
     handleChangeRule,
   } = useUserModalData();
 
@@ -60,11 +60,6 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     () => (treeData ? transformTreeDataForSelect(treeData) : []),
     [treeData]
   );
-
-  const handleSuperuserChange = (value: boolean) => {
-    setIsSuperuser(value);
-    formRef.current?.setFieldsValue({ is_superuser: value });
-  };
 
   return (
     <OperateModal
@@ -161,7 +156,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
             required={!isSuperuser}
           >
             <Form.Item name="is_superuser" style={{ marginBottom: 8 }}>
-              <Radio.Group onChange={(e) => handleSuperuserChange(e.target.value)}>
+                <Radio.Group onChange={(e) => handleSuperuserChange(e.target.value)}>
                 <Radio value={false}>{t('system.user.form.normalUser')}</Radio>
                 <Radio value={true}>{t('system.user.form.superuser')}</Radio>
               </Radio.Group>

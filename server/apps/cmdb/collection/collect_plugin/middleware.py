@@ -29,7 +29,7 @@ class MiddlewareCollectMetrics(CollectBase):
                     self.timestamp_gt = True
             # 原始版本没有result，2025.11.27修改stargazer格式，将采集数据放到result中
             result_data = {}
-            if index_data["metric"].get("collect_status", 'success') == 'failed':
+            if index_data["metric"].get("collect_status", 'failed') == 'failed':
                 continue
             if index_data["metric"].get("result", False) or index_data["metric"].get("success", False):
                 result_json = index_data["metric"].get("result", "{}")

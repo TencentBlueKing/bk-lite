@@ -45,6 +45,7 @@ interface UseUserModalDataReturn {
   setSelectedGroups: (groups: React.Key[]) => void;
   setSelectedRoles: (roles: number[]) => void;
   handleRoleChange: (newRoleIds: React.Key[]) => void;
+  handleSuperuserChange: (value: boolean) => void;
   setGroupRules: (rules: GroupRules) => void;
   setIsSuperuser: (value: boolean) => void;
   showModal: (config: ModalConfig) => void;
@@ -281,6 +282,22 @@ export function useUserModalData(): UseUserModalDataReturn {
     [organizationRoleIds]
   );
 
+  const handleSuperuserChange = useCallback(
+    (value: boolean) => {
+      setIsSuperuser(value);
+      setPersonalRoleIds([]);
+
+      const nextSelectedRoles = value ? [] : organizationRoleIds;
+      setSelectedRoles(nextSelectedRoles);
+
+      formRef.current?.setFieldsValue({
+        is_superuser: value,
+        roles: nextSelectedRoles,
+      });
+    },
+    [organizationRoleIds]
+  );
+
   const handleGroupChange = useCallback(
     async (newGroupIds: React.Key[]) => {
       setSelectedGroups(newGroupIds);
@@ -325,6 +342,7 @@ export function useUserModalData(): UseUserModalDataReturn {
     setSelectedGroups,
     setSelectedRoles,
     handleRoleChange,
+    handleSuperuserChange,
     setGroupRules,
     setIsSuperuser,
     showModal,

@@ -15,6 +15,8 @@ export interface WidgetConfig {
   dataSource?: string | number;
   params?: { [key: string]: any };
   dataSourceParams?: any[];
+  color?: string;
+  [key: string]: any;
 }
 
 export interface DirItem {
