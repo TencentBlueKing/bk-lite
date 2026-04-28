@@ -1,14 +1,18 @@
 import {
   ControllerInstallProgressRow,
+  InstallerFailure,
+  InstallerFailureContext,
   InstallerProgressMetric,
   InstallerProgressSummary,
   InstallerStepCode,
   InstallerStepLabelMap,
   LogStep,
   OperationTaskResult
-} from '@/app/node-manager/types/controller';
+} from '../types/controller';
 
 type TranslationFunction = (key: string) => string;
+
+type InstallerFailureType = NonNullable<InstallerFailure['type']>;
 
 const VALID_INSTALLER_STATUSES = new Set([
   'success',
@@ -35,6 +39,55 @@ const normalizeText = (value?: string | null) => {
 
   const normalized = value.trim();
   return normalized || null;
+};
+
+const normalizeFailureContext = (context?: InstallerFailureContext | null) => {
+  if (!context) {
+    return undefined;
+  }
+
+  const normalizedContext: InstallerFailureContext = {};
+  const bucket = normalizeText(context.bucket);
+  const fileKey = normalizeText(context.file_key);
+  const packageName = normalizeText(context.package_name);
+  const cpuArchitecture = normalizeText(context.cpu_architecture);
+  const installDir = normalizeText(context.install_dir);
+  const targetPath = normalizeText(context.target_path);
+  const exitCode = normalizeNumber(context.exit_code);
+
+  if (bucket) normalizedContext.bucket = bucket;
+  if (fileKey) normalizedContext.file_key = fileKey;
+  if (packageName) normalizedContext.package_name = packageName;
+  if (cpuArchitecture) normalizedContext.cpu_architecture = cpuArchitecture;
+  if (installDir) normalizedContext.install_dir = installDir;
+  if (targetPath) normalizedContext.target_path = targetPath;
+  if (exitCode !== null) normalizedContext.exit_code = Math.round(exitCode);
+
+  return Object.keys(normalizedContext).length ? normalizedContext : undefined;
+};
+
+const normalizeFailure = (failure?: InstallerFailure | null) => {
+  if (!failure) {
+    return undefined;
+  }
+
+  const normalizedFailure: InstallerFailure = {};
+  const message = normalizeText(failure.message);
+  const type = normalizeText(failure.type);
+  const summary = normalizeText(failure.summary);
+  const rawError = normalizeText(failure.raw_error);
+  const code = normalizeNumber(failure.code);
+  const context = normalizeFailureContext(failure.context);
+
+  if (message) normalizedFailure.message = message;
+  if (type) normalizedFailure.type = type;
+  if (summary) normalizedFailure.summary = summary;
+  if (rawError) normalizedFailure.raw_error = rawError;
+  if (code !== null) normalizedFailure.code = Math.round(code);
+  if (typeof failure.retriable === 'boolean') normalizedFailure.retriable = failure.retriable;
+  if (context) normalizedFailure.context = context;
+
+  return Object.keys(normalizedFailure).length ? normalizedFailure : undefined;
 };
 
 const normalizeProgress = (progress?: InstallerProgressMetric) => {
@@ -91,7 +144,8 @@ export const normalizeInstallerLogs = (steps?: LogStep[] | null): LogStep[] => {
         error: normalizeText(step.details.error) || undefined,
         installer_message:
           normalizeText(step.details.installer_message) || undefined,
-        timestamp: normalizeText(step.details.timestamp) || undefined
+        timestamp: normalizeText(step.details.timestamp) || undefined,
+        failure: normalizeFailure(step.details.failure)
       }
       : undefined
   }));
@@ -128,7 +182,8 @@ export const normalizeInstallerResult = (
 
   return {
     steps: normalizeInstallerLogs(result.steps),
-    installer_progress: installerProgress
+    installer_progress: installerProgress,
+    failure: normalizeFailure(result.failure)
   };
 };
 
@@ -201,6 +256,29 @@ export const INSTALLER_STEP_SUGGESTION_KEYS: InstallerStepLabelMap = {
   install: 'node-manager.cloudregion.node.installerSuggestionInstall',
   run_package_installer:
     'node-manager.cloudregion.node.installerSuggestionInstall'
+};
+
+export const INSTALLER_FAILURE_SUGGESTION_KEYS: Partial<Record<InstallerFailureType, string>> = {
+  object_missing: 'node-manager.cloudregion.node.installerSuggestionObjectMissing',
+  bucket_missing: 'node-manager.cloudregion.node.installerSuggestionBucketMissing',
+  connection: 'node-manager.cloudregion.node.installerSuggestionConnection',
+  timeout: 'node-manager.cloudregion.node.installerSuggestionTimeout',
+  auth: 'node-manager.cloudregion.node.installerSuggestionAuth',
+  permission: 'node-manager.cloudregion.node.installerSuggestionPermission',
+  file_busy: 'node-manager.cloudregion.node.installerSuggestionFileBusy',
+  disk: 'node-manager.cloudregion.node.installerSuggestionDisk',
+  package_invalid: 'node-manager.cloudregion.node.installerSuggestionPackageInvalid',
+  arch_mismatch: 'node-manager.cloudregion.node.installerSuggestionArchMismatch'
+};
+
+export const INSTALLER_FAILURE_CONTEXT_LABEL_KEYS: Partial<Record<keyof InstallerFailureContext, string>> = {
+  bucket: 'node-manager.cloudregion.node.failureContextBucket',
+  file_key: 'node-manager.cloudregion.node.failureContextFileKey',
+  package_name: 'node-manager.cloudregion.node.failureContextPackageName',
+  cpu_architecture: 'node-manager.cloudregion.node.failureContextArchitecture',
+  install_dir: 'node-manager.cloudregion.node.failureContextInstallDir',
+  target_path: 'node-manager.cloudregion.node.failureContextTargetPath',
+  exit_code: 'node-manager.cloudregion.node.failureContextExitCode'
 };
 
 export const formatInstallerProgressValue = (value?: number, unit?: string) => {
@@ -340,6 +418,38 @@ export const getInstallerFailureSuggestion = (
   return t('node-manager.cloudregion.node.installerSuggestionGeneric');
 };
 
+export const getInstallerFailureSuggestionByType = (
+  t: TranslationFunction,
+  failureType?: InstallerFailureType | null
+) => {
+  if (failureType && INSTALLER_FAILURE_SUGGESTION_KEYS[failureType]) {
+    return t(INSTALLER_FAILURE_SUGGESTION_KEYS[failureType]);
+  }
+
+  return null;
+};
+
+const getInstallerFailureContextEntries = (
+  t: TranslationFunction,
+  context?: InstallerFailureContext
+) => {
+  if (!context) {
+    return [];
+  }
+
+  return Object.entries(context)
+    .map(([key, value]) => {
+      if (value === null || value === undefined || value === '') {
+        return null;
+      }
+
+      const labelKey = INSTALLER_FAILURE_CONTEXT_LABEL_KEYS[key as keyof InstallerFailureContext];
+      const label = labelKey ? t(labelKey) : key;
+      return `${label}: ${value}`;
+    })
+    .filter((entry): entry is string => Boolean(entry));
+};
+
 export const getFailedInstallerStep = (steps?: LogStep[]) => {
   if (!steps?.length) {
     return null;
@@ -356,15 +466,25 @@ export const getInstallerFailureGuidance = (
 ) => {
   const failedStep = getFailedInstallerStep(result?.steps);
   const rawStep = failedStep?.details?.raw_step || failedStep?.action;
+  const failure = failedStep?.details?.failure || result?.failure;
+
+  const reason = normalizeText(
+    failure?.summary ||
+      failure?.message ||
+      failedStep?.details?.error ||
+      failedStep?.message ||
+      result?.installer_progress?.current_message ||
+      null
+  );
+
+  const contextEntries = getInstallerFailureContextEntries(t, failure?.context);
 
   return {
-    reason: normalizeText(
-      failedStep?.details?.error ||
-        failedStep?.message ||
-        result?.installer_progress?.current_message ||
-        null
-    ),
-    suggestion: getInstallerFailureSuggestion(t, rawStep)
+    reason,
+    context: contextEntries,
+    suggestion:
+      getInstallerFailureSuggestionByType(t, failure?.type) ||
+      getInstallerFailureSuggestion(t, rawStep)
   };
 };
 

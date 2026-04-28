@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "clean": "rm -rf .next",
+    "test:installer-progress": "pnpm exec tsx scripts/installer-progress-test.ts",
     "type-check": "pnpm clean && pnpm prepare-enterprise && tsc -p tsconfig.lint.json --noEmit",
     "precommit": "node -r dotenv/config scripts/generate-tsconfig.js dotenv_config_path=.env.local",
     "prepare": "husky install",
@@ -84,6 +85,7 @@
     "storybook": "8.6.15",
     "storybook-addon-mock": "^5.0.0",
     "tailwindcss": "^4.1.13",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   },
   "lint-staged": {

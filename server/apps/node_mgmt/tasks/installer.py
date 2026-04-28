@@ -407,9 +407,39 @@ def _parse_exception_details(error_message, exception_obj=None):
     return details
 
 
+def _collect_failure_context_from_node(node_obj):
+    result = node_obj.result or {}
+    steps = result.get("steps", [])
+    latest_installer_details = None
+
+    if isinstance(steps, list):
+        for step in reversed(steps):
+            if not isinstance(step, dict):
+                continue
+            details = step.get("details")
+            if isinstance(details, dict) and details.get("installer_event"):
+                latest_installer_details = details
+                break
+
+    context = {}
+    if latest_installer_details:
+        if latest_installer_details.get("bucket"):
+            context["bucket"] = latest_installer_details.get("bucket")
+        if latest_installer_details.get("file_key"):
+            context["file_key"] = latest_installer_details.get("file_key")
+        if latest_installer_details.get("package_name"):
+            context["package_name"] = latest_installer_details.get("package_name")
+
+    if getattr(node_obj, "cpu_architecture", ""):
+        context["cpu_architecture"] = node_obj.cpu_architecture
+
+    return context
+
+
 def _handle_step_exception(node_obj, error_message, exception_obj=None, timestamp=None):
     """处理步骤执行异常并立即持久化"""
     details = _parse_exception_details(error_message, exception_obj)
+    details.update({k: v for k, v in _collect_failure_context_from_node(node_obj).items() if v not in (None, "")})
     failure = normalize_failure(message=error_message, error=str(exception_obj) if exception_obj else error_message, details=details)
     if failure:
         details["failure"] = failure
@@ -750,9 +780,13 @@ def timeout_controller_install_task(task_id):
             "Connectivity check timeout",
             details={
                 "timeout": True,
+                **_collect_failure_context_from_node(task_node),
                 "failure": normalize_failure(
                     message="Connectivity check timeout",
-                    details={"error_type": "timeout"},
+                    details={
+                        "error_type": "timeout",
+                        **_collect_failure_context_from_node(task_node),
+                    },
                 ),
             },
         )
