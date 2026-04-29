@@ -489,7 +489,7 @@ def parse_playbook_recap(output: str) -> list[dict[str, Any]]:
 
 
 def _extract_host_task_output(lines: list[str], host: str) -> str:
-    """从 playbook 输出中提取指定 host 的 task 输出行。"""
+    """从 playbook 输出中提取指定 host 的 task 输出内容（仅提取有意义的值）。"""
     host_lines: list[str] = []
     capturing = False
 
@@ -497,7 +497,6 @@ def _extract_host_task_output(lines: list[str], host: str) -> str:
         # 匹配 ok: [host], changed: [host], fatal: [host], skipping: [host] 等
         if re.match(rf"^(ok|changed|fatal|failed|skipping|unreachable):\s+\[{re.escape(host)}\]", line):
             capturing = True
-            host_lines.append(line)
             continue
 
         # 新 TASK 或 PLAY 行结束当前捕获
@@ -512,7 +511,48 @@ def _extract_host_task_output(lines: list[str], host: str) -> str:
         if capturing:
             host_lines.append(line)
 
-    return "\n".join(host_lines).strip()
+    # 尝试从 JSON 块中提取 msg/stdout/results 等有意义的内容
+    raw_output = "\n".join(host_lines).strip()
+    return _extract_meaningful_output(raw_output)
+
+
+def _extract_meaningful_output(raw_output: str) -> str:
+    """从 ansible task 输出中提取有意义的内容（如 msg, stdout, results）。"""
+    import json as _json
+
+    # 尝试解析为 JSON 对象
+    try:
+        data = _json.loads(raw_output)
+        if isinstance(data, dict):
+            # 优先提取常见字段
+            for key in ("msg", "stdout", "stdout_lines", "results"):
+                if key in data:
+                    val = data[key]
+                    if isinstance(val, list):
+                        return "\n".join(str(item) for item in val)
+                    return str(val)
+            # 没有常见字段，返回整个 JSON
+            return raw_output
+    except (_json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    # 非 JSON，尝试去掉外层花括号内的 JSON 片段
+    # 匹配形如 { "msg": "..." } 的内容
+    json_match = re.search(r"\{[^{}]*\}", raw_output, re.DOTALL)
+    if json_match:
+        try:
+            data = _json.loads(json_match.group())
+            if isinstance(data, dict):
+                for key in ("msg", "stdout", "stdout_lines", "results"):
+                    if key in data:
+                        val = data[key]
+                        if isinstance(val, list):
+                            return "\n".join(str(item) for item in val)
+                        return str(val)
+        except (_json.JSONDecodeError, TypeError, ValueError):
+            pass
+
+    return raw_output
 
 
 def _build_host_credentials_inventory(workspace: Path, host_credentials: list[dict[str, Any]]) -> str:
@@ -887,7 +927,7 @@ async def run_command(cmd: list[str], timeout: int) -> tuple[int, str]:
     output, decode_strategy = decode_command_output(stdout)
     exit_code = proc.returncode or 0
     logger.info(
-        "command output decode log: exit_code=%s strategy=%s bytes=%s raw_prefix=%s decoded_prefix=%r",
+        "command output decode: exit_code=%s strategy=%s bytes=%s raw_prefix=%s decoded_prefix=%r",
         exit_code,
         decode_strategy,
         len(stdout),
