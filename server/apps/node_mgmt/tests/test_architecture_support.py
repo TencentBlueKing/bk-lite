@@ -22,6 +22,7 @@ from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.management.commands.collector_package_init import Command as CollectorPackageInitCommand
 from apps.node_mgmt.management.commands.backfill_node_cpu_architecture import Command as BackfillNodeCpuArchitectureCommand
+from apps.node_mgmt.management.commands.backfill_package_storage_paths import Command as BackfillPackageStoragePathsCommand
 from apps.node_mgmt.management.commands.controller_package_init import Command as ControllerPackageInitCommand
 from apps.node_mgmt.management.commands.installer_init import Command as InstallerInitCommand
 from apps.node_mgmt.management.commands.verify_architecture_rollout import Command as VerifyArchitectureRolloutCommand
@@ -200,6 +201,10 @@ def test_build_session_config_resolves_package_and_installer_by_architecture(mon
             "cpu_architecture": NodeConstants.ARM64_ARCH,
             "remaining_usage": 4,
         },
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.installer_session.PackageService.resolve_existing_file_path",
+        lambda obj: PackageService.build_file_path(obj),
     )
 
     config = InstallerSessionService.build_session_config(token_value, NodeConstants.ARM64_ARCH)
@@ -623,7 +628,7 @@ def test_package_init_commands_accept_cpu_architecture(monkeypatch, tmp_path):
     captured = []
 
     def fake_package_version_upload(package_type, options):
-        captured.append((package_type, options["cpu_architecture"]))
+        captured.append((package_type, options["cpu_architecture"], options.get("force_upload", False)))
 
     monkeypatch.setattr(
         "apps.node_mgmt.management.commands.controller_package_init.package_version_upload",
@@ -650,8 +655,8 @@ def test_package_init_commands_accept_cpu_architecture(monkeypatch, tmp_path):
     )
 
     assert captured == [
-        ("controller", NodeConstants.ARM64_ARCH),
-        ("collector", NodeConstants.X86_64_ARCH),
+        ("controller", NodeConstants.ARM64_ARCH, False),
+        ("collector", NodeConstants.X86_64_ARCH, False),
     ]
 
 
@@ -690,11 +695,195 @@ def test_verify_architecture_rollout_succeeds_when_required_artifacts_exist(monk
         fake_list_s3_files,
     )
 
-    VerifyArchitectureRolloutCommand().handle(version="9.9.9")
+    VerifyArchitectureRolloutCommand().handle(package_version="9.9.9")
     output = capsys.readouterr().out
 
     assert "Linux ARM64 controller package present: yes" in output
     assert "Installer artifacts present" in output
+
+
+@pytest.mark.django_db
+def test_package_service_resolves_legacy_object_path(monkeypatch):
+    package_obj = PackageVersion.objects.create(
+        type="controller",
+        os="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="1.0.1",
+        name="fusion-collectors-linux-amd64.zip",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    class DummyStore:
+        async def get_info(self, key):
+            if key == "linux/Controller/1.0.1/fusion-collectors-linux-amd64.zip":
+                return SimpleNamespace(size=1, description="fusion-collectors-linux-amd64.zip")
+            raise __import__("nats.js.errors", fromlist=["ObjectNotFoundError"]).ObjectNotFoundError()
+
+    class DummyJetstream:
+        object_store = DummyStore()
+
+        async def connect(self):
+            return None
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr("apps.rpc.jetstream.JetStreamService", DummyJetstream)
+
+    resolved = PackageService.resolve_existing_file_path(package_obj)
+
+    assert resolved == "linux/Controller/1.0.1/fusion-collectors-linux-amd64.zip"
+
+
+@pytest.mark.django_db
+def test_package_service_delete_file_tolerates_legacy_only(monkeypatch):
+    package_obj = PackageVersion.objects.create(
+        type="controller",
+        os="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="1.0.1",
+        name="fusion-collectors-linux-amd64.zip",
+        created_by="tester",
+        updated_by="tester",
+    )
+    deleted = []
+    from nats.js.errors import ObjectNotFoundError
+
+    async def fake_delete(path):
+        if path == "linux/x86_64/Controller/1.0.1/fusion-collectors-linux-amd64.zip":
+            raise ObjectNotFoundError()
+        deleted.append(path)
+
+    monkeypatch.setattr("apps.node_mgmt.services.package.delete_s3_file", fake_delete)
+
+    assert PackageService.delete_file(package_obj) is True
+    assert deleted == ["linux/Controller/1.0.1/fusion-collectors-linux-amd64.zip"]
+
+
+@pytest.mark.django_db
+def test_installer_session_uses_existing_legacy_file_key(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="test-region-legacy",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    SidecarEnv.objects.create(key=NodeConstants.SERVER_URL_KEY, value="https://example.com", type="text", cloud_region=cloud_region)
+    SidecarEnv.objects.create(key=NodeConstants.NATS_SERVERS_KEY, value="nats://127.0.0.1:4222", type="text", cloud_region=cloud_region)
+    SidecarEnv.objects.create(key="NATS_ADMIN_USERNAME", value="admin", type="text", cloud_region=cloud_region)
+    SidecarEnv.objects.create(key=NodeConstants.NATS_ADMIN_PASSWORD_KEY, value="password", type="text", cloud_region=cloud_region)
+
+    package_obj = PackageVersion.objects.create(
+        type="controller",
+        os="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="1.0.1",
+        name="fusion-collectors-linux-amd64.zip",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.installer_session.InstallTokenService.validate_and_get_token_data",
+        lambda token: {
+            "package_id": package_obj.id,
+            "cloud_region_id": cloud_region.id,
+            "ip": "10.0.0.1",
+            "user": "admin",
+            "node_id": "node-1",
+            "node_name": "node-1",
+            "os": "linux",
+            "remaining_usage": 1,
+            "organizations": [1],
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+        },
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.installer_session.generate_node_token",
+        lambda *args, **kwargs: "sidecar-token",
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.installer_session.PackageService.resolve_existing_file_path",
+        lambda obj: "linux/Controller/1.0.1/fusion-collectors-linux-amd64.zip",
+    )
+
+    config = InstallerSessionService.build_session_config("token")
+
+    assert config["storage"]["file_key"] == "linux/Controller/1.0.1/fusion-collectors-linux-amd64.zip"
+    assert config["package"]["file_key"] == "linux/Controller/1.0.1/fusion-collectors-linux-amd64.zip"
+
+
+@pytest.mark.django_db
+def test_package_version_upload_force_reuploads_existing_version(monkeypatch, tmp_path):
+    PackageVersion.objects.create(
+        type="controller",
+        os="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="1.0.1",
+        name="old.zip",
+        created_by="tester",
+        updated_by="tester",
+    )
+    uploaded = {}
+    file_path = tmp_path / "fusion-collectors-linux-amd64.zip"
+    file_path.write_bytes(b"payload")
+
+    def fake_upload(file, data):
+        uploaded["name"] = file.name
+        uploaded["path"] = PackageService.build_file_path(SimpleNamespace(**data))
+
+    monkeypatch.setattr("apps.node_mgmt.management.utils.PackageService.upload_file", fake_upload)
+
+    from apps.node_mgmt.management.utils import package_version_upload
+
+    package_version_upload(
+        "controller",
+        {
+            "os": "linux",
+            "object": "Controller",
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "pk_version": "1.0.1",
+            "file_path": str(file_path),
+            "force_upload": True,
+        },
+    )
+
+    assert uploaded["name"] == "fusion-collectors-linux-amd64.zip"
+    assert uploaded["path"] == "linux/x86_64/Controller/1.0.1/fusion-collectors-linux-amd64.zip"
+
+
+@pytest.mark.django_db
+def test_backfill_package_storage_paths_dry_run_reports_legacy_copy(monkeypatch, capsys):
+    package_obj = PackageVersion.objects.create(
+        type="controller",
+        os="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="1.0.1",
+        name="fusion-collectors-linux-amd64.zip",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    async def fake_inspect(obj):
+        return False, True, PackageService.build_file_path(obj), PackageService.build_legacy_file_path(obj)
+
+    monkeypatch.setattr(BackfillPackageStoragePathsCommand, "_inspect_paths", staticmethod(fake_inspect))
+
+    BackfillPackageStoragePathsCommand().handle(
+        package_type="controller", os_name="", object_name="", package_version="", cpu_architecture="", apply=False
+    )
+    output = capsys.readouterr().out
+
+    assert (
+        f"[dry-run] {package_obj.id}: copy linux/Controller/1.0.1/fusion-collectors-linux-amd64.zip -> linux/x86_64/Controller/1.0.1/fusion-collectors-linux-amd64.zip"
+        in output
+    )
 
 
 @pytest.mark.django_db

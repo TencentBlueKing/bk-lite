@@ -2,6 +2,7 @@ import re
 from typing import AsyncGenerator
 
 from django.core.files.base import ContentFile
+from nats.js.errors import ObjectNotFoundError
 from apps.node_mgmt.utils.s3 import (
     upload_file_to_s3,
     download_file_by_s3,
@@ -71,6 +72,81 @@ class PackageService:
     def build_file_path(package_obj) -> str:
         arch = getattr(package_obj, "cpu_architecture", "") or "generic"
         return f"{package_obj.os}/{arch}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
+
+    @staticmethod
+    def build_legacy_file_path(package_obj) -> str:
+        return f"{package_obj.os}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
+
+    @staticmethod
+    def build_candidate_file_paths(package_obj) -> list[str]:
+        paths = [
+            PackageService.build_file_path(package_obj),
+            PackageService.build_legacy_file_path(package_obj),
+        ]
+        seen = set()
+        candidates = []
+        for path in paths:
+            if path in seen:
+                continue
+            seen.add(path)
+            candidates.append(path)
+        return candidates
+
+    @staticmethod
+    async def _resolve_existing_file_path_async(package_obj) -> str:
+        from apps.rpc.jetstream import JetStreamService
+
+        jetstream = JetStreamService()
+        await jetstream.connect()
+        try:
+            last_error = None
+            for path in PackageService.build_candidate_file_paths(package_obj):
+                try:
+                    await jetstream.object_store.get_info(path)
+                    return path
+                except ObjectNotFoundError as error:
+                    last_error = error
+                    continue
+            if last_error:
+                raise last_error
+            raise ObjectNotFoundError
+        finally:
+            await jetstream.close()
+
+    @staticmethod
+    def resolve_existing_file_path(package_obj) -> str:
+        return async_to_sync(PackageService._resolve_existing_file_path_async)(package_obj)
+
+    @staticmethod
+    async def _download_file_async(package_obj):
+        last_error = None
+        for s3_file_path in PackageService.build_candidate_file_paths(package_obj):
+            try:
+                return await download_file_by_s3(s3_file_path)
+            except ObjectNotFoundError as error:
+                last_error = error
+                continue
+        if last_error:
+            raise last_error
+        raise ObjectNotFoundError
+
+    @staticmethod
+    async def _delete_file_async(package_obj):
+        deleted = False
+        last_error = None
+        for s3_file_path in PackageService.build_candidate_file_paths(package_obj):
+            try:
+                await delete_s3_file(s3_file_path)
+                deleted = True
+            except ObjectNotFoundError as error:
+                last_error = error
+                continue
+
+        if deleted:
+            return True
+        if last_error:
+            raise last_error
+        raise ObjectNotFoundError
 
     @staticmethod
     def parse_package_info(filename: str):
@@ -157,13 +233,11 @@ class PackageService:
 
     @staticmethod
     def download_file(package_obj):
-        s3_file_path = PackageService.build_file_path(package_obj)
-        return async_to_sync(download_file_by_s3)(s3_file_path)
+        return async_to_sync(PackageService._download_file_async)(package_obj)
 
     @staticmethod
     def delete_file(package_obj):
-        s3_file_path = PackageService.build_file_path(package_obj)
-        async_to_sync(delete_s3_file)(s3_file_path)
+        return async_to_sync(PackageService._delete_file_async)(package_obj)
 
     @staticmethod
     def list_files():
@@ -183,9 +257,18 @@ class PackageService:
     async def stream_download_file(
         package_obj,
     ) -> AsyncGenerator[tuple[bytes, str, int], None]:
-        s3_file_path = PackageService.build_file_path(package_obj)
-        async for chunk, filename, total_size in stream_download_file_by_s3(s3_file_path):
-            yield chunk, filename, total_size
+        last_error = None
+        for s3_file_path in PackageService.build_candidate_file_paths(package_obj):
+            try:
+                async for chunk, filename, total_size in stream_download_file_by_s3(s3_file_path):
+                    yield chunk, filename, total_size
+                return
+            except ObjectNotFoundError as error:
+                last_error = error
+                continue
+        if last_error:
+            raise last_error
+        raise ObjectNotFoundError
 
     @staticmethod
     def download_file_streaming(package_obj) -> tuple:
@@ -196,18 +279,25 @@ class PackageService:
         import tempfile
         from apps.rpc.jetstream import JetStreamService
 
-        s3_file_path = PackageService.build_file_path(package_obj)
-
         async def _download_to_tempfile():
             jetstream = JetStreamService()
             await jetstream.connect()
             try:
-                info = await jetstream.object_store.get_info(s3_file_path)
-                filename = info.description or package_obj.name
-                tmp = tempfile.NamedTemporaryFile(mode="w+b", delete=False)
-                await jetstream.object_store.get(s3_file_path, writeinto=tmp)
-                tmp.seek(0)
-                return tmp, filename
+                last_error = None
+                for s3_file_path in PackageService.build_candidate_file_paths(package_obj):
+                    try:
+                        info = await jetstream.object_store.get_info(s3_file_path)
+                        filename = info.description or package_obj.name
+                        tmp = tempfile.NamedTemporaryFile(mode="w+b", delete=False)
+                        await jetstream.object_store.get(s3_file_path, writeinto=tmp)
+                        tmp.seek(0)
+                        return tmp, filename
+                    except ObjectNotFoundError as error:
+                        last_error = error
+                        continue
+                if last_error:
+                    raise last_error
+                raise ObjectNotFoundError
             finally:
                 await jetstream.close()
 

@@ -985,7 +985,7 @@ def install_collector(task_id):
             )
             or package_obj
         )
-        file_key = PackageService.build_file_path(resolved_package)
+        file_key = PackageService.resolve_existing_file_path(resolved_package)
 
         try:
             _add_step(

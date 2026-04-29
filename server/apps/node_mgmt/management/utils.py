@@ -12,6 +12,7 @@ def package_version_upload(_type, options):
     cpu_architecture = options.get("cpu_architecture", "")
     version = options["pk_version"]
     file_path = options["file_path"]
+    force_upload = options.get("force_upload", False)
 
     if not (_object and version and file_path):
         logger.error("object, version, file_path 不能为空")
@@ -34,7 +35,7 @@ def package_version_upload(_type, options):
 
     pk_v = PackageVersion.objects.filter(os=_os, cpu_architecture=cpu_architecture, object=_object, version=version).first()
     if pk_v:
-        if version != PackageConstants.VERSION_LATEST:
+        if version != PackageConstants.VERSION_LATEST and not force_upload:
             logger.warning(f"{_type} 包版本已存在!")
             return
 
@@ -47,7 +48,7 @@ def package_version_upload(_type, options):
     if pk_v:
         pk_v.name = file_name
         pk_v.save(update_fields=["name", "updated_at"])
-        logger.info(f"{_type} latest 版本已覆盖更新")
+        logger.info(f"{_type} 版本对象已覆盖上传")
         return data
 
     PackageVersion.objects.create(**data)
