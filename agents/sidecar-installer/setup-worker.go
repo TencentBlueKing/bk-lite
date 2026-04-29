@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,7 +29,18 @@ type Config struct {
 	GroupID    string        `json:"group_id"`
 	OS         string        `json:"os"`
 	InstallDir string        `json:"install_dir"`
+	Package    PackageConfig `json:"package"`
 	Storage    StorageConfig `json:"storage"`
+}
+
+type PackageConfig struct {
+	ID              int    `json:"id"`
+	OS              string `json:"os"`
+	CPUArchitecture string `json:"cpu_architecture"`
+	Object          string `json:"object"`
+	Version         string `json:"version"`
+	Name            string `json:"name"`
+	FileKey         string `json:"file_key"`
 }
 
 type StorageConfig struct {
@@ -42,14 +55,35 @@ type StorageConfig struct {
 }
 
 type InstallerEvent struct {
-	Step       string `json:"step"`
-	Status     string `json:"status"`
-	Message    string `json:"message,omitempty"`
-	Progress   *int   `json:"progress,omitempty"`
-	Downloaded int64  `json:"downloaded_bytes,omitempty"`
-	Total      int64  `json:"total_bytes,omitempty"`
-	Timestamp  string `json:"timestamp"`
-	Error      string `json:"error,omitempty"`
+	Step            string `json:"step"`
+	Status          string `json:"status"`
+	Message         string `json:"message,omitempty"`
+	Progress        *int   `json:"progress,omitempty"`
+	Downloaded      int64  `json:"downloaded_bytes,omitempty"`
+	Total           int64  `json:"total_bytes,omitempty"`
+	Timestamp       string `json:"timestamp"`
+	Error           string `json:"error,omitempty"`
+	ErrorType       string `json:"error_type,omitempty"`
+	Bucket          string `json:"bucket,omitempty"`
+	FileKey         string `json:"file_key,omitempty"`
+	FileName        string `json:"file_name,omitempty"`
+	PackageName     string `json:"package_name,omitempty"`
+	CPUArchitecture string `json:"cpu_architecture,omitempty"`
+	InstallDir      string `json:"install_dir,omitempty"`
+	TargetPath      string `json:"target_path,omitempty"`
+	ExitCode        *int   `json:"exit_code,omitempty"`
+}
+
+type EventOptions struct {
+	ErrorType       string
+	Bucket          string
+	FileKey         string
+	FileName        string
+	PackageName     string
+	CPUArchitecture string
+	InstallDir      string
+	TargetPath      string
+	ExitCode        *int
 }
 
 var (
@@ -119,22 +153,33 @@ func run(client *http.Client) {
 
 	if cfg.Storage.FileKey != "" {
 		log("[3/6] Downloading package...")
-		emitEvent("download_package", "running", "Downloading controller package", intPtr(0), 0, 0, "")
+		emitEventWithOptions("download_package", "running", "Downloading controller package", intPtr(0), 0, 0, "", downloadEventOptions(cfg))
 		zipPath, err := downloadFromStorage(&cfg.Storage)
 		if err != nil {
-			fatalStep("download_package", "Download failed: %v", err)
+			downloadOptions := downloadEventOptions(cfg)
+			if downloadOptions != nil {
+				downloadOptions.ErrorType = classifyDownloadError(err)
+			}
+			fatalStepWithOptions("download_package", "Download failed: %v", err, downloadOptions)
 		}
-		emitEvent("download_package", "success", "Controller package downloaded", intPtr(100), 0, 0, "")
+		emitEventWithOptions("download_package", "success", "Controller package downloaded", intPtr(100), 0, 0, "", downloadEventOptions(cfg))
 
 		log("[4/6] Extracting files...")
-		emitEvent("extract_package", "running", "Extracting controller package", intPtr(0), 0, 0, "")
+		emitEventWithOptions("extract_package", "running", "Extracting controller package", intPtr(0), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
 		n, err := extract(zipPath, cfg.InstallDir)
 		if err != nil {
-			fatalStep("extract_package", "Extract failed: %v", err)
+			targetPath := extractTargetPath(err)
+			fatalStepWithOptions("extract_package", "Extract failed: %v", err, &EventOptions{
+				ErrorType:       classifyExtractError(err),
+				InstallDir:      cfg.InstallDir,
+				TargetPath:      targetPath,
+				PackageName:     firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName),
+				CPUArchitecture: cfg.Package.CPUArchitecture,
+			})
 		}
 		os.Remove(zipPath)
 		log("      Extracted %d files", n)
-		emitEvent("extract_package", "success", fmt.Sprintf("Extracted %d files", n), intPtr(100), 0, 0, "")
+		emitEventWithOptions("extract_package", "success", fmt.Sprintf("Extracted %d files", n), intPtr(100), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
 	} else {
 		log("[3/6] No storage package, skipping...")
 		log("[4/6] No extraction needed...")
@@ -152,17 +197,17 @@ func run(client *http.Client) {
 	emitEvent("configure_runtime", "success", "Installer runtime configured", intPtr(100), 0, 0, "")
 
 	log("[6/6] Registering service...")
-	emitEvent("run_package_installer", "running", "Running package installer", nil, 0, 0, "")
+	emitEventWithOptions("run_package_installer", "running", "Running package installer", nil, 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture})
 	if isLinux(cfg.OS) {
 		if err := runLinuxInstaller(cfg); err != nil {
-			fatalStep("run_package_installer", "Linux install failed: %v", err)
+			fatalStepWithOptions("run_package_installer", "Linux install failed: %v", err, eventOptionsForExecError(err, &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}))
 		}
 	} else {
 		if err := registerService(cfg.InstallDir); err != nil {
-			fatalStep("run_package_installer", "Service registration failed: %v", err)
+			fatalStepWithOptions("run_package_installer", "Service registration failed: %v", err, eventOptionsForExecError(err, &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}))
 		}
 	}
-	emitEvent("run_package_installer", "success", "Package installer finished", intPtr(100), 0, 0, "")
+	emitEventWithOptions("run_package_installer", "success", "Package installer finished", intPtr(100), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture})
 
 	log("")
 	log("Installation complete!")
@@ -175,6 +220,10 @@ func log(format string, args ...interface{}) {
 }
 
 func emitEvent(step, status, message string, progress *int, downloaded, total int64, errMsg string) {
+	emitEventWithOptions(step, status, message, progress, downloaded, total, errMsg, nil)
+}
+
+func emitEventWithOptions(step, status, message string, progress *int, downloaded, total int64, errMsg string, options *EventOptions) {
 	event := InstallerEvent{
 		Step:       step,
 		Status:     status,
@@ -184,6 +233,17 @@ func emitEvent(step, status, message string, progress *int, downloaded, total in
 		Total:      total,
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
 		Error:      errMsg,
+	}
+	if options != nil {
+		event.ErrorType = strings.TrimSpace(options.ErrorType)
+		event.Bucket = strings.TrimSpace(options.Bucket)
+		event.FileKey = strings.TrimSpace(options.FileKey)
+		event.FileName = strings.TrimSpace(options.FileName)
+		event.PackageName = strings.TrimSpace(options.PackageName)
+		event.CPUArchitecture = strings.TrimSpace(options.CPUArchitecture)
+		event.InstallDir = strings.TrimSpace(options.InstallDir)
+		event.TargetPath = strings.TrimSpace(options.TargetPath)
+		event.ExitCode = options.ExitCode
 	}
 	payload, err := json.Marshal(event)
 	if err != nil {
@@ -204,9 +264,119 @@ func fatal(format string, args ...interface{}) {
 }
 
 func fatalStep(step, format string, err error) {
+	fatalStepWithOptions(step, format, err, nil)
+}
+
+func fatalStepWithOptions(step, format string, err error, options *EventOptions) {
 	msg := fmt.Sprintf(format, err)
-	emitEvent(step, "failed", msg, nil, 0, 0, msg)
+	emitEventWithOptions(step, "failed", msg, nil, 0, 0, msg, options)
 	fatal("%s", msg)
+}
+
+func intValuePtr(v int) *int {
+	return &v
+}
+
+func classifyDownloadError(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "object not found") || strings.Contains(message, "get object failed"):
+		return "object_missing"
+	case strings.Contains(message, "open object store failed") && strings.Contains(message, "not found"):
+		return "bucket_missing"
+	case strings.Contains(message, "authorization") || strings.Contains(message, "authentication") || strings.Contains(message, "access denied"):
+		return "auth"
+	case strings.Contains(message, "connect nats failed") || strings.Contains(message, "connection refused") || strings.Contains(message, "network is unreachable"):
+		return "connection"
+	default:
+		return ""
+	}
+}
+
+func classifyExtractError(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "text file busy"):
+		return "file_busy"
+	case strings.Contains(message, "permission denied") || strings.Contains(message, "operation not permitted"):
+		return "permission"
+	case strings.Contains(message, "no space left on device"):
+		return "disk"
+	case strings.Contains(message, "invalid") || strings.Contains(message, "unexpected eof") || strings.Contains(message, "corrupt"):
+		return "package_invalid"
+	default:
+		return ""
+	}
+}
+
+func classifyInstallError(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "permission denied") || strings.Contains(message, "operation not permitted"):
+		return "permission"
+	case strings.Contains(message, "exec format error"):
+		return "arch_mismatch"
+	default:
+		return ""
+	}
+}
+
+func downloadEventOptions(cfg *Config) *EventOptions {
+	if cfg == nil {
+		return nil
+	}
+	return &EventOptions{
+		Bucket:          cfg.Storage.Bucket,
+		FileKey:         firstNonEmpty(cfg.Storage.FileKey, cfg.Package.FileKey),
+		FileName:        cfg.Storage.FileName,
+		PackageName:     firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName),
+		CPUArchitecture: cfg.Package.CPUArchitecture,
+		InstallDir:      cfg.InstallDir,
+	}
+}
+
+func extractTargetPath(err error) string {
+	if err == nil {
+		return ""
+	}
+	matcher := regexp.MustCompile(`open\s+([^:]+):\s+text file busy`)
+	match := matcher.FindStringSubmatch(err.Error())
+	if len(match) == 2 {
+		return strings.TrimSpace(match[1])
+	}
+	return ""
+}
+
+func eventOptionsForExecError(err error, options *EventOptions) *EventOptions {
+	base := &EventOptions{}
+	if options != nil {
+		*base = *options
+	}
+	base.ErrorType = firstNonEmpty(base.ErrorType, classifyInstallError(err))
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		base.ExitCode = intValuePtr(exitErr.ExitCode())
+	}
+	return base
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func newHTTPClient(skipTLS bool) *http.Client {

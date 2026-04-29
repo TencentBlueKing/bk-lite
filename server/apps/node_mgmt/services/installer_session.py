@@ -108,6 +108,15 @@ class InstallerSessionService:
             },
             "zone_id": str(token_data["cloud_region_id"]),
         }
+        config["package"] = {
+            "id": package_obj.id,
+            "os": package_obj.os,
+            "cpu_architecture": getattr(package_obj, "cpu_architecture", "") or resolved_arch or "generic",
+            "object": package_obj.object,
+            "version": package_obj.version,
+            "name": package_obj.name,
+            "file_key": PackageService.build_file_path(package_obj),
+        }
         config["installer"] = InstallerSessionService.installer_artifact(
             token_data["os"],
             resolved_arch,

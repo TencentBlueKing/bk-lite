@@ -11,8 +11,13 @@
     "validation_parameters": "",
     "default_template": "",
     "introduction": "JVM-JMX is a Java Management Extensions (JMX) monitoring tool that collects and monitors JVM metrics, providing real-time performance insights.",
-    "tags": ["linux", "jmx", "monitor"],
-    "package_name": "jmx_jvm"
+    "tags": [
+      "linux",
+      "jmx",
+      "monitor"
+    ],
+    "package_name": "jmx_jvm",
+    "cpu_architecture": "x86_64",
+    "default_config": {}
   }
 ]
-

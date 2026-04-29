@@ -11,6 +11,7 @@ import (
 	"nats-executor/logger"
 	"nats-executor/utils"
 	"nats-executor/utils/downloaderr"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -72,7 +73,14 @@ var (
 	parsePrivateKeyWithPassphraseFn = ssh.ParsePrivateKeyWithPassphrase
 	mkdirTempDir                    = os.MkdirTemp
 	removeAllPath                   = os.RemoveAll
-	sshDialFn                       = func(network, addr string, config *ssh.ClientConfig) (sshClient, error) {
+	tcpProbeFn                      = func(addr string, timeout time.Duration) error {
+		conn, err := net.DialTimeout("tcp", addr, timeout)
+		if err != nil {
+			return err
+		}
+		return conn.Close()
+	}
+	sshDialFn = func(network, addr string, config *ssh.ClientConfig) (sshClient, error) {
 		client, err := ssh.Dial(network, addr, config)
 		if err != nil {
 			return nil, err
@@ -82,6 +90,21 @@ var (
 )
 
 const sshConnectTimeout = 30 * time.Second
+
+const (
+	sshStageTCPConnect    = "tcp_connect"
+	sshStageSSHDial       = "ssh_dial"
+	sshStageLegacyRetry   = "legacy_retry"
+	sshStageSessionCreate = "session_create"
+	sshStageCommandRun    = "command_run"
+
+	sshCategoryNetwork       = "network"
+	sshCategoryCompatibility = "compatibility"
+	sshCategoryAuth          = "auth"
+	sshCategoryDependency    = "dependency"
+	sshCategoryRemoteTimeout = "remote_timeout"
+	sshCategoryRemoteExit    = "remote_exit"
+)
 
 func (c realSSHClient) NewSession() (sshSession, error) {
 	session, err := c.client.NewSession()
@@ -211,6 +234,16 @@ func handleDownloadToRemoteMessage(data []byte, instanceId string, nc sshConn) (
 	}
 
 	deadline := time.Now().Add(time.Duration(downloadRequest.ExecuteTimeout) * time.Second)
+	if downloadRequest.FastFail {
+		probeResp := tcpProbeResponse(instanceId, fmt.Sprintf("%s:%d", downloadRequest.Host, downloadRequest.Port), tcpProbeTimeout(remainingBudget(deadline)))
+		if !probeResp.Success {
+			responseContent, err := json.Marshal(probeResp)
+			if err != nil {
+				return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeExecutionFailure, fmt.Sprintf("Failed to marshal response: %v", err)), true
+			}
+			return responseContent, true
+		}
+	}
 
 	stagingBasePath := downloadRequest.LocalPath
 	if stagingBasePath == "" {
@@ -563,6 +596,96 @@ func invalidSSHExecuteResponse(instanceId, message string) ExecuteResponse {
 	}
 }
 
+func newSSHFailureResponse(instanceId, code, message, stage, category string) ExecuteResponse {
+	return ExecuteResponse{
+		InstanceId: instanceId,
+		Success:    false,
+		Output:     message,
+		Code:       code,
+		Error:      message,
+		Stage:      stage,
+		Category:   category,
+	}
+}
+
+func timeoutStageResponse(instanceId, output, message, stage, category string) ExecuteResponse {
+	return ExecuteResponse{
+		Output:     output,
+		InstanceId: instanceId,
+		Success:    false,
+		Code:       utils.ErrorCodeTimeout,
+		Error:      message,
+		Stage:      stage,
+		Category:   category,
+	}
+}
+
+func tcpProbeTimeout(timeout time.Duration) time.Duration {
+	if timeout <= 0 {
+		return 0
+	}
+	probe := timeout / 5
+	if probe > 5*time.Second {
+		probe = 5 * time.Second
+	}
+	if probe < time.Second {
+		probe = time.Second
+	}
+	if probe > timeout {
+		probe = timeout
+	}
+	return probe
+}
+
+func tcpProbeResponse(instanceId, addr string, timeout time.Duration) local.ExecuteResponse {
+	if timeout <= 0 {
+		message := "SCP 传输在 TCP 探测前超时"
+		return local.ExecuteResponse{InstanceId: instanceId, Success: false, Code: utils.ErrorCodeTimeout, Error: message, Output: message}
+	}
+	if err := tcpProbeFn(addr, timeout); err != nil {
+		if isLikelyTimeoutError(err) {
+			message := fmt.Sprintf("远程主机端口连接超时: %s", addr)
+			return local.ExecuteResponse{InstanceId: instanceId, Success: false, Code: utils.ErrorCodeTimeout, Error: message, Output: message}
+		}
+		message := fmt.Sprintf("远程主机端口不可达: %s, error=%v", addr, err)
+		return local.ExecuteResponse{InstanceId: instanceId, Success: false, Code: utils.ErrorCodeDependencyFailure, Error: message, Output: message}
+	}
+	return local.ExecuteResponse{InstanceId: instanceId, Success: true}
+}
+
+func isLikelyAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "permission denied") || strings.Contains(lower, "unable to authenticate") || strings.Contains(lower, "authenticate")
+}
+
+func isLikelyNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isLikelyTimeoutError(err) {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	networkIndicators := []string{
+		"connection refused",
+		"no route to host",
+		"network is unreachable",
+		"host is down",
+		"connection reset",
+		"broken pipe",
+		"lookup ",
+	}
+	for _, indicator := range networkIndicators {
+		if strings.Contains(lower, indicator) {
+			return true
+		}
+	}
+	return false
+}
+
 func validateExecuteRequest(req ExecuteRequest) string {
 	switch {
 	case strings.TrimSpace(req.Command) == "":
@@ -608,13 +731,7 @@ func remainingBudgetSeconds(deadline time.Time) int {
 }
 
 func timeoutResponse(instanceId, output, message string) ExecuteResponse {
-	return ExecuteResponse{
-		Output:     output,
-		InstanceId: instanceId,
-		Success:    false,
-		Code:       utils.ErrorCodeTimeout,
-		Error:      message,
-	}
+	return timeoutStageResponse(instanceId, output, message, "", sshCategoryRemoteTimeout)
 }
 
 func localTimeoutResponse(instanceId, message string) local.ExecuteResponse {
@@ -695,7 +812,25 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 
 	remaining := remainingBudget(deadline)
 	if remaining <= 0 {
-		return timeoutResponse(instanceId, "", fmt.Sprintf("SSH execution timed out before dialing (timeout: %ds)", req.ExecuteTimeout))
+		return timeoutStageResponse(instanceId, "", fmt.Sprintf("SSH execution timed out before dialing (timeout: %ds)", req.ExecuteTimeout), sshStageSSHDial, sshCategoryRemoteTimeout)
+	}
+
+	addr := fmt.Sprintf("%s:%d", req.Host, req.Port)
+	if req.ConnectionTest {
+		probeTimeout := tcpProbeTimeout(remaining)
+		if probeTimeout <= 0 {
+			return timeoutStageResponse(instanceId, "", fmt.Sprintf("SSH execution timed out before TCP probe (timeout: %ds)", req.ExecuteTimeout), sshStageTCPConnect, sshCategoryRemoteTimeout)
+		}
+		if err := tcpProbeFn(addr, probeTimeout); err != nil {
+			if isLikelyTimeoutError(err) {
+				return timeoutStageResponse(instanceId, "", fmt.Sprintf("TCP connect timed out after %s", probeTimeout), sshStageTCPConnect, sshCategoryNetwork)
+			}
+			return newSSHFailureResponse(instanceId, utils.ErrorCodeDependencyFailure, fmt.Sprintf("TCP connect failed: %v", err), sshStageTCPConnect, sshCategoryNetwork)
+		}
+		remaining = remainingBudget(deadline)
+		if remaining <= 0 {
+			return timeoutStageResponse(instanceId, "", fmt.Sprintf("SSH execution timed out after TCP probe (timeout: %ds)", req.ExecuteTimeout), sshStageSSHDial, sshCategoryRemoteTimeout)
+		}
 	}
 
 	sshConfig := &ssh.ClientConfig{
@@ -706,7 +841,6 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 		HostKeyAlgorithms: hostKeyAlgorithmsForProfile(profileModern),
 	}
 
-	addr := fmt.Sprintf("%s:%d", req.Host, req.Port)
 	client, err := sshDialFn("tcp", addr, sshConfig)
 	if err != nil {
 		if shouldRetryWithLegacy(err.Error()) {
@@ -714,7 +848,7 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 			if remaining <= 0 {
 				errMsg := fmt.Sprintf("SSH dial timed out after %ds before legacy retry", req.ExecuteTimeout)
 				logger.Warnf("[SSH Execute] Instance: %s, %s", instanceId, errMsg)
-				return timeoutResponse(instanceId, "", errMsg)
+				return timeoutStageResponse(instanceId, "", errMsg, sshStageLegacyRetry, sshCategoryCompatibility)
 			}
 			logger.Warnf("[SSH Execute] Instance: %s, modern profile dial failed, retrying legacy profile for %s@%s:%d - Error: %v", instanceId, req.User, req.Host, req.Port, err)
 
@@ -758,17 +892,23 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 			if remainingBudget(deadline) <= 0 || isLikelyTimeoutError(err) {
 				errMsg := fmt.Sprintf("SSH dial timed out after %ds", req.ExecuteTimeout)
 				logger.Warnf("[SSH Execute] Instance: %s, %s", instanceId, errMsg)
-				return timeoutResponse(instanceId, "", errMsg)
+				return timeoutStageResponse(instanceId, "", errMsg, sshStageSSHDial, sshCategoryNetwork)
+			}
+			if isLikelyAuthError(err) {
+				errMsg := fmt.Sprintf("SSH authentication failed: %v", err)
+				return newSSHFailureResponse(instanceId, utils.ErrorCodeDependencyFailure, errMsg, sshStageSSHDial, sshCategoryAuth)
+			}
+			if shouldRetryWithLegacy(err.Error()) {
+				errMsg := fmt.Sprintf("SSH compatibility failed after legacy retry: %v", err)
+				return newSSHFailureResponse(instanceId, utils.ErrorCodeDependencyFailure, errMsg, sshStageLegacyRetry, sshCategoryCompatibility)
+			}
+			if isLikelyNetworkError(err) {
+				errMsg := fmt.Sprintf("Failed to create SSH client: %v", err)
+				return newSSHFailureResponse(instanceId, utils.ErrorCodeDependencyFailure, errMsg, sshStageSSHDial, sshCategoryNetwork)
 			}
 			errMsg := fmt.Sprintf("Failed to create SSH client: %v", err)
 			logger.Errorf("[SSH Execute] Instance: %s, Failed to create SSH client for %s@%s:%d - Error: %v", instanceId, req.User, req.Host, req.Port, err)
-			return ExecuteResponse{
-				InstanceId: instanceId,
-				Success:    false,
-				Output:     errMsg,
-				Code:       utils.ErrorCodeDependencyFailure,
-				Error:      errMsg,
-			}
+			return newSSHFailureResponse(instanceId, utils.ErrorCodeDependencyFailure, errMsg, sshStageSSHDial, sshCategoryDependency)
 		}
 	}
 
@@ -783,17 +923,11 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 		if remainingBudget(deadline) <= 0 {
 			errMsg := fmt.Sprintf("SSH session setup timed out after %ds", req.ExecuteTimeout)
 			logger.Warnf("[SSH Execute] Instance: %s, %s", instanceId, errMsg)
-			return timeoutResponse(instanceId, "", errMsg)
+			return timeoutStageResponse(instanceId, "", errMsg, sshStageSessionCreate, sshCategoryRemoteTimeout)
 		}
 		errMsg := fmt.Sprintf("Failed to create SSH session: %v", err)
 		logger.Errorf("[SSH Execute] Instance: %s, Failed to create SSH session - Error: %v", instanceId, err)
-		return ExecuteResponse{
-			InstanceId: instanceId,
-			Success:    false,
-			Output:     errMsg,
-			Code:       utils.ErrorCodeDependencyFailure,
-			Error:      errMsg,
-		}
+		return newSSHFailureResponse(instanceId, utils.ErrorCodeDependencyFailure, errMsg, sshStageSessionCreate, sshCategoryDependency)
 	}
 	defer session.Close()
 
@@ -834,7 +968,7 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 		if stderrStreamWriter != nil {
 			stderrStreamWriter.Flush()
 		}
-		return timeoutResponse(instanceId, stdout.String()+stderr.String(), errMsg)
+		return timeoutStageResponse(instanceId, stdout.String()+stderr.String(), errMsg, sshStageCommandRun, sshCategoryRemoteTimeout)
 	case err := <-errChan:
 		duration := time.Since(startTime)
 		if stdoutStreamWriter != nil {
@@ -858,6 +992,8 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 				Success:    false,
 				Code:       utils.ErrorCodeExecutionFailure,
 				Error:      errMsg,
+				Stage:      sshStageCommandRun,
+				Category:   sshCategoryRemoteExit,
 			}
 		}
 

@@ -18,8 +18,13 @@
         "module": "\n# ================================== Modules ==================================\nfilebeat.modules:\n"
       }
     },
-    "tags": ["linux", "beat", "log"],
-    "package_name": "filebeat"
+    "tags": [
+      "linux",
+      "beat",
+      "log"
+    ],
+    "package_name": "filebeat",
+    "cpu_architecture": "x86_64"
   },
   {
     "id": "Filebeat_windows",
@@ -40,7 +45,12 @@
         "module": "\n# ================================== Modules ==================================\nfilebeat.modules:\n"
       }
     },
-    "tags": ["windows", "beat", "log"],
-    "package_name": "filebeat"
+    "tags": [
+      "windows",
+      "beat",
+      "log"
+    ],
+    "package_name": "filebeat",
+    "cpu_architecture": "x86_64"
   }
 ]

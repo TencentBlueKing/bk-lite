@@ -53,6 +53,26 @@ export interface InstallerProgressMetric {
   unit?: string;
 }
 
+export interface InstallerFailureContext {
+  bucket?: string;
+  file_key?: string;
+  package_name?: string;
+  cpu_architecture?: string;
+  install_dir?: string;
+  target_path?: string;
+  exit_code?: number;
+}
+
+export interface InstallerFailure {
+  message?: string;
+  type?: string;
+  code?: number;
+  summary?: string;
+  context?: InstallerFailureContext;
+  retriable?: boolean;
+  raw_error?: string;
+}
+
 export interface InstallerStepDetails {
   installer_event?: boolean;
   raw_step?: InstallerStepCode;
@@ -62,6 +82,7 @@ export interface InstallerStepDetails {
   timestamp?: string;
   error?: string;
   installer_message?: string;
+  failure?: InstallerFailure;
 }
 
 export interface InstallerProgressSummary {
@@ -76,6 +97,7 @@ export interface InstallerProgressSummary {
 export interface OperationTaskResult {
   steps?: LogStep[];
   installer_progress?: InstallerProgressSummary;
+  failure?: InstallerFailure;
 }
 
 export interface ControllerInstallProgressRow {

@@ -434,6 +434,20 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
                       {failureGuidance.reason}
                     </div>
                   )}
+                  {!!failureGuidance.context?.length && (
+                    <div className="mt-[4px] text-[var(--color-text-3)]">
+                      <div className="mb-[2px] text-[12px]">
+                        {t('node-manager.cloudregion.node.failureContext')}:
+                      </div>
+                      <div className="space-y-[2px]">
+                      {failureGuidance.context.map((entry) => (
+                        <div key={entry} className="line-clamp-1">
+                          {entry}
+                        </div>
+                      ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-[4px] text-[var(--color-text-2)] line-clamp-2">
                     {t('node-manager.cloudregion.node.nextAction')}:
                     {' '}
