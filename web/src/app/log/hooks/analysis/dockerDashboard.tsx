@@ -181,6 +181,7 @@ export const useDockerDashboard = () => {
         valueConfig: {
           chartType: 'table',
           dataSource: 1,
+          showIndex: true,
           columns: [
             {
               title: t('log.analysis.docker.containerName'),
@@ -212,6 +213,7 @@ export const useDockerDashboard = () => {
         valueConfig: {
           chartType: 'table',
           dataSource: 1,
+          showIndex: true,
           columns: [
             {
               title: t('log.analysis.docker.imageName'),
@@ -243,6 +245,7 @@ export const useDockerDashboard = () => {
         valueConfig: {
           chartType: 'table',
           dataSource: 1,
+          showIndex: true,
           columns: [
             {
               title: t('log.analysis.docker.hostName'),
