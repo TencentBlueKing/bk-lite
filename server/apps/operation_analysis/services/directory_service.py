@@ -17,20 +17,30 @@ class DictDirectoryService:
         """
         获取目录树形结构,目录和仪表盘统一作为树节点
         """
-        # 验证用户组织权限
+        # 验证用户组织权限，构建组织ID列表（支持 include_children）
         current_team = int(request.COOKIES.get("current_team"))
+        group_ids = [current_team]
+        if request.COOKIES.get("include_children", "0") == "1":
+            from apps.core.utils.viewset_utils import GenericViewSetFun
+
+            group_tree = getattr(request.user, "group_tree", [])
+            child_ids = GenericViewSetFun.extract_child_group_ids(group_tree, current_team)
+            if child_ids:
+                group_ids = child_ids
 
         # 构建基础查询集并应用组织过滤
         base_queryset = Directory.objects.filter(is_active=True)
-        directories = GroupPermissionMixin.apply_group_filter(base_queryset, current_team).order_by("id")
+        directories = GroupPermissionMixin.apply_group_filter(base_queryset, current_team, group_ids=group_ids).order_by("id")
 
         # 构建仪表盘、拓扑图、架构图的查询集
         # 内置画布只需通过组织过滤（第一层），跳过实例级权限过滤（第二层）
         dashboard_base = Dashboard.objects.filter(directory__in=directories)
         dashboards = (
             (
-                GroupPermissionMixin.apply_group_filter(dashboard_base.filter(is_build_in=False), current_team, request.user, "directory.dashboard")
-                | dashboard_base.filter(is_build_in=True)
+                GroupPermissionMixin.apply_group_filter(
+                    dashboard_base.filter(is_build_in=False), current_team, request.user, "directory.dashboard", group_ids=group_ids
+                )
+                | GroupPermissionMixin.apply_group_filter(dashboard_base.filter(is_build_in=True), current_team, group_ids=group_ids)
             )
             .distinct()
             .order_by("id")
@@ -39,8 +49,10 @@ class DictDirectoryService:
         topology_base = Topology.objects.filter(directory__in=directories)
         topologies = (
             (
-                GroupPermissionMixin.apply_group_filter(topology_base.filter(is_build_in=False), current_team, request.user, "directory.topology")
-                | topology_base.filter(is_build_in=True)
+                GroupPermissionMixin.apply_group_filter(
+                    topology_base.filter(is_build_in=False), current_team, request.user, "directory.topology", group_ids=group_ids
+                )
+                | GroupPermissionMixin.apply_group_filter(topology_base.filter(is_build_in=True), current_team, group_ids=group_ids)
             )
             .distinct()
             .order_by("id")
@@ -50,9 +62,9 @@ class DictDirectoryService:
         architectures = (
             (
                 GroupPermissionMixin.apply_group_filter(
-                    architecture_base.filter(is_build_in=False), current_team, request.user, "directory.architecture"
+                    architecture_base.filter(is_build_in=False), current_team, request.user, "directory.architecture", group_ids=group_ids
                 )
-                | architecture_base.filter(is_build_in=True)
+                | GroupPermissionMixin.apply_group_filter(architecture_base.filter(is_build_in=True), current_team, group_ids=group_ids)
             )
             .distinct()
             .order_by("id")

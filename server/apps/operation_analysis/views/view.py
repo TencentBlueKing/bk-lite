@@ -30,23 +30,19 @@ def _raise_if_builtin(instance, action_name="修改"):
 class BuiltinVisibleMixin:
     """
     内置对象跳过实例级权限过滤（但仍受组织过滤约束）。
-    在 list 中将内置对象从权限过滤中排除后合并；
+    通过 get_queryset_by_permission 将内置对象从权限过滤中排除后合并；
     在 retrieve 中内置对象跳过实例级校验。
     """
 
-    def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        # 内置对象：只做组织过滤，跳过实例级权限
+    def get_queryset_by_permission(self, request, queryset, permission_key=None):
         builtin_qs = queryset.filter(is_build_in=True)
-        current_team = self._parse_current_team_cookie(request)
-        if current_team is not None:
-            builtin_qs = builtin_qs.filter(**{f"{self.ORGANIZATION_FIELD}__contains": int(current_team)})
-        # 普通对象：走完整权限过滤
         normal_qs = queryset.filter(is_build_in=False)
-        filtered_normal = self.get_queryset_by_permission(request, normal_qs)
-        # 合并
-        merged = (filtered_normal | builtin_qs).distinct().order_by(self.ORDERING_FIELD)
-        return self._list(merged)
+        # 内置对象：复用 filter_by_group 做组织过滤（支持 include_children），跳过实例级权限
+        _ct, _ic, _of, org_query = self.filter_by_group(builtin_qs, request, request.user)
+        builtin_filtered = builtin_qs.filter(org_query)
+        # 普通对象：走完整权限过滤
+        normal_filtered = super().get_queryset_by_permission(request, normal_qs, permission_key)
+        return (normal_filtered | builtin_filtered).distinct()
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
