@@ -53,6 +53,23 @@ class CollectModelViewSet(AuthViewSet):
             raise ValueError(f"{field_name} 必须大于等于 1")
         return parsed
 
+    def _build_region_query_credential(self, params, task_id=None):
+        credential = dict(params)
+        model_id = (credential.get("model_id") or "").split("_account", 1)[0]
+        credential["model_id"] = model_id
+
+        driver_type = credential.get("driver_type")
+        if task_id:
+            instance = self.queryset.get(id=task_id)
+            raw_credential = instance.decrypt_credentials or {}
+            driver_type = instance.driver_type
+        else:
+            raw_credential = credential
+
+        params_cls = NodeParamsFactory.get_params_class(model_id, driver_type)
+        credential.update(params_cls.build_region_credential(raw_credential))
+        return credential
+
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="collect_model_tree")
     def tree(self, request, *args, **kwargs):
@@ -246,25 +263,16 @@ class CollectModelViewSet(AuthViewSet):
         TODO 看看未来需不需要使用实例的endpoint和认证信息，目前先使用公共接口，后续如果有需要再调整
         "host": "ecs.private-cloud.example.com"
         """
-        params = requests.data
+        params = requests.data.copy()
         cloud_id = requests.data["cloud_id"]
         cloud_list = NodeMgmt().cloud_region_list()
         cloud_id_map = {i["id"]: i["name"] for i in cloud_list}
         cloud_name = cloud_id_map.get(cloud_id)
         if not cloud_name:
             return WebUtils.response_error(error_message="cloud_id 不存在", status_code=400)
-        params["model_id"] = params["model_id"].split("_account", 1)[0]
-        if params["model_id"] == "qcloud":
-            if params.get("access_key") and not params.get("secret_id"):
-                params["secret_id"] = params["access_key"]
-            if params.get("access_secret") and not params.get("secret_key"):
-                params["secret_key"] = params["access_secret"]
         task_id = params.pop("task_id", None)
-        if task_id:
-            node_object = NodeParamsFactory.get_node_params(instance=self.queryset.get(id=task_id))
-            for key, value in node_object.password.items():
-                params.setdefault(key, value)
-        result = CollectModelService.list_regions(params, cloud_name=cloud_name)
+        credential = self._build_region_query_credential(params, task_id=task_id)
+        result = CollectModelService.list_regions(credential, cloud_name=cloud_name)
         if result.get("success"):
             return WebUtils.response_success(result.get("result", []))
         return WebUtils.response_error(error_message=result.get("message", "获取区域失败"), status_code=400)
