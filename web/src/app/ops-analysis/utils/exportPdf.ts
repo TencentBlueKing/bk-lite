@@ -6,10 +6,21 @@ export async function exportDashboardToPdf(
   filename: string = 'dashboard'
 ) {
   const scrollContainer = element.querySelector('.overflow-auto') as HTMLElement | null;
+  const expandElements = Array.from(
+    element.querySelectorAll('[data-export-expand="true"]')
+  ) as HTMLElement[];
   const hiddenElements = Array.from(
     element.querySelectorAll('[data-export-hidden="true"]')
   ) as HTMLElement[];
   const savedStyles: Record<string, string> = {};
+  const savedExpandStyles = expandElements.map((expandElement) => ({
+    element: expandElement,
+    overflow: expandElement.style.overflow,
+    height: expandElement.style.height,
+    maxHeight: expandElement.style.maxHeight,
+    minHeight: expandElement.style.minHeight,
+    flex: expandElement.style.flex,
+  }));
   const savedHiddenDisplays = hiddenElements.map((hiddenElement) => ({
     element: hiddenElement,
     display: hiddenElement.style.display,
@@ -25,7 +36,23 @@ export async function exportDashboardToPdf(
   }
 
   savedStyles.parentOverflow = element.style.overflow;
+  savedStyles.parentHeight = element.style.height;
+  savedStyles.parentMaxHeight = element.style.maxHeight;
+  savedStyles.parentMinHeight = element.style.minHeight;
+  savedStyles.parentFlex = element.style.flex;
   element.style.overflow = 'visible';
+  element.style.height = 'auto';
+  element.style.maxHeight = 'none';
+  element.style.minHeight = 'fit-content';
+  element.style.flex = 'none';
+
+  expandElements.forEach((expandElement) => {
+    expandElement.style.overflow = 'visible';
+    expandElement.style.height = 'auto';
+    expandElement.style.maxHeight = 'none';
+    expandElement.style.minHeight = 'fit-content';
+    expandElement.style.flex = 'none';
+  });
 
   hiddenElements.forEach((hiddenElement) => {
     hiddenElement.style.display = 'none';
@@ -75,6 +102,14 @@ export async function exportDashboardToPdf(
 
     pdf.save(`${filename}.pdf`);
   } finally {
+    savedExpandStyles.forEach(({ element: expandElement, overflow, height, maxHeight, minHeight, flex }) => {
+      expandElement.style.overflow = overflow;
+      expandElement.style.height = height;
+      expandElement.style.maxHeight = maxHeight;
+      expandElement.style.minHeight = minHeight;
+      expandElement.style.flex = flex;
+    });
+
     savedHiddenDisplays.forEach(({ element: hiddenElement, display }) => {
       hiddenElement.style.display = display;
     });
@@ -85,5 +120,13 @@ export async function exportDashboardToPdf(
       scrollContainer.style.maxHeight = savedStyles.maxHeight;
     }
     element.style.overflow = savedStyles.parentOverflow;
+    element.style.height = savedStyles.parentHeight;
+    element.style.maxHeight = savedStyles.parentMaxHeight;
+    element.style.minHeight = savedStyles.parentMinHeight;
+    element.style.flex = savedStyles.parentFlex;
+
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent('ops-analysis:dashboard-export-restored'));
+    });
   }
 }

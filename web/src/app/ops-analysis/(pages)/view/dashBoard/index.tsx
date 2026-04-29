@@ -651,7 +651,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     return (
       <div className="h-full flex-1 p-2 pb-0 overflow-auto flex flex-col bg-(--color-bg-1">
-        <div ref={exportRef} className="flex-1 min-h-0 flex flex-col">
+        <div
+          ref={exportRef}
+          className="flex-1 min-h-0 flex flex-col"
+          data-export-expand="true"
+        >
           <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm bg-(--color-bg-1) p-3 border border-(--color-border-2)">
             <div className="flex-1 mr-8">
               {selectedDashboard && (
@@ -751,7 +755,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             </div>
           </div>
 
-          <div className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col">
+          <div
+            className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col"
+            data-export-expand="true"
+          >
           {(definitions.length > 0 || namespaceSelectorElement) && (
             <div className="shrink-0">
               <UnifiedFilterBar
@@ -762,7 +769,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               />
             </div>
           )}
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-auto" data-export-expand="true">
             {(() => {
               if (loading) {
                 return (

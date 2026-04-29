@@ -5,6 +5,11 @@ import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 
+interface EChartsInstance {
+  dispatchAction: (payload: Record<string, any>) => void;
+  resize: () => void;
+}
+
 interface TrendLineProps {
   rawData: any;
   loading?: boolean;
@@ -47,7 +52,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
   }, [rawData]);
 
   const activateDataZoomSelect = useCallback(() => {
-    const instance = chartRef.current?.getEchartsInstance();
+    const instance = chartRef.current?.getEchartsInstance() as EChartsInstance | undefined;
     if (instance) {
       instance.dispatchAction({
         type: 'takeGlobalCursor',
@@ -57,11 +62,18 @@ const TrendLine: React.FC<TrendLineProps> = ({
     }
   }, []);
 
+  const scheduleActivateDataZoomSelect = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        activateDataZoomSelect();
+      });
+    });
+  }, [activateDataZoomSelect]);
+
   useEffect(() => {
     if (!isDataReady) return;
-    const timer = setTimeout(activateDataZoomSelect, 100);
-    return () => clearTimeout(timer);
-  }, [legendSelected, rawData, zoomRange, isDataReady, activateDataZoomSelect]);
+    scheduleActivateDataZoomSelect();
+  }, [legendSelected, rawData, zoomRange, isDataReady, scheduleActivateDataZoomSelect]);
 
   const handleDataZoom = useCallback(() => {
     const instance = chartRef.current?.getEchartsInstance();
@@ -87,6 +99,35 @@ const TrendLine: React.FC<TrendLineProps> = ({
       setZoomRange({ start: 0, end: 100 });
     }
   }, [isZoomed]);
+
+  const handleChartReady = useCallback(() => {
+    if (!isDataReady) return;
+    scheduleActivateDataZoomSelect();
+  }, [isDataReady, scheduleActivateDataZoomSelect]);
+
+  useEffect(() => {
+    const handleExportRestored = () => {
+      const instance = chartRef.current?.getEchartsInstance() as EChartsInstance | undefined;
+      if (!instance || !isDataReady) return;
+
+      requestAnimationFrame(() => {
+        instance.resize();
+        scheduleActivateDataZoomSelect();
+      });
+    };
+
+    window.addEventListener(
+      'ops-analysis:dashboard-export-restored',
+      handleExportRestored as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'ops-analysis:dashboard-export-restored',
+        handleExportRestored as EventListener,
+      );
+    };
+  }, [isDataReady, scheduleActivateDataZoomSelect]);
 
   const option: any = {
     color: chartColors,
@@ -288,6 +329,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
           option={option}
           notMerge={true}
           style={{ height: '100%', width: '100%' }}
+          onChartReady={handleChartReady}
           onEvents={{ datazoom: handleDataZoom, dblclick: handleDblClick }}
         />
       </div>
