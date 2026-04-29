@@ -15,7 +15,7 @@ import {
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
-import { formatTaskValues } from '../hooks/formatTaskValues';
+import { formatTaskValues, trimFormString } from '../hooks/formatTaskValues';
 import { Form, Spin, Input, Select, Collapse, InputNumber, Switch } from 'antd';
 
 interface SNMPTaskFormProps {
@@ -82,33 +82,33 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
       }
 
       const version = values.version;
+      const community = trimFormString(values.community);
+      const username = trimFormString(values.username);
+      const authkey = trimFormString(values.authkey);
+      const privkey = trimFormString(values.privkey);
 
       const credential: any = {
         version,
         snmp_port: values.snmp_port,
       };
 
-      if (
-        version !== 'v3' &&
-        values.community &&
-        values.community !== PASSWORD_PLACEHOLDER
-      ) {
-        credential.community = values.community;
+      if (version !== 'v3' && community && community !== PASSWORD_PLACEHOLDER) {
+        credential.community = community;
       }
 
       if (version === 'v3') {
         credential.level = values.level;
-        credential.username = values.username;
+        credential.username = username;
         credential.integrity = values.integrity;
 
-        if (values.authkey && values.authkey !== PASSWORD_PLACEHOLDER) {
-          credential.authkey = values.authkey;
+        if (authkey && authkey !== PASSWORD_PLACEHOLDER) {
+          credential.authkey = authkey;
         }
 
         if (values.level === 'authPriv') {
           credential.privacy = values.privacy;
-          if (values.privkey && values.privkey !== PASSWORD_PLACEHOLDER) {
-            credential.privkey = values.privkey;
+          if (privkey && privkey !== PASSWORD_PLACEHOLDER) {
+            credential.privkey = privkey;
           }
         }
       }

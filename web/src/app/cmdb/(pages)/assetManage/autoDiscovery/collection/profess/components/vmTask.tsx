@@ -17,7 +17,7 @@ import {
   createTaskValidationRules,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
-import { formatTaskValues } from '../hooks/formatTaskValues';
+import { formatTaskValues, trimFormString } from '../hooks/formatTaskValues';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 
 interface VMTaskFormProps {
@@ -68,14 +68,16 @@ const VMTask: React.FC<VMTaskFormProps> = ({
         (item: any) => item.value === values.instId
       );
 
+      const password = trimFormString(values.password);
+
       const credential: any = {
-        username: values.username,
+        username: trimFormString(values.username),
         port: values.port,
         ssl: values.sslVerify,
       };
 
-      if (values.password && values.password !== PASSWORD_PLACEHOLDER) {
-        credential.password = values.password;
+      if (password && password !== PASSWORD_PLACEHOLDER) {
+        credential.password = password;
       }
 
       return {

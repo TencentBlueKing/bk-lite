@@ -3,12 +3,14 @@
 # @Time：2025/6/16 15:14
 # @Author：bennie
 from functools import cached_property
+import time
 from typing import List, Dict
 
 from qcloud_cos import CosConfig
 from qcloud_cos import CosS3Client
 from tencentcloud.common import credential
 from tencentcloud.common.common_client import CommonClient
+from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
 from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile
 from sanic.log import logger
@@ -64,6 +66,35 @@ class TencentCloudManager:
         # 从host参数读取endpoint，如: cvm.private-cloud.example.com
         self.custom_endpoint = params.get("host")
 
+    def _call_cmq_with_retry(self, region: str, action: str, params: Dict | None = None) -> Dict:
+        params = params or {}
+        max_retries = 3
+        retryable_error_codes = {"InternalError", "RequestLimitExceeded", "RequestTimeout"}
+        retryable_error_keywords = ("timed out", "timeout", "connection reset", "temporarily unavailable")
+
+        for attempt in range(max_retries):
+            try:
+                return self.get_tencent_client(region=region).cmq.call_json(action, params)
+            except TencentCloudSDKException as err:
+                if err.code not in retryable_error_codes or attempt == max_retries - 1:
+                    raise
+                wait_seconds = 2 ** attempt
+                logger.warning(
+                    f"Retry qcloud cmq action={action} region={region} after sdk error code={err.code} requestId={getattr(err, 'requestId', None)} attempt={attempt + 1}/{max_retries}"
+                )
+                time.sleep(wait_seconds)
+            except Exception as err:
+                error_message = str(err).lower()
+                if attempt == max_retries - 1 or not any(keyword in error_message for keyword in retryable_error_keywords):
+                    raise
+                wait_seconds = 2 ** attempt
+                logger.warning(
+                    f"Retry qcloud cmq action={action} region={region} after transient error, attempt={attempt + 1}/{max_retries}: {err}"
+                )
+                time.sleep(wait_seconds)
+
+        raise RuntimeError(f"Unexpected retry loop exit for qcloud cmq action={action} region={region}")
+
     def get_tencent_client(self, region="ap-guangzhou") -> TencentClientProxy:
         """
         params:
@@ -101,7 +132,7 @@ class TencentCloudManager:
 
     @cached_property
     def available_region_list(self):
-        return [region.get("Region") for region in self.get_qcloud_region() if region.get("RegionState") == "AVAILABLE"]
+        return [region.get("Region") for region in self.list_regions() if region.get("RegionState") == "AVAILABLE"]
 
     @cached_property
     def zone_id_zone_map(self) -> Dict:
@@ -123,11 +154,11 @@ class TencentCloudManager:
             result.extend([{
                 "resource_name": instance.get("InstanceName"),
                 "resource_id": instance.get("InstanceId"),
-                "ip_addr": instance.get("PrivateIpAddresses") or [],  # 内网IP
-                "public_ip": instance.get("PublicIpAddresses") or [],  # 公网IP
+                "ip_addr": ",".join(instance.get("PrivateIpAddresses") or []),  # 内网IP
+                "public_ip": ",".join(instance.get("PublicIpAddresses") or []),  # 公网IP
                 "region": region,  # 地域
                 "zone": instance.get("Placement", {}).get("Zone"),  # 可用区
-                "vpc": instance.get("VirtualPrivateCloud", {}),  # 虚拟私有网 VPC
+                "vpc": instance.get("VirtualPrivateCloud", {}).get("VpcId"),  # 虚拟私有网 VPC
                 "status": instance.get("InstanceState"),  # 状态
                 "instance_type": instance.get("InstanceType"),  # 规格
                 "os_name": instance.get("OsName"),
@@ -145,7 +176,13 @@ class TencentCloudManager:
             offset = 0
             limit=100
             while True:
-                rocketmq_info = self.get_tencent_client(region=region).tdmq.call_json("DescribeRocketMQClusters", {"Limit":limit, "Offset": offset})
+                try:
+                    rocketmq_info = self.get_tencent_client(region=region).tdmq.call_json("DescribeRocketMQClusters", {"Limit":limit, "Offset": offset})
+                except TencentCloudSDKException as err:
+                    if err.code == "UnsupportedRegion":
+                        logger.warning(f"Skip qcloud rocketmq collection for unsupported region: {region}")
+                        break
+                    raise
                 clusters = rocketmq_info.get("Response", {}).get("ClusterList", [])
                 offset += limit
                 if not clusters:
@@ -214,13 +251,14 @@ class TencentCloudManager:
                 "sub_status": redis_sub_status_map.get(instance.get("SubStatus"), "未知"),  # 流程中的实例返回的子状态
                 "engine": instance.get("Engine"),  # 产品版本/产品类型
                 "version": instance.get("CurrentRedisVersion"),  # 兼容版本
-                "Type": redis_type_map.get(instance.get("Type")),  # 架构版本
+                "type": redis_type_map.get(instance.get("Type")),  # 架构版本
                 "memory_mb": instance.get("Size"),
                 "shard_size": instance.get("RedisShardSize"),  # 分片大小
                 "shard_num": instance.get("RedisShardNum"),  # 分片数量
                 "replicas_num": instance.get("RedisReplicasNum"),  # 副本数量
                 "client_limit": instance.get("ClientLimit"),  # 最大连接数
                 "net_limit": instance.get("NetLimit"),  # 最大网络吞吐(Mb/s)
+                "charge_type": instance.get("BillingMode"),
             } for instance in instances])
         return result
 
@@ -291,7 +329,13 @@ class TencentCloudManager:
         最大QPS、最大消息保留时间(s)、最大存储容量(MB)、最长消息延迟(s)、付费类型"""
         result = []
         for region in self.available_region_list:
-            pulsar_info = self.get_tencent_client(region=region).tdmq.call_json("DescribeClusters", {})
+            try:
+                pulsar_info = self.get_tencent_client(region=region).tdmq.call_json("DescribeClusters", {})
+            except TencentCloudSDKException as err:
+                if err.code == "UnsupportedRegion":
+                    logger.warning(f"Skip qcloud pulsar collection for unsupported region: {region}")
+                    continue
+                raise
             instances = pulsar_info.get("Response", {}).get("Instances", [])
             result.extend([{
                 "resource_name": instance.get("ClusterName"),
@@ -317,7 +361,20 @@ class TencentCloudManager:
         """资源名、资源ID、标签、地域、状态、消息最大未确认时间(s)、消息接收长轮询等待时间(s)、取出消息隐藏时长(s)、消息最大长度(B)、QPS限制"""
         result = []
         for region in product_available_region_list_map.get("cmq", []):
-            cmq_info = self.get_tencent_client(region=region).cmq.call_json("DescribeQueueDetail", {})
+            try:
+                cmq_info = self._call_cmq_with_retry(region=region, action="DescribeQueueDetail")
+            except TencentCloudSDKException as err:
+                logger.warning(
+                    f"Skip qcloud cmq collection action=DescribeQueueDetail region={region} "
+                    f"code={err.code} requestId={getattr(err, 'requestId', None)} message={err.message}"
+                )
+                continue
+            except Exception as err:
+                logger.warning(
+                    f"Skip qcloud cmq collection action=DescribeQueueDetail region={region} "
+                    f"after transient retries exhausted: {err}"
+                )
+                continue
             instances = cmq_info.get("Response", {}).get("QueueSet", [])
             result.extend([{
                 "resource_name": instance.get("QueueName"),
@@ -328,7 +385,7 @@ class TencentCloudManager:
                 "max_delay_s": instance.get("msgRetentionSeconds"),  # 消息最大未确认时间(s)
                 "polling_wait_s": instance.get("PollingWaitSeconds"),  # 消息接收长轮询等待时间(s)
                 "visibility_timeout_s": instance.get("visibilityTimeout"),  # 取出消息隐藏时长(s)
-                "msg_max_len": instance.get("maxMsgSize"),  # 消息最大长度(B)
+                "max_message_b": instance.get("maxMsgSize"),  # 消息最大长度(B)
                 "qps": instance.get("Qps"),  # QPS限制
             } for instance in instances])
         return result
@@ -337,7 +394,20 @@ class TencentCloudManager:
         """资源名、资源ID、标签、地域、状态、消息生命周期、消息最大长度(B)、消息过滤类型、QPS限制"""
         result = []
         for region in product_available_region_list_map.get("cmq", []):
-            topic_info = self.get_tencent_client(region=region).cmq.call_json("DescribeTopicDetail", {})
+            try:
+                topic_info = self._call_cmq_with_retry(region=region, action="DescribeTopicDetail")
+            except TencentCloudSDKException as err:
+                logger.warning(
+                    f"Skip qcloud cmq topic collection action=DescribeTopicDetail region={region} "
+                    f"code={err.code} requestId={getattr(err, 'requestId', None)} message={err.message}"
+                )
+                continue
+            except Exception as err:
+                logger.warning(
+                    f"Skip qcloud cmq topic collection action=DescribeTopicDetail region={region} "
+                    f"after transient retries exhausted: {err}"
+                )
+                continue
             instances = topic_info.get("Response", {}).get("TopicSet", [])
             result.extend([{
                 "resource_name": instance.get("TopicName"),
@@ -443,22 +513,34 @@ class TencentCloudManager:
         } for instance in domain_info.get("DomainList", [])]
 
     def exec_script(self):
-        return {
-            "qcloud_cvm": self.get_qcloud_cvm(),
-            "qcloud_rocketmq": self.get_qcloud_rocketmq(),
-            "qcloud_mysql": self.get_qcloud_mysql(),
-            "qcloud_redis": self.get_qcloud_redis(),
-            "qcloud_mongodb": self.get_qcloud_mongodb(),
-            "qcloud_pgsql": self.get_qcloud_pgsql(),
-            "qcloud_pulsar_cluster": self.get_qcloud_pulsar_cluster(),
-            "qcloud_cmq": self.get_qcloud_cmq(),
-            "qcloud_cmq_topic": self.get_qcloud_cmq_topic(),
-            "qcloud_clb": self.get_qcloud_clb(),
-            "qcloud_eip": self.get_qcloud_eip(),
-            "qcloud_bucket": self.get_qcloud_bucket(),
-            "qcloud_filesystem": self.get_qcloud_filesystem(),
-            "qcloud_domain": self.get_qcloud_domain()
-        }
+        def handle_resource(resource_func, resource_name):
+            try:
+                return {resource_name: resource_func()}
+            except Exception as err:
+                logger.warning(f"Skip qcloud resource={resource_name} after collection error: {err}")
+                return {resource_name: {"cmdb_collect_error": str(err)}}
+
+        resources = [
+            (self.get_qcloud_cvm, "qcloud_cvm"),
+            (self.get_qcloud_rocketmq, "qcloud_rocketmq"),
+            (self.get_qcloud_mysql, "qcloud_mysql"),
+            (self.get_qcloud_redis, "qcloud_redis"),
+            (self.get_qcloud_mongodb, "qcloud_mongodb"),
+            (self.get_qcloud_pgsql, "qcloud_pgsql"),
+            (self.get_qcloud_pulsar_cluster, "qcloud_pulsar_cluster"),
+            (self.get_qcloud_cmq, "qcloud_cmq"),
+            (self.get_qcloud_cmq_topic, "qcloud_cmq_topic"),
+            (self.get_qcloud_clb, "qcloud_clb"),
+            (self.get_qcloud_eip, "qcloud_eip"),
+            (self.get_qcloud_bucket, "qcloud_bucket"),
+            (self.get_qcloud_filesystem, "qcloud_filesystem"),
+            (self.get_qcloud_domain, "qcloud_domain"),
+        ]
+
+        result = {}
+        for resource_func, resource_name in resources:
+            result.update(handle_resource(resource_func, resource_name))
+        return result
 
     def list_all_resources(self):
         try:
