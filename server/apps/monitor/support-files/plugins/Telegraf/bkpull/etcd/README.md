@@ -32,6 +32,98 @@ Etcd 监控用于帮助使用者持续观察 etcd 集群的健康状态、容量
 | 数据来源 | etcd 实例暴露的 `/metrics` 指标端点 |
 | 默认采集地址 | `http(s)://<host>:<port>/metrics` |
 
+## 前置要求
+
+- 适用于已开启 Prometheus 指标端点的 etcd v3 集群或单实例。
+- 采集器到目标实例的 `host:port` 必须网络可达。
+- 如果使用 HTTPS，需提前准备好采集器运行环境可访问的 CA 证书、客户端证书和客户端私钥路径。
+- 如果指标端点不是默认路径，需要提前确认实际暴露路径，例如 `/metrics`。
+
+## 接入步骤
+
+1. 先在目标节点确认指标端点可访问。
+2. 在监控接入页面选择 `Etcd` 插件。
+3. 填写协议、主机、端口、指标路径和采集间隔。
+4. 如目标端开启 HTTPS 或双向认证，补充 TLS 相关字段。
+5. 保存配置后，等待一个采集周期，确认实例开始上报指标。
+
+### 1. 接入前验证
+
+HTTP 场景可先执行：
+
+```bash
+curl http://<host>:<port>/metrics
+```
+
+HTTPS / mTLS 场景可先执行：
+
+```bash
+curl --cacert /path/to/ca.pem --cert /path/to/client.pem --key /path/to/client-key.pem https://<host>:<port>/metrics
+```
+
+满足以下任一情况即可认为端点基本可用：
+
+- 返回状态码为 `200`
+- 响应内容中能看到 `etcd_`、`process_`、`grpc_` 等 Prometheus 指标文本
+
+### 2. 页面字段说明
+
+| 页面字段 | 是否必填 | 说明 |
+| --- | --- | --- |
+| 协议 `scheme` | 是 | 选择 `http` 或 `https`。 |
+| 主机 `host` | 是 | etcd 实例地址，应填写采集器可访问的 IP 或域名。 |
+| 端口 `port` | 是 | metrics 端点监听端口。 |
+| 指标路径 `metrics_path` | 是 | 默认 `/metrics`，如果实际暴露路径不同，需要按实际填写。 |
+| 间隔 `interval` | 是 | 采集周期，单位秒，默认 `10`。 |
+| CA 证书路径 `tls_ca` | 否 | HTTPS 场景下校验服务端证书使用。 |
+| 客户端证书路径 `tls_cert` | 否 | 双向认证场景下使用。 |
+| 客户端密钥路径 `tls_key` | 否 | 双向认证场景下使用。 |
+| 跳过证书校验 `insecure_skip_verify` | 否 | 仅建议在测试或临时排障时使用。 |
+
+### 3. 最小配置示例
+
+无认证 HTTP：
+
+```text
+协议: http
+主机: 10.0.0.12
+端口: 2379
+指标路径: /metrics
+间隔: 10
+```
+
+HTTPS 双向认证：
+
+```text
+协议: https
+主机: etcd-1.example.com
+端口: 2379
+指标路径: /metrics
+间隔: 10
+CA证书路径: /etc/ssl/etcd/ca.pem
+客户端证书路径: /etc/ssl/etcd/client.pem
+客户端密钥路径: /etc/ssl/etcd/client-key.pem
+跳过证书校验: 关闭
+```
+
+## 接入校验
+
+保存接入后，建议按以下顺序检查：
+
+1. 实例列表中已出现对应 etcd 实例，实例名称通常为 `host:port`。
+2. 一个采集周期后，可查询到 `etcd_server_has_leader_gauge`、`etcd_backend_allocated_usage_percent` 等指标。
+3. 若平台支持查看最近数据，确认最近 5 分钟内持续有 etcd 指标上报。
+
+## 常见接入问题
+
+| 现象 | 常见原因 | 排查建议 |
+| --- | --- | --- |
+| 连接失败或超时 | 端口不通、地址不可达、防火墙限制 | 先从采集器所在环境检查到目标 `host:port` 的网络连通性。 |
+| 返回 `404` | 指标路径填写错误 | 确认实际路径是否为 `/metrics`，必要时按启动参数或代理配置调整。 |
+| HTTPS 握手失败 | CA、客户端证书或密钥配置错误 | 检查证书链、证书路径和证书是否与目标实例匹配。 |
+| 证书校验失败 | 服务端证书域名不匹配或 CA 不可信 | 优先修正证书或 CA 配置，不建议长期启用跳过校验。 |
+| 接入成功但没有 etcd 指标 | 访问到的不是 etcd metrics 端点 | 确认响应内容中是否包含 `etcd_` 前缀指标。 |
+
 ## 口径说明
 
 - 本文档中的指标均按 `instance_id` 维度聚合，因此当前“维度”列统一为 `None`。
