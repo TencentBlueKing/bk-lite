@@ -927,7 +927,7 @@ async def run_command(cmd: list[str], timeout: int) -> tuple[int, str]:
     output, decode_strategy = decode_command_output(stdout)
     exit_code = proc.returncode or 0
     logger.info(
-        "command output decode: exit_code=%s strategy=%s bytes=%s raw_prefix=%s decoded_prefix=%r",
+        "command output log: exit_code=%s strategy=%s bytes=%s raw_prefix=%s decoded_prefix=%r",
         exit_code,
         decode_strategy,
         len(stdout),
