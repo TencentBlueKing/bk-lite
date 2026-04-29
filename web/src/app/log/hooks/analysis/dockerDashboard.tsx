@@ -16,8 +16,62 @@ export const useDockerDashboard = () => {
     view_sets: [
       {
         h: 3,
-        w: 9,
+        w: 3,
         x: 0,
+        y: 0,
+        i: uuidv4(),
+        name: t('log.analysis.docker.totalLogCount'),
+        moved: false,
+        static: false,
+        description: t('log.analysis.docker.totalLogCountDesc'),
+        valueConfig: {
+          chartType: 'single',
+          dataSource: 1,
+          metricLabel: t('log.analysis.docker.totalLogCount'),
+          helperText: t('log.analysis.docker.totalLogCountDesc'),
+          displayMaps: {
+            type: 'single',
+            key: 'logcount',
+            value: 'logcount',
+            tooltipField: 'logcount'
+          },
+          dataSourceParams: {
+            query: 'collect_type:"docker" | stats count() as logcount'
+          }
+        }
+      },
+      {
+        h: 3,
+        w: 3,
+        x: 3,
+        y: 0,
+        i: uuidv4(),
+        name: t('log.analysis.docker.errorLogCount'),
+        moved: false,
+        static: false,
+        description: t('log.analysis.docker.errorLogCountDesc'),
+        valueConfig: {
+          chartType: 'single',
+          dataSource: 1,
+          color: 'var(--color-fail)',
+          metricLabel: t('log.analysis.docker.errorLogCount'),
+          helperText: t('log.analysis.docker.errorLogCountDesc'),
+          displayMaps: {
+            type: 'single',
+            key: 'errcount',
+            value: 'errcount',
+            tooltipField: 'errcount'
+          },
+          dataSourceParams: {
+            query:
+              'collect_type:"docker" stream:"stderr" | stats count() as errcount'
+          }
+        }
+      },
+      {
+        h: 3,
+        w: 6,
+        x: 6,
         y: 0,
         i: uuidv4(),
         name: t('log.analysis.docker.logVolumeTrend'),
@@ -41,31 +95,7 @@ export const useDockerDashboard = () => {
       },
       {
         h: 3,
-        w: 3,
-        x: 9,
-        y: 0,
-        i: uuidv4(),
-        name: t('log.analysis.docker.totalLogCount'),
-        moved: false,
-        static: false,
-        description: t('log.analysis.docker.totalLogCountDesc'),
-        valueConfig: {
-          chartType: 'single',
-          dataSource: 1,
-          displayMaps: {
-            type: 'single',
-            key: 'logcount',
-            value: 'logcount',
-            tooltipField: 'logcount'
-          },
-          dataSourceParams: {
-            query: 'collect_type:"docker" | stats count() as logcount'
-          }
-        }
-      },
-      {
-        h: 3,
-        w: 9,
+        w: 8,
         x: 0,
         y: 3,
         i: uuidv4(),
@@ -90,35 +120,9 @@ export const useDockerDashboard = () => {
       },
       {
         h: 3,
-        w: 3,
-        x: 9,
+        w: 4,
+        x: 8,
         y: 3,
-        i: uuidv4(),
-        name: t('log.analysis.docker.errorLogCount'),
-        moved: false,
-        static: false,
-        description: t('log.analysis.docker.errorLogCountDesc'),
-        valueConfig: {
-          chartType: 'single',
-          dataSource: 1,
-          color: 'var(--color-fail)',
-          displayMaps: {
-            type: 'single',
-            key: 'errcount',
-            value: 'errcount',
-            tooltipField: 'errcount'
-          },
-          dataSourceParams: {
-            query:
-              'collect_type:"docker" stream:"stderr" | stats count() as errcount'
-          }
-        }
-      },
-      {
-        h: 3,
-        w: 6,
-        x: 0,
-        y: 6,
         i: uuidv4(),
         name: t('log.analysis.docker.containerDistribution'),
         moved: false,
@@ -141,8 +145,8 @@ export const useDockerDashboard = () => {
       },
       {
         h: 3,
-        w: 6,
-        x: 6,
+        w: 4,
+        x: 0,
         y: 6,
         i: uuidv4(),
         name: t('log.analysis.docker.streamDistribution'),
@@ -165,10 +169,10 @@ export const useDockerDashboard = () => {
         }
       },
       {
-        h: 4,
-        w: 6,
-        x: 0,
-        y: 9,
+        h: 3,
+        w: 4,
+        x: 4,
+        y: 6,
         i: uuidv4(),
         name: t('log.analysis.docker.topContainers'),
         moved: false,
@@ -177,6 +181,7 @@ export const useDockerDashboard = () => {
         valueConfig: {
           chartType: 'table',
           dataSource: 1,
+          showIndex: true,
           columns: [
             {
               title: t('log.analysis.docker.containerName'),
@@ -196,10 +201,10 @@ export const useDockerDashboard = () => {
         }
       },
       {
-        h: 4,
-        w: 6,
-        x: 6,
-        y: 9,
+        h: 3,
+        w: 4,
+        x: 8,
+        y: 6,
         i: uuidv4(),
         name: t('log.analysis.docker.topImages'),
         moved: false,
@@ -208,6 +213,7 @@ export const useDockerDashboard = () => {
         valueConfig: {
           chartType: 'table',
           dataSource: 1,
+          showIndex: true,
           columns: [
             {
               title: t('log.analysis.docker.imageName'),
@@ -230,7 +236,7 @@ export const useDockerDashboard = () => {
         h: 4,
         w: 12,
         x: 0,
-        y: 13,
+        y: 9,
         i: uuidv4(),
         name: t('log.analysis.docker.topHosts'),
         moved: false,
@@ -239,6 +245,7 @@ export const useDockerDashboard = () => {
         valueConfig: {
           chartType: 'table',
           dataSource: 1,
+          showIndex: true,
           columns: [
             {
               title: t('log.analysis.docker.hostName'),

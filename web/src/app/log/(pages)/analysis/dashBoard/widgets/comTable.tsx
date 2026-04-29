@@ -11,7 +11,7 @@ interface ComTableProps {
 const ComTable: React.FC<ComTableProps> = ({
   rawData,
   loading = false,
-  config,
+  config
 }) => {
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [scrollY, setScrollY] = useState<number>(300);
@@ -22,7 +22,7 @@ const ComTable: React.FC<ComTableProps> = ({
       const data = (rawData || []).map((item: TableDataItem, index: number) => {
         return {
           id: index,
-          ...item,
+          ...item
         };
       });
       setTableData(data);
@@ -51,14 +51,33 @@ const ComTable: React.FC<ComTableProps> = ({
     };
   }, []);
 
+  const columns = config?.showIndex
+    ? [
+      {
+        key: '__index__',
+        title: '#',
+        dataIndex: '__index__',
+        align: 'center' as const,
+        width: 72,
+        render: (_: unknown, __: TableDataItem, index: number) => (
+          <span className="inline-flex min-w-[32px] items-center justify-center rounded-full bg-[var(--color-fill-2)] px-2.5 py-1 text-xs font-semibold leading-none text-[var(--color-text-2)]">
+            {index + 1}
+          </span>
+        )
+      },
+      ...(config?.columns || [])
+    ]
+    : config?.columns || [];
+
   return (
     <div ref={containerRef} className="h-full flex">
       <CustomTable
         className="w-full"
         loading={loading}
-        columns={config?.columns || []}
+        columns={columns}
         dataSource={tableData}
         rowKey="id"
+        size="small"
         scroll={{ y: scrollY }}
         virtual
       />
