@@ -2,6 +2,7 @@ import React, {
   useState,
   useEffect,
   useMemo,
+  useRef,
   forwardRef,
   useImperativeHandle,
 } from 'react';
@@ -19,6 +20,7 @@ import {
   Spin,
   Tooltip,
   Select,
+  Tag,
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
@@ -42,6 +44,7 @@ import {
   EditOutlined,
   ReloadOutlined,
   SettingOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
@@ -57,6 +60,7 @@ import {
   buildDefaultFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { collectNamespaceOptions } from '@/app/ops-analysis/utils/namespaceFilter';
+import { exportDashboardToPdf } from '@/app/ops-analysis/utils/exportPdf';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
@@ -95,6 +99,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [filterConfigModalVisible, setFilterConfigModalVisible] =
       useState(false);
     const [selectedNamespaceId, setSelectedNamespaceId] = useState<number | undefined>(undefined);
+    const contentRef = useRef<HTMLDivElement>(null);
+    const [exporting, setExporting] = useState(false);
 
     const {
       definitions,
@@ -421,6 +427,23 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setRefreshKey((prev) => prev + 1);
     };
 
+    const handleExportPdf = async () => {
+      if (!contentRef.current) return;
+      setExporting(true);
+      try {
+        await exportDashboardToPdf(
+          contentRef.current,
+          selectedDashboard?.name || 'dashboard'
+        );
+        message.success(t('dashboard.exportPdfSuccess'));
+      } catch (err) {
+        console.error('Export PDF failed:', err);
+        message.error(t('dashboard.exportPdfFailed'));
+      } finally {
+        setExporting(false);
+      }
+    };
+
     const onLayoutChange = (newLayout: LayoutChangeItem[]) => {
       setLayout((prevLayout) => {
         return prevLayout.map((item) => {
@@ -634,6 +657,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               <div className="p-1 pt-0">
                 <h2 className="text-lg font-semibold mb-1 text-(--color-text-1)">
                   {selectedDashboard.name}
+                  {selectedDashboard.is_build_in && (
+                    <Tag color="blue" className="ml-2 text-xs align-middle">{t('common.builtIn')}</Tag>
+                  )}
                 </h2>
                 <p className="text-sm text-(--color-text-2)">
                   {selectedDashboard.desc}
@@ -651,6 +677,17 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 className="mr-2"
               />
             </Tooltip>
+
+            {!isEditMode && (
+              <Tooltip title={t('dashboard.exportPdf')}>
+                <Button
+                  type="text"
+                  icon={<DownloadOutlined style={{ fontSize: 16 }} />}
+                  loading={exporting}
+                  onClick={handleExportPdf}
+                />
+              </Tooltip>
+            )}
 
             {isEditMode && (
               <>
@@ -683,7 +720,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                     <Button
                       type="text"
                       icon={<EditOutlined style={{ fontSize: 16 }} />}
-                      disabled={!selectedDashboard?.data_id}
+                      disabled={!selectedDashboard?.data_id || selectedDashboard?.is_build_in}
                       onClick={toggleEditMode}
                     />
                   </Tooltip>
@@ -710,7 +747,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           </div>
         </div>
 
-        <div className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col">
+        <div ref={contentRef} className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col">
           {(definitions.length > 0 || namespaceSelectorElement) && (
             <div className="shrink-0">
               <UnifiedFilterBar
@@ -747,6 +784,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                           type="primary"
                           icon={<PlusOutlined />}
                           onClick={openAddModal}
+                          disabled={selectedDashboard?.is_build_in}
                         >
                           {t('dashboard.addView')}
                         </Button>

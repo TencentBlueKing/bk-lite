@@ -13,20 +13,17 @@ from apps.core.models.group_info import Groups
 
 class Directory(MaintainerInfo, TimeInfo, Groups):
     name = models.CharField(max_length=128, verbose_name="目录名称")
-    parent = models.ForeignKey(
-        'self', on_delete=models.CASCADE, related_name="sub_directories", null=True, blank=True, verbose_name="父目录"
-    )
+    parent = models.ForeignKey("self", on_delete=models.CASCADE, related_name="sub_directories", null=True, blank=True, verbose_name="父目录")
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
+    is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
+    build_in_key = models.CharField(max_length=255, null=True, blank=True, unique=True, verbose_name="内置标识键")
 
     class Meta:
         db_table = "operation_analysis_directory"
         verbose_name = "目录"
         constraints = [
-            models.UniqueConstraint(
-                fields=['name', 'parent'],
-                name='unique_name_parent'
-            ),
+            models.UniqueConstraint(fields=["name", "parent"], name="unique_name_parent"),
         ]
 
     def clean(self):
@@ -56,12 +53,12 @@ class Directory(MaintainerInfo, TimeInfo, Groups):
 class Dashboard(MaintainerInfo, TimeInfo, Groups):
     name = models.CharField(max_length=128, verbose_name="仪表盘名称", unique=True)
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
-    directory = models.ForeignKey(
-        Directory, on_delete=models.CASCADE, related_name="dashboards", verbose_name="所属目录", null=True, blank=True
-    )
+    directory = models.ForeignKey(Directory, on_delete=models.CASCADE, related_name="dashboards", verbose_name="所属目录", null=True, blank=True)
     filters = JSONField(help_text="仪表盘公共过滤条件", verbose_name="过滤条件", blank=True, null=True)
     other = JSONField(help_text="仪表盘其他配置", verbose_name="其他配置", blank=True, null=True)
     view_sets = JSONField(help_text="仪表盘视图集配置", verbose_name="视图集配置", default=list)
+    is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
+    build_in_key = models.CharField(max_length=255, null=True, blank=True, unique=True, verbose_name="内置标识键")
 
     class Meta:
         db_table = "operation_analysis_dashboard"
@@ -74,11 +71,11 @@ class Dashboard(MaintainerInfo, TimeInfo, Groups):
 class Topology(MaintainerInfo, TimeInfo, Groups):
     name = models.CharField(max_length=128, verbose_name="拓扑图名称", unique=True)
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
-    directory = models.ForeignKey(
-        Directory, on_delete=models.CASCADE, related_name="topology", verbose_name="所属目录", null=True, blank=True
-    )
+    directory = models.ForeignKey(Directory, on_delete=models.CASCADE, related_name="topology", verbose_name="所属目录", null=True, blank=True)
     other = JSONField(help_text="拓扑图其他配置", blank=True, null=True)
     view_sets = JSONField(help_text="拓扑图视图集配置", default=list)
+    is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
+    build_in_key = models.CharField(max_length=255, null=True, blank=True, unique=True, verbose_name="内置标识键")
 
     class Meta:
         db_table = "operation_analysis_topology"
@@ -94,11 +91,11 @@ class Topology(MaintainerInfo, TimeInfo, Groups):
 class Architecture(MaintainerInfo, TimeInfo, Groups):
     name = models.CharField(max_length=128, verbose_name="架构图名称", unique=True)
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
-    directory = models.ForeignKey(
-        Directory, on_delete=models.CASCADE, related_name="architecture", verbose_name="所属目录", null=True, blank=True
-    )
+    directory = models.ForeignKey(Directory, on_delete=models.CASCADE, related_name="architecture", verbose_name="所属目录", null=True, blank=True)
     other = JSONField(help_text="架构图其他配置", blank=True, null=True)
     view_sets = JSONField(help_text="架构图视图集配置", default=list)
+    is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
+    build_in_key = models.CharField(max_length=255, null=True, blank=True, unique=True, verbose_name="内置标识键")
 
     class Meta:
         db_table = "operation_analysis_architecture"
