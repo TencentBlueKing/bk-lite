@@ -46,7 +46,7 @@ class CollectorViewSet(ModelViewSet):
         arch_display = display_cpu_architecture(result.get("cpu_architecture") or "")
 
         base_display_name = lan.get(name_key) or result.get("name", "")
-        if result.get("node_operating_system") == "linux" and arch_display != "--":
+        if arch_display != "--":
             result["display_name"] = f"{base_display_name}（{arch_display}）"
         else:
             result["display_name"] = base_display_name
