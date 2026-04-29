@@ -475,13 +475,33 @@ class CollectModelService(object):
         return instance_id
 
     @classmethod
+    def _normalize_cloud_regions(cls, model_id, regions):
+        if model_id != "qcloud":
+            return regions
+        return [
+            {
+                **region,
+                "resource_name": region.get("resource_name") or region.get("RegionName") or region.get("Region") or "",
+                "resource_id": region.get("resource_id") or region.get("Region") or region.get("RegionName") or "",
+            }
+            for region in regions
+        ]
+
+    @classmethod
     def list_regions(cls, credential, cloud_name):
         instance_id = f"{cloud_name}_stargazer"
         stargazer = Stargazer(instance_id=instance_id)
         result = stargazer.list_regions(credential)
-        if result["success"]:
-            result = result["regions"].get("result", [])
-        return result
+        regions = result.get("regions", {}) if isinstance(result, dict) else {}
+        if result.get("success") and regions.get("success"):
+            region_result = cls._normalize_cloud_regions(credential.get("model_id"), regions.get("result", []))
+            return {"success": True, "result": region_result, "message": ""}
+        regions = result.get("regions", {})
+        return {
+            "success": False,
+            "result": regions.get("result", []),
+            "message": regions.get("message", "获取区域失败"),
+        }
 
     @classmethod
     def exec_task(cls, instance, request, view_self):

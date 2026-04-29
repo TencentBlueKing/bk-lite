@@ -16,6 +16,10 @@ import RedisToolEditor, { RedisInstanceFormValue } from './redisToolEditor';
 import MysqlToolEditor, { MysqlInstanceFormValue } from './mysqlToolEditor';
 import OracleToolEditor, { OracleInstanceFormValue } from './oracleToolEditor';
 import MssqlToolEditor, { MssqlInstanceFormValue } from './mssqlToolEditor';
+import PostgresToolEditor, { PostgresInstanceFormValue } from './postgresToolEditor';
+import ElasticsearchToolEditor, { ElasticsearchInstanceFormValue } from './elasticsearchToolEditor';
+import JenkinsToolEditor, { JenkinsInstanceFormValue } from './jenkinsToolEditor';
+import KubernetesToolEditor, { KubernetesInstanceFormValue } from './kubernetesToolEditor';
 
 const REDIS_TOOL_NAME = 'redis';
 const REDIS_INSTANCES_KEY = 'redis_instances';
@@ -488,6 +492,359 @@ const serializeMssqlToolConfig = (instances: MssqlInstanceFormValue[]): ToolVari
 const isMssqlTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === MSSQL_TOOL_NAME;
 const isMonitorTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === MONITOR_TOOL_NAME;
 
+// ── PostgreSQL ────────────────────────────────────────────────────────────────
+
+const POSTGRES_TOOL_NAME = 'postgres';
+const POSTGRES_INSTANCES_KEY = 'postgres_instances';
+const POSTGRES_DEFAULT_INSTANCE_ID_KEY = 'postgres_default_instance_id';
+const POSTGRES_AUTO_NAME_PREFIX = 'PostgreSQL - ';
+
+const createPostgresInstanceId = () => `postgres-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const getDefaultPostgresInstance = (name: string): PostgresInstanceFormValue => ({
+  id: createPostgresInstanceId(),
+  name,
+  host: '',
+  port: 5432,
+  database: 'postgres',
+  user: '',
+  password: '',
+  testStatus: 'untested',
+});
+
+const getNextPostgresInstanceName = (instances: PostgresInstanceFormValue[]) => {
+  const maxIndex = instances.reduce((max, instance) => {
+    const match = instance.name.match(/^PostgreSQL - (\d+)$/);
+    if (!match) return max;
+    return Math.max(max, Number(match[1]));
+  }, 0);
+  return `${POSTGRES_AUTO_NAME_PREFIX}${maxIndex + 1}`;
+};
+
+const parsePostgresInstancesValue = (value: unknown): Record<string, unknown>[] => {
+  if (Array.isArray(value)) return value as Record<string, unknown>[];
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+  return [];
+};
+
+const parsePostgresInt = (value: unknown, defaultValue: number) => {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10);
+    return isNaN(parsed) ? defaultValue : parsed;
+  }
+  return defaultValue;
+};
+
+const parsePostgresToolConfig = (kwargs: ToolVariable[] = []): PostgresInstanceFormValue[] => {
+  const kwargsMap = new Map(kwargs.filter((item) => item.key).map((item) => [item.key, item.value]));
+  const instancesValue = kwargsMap.get(POSTGRES_INSTANCES_KEY);
+  const parsedInstances = parsePostgresInstancesValue(instancesValue);
+
+  if (parsedInstances.length > 0) {
+    return parsedInstances.map((item, index) => ({
+      id: String(item.id || `postgres-${index + 1}`),
+      name: String(item.name || `${POSTGRES_AUTO_NAME_PREFIX}${index + 1}`),
+      host: String(item.host || ''),
+      port: parsePostgresInt(item.port, 5432),
+      database: String(item.database || 'postgres'),
+      user: String(item.user || ''),
+      password: String(item.password || ''),
+      testStatus: 'untested',
+    }));
+  }
+
+  const hasLegacyConfig = ['host', 'port', 'database', 'user', 'password'].some((key) => kwargsMap.has(key));
+  if (hasLegacyConfig) {
+    return [{
+      id: 'postgres-1',
+      name: 'PostgreSQL - 1',
+      host: String(kwargsMap.get('host') || ''),
+      port: parsePostgresInt(kwargsMap.get('port'), 5432),
+      database: String(kwargsMap.get('database') || 'postgres'),
+      user: String(kwargsMap.get('user') || ''),
+      password: String(kwargsMap.get('password') || ''),
+      testStatus: 'untested',
+    }];
+  }
+
+  return [getDefaultPostgresInstance('PostgreSQL - 1')];
+};
+
+const serializePostgresToolConfig = (instances: PostgresInstanceFormValue[]): ToolVariable[] => {
+  const normalized = instances.map((instance) => {
+    const copy = { ...instance };
+    delete copy.testStatus;
+    return copy;
+  });
+  return [
+    { key: POSTGRES_INSTANCES_KEY, value: JSON.stringify(normalized) },
+    { key: POSTGRES_DEFAULT_INSTANCE_ID_KEY, value: normalized[0]?.id || '' },
+  ];
+};
+
+const isPostgresTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === POSTGRES_TOOL_NAME;
+
+// ── Elasticsearch ─────────────────────────────────────────────────────────────
+
+const ES_TOOL_NAME = 'elasticsearch';
+const ES_INSTANCES_KEY = 'es_instances';
+const ES_DEFAULT_INSTANCE_ID_KEY = 'es_default_instance_id';
+const ES_AUTO_NAME_PREFIX = 'Elasticsearch - ';
+
+const createEsInstanceId = () => `es-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const getDefaultEsInstance = (name: string): ElasticsearchInstanceFormValue => ({
+  id: createEsInstanceId(),
+  name,
+  url: '',
+  username: '',
+  password: '',
+  api_key: '',
+  verify_certs: true,
+  testStatus: 'untested',
+});
+
+const getNextEsInstanceName = (instances: ElasticsearchInstanceFormValue[]) => {
+  const maxIndex = instances.reduce((max, instance) => {
+    const match = instance.name.match(/^Elasticsearch - (\d+)$/);
+    if (!match) return max;
+    return Math.max(max, Number(match[1]));
+  }, 0);
+  return `${ES_AUTO_NAME_PREFIX}${maxIndex + 1}`;
+};
+
+const parseEsInstancesValue = (value: unknown): Record<string, unknown>[] => {
+  if (Array.isArray(value)) return value as Record<string, unknown>[];
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+  return [];
+};
+
+const parseEsBoolean = (value: unknown, defaultValue = true) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return !['false', '0', 'no', 'off'].includes(value.toLowerCase());
+  return defaultValue;
+};
+
+const parseEsToolConfig = (kwargs: ToolVariable[] = []): ElasticsearchInstanceFormValue[] => {
+  const kwargsMap = new Map(kwargs.filter((item) => item.key).map((item) => [item.key, item.value]));
+  const instancesValue = kwargsMap.get(ES_INSTANCES_KEY);
+  const parsedInstances = parseEsInstancesValue(instancesValue);
+
+  if (parsedInstances.length > 0) {
+    return parsedInstances.map((item, index) => ({
+      id: String(item.id || `es-${index + 1}`),
+      name: String(item.name || `${ES_AUTO_NAME_PREFIX}${index + 1}`),
+      url: String(item.url || ''),
+      username: String(item.username || ''),
+      password: String(item.password || ''),
+      api_key: String(item.api_key || ''),
+      verify_certs: parseEsBoolean(item.verify_certs),
+      testStatus: 'untested',
+    }));
+  }
+
+  const hasLegacyConfig = ['url', 'username', 'password', 'api_key'].some((key) => kwargsMap.has(key));
+  if (hasLegacyConfig) {
+    return [{
+      id: 'es-1',
+      name: 'Elasticsearch - 1',
+      url: String(kwargsMap.get('url') || ''),
+      username: String(kwargsMap.get('username') || ''),
+      password: String(kwargsMap.get('password') || ''),
+      api_key: String(kwargsMap.get('api_key') || ''),
+      verify_certs: parseEsBoolean(kwargsMap.get('verify_certs')),
+      testStatus: 'untested',
+    }];
+  }
+
+  return [getDefaultEsInstance('Elasticsearch - 1')];
+};
+
+const serializeEsToolConfig = (instances: ElasticsearchInstanceFormValue[]): ToolVariable[] => {
+  const normalized = instances.map((instance) => {
+    const copy = { ...instance };
+    delete copy.testStatus;
+    return copy;
+  });
+  return [
+    { key: ES_INSTANCES_KEY, value: JSON.stringify(normalized) },
+    { key: ES_DEFAULT_INSTANCE_ID_KEY, value: normalized[0]?.id || '' },
+  ];
+};
+
+const isEsTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === ES_TOOL_NAME;
+
+// ── Jenkins ───────────────────────────────────────────────────────────────────
+
+const JENKINS_TOOL_NAME = 'jenkins';
+const JENKINS_INSTANCES_KEY = 'jenkins_instances';
+const JENKINS_DEFAULT_INSTANCE_ID_KEY = 'jenkins_default_instance_id';
+const JENKINS_AUTO_NAME_PREFIX = 'Jenkins - ';
+
+const createJenkinsInstanceId = () => `jenkins-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const getDefaultJenkinsInstance = (name: string): JenkinsInstanceFormValue => ({
+  id: createJenkinsInstanceId(),
+  name,
+  jenkins_url: '',
+  jenkins_username: '',
+  jenkins_password: '',
+  testStatus: 'untested',
+});
+
+const getNextJenkinsInstanceName = (instances: JenkinsInstanceFormValue[]) => {
+  const maxIndex = instances.reduce((max, instance) => {
+    const match = instance.name.match(/^Jenkins - (\d+)$/);
+    if (!match) return max;
+    return Math.max(max, Number(match[1]));
+  }, 0);
+  return `${JENKINS_AUTO_NAME_PREFIX}${maxIndex + 1}`;
+};
+
+const parseJenkinsInstancesValue = (value: unknown): Record<string, unknown>[] => {
+  if (Array.isArray(value)) return value as Record<string, unknown>[];
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+  return [];
+};
+
+const parseJenkinsToolConfig = (kwargs: ToolVariable[] = []): JenkinsInstanceFormValue[] => {
+  const kwargsMap = new Map(kwargs.filter((item) => item.key).map((item) => [item.key, item.value]));
+  const instancesValue = kwargsMap.get(JENKINS_INSTANCES_KEY);
+  const parsedInstances = parseJenkinsInstancesValue(instancesValue);
+
+  if (parsedInstances.length > 0) {
+    return parsedInstances.map((item, index) => ({
+      id: String(item.id || `jenkins-${index + 1}`),
+      name: String(item.name || `${JENKINS_AUTO_NAME_PREFIX}${index + 1}`),
+      jenkins_url: String(item.jenkins_url || ''),
+      jenkins_username: String(item.jenkins_username || ''),
+      jenkins_password: String(item.jenkins_password || ''),
+      testStatus: 'untested',
+    }));
+  }
+
+  const hasLegacyConfig = ['jenkins_url', 'jenkins_username', 'jenkins_password'].some((key) => kwargsMap.has(key));
+  if (hasLegacyConfig) {
+    return [{
+      id: 'jenkins-1',
+      name: 'Jenkins - 1',
+      jenkins_url: String(kwargsMap.get('jenkins_url') || ''),
+      jenkins_username: String(kwargsMap.get('jenkins_username') || ''),
+      jenkins_password: String(kwargsMap.get('jenkins_password') || ''),
+      testStatus: 'untested',
+    }];
+  }
+
+  return [getDefaultJenkinsInstance('Jenkins - 1')];
+};
+
+const serializeJenkinsToolConfig = (instances: JenkinsInstanceFormValue[]): ToolVariable[] => {
+  const normalized = instances.map((instance) => {
+    const copy = { ...instance };
+    delete copy.testStatus;
+    return copy;
+  });
+  return [
+    { key: JENKINS_INSTANCES_KEY, value: JSON.stringify(normalized) },
+    { key: JENKINS_DEFAULT_INSTANCE_ID_KEY, value: normalized[0]?.id || '' },
+  ];
+};
+
+const isJenkinsTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === JENKINS_TOOL_NAME;
+
+// ── Kubernetes ────────────────────────────────────────────────────────────────
+
+const KUBERNETES_TOOL_NAME = 'kubernetes';
+const KUBERNETES_INSTANCES_KEY = 'kubernetes_instances';
+const KUBERNETES_DEFAULT_INSTANCE_ID_KEY = 'kubernetes_default_instance_id';
+const KUBERNETES_AUTO_NAME_PREFIX = 'Kubernetes - ';
+
+const createKubernetesInstanceId = () => `kubernetes-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const getDefaultKubernetesInstance = (name: string): KubernetesInstanceFormValue => ({
+  id: createKubernetesInstanceId(),
+  name,
+  kubeconfig_data: '',
+  testStatus: 'untested',
+});
+
+const getNextKubernetesInstanceName = (instances: KubernetesInstanceFormValue[]) => {
+  const maxIndex = instances.reduce((max, instance) => {
+    const match = instance.name.match(/^Kubernetes - (\d+)$/);
+    if (!match) return max;
+    return Math.max(max, Number(match[1]));
+  }, 0);
+  return `${KUBERNETES_AUTO_NAME_PREFIX}${maxIndex + 1}`;
+};
+
+const parseKubernetesInstancesValue = (value: unknown): Record<string, unknown>[] => {
+  if (Array.isArray(value)) return value as Record<string, unknown>[];
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+  return [];
+};
+
+const parseKubernetesToolConfig = (kwargs: ToolVariable[] = []): KubernetesInstanceFormValue[] => {
+  const kwargsMap = new Map(kwargs.filter((item) => item.key).map((item) => [item.key, item.value]));
+  const instancesValue = kwargsMap.get(KUBERNETES_INSTANCES_KEY);
+  const parsedInstances = parseKubernetesInstancesValue(instancesValue);
+
+  if (parsedInstances.length > 0) {
+    return parsedInstances.map((item, index) => ({
+      id: String(item.id || `kubernetes-${index + 1}`),
+      name: String(item.name || `${KUBERNETES_AUTO_NAME_PREFIX}${index + 1}`),
+      kubeconfig_data: String(item.kubeconfig_data || ''),
+      testStatus: 'untested',
+    }));
+  }
+
+  const hasLegacyConfig = ['kubeconfig_data'].some((key) => kwargsMap.has(key));
+  if (hasLegacyConfig) {
+    return [{
+      id: 'kubernetes-1',
+      name: 'Kubernetes - 1',
+      kubeconfig_data: String(kwargsMap.get('kubeconfig_data') || ''),
+      testStatus: 'untested',
+    }];
+  }
+
+  return [getDefaultKubernetesInstance('Kubernetes - 1')];
+};
+
+const serializeKubernetesToolConfig = (instances: KubernetesInstanceFormValue[]): ToolVariable[] => {
+  const normalized = instances.map((instance) => {
+    const copy = { ...instance };
+    delete copy.testStatus;
+    return copy;
+  });
+  return [
+    { key: KUBERNETES_INSTANCES_KEY, value: JSON.stringify(normalized) },
+    { key: KUBERNETES_DEFAULT_INSTANCE_ID_KEY, value: normalized[0]?.id || '' },
+  ];
+};
+
+const isKubernetesTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === KUBERNETES_TOOL_NAME;
+
 interface ToolSelectorProps {
   defaultTools: SelectTool[];
   onChange: (selected: SelectTool[]) => void;
@@ -495,7 +852,7 @@ interface ToolSelectorProps {
 
 const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) => {
   const { t } = useTranslation();
-  const { fetchSkillTools, testRedisConnection, testMysqlConnection, testOracleConnection, testMssqlConnection } = useSkillApi();
+  const { fetchSkillTools, testRedisConnection, testMysqlConnection, testOracleConnection, testMssqlConnection, testPostgresConnection, testEsConnection, testJenkinsConnection, testKubernetesConnection } = useSkillApi();
   const [loading, setLoading] = useState<boolean>(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [tools, setTools] = useState<SelectTool[]>([]);
@@ -514,6 +871,18 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
   const [mssqlInstances, setMssqlInstances] = useState<MssqlInstanceFormValue[]>([]);
   const [selectedMssqlInstanceId, setSelectedMssqlInstanceId] = useState<string | null>(null);
   const [testingMssqlConnection, setTestingMssqlConnection] = useState(false);
+  const [postgresInstances, setPostgresInstances] = useState<PostgresInstanceFormValue[]>([]);
+  const [selectedPostgresInstanceId, setSelectedPostgresInstanceId] = useState<string | null>(null);
+  const [testingPostgresConnection, setTestingPostgresConnection] = useState(false);
+  const [esInstances, setEsInstances] = useState<ElasticsearchInstanceFormValue[]>([]);
+  const [selectedEsInstanceId, setSelectedEsInstanceId] = useState<string | null>(null);
+  const [testingEsConnection, setTestingEsConnection] = useState(false);
+  const [jenkinsInstances, setJenkinsInstances] = useState<JenkinsInstanceFormValue[]>([]);
+  const [selectedJenkinsInstanceId, setSelectedJenkinsInstanceId] = useState<string | null>(null);
+  const [testingJenkinsConnection, setTestingJenkinsConnection] = useState(false);
+  const [kubernetesInstances, setKubernetesInstances] = useState<KubernetesInstanceFormValue[]>([]);
+  const [selectedKubernetesInstanceId, setSelectedKubernetesInstanceId] = useState<string | null>(null);
+  const [testingKubernetesConnection, setTestingKubernetesConnection] = useState(false);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -529,6 +898,10 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
       const defaultMysqlTool = defaultTools.find((tool) => isMysqlTool(tool));
       const defaultOracleTool = defaultTools.find((tool) => isOracleTool(tool));
       const defaultMssqlTool = defaultTools.find((tool) => isMssqlTool(tool));
+      const defaultPostgresTool = defaultTools.find((tool) => isPostgresTool(tool));
+      const defaultEsTool = defaultTools.find((tool) => isEsTool(tool));
+      const defaultJenkinsTool = defaultTools.find((tool) => isJenkinsTool(tool));
+      const defaultKubernetesTool = defaultTools.find((tool) => isKubernetesTool(tool));
       const fetchedTools = data.map((tool: any) => {
         const defaultTool = defaultToolMap.get(tool.id);
         const kwargs = (tool.params.kwargs || [])
@@ -549,9 +922,9 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
       setTools(fetchedTools);
 
       const initialSelectedTools = fetchedTools
-        .filter((tool) => defaultToolMap.has(tool.id) || (isRedisTool(tool) && !!defaultRedisTool) || (isMysqlTool(tool) && !!defaultMysqlTool) || (isOracleTool(tool) && !!defaultOracleTool) || (isMssqlTool(tool) && !!defaultMssqlTool))
+        .filter((tool) => defaultToolMap.has(tool.id) || (isRedisTool(tool) && !!defaultRedisTool) || (isMysqlTool(tool) && !!defaultMysqlTool) || (isOracleTool(tool) && !!defaultOracleTool) || (isMssqlTool(tool) && !!defaultMssqlTool) || (isPostgresTool(tool) && !!defaultPostgresTool) || (isEsTool(tool) && !!defaultEsTool) || (isJenkinsTool(tool) && !!defaultJenkinsTool) || (isKubernetesTool(tool) && !!defaultKubernetesTool))
         .map((tool) => {
-          const matchedDefaultTool = defaultToolMap.get(tool.id) || (isRedisTool(tool) ? defaultRedisTool : undefined) || (isMysqlTool(tool) ? defaultMysqlTool : undefined) || (isOracleTool(tool) ? defaultOracleTool : undefined) || (isMssqlTool(tool) ? defaultMssqlTool : undefined);
+          const matchedDefaultTool = defaultToolMap.get(tool.id) || (isRedisTool(tool) ? defaultRedisTool : undefined) || (isMysqlTool(tool) ? defaultMysqlTool : undefined) || (isOracleTool(tool) ? defaultOracleTool : undefined) || (isMssqlTool(tool) ? defaultMssqlTool : undefined) || (isPostgresTool(tool) ? defaultPostgresTool : undefined) || (isEsTool(tool) ? defaultEsTool : undefined) || (isJenkinsTool(tool) ? defaultJenkinsTool : undefined) || (isKubernetesTool(tool) ? defaultKubernetesTool : undefined);
           if (!matchedDefaultTool) {
             return tool;
           }
@@ -608,6 +981,22 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
       const instances = parseMssqlToolConfig(tool.kwargs);
       setMssqlInstances(instances);
       setSelectedMssqlInstanceId(instances[0]?.id || null);
+    } else if (isPostgresTool(tool)) {
+      const instances = parsePostgresToolConfig(tool.kwargs);
+      setPostgresInstances(instances);
+      setSelectedPostgresInstanceId(instances[0]?.id || null);
+    } else if (isEsTool(tool)) {
+      const instances = parseEsToolConfig(tool.kwargs);
+      setEsInstances(instances);
+      setSelectedEsInstanceId(instances[0]?.id || null);
+    } else if (isJenkinsTool(tool)) {
+      const instances = parseJenkinsToolConfig(tool.kwargs);
+      setJenkinsInstances(instances);
+      setSelectedJenkinsInstanceId(instances[0]?.id || null);
+    } else if (isKubernetesTool(tool)) {
+      const instances = parseKubernetesToolConfig(tool.kwargs);
+      setKubernetesInstances(instances);
+      setSelectedKubernetesInstanceId(instances[0]?.id || null);
     } else {
       form.setFieldsValue({
         kwargs: tool.kwargs?.map((item: any) => ({ key: item.key, value: item.value, type: item.type, isRequired: item.isRequired })) || [],
@@ -745,6 +1134,130 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
       return;
     }
 
+    if (isPostgresTool(editingTool)) {
+      const trimmedNames = postgresInstances.map((instance) => instance.name.trim()).filter(Boolean);
+      if (postgresInstances.length === 0) {
+        message.error(t('tool.postgres.noInstances'));
+        return;
+      }
+      if (trimmedNames.length !== postgresInstances.length) {
+        message.error(t('tool.postgres.instanceNameRequired'));
+        return;
+      }
+      if (new Set(trimmedNames).size !== trimmedNames.length) {
+        message.error(t('tool.postgres.duplicateInstanceName'));
+        return;
+      }
+      if (postgresInstances.some((instance) => !instance.host.trim())) {
+        message.error(t('tool.postgres.hostRequired'));
+        return;
+      }
+      if (editingTool) {
+        const updatedTool = {
+          ...editingTool,
+          kwargs: serializePostgresToolConfig(postgresInstances.map((instance) => ({ ...instance, name: instance.name.trim(), host: instance.host.trim() }))),
+        };
+        const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
+        setSelectedTools(updatedSelectedTools);
+        onChange(updatedSelectedTools);
+      }
+      setEditModalVisible(false);
+      setEditingTool(null);
+      return;
+    }
+
+    if (isEsTool(editingTool)) {
+      const trimmedNames = esInstances.map((instance) => instance.name.trim()).filter(Boolean);
+      if (esInstances.length === 0) {
+        message.error(t('tool.elasticsearch.noInstances'));
+        return;
+      }
+      if (trimmedNames.length !== esInstances.length) {
+        message.error(t('tool.elasticsearch.instanceNameRequired'));
+        return;
+      }
+      if (new Set(trimmedNames).size !== trimmedNames.length) {
+        message.error(t('tool.elasticsearch.duplicateInstanceName'));
+        return;
+      }
+      if (esInstances.some((instance) => !instance.url.trim())) {
+        message.error(t('tool.elasticsearch.urlRequired'));
+        return;
+      }
+      if (editingTool) {
+        const updatedTool = {
+          ...editingTool,
+          kwargs: serializeEsToolConfig(esInstances.map((instance) => ({ ...instance, name: instance.name.trim(), url: instance.url.trim() }))),
+        };
+        const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
+        setSelectedTools(updatedSelectedTools);
+        onChange(updatedSelectedTools);
+      }
+      setEditModalVisible(false);
+      setEditingTool(null);
+      return;
+    }
+
+    if (isJenkinsTool(editingTool)) {
+      const trimmedNames = jenkinsInstances.map((instance) => instance.name.trim()).filter(Boolean);
+      if (jenkinsInstances.length === 0) {
+        message.error(t('tool.jenkins.noInstances'));
+        return;
+      }
+      if (trimmedNames.length !== jenkinsInstances.length) {
+        message.error(t('tool.jenkins.instanceNameRequired'));
+        return;
+      }
+      if (new Set(trimmedNames).size !== trimmedNames.length) {
+        message.error(t('tool.jenkins.duplicateInstanceName'));
+        return;
+      }
+      if (jenkinsInstances.some((instance) => !instance.jenkins_url.trim())) {
+        message.error(t('tool.jenkins.urlRequired'));
+        return;
+      }
+      if (editingTool) {
+        const updatedTool = {
+          ...editingTool,
+          kwargs: serializeJenkinsToolConfig(jenkinsInstances.map((instance) => ({ ...instance, name: instance.name.trim(), jenkins_url: instance.jenkins_url.trim() }))),
+        };
+        const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
+        setSelectedTools(updatedSelectedTools);
+        onChange(updatedSelectedTools);
+      }
+      setEditModalVisible(false);
+      setEditingTool(null);
+      return;
+    }
+
+    if (isKubernetesTool(editingTool)) {
+      const trimmedNames = kubernetesInstances.map((instance) => instance.name.trim()).filter(Boolean);
+      if (kubernetesInstances.length === 0) {
+        message.error(t('tool.kubernetes.noInstances'));
+        return;
+      }
+      if (trimmedNames.length !== kubernetesInstances.length) {
+        message.error(t('tool.kubernetes.instanceNameRequired'));
+        return;
+      }
+      if (new Set(trimmedNames).size !== trimmedNames.length) {
+        message.error(t('tool.kubernetes.duplicateInstanceName'));
+        return;
+      }
+      if (editingTool) {
+        const updatedTool = {
+          ...editingTool,
+          kwargs: serializeKubernetesToolConfig(kubernetesInstances.map((instance) => ({ ...instance, name: instance.name.trim() }))),
+        };
+        const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
+        setSelectedTools(updatedSelectedTools);
+        onChange(updatedSelectedTools);
+      }
+      setEditModalVisible(false);
+      setEditingTool(null);
+      return;
+    }
+
     form.validateFields().then((values) => {
       if (editingTool) {
         const updatedTool = {
@@ -771,6 +1284,14 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
     setSelectedOracleInstanceId(null);
     setMssqlInstances([]);
     setSelectedMssqlInstanceId(null);
+    setPostgresInstances([]);
+    setSelectedPostgresInstanceId(null);
+    setEsInstances([]);
+    setSelectedEsInstanceId(null);
+    setJenkinsInstances([]);
+    setSelectedJenkinsInstanceId(null);
+    setKubernetesInstances([]);
+    setSelectedKubernetesInstanceId(null);
   };
 
   const handleAddRedisInstance = () => {
@@ -969,6 +1490,194 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
     }
   };
 
+  const handleAddPostgresInstance = () => {
+    const nextInstance = getDefaultPostgresInstance(getNextPostgresInstanceName(postgresInstances));
+    setPostgresInstances((prev) => [...prev, nextInstance]);
+    setSelectedPostgresInstanceId(nextInstance.id);
+  };
+
+  const handleDeletePostgresInstance = (instanceId: string) => {
+    setPostgresInstances((prev) => {
+      const nextInstances = prev.filter((instance) => instance.id !== instanceId);
+      if (selectedPostgresInstanceId === instanceId) {
+        setSelectedPostgresInstanceId(nextInstances[0]?.id || null);
+      }
+      return nextInstances;
+    });
+  };
+
+  const handlePostgresInstanceChange = <K extends keyof PostgresInstanceFormValue>(
+    instanceId: string,
+    field: K,
+    value: PostgresInstanceFormValue[K],
+  ) => {
+    setPostgresInstances((prev) => prev.map((instance) => (
+      instance.id === instanceId ? { ...instance, [field]: value, testStatus: 'untested' } : instance
+    )));
+  };
+
+  const handleTestPostgresInstance = async () => {
+    const currentInstance = postgresInstances.find((instance) => instance.id === selectedPostgresInstanceId);
+    if (!currentInstance) return;
+    setTestingPostgresConnection(true);
+    try {
+      const payload = { ...currentInstance };
+      delete payload.testStatus;
+      await testPostgresConnection(payload);
+      message.success(t('tool.postgres.status.success'));
+      setPostgresInstances((prev) => prev.map((instance) => (
+        instance.id === currentInstance.id ? { ...instance, testStatus: 'success' } : instance
+      )));
+    } catch {
+      setPostgresInstances((prev) => prev.map((instance) => (
+        instance.id === currentInstance.id ? { ...instance, testStatus: 'failed' } : instance
+      )));
+    } finally {
+      setTestingPostgresConnection(false);
+    }
+  };
+
+  const handleAddEsInstance = () => {
+    const nextInstance = getDefaultEsInstance(getNextEsInstanceName(esInstances));
+    setEsInstances((prev) => [...prev, nextInstance]);
+    setSelectedEsInstanceId(nextInstance.id);
+  };
+
+  const handleDeleteEsInstance = (instanceId: string) => {
+    setEsInstances((prev) => {
+      const nextInstances = prev.filter((instance) => instance.id !== instanceId);
+      if (selectedEsInstanceId === instanceId) {
+        setSelectedEsInstanceId(nextInstances[0]?.id || null);
+      }
+      return nextInstances;
+    });
+  };
+
+  const handleEsInstanceChange = <K extends keyof ElasticsearchInstanceFormValue>(
+    instanceId: string,
+    field: K,
+    value: ElasticsearchInstanceFormValue[K],
+  ) => {
+    setEsInstances((prev) => prev.map((instance) => (
+      instance.id === instanceId ? { ...instance, [field]: value, testStatus: 'untested' } : instance
+    )));
+  };
+
+  const handleTestEsInstance = async () => {
+    const currentInstance = esInstances.find((instance) => instance.id === selectedEsInstanceId);
+    if (!currentInstance) return;
+    setTestingEsConnection(true);
+    try {
+      const payload = { ...currentInstance };
+      delete payload.testStatus;
+      await testEsConnection(payload);
+      message.success(t('tool.elasticsearch.status.success'));
+      setEsInstances((prev) => prev.map((instance) => (
+        instance.id === currentInstance.id ? { ...instance, testStatus: 'success' } : instance
+      )));
+    } catch {
+      setEsInstances((prev) => prev.map((instance) => (
+        instance.id === currentInstance.id ? { ...instance, testStatus: 'failed' } : instance
+      )));
+    } finally {
+      setTestingEsConnection(false);
+    }
+  };
+
+  const handleAddJenkinsInstance = () => {
+    const nextInstance = getDefaultJenkinsInstance(getNextJenkinsInstanceName(jenkinsInstances));
+    setJenkinsInstances((prev) => [...prev, nextInstance]);
+    setSelectedJenkinsInstanceId(nextInstance.id);
+  };
+
+  const handleDeleteJenkinsInstance = (instanceId: string) => {
+    setJenkinsInstances((prev) => {
+      const nextInstances = prev.filter((instance) => instance.id !== instanceId);
+      if (selectedJenkinsInstanceId === instanceId) {
+        setSelectedJenkinsInstanceId(nextInstances[0]?.id || null);
+      }
+      return nextInstances;
+    });
+  };
+
+  const handleJenkinsInstanceChange = <K extends keyof JenkinsInstanceFormValue>(
+    instanceId: string,
+    field: K,
+    value: JenkinsInstanceFormValue[K],
+  ) => {
+    setJenkinsInstances((prev) => prev.map((instance) => (
+      instance.id === instanceId ? { ...instance, [field]: value, testStatus: 'untested' } : instance
+    )));
+  };
+
+  const handleTestJenkinsInstance = async () => {
+    const currentInstance = jenkinsInstances.find((instance) => instance.id === selectedJenkinsInstanceId);
+    if (!currentInstance) return;
+    setTestingJenkinsConnection(true);
+    try {
+      const payload = { ...currentInstance };
+      delete payload.testStatus;
+      await testJenkinsConnection(payload);
+      message.success(t('tool.jenkins.status.success'));
+      setJenkinsInstances((prev) => prev.map((instance) => (
+        instance.id === currentInstance.id ? { ...instance, testStatus: 'success' } : instance
+      )));
+    } catch {
+      setJenkinsInstances((prev) => prev.map((instance) => (
+        instance.id === currentInstance.id ? { ...instance, testStatus: 'failed' } : instance
+      )));
+    } finally {
+      setTestingJenkinsConnection(false);
+    }
+  };
+
+  const handleAddKubernetesInstance = () => {
+    const nextInstance = getDefaultKubernetesInstance(getNextKubernetesInstanceName(kubernetesInstances));
+    setKubernetesInstances((prev) => [...prev, nextInstance]);
+    setSelectedKubernetesInstanceId(nextInstance.id);
+  };
+
+  const handleDeleteKubernetesInstance = (instanceId: string) => {
+    setKubernetesInstances((prev) => {
+      const nextInstances = prev.filter((instance) => instance.id !== instanceId);
+      if (selectedKubernetesInstanceId === instanceId) {
+        setSelectedKubernetesInstanceId(nextInstances[0]?.id || null);
+      }
+      return nextInstances;
+    });
+  };
+
+  const handleKubernetesInstanceChange = <K extends keyof KubernetesInstanceFormValue>(
+    instanceId: string,
+    field: K,
+    value: KubernetesInstanceFormValue[K],
+  ) => {
+    setKubernetesInstances((prev) => prev.map((instance) => (
+      instance.id === instanceId ? { ...instance, [field]: value, testStatus: 'untested' } : instance
+    )));
+  };
+
+  const handleTestKubernetesInstance = async () => {
+    const currentInstance = kubernetesInstances.find((instance) => instance.id === selectedKubernetesInstanceId);
+    if (!currentInstance) return;
+    setTestingKubernetesConnection(true);
+    try {
+      const payload = { ...currentInstance };
+      delete payload.testStatus;
+      await testKubernetesConnection(payload);
+      message.success(t('tool.kubernetes.status.success'));
+      setKubernetesInstances((prev) => prev.map((instance) => (
+        instance.id === currentInstance.id ? { ...instance, testStatus: 'success' } : instance
+      )));
+    } catch {
+      setKubernetesInstances((prev) => prev.map((instance) => (
+        instance.id === currentInstance.id ? { ...instance, testStatus: 'failed' } : instance
+      )));
+    } finally {
+      setTestingKubernetesConnection(false);
+    }
+  };
+
   return (
     <div>
       <Button onClick={openModal}>+ {t('common.add')}</Button>
@@ -1016,7 +1725,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
         onCancel={handleEditModalCancel}
         okText={t('common.save')}
         cancelText={t('common.cancel')}
-        width={isRedisTool(editingTool) || isMysqlTool(editingTool) || isOracleTool(editingTool) || isMssqlTool(editingTool) ? 800 : undefined}
+        width={isRedisTool(editingTool) || isMysqlTool(editingTool) || isOracleTool(editingTool) || isMssqlTool(editingTool) || isPostgresTool(editingTool) || isEsTool(editingTool) || isJenkinsTool(editingTool) || isKubernetesTool(editingTool) ? 800 : undefined}
       >
         <Form form={form} layout="vertical">
           {isRedisTool(editingTool) ? (
@@ -1062,6 +1771,50 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
               onDelete={handleDeleteMssqlInstance}
               onChange={handleMssqlInstanceChange}
               onTest={handleTestMssqlInstance}
+            />
+          ) : isPostgresTool(editingTool) ? (
+            <PostgresToolEditor
+              instances={postgresInstances}
+              selectedInstanceId={selectedPostgresInstanceId}
+              testing={testingPostgresConnection}
+              onSelect={setSelectedPostgresInstanceId}
+              onAdd={handleAddPostgresInstance}
+              onDelete={handleDeletePostgresInstance}
+              onChange={handlePostgresInstanceChange}
+              onTest={handleTestPostgresInstance}
+            />
+          ) : isEsTool(editingTool) ? (
+            <ElasticsearchToolEditor
+              instances={esInstances}
+              selectedInstanceId={selectedEsInstanceId}
+              testing={testingEsConnection}
+              onSelect={setSelectedEsInstanceId}
+              onAdd={handleAddEsInstance}
+              onDelete={handleDeleteEsInstance}
+              onChange={handleEsInstanceChange}
+              onTest={handleTestEsInstance}
+            />
+          ) : isJenkinsTool(editingTool) ? (
+            <JenkinsToolEditor
+              instances={jenkinsInstances}
+              selectedInstanceId={selectedJenkinsInstanceId}
+              testing={testingJenkinsConnection}
+              onSelect={setSelectedJenkinsInstanceId}
+              onAdd={handleAddJenkinsInstance}
+              onDelete={handleDeleteJenkinsInstance}
+              onChange={handleJenkinsInstanceChange}
+              onTest={handleTestJenkinsInstance}
+            />
+          ) : isKubernetesTool(editingTool) ? (
+            <KubernetesToolEditor
+              instances={kubernetesInstances}
+              selectedInstanceId={selectedKubernetesInstanceId}
+              testing={testingKubernetesConnection}
+              onSelect={setSelectedKubernetesInstanceId}
+              onAdd={handleAddKubernetesInstance}
+              onDelete={handleDeleteKubernetesInstance}
+              onChange={handleKubernetesInstanceChange}
+              onTest={handleTestKubernetesInstance}
             />
           ) : (
             <Form.List name="kwargs">

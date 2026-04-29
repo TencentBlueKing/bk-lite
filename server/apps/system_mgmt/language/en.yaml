@@ -54,6 +54,8 @@ error:
   invalid_order: Order value must be an integer
   invalid_role_ids: 'Invalid role IDs: {ids}'
   invalid_group_ids: 'Invalid group IDs: {ids}'
+  group_selection_required: At least one group must be selected
+  normal_group_required: At least one normal group must be selected
 success:
   menu_group_disabled: Menu group disabled
   batch_create: Batch creation successful

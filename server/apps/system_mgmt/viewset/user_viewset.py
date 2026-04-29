@@ -17,6 +17,36 @@ from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
 
+def _normalize_group_ids(groups):
+    normalized = []
+    invalid = []
+    for group_id in groups or []:
+        try:
+            normalized.append(int(group_id))
+        except (TypeError, ValueError):
+            invalid.append(group_id)
+    return normalized, invalid
+
+
+def _validate_selected_groups(groups, loader):
+    if not groups:
+        return loader.get("error.group_selection_required", "At least one group must be selected")
+
+    normalized_groups, invalid_ids = _normalize_group_ids(groups)
+    group_queryset = Group.objects.filter(id__in=normalized_groups)
+    group_map = {group.id: group for group in group_queryset}
+
+    missing_group_ids = [group_id for group_id in normalized_groups if group_id not in group_map]
+    all_invalid_ids = invalid_ids + missing_group_ids
+    if all_invalid_ids:
+        return loader.get("error.invalid_group_ids", "Invalid group IDs: {ids}").format(ids=all_invalid_ids)
+
+    if not any(not group.is_virtual for group in group_map.values()):
+        return loader.get("error.normal_group_required", "At least one normal group must be selected")
+
+    return None
+
+
 class UserViewSet(ViewSetUtils):
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -130,14 +160,11 @@ class UserViewSet(ViewSetUtils):
         locale = getattr(request.user, "locale", "en") if hasattr(request, "user") else "en"
         loader = LanguageLoader(app="system_mgmt", default_lang=locale)
 
-        # 校验 groups ID 是否真实存在
         groups = kwargs.get("groups", [])
-        if groups:
-            valid_group_ids = set(Group.objects.filter(id__in=groups).values_list("id", flat=True))
-            invalid_group_ids = set(groups) - valid_group_ids
-            if invalid_group_ids:
-                message = loader.get("error.invalid_group_ids", "Invalid group IDs: {ids}").format(ids=list(invalid_group_ids))
-                return JsonResponse({"result": False, "message": message})
+        group_validation_error = _validate_selected_groups(groups, loader)
+        if group_validation_error:
+            return JsonResponse({"result": False, "message": group_validation_error})
+        groups, _ = _normalize_group_ids(groups)
 
         # 校验 roles ID 是否真实存在
         roles = kwargs.get("roles", [])
@@ -234,6 +261,14 @@ class UserViewSet(ViewSetUtils):
         params = request.data
         pk = params.pop("user_id")
         rules = params.pop("rules", [])
+        locale = getattr(request.user, "locale", "en") if hasattr(request, "user") else "en"
+        loader = LanguageLoader(app="system_mgmt", default_lang=locale)
+        groups = params.get("groups", [])
+        group_validation_error = _validate_selected_groups(groups, loader)
+        if group_validation_error:
+            return JsonResponse({"result": False, "message": group_validation_error})
+        groups, _ = _normalize_group_ids(groups)
+        params["groups"] = groups
         is_superuser = params.pop("is_superuser", False)
         admin_role_id = Role.objects.get(name="admin", app="").id
         if is_superuser:

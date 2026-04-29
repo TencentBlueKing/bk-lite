@@ -20,6 +20,10 @@ import type { RedisInstanceFormValue } from '@/app/opspilot/components/skill/red
 import type { MysqlInstanceFormValue } from '@/app/opspilot/components/skill/mysqlToolEditor';
 import type { OracleInstanceFormValue } from '@/app/opspilot/components/skill/oracleToolEditor';
 import type { MssqlInstanceFormValue } from '@/app/opspilot/components/skill/mssqlToolEditor';
+import type { PostgresInstanceFormValue } from '@/app/opspilot/components/skill/postgresToolEditor';
+import type { ElasticsearchInstanceFormValue } from '@/app/opspilot/components/skill/elasticsearchToolEditor';
+import type { JenkinsInstanceFormValue } from '@/app/opspilot/components/skill/jenkinsToolEditor';
+import type { KubernetesInstanceFormValue } from '@/app/opspilot/components/skill/kubernetesToolEditor';
 
 export const useSkillApi = () => {
   const { get, post, patch, del, put } = useApiClient();
@@ -84,6 +88,22 @@ export const useSkillApi = () => {
     await post('/opspilot/model_provider_mgmt/skill_tools/test_mssql_connection/', instance);
   };
 
+  const testPostgresConnection = async (instance: Omit<PostgresInstanceFormValue, 'testStatus'>): Promise<void> => {
+    await post('/opspilot/model_provider_mgmt/skill_tools/test_postgres_connection/', instance);
+  };
+
+  const testEsConnection = async (instance: Omit<ElasticsearchInstanceFormValue, 'testStatus'>): Promise<void> => {
+    await post('/opspilot/model_provider_mgmt/skill_tools/test_es_connection/', instance);
+  };
+
+  const testJenkinsConnection = async (instance: Omit<JenkinsInstanceFormValue, 'testStatus'>): Promise<void> => {
+    await post('/opspilot/model_provider_mgmt/skill_tools/test_jenkins_connection/', instance);
+  };
+
+  const testKubernetesConnection = async (instance: Omit<KubernetesInstanceFormValue, 'testStatus'>): Promise<void> => {
+    await post('/opspilot/model_provider_mgmt/skill_tools/test_kubernetes_connection/', instance);
+  };
+
   const fetchSkillTemplates = async (): Promise<SkillTemplate[]> => {
     return get('/opspilot/model_provider_mgmt/llm/get_template_list/');
   };
@@ -112,6 +132,10 @@ export const useSkillApi = () => {
     testMysqlConnection,
     testOracleConnection,
     testMssqlConnection,
+    testPostgresConnection,
+    testEsConnection,
+    testJenkinsConnection,
+    testKubernetesConnection,
     fetchSkillTemplates,
     createSkill,
     togglePin,

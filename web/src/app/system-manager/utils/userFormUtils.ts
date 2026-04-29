@@ -1,5 +1,9 @@
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 
+interface UserGroupTreeDataNode extends TreeDataNode {
+  isVirtual?: boolean;
+}
+
 export interface GroupRole {
   id: number;
   name: string;
@@ -14,6 +18,7 @@ export interface TreeSelectNode {
   title: string;
   value: React.Key;
   key: React.Key;
+  isVirtual?: boolean;
   children: TreeSelectNode[];
 }
 
@@ -45,12 +50,35 @@ export interface UserDetailResponse {
  * Converts TreeDataNode format to TreeSelect-compatible format
  */
 export function transformTreeDataForSelect(data: TreeDataNode[]): TreeSelectNode[] {
-  return data.map((node: TreeDataNode) => ({
-    title: (node.title as string) || 'Unknown',
-    value: node.key,
-    key: node.key,
-    children: node.children ? transformTreeDataForSelect(node.children as TreeDataNode[]) : [],
-  }));
+  return data.map((node: TreeDataNode) => {
+    const groupNode = node as UserGroupTreeDataNode;
+    return {
+      title: (node.title as string) || 'Unknown',
+      value: node.key,
+      key: node.key,
+      isVirtual: groupNode.isVirtual === true,
+      children: node.children ? transformTreeDataForSelect(node.children as TreeDataNode[]) : [],
+    };
+  });
+}
+
+export function flattenTreeSelectNodes(nodes: TreeSelectNode[]): TreeSelectNode[] {
+  return nodes.reduce<TreeSelectNode[]>((acc, node) => {
+    acc.push(node);
+    if (node.children.length > 0) {
+      acc.push(...flattenTreeSelectNodes(node.children));
+    }
+    return acc;
+  }, []);
+}
+
+export function hasNormalGroupSelection(groupIds: React.Key[], treeData: TreeSelectNode[]): boolean {
+  if (groupIds.length === 0) {
+    return false;
+  }
+
+  const groupMap = new Map(flattenTreeSelectNodes(treeData).map((node) => [String(node.key), node]));
+  return groupIds.some((groupId) => groupMap.get(String(groupId))?.isVirtual !== true);
 }
 
 /**

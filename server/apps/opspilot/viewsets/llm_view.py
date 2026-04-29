@@ -12,9 +12,13 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
+from apps.opspilot.metis.llm.tools.elasticsearch.connection import normalize_es_instance, test_es_instance
+from apps.opspilot.metis.llm.tools.jenkins.connection import normalize_jenkins_instance, test_jenkins_instance
+from apps.opspilot.metis.llm.tools.kubernetes.connection import normalize_kubernetes_instance, test_kubernetes_instance
 from apps.opspilot.metis.llm.tools.mssql.connection import normalize_mssql_instance, test_mssql_instance
 from apps.opspilot.metis.llm.tools.mysql.connection import normalize_mysql_instance, test_mysql_instance
 from apps.opspilot.metis.llm.tools.oracle.connection import normalize_oracle_instance, test_oracle_instance
+from apps.opspilot.metis.llm.tools.postgres.connection import normalize_postgres_instance, test_postgres_instance
 from apps.opspilot.metis.llm.tools.redis.connection import normalize_redis_instance, test_redis_instance
 from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools, UserPin
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
@@ -657,3 +661,55 @@ class SkillToolsViewSet(AuthViewSet):
         except Exception as error:
             return JsonResponse({"result": False, "message": f"MSSQL connection test failed: {error}"}, status=status.HTTP_400_BAD_REQUEST)
         return JsonResponse({"result": False, "message": "MSSQL connection test failed"}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("tool_list-View")
+    def test_postgres_connection(self, request):
+        try:
+            instance = normalize_postgres_instance(request.data)
+            if test_postgres_instance(instance):
+                return JsonResponse({"result": True, "data": {"success": True}})
+        except ValueError as error:
+            return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as error:
+            return JsonResponse({"result": False, "message": f"PostgreSQL connection test failed: {error}"}, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse({"result": False, "message": "PostgreSQL connection test failed"}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("tool_list-View")
+    def test_es_connection(self, request):
+        try:
+            instance = normalize_es_instance(request.data)
+            if test_es_instance(instance):
+                return JsonResponse({"result": True, "data": {"success": True}})
+        except ValueError as error:
+            return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as error:
+            return JsonResponse({"result": False, "message": f"Elasticsearch connection test failed: {error}"}, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse({"result": False, "message": "Elasticsearch connection test failed"}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("tool_list-View")
+    def test_jenkins_connection(self, request):
+        try:
+            instance = normalize_jenkins_instance(request.data)
+            if test_jenkins_instance(instance):
+                return JsonResponse({"result": True, "data": {"success": True}})
+        except ValueError as error:
+            return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as error:
+            return JsonResponse({"result": False, "message": f"Jenkins connection test failed: {error}"}, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse({"result": False, "message": "Jenkins connection test failed"}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("tool_list-View")
+    def test_kubernetes_connection(self, request):
+        try:
+            instance = normalize_kubernetes_instance(request.data)
+            if test_kubernetes_instance(instance):
+                return JsonResponse({"result": True, "data": {"success": True}})
+        except ValueError as error:
+            return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as error:
+            return JsonResponse({"result": False, "message": f"Kubernetes connection test failed: {error}"}, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse({"result": False, "message": "Kubernetes connection test failed"}, status=status.HTTP_400_BAD_REQUEST)
