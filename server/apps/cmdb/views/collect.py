@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 from django.conf import settings
 from django.db.models import Q
-from django.db import transaction
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import action
