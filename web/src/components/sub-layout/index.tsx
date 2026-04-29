@@ -232,12 +232,14 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
         <div className={`flex flex-col w-full h-full ${sideMenuStyle.segmented}`}>
           {menuItems.length > 0 ? (
             <>
-              <Segmented
-                className="sub-layout-segmented"
-                options={segmentedOptions}
-                value={selectedKey}
-                onChange={handleSegmentChange}
-              />
+              <div className={sideMenuStyle.segmentedNav}>
+                <Segmented
+                  className="sub-layout-segmented"
+                  options={segmentedOptions}
+                  value={selectedKey}
+                  onChange={handleSegmentChange}
+                />
+              </div>
               <div className="flex-1 pt-4 rounded-md overflow-auto">
                 {children}
               </div>

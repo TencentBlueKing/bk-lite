@@ -370,4 +370,4 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
 };
 
-export default WidgetWrapper;
+export default React.memo(WidgetWrapper);

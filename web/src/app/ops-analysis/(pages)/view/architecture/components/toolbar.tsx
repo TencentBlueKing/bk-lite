@@ -1,8 +1,9 @@
 import React from 'react';
-import { Button, Tooltip } from 'antd';
+import { Button, Tooltip, Tag } from 'antd';
 import { SaveOutlined, EditOutlined } from '@ant-design/icons';
 import { ArchitectureProps } from '@/app/ops-analysis/types/architecture';
 import PermissionWrapper from '@/components/permission';
+import { useTranslation } from '@/utils/i18n';
 
 interface ArchitectureToolbarProps {
   selectedArchitecture: ArchitectureProps['selectedArchitecture'];
@@ -19,14 +20,18 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
   onEdit,
   onSave,
 }) => {
+  const { t } = useTranslation();
   return (
-    <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm p-3 border border-gray-200 bg-white">
+    <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm p-3 border border-[var(--color-border-2)] bg-[var(--color-bg-1)]">
       {/* 左侧：架构图信息 */}
       <div className="flex-1 mr-8">
         {selectedArchitecture && (
           <div className="p-1 pt-0">
             <h2 className="text-lg font-semibold mb-1">
               {selectedArchitecture.name}
+              {selectedArchitecture.is_build_in && (
+                <Tag color="blue" className="ml-2 text-xs align-middle">{t('common.builtIn')}</Tag>
+              )}
             </h2>
             <p className="text-sm text-gray-500">
               {selectedArchitecture.desc || '--'}
@@ -45,14 +50,15 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
               onClick={onSave}
               type="primary"
             >
-              保存
+              {t('common.save')}
             </Button>
           ) : (
-            <Tooltip title="编辑">
+            <Tooltip title={t('common.edit')}>
               <Button
                 type="text"
                 icon={<EditOutlined style={{ fontSize: 16 }} />}
                 onClick={onEdit}
+                disabled={selectedArchitecture?.is_build_in}
               />
             </Tooltip>
           )}
