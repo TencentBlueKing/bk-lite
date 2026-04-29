@@ -108,7 +108,7 @@ class YAMLSerializer:
 
         params字段中的敏感信息会被脱敏处理。
         """
-                raw_params = datasource.params if isinstance(datasource.params, (list, dict)) else []
+        raw_params = datasource.params if isinstance(datasource.params, (list, dict)) else []
         if isinstance(raw_params, list):
             masked_params = [YAMLSerializer.mask_sensitive_fields(item) if isinstance(item, dict) else item for item in raw_params]
         else:
