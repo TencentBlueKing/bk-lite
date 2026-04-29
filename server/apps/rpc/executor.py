@@ -62,6 +62,8 @@ class Executor(object):
         passphrase=None,
         timeout=60,
         port=22,
+        connection_test=False,
+        fast_fail=False,
     ):
         """
         通过SSH执行远程命令
@@ -90,6 +92,10 @@ class Executor(object):
             request_data["private_key"] = private_key
         if passphrase:
             request_data["passphrase"] = passphrase
+        if connection_test:
+            request_data["connection_test"] = True
+        if fast_fail:
+            request_data["connection_test"] = True
 
         return_data = self.ssh_client.run(self.instance_id, request_data, _timeout=_resolve_rpc_timeout(timeout))
         return return_data
@@ -106,6 +112,7 @@ class Executor(object):
         port=22,
         execution_id=None,
         stream_log_topic=None,
+        fast_fail=False,
     ):
         request_data = {
             "command": command,
@@ -126,6 +133,8 @@ class Executor(object):
             request_data["execution_id"] = execution_id
         if stream_log_topic:
             request_data["stream_log_topic"] = stream_log_topic
+        if fast_fail:
+            request_data["connection_test"] = True
 
         return self.ssh_client.run(self.instance_id, request_data, _timeout=_resolve_rpc_timeout(timeout))
 
@@ -166,6 +175,7 @@ class Executor(object):
         port=22,
         overwrite=True,
         local_path="/tmp",
+        fast_fail=False,
     ):
         """
         下载文件到远程
@@ -203,6 +213,8 @@ class Executor(object):
             request_data["private_key"] = private_key
         if passphrase:
             request_data["passphrase"] = passphrase
+        if fast_fail:
+            request_data["fast_fail"] = True
         return_data = self.download_to_remote_client.run(
             self.instance_id,
             request_data,
