@@ -99,7 +99,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [filterConfigModalVisible, setFilterConfigModalVisible] =
       useState(false);
     const [selectedNamespaceId, setSelectedNamespaceId] = useState<number | undefined>(undefined);
-    const contentRef = useRef<HTMLDivElement>(null);
+    const exportRef = useRef<HTMLDivElement>(null);
     const [exporting, setExporting] = useState(false);
 
     const {
@@ -428,11 +428,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     };
 
     const handleExportPdf = async () => {
-      if (!contentRef.current) return;
+      if (!exportRef.current) return;
       setExporting(true);
       try {
         await exportDashboardToPdf(
-          contentRef.current,
+          exportRef.current,
           selectedDashboard?.name || 'dashboard'
         );
         message.success(t('dashboard.exportPdfSuccess'));
@@ -651,103 +651,107 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     return (
       <div className="h-full flex-1 p-2 pb-0 overflow-auto flex flex-col bg-(--color-bg-1">
-        <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm bg-(--color-bg-1) p-3 border border-(--color-border-2)">
-          <div className="flex-1 mr-8">
-            {selectedDashboard && (
-              <div className="p-1 pt-0">
-                <h2 className="text-lg font-semibold mb-1 text-(--color-text-1)">
-                  {selectedDashboard.name}
-                  {selectedDashboard.is_build_in && (
-                    <Tag color="blue" className="ml-2 text-xs align-middle">{t('common.builtIn')}</Tag>
-                  )}
-                </h2>
-                <p className="text-sm text-(--color-text-2)">
-                  {selectedDashboard.desc}
-                </p>
-              </div>
-            )}
-          </div>
-          {/* 右侧：工具栏 */}
-          <div className="flex items-center space-x-1 rounded-lg p-2">
-            <Tooltip title={t('common.refresh')}>
-              <Button
-                type="text"
-                icon={<ReloadOutlined style={{ fontSize: 16 }} />}
-                onClick={handleRefresh}
-                className="mr-2"
-              />
-            </Tooltip>
-
-            {!isEditMode && (
-              <Tooltip title={t('dashboard.exportPdf')}>
+        <div ref={exportRef} className="flex-1 min-h-0 flex flex-col">
+          <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm bg-(--color-bg-1) p-3 border border-(--color-border-2)">
+            <div className="flex-1 mr-8">
+              {selectedDashboard && (
+                <div className="p-1 pt-0">
+                  <h2 className="text-lg font-semibold mb-1 text-(--color-text-1)">
+                    {selectedDashboard.name}
+                    {selectedDashboard.is_build_in && (
+                      <Tag color="blue" className="ml-2 text-xs align-middle">{t('common.builtIn')}</Tag>
+                    )}
+                  </h2>
+                  <p className="text-sm text-(--color-text-2)">
+                    {selectedDashboard.desc}
+                  </p>
+                </div>
+              )}
+            </div>
+            {/* 右侧：工具栏 */}
+            <div
+              className="flex items-center space-x-1 rounded-lg p-2"
+              data-export-hidden="true"
+            >
+              <Tooltip title={t('common.refresh')}>
                 <Button
                   type="text"
-                  icon={<DownloadOutlined style={{ fontSize: 16 }} />}
-                  loading={exporting}
-                  onClick={handleExportPdf}
+                  icon={<ReloadOutlined style={{ fontSize: 16 }} />}
+                  onClick={handleRefresh}
+                  className="mr-2"
                 />
               </Tooltip>
-            )}
 
-            {isEditMode && (
-              <>
-                <PermissionWrapper requiredPermissions={['EditChart']}>
+              {!isEditMode && (
+                <Tooltip title={t('dashboard.exportPdf')}>
                   <Button
                     type="text"
-                    icon={<SettingOutlined style={{ fontSize: 16 }} />}
-                    onClick={() => setFilterConfigModalVisible(true)}
-                  >
-                    {t('dashboard.configFilter')}
-                  </Button>
-                </PermissionWrapper>
-                <PermissionWrapper requiredPermissions={['EditChart']}>
-                  <Button
-                    type="dashed"
-                    icon={<PlusOutlined />}
-                    onClick={openAddModal}
-                    style={{ borderColor: '#1677ff', color: '#1677ff' }}
-                  >
-                    {t('dashboard.addView')}
-                  </Button>
-                </PermissionWrapper>
-              </>
-            )}
+                    icon={<DownloadOutlined style={{ fontSize: 16 }} />}
+                    loading={exporting}
+                    onClick={handleExportPdf}
+                  />
+                </Tooltip>
+              )}
 
-            <div>
-              <PermissionWrapper requiredPermissions={['EditChart']}>
-                {!isEditMode ? (
-                  <Tooltip title={t('common.edit')}>
+              {isEditMode && (
+                <>
+                  <PermissionWrapper requiredPermissions={['EditChart']}>
                     <Button
                       type="text"
-                      icon={<EditOutlined style={{ fontSize: 16 }} />}
-                      disabled={!selectedDashboard?.data_id || selectedDashboard?.is_build_in}
-                      onClick={toggleEditMode}
-                    />
-                  </Tooltip>
-                ) : (
-                  <div className="flex items-center gap-2 ml-5!">
-                    <Button
-                      disabled={!selectedDashboard?.data_id}
-                      onClick={handleCancelEdit}
+                      icon={<SettingOutlined style={{ fontSize: 16 }} />}
+                      onClick={() => setFilterConfigModalVisible(true)}
                     >
-                      {t('common.cancel')}
+                      {t('dashboard.configFilter')}
                     </Button>
+                  </PermissionWrapper>
+                  <PermissionWrapper requiredPermissions={['EditChart']}>
                     <Button
-                      type="primary"
-                      loading={saving}
-                      disabled={!selectedDashboard?.data_id}
-                      onClick={handleSave}
+                      type="dashed"
+                      icon={<PlusOutlined />}
+                      onClick={openAddModal}
+                      style={{ borderColor: '#1677ff', color: '#1677ff' }}
                     >
-                      {t('common.save')}
+                      {t('dashboard.addView')}
                     </Button>
-                  </div>
-                )}
-              </PermissionWrapper>
+                  </PermissionWrapper>
+                </>
+              )}
+
+              <div>
+                <PermissionWrapper requiredPermissions={['EditChart']}>
+                  {!isEditMode ? (
+                    <Tooltip title={t('common.edit')}>
+                      <Button
+                        type="text"
+                        icon={<EditOutlined style={{ fontSize: 16 }} />}
+                        disabled={!selectedDashboard?.data_id || selectedDashboard?.is_build_in}
+                        onClick={toggleEditMode}
+                      />
+                    </Tooltip>
+                  ) : (
+                    <div className="flex items-center gap-2 ml-5!">
+                      <Button
+                        disabled={!selectedDashboard?.data_id}
+                        onClick={handleCancelEdit}
+                      >
+                        {t('common.cancel')}
+                      </Button>
+                      <Button
+                        type="primary"
+                        loading={saving}
+                        disabled={!selectedDashboard?.data_id}
+                        onClick={handleSave}
+                      >
+                        {t('common.save')}
+                      </Button>
+                    </div>
+                  )}
+                </PermissionWrapper>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div ref={contentRef} className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col">
+          <div className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col">
           {(definitions.length > 0 || namespaceSelectorElement) && (
             <div className="shrink-0">
               <UnifiedFilterBar
@@ -870,6 +874,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               );
             })()}
           </div>
+        </div>
         </div>
 
         <ViewSelector

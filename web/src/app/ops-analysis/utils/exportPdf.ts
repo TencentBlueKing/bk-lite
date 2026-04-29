@@ -6,7 +6,14 @@ export async function exportDashboardToPdf(
   filename: string = 'dashboard'
 ) {
   const scrollContainer = element.querySelector('.overflow-auto') as HTMLElement | null;
+  const hiddenElements = Array.from(
+    element.querySelectorAll('[data-export-hidden="true"]')
+  ) as HTMLElement[];
   const savedStyles: Record<string, string> = {};
+  const savedHiddenDisplays = hiddenElements.map((hiddenElement) => ({
+    element: hiddenElement,
+    display: hiddenElement.style.display,
+  }));
 
   if (scrollContainer) {
     savedStyles.overflow = scrollContainer.style.overflow;
@@ -19,6 +26,10 @@ export async function exportDashboardToPdf(
 
   savedStyles.parentOverflow = element.style.overflow;
   element.style.overflow = 'visible';
+
+  hiddenElements.forEach((hiddenElement) => {
+    hiddenElement.style.display = 'none';
+  });
 
   try {
     const canvas = await toCanvas(element, {
@@ -64,6 +75,10 @@ export async function exportDashboardToPdf(
 
     pdf.save(`${filename}.pdf`);
   } finally {
+    savedHiddenDisplays.forEach(({ element: hiddenElement, display }) => {
+      hiddenElement.style.display = display;
+    });
+
     if (scrollContainer) {
       scrollContainer.style.overflow = savedStyles.overflow;
       scrollContainer.style.height = savedStyles.height;
