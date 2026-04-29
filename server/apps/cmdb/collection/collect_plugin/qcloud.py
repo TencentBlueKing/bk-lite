@@ -6,10 +6,14 @@ from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.constants.constants import CollectPluginTypes
+from apps.core.logger import cmdb_logger as logger
 
 
 class QCloudCollectMetrics(CollectBase):
     _MODEL_ID = "qcloud"
+    MODEL_ID_ALIASES = {
+        "qcloud_pulsar_cluster": "qcloud_plusar_cluster",
+    }
 
     def __init__(self, inst_name, inst_id, task_id, *args, **kwargs):
         super().__init__(inst_name, inst_id, task_id, *args, **kwargs)
@@ -69,9 +73,22 @@ class QCloudCollectMetrics(CollectBase):
         """格式化数据"""
         for metric_key, metrics in self.collection_metrics_dict.items():
             result = []
-            model_id = metric_key.split("_info_gauge")[0]
+            raw_model_id = metric_key.split("_info_gauge")[0]
+            model_id = self.MODEL_ID_ALIASES.get(raw_model_id, raw_model_id)
             mapping = self.model_field_mapping.get(model_id, {})
             for index_data in metrics:
+                if index_data.get("cmdb_collect_error"):
+                    logger.warning(
+                        f"skip qcloud metric formatting for model={model_id} due to cmdb_collect_error="
+                        f"{index_data.get('cmdb_collect_error')}"
+                    )
+                    continue
+                if not index_data.get("resource_name") or not index_data.get("resource_id"):
+                    logger.warning(
+                        f"skip qcloud metric formatting for model={model_id} because resource identity is incomplete: "
+                        f"resource_name={index_data.get('resource_name')}, resource_id={index_data.get('resource_id')}"
+                    )
+                    continue
                 data = {}
                 for field, key_or_func in mapping.items():
                     if isinstance(key_or_func, tuple):
@@ -83,4 +100,3 @@ class QCloudCollectMetrics(CollectBase):
                 if data:
                     result.append(data)
             self.result[model_id] = result
-

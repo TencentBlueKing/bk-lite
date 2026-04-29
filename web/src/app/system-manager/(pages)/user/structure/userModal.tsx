@@ -9,6 +9,7 @@ import { ZONEINFO_OPTIONS, LOCALE_OPTIONS } from '@/app/system-manager/constants
 import RoleTransfer from '@/app/system-manager/components/user/roleTransfer';
 import { useUserModalData } from '@/app/system-manager/hooks/useUserModalData';
 import { transformTreeDataForSelect } from '@/app/system-manager/utils/userFormUtils';
+import type { TreeSelectNode } from '@/app/system-manager/utils/userFormUtils';
 
 interface ModalProps {
   onSuccess: () => void;
@@ -19,6 +20,7 @@ interface ModalConfig {
   type: 'add' | 'edit';
   userId?: string;
   groupKeys?: React.Key[];
+  groupTreeData?: TreeSelectNode[];
 }
 
 export interface ModalRef {
@@ -52,14 +54,17 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     handleChangeRule,
   } = useUserModalData();
 
-  useImperativeHandle(ref, () => ({
-    showModal,
-  }));
-
   const filteredTreeData = useMemo(
     () => (treeData ? transformTreeDataForSelect(treeData) : []),
     [treeData]
   );
+
+  useImperativeHandle(ref, () => ({
+    showModal: (config) => showModal({
+      ...config,
+      groupTreeData: filteredTreeData,
+    }),
+  }), [filteredTreeData, showModal]);
 
   return (
     <OperateModal

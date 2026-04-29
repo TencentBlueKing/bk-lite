@@ -44,6 +44,17 @@ export interface K8sRenderParams {
   push_source_id?: string;
 }
 
+export interface SnmpTrapNodeItem {
+  id?: number | string;
+  name?: string;
+  ip?: string;
+  [key: string]: any;
+}
+
+export interface SnmpTrapNodeListResponse {
+  nodes?: SnmpTrapNodeItem[];
+}
+
 export interface SourceItem {
   id: number;
   event_count: number | null | undefined | string;

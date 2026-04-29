@@ -29,7 +29,7 @@ def _resolve_file_to_inline_data(obj, file_key, data_key, base64_encode=True):
     file_path = obj[file_key]
     if not os.path.isfile(file_path):
         logger.warning("kubeconfig 引用的文件不存在: %s", file_path)
-        return
+        raise ValueError(f"kubeconfig 中 {file_key} 引用的文件不存在或服务端无法访问: " f"{file_path}。请将文件内容直接内联到 kubeconfig 中" "（使用 *-data 字段），或确保服务端可以访问该路径。")
 
     try:
         if base64_encode:
@@ -43,13 +43,24 @@ def _resolve_file_to_inline_data(obj, file_key, data_key, base64_encode=True):
         logger.warning("读取 kubeconfig 引用文件 %s 失败: %s", file_path, e)
 
 
+def _represent_str_no_fold(dumper, data):
+    """强制长字符串使用双引号，避免 token 被折叠。"""
+    if "\n" in data or len(data) > 80:
+        return dumper.represent_scalar(
+            "tag:yaml.org,2002:str",
+            data,
+            style='"',
+        )
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
 def _preprocess_kubeconfig(kubeconfig_data):
     """预处理 kubeconfig YAML，将文件路径引用转换为 inline data。
 
-    处理以下字段：
-    - clusters[].cluster.certificate-authority → certificate-authority-data (base64)
-    - users[].user.client-certificate → client-certificate-data (base64)
-    - users[].user.client-key → client-key-data (base64)
+    处理字段：
+    - clusters[].cluster.certificate-authority -> certificate-authority-data
+    - users[].user.client-certificate -> client-certificate-data
+    - users[].user.client-key -> client-key-data
     - users[].user.tokenFile → token (明文，strip 换行)
 
     Args:
@@ -71,7 +82,12 @@ def _preprocess_kubeconfig(kubeconfig_data):
     for cluster_entry in kube_cfg.get("clusters", []) or []:
         cluster = cluster_entry.get("cluster", {})
         if cluster:
-            _resolve_file_to_inline_data(cluster, "certificate-authority", "certificate-authority-data", base64_encode=True)
+            _resolve_file_to_inline_data(
+                cluster,
+                "certificate-authority",
+                "certificate-authority-data",
+                base64_encode=True,
+            )
 
     # 处理 users
     for user_entry in kube_cfg.get("users", []) or []:
@@ -79,12 +95,37 @@ def _preprocess_kubeconfig(kubeconfig_data):
         if not user:
             continue
         # client 证书
-        _resolve_file_to_inline_data(user, "client-certificate", "client-certificate-data", base64_encode=True)
-        _resolve_file_to_inline_data(user, "client-key", "client-key-data", base64_encode=True)
+        _resolve_file_to_inline_data(
+            user,
+            "client-certificate",
+            "client-certificate-data",
+            base64_encode=True,
+        )
+        _resolve_file_to_inline_data(
+            user,
+            "client-key",
+            "client-key-data",
+            base64_encode=True,
+        )
         # tokenFile → token (明文，不做 base64)
-        _resolve_file_to_inline_data(user, "tokenFile", "token", base64_encode=False)
+        _resolve_file_to_inline_data(
+            user,
+            "tokenFile",
+            "token",
+            base64_encode=False,
+        )
+        # 对已有的 token 字段做 strip，去除多余空格和换行
+        if "token" in user and isinstance(user["token"], str):
+            user["token"] = user["token"].strip()
 
-    return yaml.dump(kube_cfg, default_flow_style=False)
+    dumper = yaml.Dumper
+    dumper.add_representer(str, _represent_str_no_fold)
+    return yaml.dump(
+        kube_cfg,
+        Dumper=dumper,
+        default_flow_style=False,
+        allow_unicode=True,
+    )
 
 
 def prepare_context(cfg):
@@ -95,9 +136,29 @@ def prepare_context(cfg):
         cfg: RunnableConfig配置对象
     """
     try:
-        if cfg and cfg.get("configurable", {}).get("kubeconfig_data"):
+        configurable = cfg.get("configurable", {}) if cfg else {}
+
+        # Multi-instance path
+        if configurable.get("kubernetes_instances"):
+            from apps.opspilot.metis.llm.tools.kubernetes.connection import get_kubernetes_instances_from_configurable, resolve_kubernetes_instance
+
+            instances, default_id = get_kubernetes_instances_from_configurable(configurable)
+            if instances:
+                instance = resolve_kubernetes_instance(instances, default_id)
+                kubeconfig_data = instance.get("kubeconfig_data", "")
+                if kubeconfig_data:
+                    if isinstance(kubeconfig_data, str):
+                        kubeconfig_data = kubeconfig_data.replace("\\n", "\n")
+                    kubeconfig_data = _preprocess_kubeconfig(kubeconfig_data)
+                    kubeconfig_io = io.StringIO(kubeconfig_data)
+                    config.load_kube_config(config_file=kubeconfig_io)
+                    return
+                # No kubeconfig_data in instance — fall through to defaults
+
+        # Legacy single-instance path
+        if configurable.get("kubeconfig_data"):
             # 使用传入的 kubeconfig 配置内容
-            kubeconfig_data = cfg["configurable"]["kubeconfig_data"]
+            kubeconfig_data = configurable["kubeconfig_data"]
             # 处理可能的转义换行符
             if isinstance(kubeconfig_data, str):
                 kubeconfig_data = kubeconfig_data.replace("\\n", "\n")
@@ -115,7 +176,7 @@ def prepare_context(cfg):
                 config.load_incluster_config()
     except Exception as e:
         logger.exception(e)
-        raise Exception(f"无法加载 Kubernetes 配置: {str(e)}. 请检查 kubeconfig 配置内容或集群连接。")
+        raise Exception(f"无法加载 Kubernetes 配置: {str(e)}. " "请检查 kubeconfig 配置内容或集群连接。")
 
 
 def format_bytes(size):
@@ -159,7 +220,16 @@ def parse_resource_quantity(quantity_str):
         return float(quantity_str[:-1]) / 1000
 
     # 内存资源 (bytes)
-    multipliers = {"Ki": 1024, "Mi": 1024**2, "Gi": 1024**3, "Ti": 1024**4, "K": 1000, "M": 1000**2, "G": 1000**3, "T": 1000**4}
+    multipliers = {
+        "Ki": 1024,
+        "Mi": 1024**2,
+        "Gi": 1024**3,
+        "Ti": 1024**4,
+        "K": 1000,
+        "M": 1000**2,
+        "G": 1000**3,
+        "T": 1000**4,
+    }
 
     for suffix, multiplier in multipliers.items():
         if quantity_str.endswith(suffix):

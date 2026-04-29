@@ -50,6 +50,8 @@ error:
   invalid_order: 排序值必须是整数
   invalid_role_ids: '角色ID不存在: {ids}'
   invalid_group_ids: '组织ID不存在: {ids}'
+  group_selection_required: 至少选择一个组织
+  normal_group_required: 至少选择一个普通组织
 success:
   menu_group_disabled: 菜单组已禁用
   batch_create: 批量创建成功

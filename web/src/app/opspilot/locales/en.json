@@ -250,6 +250,106 @@
         "success": "Test Succeeded",
         "failed": "Test Failed"
       }
+    },
+    "postgres": {
+      "instances": "PostgreSQL Instances",
+      "noInstances": "No PostgreSQL instances",
+      "selectInstance": "Select a PostgreSQL instance",
+      "unnamedInstance": "Unnamed instance",
+      "addressNotConfigured": "Address not configured",
+      "configTitle": "{name} Configuration",
+      "instanceName": "Instance Name",
+      "instanceNamePlaceholder": "Enter instance name",
+      "host": "Host",
+      "hostPlaceholder": "Enter host address",
+      "port": "Port",
+      "database": "Database",
+      "user": "Username",
+      "userPlaceholder": "Enter username",
+      "password": "Password",
+      "passwordPlaceholder": "Enter password",
+      "testConnection": "Test Connection",
+      "instanceNameRequired": "Please enter an instance name",
+      "hostRequired": "Please enter a host address",
+      "duplicateInstanceName": "PostgreSQL instance names must be unique",
+      "status": {
+        "untested": "Untested",
+        "success": "Test Succeeded",
+        "failed": "Test Failed"
+      }
+    },
+    "elasticsearch": {
+      "instances": "Elasticsearch Instances",
+      "noInstances": "No Elasticsearch instances",
+      "selectInstance": "Select an Elasticsearch instance",
+      "unnamedInstance": "Unnamed instance",
+      "addressNotConfigured": "Address not configured",
+      "configTitle": "{name} Configuration",
+      "instanceName": "Instance Name",
+      "instanceNamePlaceholder": "Enter instance name",
+      "url": "URL",
+      "urlPlaceholder": "Enter Elasticsearch connection URL",
+      "username": "Username",
+      "usernamePlaceholder": "Enter username",
+      "password": "Password",
+      "passwordPlaceholder": "Enter password",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter API Key",
+      "verifyCerts": "Verify Certificates",
+      "testConnection": "Test Connection",
+      "instanceNameRequired": "Please enter an instance name",
+      "urlRequired": "Please enter a connection URL",
+      "duplicateInstanceName": "Elasticsearch instance names must be unique",
+      "status": {
+        "untested": "Untested",
+        "success": "Test Succeeded",
+        "failed": "Test Failed"
+      }
+    },
+    "jenkins": {
+      "instances": "Jenkins Instances",
+      "noInstances": "No Jenkins instances",
+      "selectInstance": "Select a Jenkins instance",
+      "unnamedInstance": "Unnamed instance",
+      "addressNotConfigured": "Address not configured",
+      "configTitle": "{name} Configuration",
+      "instanceName": "Instance Name",
+      "instanceNamePlaceholder": "Enter instance name",
+      "url": "Jenkins URL",
+      "urlPlaceholder": "Enter Jenkins URL, e.g. http://jenkins:8080",
+      "username": "Username",
+      "usernamePlaceholder": "Enter username",
+      "password": "Password or API Token",
+      "passwordPlaceholder": "Enter password or API Token",
+      "testConnection": "Test Connection",
+      "instanceNameRequired": "Please enter an instance name",
+      "urlRequired": "Please enter a Jenkins URL",
+      "duplicateInstanceName": "Jenkins instance names must be unique",
+      "status": {
+        "untested": "Untested",
+        "success": "Test Succeeded",
+        "failed": "Test Failed"
+      }
+    },
+    "kubernetes": {
+      "instances": "Kubernetes Instances",
+      "noInstances": "No Kubernetes instances",
+      "selectInstance": "Select a Kubernetes instance",
+      "unnamedInstance": "Unnamed instance",
+      "noKubeconfigData": "No kubeconfig configured",
+      "configTitle": "{name} Configuration",
+      "instanceName": "Instance Name",
+      "instanceNamePlaceholder": "Enter instance name",
+      "kubeconfigData": "kubeconfig Content",
+      "kubeconfigDataPlaceholder": "Paste kubeconfig file content here. Leave blank to use default ~/.kube/config",
+      "testConnection": "Test Connection",
+      "instanceNameRequired": "Please enter an instance name",
+      "duplicateInstanceName": "Kubernetes instance names must be unique",
+      "status": {
+        "untested": "Untested",
+        "success": "Test Succeeded",
+        "failed": "Test Failed"
+      }
     }
   },
   "knowledge": {

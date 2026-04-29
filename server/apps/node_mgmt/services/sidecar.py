@@ -613,6 +613,8 @@ class Sidecar:
             controller_default_run=True,
             node_operating_system=node.operating_system,
         )
+        if getattr(node, "cpu_architecture", ""):
+            collector_objs = collector_objs.filter(cpu_architecture__in=[node.cpu_architecture, ""])
         variables = Sidecar.get_cloud_region_envconfig(node)
         default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
 

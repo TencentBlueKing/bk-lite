@@ -164,6 +164,8 @@
         "lastName": "Name",
         "passwordMismatch": "Passwords do not match",
         "normalUser": "Normal User",
+        "groupSelectionRequired": "Please select at least one organization",
+        "normalGroupRequired": "Please select at least one normal organization",
         "tempTooltip": "If enabled, the user must change the password on next login"
       },
       "admin": {

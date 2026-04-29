@@ -72,7 +72,8 @@ class BaseNodeParams(metaclass=ABCMeta):
             try:
                 return self.PLUGIN_MAP[self.build_registry_key(self.model_id)]
             except KeyError as err:
-                raise KeyError(f"未在 PLUGIN_MAP 中找到对应 {self.model_id} / {self.instance.driver_type} 的插件配置") from err
+                raise KeyError(
+                    f"未在 PLUGIN_MAP 中找到对应 {self.model_id} / {self.instance.driver_type} 的插件配置") from err
 
     @abstractmethod
     def set_credential(self, *args, **kwargs):
@@ -81,6 +82,10 @@ class BaseNodeParams(metaclass=ABCMeta):
         TODO 后续会有多凭据 后边再改
         """
         raise NotImplementedError
+
+    @classmethod
+    def build_region_credential(cls, raw_credential):
+        return raw_credential or {}
 
     def env_config(self, *args, **kwargs):
         """
@@ -201,3 +206,4 @@ class BaseNodeParams(metaclass=ABCMeta):
             return self.push_params()
 
         return self.delete_params()
+

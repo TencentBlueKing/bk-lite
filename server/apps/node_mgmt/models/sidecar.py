@@ -71,6 +71,7 @@ class Collector(TimeInfo, MaintainerInfo):
     name = models.CharField(max_length=100, verbose_name="采集器名称")
     service_type = models.CharField(max_length=100, choices=ServiceType, verbose_name="服务类型")
     node_operating_system = models.CharField(max_length=50, choices=OS_TYPE, verbose_name="节点操作系统类型")
+    cpu_architecture = models.CharField(max_length=20, blank=True, default="", verbose_name="CPU架构")
     executable_path = models.CharField(max_length=200, verbose_name="可执行文件路径")
     execute_parameters = models.CharField(max_length=200, verbose_name="执行参数")
     validation_parameters = models.CharField(blank=True, null=True, max_length=200, verbose_name="验证参数")
@@ -86,7 +87,7 @@ class Collector(TimeInfo, MaintainerInfo):
     class Meta:
         verbose_name = "采集器信息"
         verbose_name_plural = "采集器信息"
-        unique_together = ("node_operating_system", "name")
+        unique_together = ("node_operating_system", "cpu_architecture", "name")
 
 
 class CollectorConfiguration(TimeInfo, MaintainerInfo):

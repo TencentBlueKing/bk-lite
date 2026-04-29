@@ -164,6 +164,8 @@
         "lastName": "姓名",
         "passwordMismatch": "两次密码不一致",
         "normalUser": "普通用户",
+        "groupSelectionRequired": "请至少选择一个组织",
+        "normalGroupRequired": "请至少选择一个普通组织",
         "tempTooltip": "如果开启，用户必须在下一次登录的时候改变密码"
       },
       "admin": {

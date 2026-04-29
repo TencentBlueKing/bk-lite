@@ -119,6 +119,24 @@ Behavior:
 - Windows detection uses `cmd /c echo %PROCESSOR_ARCHITECTURE%`
 - Nodes without reusable credentials are skipped rather than guessed
 
+## Definition content layout
+
+Built-in controller and collector definitions are now loaded from JSON content directories:
+
+```text
+server/apps/node_mgmt/support-files/controllers/
+server/apps/node_mgmt/support-files/collectors/
+server/apps/node_mgmt/enterprise/support-files/controllers/
+server/apps/node_mgmt/enterprise/support-files/collectors/
+```
+
+Rules:
+
+- Community content provides the default CE definitions (currently Windows `x86_64` and Linux `x86_64`)
+- Enterprise content is optional and may not exist in CE deployments
+- If enterprise directories exist at deploy time, their JSON definitions overlay community content by matching ID
+- ARM64 definitions should live in enterprise content, not in community defaults
+
 ## Rollout Checklist
 
 Execute the following in order when releasing Linux ARM64 controller support:

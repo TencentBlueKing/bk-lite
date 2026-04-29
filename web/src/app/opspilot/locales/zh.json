@@ -250,6 +250,106 @@
         "success": "测试成功",
         "failed": "测试失败"
       }
+    },
+    "postgres": {
+      "instances": "PostgreSQL实例",
+      "noInstances": "暂无 PostgreSQL 实例",
+      "selectInstance": "请选择一个 PostgreSQL 实例",
+      "unnamedInstance": "未命名实例",
+      "addressNotConfigured": "未配置地址",
+      "configTitle": "{name} 配置",
+      "instanceName": "实例名称",
+      "instanceNamePlaceholder": "请输入实例名称",
+      "host": "主机地址",
+      "hostPlaceholder": "请输入主机地址",
+      "port": "端口",
+      "database": "数据库",
+      "user": "用户名",
+      "userPlaceholder": "请输入用户名",
+      "password": "密码",
+      "passwordPlaceholder": "请输入密码",
+      "testConnection": "测试连接",
+      "instanceNameRequired": "请输入实例名称",
+      "hostRequired": "请输入主机地址",
+      "duplicateInstanceName": "PostgreSQL 实例名称不能重复",
+      "status": {
+        "untested": "未测试",
+        "success": "测试成功",
+        "failed": "测试失败"
+      }
+    },
+    "elasticsearch": {
+      "instances": "Elasticsearch实例",
+      "noInstances": "暂无 Elasticsearch 实例",
+      "selectInstance": "请选择一个 Elasticsearch 实例",
+      "unnamedInstance": "未命名实例",
+      "addressNotConfigured": "未配置地址",
+      "configTitle": "{name} 配置",
+      "instanceName": "实例名称",
+      "instanceNamePlaceholder": "请输入实例名称",
+      "url": "连接地址",
+      "urlPlaceholder": "请输入 Elasticsearch 连接地址",
+      "username": "用户名",
+      "usernamePlaceholder": "请输入用户名",
+      "password": "密码",
+      "passwordPlaceholder": "请输入密码",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "请输入 API Key",
+      "verifyCerts": "验证证书",
+      "testConnection": "测试连接",
+      "instanceNameRequired": "请输入实例名称",
+      "urlRequired": "请输入连接地址",
+      "duplicateInstanceName": "Elasticsearch 实例名称不能重复",
+      "status": {
+        "untested": "未测试",
+        "success": "测试成功",
+        "failed": "测试失败"
+      }
+    },
+    "jenkins": {
+      "instances": "Jenkins实例",
+      "noInstances": "暂无 Jenkins 实例",
+      "selectInstance": "请选择一个 Jenkins 实例",
+      "unnamedInstance": "未命名实例",
+      "addressNotConfigured": "未配置地址",
+      "configTitle": "{name} 配置",
+      "instanceName": "实例名称",
+      "instanceNamePlaceholder": "请输入实例名称",
+      "url": "Jenkins 地址",
+      "urlPlaceholder": "请输入 Jenkins URL，如 http://jenkins:8080",
+      "username": "用户名",
+      "usernamePlaceholder": "请输入用户名",
+      "password": "密码或 API Token",
+      "passwordPlaceholder": "请输入密码或 API Token",
+      "testConnection": "测试连接",
+      "instanceNameRequired": "请输入实例名称",
+      "urlRequired": "请输入 Jenkins 地址",
+      "duplicateInstanceName": "Jenkins 实例名称不能重复",
+      "status": {
+        "untested": "未测试",
+        "success": "测试成功",
+        "failed": "测试失败"
+      }
+    },
+    "kubernetes": {
+      "instances": "Kubernetes实例",
+      "noInstances": "暂无 Kubernetes 实例",
+      "selectInstance": "请选择一个 Kubernetes 实例",
+      "unnamedInstance": "未命名实例",
+      "noKubeconfigData": "未配置 kubeconfig",
+      "configTitle": "{name} 配置",
+      "instanceName": "实例名称",
+      "instanceNamePlaceholder": "请输入实例名称",
+      "kubeconfigData": "kubeconfig 内容",
+      "kubeconfigDataPlaceholder": "请粘贴 kubeconfig 文件内容，留空则使用默认 ~/.kube/config",
+      "testConnection": "测试连接",
+      "instanceNameRequired": "请输入实例名称",
+      "duplicateInstanceName": "Kubernetes 实例名称不能重复",
+      "status": {
+        "untested": "未测试",
+        "success": "测试成功",
+        "failed": "测试失败"
+      }
     }
   },
   "knowledge": {

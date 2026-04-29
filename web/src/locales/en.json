@@ -1,6 +1,7 @@
 {
   "common": {
     "edit": "Edit",
+    "builtIn": "Built-in",
     "delete": "Delete",
     "export": "Export",
     "import": "Import",

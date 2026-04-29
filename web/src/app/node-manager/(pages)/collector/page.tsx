@@ -64,7 +64,7 @@ const Collector = () => {
 
   const navigateToCollectorDetail = (item: CardItem) => {
     router.push(`
-      /node-manager/collector/detail?id=${item.id}&name=${item.original_name}&displayName=${item.name}&introduction=${item.description}&system=${item.os}&icon=${item.icon}`);
+      /node-manager/collector/detail?id=${item.id}&name=${item.original_name}&displayName=${item.name}&introduction=${item.description}&system=${item.os}&architecture=${item.cpu_architecture || ''}&icon=${item.icon}`);
   };
 
   const getTags = () => {
@@ -95,6 +95,11 @@ const Collector = () => {
       const displayTags = tagList.map((tag: string) => {
         return currentTagEnum[tag]?.name || tag;
       });
+      const architectureDisplay =
+        item.architecture_display ||
+        (item.cpu_architecture === 'arm64'
+          ? 'ARM64'
+          : item.cpu_architecture || '');
       return {
         ...item,
         name: item.display_name,
@@ -105,7 +110,10 @@ const Collector = () => {
         os:
           tagList.find((item: string) => ['linux', 'windows'].includes(item)) ||
           'linux',
-        tagList: displayTags,
+        cpu_architecture: item.cpu_architecture,
+        tagList: architectureDisplay
+          ? [...displayTags, architectureDisplay]
+          : displayTags,
         originalTags: tagList,
       };
     });

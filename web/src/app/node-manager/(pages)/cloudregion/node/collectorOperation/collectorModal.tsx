@@ -52,15 +52,17 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [collector, setCollector] = useState<string | null>(null);
     const [system, setSystem] = useState<string>('');
+    const [cpuArchitecture, setCpuArchitecture] = useState<string>('');
     const [options, setOptions] = useState<Option[]>([]);
     const [typeOptions, setTypeOptions] = useState<any[]>([]);
     const [selectedType, setSelectedType] = useState<string>('');
 
     useImperativeHandle(ref, () => ({
-      showModal: ({ type, ids, selectedsystem }) => {
+      showModal: ({ type, ids, selectedsystem, selectedArchitecture }) => {
         setCollectorVisible(true);
         setType(type);
         setSystem(selectedsystem as string);
+        setCpuArchitecture((selectedArchitecture as string) || '');
         setNodeIds(ids || []);
         initTypeOptions(selectedsystem || '');
         type === 'startCollectorr' && getConfigData(); //先不调这个接口，因为配置文件已隐藏
@@ -98,6 +100,9 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         const params: any = {
           node_operating_system: selectedsystem
         };
+        if (cpuArchitecture) {
+          params.cpu_architecture = cpuArchitecture;
+        }
         if (currentType) {
           params.tags = currentType;
         }
@@ -164,6 +169,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       setVersionLoading(false);
       setCollectorLoading(false);
       setCollector(null);
+      setCpuArchitecture('');
       setSelectedType('');
       setTypeOptions([]);
       setOptions([]);
@@ -301,7 +307,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       if (type === 'installCollector' && id) {
         try {
           setVersionLoading(true);
-          const data = await getPackageList({ object, os: system });
+          const data = await getPackageList({
+            object,
+            os: system,
+            cpu_architecture: cpuArchitecture
+          });
           setPackageList(data);
         } finally {
           setVersionLoading(false);

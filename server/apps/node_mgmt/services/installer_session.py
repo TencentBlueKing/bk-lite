@@ -85,6 +85,7 @@ class InstallerSessionService:
             if token_data["os"] == NodeConstants.WINDOWS_OS
             else InstallerConstants.LINUX_INSTALL_DEFAULT_DIR
         )
+        package_file_key = PackageService.resolve_existing_file_path(package_obj)
 
         config = {
             "api_token": sidecar_token,
@@ -98,7 +99,7 @@ class InstallerSessionService:
             "server_url": f"{server_url.rstrip('/')}/api/v1/node_mgmt/open_api/node",
             "storage": {
                 "bucket": installer_bucket,
-                "file_key": PackageService.build_file_path(package_obj),
+                "file_key": package_file_key,
                 "file_name": package_obj.name,
                 "nats_password": nats_password,
                 "nats_protocol": nats_protocol,
@@ -107,6 +108,15 @@ class InstallerSessionService:
                 "nats_username": nats_username,
             },
             "zone_id": str(token_data["cloud_region_id"]),
+        }
+        config["package"] = {
+            "id": package_obj.id,
+            "os": package_obj.os,
+            "cpu_architecture": getattr(package_obj, "cpu_architecture", "") or resolved_arch or "generic",
+            "object": package_obj.object,
+            "version": package_obj.version,
+            "name": package_obj.name,
+            "file_key": package_file_key,
         }
         config["installer"] = InstallerSessionService.installer_artifact(
             token_data["os"],
