@@ -2,6 +2,7 @@ from queue import Queue
 from types import SimpleNamespace
 import json
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
@@ -10,7 +11,7 @@ from apps.base.models import User
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.node_mgmt.models import CloudRegion, Controller, Node, PackageVersion, SidecarEnv
+from apps.node_mgmt.models import CloudRegion, Collector, Controller, Node, PackageVersion, SidecarEnv
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
 from apps.node_mgmt.services.sidecar import Sidecar
@@ -24,6 +25,12 @@ from apps.node_mgmt.management.commands.backfill_node_cpu_architecture import Co
 from apps.node_mgmt.management.commands.controller_package_init import Command as ControllerPackageInitCommand
 from apps.node_mgmt.management.commands.installer_init import Command as InstallerInitCommand
 from apps.node_mgmt.management.commands.verify_architecture_rollout import Command as VerifyArchitectureRolloutCommand
+from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
+from apps.node_mgmt.management.services.node_init.collector_init import import_collector
+from apps.node_mgmt.management.services.node_init.controller_init import controller_init
+from apps.node_mgmt.nats.node import NatsService
+from apps.node_mgmt.serializers.collector import CollectorSerializer
+from apps.node_mgmt.views.collector import CollectorViewSet
 from apps.node_mgmt.views.installer import InstallerViewSet
 from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
 
@@ -688,6 +695,401 @@ def test_verify_architecture_rollout_succeeds_when_required_artifacts_exist(monk
 
     assert "Linux ARM64 controller package present: yes" in output
     assert "Installer artifacts present" in output
+
+
+@pytest.mark.django_db
+def test_definition_loader_merges_enterprise_overlay(tmp_path):
+    community_dir = tmp_path / "community"
+    enterprise_dir = tmp_path / "enterprise"
+    community_dir.mkdir(parents=True)
+    enterprise_dir.mkdir(parents=True)
+
+    (community_dir / "builtin.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "controller_linux",
+                    "os": "linux",
+                    "cpu_architecture": "x86_64",
+                    "name": "Controller",
+                    "description": "community",
+                    "version_command": "cat /opt/fusion-collectors/VERSION",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (enterprise_dir / "builtin.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "controller_linux",
+                    "os": "linux",
+                    "cpu_architecture": "x86_64",
+                    "name": "Controller",
+                    "description": "enterprise override",
+                    "version_command": "cat /enterprise/VERSION",
+                },
+                {
+                    "id": "controller_linux_arm64",
+                    "os": "linux",
+                    "cpu_architecture": "arm64",
+                    "name": "Controller",
+                    "description": "enterprise arm64",
+                    "version_command": "cat /enterprise/VERSION",
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    records = load_definition_records(str(community_dir), str(enterprise_dir))
+    record_map = {record["id"]: record for record in records}
+
+    assert record_map["controller_linux"]["description"] == "enterprise override"
+    assert record_map["controller_linux_arm64"]["cpu_architecture"] == NodeConstants.ARM64_ARCH
+
+
+@pytest.mark.django_db
+def test_controller_init_loads_json_definitions(monkeypatch, tmp_path):
+    community_dir = tmp_path / "controllers"
+    community_dir.mkdir(parents=True)
+    (community_dir / "builtin.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "controller_linux",
+                    "os": "linux",
+                    "cpu_architecture": "x86_64",
+                    "name": "Controller",
+                    "description": "community controller",
+                    "version_command": "cat /opt/fusion-collectors/VERSION",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.management.services.node_init.controller_init.COMMUNITY_CONTROLLER_DIRECTORY",
+        str(community_dir),
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.management.services.node_init.controller_init.ENTERPRISE_CONTROLLER_DIRECTORY",
+        str(tmp_path / "missing-enterprise"),
+    )
+
+    controller_init()
+
+    controller = Controller.objects.get(os="linux", cpu_architecture="x86_64", name="Controller")
+    assert controller.description == "community controller"
+
+
+@pytest.mark.django_db
+def test_import_collector_supports_architecture_specific_records():
+    import_collector(
+        [
+            {
+                "id": "telegraf_linux",
+                "name": "Telegraf",
+                "service_type": "exec",
+                "node_operating_system": "linux",
+                "cpu_architecture": "",
+                "executable_path": "/opt/fusion-collectors/bin/telegraf",
+                "execute_parameters": "--config %s",
+                "validation_parameters": "",
+                "default_template": "",
+                "introduction": "generic telegraf",
+                "icon": "telegraf",
+                "controller_default_run": True,
+                "default_config": {},
+                "tags": ["linux"],
+                "package_name": "telegraf",
+            },
+            {
+                "id": "telegraf_linux_arm64",
+                "name": "Telegraf",
+                "service_type": "exec",
+                "node_operating_system": "linux",
+                "cpu_architecture": "arm64",
+                "executable_path": "/opt/fusion-collectors/bin/telegraf-arm64",
+                "execute_parameters": "--config %s",
+                "validation_parameters": "",
+                "default_template": "",
+                "introduction": "arm telegraf",
+                "icon": "telegraf",
+                "controller_default_run": True,
+                "default_config": {},
+                "tags": ["linux"],
+                "package_name": "telegraf-arm64",
+            },
+        ]
+    )
+
+    generic = Collector.objects.get(id="telegraf_linux")
+    arm = Collector.objects.get(id="telegraf_linux_arm64")
+
+    assert generic.cpu_architecture == ""
+    assert arm.cpu_architecture == NodeConstants.ARM64_ARCH
+    assert arm.package_name == "telegraf-arm64"
+
+
+@pytest.mark.django_db
+def test_nats_batch_create_configs_prefers_architecture_specific_collector():
+    cloud_region = CloudRegion.objects.create(
+        name="region-nats-config",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-arm-config",
+        name="node-arm-config",
+        ip="10.0.0.21",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    Collector.objects.create(
+        id="telegraf_linux",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_collector = Collector.objects.create(
+        id="telegraf_linux_arm64",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/telegraf-arm64",
+        execute_parameters="--config %s",
+        introduction="arm64",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf-arm64",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    NatsService().batch_create_configs(
+        [
+            {
+                "id": "cfg-arm-telegraf",
+                "name": "cfg-arm-telegraf",
+                "content": "[[inputs.cpu]]",
+                "node_id": node.id,
+                "collector_name": "Telegraf",
+                "env_config": {},
+            }
+        ]
+    )
+
+    config = arm_collector.collectorconfiguration_set.get(id="cfg-arm-telegraf")
+    assert config.collector_id == arm_collector.id
+
+
+@pytest.mark.django_db
+def test_nats_batch_create_child_configs_falls_back_to_generic_collector_configuration():
+    cloud_region = CloudRegion.objects.create(
+        name="region-nats-child",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-arm-child",
+        name="node-arm-child",
+        ip="10.0.0.22",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    generic_collector = Collector.objects.create(
+        id="telegraf_linux",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    generic_config = generic_collector.collectorconfiguration_set.create(
+        id="cfg-generic-telegraf",
+        name="cfg-generic-telegraf",
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    generic_config.nodes.add(node)
+
+    NatsService().batch_create_child_configs(
+        [
+            {
+                "id": "child-arm-telegraf",
+                "collect_type": "metrics",
+                "type": "input",
+                "content": "[[inputs.mem]]",
+                "node_id": node.id,
+                "collector_name": "Telegraf",
+                "env_config": {},
+            }
+        ]
+    )
+
+    child = generic_config.childconfig_set.get(id="child-arm-telegraf")
+    assert child.collector_config_id == generic_config.id
+
+
+@pytest.mark.django_db
+def test_collector_filter_supports_architecture_alias_and_list_exposes_architecture_display(monkeypatch):
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.collector.LanguageLoader",
+        lambda *args, **kwargs: SimpleNamespace(get=lambda key: None),
+    )
+    Collector.objects.create(
+        id="telegraf_linux",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    Collector.objects.create(
+        id="telegraf_linux_arm64",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/telegraf-arm64",
+        execute_parameters="--config %s",
+        introduction="arm64",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf-arm64",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    factory = APIRequestFactory()
+    view = CollectorViewSet.as_view({"get": "list"})
+    request = factory.get("/node_mgmt/api/collector/", {"cpu_architecture": "aarch64"})
+    force_authenticate(request, user=_build_admin_user())
+
+    response = view(request)
+
+    assert response.status_code == 200
+    assert len(response.data) == 1
+    assert response.data[0]["id"] == "telegraf_linux_arm64"
+    assert response.data[0]["cpu_architecture"] == NodeConstants.ARM64_ARCH
+    assert response.data[0]["architecture_display"] == "ARM64"
+    assert response.data[0]["display_name"] == "Telegraf（ARM64）"
+
+
+@pytest.mark.django_db
+def test_collector_serializer_normalizes_cpu_architecture_alias():
+    serializer = CollectorSerializer(
+        data={
+            "id": "vector_linux_alias",
+            "name": "Vector",
+            "service_type": "exec",
+            "node_operating_system": NodeConstants.LINUX_OS,
+            "cpu_architecture": "amd64",
+            "executable_path": "/opt/vector",
+            "execute_parameters": "--config %s",
+            "validation_parameters": "",
+            "default_template": "",
+            "introduction": "vector",
+            "icon": "vector",
+            "controller_default_run": False,
+            "default_config": {},
+            "tags": [],
+            "package_name": "vector",
+            "is_pre": False,
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["cpu_architecture"] == NodeConstants.X86_64_ARCH
+
+
+@pytest.mark.django_db
+def test_collector_retrieve_exposes_architecture_display(monkeypatch):
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.collector.LanguageLoader",
+        lambda *args, **kwargs: SimpleNamespace(get=lambda key: None),
+    )
+    collector = Collector.objects.create(
+        id="vector_linux_arm64",
+        name="Vector",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/vector-arm64",
+        execute_parameters="--config %s",
+        introduction="vector arm64",
+        icon="vector",
+        default_config={},
+        tags=[],
+        package_name="vector-arm64",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    factory = APIRequestFactory()
+    view = CollectorViewSet.as_view({"get": "retrieve"})
+    request = factory.get(f"/node_mgmt/api/collector/{collector.id}/")
+    force_authenticate(request, user=_build_admin_user())
+
+    response = view(request, pk=collector.id)
+
+    assert response.status_code == 200
+    assert response.data["id"] == collector.id
+    assert response.data["cpu_architecture"] == NodeConstants.ARM64_ARCH
+    assert response.data["architecture_display"] == "ARM64"
+    assert response.data["display_name"] == "Vector（ARM64）"
 
 
 @pytest.mark.django_db

@@ -6,6 +6,7 @@ from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableCons
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.models import (
@@ -98,16 +99,37 @@ class NatsService:
             - env_config: 环境变量配置（可选）
         """
 
-        cloud_regions = Node.objects.filter(id__in=[i["node_id"] for i in configs]).values("id", "cloud_region_id", "operating_system")
-        cloud_region_map = {i["id"]: (i["cloud_region_id"], i["operating_system"]) for i in cloud_regions}
+        cloud_regions = Node.objects.filter(id__in=[i["node_id"] for i in configs]).values(
+            "id",
+            "cloud_region_id",
+            "operating_system",
+            "cpu_architecture",
+        )
+        cloud_region_map = {
+            i["id"]: (
+                i["cloud_region_id"],
+                i["operating_system"],
+                normalize_cpu_architecture(i.get("cpu_architecture")),
+            )
+            for i in cloud_regions
+        }
 
-        collectors = Collector.objects.filter(name__in=[i["collector_name"] for i in configs]).values("name", "node_operating_system", "id")
-        collector_map = {(i["name"], i["node_operating_system"]): i["id"] for i in collectors}
+        collectors = Collector.objects.filter(name__in=[i["collector_name"] for i in configs]).values(
+            "name",
+            "node_operating_system",
+            "cpu_architecture",
+            "id",
+        )
+        collector_map = {(i["name"], i["node_operating_system"], normalize_cpu_architecture(i.get("cpu_architecture"))): i["id"] for i in collectors}
 
         conf_objs, node_config_assos = [], []
         for config in configs:
-            cloud_region_id, operating_system = cloud_region_map[config["node_id"]]
-            collector_id = collector_map[(config["collector_name"], operating_system)]
+            cloud_region_id, operating_system, cpu_architecture = cloud_region_map[config["node_id"]]
+            collector_id = collector_map.get((config["collector_name"], operating_system, cpu_architecture)) or collector_map.get(
+                (config["collector_name"], operating_system, "")
+            )
+            if not collector_id:
+                raise BaseAppException(f"Collector {config['collector_name']} not found for {operating_system}/{cpu_architecture or 'generic'}")
 
             # 加密包含password的环境变量
             encrypted_env_config = self._encrypt_password_fields(config.get("env_config", {}))
@@ -162,14 +184,33 @@ class NatsService:
                 nodes__id__in=[config["node_id"] for config in configs],
                 collector__name__in=[config["collector_name"] for config in configs],
             )
-            .values("id", "nodes__id", "collector__name")
+            .values("id", "nodes__id", "collector__name", "collector__cpu_architecture")
             .distinct()
         )
 
-        base_config_map = {(i["nodes__id"], i["collector__name"]): i["id"] for i in base_configs}
+        node_arch_map = {
+            item["id"]: normalize_cpu_architecture(item.get("cpu_architecture"))
+            for item in Node.objects.filter(id__in=[config["node_id"] for config in configs]).values("id", "cpu_architecture")
+        }
+        exact_base_config_map = {}
+        generic_base_config_map = {}
+        for item in base_configs:
+            key = (item["nodes__id"], item["collector__name"])
+            collector_arch = normalize_cpu_architecture(item.get("collector__cpu_architecture"))
+            if collector_arch:
+                exact_base_config_map[(item["nodes__id"], item["collector__name"], collector_arch)] = item["id"]
+            else:
+                generic_base_config_map[key] = item["id"]
 
         node_objs = []
         for config in configs:
+            node_arch = node_arch_map.get(config["node_id"], "")
+            collector_config_id = exact_base_config_map.get((config["node_id"], config["collector_name"], node_arch)) or generic_base_config_map.get(
+                (config["node_id"], config["collector_name"])
+            )
+            if not collector_config_id:
+                raise BaseAppException(f"Collector configuration not found for node {config['node_id']} and collector {config['collector_name']}")
+
             # 加密包含password的环境变量
             encrypted_env_config = self._encrypt_password_fields(config.get("env_config", {}))
 
@@ -179,7 +220,7 @@ class NatsService:
                     collect_type=config["collect_type"],
                     config_type=config["type"],
                     content=config["content"],
-                    collector_config_id=base_config_map[(config["node_id"], config["collector_name"])],
+                    collector_config_id=collector_config_id,
                     env_config=encrypted_env_config,
                     sort_order=config.get("sort_order", 0),
                     config_section=config.get("config_section", ""),

@@ -51,6 +51,23 @@ class PackageService:
         ).first()
 
     @staticmethod
+    def resolve_collector_by_architecture(operating_system: str, collector_name: str, cpu_architecture: str):
+        normalized_arch = normalize_cpu_architecture(cpu_architecture)
+        collector = Collector.objects.filter(
+            node_operating_system=operating_system,
+            cpu_architecture=normalized_arch,
+            name=collector_name,
+        ).first()
+        if collector:
+            return collector
+
+        return Collector.objects.filter(
+            node_operating_system=operating_system,
+            cpu_architecture="",
+            name=collector_name,
+        ).first()
+
+    @staticmethod
     def build_file_path(package_obj) -> str:
         arch = getattr(package_obj, "cpu_architecture", "") or "generic"
         return f"{package_obj.os}/{arch}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
@@ -96,7 +113,7 @@ class PackageService:
         # 获取期望的包名称
         expected_package_name = expected_object
         if expected_type == PackageConstants.TYPE_COLLECTOR:
-            collector = Collector.objects.filter(name=expected_object, node_operating_system=expected_os).first()
+            collector = PackageService.resolve_collector_by_architecture(expected_os, expected_object, expected_arch)
             if collector and collector.package_name:
                 expected_package_name = collector.package_name
         elif expected_type == PackageConstants.TYPE_CONTROLLER:
